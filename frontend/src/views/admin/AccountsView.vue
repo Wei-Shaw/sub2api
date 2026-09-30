@@ -137,23 +137,60 @@
                       <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
                         <div class="flex items-center justify-between gap-3">
-                          <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                            {{ t('admin.accounts.viewColumns') }}
-                          </span>
-                          <Icon name="grid" size="sm" class="text-gray-400" />
+                          <div>
+                            <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              {{ t('admin.accounts.viewColumns') }}
+                            </div>
+                            <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                              {{ t('admin.accounts.viewColumnsHint') }}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            class="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                            data-testid="reset-column-order"
+                            @click.stop="resetColumnLayout"
+                          >
+                            {{ t('admin.accounts.resetColumnOrder') }}
+                          </button>
                         </div>
                       </div>
-                      <div class="grid grid-cols-1 gap-1">
-                        <button
-                          v-for="col in toggleableColumns"
+                      <VueDraggable
+                        v-model="reorderableColumns"
+                        :animation="180"
+                        handle=".account-column-drag-handle"
+                        class="grid grid-cols-1 gap-1"
+                        @update="persistColumnOrder"
+                      >
+                        <div
+                          v-for="col in reorderableColumns"
                           :key="col.key"
-                          @click="toggleColumn(col.key)"
-                          class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                          class="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
                         >
-                          <span class="truncate">{{ col.label }}</span>
-                          <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            class="account-column-drag-handle cursor-grab touch-none p-0.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-dark-500 dark:hover:text-dark-300"
+                            :aria-label="t('admin.accounts.dragColumn')"
+                            @click.stop
+                          >
+                            <Icon name="menu" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+                            :disabled="col.key === 'name'"
+                            @click="col.key !== 'name' && toggleColumn(col.key)"
+                          >
+                            <span class="truncate">{{ col.label }}</span>
+                            <Icon
+                              v-if="col.key === 'name' || isColumnVisible(col.key)"
+                              name="check"
+                              size="sm"
+                              class="shrink-0 text-primary-500"
+                            />
+                          </button>
+                        </div>
+                      </VueDraggable>
                     </div>
                   </div>
                 </Teleport>
@@ -199,7 +236,9 @@
           :loading="loading"
           row-key="id"
           :server-side-sort="true"
+          :resizable="true"
           @sort="handleSort"
+          @column-resize="handleColumnResize"
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
@@ -378,6 +417,9 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
+          <template #cell-upstream_balance="{ row }">
+            <UpstreamBalanceCell :account="row" />
+          </template>
           <template #cell-priority="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
           </template>
@@ -430,18 +472,18 @@
             </div>
           </template>
           <template #cell-actions="{ row }">
-            <div class="flex items-center gap-1">
+            <div class="flex w-max items-center gap-1 whitespace-nowrap">
               <button @click="handleEdit(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
-                <span class="text-xs">{{ t('common.edit') }}</span>
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+                <span class="whitespace-nowrap text-xs">{{ t('common.edit') }}</span>
               </button>
               <button @click="handleDelete(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                <span class="text-xs">{{ t('common.delete') }}</span>
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                <span class="whitespace-nowrap text-xs">{{ t('common.delete') }}</span>
               </button>
               <button @click="openMenu(row, $event)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
-                <span class="text-xs">{{ t('common.more') }}</span>
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
+                <span class="whitespace-nowrap text-xs">{{ t('common.more') }}</span>
               </button>
             </div>
           </template>
@@ -520,8 +562,10 @@ import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vu
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
+import UpstreamBalanceCell from '@/components/account/UpstreamBalanceCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { VueDraggable } from 'vue-draggable-plus'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
@@ -647,6 +691,16 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+const COLUMN_ORDER_KEY = 'account-column-order'
+const COLUMN_WIDTH_KEY = 'account-column-widths'
+const PINNED_START_COLUMNS = new Set(['select'])
+const PINNED_END_COLUMNS = new Set(['actions'])
+/** Saved middle-column order (excludes select/actions). Empty = use default allColumns order. */
+const savedColumnOrder = ref<string[]>([])
+/** Saved column widths in px. Missing key = auto width. */
+const columnWidths = ref<Record<string, number>>({})
+type ReorderableColumnItem = { key: string; label: string }
+const reorderableColumns = ref<ReorderableColumnItem[]>([])
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -982,6 +1036,113 @@ const saveColumnsToStorage = () => {
   }
 }
 
+const loadSavedColumnOrder = () => {
+  try {
+    const raw = localStorage.getItem(COLUMN_ORDER_KEY)
+    if (!raw) {
+      savedColumnOrder.value = []
+      return
+    }
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.every((key) => typeof key === 'string')) {
+      savedColumnOrder.value = []
+      return
+    }
+    savedColumnOrder.value = parsed.filter(
+      (key) => !PINNED_START_COLUMNS.has(key) && !PINNED_END_COLUMNS.has(key)
+    )
+  } catch (e) {
+    console.error('Failed to load column order:', e)
+    savedColumnOrder.value = []
+  }
+}
+
+const saveColumnOrderToStorage = () => {
+  try {
+    localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(savedColumnOrder.value))
+  } catch (e) {
+    console.error('Failed to save column order:', e)
+  }
+}
+
+const persistColumnOrder = () => {
+  savedColumnOrder.value = reorderableColumns.value.map((col) => col.key)
+  saveColumnOrderToStorage()
+}
+
+const resetColumnOrder = () => {
+  savedColumnOrder.value = []
+  saveColumnOrderToStorage()
+  syncReorderableColumns()
+}
+
+const loadSavedColumnWidths = () => {
+  try {
+    const raw = localStorage.getItem(COLUMN_WIDTH_KEY)
+    if (!raw) {
+      columnWidths.value = {}
+      return
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      columnWidths.value = {}
+      return
+    }
+    const next: Record<string, number> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      // Never restore a squeezed actions/select width — that deformed the action buttons.
+      if (key === 'actions' || key === 'select') continue
+      const width = Number(value)
+      if (typeof key === 'string' && Number.isFinite(width) && width >= 72) {
+        next[key] = Math.round(width)
+      }
+    }
+    columnWidths.value = next
+    // Drop any previously persisted actions width so sticky action buttons stay usable.
+    if ('actions' in parsed || 'select' in parsed) {
+      saveColumnWidthsToStorage()
+    }
+  } catch (e) {
+    console.error('Failed to load column widths:', e)
+    columnWidths.value = {}
+  }
+}
+
+const saveColumnWidthsToStorage = () => {
+  try {
+    localStorage.setItem(COLUMN_WIDTH_KEY, JSON.stringify(columnWidths.value))
+  } catch (e) {
+    console.error('Failed to save column widths:', e)
+  }
+}
+
+const handleColumnResize = (key: string, width: number) => {
+  if (!key || key === 'select' || key === 'actions') return
+  if (!Number.isFinite(width) || width <= 0) {
+    if (!(key in columnWidths.value)) return
+    const next = { ...columnWidths.value }
+    delete next[key]
+    columnWidths.value = next
+    saveColumnWidthsToStorage()
+    return
+  }
+  columnWidths.value = {
+    ...columnWidths.value,
+    [key]: Math.max(72, Math.round(width))
+  }
+  saveColumnWidthsToStorage()
+}
+
+const resetColumnWidths = () => {
+  columnWidths.value = {}
+  saveColumnWidthsToStorage()
+}
+
+const resetColumnLayout = () => {
+  resetColumnOrder()
+  resetColumnWidths()
+}
+
 const loadSavedAutoRefresh = () => {
   try {
     const saved = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY)
@@ -1013,6 +1174,8 @@ const saveAutoRefreshToStorage = () => {
 
 if (typeof window !== 'undefined') {
   loadSavedColumns()
+  loadSavedColumnOrder()
+  loadSavedColumnWidths()
   loadSavedAutoRefresh()
 }
 
@@ -1800,6 +1963,7 @@ const allColumns = computed(() => {
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
+    { key: 'upstream_balance', label: t('admin.accounts.columns.upstreamBalance'), sortable: false },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
@@ -1809,16 +1973,60 @@ const allColumns = computed(() => {
   return c
 })
 
-// Columns that can be toggled (exclude select, name, and actions)
-const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'name' && col.key !== 'actions')
+// Columns that can be toggled (exclude select, name, and actions) — used for visibility prefs.
+const orderedAllColumns = computed(() => {
+  const byKey = new Map(allColumns.value.map((col) => [col.key, col]))
+  const defaultMiddle = allColumns.value
+    .map((col) => col.key)
+    .filter((key) => !PINNED_START_COLUMNS.has(key) && !PINNED_END_COLUMNS.has(key))
+  const preferredMiddle = savedColumnOrder.value.filter((key) => byKey.has(key) && defaultMiddle.includes(key))
+  const middleKeys = [
+    ...preferredMiddle,
+    ...defaultMiddle.filter((key) => !preferredMiddle.includes(key))
+  ]
+  const ordered: typeof allColumns.value = []
+  const selectCol = byKey.get('select')
+  if (selectCol) ordered.push(selectCol)
+  for (const key of middleKeys) {
+    const col = byKey.get(key)
+    if (col) ordered.push(col)
+  }
+  const actionsCol = byKey.get('actions')
+  if (actionsCol) ordered.push(actionsCol)
+  return ordered
+})
+
+const syncReorderableColumns = () => {
+  reorderableColumns.value = orderedAllColumns.value
+    .filter((col) => !PINNED_START_COLUMNS.has(col.key) && !PINNED_END_COLUMNS.has(col.key))
+    .map((col) => ({ key: col.key, label: col.label }))
+}
+
+watch(
+  () => allColumns.value.map((col) => `${col.key}:${col.label}`).join('|'),
+  () => {
+    syncReorderableColumns()
+  },
+  { immediate: true }
 )
 
-// Filtered columns based on visibility
+watch(savedColumnOrder, () => {
+  syncReorderableColumns()
+})
+
+// Filtered columns based on visibility + custom order + widths
 const cols = computed(() =>
-  allColumns.value.filter(col =>
-    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
-  )
+  orderedAllColumns.value
+    .filter(col =>
+      col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
+    )
+    .map((col) => {
+      const width = columnWidths.value[col.key]
+      if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+        return { ...col, width }
+      }
+      return col
+    })
 )
 
 const accountDetailLoading = new Set<number>()

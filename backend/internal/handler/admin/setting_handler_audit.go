@@ -576,6 +576,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalNotifyEmailEntries(before.AccountQuotaNotifyEmails, after.AccountQuotaNotifyEmails) {
 		changed = append(changed, "account_quota_notify_emails")
 	}
+	if before.AccountBalanceLowNotifyEnabled != after.AccountBalanceLowNotifyEnabled {
+		changed = append(changed, "account_balance_low_notify_enabled")
+	}
+	if before.AccountBalanceLowNotifyThreshold != after.AccountBalanceLowNotifyThreshold {
+		changed = append(changed, "account_balance_low_notify_threshold")
+	}
+	if !equalNotifyEmailEntries(before.AccountBalanceLowNotifyEmails, after.AccountBalanceLowNotifyEmails) {
+		changed = append(changed, "account_balance_low_notify_emails")
+	}
 	if before.ChannelMonitorEnabled != after.ChannelMonitorEnabled {
 		changed = append(changed, "channel_monitor_enabled")
 	}

@@ -535,6 +535,9 @@ const baseSettingsResponse = {
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
+  account_balance_low_notify_enabled: false,
+  account_balance_low_notify_threshold: 0,
+  account_balance_low_notify_emails: [],
   // 平台限额嵌套字段（新后端契约）
   default_platform_quotas: {
     anthropic:   { daily: null, weekly: null, monthly: null },

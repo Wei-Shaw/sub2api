@@ -60,11 +60,12 @@ type CNProviderBalanceResult struct {
 
 // CNProviderBalanceService 探测 Kimi / DeepSeek payg 账号的账户余额。
 type CNProviderBalanceService struct {
-	accountRepo  AccountRepository
-	proxyRepo    ProxyRepository
-	httpUpstream HTTPUpstream
-	cfg          *config.Config
-	flight       singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	httpUpstream   HTTPUpstream
+	cfg            *config.Config
+	balanceNotify  *BalanceNotifyService
+	flight         singleflight.Group
 }
 
 // NewCNProviderBalanceService 构造余额探测服务。
@@ -80,6 +81,13 @@ func NewCNProviderBalanceService(
 		httpUpstream: httpUpstream,
 		cfg:          cfg,
 	}
+}
+
+func (s *CNProviderBalanceService) SetBalanceNotifyService(notify *BalanceNotifyService) {
+	if s == nil {
+		return
+	}
+	s.balanceNotify = notify
 }
 
 // QueryBalance 探测指定 payg 账号的余额并落 Extra 快照。
@@ -142,77 +150,49 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 	}
 	targetURL = validatedURL
 	proxyURL := s.resolveProxyURL(ctx, account)
-	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, targetURL, nil)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusInternalServerError, "CN_BALANCE_REQUEST_BUILD_FAILED", "build request: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-	account.ApplyHeaderOverrides(req.Header)
 
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+	statusCode, bodyBytes, err := s.doCNBalanceGET(ctx, account, proxyURL, targetURL, apiKey)
 	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "CN_BALANCE_REQUEST_FAILED", "upstream request failed: %v", err)
+		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, cnBalanceMaxBodyBytes))
 
 	now := time.Now().UTC()
 	result := &CNProviderBalanceResult{
 		Provider:   provider,
 		FetchedAt:  now.Unix(),
-		StatusCode: resp.StatusCode,
+		StatusCode: statusCode,
 		Available:  true,
 	}
 
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		result.Error = fmt.Sprintf("Authentication failed (HTTP %d)", resp.StatusCode)
-		return result, nil
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		result.Error = fmt.Sprintf("API error (HTTP %d): %s", resp.StatusCode, truncate(strings.TrimSpace(string(bodyBytes)), 240))
+	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
+		result.Error = fmt.Sprintf("Authentication failed (HTTP %d)", statusCode)
 		return result, nil
 	}
 
-	var entries []CNProviderBalanceEntry
-	available := true
-	switch provider {
-	case PlatformKimi:
-		// Moonshot：code==0 成功；data.available_balance（number），单币种 CNY。
-		balance, _ := cnParseF64(gjson.GetBytes(bodyBytes, "data.available_balance").Value())
-		entries = append(entries, CNProviderBalanceEntry{Currency: "CNY", Balance: balance})
-	case PlatformDeepseek:
-		// is_available 缺省视为 true（健康）；显式存在时取其值。
-		if v := gjson.GetBytes(bodyBytes, "is_available"); v.Exists() {
-			available = v.Bool()
-		}
-		// balance_infos 逐条解析：双币种账号同时返回 CNY + USD（数组顺序即
-		// 主次序，首条为主币种）。
-		balanceInfos := gjson.GetBytes(bodyBytes, "balance_infos")
-		if !balanceInfos.Exists() || !balanceInfos.IsArray() {
-			result.Error = "Invalid balance response: missing balance_infos"
-			return result, nil
-		}
-		balanceInfos.ForEach(func(_, info gjson.Result) bool {
-			currency := strings.ToUpper(strings.TrimSpace(info.Get("currency").String()))
-			totalBalance := info.Get("total_balance")
-			balance, ok := cnParseF64(totalBalance.Value())
-			if !totalBalance.Exists() || !ok {
-				return true
-			}
-			if currency == "" {
-				currency = "CNY"
-			}
-			entries = append(entries, CNProviderBalanceEntry{Currency: currency, Balance: balance})
-			return true
-		})
-		if len(entries) == 0 {
-			result.Error = "Invalid balance response: no valid balance entries"
-			return result, nil
+	entries, available, parseErr := parseCNProviderBalanceBody(provider, bodyBytes)
+	// DeepSeek 官方 /user/balance；中转站（NewAPI/OneAPI 等）通常没有该接口，
+	// 会回 HTML/404。回退到 NewAPI 的 sk- 可读余额：GET /api/usage/token/。
+	if provider == PlatformDeepseek && (parseErr != "" || len(entries) == 0) {
+		if fbEntries, fbAvailable, fbStatus, fbOK := s.tryNewAPITokenUsageBalance(ctx, account, proxyURL, apiKey); fbOK {
+			entries = fbEntries
+			available = fbAvailable
+			result.StatusCode = fbStatus
+			parseErr = ""
 		}
 	}
+	if len(entries) == 0 {
+		if statusCode < 200 || statusCode >= 300 {
+			result.Error = fmt.Sprintf("API error (HTTP %d): %s", statusCode, truncate(strings.TrimSpace(string(bodyBytes)), 240))
+			return result, nil
+		}
+		if parseErr != "" {
+			result.Error = parseErr
+			return result, nil
+		}
+		result.Error = "Invalid balance response: no valid balance entries"
+		return result, nil
+	}
+
 	result.Balances = entries
 	result.Balance = entries[0].Balance
 	result.Currency = entries[0].Currency
@@ -240,7 +220,154 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 	} else {
 		result.Persisted = true
 	}
+	if s.balanceNotify != nil {
+		notifyBalance := result.Balance
+		for _, entry := range result.Balances {
+			if entry.Balance > notifyBalance {
+				notifyBalance = entry.Balance
+			}
+		}
+		s.balanceNotify.CheckAccountBalanceLow(ctx, account, notifyBalance, result.Currency)
+	}
 	return result, nil
+}
+
+func (s *CNProviderBalanceService) doCNBalanceGET(
+	ctx context.Context,
+	account *Account,
+	proxyURL string,
+	targetURL string,
+	apiKey string,
+) (int, []byte, error) {
+	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		return 0, nil, infraerrors.Newf(http.StatusInternalServerError, "CN_BALANCE_REQUEST_BUILD_FAILED", "build request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+	account.ApplyHeaderOverrides(req.Header)
+
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+	if err != nil {
+		return 0, nil, infraerrors.Newf(http.StatusBadGateway, "CN_BALANCE_REQUEST_FAILED", "upstream request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, cnBalanceMaxBodyBytes))
+	return resp.StatusCode, bodyBytes, nil
+}
+
+func (s *CNProviderBalanceService) tryNewAPITokenUsageBalance(
+	ctx context.Context,
+	account *Account,
+	proxyURL string,
+	apiKey string,
+) ([]CNProviderBalanceEntry, bool, int, bool) {
+	usageURL := cnNewAPITokenUsageURL(account)
+	if usageURL == "" {
+		return nil, false, 0, false
+	}
+	validatedURL, err := cnValidateProbeURL(s.cfg, usageURL)
+	if err != nil {
+		return nil, false, 0, false
+	}
+	statusCode, bodyBytes, err := s.doCNBalanceGET(ctx, account, proxyURL, validatedURL, apiKey)
+	if err != nil || statusCode < 200 || statusCode >= 300 {
+		return nil, false, statusCode, false
+	}
+	entries, available, ok := parseNewAPITokenUsageBalance(bodyBytes)
+	if !ok || len(entries) == 0 {
+		return nil, false, statusCode, false
+	}
+	return entries, available, statusCode, true
+}
+
+func parseCNProviderBalanceBody(provider string, bodyBytes []byte) ([]CNProviderBalanceEntry, bool, string) {
+	available := true
+	switch provider {
+	case PlatformKimi:
+		balance, ok := cnParseF64(gjson.GetBytes(bodyBytes, "data.available_balance").Value())
+		if !ok {
+			return nil, false, "Invalid balance response: missing available_balance"
+		}
+		return []CNProviderBalanceEntry{{Currency: "CNY", Balance: balance}}, true, ""
+	case PlatformDeepseek:
+		if v := gjson.GetBytes(bodyBytes, "is_available"); v.Exists() {
+			available = v.Bool()
+		}
+		balanceInfos := gjson.GetBytes(bodyBytes, "balance_infos")
+		if !balanceInfos.Exists() || !balanceInfos.IsArray() {
+			return nil, available, "Invalid balance response: missing balance_infos"
+		}
+		var entries []CNProviderBalanceEntry
+		balanceInfos.ForEach(func(_, info gjson.Result) bool {
+			currency := strings.ToUpper(strings.TrimSpace(info.Get("currency").String()))
+			totalBalance := info.Get("total_balance")
+			balance, ok := cnParseF64(totalBalance.Value())
+			if !totalBalance.Exists() || !ok {
+				return true
+			}
+			if currency == "" {
+				currency = "CNY"
+			}
+			entries = append(entries, CNProviderBalanceEntry{Currency: currency, Balance: balance})
+			return true
+		})
+		if len(entries) == 0 {
+			return nil, available, "Invalid balance response: no valid balance entries"
+		}
+		return entries, available, ""
+	default:
+		return nil, false, "account provider has no balance endpoint"
+	}
+}
+
+// parseNewAPITokenUsageBalance 解析 NewAPI/OneAPI GET /api/usage/token/ 响应。
+// sheapi 等站点在 data.remaining + data.unit 中返回钱包余额；上游原版则主要给
+// data.total_available（内部 quota，默认 500000 = $1）。
+func parseNewAPITokenUsageBalance(bodyBytes []byte) ([]CNProviderBalanceEntry, bool, bool) {
+	data := gjson.GetBytes(bodyBytes, "data")
+	if !data.Exists() || !data.IsObject() {
+		return nil, false, false
+	}
+	available := true
+	if v := data.Get("is_active"); v.Exists() {
+		available = v.Bool()
+	}
+	if rem := data.Get("remaining"); rem.Exists() {
+		balance, ok := cnParseF64(rem.Value())
+		if !ok {
+			return nil, false, false
+		}
+		currency := strings.ToUpper(strings.TrimSpace(data.Get("unit").String()))
+		if currency == "" {
+			currency = "USD"
+		}
+		return []CNProviderBalanceEntry{{Currency: currency, Balance: balance}}, available, true
+	}
+	if avail := data.Get("total_available"); avail.Exists() {
+		quota, ok := cnParseF64(avail.Value())
+		if !ok {
+			return nil, false, false
+		}
+		// NewAPI 内部额度：500000 quota ≈ 1 USD。
+		return []CNProviderBalanceEntry{{Currency: "USD", Balance: quota / 500000.0}}, available, true
+	}
+	return nil, false, false
+}
+
+// cnNewAPITokenUsageURL 把 OpenAI 风格 base_url 映射到 NewAPI 站点根的
+// /api/usage/token/（sk- 可读，无需控制台 Access Token）。
+func cnNewAPITokenUsageURL(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	base := strings.TrimSpace(account.GetOpenAIFormatBaseURL())
+	if base == "" {
+		return ""
+	}
+	return buildNewAPISiteAPIURL(base, "/api/usage/token/")
 }
 
 // loadPayGAccount 加载 payg 模式的国产供应商账号（余额仅对 payg 有意义；coding 走额度）。
