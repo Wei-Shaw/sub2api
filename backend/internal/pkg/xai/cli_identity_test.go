@@ -9,24 +9,24 @@ import (
 
 func TestResolveCLIVersionDefaultsToPinnedClientVersion(t *testing.T) {
 	t.Setenv(CLIVersionEnv, "")
-	// Default advertise pin is CLIClientVersion; CLIStableVersion is only the floor.
+	// The default pin and minimum accepted version stay aligned.
 	require.Equal(t, CLIClientVersion, ResolveCLIVersion())
 	require.True(t, IsSupportedCLIVersion(CLIClientVersion))
 	require.True(t, IsSupportedCLIVersion(CLIStableVersion))
 }
 
 func TestResolveCLIVersionAcceptsValidOverride(t *testing.T) {
-	t.Setenv(CLIVersionEnv, "0.2.95-alpha.1")
-	require.Equal(t, "0.2.95-alpha.1", ResolveCLIVersion())
+	t.Setenv(CLIVersionEnv, "1.0.45-alpha.1")
+	require.Equal(t, "1.0.45-alpha.1", ResolveCLIVersion())
 }
 
 func TestResolveCLIVersionRejectsUnsafeOrTooOld(t *testing.T) {
 	for _, version := range []string{
-		"0.2.92",
-		"0.2.93-beta.1",
-		"0.2.95\r\nX-Injected: true",
-		"0.2.093",
-		"0.3",
+		"1.0.43",
+		"1.0.44-beta.1",
+		"1.0.45\r\nX-Injected: true",
+		"1.0.044",
+		"1.1",
 		"1",
 	} {
 		t.Run(version, func(t *testing.T) {
@@ -52,7 +52,7 @@ func TestApplyCLIProxyHeaders(t *testing.T) {
 }
 
 func TestApplyCLIProxyHeadersLeavesAPIHostUnchanged(t *testing.T) {
-	t.Setenv(CLIVersionEnv, "0.2.95")
+	t.Setenv(CLIVersionEnv, "1.0.44")
 
 	req, err := http.NewRequest(http.MethodPost, "https://api.x.ai/v1/responses", nil)
 	require.NoError(t, err)
