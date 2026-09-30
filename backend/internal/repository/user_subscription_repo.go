@@ -400,6 +400,25 @@ func (r *userSubscriptionRepository) ResetUsageWindows(ctx context.Context, id i
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
+func (r *userSubscriptionRepository) SetQuotaWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart *time.Time) error {
+	if dailyStart == nil && weeklyStart == nil && monthlyStart == nil {
+		return service.ErrInvalidQuotaWindows
+	}
+	client := clientFromContext(ctx, r.client)
+	update := client.UserSubscription.UpdateOneID(id)
+	if dailyStart != nil {
+		update.SetDailyWindowStart(*dailyStart)
+	}
+	if weeklyStart != nil {
+		update.SetWeeklyWindowStart(*weeklyStart)
+	}
+	if monthlyStart != nil {
+		update.SetMonthlyWindowStart(*monthlyStart)
+	}
+	_, err := update.Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 func (r *userSubscriptionRepository) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
 	client := clientFromContext(ctx, r.client)
 	query := client.UserSubscription.Update().Where(usersubscription.IDEQ(id))
