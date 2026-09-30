@@ -220,6 +220,45 @@ func legacyFilterThinkingBlocks(body []byte, alwaysThinking bool) []byte {
 	if !filtered {
 		return body
 	}
+	if alwaysThinking {
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+			}
+			content, ok := msgMap["content"].([]any)
+			if !ok {
+				continue
+			}
+			cleaned := make([]any, 0, len(content))
+			for _, block := range content {
+				blockMap, ok := block.(map[string]any)
+				if !ok {
+					cleaned = append(cleaned, block)
+					continue
+				}
+				blockType, _ := blockMap["type"].(string)
+				if blockType == "thinking" || blockType == "redacted_thinking" {
+					continue
+				}
+				if blockType == "" {
+					if _, hasThinking := blockMap["thinking"]; hasThinking {
+						continue
+					}
+				}
+				cleaned = append(cleaned, block)
+			}
+			if len(cleaned) == 0 {
+				placeholder := "(content removed)"
+				if role, _ := msgMap["role"].(string); role == "assistant" {
+					placeholder = "(assistant content removed)"
+				}
+				cleaned = append(cleaned, map[string]any{"type": "text", "text": placeholder})
+			}
+			msgMap["content"] = cleaned
+		}
+	}
+
 	newBody, err := json.Marshal(req)
 	if err != nil {
 		return body

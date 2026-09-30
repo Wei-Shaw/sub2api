@@ -39,7 +39,7 @@ func a104Handlers() []a104Handler {
 	start := time.Now()
 	return []a104Handler{
 		{name: "cc_streaming", cc: true, call: func(s *GatewayService, resp *http.Response, c *gin.Context) (*ForwardResult, error) {
-			return s.handleCCStreamingFromAnthropic(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start, true)
+			return s.handleCCStreamingFromAnthropic(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start)
 		}},
 		{name: "cc_buffered", cc: true, buffered: true, call: func(s *GatewayService, resp *http.Response, c *gin.Context) (*ForwardResult, error) {
 			return s.handleCCBufferedFromAnthropic(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start)

@@ -957,6 +957,7 @@ export default {
       enterCustomModelName: '输入自定义模型名称',
       addModel: '添加',
       modelExists: '该模型已存在',
+      modelMappingConflict: '该模型已配置映射 {from} → {to}，请在模型映射中修改或删除后再添加白名单模型',
       modelCount: '{count} 个模型',
       poolMode: '池模式',
       poolModeHint: '上游为账号池时启用，错误不标记本地账号状态',
@@ -1053,6 +1054,20 @@ export default {
 	  codexCredits: {
 	    title: '额度耗尽时使用 Codex 积分',
 	    hint: '上游仍报告有可用 Codex 积分（付费）时，越过 5h/7d 暂停阈值继续调度该账号。上游真实 429 仍会暂停。'
+	  },
+	  claudeResetCredits: {
+	    count: '次数',
+	    countTooltipLoad: '点击查询 Claude 剩余重置次数（只读，不会消耗）',
+	    countTooltipRefresh: '点击刷新 Claude 剩余重置次数（只读，不会消耗）',
+	    fetched: '查询时间：{time}',
+	    error: '无法查询重置次数',
+	    ineligible: '此账号当前不可使用重置',
+	    cooldown: '冷却至 {time}',
+	    expiresAt: '到期 {time}',
+	    expiresAtFull: '重置次数到期时间：{time}',
+	    clears: '可清除窗口：{windows}',
+	    notUsableNow: '暂不可用',
+	    requiresLimit: '需达到限额后才能使用'
 	  },
 	  autoResetCredit: {
 	    title: '自动使用重置卡',

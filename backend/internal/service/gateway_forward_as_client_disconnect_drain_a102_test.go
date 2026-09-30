@@ -67,7 +67,7 @@ func TestA102BridgeStreamingDrainsUpstreamAfterClientDisconnect(t *testing.T) {
 		call func(*GatewayService, *http.Response, *gin.Context) (*ForwardResult, error)
 	}{
 		{name: "cc_streaming", call: func(s *GatewayService, resp *http.Response, c *gin.Context) (*ForwardResult, error) {
-			return s.handleCCStreamingFromAnthropic(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start, true)
+			return s.handleCCStreamingFromAnthropic(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start)
 		}},
 		{name: "responses_streaming", call: func(s *GatewayService, resp *http.Response, c *gin.Context) (*ForwardResult, error) {
 			return s.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4-5", "claude-sonnet-4-5", nil, start, apicompat.ResponsesClientToolMapping{})

@@ -847,6 +847,7 @@ export default {
       enterCustomModelName: 'Nhập tên model tùy chỉnh',
       addModel: 'Thêm',
       modelExists: 'Model đã tồn tại',
+      modelMappingConflict: 'Đã có ánh xạ {from} → {to}. Hãy sửa hoặc xoá nó trong Ánh xạ model trước khi thêm model này vào whitelist',
       modelCount: '{count} model',
       poolMode: 'Chế độ pool',
       poolModeHint: 'Bật khi upstream là một pool tài khoản; lỗi sẽ không đánh dấu trạng thái tài khoản cục bộ',
@@ -947,6 +948,20 @@ export default {
 	  codexCredits: {
 	    title: 'Dùng credit Codex khi hết hạn mức',
 	    hint: 'Vẫn xếp lịch tài khoản vượt ngưỡng tạm dừng 5h/7d khi upstream báo còn credit Codex (có tính phí). Nếu upstream trả 429 thật thì vẫn tạm dừng.'
+	  },
+	  claudeResetCredits: {
+	    count: 'Lượt reset',
+	    countTooltipLoad: 'Kiểm tra số lượt reset Claude còn lại (chỉ đọc, không tiêu lượt)',
+	    countTooltipRefresh: 'Làm mới số lượt reset Claude còn lại (chỉ đọc, không tiêu lượt)',
+	    fetched: 'Kiểm tra lúc {time}',
+	    error: 'Không kiểm tra được lượt reset',
+	    ineligible: 'Tài khoản này hiện không thể dùng reset',
+	    cooldown: 'Hồi chiêu đến {time}',
+	    expiresAt: 'Hết hạn {time}',
+	    expiresAtFull: 'Lượt reset hết hạn lúc: {time}',
+	    clears: 'Xoá các cửa sổ: {windows}',
+	    notUsableNow: 'Hiện chưa dùng được',
+	    requiresLimit: 'Chỉ dùng được sau khi chạm hạn mức'
 	  },
 	  autoResetCredit: {
 	    title: 'Tự động dùng credit đặt lại',
