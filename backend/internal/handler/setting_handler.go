@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"html"
 	"net/http"
 	"strconv"
@@ -15,6 +18,11 @@ import (
 )
 
 const brandingAssetCacheControl = "public, max-age=31536000, immutable"
+
+// Public settings change infrequently and are safe to share through a CDN.
+// Keep browser and shared-cache lifetimes short enough that admin changes do
+// not remain stale for long, while allowing a CDN to refresh asynchronously.
+const publicSettingsCacheControl = "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
 
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
@@ -46,7 +54,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.PublicSettings{
+	publicSettings := dto.PublicSettings{
 		RegistrationEnabled:                 settings.RegistrationEnabled,
 		EmailVerifyEnabled:                  settings.EmailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:        settings.ForceEmailOnThirdPartySignup,
@@ -126,7 +134,25 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		RiskControlEnabled: settings.RiskControlEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
-	})
+	}
+
+	// The ETag is based on the complete public payload rather than only the
+	// branding fields, so caches can reliably detect any public setting change.
+	payload, err := json.Marshal(publicSettings)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	hash := sha256.Sum256(payload)
+	etag := `"` + hex.EncodeToString(hash[:]) + `"`
+	c.Header("Cache-Control", publicSettingsCacheControl)
+	c.Header("ETag", etag)
+	if ifNoneMatch := strings.TrimSpace(c.GetHeader("If-None-Match")); ifNoneMatch == etag || ifNoneMatch == "*" {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	response.Success(c, publicSettings)
 }
 
 // GetPublicBrandingAsset serves the content-addressed site logo. The URL embeds
