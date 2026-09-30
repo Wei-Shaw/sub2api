@@ -10,7 +10,7 @@ const openaiModels = [
 	// GPT-5.6 系列
   'gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
   // GPT-6 系列
-  'gpt-6', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
+  'gpt-6', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna',
   // GPT-5.5 系列
   'gpt-5.5',
   // GPT-5.4 系列
@@ -310,6 +310,7 @@ const openaiPresetMappings = [
   { label: 'GPT-5.2', from: 'gpt-5.2', to: 'gpt-5.2', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
   { label: 'GPT-6', from: 'gpt-6', to: 'gpt-6', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
   { label: 'GPT-5.6', from: 'gpt-5.6', to: 'gpt-5.6', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
+  { label: 'GPT-6.1 Sol', from: 'gpt-6.1-sol', to: 'gpt-6.1-sol', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
   { label: 'GPT-6 Sol', from: 'gpt-6-sol', to: 'gpt-6-sol', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
   { label: 'GPT-5.6 Sol', from: 'gpt-5.6-sol', to: 'gpt-5.6-sol', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
   { label: 'GPT-5.6 Terra', from: 'gpt-5.6-terra', to: 'gpt-5.6-terra', color: 'border border-border bg-surface text-fg hover:border-accent hover:text-accent-strong' },
