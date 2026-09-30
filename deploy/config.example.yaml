@@ -718,6 +718,19 @@ api_key_auth_cache:
     capacity: 16384
 
 # =============================================================================
+# API Key Creation Limits
+# 用户创建 API Key 的防滥用限制（0 表示不限制）
+# =============================================================================
+api_key_create:
+  # Maximum non-deleted API keys per user
+  # 单个用户同时存在（未删除）的 API Key 上限
+  max_active_per_user: 200
+  # Maximum API key creations per user per hour (custom and generated keys).
+  # Deleting a key does not refund the count, which blocks delete/recreate loops.
+  # 单个用户每小时可创建的 API Key 次数（自定义与自动生成均计入）；删除 Key 不返还次数，阻断删建循环
+  max_per_user_per_hour: 60
+
+# =============================================================================
 # Dashboard Cache Configuration
 # 仪表盘缓存配置
 # =============================================================================
@@ -1126,6 +1139,35 @@ billing:
   # Cache TTL (seconds) for per-user × per-platform quota records
   # 用户 × 平台 quota 缓存 TTL（秒），默认 86400=1天，覆盖典型 daily 窗口
   user_platform_quota_cache_ttl_seconds: 86400
+  # In-flight balance reservation (Redis): at admission, estimate per-request cost
+  # (input estimate + output price x max_tokens) and atomically require
+  # cached_balance - in-flight reservations >= estimate. Released when the request ends.
+  # The first in-flight request of a user is always admitted (same as before).
+  # Fails open when the estimate cannot be computed or Redis is unavailable.
+  # 余额模式在途预留：准入时估算单请求费用，要求 缓存余额 - 在途预留合计 >= 估算；
+  # 用户无在途请求时始终放行（与旧行为一致）；估算失败/Redis 不可用时 fail-open。
+  inflight_reservation:
+    enabled: true
+    # Reservation TTL. Renewed every ttl/3 while the request is running; after the
+    # handler returns it is held (not renewed) until the async billing task has
+    # deducted the cached balance, so a stuck billing task frees it after at most one TTL.
+    # 预留 TTL（秒）。请求进行中每 ttl/3 续期；请求结束后不再续期，保持到异步计费
+    # 扣减余额缓存后释放，计费任务卡死时最多一个 TTL 后自动失效
+    ttl_seconds: 900
+    # Output tokens assumed when the request has no max_tokens
+    # 请求未携带 max_tokens 时假定的输出 token 数
+    default_max_tokens: 8192
+    # Cap for estimated output / input tokens
+    # 估算输出 / 输入 token 上限
+    max_output_tokens: 128000
+    max_input_tokens: 200000
+    # Cap for a single reservation in USD (0 = no cap)
+    # 单请求预留金额上限（USD，0 为不设上限）
+    max_reservation_usd: 0
+    # When a request cannot be priced (no base / group / channel pricing for the
+    # billing model), reject it instead of admitting it without reservation.
+    # 无法为请求定价（计费模型无基础/分组/渠道定价）时拒绝请求；默认 false 为放行不预留（节流告警日志）
+    fail_closed_on_unpriced: false
 
 # =============================================================================
 # Turnstile Configuration

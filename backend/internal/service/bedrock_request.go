@@ -127,7 +127,16 @@ func normalizeBedrockModelID(modelID string) (normalized string, shouldAdjustReg
 		return "", false, false
 	}
 	if mapped, exists := domain.DefaultBedrockModelMapping[modelID]; exists {
+		// Sonnet 5.5 currently has only a global inference profile on
+		// bedrock-runtime. A caller's AWS region selects the endpoint, but must
+		// not rewrite the profile ID to a regional one that does not exist.
+		if mapped == "global.anthropic.claude-sonnet-5-5" {
+			return mapped, false, true
+		}
 		return mapped, true, true
+	}
+	if modelID == "global.anthropic.claude-sonnet-5-5" {
+		return modelID, false, true
 	}
 	if isRegionalBedrockModelID(modelID) {
 		return modelID, true, true
@@ -181,7 +190,7 @@ func BuildBedrockURL(region, modelID string, stream bool) string {
 // PrepareBedrockRequestBody 处理请求体以适配 Bedrock API
 //  1. 注入 anthropic_version
 //  2. 注入 anthropic_beta（从客户端 anthropic-beta 头解析）
-//  3. 移除 Bedrock 不支持的字段（model, stream, output_format, output_config）
+//  3. 移除 Bedrock 不支持的字段（model, stream, output_format）；Sonnet 5.5 保留 output_config.effort
 //  4. 移除工具定义中的 custom 字段（Claude Code 会发送 custom: {defer_loading: true}）
 //  5. 清理 cache_control 中 Bedrock 不支持的字段（scope, ttl）
 //  6. 修复 thinking 字段兼容性（Opus 4.7 仅支持 adaptive，enabled 需要 budget_tokens）
@@ -240,10 +249,20 @@ func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens
 	// 参考 litellm: _convert_output_format_to_inline_schema()
 	body = convertOutputFormatToInlineSchema(body)
 
-	// 移除 output_config 字段（Bedrock Invoke 不支持）
-	body, err = sjson.DeleteBytes(body, "output_config")
+	// InvokeModel accepts output_config.effort for Sonnet 5.5. Keep just that
+	// field; output_config.format has already been inlined above, and older
+	// models retain the existing output_config stripping behavior.
+	if claude.IsSonnet55(modelID) {
+		if effort := gjson.GetBytes(body, "output_config.effort"); effort.Exists() {
+			body, err = sjson.SetRawBytes(body, "output_config", []byte(`{"effort":`+effort.Raw+`}`))
+		} else {
+			body, err = sjson.DeleteBytes(body, "output_config")
+		}
+	} else {
+		body, err = sjson.DeleteBytes(body, "output_config")
+	}
 	if err != nil {
-		return nil, fmt.Errorf("remove output_config field: %w", err)
+		return nil, fmt.Errorf("normalize output_config field: %w", err)
 	}
 
 	// 移除工具定义中的 custom 字段
@@ -270,17 +289,21 @@ func ResolveBedrockBetaTokens(betaHeader string, body []byte, modelID string) []
 	return filterBedrockBetaTokens(betaTokens)
 }
 
-// convertOutputFormatToInlineSchema 将 output_format 中的 JSON schema 内联到最后一条 user message
+// convertOutputFormatToInlineSchema 将结构化输出的 JSON schema 内联到最后一条 user message
 // Bedrock Invoke 不支持 output_format 参数，litellm 的做法是将 schema 追加到用户消息中
 // 参考: litellm AmazonAnthropicClaudeMessagesConfig._convert_output_format_to_inline_schema()
 func convertOutputFormatToInlineSchema(body []byte) []byte {
-	outputFormat := gjson.GetBytes(body, "output_format")
+	outputFormat := gjson.GetBytes(body, "output_config.format")
+	if !outputFormat.Exists() {
+		outputFormat = gjson.GetBytes(body, "output_format")
+	}
 	if !outputFormat.Exists() || !outputFormat.IsObject() {
 		return body
 	}
 
-	// 先从请求体中移除 output_format
+	// 先从请求体中移除两个版本的结构化输出字段。
 	body, _ = sjson.DeleteBytes(body, "output_format")
+	body, _ = sjson.DeleteBytes(body, "output_config.format")
 
 	schema := outputFormat.Get("schema")
 	if !schema.Exists() {
@@ -707,6 +730,7 @@ func isBedrockFable5(modelID string) bool {
 const defaultThinkingBudgetTokens = 10000
 
 // sanitizeBedrockThinking 修复 thinking 字段的 Bedrock 兼容性问题：
+//   - Sonnet 5.5: enabled 改为 adaptive；disabled 改为 between_tools
 //   - Fable 5: 仅使用 always-on adaptive thinking，不支持手动 budget_tokens
 //   - Opus 4.7+: 仅支持 "adaptive"，将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
 //   - 其他模型: "enabled" 必须带 budget_tokens，缺失时补充默认值
@@ -727,6 +751,17 @@ func sanitizeBedrockThinking(body []byte, modelID string) []byte {
 		}
 		if thinkingType == "enabled" || thinkingType == "adaptive" {
 			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
+		}
+		return body
+	}
+
+	if claude.IsSonnet55(modelID) {
+		switch thinkingType {
+		case "enabled":
+			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
+			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
+		case "disabled":
+			body, _ = sjson.SetBytes(body, "thinking.type", "between_tools")
 		}
 		return body
 	}
