@@ -108,6 +108,25 @@ func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig)
 	}
 }
 
+// geminiThinkingLevelFromReasoningEffort maps an explicit OpenAI/Responses
+// reasoning effort to the same low/medium/high scale used by Antigravity's
+// Gemini model variants.
+func geminiThinkingLevelFromReasoningEffort(effort *string) (string, bool) {
+	if effort == nil {
+		return "", false
+	}
+	switch strings.ToLower(strings.TrimSpace(*effort)) {
+	case "minimal", "low":
+		return "low", true
+	case "medium":
+		return "medium", true
+	case "high", "xhigh", "max":
+		return "high", true
+	default:
+		return "", false
+	}
+}
+
 // accountRawModelMappingHasKey 判断 key 是否由用户写在账号 credentials.model_mapping 里
 // （而不是 resolveModelMapping 运行时补进来的默认透传条目）。
 func accountRawModelMappingHasKey(account *Account, key string) bool {
