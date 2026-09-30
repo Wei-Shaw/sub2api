@@ -550,7 +550,11 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 		limit = 12
 	}
 
-	trend, hit, err := h.getUserUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit)
+	metric := c.DefaultQuery("metric", "tokens")
+	if metric != "tokens" && metric != "actual_cost" {
+		metric = "tokens"
+	}
+	trend, hit, err := h.getUserUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit, metric)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage trend")
 		return
