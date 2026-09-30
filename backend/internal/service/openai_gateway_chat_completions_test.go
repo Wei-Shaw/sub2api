@@ -1249,3 +1249,242 @@ func TestGPT6MappedCompatibilityBridgesKeepReasoningAndTools(t *testing.T) {
 		}
 	}
 }
+
+// 2026-09-28 commandcode 事故回归：严格第三方 Responses 上游拒绝
+// reasoning.summary（`json: unknown field "summary"`），且历史上转换产物缺
+// input.type（MissingParameter）。转换后必须：保留 reasoning.effort、剥离
+// summary、input 每项带 type（见
+// research/20260928_dev-requirement_responses-input-type-fix.md）。
+func TestForwardAsChatCompletions_StrictThirdPartyUpstreamDropsReasoningSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"deepseek-v4-flash","reasoning_effort":"low","messages":[` +
+		`{"role":"system","content":"You are helpful."},` +
+		`{"role":"user","content":"Check the directory"},` +
+		`{"role":"assistant","content":"I will check.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"pwd\"}"}}]},` +
+		`{"role":"tool","tool_call_id":"call_1","content":"/tmp"},` +
+		`{"role":"user","content":"Continue"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          1112,
+		Name:        "commandcode-v4f",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-cc", "base_url": "https://api.commandcode.ai/provider/v1"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "https://api.commandcode.ai/provider/v1/responses", upstream.lastReq.URL.String())
+
+	// reasoning.effort 保留、summary 剥离。
+	require.Equal(t, "low", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning.summary").Exists())
+
+	// input 每项必须带 type：role 消息=message，tool_calls=function_call，回执=function_call_output。
+	items := gjson.GetBytes(upstream.lastBody, "input").Array()
+	require.Len(t, items, 6)
+	for i, item := range items {
+		require.NotEmpty(t, item.Get("type").String(), "input item %d missing type", i)
+	}
+	require.Equal(t, "message", items[0].Get("type").String())
+	require.Equal(t, "message", items[1].Get("type").String())
+	require.Equal(t, "message", items[2].Get("type").String())
+	require.Equal(t, "function_call", items[3].Get("type").String())
+	require.Equal(t, "function_call_output", items[4].Get("type").String())
+	require.Equal(t, "message", items[5].Get("type").String())
+}
+
+// 官方 OpenAI 端点（api.openai.com）支持 reasoning.summary，APIKey 账号行为不变。
+func TestForwardAsChatCompletions_OfficialOpenAIUpstreamKeepsReasoningSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","reasoning_effort":"medium","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          3,
+		Name:        "openai-official",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-openai"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "medium", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
+}
+
+// Codex OAuth 账号走 ChatGPT 后端，reasoning.summary 行为保持不变。
+func TestForwardAsChatCompletions_OAuthUpstreamKeepsReasoningSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","reasoning_effort":"high","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          4,
+		Name:        "codex-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
+}
+
+// 验收 5.1.3：openai_responses_supported=false 的直通路径输出必须与改动前
+// 逐字节一致（同名模型不触发改写、无 GLM effort 归一化时 body 原样透传）。
+func TestForwardAsChatCompletions_RawChatPassthroughBodyByteIdentical(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"deepseek-v4-flash","reasoning_effort":"high","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          5,
+		Name:        "commandcode-direct",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-cc", "base_url": "https://api.commandcode.ai/provider/v1"},
+		Extra:       map[string]any{"openai_responses_supported": false},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "https://api.commandcode.ai/provider/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, string(body), string(upstream.lastBody), "raw chat completions passthrough must forward the body byte-for-byte")
+}
+
+// Anthropic 入站（/v1/messages，Claude Code 典型客户端）同规：第三方 Responses
+// 上游剥离 reasoning.summary；anthropic 请求不带 thinking 配置时默认
+// effort=medium，剥离条件恒触发（见
+// research/20260928_dev-requirement_responses-input-type-fix.md §八）。
+func TestForwardAsAnthropic_StrictThirdPartyUpstreamDropsReasoningSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"deepseek-v4-flash","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          1079,
+		Name:        "commandcode-v4p",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-cc", "base_url": "https://api.commandcode.ai/provider/v1"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "https://api.commandcode.ai/provider/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "medium", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning.summary").Exists())
+
+	// input 每项必须带 type（anthropic 转换器无缺 type 缺陷，回归保护）。
+	items := gjson.GetBytes(upstream.lastBody, "input").Array()
+	require.NotEmpty(t, items)
+	for i, item := range items {
+		require.NotEmpty(t, item.Get("type").String(), "input item %d missing type", i)
+	}
+}
+
+// Anthropic 入站走 Codex OAuth（ChatGPT 后端）时 summary 保留，行为不变。
+func TestForwardAsAnthropic_OAuthUpstreamKeepsReasoningSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after body capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          6,
+		Name:        "codex-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "medium", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "reasoning.summary").String())
+}

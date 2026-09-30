@@ -167,6 +167,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if responsesReq.Reasoning != nil {
 		responsesReq.Reasoning.Effort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, responsesReq.Reasoning.Effort)
 	}
+	// 与 chat_completions 转换同规：严格第三方 Responses 上游拒绝
+	// reasoning.summary（400 `json: unknown field "summary"`），仅官方 OpenAI
+	// 端点保留；anthropic 入站默认 effort=medium，剥离阈值恒触发。
+	if responsesReq.Reasoning != nil && !shouldRequestResponsesReasoningSummary(account) {
+		responsesReq.Reasoning.Summary = ""
+	}
 	if previousResponseID != "" {
 		responsesReq.PreviousResponseID = previousResponseID
 		trimAnthropicCompatResponsesInputToLatestTurn(responsesReq)

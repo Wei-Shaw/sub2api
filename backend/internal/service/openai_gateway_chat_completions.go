@@ -272,6 +272,13 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
 		responsesReq.Model = upstreamModel
+		// Strict third-party Responses upstreams (e.g. commandcode) reject
+		// reasoning.summary with 400 `json: unknown field "summary"`; only
+		// official OpenAI endpoints accept it. Keep reasoning.effort, drop the
+		// summary everywhere else.
+		if responsesReq.Reasoning != nil && !shouldRequestResponsesReasoningSummary(account) {
+			responsesReq.Reasoning.Summary = ""
+		}
 		normalizeResponsesRequestServiceTier(responsesReq)
 		responsesBody, err = json.Marshal(responsesReq)
 		if err != nil {
