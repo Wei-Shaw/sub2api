@@ -10,8 +10,29 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
+      <div v-if="oidcExclusive" class="space-y-4 text-center">
+        <p class="text-sm text-gray-500 dark:text-dark-400">
+          {{ t('auth.signInToAccount') }}
+        </p>
+        <OidcOAuthSection
+          :disabled="authActionDisabled"
+          :provider-name="oidcOAuthProviderName"
+          :show-divider="false"
+          @start="handleOAuthStart"
+        />
+      </div>
+      <div v-else-if="publicSettingsLoaded && settingsLoadFailed" class="space-y-4 text-center">
+        <p role="alert" class="text-sm text-red-600 dark:text-red-400">
+          {{ t('auth.settingsLoadFailed') }}
+        </p>
+        <button type="button" class="btn btn-secondary mx-auto" @click="loadPublicSettings">
+          <Icon name="refresh" size="md" class="mr-2" />
+          {{ t('common.tryAgain') }}
+        </button>
+      </div>
+
       <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
+      <form v-else-if="publicSettingsLoaded" @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -197,7 +218,10 @@
     </div>
 
     <!-- Footer -->
-    <template v-if="!backendModeEnabled && publicSettingsLoaded && registrationEnabled" #footer>
+    <template
+      v-if="!backendModeEnabled && publicSettingsLoaded && registrationEnabled && !oidcExclusive"
+      #footer
+    >
       <p class="text-gray-500 dark:text-dark-400">
         {{ t('auth.dontHaveAccount') }}
         <router-link
@@ -251,6 +275,7 @@ import type {
 } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
+import { isOIDCExclusiveMode } from '@/utils/oidcExclusive'
 
 const { t } = useI18n()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
@@ -268,6 +293,7 @@ const passkeyLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
 const publicSettingsLoaded = ref<boolean>(false)
+const settingsLoadFailed = ref<boolean>(false)
 
 // Public settings
 const registrationEnabled = ref<boolean>(false)
@@ -285,6 +311,7 @@ const dingtalkOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
+const oidcExclusive = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
@@ -380,6 +407,13 @@ onMounted(async () => {
     appStore.showWarning(message)
   }
 
+  await loadPublicSettings()
+})
+
+async function loadPublicSettings(): Promise<void> {
+  publicSettingsLoaded.value = false
+  settingsLoadFailed.value = false
+
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled === true
@@ -397,6 +431,7 @@ onMounted(async () => {
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     backendModeEnabled.value = settings.backend_mode_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
+    oidcExclusive.value = isOIDCExclusiveMode(settings)
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
@@ -404,14 +439,19 @@ onMounted(async () => {
     passwordResetEnabled.value = settings.password_reset_enabled
     passkeyEnabled.value = settings.passkey_enabled === true
     applyLoginAgreementSettings(settings)
+    if (oidcExclusive.value && router.currentRoute.value.query.logged_out !== '1') {
+      const redirect = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+      window.location.href = buildOAuthLoginStartURL({ provider: 'oidc', params: { redirect } })
+    }
   } catch (error) {
     console.error('Failed to load public settings:', error)
+    settingsLoadFailed.value = true
     loginAgreementEnabled.value = false
     agreementAccepted.value = true
   } finally {
     publicSettingsLoaded.value = true
   }
-})
+}
 
 // ==================== Login Agreement ====================
 

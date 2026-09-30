@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -274,6 +275,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if oidcProviderName == "" {
 		oidcProviderName = "OIDC"
 	}
+	oidcExclusive := resolveOIDCExclusiveMode(settings, s.cfg)
+	oidcEndSessionURL := ""
+	if oidcExclusive {
+		oidcEndSessionURL = strings.TrimSpace(s.cfg.OIDC.EndSessionURL)
+	}
 	gitHubEnabled := s.emailOAuthPublicEnabled(settings, "github")
 	googleEnabled := s.emailOAuthPublicEnabled(settings, "google")
 	weChatEnabled, weChatOpenEnabled, weChatMPEnabled, weChatMobileEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
@@ -349,6 +355,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PaymentEnabled:                      settings[SettingPaymentEnabled] == "true",
 		PaymentBalanceDisabled:              settings[SettingBalancePayDisabled] == "true",
 		OIDCOAuthEnabled:                    oidcEnabled,
+		OIDCOAuthExclusive:                  oidcExclusive,
+		OIDCOAuthEndSessionURL:              oidcEndSessionURL,
 		OIDCOAuthProviderName:               oidcProviderName,
 		GitHubOAuthEnabled:                  gitHubEnabled,
 		GoogleOAuthEnabled:                  googleEnabled,
@@ -378,6 +386,34 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 	}, nil
+}
+
+func resolveOIDCExclusiveMode(settings map[string]string, cfg *config.Config) bool {
+	if cfg == nil || !cfg.OIDC.Exclusive {
+		return false
+	}
+	enabled := cfg.OIDC.Enabled
+	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {
+		enabled = raw == "true"
+	}
+	return enabled
+}
+
+// IsOIDCExclusiveModeEnabled resolves the runtime OIDC enabled override before
+// applying the deployment-only exclusive policy. Lookup failures fail closed
+// when the static configuration enables exclusive OIDC.
+func (s *SettingService) IsOIDCExclusiveModeEnabled(ctx context.Context) bool {
+	if s == nil || s.cfg == nil || !s.cfg.OIDC.Exclusive {
+		return false
+	}
+	if s.settingRepo == nil {
+		return s.cfg.OIDC.Enabled
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyOIDCConnectEnabled})
+	if err != nil {
+		return s.cfg.OIDC.Enabled
+	}
+	return resolveOIDCExclusiveMode(settings, s.cfg)
 }
 
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
@@ -605,6 +641,8 @@ type PublicSettingsInjectionPayload struct {
 	WeChatOAuthMPEnabled                bool                     `json:"wechat_oauth_mp_enabled"`
 	WeChatOAuthMobileEnabled            bool                     `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                    bool                     `json:"oidc_oauth_enabled"`
+	OIDCOAuthExclusive                  bool                     `json:"oidc_oauth_exclusive"`
+	OIDCOAuthEndSessionURL              string                   `json:"oidc_oauth_end_session_url"`
 	OIDCOAuthProviderName               string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled                  bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
@@ -699,6 +737,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		WeChatOAuthMPEnabled:                settings.WeChatOAuthMPEnabled,
 		WeChatOAuthMobileEnabled:            settings.WeChatOAuthMobileEnabled,
 		OIDCOAuthEnabled:                    settings.OIDCOAuthEnabled,
+		OIDCOAuthExclusive:                  settings.OIDCOAuthExclusive,
+		OIDCOAuthEndSessionURL:              settings.OIDCOAuthEndSessionURL,
 		OIDCOAuthProviderName:               settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:                  settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
