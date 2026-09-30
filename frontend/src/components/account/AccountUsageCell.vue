@@ -88,7 +88,7 @@
         while usage is still loading survives the usage response. The local query
         button shares its row once usage data exists.
       -->
-      <ClaudeResetCreditsCell :account="account" class="mt-1">
+      <ClaudeResetCreditsCell :account="account" class="mt-1" @redeemed="loadActiveUsage">
         <template v-if="usageInfo" #pre-actions>
           <span
             v-if="usageInfo.source === 'passive'"
