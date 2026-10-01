@@ -37379,6 +37379,7 @@ type ProxyMutation struct {
 	addport                *int
 	username               *string
 	password               *string
+	console_url            *string
 	status                 *string
 	expires_at             *time.Time
 	fallback_mode          *string
@@ -37879,6 +37880,55 @@ func (m *ProxyMutation) ResetPassword() {
 	delete(m.clearedFields, proxy.FieldPassword)
 }
 
+// SetConsoleURL sets the "console_url" field.
+func (m *ProxyMutation) SetConsoleURL(s string) {
+	m.console_url = &s
+}
+
+// ConsoleURL returns the value of the "console_url" field in the mutation.
+func (m *ProxyMutation) ConsoleURL() (r string, exists bool) {
+	v := m.console_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConsoleURL returns the old "console_url" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldConsoleURL(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsoleURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsoleURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsoleURL: %w", err)
+	}
+	return oldValue.ConsoleURL, nil
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (m *ProxyMutation) ClearConsoleURL() {
+	m.console_url = nil
+	m.clearedFields[proxy.FieldConsoleURL] = struct{}{}
+}
+
+// ConsoleURLCleared returns if the "console_url" field was cleared in this mutation.
+func (m *ProxyMutation) ConsoleURLCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldConsoleURL]
+	return ok
+}
+
+// ResetConsoleURL resets all changes to the "console_url" field.
+func (m *ProxyMutation) ResetConsoleURL() {
+	m.console_url = nil
+	delete(m.clearedFields, proxy.FieldConsoleURL)
+}
+
 // SetStatus sets the "status" field.
 func (m *ProxyMutation) SetStatus(s string) {
 	m.status = &s
@@ -38274,7 +38324,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -38301,6 +38351,9 @@ func (m *ProxyMutation) Fields() []string {
 	}
 	if m.password != nil {
 		fields = append(fields, proxy.FieldPassword)
+	}
+	if m.console_url != nil {
+		fields = append(fields, proxy.FieldConsoleURL)
 	}
 	if m.status != nil {
 		fields = append(fields, proxy.FieldStatus)
@@ -38343,6 +38396,8 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.Username()
 	case proxy.FieldPassword:
 		return m.Password()
+	case proxy.FieldConsoleURL:
+		return m.ConsoleURL()
 	case proxy.FieldStatus:
 		return m.Status()
 	case proxy.FieldExpiresAt:
@@ -38380,6 +38435,8 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldUsername(ctx)
 	case proxy.FieldPassword:
 		return m.OldPassword(ctx)
+	case proxy.FieldConsoleURL:
+		return m.OldConsoleURL(ctx)
 	case proxy.FieldStatus:
 		return m.OldStatus(ctx)
 	case proxy.FieldExpiresAt:
@@ -38461,6 +38518,13 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPassword(v)
+		return nil
+	case proxy.FieldConsoleURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConsoleURL(v)
 		return nil
 	case proxy.FieldStatus:
 		v, ok := value.(string)
@@ -38563,6 +38627,9 @@ func (m *ProxyMutation) ClearedFields() []string {
 	if m.FieldCleared(proxy.FieldPassword) {
 		fields = append(fields, proxy.FieldPassword)
 	}
+	if m.FieldCleared(proxy.FieldConsoleURL) {
+		fields = append(fields, proxy.FieldConsoleURL)
+	}
 	if m.FieldCleared(proxy.FieldExpiresAt) {
 		fields = append(fields, proxy.FieldExpiresAt)
 	}
@@ -38591,6 +38658,9 @@ func (m *ProxyMutation) ClearField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ClearPassword()
+		return nil
+	case proxy.FieldConsoleURL:
+		m.ClearConsoleURL()
 		return nil
 	case proxy.FieldExpiresAt:
 		m.ClearExpiresAt()
@@ -38632,6 +38702,9 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ResetPassword()
+		return nil
+	case proxy.FieldConsoleURL:
+		m.ResetConsoleURL()
 		return nil
 	case proxy.FieldStatus:
 		m.ResetStatus()
