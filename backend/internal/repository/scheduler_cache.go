@@ -956,7 +956,12 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	}
 	// Candidate-list admission evaluates the account override before hydrating
 	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold"}
+	// openai_capabilities must survive the projection: candidate filtering runs
+	// Account.Supports[OI]EndpointCapability (e.g. the Seedance video gate) on
+	// this trimmed view; without the key every capability-gated API-key account
+	// is silently rejected as capability_mismatch ("单独测账号能通、走网关
+	// 报 no available accounts").
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "openai_capabilities"}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {

@@ -20,6 +20,16 @@ func TestFilterSchedulerCredentialsKeepsSubscriptionPlanType(t *testing.T) {
 	require.NotContains(t, filtered, "refresh_token")
 }
 
+func TestFilterSchedulerCredentialsKeepsOpenAIEndpointCapabilities(t *testing.T) {
+	filtered := filterSchedulerCredentials(map[string]any{
+		"openai_capabilities": []any{"seedance"},
+		"access_token":        "secret-access-token",
+	})
+
+	require.Equal(t, []any{"seedance"}, filtered["openai_capabilities"])
+	require.NotContains(t, filtered, "access_token")
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:       24,
