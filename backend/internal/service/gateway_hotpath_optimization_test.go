@@ -949,3 +949,36 @@ func TestSelectAccountWithLoadAwareness_StickyReadReuse(t *testing.T) {
 		require.Equal(t, int64(1), cache.getCalls.Load())
 	})
 }
+
+type modelSyncBlockedCatalogRepo struct {
+	AccountRepository
+	read func() []Account
+}
+
+func (r modelSyncBlockedCatalogRepo) ListSchedulableByGroupID(context.Context, int64) ([]Account, error) {
+	return r.read(), nil
+}
+
+func TestModelSyncInvalidationPreventsStaleAvailableModelsStore(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	repo := modelSyncBlockedCatalogRepo{read: func() []Account {
+		name := "new"
+		if calls.Add(1) == 1 {
+			close(started)
+			<-release
+			name = "old"
+		}
+		return []Account{{Platform: PlatformAnthropic, Credentials: map[string]any{"model_mapping": map[string]any{name: name}}}}
+	}}
+	svc := &GatewayService{accountRepo: repo, modelsListCache: gocache.New(time.Minute, time.Minute), modelsListCacheTTL: time.Minute}
+	id := int64(1)
+	done := make(chan []string, 1)
+	go func() { done <- svc.GetAvailableModels(context.Background(), &id, PlatformAnthropic) }()
+	<-started
+	svc.InvalidateAvailableModelsCache(&id, PlatformAnthropic)
+	require.Equal(t, []string{"new"}, svc.GetAvailableModels(context.Background(), &id, PlatformAnthropic))
+	close(release)
+	require.Equal(t, []string{"old"}, <-done)
+	require.Equal(t, []string{"new"}, svc.GetAvailableModels(context.Background(), &id, PlatformAnthropic))
+}

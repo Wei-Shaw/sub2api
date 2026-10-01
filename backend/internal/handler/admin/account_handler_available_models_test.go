@@ -526,3 +526,19 @@ func TestAccountHandlerSyncUpstreamModels_MetadataEnrichmentFailureReturnsWarnin
 	require.Len(t, resp.Data.Warnings, 1)
 	require.Equal(t, "upstream_model_metadata_incomplete", resp.Data.Warnings[0].Code)
 }
+
+func TestAccountHandlerBatchSyncUpstreamModelsRejectsInvalidRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, body := range []string{`{`, `{}`, `{"account_ids":[0]}`, `{"account_ids":[1,1]}`, `{"account_ids":[-1]}`} {
+		t.Run(body, func(t *testing.T) {
+			router := gin.New()
+			handler := &AccountHandler{accountTestService: &service.AccountTestService{}}
+			router.POST("/models/sync-upstream-batch", handler.BatchSyncUpstreamModels)
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/models/sync-upstream-batch", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(recorder, req)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+		})
+	}
+}

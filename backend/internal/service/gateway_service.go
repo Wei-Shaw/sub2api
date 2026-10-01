@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -799,6 +800,9 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+
+	modelsListCacheMu         sync.Mutex
+	modelsListCacheGeneration uint64
 }
 
 // NewGatewayService creates a new GatewayService
@@ -1391,6 +1395,10 @@ func mixedListingModelAllowed(groupPlatform, model string) bool {
 }
 
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
+	s.modelsListCacheMu.Lock()
+	generation := s.modelsListCacheGeneration
+	s.modelsListCacheMu.Unlock()
+
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
@@ -1458,7 +1466,11 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
 		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
+			s.modelsListCacheMu.Lock()
+			if generation == s.modelsListCacheGeneration {
+				s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
+			}
+			s.modelsListCacheMu.Unlock()
 			modelsListCacheStoreTotal.Add(1)
 		}
 		return nil
@@ -1476,7 +1488,11 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 
 	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		s.modelsListCacheMu.Lock()
+		if generation == s.modelsListCacheGeneration {
+			s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		}
+		s.modelsListCacheMu.Unlock()
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
@@ -1487,6 +1503,10 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	if s == nil || s.accountRepo == nil || groupID <= 0 || model == "" {
 		return CompositeModelOwnership{}, nil
 	}
+
+	s.modelsListCacheMu.Lock()
+	generation := s.modelsListCacheGeneration
+	s.modelsListCacheMu.Unlock()
 
 	cacheKey := compositeModelOwnershipCacheKey(groupID, model)
 	if s.modelsListCache != nil {
@@ -1522,7 +1542,11 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	}
 
 	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
+		s.modelsListCacheMu.Lock()
+		if generation == s.modelsListCacheGeneration {
+			s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
+		}
+		s.modelsListCacheMu.Unlock()
 	}
 	return ownership, nil
 }
@@ -1567,6 +1591,9 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	if s == nil || s.modelsListCache == nil {
 		return
 	}
+	s.modelsListCacheMu.Lock()
+	defer s.modelsListCacheMu.Unlock()
+	s.modelsListCacheGeneration++
 	s.invalidateCompositeModelOwnershipCache(groupID)
 
 	normalizedPlatform := strings.TrimSpace(platform)

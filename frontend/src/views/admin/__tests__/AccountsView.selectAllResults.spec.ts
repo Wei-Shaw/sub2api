@@ -7,6 +7,7 @@ const {
   listAccounts,
   listWithEtag,
   batchRefresh,
+  batchSyncUpstreamModels,
   getBatchTodayStats,
   getUpstreamBillingProbeSettings,
   getAllProxies,
@@ -16,6 +17,7 @@ const {
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   batchRefresh: vi.fn(),
+  batchSyncUpstreamModels: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock('@/api/admin', () => ({
       batchDelete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh,
+      batchSyncUpstreamModels,
       bulkUpdate: vi.fn()
     },
     proxies: {
@@ -81,7 +84,7 @@ const makeAccounts = (count: number) => Array.from({ length: count }, (_, index)
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds', 'totalResults', 'selectingAll', 'allResultsSelected'],
-  emits: ['select-all-results', 'select-page', 'clear', 'refresh-token'],
+  emits: ['select-all-results', 'select-page', 'clear', 'refresh-token', 'sync-upstream-models'],
   template: `
     <div>
       <span data-test="selected-count">{{ selectedIds.length }}</span>
@@ -90,6 +93,7 @@ const AccountBulkActionsBarStub = {
       <button data-test="select-page" @click="$emit('select-page')">select page</button>
       <button data-test="select-all-results" @click="$emit('select-all-results')">select all</button>
       <button data-test="clear" @click="$emit('clear')">clear</button>
+      <button data-test="sync-models" @click="$emit('sync-upstream-models')">sync models</button>
       <button data-test="refresh-token" @click="$emit('refresh-token')">refresh token</button>
     </div>
   `
@@ -116,6 +120,7 @@ const mountView = () => mount(AccountsView, {
       AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
       AccountTableFilters: AccountTableFiltersStub,
       AccountBulkActionsBar: AccountBulkActionsBarStub,
+      BatchModelSyncResultModal: true,
       AccountActionMenu: true,
       ImportDataModal: true,
       ReAuthAccountModal: true,
@@ -146,6 +151,10 @@ describe('admin AccountsView select all filtered results', () => {
     listAccounts.mockReset()
     listWithEtag.mockReset()
     batchRefresh.mockReset()
+    batchSyncUpstreamModels.mockReset()
+    batchSyncUpstreamModels.mockImplementation(async (ids: number[]) => ({
+      results: ids.map(id => ({ account_id: id, name: `Account ${id}`, status: 'success', model_count: 3, added_count: 1, mapping_unchanged: false }))
+    }))
     getBatchTodayStats.mockReset()
     getUpstreamBillingProbeSettings.mockReset()
     getAllProxies.mockReset()
@@ -165,6 +174,77 @@ describe('admin AccountsView select all filtered results', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+
+  it('syncs a stable cross-page selection in sequential batches and prevents duplicate submissions', async () => {
+    const accounts = makeAccounts(25)
+    listAccounts.mockImplementation(async (_page: number, pageSize: number) => ({
+      items: pageSize === 1000 ? accounts : accounts.slice(0, 20), total: 25, page: 1, page_size: pageSize, pages: 2
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-all-results"]').trigger('click')
+    await flushPromises()
+    let finish!: (value: unknown) => void
+    batchSyncUpstreamModels.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await wrapper.get('[data-test="sync-models"]').trigger('click')
+    await wrapper.get('[data-test="sync-models"]').trigger('click')
+    expect(batchSyncUpstreamModels).toHaveBeenCalledTimes(1)
+    expect(batchSyncUpstreamModels.mock.calls[0]![0]).toEqual(accounts.slice(0, 20).map(row => row.id))
+    await wrapper.get('[data-test="clear"]').trigger('click')
+    finish({ results: accounts.slice(0, 20).map(row => ({ account_id: row.id, name: row.name, status: 'success', model_count: 2, added_count: 1, mapping_unchanged: false })) })
+    await flushPromises()
+    expect(batchSyncUpstreamModels.mock.calls[1]![0]).toEqual([21, 22, 23, 24, 25])
+    expect(wrapper.get('[data-test="selected-count"]').text()).toBe('0')
+    const modal = wrapper.findComponent({ name: 'BatchModelSyncResultModal' })
+    expect(modal.props('results')).toHaveLength(25)
+    expect(modal.props('running')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('preserves completed batches and selects unfinished accounts after a lost response', async () => {
+    const accounts = makeAccounts(45)
+    listAccounts.mockImplementation(async (_page: number, pageSize: number) => ({
+      items: pageSize === 1000 ? accounts : accounts.slice(0, 20), total: 45, page: 1, page_size: pageSize, pages: 3
+    }))
+    batchSyncUpstreamModels.mockResolvedValueOnce({ results: accounts.slice(0, 20).map(row => ({ account_id: row.id, name: row.name, status: row.id === 1 ? 'warning' : 'success', model_count: 2, added_count: 1, mapping_unchanged: false })) })
+    batchSyncUpstreamModels.mockRejectedValueOnce(new Error('Connection interrupted'))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-all-results"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="sync-models"]').trigger('click')
+    await flushPromises()
+    expect(batchSyncUpstreamModels).toHaveBeenCalledTimes(2)
+    const modal = wrapper.findComponent({ name: 'BatchModelSyncResultModal' })
+    const results = modal.props('results') as Array<{ status: string }>
+    expect(results[0]!.status).toBe('warning')
+    expect(results.slice(20, 40).every(row => row.status === 'unknown')).toBe(true)
+    expect(results.slice(40).every(row => row.status === 'canceled')).toBe(true)
+    modal.vm.$emit('select-failed')
+    await flushPromises()
+    expect(wrapper.getComponent(AccountBulkActionsBarStub).props('selectedIds')).toEqual(accounts.slice(20).map(row => row.id))
+    wrapper.unmount()
+  })
+
+  it('stops active syncing without submitting queued accounts', async () => {
+    listAccounts.mockResolvedValue({ items: makeAccounts(21), total: 21, page: 1, page_size: 50, pages: 1 })
+    batchSyncUpstreamModels.mockImplementationOnce((_ids: number[], signal: AbortSignal) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('Canceled')), { once: true })
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-page"]').trigger('click')
+    await wrapper.get('[data-test="sync-models"]').trigger('click')
+    const modal = wrapper.findComponent({ name: 'BatchModelSyncResultModal' })
+    modal.vm.$emit('stop')
+    await flushPromises()
+    expect(batchSyncUpstreamModels).toHaveBeenCalledTimes(1)
+    const results = modal.props('results') as Array<{ status: string }>
+    expect(results[0]!.status).toBe('unknown')
+    expect(results[20]!.status).toBe('canceled')
+    wrapper.unmount()
   })
 
   it.each([

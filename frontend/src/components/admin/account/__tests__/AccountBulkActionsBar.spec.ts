@@ -10,6 +10,19 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('AccountBulkActionsBar', () => {
+  it('shows model sync only for selected accounts and disables duplicate actions', async () => {
+    const wrapper = mount(AccountBulkActionsBar, { props: { selectedIds: [], totalResults: 2, selectingAll: false, allResultsSelected: false } })
+    const findSync = () => wrapper.findAll('button').find(button => button.attributes('title') === 'admin.accounts.batchModelSync.hint')
+    expect(findSync()).toBeUndefined()
+    await wrapper.setProps({ selectedIds: [1, 2] })
+    await findSync()!.trigger('click')
+    expect(wrapper.emitted('sync-upstream-models')).toHaveLength(1)
+    await wrapper.setProps({ syncingModels: true })
+    expect(findSync()!.attributes('disabled')).toBeDefined()
+    await findSync()!.trigger('click')
+    expect(wrapper.emitted('sync-upstream-models')).toHaveLength(1)
+  })
+
   it('allows selecting all results before any row is selected', async () => {
     const wrapper = mount(AccountBulkActionsBar, {
       props: {

@@ -1615,10 +1615,11 @@ const (
 )
 
 type openAIModelsCache struct {
-	mu        sync.Mutex
-	entries   map[string]openAIModelsCacheEntry
-	nextOrder uint64
-	refresh   singleflight.Group
+	mu         sync.Mutex
+	entries    map[string]openAIModelsCacheEntry
+	nextOrder  uint64
+	generation uint64
+	refresh    singleflight.Group
 }
 
 func (c *openAIModelsCache) get(key string, now time.Time) (*OpenAIModelsResponse, openAIModelsCacheState) {
@@ -1638,7 +1639,7 @@ func (c *openAIModelsCache) get(key string, now time.Time) (*OpenAIModelsRespons
 	return entry.manifest, openAIModelsCacheStale
 }
 
-func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now time.Time) {
+func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now time.Time, generation ...uint64) {
 	if manifest == nil || len(manifest.Body) > openAIModelsCacheBodyLimit {
 		return
 	}
@@ -1648,6 +1649,9 @@ func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now 
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(generation) > 0 && c.generation != generation[0] {
+		return
+	}
 	if c.entries == nil {
 		c.entries = make(map[string]openAIModelsCacheEntry)
 	}
@@ -1674,6 +1678,22 @@ func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now 
 		order:      c.nextOrder,
 		expiresAt:  now.Add(openAIModelsCacheTTL),
 		staleUntil: now.Add(openAIModelsCacheStaleTTL),
+	}
+}
+
+// InvalidateOpenAIModelsCache also separates in-flight refreshes from
+// new readers; a pre-sync response cannot repopulate the invalidated cache.
+func (s *OpenAIGatewayService) InvalidateOpenAIModelsCache(accountID int64) {
+	cache := &s.openAIModelsCache
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	cache.generation++
+	owner := fmt.Sprintf("%d", accountID)
+	for key := range cache.entries {
+		parts := strings.SplitN(key, "/", 3)
+		if len(parts) == 3 && (parts[0] == owner || parts[1] == owner) {
+			delete(cache.entries, key)
+		}
 	}
 }
 
@@ -1879,7 +1899,11 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 }
 
 func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, request openAIModelsRequest, fetch func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error)) <-chan singleflight.Result {
-	return s.openAIModelsCache.refresh.DoChan(cacheKey, func() (any, error) {
+	s.openAIModelsCache.mu.Lock()
+	generation := s.openAIModelsCache.generation
+	s.openAIModelsCache.mu.Unlock()
+	flightKey := fmt.Sprintf("%s/%d", cacheKey, generation)
+	return s.openAIModelsCache.refresh.DoChan(flightKey, func() (any, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), codexModelsManifestRequestTimeout)
 		defer cancel()
 		cached, _ := s.openAIModelsCache.get(cacheKey, time.Now())
@@ -1892,11 +1916,11 @@ func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, reques
 			return nil, err
 		}
 		if manifest.NotModified && cached != nil {
-			s.openAIModelsCache.set(cacheKey, cached, time.Now())
+			s.openAIModelsCache.set(cacheKey, cached, time.Now(), generation)
 			return cached, nil
 		}
 		if !manifest.NotModified {
-			s.openAIModelsCache.set(cacheKey, manifest, time.Now())
+			s.openAIModelsCache.set(cacheKey, manifest, time.Now(), generation)
 		}
 		return manifest, nil
 	})
@@ -2555,7 +2579,7 @@ func buildOpenAIModelsCacheKey(request openAIModelsRequest) string {
 			_, _ = fmt.Fprintf(hasher, "%s\n", value)
 		}
 	}
-	return fmt.Sprintf("%x", hasher.Sum(nil))
+	return fmt.Sprintf("%d/%d/%x", request.accountID, request.credentialAccountID, hasher.Sum(nil))
 }
 
 func cloneOpenAIModelsResponse(manifest *OpenAIModelsResponse) *OpenAIModelsResponse {

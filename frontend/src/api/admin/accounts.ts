@@ -641,6 +641,35 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
   return data
 }
 
+export interface AccountUpstreamModelSyncResult {
+  account_id: number
+  name: string
+  status: 'success' | 'warning' | 'unsupported' | 'failed' | 'canceled'
+  model_count: number
+  added_count: number
+  mapping_unchanged: boolean
+  warnings?: UpstreamModelSyncWarning[]
+  error?: string
+}
+
+export interface BatchUpstreamModelSyncResult {
+  total: number
+  success: number
+  warnings: number
+  unsupported: number
+  failed: number
+  results: AccountUpstreamModelSyncResult[]
+}
+
+export async function batchSyncUpstreamModels(accountIds: number[], signal?: AbortSignal): Promise<BatchUpstreamModelSyncResult> {
+  const { data } = await apiClient.post<BatchUpstreamModelSyncResult>(
+    '/admin/accounts/models/sync-upstream-batch',
+    { account_ids: accountIds },
+    { timeout: 120000, signal }
+  )
+  return data
+}
+
 export interface SyncUpstreamPreviewParams {
   platform: string
   type: string
@@ -1161,6 +1190,7 @@ export const accountsAPI = {
   setSchedulable,
   getAvailableModels,
   syncUpstreamModels,
+  batchSyncUpstreamModels,
   syncUpstreamModelsPreview,
   generateAuthUrl,
   exchangeCode,

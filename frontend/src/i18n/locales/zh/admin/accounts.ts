@@ -290,6 +290,24 @@ export default {
       },
       testConnection: '测试连接',
       reAuthorize: '重新授权',
+      batchModelSync: {
+        action: '同步上游模型',
+        running: '正在同步模型…',
+        title: '批量同步上游模型',
+        hint: '补齐缺失模型并刷新能力信息，保留现有映射和旧条目，成功后自动保存。未配置模型限制的账号保持原状；分组白名单不变。',
+        progress: '已处理 {done} / {total} 个账号',
+        summary: '成功 {success} · 警告 {warning} · 不支持 {unsupported} · 失败 {failed}',
+        modelCounts: '上游 {total} 个模型，新增 {added} 个条目',
+        mappingUnchanged: '模型配置未改变',
+        unknownHint: '请求中断，当前批次可能已有账号保存成功，结果尚未确认。请检查账号配置后再决定是否重试；系统不会自动重发。',
+        listUnavailable: '上游不支持模型列表，仅刷新已有模型的能力信息，未追加模型。',
+        stop: '停止同步',
+        selectFailed: '选中未完成账号',
+        status: {
+          pending: '等待中', running: '同步中', success: '成功', warning: '已保存，有警告',
+          unsupported: '不支持', failed: '失败', canceled: '已取消', unknown: '结果未确认'
+        }
+      },
       refreshToken: '刷新令牌',
       noAccountsYet: '暂无账号',
       createFirstAccount: '添加 AI 平台账号以开始使用 API 网关。',
