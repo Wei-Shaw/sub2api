@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   AdminGroup,
+  ModelAllowlist,
   GroupPlatform,
   CompositeModelRoute,
   CompositeModelRouteInput,
@@ -19,6 +20,54 @@ import type {
 export interface LiveCapability {
   supported: boolean
   reason?: string
+}
+
+export async function getCodexModelConfig(id: number, signal?: AbortSignal, modelAllowlist?: ModelAllowlist) {
+  if (modelAllowlist) {
+    const { data } = await apiClient.post<{ models: Array<Record<string, unknown> & { slug: string }> }>(
+      `/admin/groups/${id}/codex-model-config/preview`, { model_allowlist: modelAllowlist }, { signal, timeout: 60000 }
+    )
+    return data.models
+  }
+  const { data } = await apiClient.get<{ models: Array<Record<string, unknown> & { slug: string }> }>(
+    `/admin/groups/${id}/codex-model-config`, { signal, timeout: 60000 }
+  )
+  return data.models
+}
+
+export async function importCodexModelConfig(id: number, model: string, signal?: AbortSignal, modelAllowlist?: ModelAllowlist) {
+  if (modelAllowlist) {
+    const { data } = await apiClient.post<{ fields: Record<string, unknown> }>(
+      `/admin/groups/${id}/codex-model-config/preview`, { model, model_allowlist: modelAllowlist }, { signal, timeout: 60000 }
+    )
+    return data.fields
+  }
+  const { data } = await apiClient.get<{ fields: Record<string, unknown> }>(
+    `/admin/groups/${id}/codex-model-config`, { params: { model }, signal, timeout: 60000 }
+  )
+  return data.fields
+}
+
+export interface ModelConfigSearchResult {
+  provider: string
+  provider_name?: string
+  id: string
+  name: string
+  fields: Record<string, unknown>
+}
+
+export async function getModelConfigCatalog(signal?: AbortSignal) {
+  const { data } = await apiClient.get<ModelConfigSearchResult[]>(
+    '/admin/accounts/model-metadata/catalog', { signal, timeout: 60000 }
+  )
+  return data
+}
+
+export async function searchModelConfigs(q: string, signal?: AbortSignal) {
+  const { data } = await apiClient.get<ModelConfigSearchResult[]>(
+    '/admin/accounts/model-metadata/search', { params: { q }, signal, timeout: 25000 }
+  )
+  return data
 }
 
 /**

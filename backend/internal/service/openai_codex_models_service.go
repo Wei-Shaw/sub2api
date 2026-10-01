@@ -159,6 +159,10 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	if err != nil {
 		return nil, false, fmt.Errorf("build group configured Codex models: %w", err)
 	}
+	body, err = ApplyGroupCodexModelOverrides(body, group)
+	if err != nil {
+		return nil, false, err
+	}
 	manifest := &OpenAIModelsResponse{
 		Body: body,
 		ETag: codexModelsManifestBodyETag(body),
@@ -208,6 +212,13 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		body, err = orderPinnedCodexModelsBySelection(body, group.ModelAllowlist)
 		if err != nil {
 			return fmt.Errorf("order pinned Codex models: %w", err)
+		}
+		changed = true
+	}
+	if len(group.CodexModelsManifestConfig.ModelOverrides) > 0 {
+		body, err = ApplyGroupCodexModelOverrides(body, group)
+		if err != nil {
+			return err
 		}
 		changed = true
 	}

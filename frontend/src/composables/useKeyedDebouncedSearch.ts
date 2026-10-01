@@ -47,7 +47,7 @@ export function useKeyedDebouncedSearch<T>(options: UseKeyedDebouncedSearchOptio
     allKeys.forEach((key) => clearKey(key))
   }
 
-  const trigger = (key: string, keyword: string) => {
+  const trigger = (key: string, keyword: string, immediate = false) => {
     const nextVersion = (versions.get(key) ?? 0) + 1
     versions.set(key, nextVersion)
 
@@ -63,7 +63,7 @@ export function useKeyedDebouncedSearch<T>(options: UseKeyedDebouncedSearchOptio
       controllers.delete(key)
     }
 
-    const timer = setTimeout(async () => {
+    const execute = async () => {
       timers.delete(key)
 
       const controller = new AbortController()
@@ -84,9 +84,13 @@ export function useKeyedDebouncedSearch<T>(options: UseKeyedDebouncedSearchOptio
           controllers.delete(key)
         }
       }
-    }, delay)
+    }
 
-    timers.set(key, timer)
+    if (immediate) {
+      void execute()
+    } else {
+      timers.set(key, setTimeout(execute, delay))
+    }
   }
 
   if (getCurrentInstance()) {

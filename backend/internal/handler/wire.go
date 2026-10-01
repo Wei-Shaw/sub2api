@@ -52,6 +52,7 @@ func ProvideAdminHandlers(
 	opencodeGoUsage *service.OpenCodeGoUsageService,
 	claudeResetCredits *service.ClaudeResetCreditService,
 ) *AdminHandlers {
+	groupHandler.SetCodexModelUpstream(accountHandler.GroupUpstreamModelConfig)
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
@@ -204,6 +205,7 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	adminHandlers.Group.SetCodexModelCatalog(gatewayHandler.GroupCodexModelCatalog)
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

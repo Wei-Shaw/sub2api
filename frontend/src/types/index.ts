@@ -662,8 +662,9 @@ export interface ModelAllowlist {
   models: string[]
 }
 
-// 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
+// Codex 模型信息覆盖适用所有分组；固定账号发现设置仅适用 openai 分组。
 export interface CodexModelsManifestConfig {
+  model_overrides?: Record<string, Record<string, unknown>>
   enabled: boolean
   account_ids: number[]
   fallback_to_scheduler: boolean

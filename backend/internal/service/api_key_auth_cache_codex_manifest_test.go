@@ -22,6 +22,9 @@ func TestAPIKeyAuthSnapshotGroupCodexModelsManifestRoundtrip(t *testing.T) {
 				Enabled:             true,
 				AccountIDs:          []int64{7, 8},
 				FallbackToScheduler: true,
+				ModelOverrides: map[string]map[string]json.RawMessage{
+					"MiniMax-M3": {"context_window": json.RawMessage(`1000000`), "supports_search_tool": json.RawMessage(`false`)},
+				},
 			},
 		},
 	}
@@ -39,5 +42,6 @@ func TestAPIKeyAuthSnapshotGroupCodexModelsManifestRoundtrip(t *testing.T) {
 	require.True(t, materialized.Group.CodexModelsManifestConfig.Enabled)
 	require.Equal(t, []int64{7, 8}, materialized.Group.CodexModelsManifestConfig.AccountIDs)
 	require.True(t, materialized.Group.CodexModelsManifestConfig.FallbackToScheduler)
+	require.Equal(t, apiKey.Group.CodexModelsManifestConfig.ModelOverrides, materialized.Group.CodexModelsManifestConfig.ModelOverrides)
 	require.Equal(t, apiKeyAuthSnapshotVersion, cached.Snapshot.Version)
 }

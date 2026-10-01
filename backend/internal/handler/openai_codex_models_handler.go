@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -34,120 +33,16 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 
-	ifNoneMatch := c.GetHeader("If-None-Match")
-	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
-	// 全部不可用/全部失败时按 FallbackToScheduler 决定回退调度器或返回错误。
-	if apiKey.Group.Platform == service.PlatformOpenAI &&
-		apiKey.Group.CodexModelsManifestConfig.Enabled {
-		pinnedManifest, pinnedAccount, pinnedErr := h.gatewayService.FetchPinnedCodexModelsManifest(
-			c.Request.Context(),
-			apiKey.Group,
-			c.Query("client_version"),
-		)
-		if pinnedErr != nil {
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			if !apiKey.Group.CodexModelsManifestConfig.FallbackToScheduler {
-				if errors.Is(pinnedErr, service.ErrNoPinnedCodexModelsAccounts) {
-					h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available pinned OpenAI accounts")
-					return
-				}
-				h.errorResponse(c, infraerrors.Code(pinnedErr), "upstream_error", infraerrors.Message(pinnedErr))
-				return
-			}
-			// 回退开启：跌入下方调度器循环。
-		} else {
-			// 让 ops 错误日志携带实际拉取成功的首个固定账号。
-			setOpsSelectedAccount(c, pinnedAccount.ID, pinnedAccount.Platform)
-			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ifNoneMatch); err != nil {
-				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
-				return
-			}
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			writeOpenAIModelsResponse(c, pinnedManifest)
-			return
-		}
-	}
-
-	if !apiKey.Group.CodexModelsManifestConfig.Enabled {
-		configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
-			c.Request.Context(),
-			apiKey.Group,
-			ifNoneMatch,
-		)
-		if err != nil {
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
-			return
-		}
-		if configured {
-			writeOpenAIModelsResponse(c, configuredManifest)
-			return
-		}
-	}
-
-	maxAccountSwitches := h.maxAccountSwitches
-	if maxAccountSwitches <= 0 {
-		maxAccountSwitches = 3
-	}
-	failedAccountIDs := make(map[int64]struct{})
-	switchCount := 0
-	var lastUpstreamErr error
-
-	for {
-		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, "", "", failedAccountIDs)
-		if err != nil {
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			if lastUpstreamErr != nil {
-				h.errorResponse(c, infraerrors.Code(lastUpstreamErr), "upstream_error", infraerrors.Message(lastUpstreamErr))
-				return
-			}
-			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
-			return
-		}
-		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
+	manifest, account, err := h.gatewayService.GetGroupCodexModelsManifest(c.Request.Context(), apiKey.Group, c.Query("client_version"), c.GetHeader("If-None-Match"), h.maxAccountSwitches)
+	if account != nil {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
-
-		// The client ETag represents the final group-specific body, so fetch the
-		// source manifest before applying local filtering and alias metadata.
-		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), "")
-		if err != nil {
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			if service.IsRetryableCodexModelsManifestError(err) && switchCount < maxAccountSwitches {
-				failedAccountIDs[account.ID] = struct{}{}
-				switchCount++
-				lastUpstreamErr = err
-				continue
-			}
-			h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
-			return
-		}
-		if err := h.gatewayService.CompleteAPIKeyCodexModelsManifestForClient(manifest, account); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to complete Codex models manifest")
-			return
-		}
-		if err := service.ApplyPinnedCodexModelsMapping(manifest, account, apiKey.Group); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to apply model mappings")
-			return
-		}
-		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
-			return
-		}
-		if c.Request.Context().Err() != nil {
-			return
-		}
-
-		writeOpenAIModelsResponse(c, manifest)
+	}
+	if c.Request.Context().Err() != nil {
 		return
 	}
+	if err != nil {
+		h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
+		return
+	}
+	writeOpenAIModelsResponse(c, manifest)
 }

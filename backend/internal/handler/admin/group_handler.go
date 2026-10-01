@@ -26,6 +26,8 @@ type GroupHandler struct {
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
 	cfg                  *config.Config
+	codexModelCatalog    func(context.Context, *service.Group) ([]byte, error)
+	codexModelUpstream   func(context.Context, *service.Group, string) (map[string]json.RawMessage, error)
 }
 
 // GetLiveCapability 返回当前服务端是否具备生成 Live attestation 的运行环境。
@@ -804,6 +806,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 	if h.isSimpleMode() {
 		sanitizeUpdateGroupRequestForSimpleMode(&req)
+	}
+	if err := h.validateModelOverrideUpdate(c.Request.Context(), groupID, &req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{

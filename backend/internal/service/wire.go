@@ -264,6 +264,7 @@ func ProvideAccountTestService(
 	openAIGatewayService *OpenAIGatewayService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
+	compositeResolver *CompositeRouteResolver,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -277,6 +278,7 @@ func ProvideAccountTestService(
 	)
 	service.agentIdentityWS = openAIGatewayService
 	service.SetOpenAIGatewayService(openAIGatewayService)
+	service.compositeResolver = compositeResolver
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
 	return service
