@@ -219,6 +219,28 @@ func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Co
 	return until
 }
 
+// isCNProviderQuotaExhausted429 区分 Coding Plan 窗口耗尽与短时动态限流。
+// 单独看到 429 不足以判定窗口耗尽：Kimi 也会在 5h/weekly 尚有余量时，
+// 用 429 表示并发限制或动态资源分配限制。
+func isCNProviderQuotaExhausted429(account *Account, responseBody []byte) bool {
+	if account == nil || !account.IsCNProvider() || !account.IsCodingPlan() || len(responseBody) == 0 {
+		return false
+	}
+	body := strings.ToLower(string(responseBody))
+	for _, marker := range []string{
+		"weekly (7-day) usage limit",
+		"7-day usage limit",
+		"5-hour usage limit",
+		"quota will reset",
+		"usage limit for this billing cycle",
+	} {
+		if strings.Contains(body, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // setCNProviderTempUnschedulable 写临时停调（含调度层通知与日志），供 CN 403
 // 各分支（并发限制、配额耗尽兜底）共用。告警 key 由 notifyReason 派生，保持
 // 各分支既有日志 key 稳定（<prefix>_set_temp_unschedulable_failed）。
@@ -271,10 +293,15 @@ func (s *RateLimitService) applyCNProviderReactive429(
 		s.handleCNProviderInsufficientBalance(ctx, account, extractUpstreamErrorMessage(responseBody))
 		return true
 	}
-	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
-	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
-	if account.IsCodingPlan() &&
-		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
+	// 2) 只有响应体明确表示窗口额度耗尽时，才冷却到 5h/weekly reset。
+	// 动态分配、并发和短时资源限流也可能返回 429；这些错误不能因为快照
+	// 中存在一个未来 reset 时间就被冷却近几小时。
+	if account.IsCodingPlan() {
+		if isCNProviderQuotaExhausted429(account, responseBody) &&
+			s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
+			return true
+		}
+		s.apply429FallbackRateLimit(ctx, account, "cn_dynamic_429")
 		return true
 	}
 	return false
