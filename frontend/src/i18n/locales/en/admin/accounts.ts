@@ -779,9 +779,9 @@ export default {
         noResponseBody: 'No response body from server'
       },
       anthropic: {
-        apiKeyPassthrough: 'Auto passthrough (auth only)',
+        apiKeyPassthrough: 'Strict passthrough (replace auth)',
         apiKeyPassthroughDesc:
-          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.',
+          'Preserves request bodies, model names, thinking signatures, tool arguments, original responses and extension headers. Single-upstream groups also forward Models and Files. Authentication, billing, concurrency and auditing remain active. Disable to use compatibility mode.',
         apiKeyAuthScheme: 'Upstream auth scheme',
         apiKeyAuthSchemeDesc: 'Choose the API key auth header used when forwarding to an Anthropic-compatible upstream. Ollama Cloud uses Authorization: Bearer.',
         apiKeyAuthSchemeXApiKey: 'x-api-key',
