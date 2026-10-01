@@ -887,9 +887,9 @@ export default {
         noResponseBody: '服务器未返回响应体'
       },
       anthropic: {
-        apiKeyPassthrough: '自动透传（仅替换认证）',
+        apiKeyPassthrough: '严格透传（替换认证）',
         apiKeyPassthroughDesc:
-          '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。',
+          '保留请求体、模型名、思考签名、工具参数、原始响应和业务头，不清理字段或改写错误。单一上游组同时透传 Models 和 Files。保留鉴权、计费、并发和审计；关闭后使用兼容模式。',
         apiKeyAuthScheme: '上游认证方式',
         apiKeyAuthSchemeDesc: '选择转发到 Anthropic-compatible 上游时使用的 API Key 认证头。Ollama Cloud 使用 Authorization: Bearer。',
         apiKeyAuthSchemeXApiKey: 'x-api-key',
