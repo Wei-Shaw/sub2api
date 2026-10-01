@@ -10,13 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
-// Fixed CLI identity aliases — single source of truth is internal/pkg/xai.
-const (
-	grokClientVersionHeader    = xai.CLIClientVersion
-	grokClientIdentifierHeader = xai.CLIClientIdentifier
-	grokClientModeHeader       = xai.CLIClientMode
-)
-
 // defaultGrokUpstreamUserAgent is the pinned Grok CLI / workspace UA.
 // Grok upstream must not forward Claude Code / Codex / browser client UAs.
 func defaultGrokUpstreamUserAgent() string {

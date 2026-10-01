@@ -1614,13 +1614,11 @@ func applyGrokCLIIdentity(headers http.Header, inbound http.Header) {
 	}
 	policy := xai.ResolveCLIIdentity()
 	version := policy.Version
-	userAgent := xai.CLIUserAgent(version)
 	if !policy.Unify {
 		if inboundVersion := inboundGrokCLIVersion(inbound); inboundVersion != "" {
 			version = inboundVersion
-			if ua := inboundGrokCLIUserAgent(inbound); ua != "" {
-				userAgent = ua
-			} else {
+			userAgent := inboundGrokCLIUserAgent(inbound)
+			if userAgent == "" {
 				userAgent = xai.CLIUserAgent(version)
 			}
 			stampGrokCLIIdentity(headers, version, userAgent)
