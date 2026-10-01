@@ -131,6 +131,8 @@
         :show-proxy-warning="isAnthropic"
         :show-cookie-option="isAnthropic"
         :show-refresh-token-option="isOpenAI || isAntigravity || isGrok"
+        :show-codex-session-import-option="isOpenAI && !isOpenAIAgentIdentity"
+        :reauth="true"
         :show-sso-option="isGrok"
         :show-email-password-option="false"
         :allow-multiple="false"
@@ -141,6 +143,7 @@
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
+        @import-codex-session="handleImportCodexSession"
         @import-sso="handleGrokImportSSO"
       />
 
@@ -250,6 +253,9 @@ const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_as
 // Computed - check platform
 const isOpenAI = computed(() => props.account?.platform === 'openai')
 const isOpenAILike = computed(() => isOpenAI.value)
+const isOpenAIAgentIdentity = computed(
+  () => isOpenAI.value && (props.account?.credentials as Record<string, unknown> | undefined)?.auth_mode === 'agentIdentity'
+)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
@@ -303,7 +309,12 @@ const currentError = computed(() => {
 // Computed — footer "complete auth" only for code-exchange flows, not SSO/password/RT.
 const isManualInputMethod = computed(() => {
   const method = oauthFlowRef.value?.inputMethod
-  if (method === 'sso_cookie' || method === 'email_password' || method === 'refresh_token') {
+  if (
+    method === 'sso_cookie' ||
+    method === 'email_password' ||
+    method === 'refresh_token' ||
+    method === 'codex_session'
+  ) {
     return false
   }
   // OpenAI/Gemini/Antigravity/Grok use manual code paste by default (no cookie auth)
@@ -691,6 +702,31 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     appStore.showError(antigravityOAuth.error.value)
   } finally {
     antigravityOAuth.loading.value = false
+  }
+}
+
+/** Re-auth the existing OpenAI account with one Codex auth.json / accessToken. */
+const handleImportCodexSession = async (content: string) => {
+  if (!props.account || !isOpenAI.value) return
+  openaiOAuth.loading.value = true
+  openaiOAuth.error.value = ''
+  try {
+    const result = await adminAPI.accounts.reauthCodexSession(props.account.id, content)
+    if (result.warnings?.length) {
+      appStore.showWarning(result.warnings.join('\n'))
+    }
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', result.account)
+    handleClose()
+  } catch (error: any) {
+    openaiOAuth.error.value =
+      error.response?.data?.detail ||
+      error.response?.data?.message ||
+      error.message ||
+      t('admin.accounts.oauth.authFailed')
+    appStore.showError(openaiOAuth.error.value)
+  } finally {
+    openaiOAuth.loading.value = false
   }
 }
 
