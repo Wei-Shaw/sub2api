@@ -250,6 +250,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyClaudeCodeClientVersion:                            "",
 		SettingKeyClaudeCodeClientVersionSynced:                      "",
 		SettingKeyClaudeCodeVersionAutoSyncEnabled:                   "true",
+		SettingKeyUnifyGrokClientVersion:                             "true",
+		SettingKeyGrokCLIClientVersion:                               "",
 		SettingPaymentVisibleMethodAlipaySource:                      "",
 		SettingPaymentVisibleMethodWxpaySource:                       "",
 		SettingPaymentVisibleMethodAlipayEnabled:                     "false",
@@ -904,6 +906,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.ClaudeCodeVersionAutoSyncEnabled = true
 	}
+	if v, ok := settings[SettingKeyUnifyGrokClientVersion]; ok && v != "" {
+		result.UnifyGrokClientVersion = v == "true"
+	} else {
+		result.UnifyGrokClientVersion = true
+	}
+	result.GrokCLIClientVersion = NormalizeGrokCLIClientVersion(settings[SettingKeyGrokCLIClientVersion])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]

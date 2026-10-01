@@ -956,6 +956,8 @@ func TestAPIContracts(t *testing.T) {
 					"claude_code_client_version": "",
 					"claude_code_client_version_synced": "",
 					"claude_code_version_auto_sync_enabled": true,
+					"unify_grok_client_version": true,
+					"grok_cli_client_version": "",
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1277,6 +1279,8 @@ func TestAPIContracts(t *testing.T) {
 					"claude_code_client_version": "",
 					"claude_code_client_version_synced": "",
 					"claude_code_version_auto_sync_enabled": true,
+					"unify_grok_client_version": true,
+					"grok_cli_client_version": "",
 					"openai_fast_policy_settings": {
 						"rules": []
 					},

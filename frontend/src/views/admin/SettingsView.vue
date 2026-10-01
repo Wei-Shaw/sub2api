@@ -5351,6 +5351,45 @@
                   </p>
                 </div>
 
+              <div class="flex items-center justify-between border-b border-gray-100 pb-5 dark:border-dark-700">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.unifyGrokClientVersion") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.unifyGrokClientVersionHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.unify_grok_client_version"
+                  data-testid="unify-grok-client-version-toggle"
+                />
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.grokCLIClientVersion") }}
+                </label>
+                <input
+                  v-model="form.grok_cli_client_version"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  data-testid="grok-cli-client-version"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.grokCLIClientVersionPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.grokCLIClientVersionHint") }}
+                </p>
+              </div>
+
               <!-- OpenAI Responses 首 token 统计 -->
               <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
                 <label
@@ -9954,6 +9993,8 @@ const form = reactive<SettingsForm>({
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
   grok_default_base_url_mode: "cli",
+  unify_grok_client_version: true,
+  grok_cli_client_version: "",
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -11616,6 +11657,8 @@ async function saveSettings() {
       grok_cross_client_model_map_enabled:
         form.grok_cross_client_model_map_enabled,
       grok_default_base_url_mode: form.grok_default_base_url_mode,
+      unify_grok_client_version: form.unify_grok_client_version,
+      grok_cli_client_version: form.grok_cli_client_version?.trim() || "",
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,

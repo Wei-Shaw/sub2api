@@ -720,6 +720,12 @@ const (
 	SettingKeyClaudeCodeClientVersionSynced = "claude_code_client_version_synced"
 	// SettingKeyClaudeCodeVersionAutoSyncEnabled 是否启用 Claude Code 客户端版本号自动同步（默认 true）。
 	SettingKeyClaudeCodeVersionAutoSyncEnabled = "claude_code_version_auto_sync_enabled"
+	// SettingKeyUnifyGrokClientVersion 是否统一出站 Grok CLI 客户端版本（默认 true）。
+	// 关闭后透传入站 Grok 客户端自报版本；入站没有 Grok 身份时仍回退到内置 pin。
+	SettingKeyUnifyGrokClientVersion = "unify_grok_client_version"
+	// SettingKeyGrokCLIClientVersion 网关对 cli-chat-proxy 声明的 Grok CLI 版本号（管理员覆写）。
+	// 空值表示使用内置 pin；填写后固定为该版本。须为 >= 1.0.13 的合法 semver。
+	SettingKeyGrokCLIClientVersion = "grok_cli_client_version"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

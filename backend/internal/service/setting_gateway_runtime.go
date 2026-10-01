@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -132,6 +133,17 @@ const claudeCodeClientVersionDBTimeout = 5 * time.Second
 
 // claudeCodeClientVersionSFKey singleflight 键。
 const claudeCodeClientVersionSFKey = "claude_code_client_version"
+
+type cachedGrokCLIIdentity struct {
+	unify     bool
+	version   string
+	expiresAt int64
+}
+
+const grokCLIIdentityCacheTTL = 60 * time.Second
+const grokCLIIdentityErrorTTL = 5 * time.Second
+const grokCLIIdentityDBTimeout = 5 * time.Second
+const grokCLIIdentitySFKey = "grok_cli_identity"
 
 type cachedOpenAIQuotaAutoPauseSettings struct {
 	settings  OpsOpenAIAccountQuotaAutoPauseSettings
@@ -497,6 +509,91 @@ func (s *SettingService) InvalidateClaudeCodeClientVersionCache() {
 	}
 	s.claudeCodeVersionSF.Forget(claudeCodeClientVersionSFKey)
 	s.claudeCodeVersionCache.Store((*cachedClaudeCodeClientVersion)(nil))
+}
+
+// NormalizeGrokCLIClientVersion 校验并归一化 Grok CLI 客户端版本号，非法值返回空串。
+func NormalizeGrokCLIClientVersion(version string) string {
+	normalized := strings.TrimSpace(version)
+	normalized = strings.TrimPrefix(normalized, "v")
+	if normalized == "" {
+		return ""
+	}
+	if !xai.IsSupportedCLIVersion(normalized) {
+		return ""
+	}
+	return normalized
+}
+
+// GetGrokCLIIdentityPolicy 返回出站 Grok CLI 身份策略。
+// 版本优先级：面板手填 → 环境变量 XAI_GROK_CLI_VERSION → 内置 pin。
+func (s *SettingService) GetGrokCLIIdentityPolicy(ctx context.Context) xai.CLIIdentityPolicy {
+	fallback := xai.CLIIdentityPolicy{Unify: true, Version: xai.EnvOrPinnedCLIVersion()}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.grokCLIIdentityCache.Load().(*cachedGrokCLIIdentity); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return xai.CLIIdentityPolicy{Unify: cached.unify, Version: cached.version}
+		}
+	}
+
+	result, _, _ := s.grokCLIIdentitySF.Do(grokCLIIdentitySFKey, func() (any, error) {
+		if cached, ok := s.grokCLIIdentityCache.Load().(*cachedGrokCLIIdentity); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return *cached, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), grokCLIIdentityDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyUnifyGrokClientVersion,
+			SettingKeyGrokCLIClientVersion,
+		})
+		if err != nil {
+			slog.Warn("failed to get grok cli identity setting", "error", err)
+			s.grokCLIIdentityCache.Store(&cachedGrokCLIIdentity{
+				unify:     fallback.Unify,
+				version:   fallback.Version,
+				expiresAt: time.Now().Add(grokCLIIdentityErrorTTL).UnixNano(),
+			})
+			return cachedGrokCLIIdentity{unify: fallback.Unify, version: fallback.Version}, nil
+		}
+		unify := true
+		if v, ok := values[SettingKeyUnifyGrokClientVersion]; ok && v != "" {
+			unify = v == "true"
+		}
+		version := NormalizeGrokCLIClientVersion(values[SettingKeyGrokCLIClientVersion])
+		if version == "" {
+			if raw := values[SettingKeyGrokCLIClientVersion]; strings.TrimSpace(raw) != "" {
+				slog.Warn("ignoring invalid grok_cli_client_version setting; falling back to env or pin",
+					"value", raw)
+			}
+			version = xai.EnvOrPinnedCLIVersion()
+		}
+		entry := cachedGrokCLIIdentity{
+			unify:     unify,
+			version:   version,
+			expiresAt: time.Now().Add(grokCLIIdentityCacheTTL).UnixNano(),
+		}
+		s.grokCLIIdentityCache.Store(&entry)
+		return entry, nil
+	})
+	if cached, ok := result.(cachedGrokCLIIdentity); ok && cached.version != "" {
+		return xai.CLIIdentityPolicy{Unify: cached.unify, Version: cached.version}
+	}
+	return fallback
+}
+
+// InvalidateGrokCLIIdentityCache 丢弃 Grok CLI 身份缓存，下次读取回源。
+func (s *SettingService) InvalidateGrokCLIIdentityCache() {
+	if s == nil {
+		return
+	}
+	s.grokCLIIdentitySF.Forget(grokCLIIdentitySFKey)
+	s.grokCLIIdentityCache.Store((*cachedGrokCLIIdentity)(nil))
 }
 
 // GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。

@@ -12,7 +12,7 @@ import (
 
 // Fixed CLI identity aliases — single source of truth is internal/pkg/xai.
 const (
-	grokClientVersionHeader    = xai.CLIStableVersion
+	grokClientVersionHeader    = xai.CLIClientVersion
 	grokClientIdentifierHeader = xai.CLIClientIdentifier
 	grokClientModeHeader       = xai.CLIClientMode
 )
@@ -27,11 +27,7 @@ func applyDefaultGrokUpstreamHeaders(req *http.Request) {
 	if req == nil {
 		return
 	}
-	// Always stamp CLI identity. Do not preserve inbound client UA (Claude Code,
-	// Codex, curl, etc.) — xAI chat/CLI surfaces fingerprint the client string.
-	req.Header.Set("User-Agent", defaultGrokUpstreamUserAgent())
-	req.Header.Set("x-grok-client-version", xai.ResolveCLIVersion())
-	req.Header.Set("x-grok-client-identifier", grokClientIdentifierHeader)
+	xai.StampCLIIdentityHeaders(req.Header, xai.ResolveCLIVersion())
 }
 
 func applyGrokTLSProfileHeaders(req *http.Request, profile *tlsfingerprint.Profile) {
