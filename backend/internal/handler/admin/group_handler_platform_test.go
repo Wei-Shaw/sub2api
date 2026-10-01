@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 回归分组平台枚举:kimi/zhipu/deepseek/opencode_go 必须能通过 Create/Update 的
+// 回归分组平台枚举:kimi/zhipu/deepseek/cursor/opencode_go 必须能通过 Create/Update 的
 // binding 校验（历史 bug:调度/路由链路已支持这些平台,但 oneof 白名单漏加,
-// 导致平台分组无法创建、账号"无可用分组"）;非法值仍须被拒。
+// 导致平台分组无法创建、账号"无可用分组";cursor 网关已接入但分组 oneof 同样漏加）;非法值仍须被拒。
 func bindGroupPlatformJSON(t *testing.T, target any, body string) error {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -27,7 +27,7 @@ func bindGroupPlatformJSON(t *testing.T, target any, body string) error {
 func TestGroupPlatformBinding_AllowedPlatforms(t *testing.T) {
 	allowed := []string{
 		"anthropic", "openai", "gemini", "antigravity", "grok",
-		"kimi", "zhipu", "deepseek", "minimax", "opencode_go", "composite",
+		"cursor", "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "composite",
 	}
 	for _, platform := range allowed {
 		t.Run("create_"+platform, func(t *testing.T) {
@@ -78,6 +78,11 @@ func TestCompositeRouteTargetPlatform_AllowsCNProviders(t *testing.T) {
 		require.NoError(t, bindGroupPlatformJSON(t, &req, body))
 		require.Equal(t, platform, req.TargetPlatform)
 	}
+}
+
+func TestCompositeRouteTargetPlatform_StillExcludesCursor(t *testing.T) {
+	var req CompositeRouteRequest
+	require.Error(t, bindGroupPlatformJSON(t, &req, `{"public_model":"m","target_platform":"cursor"}`))
 }
 
 func TestCompositeRouteTargetPlatform_RejectsComposite(t *testing.T) {

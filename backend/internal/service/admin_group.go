@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -96,13 +97,35 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	}
 
 	candidates := defaultModelsListCandidateIDs(platform)
-	if id <= 0 || s.accountRepo == nil {
+	if s.accountRepo == nil {
 		return candidates, nil
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
-	if err != nil {
-		return nil, err
+	var accounts []Account
+	if id > 0 {
+		listed, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		accounts = listed
+	} else if platform == PlatformCursor {
+		listed, err := s.accountRepo.ListSchedulableByPlatform(ctx, PlatformCursor)
+		if err != nil {
+			return nil, err
+		}
+		accounts = listed
+	}
+
+	if platform == PlatformCursor {
+		// nil fetch lets cursorPickerIDsFromAccounts dial through the account
+		// proxy; a seam overrides only in tests.
+		if live := cursorPickerIDsFromAccounts(ctx, accounts, s.cursorAvailableModels); len(live) > 0 {
+			candidates = live
+		}
+	}
+
+	if id <= 0 {
+		return candidates, nil
 	}
 
 	seen := make(map[string]struct{}, len(candidates))
@@ -294,6 +317,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformCursor:
+		return cursor.DefaultModelIDs()
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformComposite:
