@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { getExpirationDateRelation, getRemainingExpiryDuration } from '../subscriptionQuota'
+import {
+  getExpirationDateRelation,
+  getQuotaResetSelection,
+  getRemainingExpiryDuration,
+  getResettableQuotaWindows
+} from '../subscriptionQuota'
 
 describe('subscription expiry timing', () => {
   it('uses local calendar dates for today and tomorrow', () => {
@@ -59,6 +64,36 @@ describe('subscription expiry timing', () => {
     expect(getRemainingExpiryDuration(new Date(now.getTime() + 24 * 60 * 60 * 1000 + 1), now)).toEqual({
       unit: 'days',
       days: 2
+    })
+  })
+})
+
+describe('subscription quota reset windows', () => {
+  it('returns only configured positive quota limits', () => {
+    expect(getResettableQuotaWindows({
+      daily_limit_usd: 10,
+      weekly_limit_usd: null,
+      monthly_limit_usd: 25
+    })).toEqual([
+      { key: 'daily', limit: 10 },
+      { key: 'monthly', limit: 25 }
+    ])
+  })
+
+  it('preselects every configured window and ignores unlimited limits', () => {
+    expect(getQuotaResetSelection({
+      daily_limit_usd: 0,
+      weekly_limit_usd: 12.5,
+      monthly_limit_usd: 30
+    })).toEqual({ daily: false, weekly: true, monthly: true })
+  })
+
+  it('returns no reset selection when the group has no quotas', () => {
+    expect(getResettableQuotaWindows(null)).toEqual([])
+    expect(getQuotaResetSelection(undefined)).toEqual({
+      daily: false,
+      weekly: false,
+      monthly: false
     })
   })
 })

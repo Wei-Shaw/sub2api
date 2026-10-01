@@ -427,7 +427,7 @@
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
               </button>
               <button
-                v-if="row.status === 'active'"
+                v-if="row.status === 'active' && getResettableQuotaWindows(row.group).length > 0"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -754,9 +754,38 @@
       :message="t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription?.user?.email })"
       :confirm-text="t('admin.subscriptions.resetQuota')"
       :cancel-text="t('common.cancel')"
+      :confirm-disabled="resettingQuota || !hasSelectedResetQuota"
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
-    />
+    >
+      <div v-if="resetQuotaOptions.length" class="space-y-2" data-test="reset-quota-options">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.subscriptions.resetQuotaSelectHint') }}
+        </p>
+        <label
+          v-for="option in resetQuotaOptions"
+          :key="option.key"
+          class="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+        >
+          <span class="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+            <input
+              v-model="resetQuotaSelection[option.key]"
+              type="checkbox"
+              :disabled="resettingQuota"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :data-test="`reset-quota-${option.key}`"
+            />
+            <span>{{ t(`admin.subscriptions.${option.key}`) }}</span>
+          </span>
+          <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+            ${{ option.limit.toFixed(2) }}
+          </span>
+        </label>
+      </div>
+      <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+        {{ t('admin.subscriptions.noResettableQuota') }}
+      </p>
+    </ConfirmDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -864,10 +893,14 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
+  getQuotaResetSelection,
   getRemainingDurationParts,
   getRemainingExpiryDuration,
+  getResettableQuotaWindows,
   isOneTimeDailyQuota,
-  type RemainingDurationParts
+  type QuotaResetSelection,
+  type RemainingDurationParts,
+  type ResettableQuotaWindow
 } from '@/utils/subscriptionQuota'
 import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 
@@ -1089,6 +1122,11 @@ const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
+const resetQuotaSelection = reactive<QuotaResetSelection>({
+  daily: false,
+  weekly: false,
+  monthly: false
+})
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
@@ -1113,6 +1151,14 @@ const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
   ...GROUP_PLATFORM_OPTIONS
 ])
+
+const resetQuotaOptions = computed<ResettableQuotaWindow[]>(() =>
+  getResettableQuotaWindows(resettingSubscription.value?.group)
+)
+
+const hasSelectedResetQuota = computed(() =>
+  resetQuotaOptions.value.some((option) => resetQuotaSelection[option.key])
+)
 
 // Group options for assign (only subscription type groups)
 const subscriptionGroupOptions = computed(() =>
@@ -1471,15 +1517,21 @@ const confirmRestore = async () => {
 
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
+  Object.assign(resetQuotaSelection, getQuotaResetSelection(subscription.group))
   showResetQuotaConfirm.value = true
 }
 
 const confirmResetQuota = async () => {
   if (!resettingSubscription.value) return
   if (resettingQuota.value) return
+  if (!hasSelectedResetQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, {
+      daily: resetQuotaSelection.daily,
+      weekly: resetQuotaSelection.weekly,
+      monthly: resetQuotaSelection.monthly
+    })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
     showResetQuotaConfirm.value = false
     resettingSubscription.value = null
