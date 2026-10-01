@@ -1,3 +1,4 @@
+import { openAIPlanTypeLabel } from '@/utils/planType'
 import { describe, it, expect } from 'vitest'
 import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
@@ -451,17 +452,17 @@ describe('plan_type helpers', () => {
   describe('planTypeDisplayLabel', () => {
     it('maps canonical + alias values to friendly labels', () => {
       expect(planTypeDisplayLabel('plus')).toBe('Plus')
-      expect(planTypeDisplayLabel('pro')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('prolite')).toBe('Pro 5x')
+      expect(planTypeDisplayLabel('pro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('prolite')).toBe('Pro 100')
       expect(planTypeDisplayLabel('free')).toBe('Free')
-      expect(planTypeDisplayLabel('team')).toBe('Business Standard')
+      expect(planTypeDisplayLabel('team')).toBe('Business')
       expect(planTypeDisplayLabel('self_serve_business_prolite')).toBe('Business Premium')
     })
     it('normalizes case, separators and surrounding blanks', () => {
-      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('PROLITE')).toBe('Pro 5x')
-      expect(planTypeDisplayLabel('  Pro Lite  ')).toBe('Pro 5x')
+      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('PROLITE')).toBe('Pro 100')
+      expect(planTypeDisplayLabel('  Pro Lite  ')).toBe('Pro 100')
       expect(planTypeDisplayLabel('self-serve-business-pro-lite')).toBe('Business Premium')
     })
     it('returns unknown values verbatim', () => {
@@ -483,73 +484,37 @@ describe('plan_type helpers', () => {
   })
 
   describe('buildPlanTypeOptions', () => {
-    const clear = 'Clear'
-    it('returns clear + presets when current is empty', () => {
-      expect(buildPlanTypeOptions('', clear)).toEqual([
-        { value: '', label: clear },
-        { value: 'plus', label: 'Plus' },
-        { value: 'pro', label: 'Pro 20x' },
-        { value: 'prolite', label: 'Pro 5x' },
-        { value: 'self_serve_business_prolite', label: 'Business Premium' },
-        { value: 'free', label: 'Free' }
-      ])
+    it('includes all current SKUs with their status labels', () => {
+      const opts = buildPlanTypeOptions('', 'Clear')
+      expect(opts[0]).toEqual({ value: '', label: 'Clear' })
+      expect(opts).toContainEqual({ value: 'prolite', label: 'Pro 100' })
+      expect(opts).toContainEqual({ value: 'pro', label: 'Pro 200' })
+      expect(opts).toContainEqual({ value: 'promax', label: 'Pro 500' })
+      expect(opts).toContainEqual({ value: 'edu_plus', label: 'Edu Plus' })
+      expect(opts).toContainEqual({ value: 'edu_pro', label: 'Edu Pro' })
+      expect(opts).toContainEqual({ value: 'enterprise_cbp_automation', label: 'Enterprise (Automation)' })
     })
-    it('keeps canonical chatgptpro under a single friendly "Pro 20x" option (no duplicate)', () => {
-      const opts = buildPlanTypeOptions('chatgptpro', clear)
-      const pros = opts.filter(o => o.label === 'Pro 20x')
-      expect(pros).toHaveLength(1)
-      expect(pros[0].value).toBe('chatgptpro')
-      expect(opts.map(o => o.value)).toEqual([
-        '',
-        'plus',
-        'chatgptpro',
-        'prolite',
-        'self_serve_business_prolite',
-        'free'
-      ])
-    })
-    it('appends an unknown-but-labeled value (team) as its own option', () => {
-      const opts = buildPlanTypeOptions('team', clear)
-      expect(opts.find(o => o.value === 'team')).toEqual({ value: 'team', label: 'Business Standard' })
-      // presets untouched
-      expect(opts.map(o => o.value)).toEqual([
-        '',
-        'plus',
-        'pro',
-        'prolite',
-        'self_serve_business_prolite',
-        'free',
-        'team'
-      ])
-    })
-    it('appends a fully custom value with a raw label', () => {
-      const opts = buildPlanTypeOptions('weird_x', clear)
-      expect(opts.at(-1)).toEqual({ value: 'weird_x', label: 'weird_x' })
-    })
-    it('does not duplicate an exact preset value', () => {
-      const opts = buildPlanTypeOptions('pro', clear)
-      expect(opts.filter(o => o.value === 'pro')).toHaveLength(1)
-      expect(opts.map(o => o.value)).toEqual([
-        '',
-        'plus',
-        'pro',
-        'prolite',
-        'self_serve_business_prolite',
-        'free'
-      ])
-    })
-    it('does not duplicate a preset value that is the current one', () => {
-      for (const preset of ['prolite', 'self_serve_business_prolite']) {
-        const opts = buildPlanTypeOptions(preset, clear)
-        expect(opts.filter(o => o.value === preset)).toHaveLength(1)
+    it('preserves aliases without duplicating the same SKU', () => {
+      for (const [alias, canonical] of [['chatgpt_pro', 'pro'], ['pro_lite', 'prolite'], ['selfservebusinessprolite', 'self_serve_business_prolite']]) {
+        const opts = buildPlanTypeOptions(alias, 'Clear')
+        expect(opts.filter(option => option.value === alias)).toHaveLength(1)
+        expect(opts.some(option => option.value === canonical)).toBe(false)
       }
     })
-    it('keeps a separator-free variant of a preset as its own value', () => {
-      const opts = buildPlanTypeOptions('selfservebusinessprolite', clear)
-      expect(opts.find(o => o.value === 'selfservebusinessprolite')).toEqual({
-        value: 'selfservebusinessprolite',
-        label: 'Business Premium'
-      })
+    it('keeps distinct SKUs that share the Enterprise label', () => {
+      const opts = buildPlanTypeOptions('ent26', 'Clear')
+      expect(opts.filter(option => option.label === 'Enterprise').map(option => option.value)).toEqual([
+        'business', 'enterprise', 'ent26', 'enterprise_cbp_usage_based'
+      ])
+      for (const value of ['business', 'enterprise', 'ent26', 'enterprise_cbp_usage_based']) {
+        expect(applyPlanType({}, value)).toEqual({ plan_type: value })
+      }
+    })
+    it('keeps unknown values and exact presets without duplicates', () => {
+      expect(buildPlanTypeOptions('future_sku', 'Clear').at(-1)).toEqual({ value: 'future_sku', label: 'future_sku' })
+      for (const value of ['promax', 'team', 'ent26', 'edu_plus']) {
+        expect(buildPlanTypeOptions(value, 'Clear').filter(option => option.value === value)).toHaveLength(1)
+      }
     })
   })
 
@@ -572,5 +537,16 @@ describe('plan_type helpers', () => {
       expect(out).toEqual({ email: 'a@b.c' })
       expect('plan_type' in out).toBe(false)
     })
+  })
+})
+
+describe('Codex subscription analytics labels', () => {
+  it.each([
+    ['business', 'Business'], ['self_serve_business_prolite', 'Business'],
+    ['enterprise_cbp_automation', 'Enterprise'], ['ent26', 'Enterprise'],
+    ['edu', 'Education'], ['edu_plus', 'Education'], ['edu_pro', 'Education'],
+    ['unknown', 'Account'], ['promax', 'Pro 500']
+  ])('groups %s without changing its status label', (sku, label) => {
+    expect(openAIPlanTypeLabel(sku, 'analytics')).toBe(label)
   })
 })
