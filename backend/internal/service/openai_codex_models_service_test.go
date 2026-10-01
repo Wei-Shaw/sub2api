@@ -3851,3 +3851,47 @@ func TestGPT61SolAPIKeyCatalogUsesFullResponses(t *testing.T) {
 	require.Equal(t, false, catalog.Models[0]["use_responses_lite"])
 	require.Equal(t, "low", catalog.Models[0]["default_reasoning_level"])
 }
+
+func TestCodexModelsCacheInvalidationRejectsInflightRefresh(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	request := openAIModelsRequest{accountID: 42}
+	started, release := make(chan struct{}), make(chan struct{})
+	old := svc.refreshCachedOpenAIModels(buildOpenAIModelsCacheKey(request), request, func(context.Context, string) (*OpenAIModelsResponse, error) {
+		close(started)
+		<-release
+		return &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"old"}]}`)}, nil
+	})
+	<-started
+	svc.InvalidateOpenAIModelsCache(42)
+	fresh := svc.refreshCachedOpenAIModels(buildOpenAIModelsCacheKey(request), request, func(context.Context, string) (*OpenAIModelsResponse, error) {
+		return &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"new"}]}`)}, nil
+	})
+	select {
+	case result := <-fresh:
+		require.NoError(t, result.Err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("fresh reader joined invalidated refresh")
+	}
+	close(release)
+	require.NoError(t, (<-old).Err)
+	cached, state := svc.openAIModelsCache.get(buildOpenAIModelsCacheKey(request), time.Now())
+	require.Equal(t, openAIModelsCacheFresh, state)
+	require.Contains(t, string(cached.Body), `"new"`)
+}
+
+func TestModelSyncInvalidatesCredentialSourceCatalogsOnly(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	parent := buildOpenAIModelsCacheKey(openAIModelsRequest{accountID: 1, credentialAccountID: 1})
+	shadow := buildOpenAIModelsCacheKey(openAIModelsRequest{accountID: 2, credentialAccountID: 1})
+	other := buildOpenAIModelsCacheKey(openAIModelsRequest{accountID: 3, credentialAccountID: 3})
+	for _, key := range []string{parent, shadow, other} {
+		svc.openAIModelsCache.set(key, &OpenAIModelsResponse{Body: []byte(`{"models":[]}`)}, time.Now())
+	}
+	svc.InvalidateOpenAIModelsCache(1)
+	for _, key := range []string{parent, shadow} {
+		_, state := svc.openAIModelsCache.get(key, time.Now())
+		require.Equal(t, openAIModelsCacheMiss, state)
+	}
+	_, state := svc.openAIModelsCache.get(other, time.Now())
+	require.Equal(t, openAIModelsCacheFresh, state)
+}

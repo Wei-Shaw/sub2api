@@ -177,12 +177,14 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :syncing-models="syncingModels"
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
+          @sync-upstream-models="handleBulkSyncUpstreamModels"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
@@ -480,6 +482,14 @@
       </label>
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
+    <BatchModelSyncResultModal
+      :show="showModelSyncResult"
+      :running="syncingModels"
+      :results="modelSyncResults"
+      @close="showModelSyncResult = false"
+      @stop="stopModelSync"
+      @select-failed="handleSelectFailedModelSync"
+    />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
   </AppLayout>
@@ -508,6 +518,8 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import BatchModelSyncResultModal from '@/components/admin/account/BatchModelSyncResultModal.vue'
+import type { AccountUpstreamModelSyncResult } from '@/api/admin/accounts'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -602,6 +614,19 @@ const showReAuth = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
+type ModelSyncRow = Omit<AccountUpstreamModelSyncResult, 'status'> & {
+  status: AccountUpstreamModelSyncResult['status'] | 'pending' | 'running' | 'unknown'
+}
+const showModelSyncResult = ref(false)
+const syncingModels = ref(false)
+const modelSyncResults = ref<ModelSyncRow[]>([])
+let modelSyncController: AbortController | null = null
+let modelSyncDisposed = false
+onUnmounted(() => {
+  modelSyncDisposed = true
+  modelSyncController?.abort()
+})
+
 const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
@@ -1908,6 +1933,71 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+const handleBulkSyncUpstreamModels = async () => {
+  if (syncingModels.value || selIds.value.length === 0) return
+  const ids = [...selIds.value]
+  const names = new Map(accounts.value.map(account => [account.id, account.name]))
+  modelSyncResults.value = ids.map(id => ({
+    account_id: id, name: names.get(id) || `#${id}`, status: 'pending',
+    model_count: 0, added_count: 0, mapping_unchanged: true
+  }))
+  showModelSyncResult.value = true
+  syncingModels.value = true
+  const controller = new AbortController()
+  modelSyncController = controller
+  let saved = false
+  try {
+    for (let offset = 0; offset < ids.length; offset += 20) {
+      if (controller.signal.aborted) break
+      const batch = ids.slice(offset, offset + 20)
+      for (let index = offset; index < offset + batch.length; index++) {
+        modelSyncResults.value[index]!.status = 'running'
+      }
+      try {
+        const response = await adminAPI.accounts.batchSyncUpstreamModels(batch, controller.signal)
+        const results = new Map(response.results.map(result => [result.account_id, result]))
+        for (let index = 0; index < batch.length; index++) {
+          const row = modelSyncResults.value[offset + index]!
+          const result = results.get(row.account_id)
+          if (result) {
+            modelSyncResults.value[offset + index] = { ...result, name: result.name || row.name }
+            saved ||= result.status === 'success' || result.status === 'warning'
+          } else {
+            row.status = 'unknown'
+            row.error = t('admin.accounts.batchModelSync.unknownHint')
+          }
+        }
+      } catch (error) {
+        for (let index = offset; index < offset + batch.length; index++) {
+          const row = modelSyncResults.value[index]!
+          row.status = 'unknown'
+          row.error = extractApiErrorMessage(error, t('admin.accounts.batchModelSync.unknownHint'))
+        }
+        // A lost response cannot tell us which accounts committed. Never retry
+        // the batch automatically or continue issuing writes after cancellation.
+        break
+      }
+    }
+  } finally {
+    for (const row of modelSyncResults.value) {
+      if (row.status === 'pending') row.status = 'canceled'
+    }
+    syncingModels.value = false
+    modelSyncController = null
+    if (!modelSyncDisposed && (saved || modelSyncResults.value.some(row => row.status === 'unknown'))) reload()
+  }
+}
+const stopModelSync = () => modelSyncController?.abort()
+const handleSelectFailedModelSync = () => {
+  const ids = modelSyncResults.value
+    .filter(row => row.status === 'failed' || row.status === 'unknown' || row.status === 'canceled')
+    .map(row => row.account_id)
+  if (ids.length === 0) return
+  setSelectedIds(ids)
+  showModelSyncResult.value = false
+  reload()
+}
+
 const handleBulkProbeUpstreamBilling = async () => {
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {

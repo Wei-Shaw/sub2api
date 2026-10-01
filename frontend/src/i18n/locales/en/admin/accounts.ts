@@ -486,6 +486,24 @@ export default {
       },
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
+      batchModelSync: {
+        action: 'Sync upstream models',
+        running: 'Syncing models…',
+        title: 'Batch sync upstream models',
+        hint: 'Add missing models and refresh capabilities, preserve existing mappings and entries, and save automatically. Accounts without explicit model restrictions keep their current behavior. Group allowlists stay unchanged.',
+        progress: 'Processed {done} / {total} accounts',
+        summary: 'Success {success} · Warnings {warning} · Unsupported {unsupported} · Failed {failed}',
+        modelCounts: '{total} upstream models, {added} entries added',
+        mappingUnchanged: 'Model configuration unchanged',
+        unknownHint: 'The request was interrupted. Some accounts in this batch may already have been saved. Check their configuration before retrying; the request will not be resent automatically.',
+        listUnavailable: 'The upstream does not support model listing. Only existing capabilities were refreshed; no models were added.',
+        stop: 'Stop syncing',
+        selectFailed: 'Select unfinished accounts',
+        status: {
+          pending: 'Pending', running: 'Syncing', success: 'Success', warning: 'Saved with warnings',
+          unsupported: 'Unsupported', failed: 'Failed', canceled: 'Canceled', unknown: 'Result unconfirmed'
+        }
+      },
       refreshToken: 'Refresh Token',
       noAccountsYet: 'No accounts yet',
       createFirstAccount: 'Create your first account to start using AI services.',

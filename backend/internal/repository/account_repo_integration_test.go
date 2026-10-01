@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -1761,4 +1762,88 @@ func idsOfAccounts(accounts []service.Account) []int64 {
 		out = append(out, accounts[i].ID)
 	}
 	return out
+}
+
+func TestApplyUpstreamModelSyncPreservesFieldsAndRejectsStaleIdentity(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	created := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "model-sync", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "secret", "base_url": "https://provider.example/v1", "model_mapping": map[string]any{"alias": "old"}},
+		Extra:       map[string]any{"unrelated": "before"},
+	})
+	expected, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	_, err = tx.Client().ExecContext(ctx, `UPDATE accounts SET extra = extra || '{"unrelated":"after","usage":42}'::jsonb WHERE id=$1`, created.ID)
+	require.NoError(t, err)
+	snapshot := &service.UpstreamModelMetadataSnapshot{Source: "upstream", SyncedAt: "2026-10-01T00:00:00Z", Models: map[string]service.UpstreamModelMetadata{"new": {ID: "new", ContextWindow: 64000}}}
+	mapping := map[string]any{"alias": "old", "new": "new"}
+	applied, err := repo.ApplyUpstreamModelSync(ctx, expected, expected, mapping, snapshot)
+	require.NoError(t, err)
+	require.True(t, applied)
+	current, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, mapping, current.Credentials["model_mapping"])
+	require.Equal(t, "secret", current.Credentials["api_key"])
+	require.Equal(t, "after", current.Extra["unrelated"])
+	require.EqualValues(t, 42, current.Extra["usage"])
+	require.Equal(t, int64(64000), current.GetUpstreamModelMetadataSnapshot().Models["new"].ContextWindow)
+	applied, err = repo.ApplyUpstreamModelSync(ctx, expected, expected, map[string]any{"lost": "lost"}, nil)
+	require.NoError(t, err)
+	require.False(t, applied)
+	_, err = tx.Client().ExecContext(ctx, `UPDATE accounts SET credentials = jsonb_set(credentials, '{api_key}', '"rotated"') WHERE id=$1`, created.ID)
+	require.NoError(t, err)
+	applied, err = repo.ApplyUpstreamModelSync(ctx, current, current, map[string]any{"lost": "lost"}, snapshot)
+	require.NoError(t, err)
+	require.False(t, applied)
+	after, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "rotated", after.Credentials["api_key"])
+	require.Equal(t, mapping, after.Credentials["model_mapping"])
+}
+
+func TestApplyUpstreamModelSyncConcurrentCommitsOneCatalog(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	account := mustCreateAccount(t, client, &service.Account{Name: "model-sync-concurrent-" + uuid.NewString(), Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture", "model_mapping": map[string]any{"old": "old"}}})
+	expected, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	type outcome struct {
+		applied bool
+		err     error
+	}
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+	for _, name := range []string{"first", "second"} {
+		go func(name string) {
+			<-start
+			snapshot := &service.UpstreamModelMetadataSnapshot{Source: name, Models: map[string]service.UpstreamModelMetadata{name: {ID: name, ContextWindow: 64000}}}
+			ok, saveErr := repo.ApplyUpstreamModelSync(ctx, expected, expected, map[string]any{"old": "old", name: name}, snapshot)
+			results <- outcome{ok, saveErr}
+		}(name)
+	}
+	close(start)
+	var success int
+	for i := 0; i < 2; i++ {
+		select {
+		case result := <-results:
+			require.NoError(t, result.err)
+			if result.applied {
+				success++
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent model commits did not finish")
+		}
+	}
+	require.Equal(t, 1, success)
+	current, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	snapshot := current.GetUpstreamModelMetadataSnapshot()
+	require.NotNil(t, snapshot)
+	require.Equal(t, snapshot.Source, current.Credentials["model_mapping"].(map[string]any)[snapshot.Source])
+	var outboxCount int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT count(*) FROM scheduler_outbox WHERE account_id=$1`, account.ID).Scan(&outboxCount))
+	require.Equal(t, 1, outboxCount)
 }

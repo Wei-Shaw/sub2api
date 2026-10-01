@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -51,6 +52,9 @@ type UpstreamModelCatalog struct {
 	Models   []string                         `json:"models"`
 	Metadata map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
 	Warnings []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+
+	snapshot          *UpstreamModelMetadataSnapshot
+	liveListAvailable bool
 }
 
 type UpstreamModelSyncWarning struct {
@@ -208,6 +212,22 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // snapshot. When no model is complete, the existing account snapshot is left
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
+	catalog, err := s.prepareUpstreamModelCatalog(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	if catalog.snapshot != nil {
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: *catalog.snapshot}); err != nil {
+			return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
+		}
+		account.SetUpstreamModelMetadataSnapshot(*catalog.snapshot)
+	}
+	return catalog, nil
+}
+
+// Network work is separated from persistence so batch sync can commit models
+// and capabilities together after checking the original account identity.
+func (s *AccountTestService) prepareUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	liveListAvailable := err == nil
 	if err != nil {
@@ -224,7 +244,7 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			"model_count", len(models),
 		)
 	}
-	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
+	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata), liveListAvailable: liveListAvailable}
 	if len(body) > 0 {
 		_, directMetadata, parseErr := extractUpstreamModelCatalog(body, account != nil && account.IsGrok())
 		if parseErr == nil {
@@ -294,10 +314,7 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			SyncedAt: time.Now().UTC().Format(time.RFC3339),
 			Models:   completeMetadata,
 		}
-		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: snapshot}); err != nil {
-			return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
-		}
-		account.SetUpstreamModelMetadataSnapshot(snapshot)
+		catalog.snapshot = &snapshot
 		persistedCapabilities = true
 	}
 
@@ -1537,4 +1554,229 @@ func dedupeAndSortModelIDs(models []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+const UpstreamModelSyncMaxBatchSize = 20
+
+// AccountModelSyncRepository atomically applies one fetched catalog without
+// replacing credentials or unrelated Extra fields. A stale fetch returns false.
+type AccountModelSyncRepository interface {
+	ApplyUpstreamModelSync(ctx context.Context, expected, source *Account, mapping map[string]any, snapshot *UpstreamModelMetadataSnapshot) (bool, error)
+}
+
+type BatchUpstreamModelSyncResult struct {
+	Total       int                              `json:"total"`
+	Success     int                              `json:"success"`
+	Warnings    int                              `json:"warnings"`
+	Unsupported int                              `json:"unsupported"`
+	Failed      int                              `json:"failed"`
+	Results     []AccountUpstreamModelSyncResult `json:"results"`
+}
+
+type AccountUpstreamModelSyncResult struct {
+	AccountID        int64                      `json:"account_id"`
+	Name             string                     `json:"name"`
+	Status           string                     `json:"status"`
+	ModelCount       int                        `json:"model_count"`
+	AddedCount       int                        `json:"added_count"`
+	MappingUnchanged bool                       `json:"mapping_unchanged"`
+	Warnings         []UpstreamModelSyncWarning `json:"warnings,omitempty"`
+	Error            string                     `json:"error,omitempty"`
+}
+
+// UpstreamModelSyncIdentity contains only configuration relevant to the fetch,
+// plus the metadata being replaced. Usage observations must not cause conflicts.
+func UpstreamModelSyncIdentity(account *Account) map[string]any {
+	extra := map[string]any{}
+	for _, key := range []string{"enable_tls_fingerprint", "tls_fingerprint_profile_id", anthropicAPIKeyAuthSchemeExtraKey, codexFingerprintModeExtraKey, codexFingerprintSeedExtraKey} {
+		extra[key] = account.Extra[key]
+	}
+	extra[UpstreamModelMetadataExtraKey] = account.Extra[UpstreamModelMetadataExtraKey]
+	return map[string]any{
+		"platform": account.Platform, "type": account.Type, "credentials": account.Credentials,
+		"parent_account_id": account.ParentAccountID, "proxy_id": account.ProxyID,
+		"proxy_url": upstreamModelsProxyURL(account), "extra": extra,
+	}
+}
+
+func (s *AccountTestService) BatchSyncUpstreamModels(ctx context.Context, ids []int64) (*BatchUpstreamModelSyncResult, error) {
+	if len(ids) == 0 || len(ids) > UpstreamModelSyncMaxBatchSize {
+		return nil, newUpstreamModelSyncConfigError("Select between 1 and 20 accounts", nil)
+	}
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return nil, newUpstreamModelSyncConfigError("Account IDs must be positive and unique", nil)
+		}
+		seen[id] = true
+	}
+	repo, ok := s.accountRepo.(AccountModelSyncRepository)
+	if !ok {
+		return nil, newUpstreamModelSyncInternalError("Account model sync storage is unavailable", nil)
+	}
+	accounts, err := s.accountRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, newUpstreamModelSyncInternalError("Failed to load accounts", err)
+	}
+	byID := make(map[int64]*Account, len(accounts))
+	for _, account := range accounts {
+		byID[account.ID] = account
+	}
+	result := &BatchUpstreamModelSyncResult{Total: len(ids), Results: make([]AccountUpstreamModelSyncResult, len(ids))}
+	var wg sync.WaitGroup
+	jobs := make(chan int)
+	for worker := 0; worker < min(10, len(ids)); worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				id := ids[index]
+				entry := AccountUpstreamModelSyncResult{AccountID: id, Status: "failed"}
+				account := byID[id]
+				if account == nil {
+					entry.Error = "Account not found"
+				} else {
+					entry.Name = account.Name
+					if ctx.Err() != nil {
+						entry.Status = "canceled"
+						entry.Error = "Sync canceled before processing"
+					} else {
+						accountCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+						entry = s.syncAccountUpstreamModels(accountCtx, repo, account)
+						cancel()
+					}
+				}
+				result.Results[index] = entry
+			}
+		}()
+	}
+	for index := range ids {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+	for _, entry := range result.Results {
+		switch entry.Status {
+		case "success":
+			result.Success++
+		case "warning":
+			result.Warnings++
+		case "unsupported":
+			result.Unsupported++
+		default:
+			result.Failed++
+		}
+	}
+	return result, nil
+}
+
+func (s *AccountTestService) syncAccountUpstreamModels(ctx context.Context, repo AccountModelSyncRepository, account *Account) AccountUpstreamModelSyncResult {
+	entry := AccountUpstreamModelSyncResult{AccountID: account.ID, Name: account.Name, Status: "failed"}
+	expected, err := snapshotUpstreamModelSyncAccount(account)
+	if err != nil {
+		entry.Error = "Failed to read account configuration"
+		return entry
+	}
+	source, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if err != nil {
+		entry.Error = "Failed to resolve account credentials"
+		return entry
+	}
+	source, err = snapshotUpstreamModelSyncAccount(source)
+	if err != nil {
+		entry.Error = "Failed to read account credentials"
+		return entry
+	}
+	catalog, err := s.prepareUpstreamModelCatalog(ctx, account)
+	if err != nil {
+		var syncErr *UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			entry.Error = syncErr.SafeMessage()
+			if syncErr.Kind == UpstreamModelSyncErrorUnsupported {
+				entry.Status = "unsupported"
+			}
+		} else {
+			entry.Error = "Failed to sync upstream models"
+		}
+		if ctx.Err() != nil {
+			entry.Error = "Model sync canceled or timed out"
+		}
+		return entry
+	}
+	entry.ModelCount = len(catalog.Models)
+	entry.Warnings = catalog.Warnings
+	var mapping map[string]any
+	raw, _ := expected.Credentials["model_mapping"].(map[string]any)
+	if len(raw) > 0 && catalog.liveListAvailable {
+		mapping = make(map[string]any, len(raw)+len(catalog.Models))
+		for key, value := range raw {
+			mapping[key] = value
+		}
+		for _, model := range catalog.Models {
+			if strings.Contains(model, "*") {
+				continue
+			}
+			if _, exists := raw[model]; exists {
+				continue
+			}
+			if _, matched := expected.ResolveMappedModel(model); matched {
+				continue
+			}
+			mapping[model] = model
+			entry.AddedCount++
+		}
+		if entry.AddedCount == 0 {
+			mapping = nil
+		}
+	}
+	entry.MappingUnchanged = mapping == nil
+	if !catalog.liveListAvailable {
+		entry.ModelCount = 0
+		entry.Warnings = append(entry.Warnings, UpstreamModelSyncWarning{Code: "upstream_model_list_unavailable", Message: "Upstream model listing is unavailable; only existing model capabilities were refreshed."})
+	}
+	applied, err := repo.ApplyUpstreamModelSync(ctx, expected, source, mapping, catalog.snapshot)
+	if err != nil {
+		entry.AddedCount = 0
+		entry.Error = "Failed to save synced models"
+		return entry
+	}
+	if !applied {
+		entry.AddedCount = 0
+		entry.Error = "Account configuration changed during sync; retry with the current configuration"
+		return entry
+	}
+	if s.openaiGatewayService != nil {
+		s.openaiGatewayService.InvalidateOpenAIModelsCache(account.ID)
+	}
+	if s.gatewayService != nil {
+		groups := append([]int64{0}, account.GroupIDs...)
+		for _, groupID := range groups {
+			s.gatewayService.InvalidateAvailableModelsCache(&groupID, "")
+		}
+	}
+	entry.Status = "success"
+	if len(entry.Warnings) > 0 {
+		entry.Status = "warning"
+	}
+	return entry
+}
+
+func snapshotUpstreamModelSyncAccount(account *Account) (*Account, error) {
+	snapshot := *account
+	var err error
+	snapshot.Credentials, err = cloneAccountJSONMap(account.Credentials)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.Extra, err = cloneAccountJSONMap(account.Extra)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.ParentAccountID = cloneAccountValuePointer(account.ParentAccountID)
+	snapshot.ProxyID = cloneAccountValuePointer(account.ProxyID)
+	if account.Proxy != nil {
+		proxy := *account.Proxy
+		snapshot.Proxy = &proxy
+	}
+	return &snapshot, nil
 }

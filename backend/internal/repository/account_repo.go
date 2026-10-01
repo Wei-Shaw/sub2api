@@ -11,6 +11,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -4083,4 +4084,90 @@ func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID in
 		out = append(out, accountEntityToService(m))
 	}
 	return out, nil
+}
+
+// ApplyUpstreamModelSync holds row locks only while validating and committing.
+// Fetching the remote catalog must happen before entering this method.
+func (r *accountRepository) ApplyUpstreamModelSync(ctx context.Context, expected, source *service.Account, mapping map[string]any, snapshot *service.UpstreamModelMetadataSnapshot) (bool, error) {
+	baseCtx := ctx
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if dbent.TxFromContext(ctx) == nil {
+		var err error
+		tx, err = client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return false, err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+			ctx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+	rows, err := client.QueryContext(ctx, `SELECT id FROM accounts WHERE id IN ($1, $2) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, expected.ID, source.ID)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			break
+		}
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	_ = rows.Close()
+	if err != nil {
+		return false, err
+	}
+	lockedRepo := *r
+	lockedRepo.client = client
+	for _, original := range []*service.Account{expected, source} {
+		current, readErr := lockedRepo.GetByID(ctx, original.ID)
+		if errors.Is(readErr, service.ErrAccountNotFound) {
+			return false, nil
+		}
+		if readErr != nil {
+			return false, readErr
+		}
+		before, marshalErr := json.Marshal(service.UpstreamModelSyncIdentity(original))
+		if marshalErr != nil {
+			return false, marshalErr
+		}
+		after, marshalErr := json.Marshal(service.UpstreamModelSyncIdentity(current))
+		if marshalErr != nil {
+			return false, marshalErr
+		}
+		if !bytes.Equal(before, after) {
+			return false, nil
+		}
+	}
+	mappingJSON, err := json.Marshal(mapping)
+	if err != nil {
+		return false, err
+	}
+	snapshotJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		return false, err
+	}
+	if mapping != nil || snapshot != nil {
+		_, err = client.ExecContext(ctx, `UPDATE accounts SET
+			credentials = CASE WHEN $2::jsonb = 'null'::jsonb THEN credentials ELSE jsonb_set(COALESCE(credentials, '{}'::jsonb), '{model_mapping}', $2::jsonb) END,
+			extra = CASE WHEN $3::jsonb = 'null'::jsonb THEN extra ELSE COALESCE(extra, '{}'::jsonb) || jsonb_build_object('upstream_model_metadata', $3::jsonb) END,
+			updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, expected.ID, string(mappingJSON), string(snapshotJSON))
+		if err != nil {
+			return false, err
+		}
+		if err = enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &expected.ID, nil, nil); err != nil {
+			return false, err
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		r.syncSchedulerAccountSnapshot(baseCtx, expected.ID)
+	}
+	return true, nil
 }

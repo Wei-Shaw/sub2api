@@ -3035,6 +3035,32 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 	response.Success(c, catalog)
 }
 
+// BatchSyncUpstreamModels commits each selected account independently.
+func (h *AccountHandler) BatchSyncUpstreamModels(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid account IDs")
+		return
+	}
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+	result, err := h.accountTestService.BatchSyncUpstreamModels(c.Request.Context(), req.AccountIDs)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) && syncErr.Kind == service.UpstreamModelSyncErrorConfiguration {
+			response.BadRequest(c, syncErr.SafeMessage())
+		} else {
+			response.InternalError(c, "Failed to sync account models")
+		}
+		return
+	}
+	response.Success(c, result)
+}
+
 // SyncUpstreamModelsPreview handles syncing live supported models using provided credentials (no account ID needed).
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {

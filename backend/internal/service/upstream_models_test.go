@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1184,4 +1185,184 @@ func TestMatchModelsDevProviderOfficialHostsWithoutAPI(t *testing.T) {
 		Reasoning: new(bool), InputModalities: []string{"text"}, ContextWindow: 1050000,
 	}}
 	require.False(t, upstreamCatalogNeedsRegistry(capabilitySyncModelIDs([]string{"gpt-6-astra", "gpt-image-2"}), metadata))
+}
+
+type batchModelSyncRepo struct {
+	AccountRepository
+	mu       sync.Mutex
+	accounts map[int64]*Account
+	applied  map[int64]bool
+}
+
+func (r *batchModelSyncRepo) GetByIDs(_ context.Context, ids []int64) ([]*Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*Account
+	for _, id := range ids {
+		if a := r.accounts[id]; a != nil {
+			snapshot, err := snapshotUpstreamModelSyncAccount(a)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, snapshot)
+		}
+	}
+	return out, nil
+}
+func (r *batchModelSyncRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if a := r.accounts[id]; a != nil {
+		return snapshotUpstreamModelSyncAccount(a)
+	}
+	return nil, ErrAccountNotFound
+}
+func (r *batchModelSyncRepo) ApplyUpstreamModelSync(_ context.Context, expected, _ *Account, mapping map[string]any, snapshot *UpstreamModelMetadataSnapshot) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.accounts[expected.ID]
+	before, _ := json.Marshal(UpstreamModelSyncIdentity(expected))
+	after, _ := json.Marshal(UpstreamModelSyncIdentity(current))
+	if string(before) != string(after) {
+		return false, nil
+	}
+	if mapping != nil {
+		current.Credentials["model_mapping"] = mapping
+	}
+	if snapshot != nil {
+		current.SetUpstreamModelMetadataSnapshot(*snapshot)
+	}
+	if r.applied == nil {
+		r.applied = map[int64]bool{}
+	}
+	r.applied[expected.ID] = true
+	return true, nil
+}
+
+func TestBatchSyncUpstreamModelsPreservesConfigurationAndReportsEachAccount(t *testing.T) {
+	makeAccount := func(id int64) *Account {
+		return &Account{ID: id, Name: "account", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "secret", "base_url": "https://provider.example/v1"}, Extra: map[string]any{"custom": "keep"}}
+	}
+	repo := &batchModelSyncRepo{accounts: map[int64]*Account{}}
+	for id := int64(1); id <= 5; id++ {
+		repo.accounts[id] = makeAccount(id)
+	}
+	repo.accounts[1].Credentials["model_mapping"] = map[string]any{"alias": "old", "gpt-*": "old", "old": "old"}
+	repo.accounts[2].Platform = PlatformAnthropic
+	repo.accounts[4].Platform = "unsupported"
+	upstream := &codexModelsHTTPUpstreamStub{do: func(req *http.Request, _ string, id int64, _ int) (*http.Response, error) {
+		status := http.StatusOK
+		body := `{"models":[{"id":"old","reasoning":false,"input_modalities":["text"],"context_window":64000},{"id":"new","reasoning":false,"input_modalities":["text"],"context_window":64000},{"id":"gpt-6","reasoning":false,"input_modalities":["text"],"context_window":64000}]}`
+		if id == 3 {
+			status = http.StatusUnauthorized
+			body = `{"error":"secret"}`
+		}
+		if id == 5 {
+			body = `{"data":[{"id":"new"}]}`
+		}
+		if req.URL.String() == modelsDevRegistryURL {
+			status = http.StatusServiceUnavailable
+			body = `{}`
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	result, err := svc.BatchSyncUpstreamModels(context.Background(), []int64{1, 2, 3, 4, 5, 99})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Equal(t, 1, result.Warnings)
+	require.Equal(t, 1, result.Unsupported)
+	require.Equal(t, 2, result.Failed)
+	require.Equal(t, 1, result.Results[0].AddedCount)
+	require.Equal(t, map[string]any{"alias": "old", "gpt-*": "old", "old": "old", "new": "new"}, repo.accounts[1].Credentials["model_mapping"])
+	require.NotContains(t, repo.accounts[2].Credentials, "model_mapping")
+	require.Equal(t, "keep", repo.accounts[1].Extra["custom"])
+	require.NotContains(t, result.Results[2].Error, "secret")
+	require.False(t, repo.applied[3])
+	require.False(t, repo.applied[4])
+	result, err = svc.BatchSyncUpstreamModels(context.Background(), []int64{1})
+	require.NoError(t, err)
+	require.Zero(t, result.Results[0].AddedCount)
+}
+
+func TestBatchSyncUpstreamModelsValidation(t *testing.T) {
+	for _, ids := range [][]int64{nil, {0}, {-1}, {1, 1}, make([]int64, 21)} {
+		_, err := (&AccountTestService{}).BatchSyncUpstreamModels(context.Background(), ids)
+		require.Error(t, err)
+		var syncErr *UpstreamModelSyncError
+		require.ErrorAs(t, err, &syncErr)
+		require.Equal(t, UpstreamModelSyncErrorConfiguration, syncErr.Kind)
+	}
+}
+
+func TestBatchSyncUpstreamModelsCancellationStopsQueuedAccounts(t *testing.T) {
+	repo := &batchModelSyncRepo{accounts: map[int64]*Account{}}
+	var ids []int64
+	for id := int64(1); id <= 20; id++ {
+		ids = append(ids, id)
+		repo.accounts[id] = &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture"}}
+	}
+	started := make(chan struct{}, 20)
+	upstream := &codexModelsHTTPUpstreamStub{do: func(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		started <- struct{}{}
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan *BatchUpstreamModelSyncResult, 1)
+	go func() { result, _ := svc.BatchSyncUpstreamModels(ctx, ids); done <- result }()
+	for i := 0; i < 10; i++ {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("workers did not start")
+		}
+	}
+	cancel()
+	select {
+	case result := <-done:
+		require.Equal(t, 20, result.Failed)
+		require.Empty(t, repo.applied)
+		require.Empty(t, started)
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled batch did not stop")
+	}
+}
+
+func TestBatchSyncUpstreamModelsUnavailableListDoesNotAddMappings(t *testing.T) {
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture", "model_mapping": map[string]any{"alias": "old"}}}
+	repo := &batchModelSyncRepo{accounts: map[int64]*Account{1: account}}
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{StatusCode: 404, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	result, err := svc.BatchSyncUpstreamModels(context.Background(), []int64{1})
+	require.NoError(t, err)
+	require.Equal(t, "warning", result.Results[0].Status)
+	require.Zero(t, result.Results[0].ModelCount)
+	require.Zero(t, result.Results[0].AddedCount)
+	require.Equal(t, map[string]any{"alias": "old"}, account.Credentials["model_mapping"])
+	require.Equal(t, "upstream_model_list_unavailable", result.Results[0].Warnings[len(result.Results[0].Warnings)-1].Code)
+}
+
+func TestBatchSyncUpstreamModelsRejectsConcurrentEditing(t *testing.T) {
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture", "model_mapping": map[string]any{"old": "old"}}}
+	repo := &batchModelSyncRepo{accounts: map[int64]*Account{1: account}}
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		repo.mu.Lock()
+		repo.accounts[1].Credentials["model_mapping"] = map[string]any{"edited": "edited"}
+		repo.mu.Unlock()
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"id":"old","reasoning":false,"input_modalities":["text"],"context_window":64000},{"id":"new","reasoning":false,"input_modalities":["text"],"context_window":64000}]}`))}, nil
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	result, err := svc.BatchSyncUpstreamModels(context.Background(), []int64{1})
+	require.NoError(t, err)
+	require.Equal(t, "failed", result.Results[0].Status)
+	require.Contains(t, result.Results[0].Error, "configuration changed")
+	require.Zero(t, result.Results[0].AddedCount)
+	require.Empty(t, repo.applied)
+	require.Equal(t, map[string]any{"edited": "edited"}, account.Credentials["model_mapping"])
 }
