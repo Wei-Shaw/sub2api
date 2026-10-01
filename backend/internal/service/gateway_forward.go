@@ -93,6 +93,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	if account != nil && !account.IsAnthropicAPIKeyPassthroughEnabled() {
+		if err := parsed.normalizeCompatibilityBody(); err != nil {
+			return nil, fmt.Errorf("normalize compatibility request: %w", err)
+		}
+	}
 	// API-key mappings and OAuth native IDs are resolved before mimicry.
 	validationModel := parsed.Model
 	if account != nil {
@@ -100,7 +105,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			if resolved, ok := ResolveBedrockModelID(account, validationModel); ok {
 				validationModel = resolved
 			}
-		} else if account.Type == AccountTypeAPIKey {
+		} else if account.Type == AccountTypeAPIKey && !account.IsAnthropicAPIKeyPassthroughEnabled() {
 			validationModel = account.GetMappedModel(validationModel)
 		}
 	}
@@ -123,20 +128,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	beginUpstreamResponseModelObservation(c)
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
-	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
+	if account != nil && !account.IsAnthropicAPIKeyPassthroughEnabled() && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
-		passthroughModel := parsed.Model
-		if passthroughModel != "" {
-			if mappedModel := account.GetMappedModel(passthroughModel); mappedModel != passthroughModel {
-				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
-				logger.LegacyPrintf("service.gateway", "Passthrough model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
-				passthroughModel = mappedModel
-			}
-		}
+		passthroughModel := gjson.GetBytes(passthroughBody, "model").String()
+
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
 			Parsed:        parsed,
