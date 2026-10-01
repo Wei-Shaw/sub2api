@@ -812,6 +812,9 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	claude.SetCLIVersionResolver(func() string {
 		return svc.GetClaudeCodeClientVersion(context.Background())
 	})
+	xai.SetCLIIdentityResolver(func() xai.CLIIdentityPolicy {
+		return svc.GetGrokCLIIdentityPolicy(context.Background())
+	})
 	return svc
 }
 

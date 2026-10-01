@@ -456,6 +456,8 @@ const baseSettingsResponse = {
   fallback_model_antigravity: "",
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
+  unify_grok_client_version: true,
+  grok_cli_client_version: "",
   enable_identity_patch: false,
   identity_patch_prompt: "",
   ops_monitoring_enabled: false,
@@ -1388,6 +1390,34 @@ describe("admin SettingsView payment visible method controls", () => {
     const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(payload.grok_default_text_model).toBe("grok-custom-text");
     expect(payload.grok_cross_client_model_map_enabled).toBe(false);
+  });
+
+  it("loads and saves Grok CLI version unify settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      unify_grok_client_version: false,
+      grok_cli_client_version: "1.0.20",
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const unifyToggle = wrapper.get(
+      '[data-testid="unify-grok-client-version-toggle"]',
+    );
+    const versionInput = wrapper.get('[data-testid="grok-cli-client-version"]');
+    expect((unifyToggle.element as HTMLInputElement).checked).toBe(false);
+    expect((versionInput.element as HTMLInputElement).value).toBe("1.0.20");
+
+    await unifyToggle.setValue(true);
+    await versionInput.setValue("1.0.44");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload.unify_grok_client_version).toBe(true);
+    expect(payload.grok_cli_client_version).toBe("1.0.44");
   });
 
   it("loads and saves the OpenAI Responses first-token metric mode", async () => {

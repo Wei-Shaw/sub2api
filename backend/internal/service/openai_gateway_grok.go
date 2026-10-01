@@ -1586,7 +1586,7 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if account.IsGrokOAuth() {
-		applyGrokCLIHeaders(req.Header)
+		applyGrokCLIIdentity(req.Header, grokInboundHeaders(c))
 	}
 	applyGrokCacheHeaders(req.Header, cacheIdentity)
 	if c != nil {
@@ -1605,16 +1605,65 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 // Identity pins come from package xai so service-layer headers match the final
 // transport rewrite on cli-chat-proxy.grok.com.
 func applyGrokCLIHeaders(headers http.Header) {
+	applyGrokCLIIdentity(headers, nil)
+}
+
+func applyGrokCLIIdentity(headers http.Header, inbound http.Header) {
 	if headers == nil {
 		return
 	}
-	version := xai.ResolveCLIVersion()
-	headers.Set("User-Agent", xai.CLIUserAgent(version))
-	headers.Set("X-Grok-Client-Version", version)
-	headers.Set("x-grok-client-version", version)
-	headers.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
-	// Historical mode value expected by some unit tests / older CLI probes.
+	policy := xai.ResolveCLIIdentity()
+	version := policy.Version
+	if !policy.Unify {
+		if inboundVersion := inboundGrokCLIVersion(inbound); inboundVersion != "" {
+			version = inboundVersion
+			userAgent := inboundGrokCLIUserAgent(inbound)
+			if userAgent == "" {
+				userAgent = xai.CLIUserAgent(version)
+			}
+			stampGrokCLIIdentity(headers, version, userAgent)
+			return
+		}
+	}
+	xai.StampCLIIdentityHeaders(headers, version)
 	headers.Set("X-Grok-Client-Mode", "interactive")
+}
+
+func stampGrokCLIIdentity(headers http.Header, version, userAgent string) {
+	xai.StampCLIIdentityHeaders(headers, version)
+	if strings.TrimSpace(userAgent) != "" && userAgent != xai.CLIUserAgent(version) {
+		headers.Set("User-Agent", userAgent)
+	}
+	headers.Set("X-Grok-Client-Mode", "interactive")
+}
+
+func inboundGrokCLIVersion(inbound http.Header) string {
+	if inbound == nil {
+		return ""
+	}
+	version := strings.TrimSpace(inbound.Get("x-grok-client-version"))
+	if !xai.IsSupportedCLIVersion(version) {
+		return ""
+	}
+	return version
+}
+
+func inboundGrokCLIUserAgent(inbound http.Header) string {
+	if inbound == nil {
+		return ""
+	}
+	ua := strings.TrimSpace(inbound.Get("User-Agent"))
+	if !xai.IsGrokCLIUserAgent(ua) {
+		return ""
+	}
+	return ua
+}
+
+func grokInboundHeaders(c *gin.Context) http.Header {
+	if c == nil || c.Request == nil {
+		return nil
+	}
+	return c.Request.Header
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {

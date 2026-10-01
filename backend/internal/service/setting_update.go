@@ -493,6 +493,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 否则面板保存会把同步结果清空。
 	updates[SettingKeyClaudeCodeClientVersion] = NormalizeClaudeCodeClientVersion(settings.ClaudeCodeClientVersion)
 	updates[SettingKeyClaudeCodeVersionAutoSyncEnabled] = strconv.FormatBool(settings.ClaudeCodeVersionAutoSyncEnabled)
+	updates[SettingKeyUnifyGrokClientVersion] = strconv.FormatBool(settings.UnifyGrokClientVersion)
+	updates[SettingKeyGrokCLIClientVersion] = NormalizeGrokCLIClientVersion(settings.GrokCLIClientVersion)
 	// SettingKeyClaudeCodeClientVersionSynced 由自动同步任务独占写入，此处不得覆盖，
 	// 否则面板保存会把同步结果清空。
 	// codex_cli_only 加固
@@ -751,6 +753,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。
 	s.InvalidateOpenAICodexClientVersionCache()
 	s.InvalidateClaudeCodeClientVersionCache()
+	s.InvalidateGrokCLIIdentityCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
 		lowUpstreamRatePriorityEnabled: settings.OpenAILowUpstreamRatePriorityEnabled,

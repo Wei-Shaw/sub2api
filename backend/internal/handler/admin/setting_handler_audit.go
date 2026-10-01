@@ -497,6 +497,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ClaudeCodeVersionAutoSyncEnabled != after.ClaudeCodeVersionAutoSyncEnabled {
 		changed = append(changed, "claude_code_version_auto_sync_enabled")
 	}
+	if before.UnifyGrokClientVersion != after.UnifyGrokClientVersion {
+		changed = append(changed, "unify_grok_client_version")
+	}
+	if before.GrokCLIClientVersion != after.GrokCLIClientVersion {
+		changed = append(changed, "grok_cli_client_version")
+	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 	}

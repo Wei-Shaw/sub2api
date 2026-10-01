@@ -259,6 +259,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
 	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
+	UnifyGrokClientVersion                 *bool   `json:"unify_grok_client_version"`
+	GrokCLIClientVersion                   *string `json:"grok_cli_client_version"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1467,6 +1469,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		req.ClaudeCodeClientVersion = &normalized
 	}
+	if req.GrokCLIClientVersion != nil {
+		normalized := strings.TrimSpace(*req.GrokCLIClientVersion)
+		if normalized != "" && service.NormalizeGrokCLIClientVersion(normalized) == "" {
+			response.Error(c, http.StatusBadRequest, "grok_cli_client_version must be empty or a valid version >= 1.0.13 (e.g. 1.0.44)")
+			return
+		}
+		req.GrokCLIClientVersion = &normalized
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1800,6 +1810,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ClaudeCodeVersionAutoSyncEnabled
 			}
 			return previousSettings.ClaudeCodeVersionAutoSyncEnabled
+		}(),
+		UnifyGrokClientVersion: func() bool {
+			if req.UnifyGrokClientVersion != nil {
+				return *req.UnifyGrokClientVersion
+			}
+			return previousSettings.UnifyGrokClientVersion
+		}(),
+		GrokCLIClientVersion: func() string {
+			if req.GrokCLIClientVersion != nil {
+				return *req.GrokCLIClientVersion
+			}
+			return previousSettings.GrokCLIClientVersion
 		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
@@ -2353,6 +2375,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,
+		UnifyGrokClientVersion:                                 updatedSettings.UnifyGrokClientVersion,
+		GrokCLIClientVersion:                                   updatedSettings.GrokCLIClientVersion,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,
