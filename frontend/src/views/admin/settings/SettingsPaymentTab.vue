@@ -505,6 +505,14 @@
       </div>
     </div>
 
+    <!-- 充值优惠阶梯（独立卡片，与服务商管理同级） -->
+    <RechargeBonusTierEditor
+      v-if="form.payment_enabled"
+      v-model="form.payment_recharge_bonus_tiers"
+      v-model:mode="form.payment_recharge_bonus_mode"
+      v-model:notice="form.payment_recharge_bonus_notice"
+    />
+
     <!-- Provider Management -->
     <PaymentProviderList
       v-if="form.payment_enabled"
@@ -528,6 +536,7 @@
 import { useSettingsViewContext } from "./context";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
+import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
 import Select from "@/components/common/Select.vue";
 import Toggle from "@/components/common/Toggle.vue";
 

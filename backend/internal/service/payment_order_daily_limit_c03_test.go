@@ -64,11 +64,11 @@ func TestCreateOrderInTxSubscriptionConsumesDailyLimitInGatewayCurrency(t *testi
 	}
 	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}
 
-	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 10, 0, 250000, nil)
+	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 10, 0, 250000, 0, nil)
 	require.NoError(t, err)
 	require.Equal(t, 250000.0, first.PayAmount)
 
-	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 10, 0, 250000, nil)
+	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 10, 0, 250000, 0, nil)
 	require.Error(t, err)
 	require.Equal(t, "DAILY_LIMIT_PENDING_HOLD", infraerrors.Reason(err))
 }

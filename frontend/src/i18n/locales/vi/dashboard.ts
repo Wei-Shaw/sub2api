@@ -198,7 +198,12 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
+        systemOne: 'System One',
         opencode: 'OpenCode',
+      },
+      typesafe: {
+        description: 'Gọi Jev qua endpoint TypeSafe System One gốc.',
+        note: 'System One không hỗ trợ streaming và không tương thích với các client Chat Completions, Responses, Claude Code hoặc Codex.',
       },
       antigravity: {
         description: 'Cấu hình truy cập API cho nhóm Antigravity. Chọn phương thức cấu hình tùy theo client của bạn.',

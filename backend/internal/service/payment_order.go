@@ -80,11 +80,16 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	}
 	orderAmount := creditedUSD
 	limitAmount := gatewayAmount
+	bonusAmount := 0.0
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(creditedUSD, cfg.BalanceRechargeMultiplier)
+		// 阈值按网关币种的支付金额命中；赠送/折扣按 USD 到账基数计算。
+		quote := quoteRechargeBonusConverted(cfg, gatewayAmount, calculateCreditedBalance(creditedUSD, cfg.BalanceRechargeMultiplier), methodCurrency)
+		limitAmount = quote.PayBase
+		bonusAmount = quote.Bonus
+		orderAmount = quote.Credited
 	}
 	subscriptionRate, err := s.subscriptionGatewayRate(ctx, req.OrderType, methodCurrency, cfg.SubscriptionUSDToCNYRate)
 	if err != nil {
@@ -115,7 +120,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, feeRate, payAmount, bonusAmount, sel)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +160,19 @@ func (s *PaymentService) resolveOrderAmounts(ctx context.Context, req CreateOrde
 		return 0, 0, convErr
 	}
 	return charged, req.Amount, nil
+}
+
+// quoteRechargeBonusConverted 是 quoteRechargeBonus 的换汇版：上游假设「支付金额 × 倍率 = 到账」，
+// 本 fork 支付币种（VND）与到账币种（USD）不同。这里把「USD 到账基数 / 网关金额」作为等效倍率传给
+// 上游报价，阶梯仍按网关币种金额命中，赠送/折扣额度落在 USD 上。
+func quoteRechargeBonusConverted(cfg *PaymentConfig, gatewayAmount, baseCredited float64, currency string) rechargeBonusQuote {
+	// baseCredited 为 0 时等效倍率会被归一成 1，等于把 VND 当 USD 记账，必须提前挡住。
+	if cfg == nil || gatewayAmount <= 0 || baseCredited <= 0 {
+		return rechargeBonusQuote{PayBase: gatewayAmount, Credited: baseCredited}
+	}
+	fx := *cfg
+	fx.BalanceRechargeMultiplier = baseCredited / gatewayAmount
+	return quoteRechargeBonus(&fx, gatewayAmount, currency)
 }
 
 // NormalizeAmountCurrency 归一化用户所选的填写币种。
@@ -253,7 +271,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, feeRate, payAmount, bonusAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -298,6 +316,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetAmount(orderAmount).
 		SetPayAmount(payAmount).
 		SetFeeRate(feeRate).
+		SetBonusAmount(bonusAmount).
 		SetRechargeCode(rechargeCode).
 		SetOutTradeNo(outTradeNo).
 		SetPaymentType(req.PaymentType).
@@ -659,6 +678,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), map[string]any{
 		"paymentAmount":  req.Amount,
 		"creditedAmount": order.Amount,
+		"bonusAmount":    order.BonusAmount,
 		"payAmount":      order.PayAmount,
 		"paymentType":    req.PaymentType,
 		"orderType":      req.OrderType,
@@ -871,6 +891,7 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 		Amount:      order.Amount,
 		PayAmount:   payAmount,
 		FeeRate:     order.FeeRate,
+		BonusAmount: order.BonusAmount,
 		Status:      OrderStatusPending,
 		ResultType:  resultType,
 		PaymentType: req.PaymentType,

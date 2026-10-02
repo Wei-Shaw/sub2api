@@ -31,7 +31,11 @@
           <dt class="text-meta font-medium text-fg-muted">{{ t('payment.orders.payAmount') }}</dt>
           <dd class="text-body font-bold tabular-nums text-fg">{{ paymentAmountSymbol }}{{ order.pay_amount.toFixed(2) }}</dd>
         </div>
-        <div v-if="order.amount !== order.pay_amount" class="flex items-baseline justify-between gap-3 border-b border-border py-2">
+        <div v-if="(order.bonus_amount ?? 0) > 0" class="flex items-baseline justify-between gap-3 border-b border-border py-2">
+          <dt class="text-meta font-medium text-fg-muted">{{ t('payment.orders.bonusAmount') }}</dt>
+          <dd class="text-body font-semibold tabular-nums text-accent-strong">+{{ creditedAmountSymbol }}{{ (order.bonus_amount ?? 0).toFixed(2) }}</dd>
+        </div>
+        <div v-if="order.amount !== order.pay_amount || (order.bonus_amount ?? 0) > 0" class="flex items-baseline justify-between gap-3 border-b border-border py-2">
           <dt class="text-meta font-medium text-fg-muted">{{ t('payment.orders.creditedAmount') }}</dt>
           <dd class="text-body font-semibold tabular-nums text-fg">{{ creditedAmountSymbol }}{{ order.amount.toFixed(2) }}</dd>
         </div>

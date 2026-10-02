@@ -319,11 +319,15 @@ type UpdateSettingsRequest struct {
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
 	PaymentExchangeRateMarkup        *float64 `json:"payment_exchange_rate_markup_percent"`
 	PaymentExchangeRateMaxAgeHours   *int     `json:"payment_exchange_rate_max_age_hours"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
-	PaymentHelpText                  *string  `json:"payment_help_text"`
+	// nil 表示不更新；空数组表示清空阶梯
+	PaymentRechargeBonusTiers  *[]dto.RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode   *string                  `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice *string                  `json:"payment_recharge_bonus_notice"`
+	PaymentLoadBalanceStrat    *string                  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix   *string                  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix   *string                  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL        *string                  `json:"payment_help_image_url"`
+	PaymentHelpText            *string                  `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -2147,6 +2151,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			RechargeFeeRate:           req.PaymentRechargeFeeRate,
 			ExchangeRateMarkupPercent: req.PaymentExchangeRateMarkup,
 			ExchangeRateMaxAgeHours:   req.PaymentExchangeRateMaxAgeHours,
+			RechargeBonusTiers:        rechargeBonusTiersFromDTO(req.PaymentRechargeBonusTiers),
+			RechargeBonusMode:         req.PaymentRechargeBonusMode,
+			RechargeBonusNotice:       req.PaymentRechargeBonusNotice,
 			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:         req.PaymentProductNamePrefix,
 			ProductNameSuffix:         req.PaymentProductNameSuffix,
@@ -2422,6 +2429,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentRechargeFeeRate:                                 updatedPaymentCfg.RechargeFeeRate,
 		PaymentExchangeRateMarkupPercent:                       updatedPaymentCfg.ExchangeRateMarkupPercent,
 		PaymentExchangeRateMaxAgeHours:                         updatedPaymentCfg.ExchangeRateMaxAgeHours,
+		PaymentRechargeBonusTiers:                              rechargeBonusTiersToDTO(updatedPaymentCfg.RechargeBonusTiers),
+		PaymentRechargeBonusMode:                               rechargeBonusModeToDTO(updatedPaymentCfg.RechargeBonusMode),
+		PaymentRechargeBonusNotice:                             updatedPaymentCfg.RechargeBonusNotice,
 		PaymentLoadBalanceStrat:                                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               updatedPaymentCfg.ProductNamePrefix,
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
@@ -2498,6 +2508,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
 		req.PaymentRechargeFeeRate != nil ||
 		req.PaymentExchangeRateMarkup != nil || req.PaymentExchangeRateMaxAgeHours != nil ||
+		req.PaymentRechargeBonusTiers != nil || req.PaymentRechargeBonusMode != nil || req.PaymentRechargeBonusNotice != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||

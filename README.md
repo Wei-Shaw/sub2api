@@ -827,6 +827,31 @@ Administrators can override automatic media eligibility through the account crea
 
 ---
 
+## TypeSafe / Jev Support
+
+Sub2API supports TypeSafe API-key accounts through Jev's native, non-streaming System One protocol.
+
+- Platform: `typesafe`; account type: API Key
+- Default upstream: `https://api.typesafe.ai`
+- Public endpoint: `POST /v1/systemone`
+- Model: `jev-latest`, also returned by `/v1/models` for TypeSafe groups
+- Questions: `noul`, `choice`, and `score`
+
+Requests and successful responses retain the native System One JSON structure. This endpoint is not compatible with Chat Completions, Responses, Anthropic Messages, or streaming clients.
+
+Question validation follows the TypeSafe OpenAPI wire schema (also used by SDK v0.5.7). `instructions` may be omitted or `null` for all question types. Noul `criteria` may be omitted or `null`; its `true`/`false` descriptions and Choice descriptions accept strings, objects, arrays, or `null`. Score `criteria` must be a non-empty array of string, object, or array descriptions; a single level is valid. SDK integer-keyed Score maps are normalized to arrays by the SDK before sending.
+
+```bash
+curl https://your-sub2api.example.com/v1/systemone \
+  -H 'Authorization: Bearer sk-your-sub2api-key' \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"jev-latest","state":"Text to evaluate","questions":{"safety":{"type":"noul","instructions":"Evaluate whether the text is unsafe"}}}'
+```
+
+The built-in `jev-latest` price is `$0.042` per million input tokens and `$0` for output tokens. Channel pricing can override both values. Credential, billing, permission, rate-limit, overload, server, and network failures (`401`, `402`, `403`, `429`, `529`, `5xx`, transport errors) use the existing account error policy (including custom error codes and temporary-unschedulable rules) and fail over to another account; request errors (`400`, `413`, and `422`) are returned without retrying another account and never change account state. TypeSafe groups (and Composite requests routed to TypeSafe) reject Messages, Chat Completions, Responses, and count_tokens requests with `404`.
+
+---
+
 ## Antigravity Support
 
 Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.

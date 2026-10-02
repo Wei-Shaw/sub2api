@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -810,4 +811,20 @@ func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {
 	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/bind/start")
 	require.Contains(t, resp.Data.AuthorizeURL, "intent=bind_current_user")
 	require.Contains(t, resp.Data.AuthorizeURL, "redirect=%2Fsettings%2Fprofile")
+}
+
+func (s *userHandlerEmailCacheStub) IncrVerificationCodeAttempts(context.Context, string) (int, error) {
+	if s.data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	s.data.Attempts++
+	return s.data.Attempts, nil
+}
+
+func (s *userHandlerEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *userHandlerEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
 }
