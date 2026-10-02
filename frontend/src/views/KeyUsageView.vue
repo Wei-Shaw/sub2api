@@ -299,6 +299,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
 import { formatDateLocalInput } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
+import type { ModelStat } from '@/types'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -331,8 +332,59 @@ const isQuerying = ref(false)
 const showResults = ref(false)
 const showLoading = ref(false)
 const showDatePicker = ref(false)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const resultData = ref<any>(null)
+
+// GET /v1/usage 响应（backend/internal/handler/gateway_handler.go: usageQuotaLimited / usageUnrestricted）
+interface UsageTotals {
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
+}
+
+interface RateLimitWindow {
+  window: string
+  limit: number
+  used: number
+  remaining: number
+  reset_at?: string | null
+}
+
+interface KeyUsageResponse {
+  mode: 'quota_limited' | 'unrestricted'
+  isValid?: boolean
+  status?: string
+  planName?: string
+  remaining?: number
+  balance?: number
+  quota?: { limit: number; used: number; remaining: number }
+  rate_limits?: RateLimitWindow[]
+  expires_at?: string | null
+  days_until_expiry?: number | null
+  subscription?: {
+    daily_usage_usd: number
+    weekly_usage_usd: number
+    monthly_usage_usd: number
+    daily_limit_usd?: number | null
+    weekly_limit_usd?: number | null
+    monthly_limit_usd?: number | null
+    expires_at?: string | null
+  }
+  usage?: {
+    today?: Partial<UsageTotals>
+    total?: Partial<UsageTotals>
+    average_duration_ms?: number
+    rpm?: number
+    tpm?: number
+  }
+  daily_usage?: DailyUsageRow[] | null
+  model_stats?: ModelStat[] | null
+}
+
+const resultData = ref<KeyUsageResponse | null>(null)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
 
@@ -374,13 +426,14 @@ function getDateParams(): string {
       params.set('end_date', customEndDate.value)
     }
   } else {
+    // 后端 end_date 含当天，所以 N 天 = 今天往前 N-1 天
+    const daysAgo = (n: number) => formatDateLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n))
     const end = formatDateLocalInput(now)
     let start: string
     switch (currentRange.value) {
       case 'today': start = end; break
-      case '7d': start = formatDateLocalInput(new Date(now.getTime() - 7 * 86400000)); break
-      case '30d': start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000)); break
-      default: start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000))
+      case '7d': start = daysAgo(6); break
+      default: start = daysAgo(29)
     }
     params.set('start_date', start)
     params.set('end_date', end)
@@ -411,6 +464,13 @@ interface RingItem {
 
 // ==================== Computed Data ====================
 
+// 余额模式下后端 planName 固定返回中文「钱包余额」，这里按 balance 字段判断并本地化
+const planLabel = computed(() => {
+  const data = resultData.value
+  if (!data || data.balance != null || !data.planName) return t('keyUsage.walletBalance')
+  return data.planName
+})
+
 const statusInfo = computed(() => {
   const data = resultData.value
   if (!data) return null
@@ -418,20 +478,20 @@ const statusInfo = computed(() => {
   if (data.mode === 'quota_limited') {
     const isValid = data.isValid !== false
     const statusMap: Record<string, string> = {
-      active: 'Active',
-      quota_exhausted: 'Quota Exhausted',
-      expired: 'Expired',
+      active: t('keyUsage.statusActive'),
+      quota_exhausted: t('keyUsage.statusQuotaExhausted'),
+      expired: t('keyUsage.statusExpired'),
     }
     return {
       label: t('keyUsage.quotaMode'),
-      statusText: statusMap[data.status] || data.status || 'Unknown',
+      statusText: (data.status && statusMap[data.status]) || t('keyUsage.statusUnknown'),
       isActive: isValid && data.status === 'active',
     }
   }
 
   return {
-    label: data.planName || t('keyUsage.walletBalance'),
-    statusText: 'Active',
+    label: planLabel.value,
+    statusText: t('keyUsage.statusActive'),
     isActive: true,
   }
 })
@@ -534,7 +594,7 @@ const detailRows = computed<DetailRow[]>(() => {
       })
     }
     if (data.rate_limits) {
-      const windowMap: Record<string, string> = { '5h': '5H', '1d': locale.value === 'zh' ? '日' : 'D', '7d': '7D' }
+      const windowMap: Record<string, string> = { '5h': '5H', '1d': t('keyUsage.windowDay'), '7d': '7D' }
       for (const rl of data.rate_limits) {
         const pct = rl.limit > 0 ? (rl.used / rl.limit) * 100 : 0
         let valueStr = `${usd(rl.used)} / ${usd(rl.limit)}`
@@ -553,28 +613,22 @@ const detailRows = computed<DetailRow[]>(() => {
     rows.push({
       // 订阅功能关闭后这一行只会是「钱包余额」，标签改用不带「订阅」字样的「计费方式」。
       label: subscriptionFeatureEnabled.value ? t('keyUsage.subscriptionType') : t('keyUsage.billingType'),
-      value: data.planName || t('keyUsage.walletBalance'), valueClass: '',
+      value: planLabel.value, valueClass: '',
     })
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.daily_limit_usd > 0) {
-        const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
-        rows.push({
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.weekly_limit_usd > 0) {
-        const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
-        rows.push({
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.monthly_limit_usd > 0) {
-        const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
-        rows.push({
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
+      const limits = [
+        { key: 'keyUsage.windowDay', usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
+        { key: 'keyUsage.windowWeek', usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
+        { key: 'keyUsage.windowMonth', usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
+      ]
+      for (const l of limits) {
+        if (l.limit != null && l.limit > 0) {
+          rows.push({
+            label: `${t('keyUsage.usedQuota')} (${t(l.key)})`, value: `${usd(l.usage)} / ${usd(l.limit)}`, valueClass: getUsageColor((l.usage / l.limit) * 100),
+          })
+        }
       }
       if (sub.expires_at) {
         rows.push({
@@ -629,8 +683,7 @@ const usageStatCells = computed<StatCell[]>(() => {
 // 今日 8 项与累计 8 项并排成两栏
 const usageStatRows = [0, 1, 2, 3, 4, 5, 6, 7]
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
+const modelStats = computed<ModelStat[]>(() => resultData.value?.model_stats || [])
 
 interface DailyUsageRow {
   date: string
@@ -680,13 +733,11 @@ const modelStatsColumns = computed<Column[]>(() => [
 
 // ==================== Utility Functions ====================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sumBy(rows: any[], key: string): number {
+function sumBy<T>(rows: T[], key: keyof T): number {
   return rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sumCost(rows: any[]): number {
+function sumCost(rows: { cost: number; actual_cost?: number | null }[]): number {
   return rows.reduce((acc, r) => acc + (Number(r.actual_cost != null ? r.actual_cost : r.cost) || 0), 0)
 }
 
@@ -702,9 +753,7 @@ function fmtNum(val: number | null | undefined): string {
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-'
-  const d = new Date(iso)
-  const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
-  return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+  return new Date(iso).toLocaleDateString(locale.value, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 function getBrowserTimezone(): string {
