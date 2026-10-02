@@ -270,8 +270,12 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
   return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
 }
 
-/** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
-export function cnSupportsNativeResponses(platform: string): boolean {
+/** DeepSeek、Kimi、MiniMax 与 GLM Coding Plan 提供原生 Responses 端点。 */
+export function cnSupportsNativeResponses(
+  platform: string,
+  mode: CnAccountMode | OpenCodeAccountMode = 'payg'
+): boolean {
+  if (platform === 'zhipu') return mode === 'coding'
   return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go'
 }
 
@@ -383,7 +387,8 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
     { mode: 'payg', protocol: 'anthropic', label: 'GLM Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
     { mode: 'coding', protocol: 'chat_completions', label: 'GLM Coding', url: 'https://open.bigmodel.cn/api/coding/paas/v4' },
-    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' }
+    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'GLM Coding Responses', url: 'https://open.bigmodel.cn/api/v1' }
   ],
   deepseek: [
     { mode: 'payg', protocol: 'chat_completions', label: 'DeepSeek', url: 'https://api.deepseek.com' },
@@ -428,11 +433,12 @@ export function defaultCNBaseUrl(
         return ''
     }
   }
-  // responses：Kimi / DeepSeek / MiniMax 的 base 与 chat_completions 相同（端点路径差异由后端处理）。
+  // responses：多数供应商 base 与 chat_completions 相同；GLM Coding Plan 官方为 /api/v1。
   switch (platform) {
     case 'kimi':
       return mode === 'coding' ? 'https://api.kimi.com/coding/v1' : 'https://api.moonshot.cn/v1'
     case 'zhipu':
+      if (mode === 'coding' && protocol === 'responses') return 'https://open.bigmodel.cn/api/v1'
       return mode === 'coding'
         ? 'https://open.bigmodel.cn/api/coding/paas/v4'
         : 'https://open.bigmodel.cn/api/paas/v4'
@@ -455,7 +461,7 @@ export function defaultCNAdaptiveBaseUrls(
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: cnSupportsNativeResponses(platform, mode) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 
