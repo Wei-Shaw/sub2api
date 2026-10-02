@@ -9,6 +9,7 @@ import {
   prepareOAuthBindAccessTokenCookie,
   type WeChatOAuthPublicSettings,
 } from './auth'
+import { openTelegramPopup, runTelegramPopup } from '@/utils/telegramLogin'
 import type {
   User,
   ChangePasswordRequest,
@@ -172,7 +173,18 @@ export async function startOAuthBinding(
   if (!startURL) {
     return
   }
-  await prepareOAuthBindAccessTokenCookie()
+  // Telegram's auth page only works as a popup; open it before the await so it isn't blocked.
+  const telegramPopup = provider === 'telegram' ? openTelegramPopup() : null
+  try {
+    await prepareOAuthBindAccessTokenCookie()
+  } catch (error) {
+    telegramPopup?.close()
+    throw error
+  }
+  if (telegramPopup) {
+    void runTelegramPopup(telegramPopup, startURL)
+    return
+  }
   window.location.href = startURL
 }
 

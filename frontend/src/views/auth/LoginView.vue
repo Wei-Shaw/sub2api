@@ -232,6 +232,7 @@
 </template>
 
 <script setup lang="ts">
+import { openTelegramPopup, runTelegramPopup } from '@/utils/telegramLogin'
 import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -676,15 +677,25 @@ async function handlePasskeyLogin(): Promise<void> {
 async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
   if (authActionDisabled.value) return
 
+  // Telegram's auth page only works as a popup (it closes itself when done).
+  const telegramPopup = request.provider === 'telegram' ? openTelegramPopup() : null
+  const navigate = (url: string): void => {
+    if (telegramPopup) void runTelegramPopup(telegramPopup, url)
+    else window.location.href = url
+  }
+
   if (!actionCaptchaEnabled.value) {
-    window.location.href = buildOAuthLoginStartURL(request)
+    navigate(buildOAuthLoginStartURL(request))
     return
   }
 
   isLoading.value = true
   try {
     const proof = await turnstileRef.value?.verifyAction()
-    if (!proof) return
+    if (!proof) {
+      telegramPopup?.close()
+      return
+    }
 
     const result = await startOAuthLogin(
       request,
@@ -695,8 +706,9 @@ async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
           }
         : { turnstile_token: proof.token }
     )
-    window.location.href = result.authorize_url
+    navigate(result.authorize_url)
   } catch (error: unknown) {
+    telegramPopup?.close()
     errorMessage.value = extractI18nErrorMessage(
       error,
       t,

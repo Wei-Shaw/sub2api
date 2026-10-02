@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { buildApiUrl } from '@/api/url'
+import { postTelegramAuthResult, TELEGRAM_POPUP_RESULT_EVENT } from '@/utils/telegramLogin'
 import LinuxDoCallbackView from './LinuxDoCallbackView.vue'
 
 const { t } = useI18n()
@@ -24,15 +24,12 @@ const tgAuthResult = new URLSearchParams(window.location.hash.slice(1)).get('tgA
 onMounted(() => {
   if (!tgAuthResult) return
   history.replaceState(null, '', window.location.pathname + window.location.search)
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = buildApiUrl('/auth/oauth/telegram/callback')
-  const input = document.createElement('input')
-  input.type = 'hidden'
-  input.name = 'tg_auth_result'
-  input.value = tgAuthResult
-  form.appendChild(input)
-  document.body.appendChild(form)
-  form.submit()
+  // Inside the login popup: hand the result to the page that opened it.
+  if (window.opener && window.opener !== window) {
+    window.opener.postMessage({ event: TELEGRAM_POPUP_RESULT_EVENT, result: tgAuthResult }, window.location.origin)
+    window.close()
+    return
+  }
+  postTelegramAuthResult(tgAuthResult)
 })
 </script>
