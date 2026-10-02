@@ -47,7 +47,45 @@
         </svg>
         {{ t('admin.accounts.cnProviders.probe') }}
       </button>
+
+      <!-- 智谱周额度重置：显隐与官网「用量重置额度」卡片同源——
+           仅当存在 available=true 的周重置次数时展示。 -->
+      <button
+        v-if="resetAvailable"
+        type="button"
+        data-test="cn-provider-quota-reset"
+        class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-900/30"
+        :disabled="resetting || loading"
+        :title="resetTooltip"
+        @click="showResetConfirm = true"
+      >
+        <svg
+          class="h-2.5 w-2.5"
+          :class="{ 'animate-spin': resetting }"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+        {{ t('admin.accounts.cnProviders.reset') }}
+      </button>
     </div>
+
+    <ConfirmDialog
+      :show="showResetConfirm"
+      :title="t('admin.accounts.cnProviders.resetConfirmTitle')"
+      :message="t('admin.accounts.cnProviders.resetConfirmMessage')"
+      :confirm-text="t('admin.accounts.cnProviders.reset')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleReset()"
+      @cancel="showResetConfirm = false"
+    />
 
     <div
       v-if="error"
@@ -65,6 +103,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { cnQuotaCellVisible } from './credentialsBuilder'
 import UsageProgressBar from './UsageProgressBar.vue'
 
@@ -103,6 +142,11 @@ const readExtraString = (key: string): string => {
   return typeof v === 'string' ? v : ''
 }
 
+const readExtraBool = (key: string): boolean => {
+  const v = (props.account.extra as Record<string, unknown> | undefined)?.[key]
+  return v === true
+}
+
 // 从持久化快照构造展示数据（缺少 5h/weekly 两档键时返回 null）。
 const snapshotData = computed<CNProviderQuotaProbeResult | null>(() => {
   const platform = props.account.platform
@@ -121,6 +165,26 @@ const snapshotData = computed<CNProviderQuotaProbeResult | null>(() => {
     tiers.push({ window: 'monthly', used_percent: usedMonthly, reset_at: readExtraString(`${platform}_monthly_reset_at`) || undefined })
   }
   return { success: true, tiers } as CNProviderQuotaProbeResult
+})
+
+// 智谱周额度重置按钮显隐（与官网「用量重置额度」卡片同源：有 available=true 的
+// 周重置次数才显示）。优先用本次会话的实时探测结果；尚未探测时回落持久化快照。
+const snapshotResetAvailable = computed(() =>
+  readExtraBool(`${props.account.platform}_week_reset_available`)
+)
+
+const isZhipu = computed(() => props.account.platform === 'zhipu')
+
+const resetAvailable = computed(() => {
+  if (!isZhipu.value) return false
+  if (data.value?.success) return data.value.reset_available === true
+  return snapshotResetAvailable.value
+})
+
+const resetTooltip = computed(() => {
+  const expire = data.value?.week_reset_expire_at || readExtraString(`${props.account.platform}_week_reset_expire_at`)
+  const base = t('admin.accounts.cnProviders.resetTooltip')
+  return expire ? `${base}（${t('admin.accounts.cnProviders.resetExpire')}: ${expire}）` : base
 })
 
 // 快照是否过期（无更新时间或超过 staleness 窗口）→ 挂载时需要自动探测。
@@ -190,12 +254,40 @@ const handleProbe = async () => {
   }
 }
 
+const resetting = ref(false)
+const showResetConfirm = ref(false)
+
+const handleReset = async () => {
+  showResetConfirm.value = false
+  if (resetting.value || loading.value) return
+  resetting.value = true
+  error.value = null
+  try {
+    const result = await adminAPI.cnProviders.resetQuota(props.account.id)
+    if (result.success) {
+      // 后端已带回刷新后的用量快照（reset_available 同步更新，按钮随即隐藏）。
+      if (result.probe?.success) {
+        data.value = result.probe
+      } else {
+        await handleProbe()
+      }
+    } else {
+      error.value = result.error || t('common.error')
+    }
+  } catch (e) {
+    error.value = extractErrorMessage(e)
+  } finally {
+    resetting.value = false
+  }
+}
+
 watch(
   () => props.account.id,
   () => {
     data.value = null
     error.value = null
     loading.value = false
+    showResetConfirm.value = false
   }
 )
 </script>
