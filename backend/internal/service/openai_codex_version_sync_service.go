@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
+	"math/rand/v2"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +28,8 @@ const (
 	// openAICodexVersionTagPrefix 客户端 release 的 tag 前缀（如 rust-v0.146.0）。
 	// 同仓库还有其他组件的 tag（如 rusty-v8-*），必须按前缀过滤，否则会同步到无关版本号。
 	openAICodexVersionTagPrefix = "rust-v"
+	// 每个常规周期最多追加三次恢复检查；不是无限重试或高频轮询。
+	openAICodexVersionMaxRetries = 3
 )
 
 // OpenAICodexVersionSyncService 周期性把官方 Codex 客户端的最新稳定版版本号同步到设置，
@@ -39,6 +45,15 @@ type OpenAICodexVersionSyncService struct {
 	stopCh         chan struct{}
 	stopOnce       sync.Once
 	wg             sync.WaitGroup
+	startOnce      sync.Once
+	lifecycleMu    sync.Mutex
+	stopped        bool
+	runMu          sync.Mutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	state          OpenAICodexVersionSyncState
+	now            func() time.Time
+	retryJitter    func() time.Duration
 }
 
 func NewOpenAICodexVersionSyncService(
@@ -47,12 +62,18 @@ func NewOpenAICodexVersionSyncService(
 	githubClient GitHubReleaseClient,
 	interval time.Duration,
 ) *OpenAICodexVersionSyncService {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &OpenAICodexVersionSyncService{
 		settingRepo:    settingRepo,
 		settingService: settingService,
 		githubClient:   githubClient,
 		interval:       interval,
 		stopCh:         make(chan struct{}),
+		ctx:            ctx,
+		cancel:         cancel,
+		now:            time.Now,
+		retryJitter:    func() time.Duration { return time.Duration(rand.IntN(10)) * time.Second },
+		state:          OpenAICodexVersionSyncState{Status: "never_checked"},
 	}
 }
 
@@ -60,52 +81,82 @@ func (s *OpenAICodexVersionSyncService) Start() {
 	if s == nil || s.settingRepo == nil || s.githubClient == nil || s.interval <= 0 {
 		return
 	}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ticker := time.NewTicker(s.interval)
-		defer ticker.Stop()
-
-		s.runInitial()
-		for {
-			select {
-			case <-ticker.C:
-				s.runOnce()
-			case <-s.stopCh:
-				return
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopped {
+		return
+	}
+	s.startOnce.Do(func() {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.runInitial()
+			timer := time.NewTimer(s.nextDelay())
+			defer timer.Stop()
+			for {
+				select {
+				case <-timer.C:
+					s.runOnce()
+					timer.Reset(s.nextDelay())
+				case <-s.stopCh:
+					return
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 func (s *OpenAICodexVersionSyncService) Stop() {
 	if s == nil {
 		return
 	}
+	s.lifecycleMu.Lock()
+	s.stopped = true
 	s.stopOnce.Do(func() {
+		s.cancel()
 		close(s.stopCh)
 	})
+	s.lifecycleMu.Unlock()
 	s.wg.Wait()
 }
 
-// runInitial 执行启动时的首次同步。若同步值在一个同步周期内已被刷新过则跳过：
+// runInitial 恢复已保存的检查计划；旧实例没有历史时才使用版本行时间防抖。
+// 若同步值在一个同步周期内已被刷新过则跳过：
 // 频繁重启、滚动发布或崩溃重启会让「启动即同步」放大成对 GitHub 的连续请求，
 // 而版本号是天级变化的，重启后没有立刻重新拉取的必要。
 func (s *OpenAICodexVersionSyncService) runInitial() {
-	if s.syncedWithinInterval() {
+	ctx, cancel := context.WithTimeout(s.ctx, openAICodexVersionSyncTimeout)
+	defer cancel()
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAICodexVersionSyncState)
+	if err == nil {
+		s.state, err = decodeCodexVersionSyncState(value)
+	}
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		// 状态不可读时不能假设没有冷却；等待常规周期，避免重启放大请求。
+		s.schedule(s.now().Add(s.interval))
+		slog.Warn("openai_codex_version_sync_state_read_failed")
+		return
+	}
+	if s.state.NextCheckAt != nil && s.state.NextCheckAt.After(s.now()) {
+		return
+	}
+	if value == "" && s.syncedWithinInterval() {
+		// 老实例没有检查历史，不能把版本更新时间冒充成功检查时间。
+		s.schedule(s.now().Add(s.interval))
+		s.persistState()
 		return
 	}
 	s.runOnce()
 }
 
 // syncedWithinInterval 判断已同步值是否仍在一个同步周期内。
-// 借设置行自身的 UpdatedAt 判断，无需额外记录时间戳的设置项。
+// 仅供没有检查记录的旧实例启动时使用，不把 UpdatedAt 当成功检查时间。
 // 读取失败或尚无有效同步值时返回 false，让启动同步照常执行。
 func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
 	if s.interval <= 0 {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), openAICodexVersionSyncTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, openAICodexVersionSyncTimeout)
 	defer cancel()
 
 	setting, err := s.settingRepo.Get(ctx, SettingKeyOpenAICodexClientVersionSynced)
@@ -115,37 +166,65 @@ func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
 	if NormalizeCodexClientVersion(setting.Value) == "" {
 		return false
 	}
-	return time.Since(setting.UpdatedAt) < s.interval
+	age := s.now().Sub(setting.UpdatedAt)
+	return age >= 0 && age < s.interval
 }
 
 func (s *OpenAICodexVersionSyncService) runOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), openAICodexVersionSyncTimeout)
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	ctx, cancel := context.WithTimeout(s.ctx, openAICodexVersionSyncTimeout)
 	defer cancel()
+	if ctx.Err() != nil {
+		return
+	}
+	// 定时器之外的调用同样必须尊重已保存的冷却时间。
+	if s.state.NextCheckAt != nil && s.state.NextCheckAt.After(s.now()) {
+		return
+	}
 
 	if !s.autoSyncEnabled(ctx) {
+		s.schedule(s.now().Add(s.interval))
+		s.persistState()
+		return
+	}
+	if s.state.RetryExhausted {
+		s.state.RetryCount = 0
+		s.state.RetryExhausted = false
+	}
+	checked := s.now().UTC()
+	s.state.LastCheckedAt = &checked
+
+	currentValue, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAICodexClientVersionSynced)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		s.recordFailure(&GitHubAPIError{Code: "settings_read_failed"})
+		return
+	}
+	current := NormalizeCodexClientVersion(currentValue)
+	latest, err := s.fetchLatestStableVersion(ctx)
+	if err != nil {
+		if s.ctx.Err() == nil {
+			s.recordFailure(err)
+		}
 		return
 	}
 
-	latest := s.fetchLatestStableVersion(ctx)
-	if latest == "" {
-		return
-	}
-
-	current := NormalizeCodexClientVersion(s.currentSyncedVersion(ctx))
 	// 只向前推进：上游偶发返回旧数据或重新发布历史 tag 时不把已同步的版本号降级。
 	if current != "" && CompareVersions(latest, current) <= 0 {
+		s.recordSuccess()
 		return
 	}
 	if err := s.settingRepo.Set(ctx, SettingKeyOpenAICodexClientVersionSynced, latest); err != nil {
-		slog.Warn("openai_codex_version_sync_persist_failed", "version", latest, "error", err)
+		s.recordFailure(&GitHubAPIError{Code: "version_persist_failed"})
 		return
 	}
 	s.settingService.InvalidateOpenAICodexClientVersionCache()
 	slog.Info("openai_codex_version_synced", "previous", current, "version", latest)
+	s.recordSuccess()
 }
 
-// fetchLatestStableVersion 取官方最新稳定版客户端版本号；取不到时返回空串，
-// 由调用方保持既有值（不清空、不降级），各失败分支自行落日志。
+// fetchLatestStableVersion 取官方最新稳定版客户端版本号；失败时返回错误，
+// 由调用方集中保存受控诊断并保持既有值（不清空、不降级）。
 //
 // 主路径 /releases/latest：该端点本身就排除 draft 与 prerelease，直接给出最新正式发布，
 // 因此不受该仓库预发布密度的影响，也不需要为了「窗口里得有一条稳定版」而多拉数据——
@@ -155,25 +234,130 @@ func (s *OpenAICodexVersionSyncService) runOnce() {
 // （如 rusty-v8-*）某天发了正式 release 而成为 latest，主路径会被 rust-v 前缀过滤挡掉；
 // 此时必须扫一页 release 才能继续跟随官方版本，否则版本号会静默停更。
 // 两条路径共用同一套过滤（前缀 / draft / prerelease / 版本号形态），语义不会分叉。
-func (s *OpenAICodexVersionSyncService) fetchLatestStableVersion(ctx context.Context) string {
+func (s *OpenAICodexVersionSyncService) fetchLatestStableVersion(ctx context.Context) (string, error) {
 	release, err := s.githubClient.FetchLatestRelease(ctx, openAICodexVersionSyncRepo)
 	if err != nil {
-		slog.Warn("openai_codex_version_sync_latest_fetch_failed", "error", err)
+		if ctx.Err() != nil {
+			return "", err
+		}
+		var apiErr *GitHubAPIError
+		// 两个端点共享 REST 额度；限流或鉴权失败后继续请求列表没有恢复价值。
+		if errors.As(err, &apiErr) && (apiErr.IsRateLimited() || apiErr.StatusCode == 401 || apiErr.StatusCode == 403) {
+			return "", err
+		}
 	} else if version := latestCodexStableReleaseVersion([]*GitHubRelease{release}); version != "" {
-		return version
+		return version, nil
 	}
 
 	// 主路径没拿到可用版本（抓取失败，或 latest 不是客户端 tag 家族的稳定版）。
 	releases, err := s.githubClient.FetchRecentReleases(ctx, openAICodexVersionSyncRepo, openAICodexVersionSyncPerPage)
 	if err != nil {
-		slog.Warn("openai_codex_version_sync_fetch_failed", "error", err)
-		return ""
+		return "", err
 	}
 	version := latestCodexStableReleaseVersion(releases)
 	if version == "" {
-		slog.Warn("openai_codex_version_sync_no_stable_release", "repo", openAICodexVersionSyncRepo)
+		return "", &GitHubAPIError{Code: "no_stable_release"}
 	}
-	return version
+	return version, nil
+}
+
+func (s *OpenAICodexVersionSyncService) schedule(at time.Time) {
+	at = at.UTC()
+	s.state.NextCheckAt = &at
+}
+
+func (s *OpenAICodexVersionSyncService) nextDelay() time.Duration {
+	if s.state.NextCheckAt == nil {
+		return s.interval
+	}
+	delay := s.state.NextCheckAt.Sub(s.now())
+	if delay < time.Millisecond {
+		return time.Millisecond
+	}
+	return delay
+}
+
+func (s *OpenAICodexVersionSyncService) recordSuccess() {
+	at := s.now().UTC()
+	s.state.Status = "success"
+	s.state.LastSucceededAt = &at
+	s.state.ErrorCode = ""
+	s.state.HTTPStatus = 0
+	s.state.RateLimitResetAt = nil
+	s.state.RetryCount = 0
+	s.state.RetryExhausted = false
+	s.schedule(at.Add(s.interval))
+	s.persistState()
+}
+
+func (s *OpenAICodexVersionSyncService) recordFailure(err error) {
+	s.state.Status = "failed"
+	s.state.ErrorCode = "network_error"
+	s.state.HTTPStatus = 0
+	s.state.RateLimitResetAt = nil
+	var apiErr *GitHubAPIError
+	if errors.As(err, &apiErr) {
+		s.state.ErrorCode = apiErr.Code
+		s.state.HTTPStatus = apiErr.StatusCode
+		s.state.RateLimitResetAt = apiErr.RateLimitResetAt
+	} else {
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			s.state.ErrorCode = "network_timeout"
+		}
+	}
+	at := s.now()
+	next := at.Add(s.interval)
+	// 未知 403、鉴权失败、没有稳定版和持久化失败不做快速重试。
+	retryable := apiErr == nil || apiErr.IsRateLimited() || apiErr.Code == "github_unavailable"
+	if !retryable {
+		s.state.RetryCount = 0
+		s.state.RetryExhausted = false
+	}
+	if retryable && s.state.RetryCount < openAICodexVersionMaxRetries {
+		wait := time.Minute * time.Duration(1<<s.state.RetryCount)
+		next = at.Add(wait)
+		if apiErr != nil && apiErr.IsRateLimited() && apiErr.RetryAt != nil && apiErr.RetryAt.After(at) {
+			// 主限流可直接等窗口；次级限流还需保持至少一分钟并指数退避。
+			if apiErr.Code == "github_primary_rate_limit" {
+				next = *apiErr.RetryAt
+			} else if apiErr.RetryAt.After(next) {
+				next = *apiErr.RetryAt
+			}
+		}
+		next = next.Add(5*time.Second + s.retryJitter())
+		s.state.RetryCount++
+	} else if retryable {
+		s.state.RetryExhausted = true
+	}
+	// 即便追加重试已用完，常规周期也不能早于上游冷却期限。
+	if apiErr != nil && apiErr.RetryAt != nil && !next.After(*apiErr.RetryAt) {
+		next = apiErr.RetryAt.Add(5*time.Second + s.retryJitter())
+	}
+	s.schedule(next)
+	s.persistState()
+	slog.Warn("openai_codex_version_sync_failed", "code", s.state.ErrorCode,
+		"http_status", s.state.HTTPStatus, "rate_limit_reset_at", s.state.RateLimitResetAt,
+		"next_check_at", next, "retry_count", s.state.RetryCount, "retry_exhausted", s.state.RetryExhausted)
+}
+
+func (s *OpenAICodexVersionSyncService) persistState() {
+	// 抓取用尽整体超时后仍需记录失败；使用独立短超时，但服从进程停止。
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	defer cancel()
+	s.state.PersistenceFailed = false
+	value, err := json.Marshal(s.state)
+	if err == nil {
+		err = s.settingRepo.Set(ctx, SettingKeyOpenAICodexVersionSyncState, string(value))
+	}
+	if err != nil {
+		s.state.PersistenceFailed = true
+		slog.Warn("openai_codex_version_sync_state_persist_failed")
+	}
+	if s.settingService != nil {
+		snapshot := s.state
+		s.settingService.openAICodexSyncState.Store(&snapshot)
+	}
 }
 
 // autoSyncEnabled 读取面板开关。缺失或空值视为开启，与设置默认值一致；
@@ -187,14 +371,6 @@ func (s *OpenAICodexVersionSyncService) autoSyncEnabled(ctx context.Context) boo
 		return true
 	}
 	return strings.TrimSpace(value) == "true"
-}
-
-func (s *OpenAICodexVersionSyncService) currentSyncedVersion(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAICodexClientVersionSynced)
-	if err != nil {
-		return ""
-	}
-	return value
 }
 
 // latestCodexStableReleaseVersion 从 release 列表里挑出最大的稳定版客户端版本号。

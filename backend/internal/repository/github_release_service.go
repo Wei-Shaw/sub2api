@@ -135,12 +135,12 @@ func (c *githubReleaseClient) FetchLatestRelease(ctx context.Context, repo strin
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return nil, githubAPIResponseError(resp, time.Now())
 	}
 
 	var release service.GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, err
+		return nil, &service.GitHubAPIError{StatusCode: resp.StatusCode, Code: "github_invalid_response"}
 	}
 
 	return &release, nil
@@ -167,12 +167,12 @@ func (c *githubReleaseClient) FetchRecentReleases(ctx context.Context, repo stri
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return nil, githubAPIResponseError(resp, time.Now())
 	}
 
 	var releases []*service.GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, err
+		return nil, &service.GitHubAPIError{StatusCode: resp.StatusCode, Code: "github_invalid_response"}
 	}
 
 	return releases, nil

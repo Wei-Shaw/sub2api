@@ -17,6 +17,32 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+/** 已保存配置与最近完成的检查快照；读取不会触发上游同步。 */
+export interface CodexVersionSyncStatus {
+  effective_version: string;
+  version_source: "manual" | "synced" | "builtin";
+  synced_version: string;
+  auto_sync_enabled: boolean;
+  status: "never_checked" | "success" | "failed";
+  last_checked_at: string | null;
+  last_succeeded_at: string | null;
+  last_version_updated_at: string | null;
+  next_check_at: string | null;
+  error_code?: string;
+  http_status?: number;
+  rate_limit_reset_at?: string | null;
+  retry_count: number;
+  retry_exhausted: boolean;
+  persistence_failed?: boolean;
+}
+
+export async function getOpenAICodexVersionSyncStatus(): Promise<CodexVersionSyncStatus> {
+  const { data } = await apiClient.get<CodexVersionSyncStatus>(
+    "/admin/settings/openai-codex-version-sync",
+  );
+  return data;
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok" | "typesafe"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -1584,6 +1610,7 @@ export async function resetWebSearchUsage(payload: {
 
 export const settingsAPI = {
   getSettings,
+  getOpenAICodexVersionSyncStatus,
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
