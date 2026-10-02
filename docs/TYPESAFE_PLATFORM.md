@@ -33,8 +33,10 @@
    口径返回 400 `model must be jev-latest`，未知模型不会被发往上游。
 
 重复键 / 大小写变体、question 结构、`stream` 等校验完全沿用上游，不做普遍放宽。映射同样不绕过账号型号
-白名单与渠道 restrict：调度仍按渠道映射后的模型名做账号支持与 restrict 判定，账号 `model_mapping` 就是
-白名单本身——未命中映射、无法把模型落到 `jev-latest` 的账号不会让请求通过。
+白名单与渠道 restrict：调度仍按渠道映射后的模型名做账号支持与 restrict 判定；但账号 `model_mapping` 只有
+**非空时**才是白名单——mapping 为空的账号命中 `Account.IsModelSupported` 的「无映射 = 允许所有」分支，
+任意模型名都算支持。最终口径由改写后重跑的严格校验兜底：发往上游的模型名必须仍是 `jev-latest`，否则
+400（400 不触发 failover）；空 mapping 账号不会替别名做映射，而是把请求名原样透传后 400。
 
 ## 生产信息
 
