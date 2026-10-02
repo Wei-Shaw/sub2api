@@ -330,7 +330,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
-			return
+			// 流中断时 Forward 连同错误返回上游已计量的部分用量，照常入账（与 /v1/messages
+			// 一致）；failover 错误恒定 result=nil，不会重复计费。
+			if result == nil {
+				return
+			}
 		}
 
 		// 6. Record usage
