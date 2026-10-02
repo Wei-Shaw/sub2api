@@ -307,6 +307,8 @@ export default {
       sepay_card: 'Thẻ (Visa / Mastercard / JCB)',
       nowpayments: 'NOWPayments',
       nowpayments_crypto: 'Tiền mã hóa (BTC / ETH / USDT ...)',
+      gpmpay: 'GPM Pay',
+      gpmpay_bank_transfer: 'VietQR (chuyển khoản)',
     },
     status: {
       pending: 'Chờ xử lý',
@@ -325,6 +327,7 @@ export default {
     },
     qr: {
       scanToPay: 'Quét để thanh toán',
+      transferMemo: 'Nội dung chuyển khoản',
       payInNewWindow: 'Hoàn tất thanh toán trong cửa sổ mới',
       payInNewWindowHint: 'Trang thanh toán đã mở trong cửa sổ mới. Vui lòng hoàn tất thanh toán ở đó rồi quay lại trang này.',
       openPayWindow: 'Mở lại trang thanh toán',
@@ -416,6 +419,8 @@ export default {
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'Môi trường NOWPayments phải là sandbox hoặc production.',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'Loại tiền tệ NOWPayments không hợp lệ.',
       NOWPAYMENTS_UNSUPPORTED_PAYMENT_TYPE: 'NOWPayments không hỗ trợ phương thức thanh toán này.',
+      GPMPAY_CONFIG_MISSING_KEY: 'Cấu hình GPM Pay thiếu trường bắt buộc: {field}.',
+      GPMPAY_UNSUPPORTED_PAYMENT_TYPE: 'GPM Pay không hỗ trợ phương thức thanh toán này.',
       PAYMENT_PROVIDER_MISCONFIGURED: 'Nhà cung cấp thanh toán bị cấu hình sai. Vui lòng liên hệ quản trị viên.',
       PENDING_ORDERS: 'Nhà cung cấp này còn đơn hàng đang chờ. Vui lòng đợi chúng hoàn tất trước khi thay đổi.',
       CANCEL_RATE_LIMITED: 'Hủy quá nhiều lần. Vui lòng thử lại sau.',

@@ -13,6 +13,8 @@ func CreateProvider(providerKey string, instanceID string, config map[string]str
 		return NewSePay(instanceID, config)
 	case payment.TypeNowPayments:
 		return NewNowPayments(instanceID, config)
+	case payment.TypeGPMPay:
+		return NewGPMPay(instanceID, config)
 	default:
 		return nil, fmt.Errorf("unknown provider key: %s", providerKey)
 	}

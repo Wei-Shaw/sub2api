@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  GPMPAY_BANK_TRANSFER,
   METHOD_ORDER,
   NOWPAYMENTS_CRYPTO,
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
+  PROVIDER_GPMPAY,
   PROVIDER_NOWPAYMENTS,
   PROVIDER_SEPAY,
   PROVIDER_SUPPORTED_TYPES,
@@ -88,17 +90,20 @@ describe('supported payment types', () => {
       SEPAY_BANK_TRANSFER,
             ])
     expect(PROVIDER_SUPPORTED_TYPES[PROVIDER_NOWPAYMENTS]).toEqual([NOWPAYMENTS_CRYPTO])
+    expect(PROVIDER_SUPPORTED_TYPES[PROVIDER_GPMPAY]).toEqual([GPMPAY_BANK_TRANSFER])
     expect([...METHOD_ORDER]).toEqual([
       SEPAY_BANK_TRANSFER,
+      GPMPAY_BANK_TRANSFER,
               NOWPAYMENTS_CRYPTO,
     ])
   })
 
   it('registers no removed gateway', () => {
-    expect(Object.keys(PROVIDER_SUPPORTED_TYPES)).toEqual([PROVIDER_SEPAY, PROVIDER_NOWPAYMENTS])
-    expect(Object.keys(WEBHOOK_PATHS)).toEqual([PROVIDER_SEPAY, PROVIDER_NOWPAYMENTS])
+    expect(Object.keys(PROVIDER_SUPPORTED_TYPES)).toEqual([PROVIDER_SEPAY, PROVIDER_NOWPAYMENTS, PROVIDER_GPMPAY])
+    expect(Object.keys(WEBHOOK_PATHS)).toEqual([PROVIDER_SEPAY, PROVIDER_NOWPAYMENTS, PROVIDER_GPMPAY])
     expect(WEBHOOK_PATHS[PROVIDER_SEPAY]).toBe('/api/v1/payment/webhook/sepay')
     expect(WEBHOOK_PATHS[PROVIDER_NOWPAYMENTS]).toBe('/api/v1/payment/webhook/nowpayments')
+    expect(WEBHOOK_PATHS[PROVIDER_GPMPAY]).toBe('/api/v1/payment/webhook/gpmpay')
   })
 
   it('falls back to the raw value when a type has no supplied label', () => {

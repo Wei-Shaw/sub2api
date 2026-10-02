@@ -243,6 +243,7 @@ import {
   PAYMENT_MODE_REDIRECT,
   PROVIDER_SEPAY,
   PROVIDER_NOWPAYMENTS,
+  PROVIDER_GPMPAY,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
@@ -251,6 +252,7 @@ import {
  * signed POST form and NOWPayments through its hosted invoice URL, so a
  * redirect is the only mode that actually works for either. */
 function defaultPaymentMode(providerKey: string): string {
+  if (providerKey === PROVIDER_GPMPAY) return PAYMENT_MODE_QRCODE
   return providerKey === PROVIDER_SEPAY || providerKey === PROVIDER_NOWPAYMENTS
     ? PAYMENT_MODE_REDIRECT
     : ''
@@ -270,6 +272,10 @@ function isValidPaymentMode(providerKey: string, mode: string): boolean {
   }
   if (providerKey === PROVIDER_NOWPAYMENTS) {
     return mode === PAYMENT_MODE_REDIRECT
+  }
+  // GPM Pay has no hosted page: our own VietQR is the only way to pay.
+  if (providerKey === PROVIDER_GPMPAY) {
+    return mode === PAYMENT_MODE_QRCODE
   }
   return mode === ''
 }
@@ -321,11 +327,11 @@ const providerWebhookUrl = computed(() => {
   return path ? defaultBaseUrl + path : ''
 })
 
-const providerWebhookHint = computed(() =>
-  form.provider_key === PROVIDER_NOWPAYMENTS
-    ? 'admin.settings.payment.nowPaymentsWebhookHint'
-    : 'admin.settings.payment.sepayWebhookHint',
-)
+const providerWebhookHint = computed(() => {
+  if (form.provider_key === PROVIDER_NOWPAYMENTS) return 'admin.settings.payment.nowPaymentsWebhookHint'
+  if (form.provider_key === PROVIDER_GPMPAY) return 'admin.settings.payment.gpmPayWebhookHint'
+  return 'admin.settings.payment.sepayWebhookHint'
+})
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 

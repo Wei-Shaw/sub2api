@@ -109,6 +109,7 @@ var pendingOrderStatuses = []string{
 var providerSensitiveConfigFields = map[string]map[string]struct{}{
 	payment.TypeSePay:       {"secretkey": {}, "ipnsecretkey": {}},
 	payment.TypeNowPayments: {"apikey": {}, "ipnsecretkey": {}},
+	payment.TypeGPMPay:      {"apitoken": {}, "webhooksecret": {}},
 }
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -118,6 +119,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeSePay:       {"merchantid": {}, "secretkey": {}, "env": {}, "currency": {}},
 	payment.TypeNowPayments: {"apikey": {}, "ipnsecretkey": {}, "env": {}, "currency": {}},
+	payment.TypeGPMPay:      {"webhooksecret": {}, "bankbin": {}, "accountnumber": {}},
 }
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {

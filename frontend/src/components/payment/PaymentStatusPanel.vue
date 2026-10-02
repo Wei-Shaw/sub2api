@@ -80,6 +80,11 @@
             <dt class="shrink-0 text-fg-muted">{{ t('payment.orders.orderNo') }}</dt>
             <dd class="min-w-0 break-all text-right font-mono text-fg">{{ outTradeNo }}</dd>
           </div>
+          <!-- GPM Pay matches the transfer to this order only through the memo. -->
+          <div v-if="transferMemo" class="flex justify-between gap-4 py-2">
+            <dt class="shrink-0 text-fg-muted">{{ t('payment.qr.transferMemo') }}</dt>
+            <dd class="min-w-0 break-all text-right font-mono font-bold text-fg">{{ transferMemo }}</dd>
+          </div>
           <div v-else-if="orderId" class="flex justify-between gap-4 py-2">
             <dt class="text-fg-muted">{{ t('payment.orders.orderId') }}</dt>
             <dd class="font-mono text-fg">#{{ orderId }}</dd>
@@ -214,6 +219,12 @@ const showQRCode = computed(() => !!qrUrl.value)
 const qrLogoIcon = computed(() => paymentIcon)
 
 const scanTitle = computed(() => t('payment.qr.scanToPay'))
+// Mirrors backend payment.TransferCodeForOutTradeNo.
+const transferMemo = computed(() =>
+  props.paymentType.startsWith('gpmpay') && props.outTradeNo
+    ? props.outTradeNo.replace(/_/g, '').toUpperCase()
+    : '',
+)
 
 const countdownDisplay = computed(() => {
   const m = Math.floor(remainingSeconds.value / 60)

@@ -49,6 +49,12 @@ func (h *PaymentWebhookHandler) NowPaymentsNotify(c *gin.Context) {
 	h.handleNotify(c, payment.TypeNowPayments)
 }
 
+// GPMPayNotify handles GPM Pay bank-transfer webhooks.
+// POST /api/v1/payment/webhook/gpmpay
+func (h *PaymentWebhookHandler) GPMPayNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeGPMPay)
+}
+
 // handleNotify is the shared logic for provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -143,6 +149,7 @@ func extractOutTradeNo(rawBody string) string {
 			OrderInvoiceNumber string          `json:"order_invoice_number"`
 			OrderID            string          `json:"order_id"`
 			Order              json.RawMessage `json:"order"`
+			Content            string          `json:"content"`
 			Data               struct {
 				OrderInvoiceNumber string `json:"order_invoice_number"`
 				OrderID            string `json:"order_id"`
@@ -162,6 +169,8 @@ func extractOutTradeNo(rawBody string) string {
 			payload.OrderID,
 			payload.Data.OrderInvoiceNumber,
 			payload.Data.OrderID,
+			// GPM Pay only echoes the order code inside the transfer memo.
+			payment.OutTradeNoFromTransferContent(payload.Content),
 		} {
 			if v := strings.TrimSpace(candidate); v != "" {
 				return v

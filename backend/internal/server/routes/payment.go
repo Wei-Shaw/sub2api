@@ -66,6 +66,7 @@ func RegisterPaymentRoutes(
 	{
 		webhook.POST("/sepay", webhookHandler.SePayNotify)
 		webhook.POST("/nowpayments", webhookHandler.NowPaymentsNotify)
+		webhook.POST("/gpmpay", webhookHandler.GPMPayNotify)
 	}
 
 	// --- Hosted checkout bridge (no auth) ---
