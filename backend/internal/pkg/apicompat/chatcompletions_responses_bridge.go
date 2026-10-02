@@ -31,6 +31,10 @@ type ResponsesToChatOptions struct {
 	// longer provide. Return "" on a miss. A nil lookup keeps the original
 	// behavior.
 	ReasoningContentByID func(itemID string) string
+
+	// EnableWebSearchEmulation, when true, lowers web_search server tools into
+	// a standard function tool proxy so upstream chat models can invoke search.
+	EnableWebSearchEmulation bool
 }
 
 // ResponsesToChatCompletionsRequest converts a Responses API request into a
@@ -69,8 +73,9 @@ func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *R
 	if err != nil {
 		return nil, err
 	}
+	enableWebSearch := opts != nil && opts.EnableWebSearchEmulation
 	if len(effectiveTools) > 0 {
-		tools, err := responsesToolsToChatTools(effectiveTools)
+		tools, err := responsesToolsToChatToolsWithOptions(effectiveTools, enableWebSearch)
 		if err != nil {
 			return nil, err
 		}
@@ -285,6 +290,20 @@ func customNameForStreamTool(state *ChatCompletionsToResponsesStreamState, name 
 func HasToolSearchTool(tools []ResponsesTool) bool {
 	for _, tool := range tools {
 		if tool.Type == "tool_search" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWebSearchTool reports whether Responses tools contain a web_search server tool declaration.
+func HasWebSearchTool(tools []ResponsesTool) bool {
+	for _, tool := range tools {
+		if tool.Type == "web_search" || strings.HasPrefix(tool.Type, "web_search") || tool.Type == "google_search" {
+			return true
+		}
+		switch tool.Name {
+		case "web_search", "google_search", "web_search_20250305":
 			return true
 		}
 	}
@@ -1094,6 +1113,10 @@ func chatContentFromSingleResponsesPart(partType string, part map[string]json.Ra
 const customToolInputSchema = `{"type":"object","properties":{"input":{"type":"string","description":"The raw input for this tool, passed through verbatim."}},"required":["input"]}`
 
 func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
+	return responsesToolsToChatToolsWithOptions(tools, false)
+}
+
+func responsesToolsToChatToolsWithOptions(tools []ResponsesTool, enableWebSearch bool) ([]ChatTool, error) {
 	// 顶层 function/custom 工具名集合：namespace 子工具摊平后与其撞名时，chat
 	// 上游无法按 namespace 区分调用归属。这类请求在原生 Responses 上游是合法的
 	// （按 namespace+name 路由），歧义由摊平转换制造且无法消除，必须显式拒绝，
@@ -1109,6 +1132,7 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 	}
 	flatOwner := make(map[string]NamespacedToolName)
 	toolSearchDeclared := false
+	webSearchDeclared := false
 	out := make([]ChatTool, 0, len(tools))
 	for _, tool := range tools {
 		switch tool.Type {
@@ -1145,6 +1169,18 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 			}
 			toolSearchDeclared = true
 			out = append(out, toolSearchProxyChatTool())
+		case "web_search":
+			if !enableWebSearch {
+				continue
+			}
+			if topLevel[webSearchProxyName] {
+				return nil, fmt.Errorf("built-in web_search conflicts with a declared tool named %q; this upstream cannot disambiguate them, rename the tool", webSearchProxyName)
+			}
+			if webSearchDeclared {
+				continue
+			}
+			webSearchDeclared = true
+			out = append(out, webSearchProxyChatTool())
 		case "namespace":
 			flattened, err := namespaceChildrenToChatTools(tool, topLevel, flatOwner)
 			if err != nil {
@@ -1162,10 +1198,26 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				EnableVideoUnderstanding: tool.EnableVideoUnderstanding,
 			})
 		}
-		// 其余类型（web_search、image_generation 等服务端工具）在 chat 上游没有
+		// 其余类型（image_generation 等服务端工具）在 chat 上游没有
 		// 对应能力，维持丢弃。
 	}
 	return out, nil
+}
+
+// webSearchProxyName 是 web_search 服务端工具降级后的 function 工具名。
+const webSearchProxyName = "web_search"
+
+const webSearchProxySchema = `{"type":"object","properties":{"query":{"type":"string","description":"Search query to execute on the web."}},"required":["query"]}`
+
+func webSearchProxyChatTool() ChatTool {
+	return ChatTool{
+		Type: "function",
+		Function: &ChatFunction{
+			Name:        webSearchProxyName,
+			Description: "Search the web for real-time information, news, references, and documentation.",
+			Parameters:  json.RawMessage(webSearchProxySchema),
+		},
+	}
 }
 
 // toolSearchProxyName 是 tool_search 服务端工具降级后的 function 工具名。模型对
@@ -1450,6 +1502,23 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools, functionTool
 			})
 			continue
 		}
+		if toolCall.Function.Name == webSearchProxyName {
+			var args struct {
+				Query string `json:"query"`
+			}
+			_ = json.Unmarshal([]byte(arguments), &args)
+			outputs = append(outputs, ResponsesOutput{
+				Type:   "web_search_call",
+				ID:     "ws_" + strings.TrimPrefix(generateItemID(), "item_"),
+				CallID: toolCall.ID,
+				Status: "completed",
+				Action: &WebSearchAction{
+					Type:  "search",
+					Query: args.Query,
+				},
+			})
+			continue
+		}
 		// Ordinary Responses function_call arguments must contain valid JSON.
 		// Do not mark a truncated non-streaming Chat tool call as completed;
 		// Codex would persist it and poison the next request in the same way as
@@ -1610,6 +1679,9 @@ type ChatCompletionsToResponsesStreamState struct {
 	// 该项类型（且 execution=client）执行 tool search。
 	ToolSearchDeclared bool
 
+	// WebSearchDeclared indicates that web_search emulation is active.
+	WebSearchDeclared bool
+
 	// NamespaceTools 是 namespace 子工具的摊平名 → 原始归属映射（见
 	// NamespaceToolNames）。命中的调用还原为带 namespace 字段的 function_call 项，
 	// codex 按 namespace+name 路由。
@@ -1622,12 +1694,18 @@ type ChatCompletionsToResponsesStreamState struct {
 	// toolIsToolSearch 记录工具调用是否判定为 tool_search 代理调用。
 	toolIsToolSearch map[int]bool
 
+	// toolIsWebSearch 记录工具调用是否判定为 web_search 代理调用。
+	toolIsWebSearch map[int]bool
+
 	// toolNamespace 记录工具调用宣告时命中的 namespace 归属（见 NamespaceTools）。
 	toolNamespace map[int]NamespacedToolName
 
 	// toolAnnounced 记录 output_item.added 是否已发出。存在 custom 工具且名字
 	// 尚未到达时延迟宣告，待名字可判定类型后再补发（见 announceChatToolItem）。
 	toolAnnounced map[int]bool
+
+	// toolClosed 记录 output_item.done 是否已发出，防止多轮时重复收尾。
+	toolClosed map[int]bool
 
 	FinishReason string
 	Usage        *ResponsesUsage
@@ -1644,8 +1722,10 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 		ToolOutputIndex:  make(map[int]int),
 		toolIsCustom:     make(map[int]bool),
 		toolIsToolSearch: make(map[int]bool),
+		toolIsWebSearch:  make(map[int]bool),
 		toolNamespace:    make(map[int]NamespacedToolName),
 		toolAnnounced:    make(map[int]bool),
+		toolClosed:       make(map[int]bool),
 	}
 }
 
@@ -2018,8 +2098,10 @@ func announceChatToolItem(
 	state.toolAnnounced[idx] = true
 	customName, isCustom := customToolCallName(stored.Function.Name, state.CustomTools, state.FunctionTools, state.NamespaceTools)
 	isToolSearch := !isCustom && state.ToolSearchDeclared && stored.Function.Name == toolSearchProxyName
+	isWebSearch := !isCustom && !isToolSearch && state.WebSearchDeclared && stored.Function.Name == webSearchProxyName
 	state.toolIsCustom[idx] = isCustom
 	state.toolIsToolSearch[idx] = isToolSearch
+	state.toolIsWebSearch[idx] = isWebSearch
 	itemType := "function_call"
 	if isCustom {
 		itemType = "custom_tool_call"
@@ -2027,13 +2109,24 @@ func announceChatToolItem(
 	if isToolSearch {
 		itemType = "tool_search_call"
 	}
+	if isWebSearch {
+		itemType = "web_search_call"
+		if strings.HasPrefix(state.ToolItemIDs[idx], "item_") {
+			state.ToolItemIDs[idx] = "ws_" + strings.TrimPrefix(state.ToolItemIDs[idx], "item_")
+		}
+	}
 	// namespace 子工具的调用仍按 function_call 生命周期下发，但 added/done 项要
 	// 还原为裸子工具名 + namespace 字段（codex 按 namespace+name 路由）。
 	itemName, itemNamespace := stored.Function.Name, ""
 	if isCustom {
 		itemName = customName
 	}
-	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok && !isCustom && !isToolSearch {
+	var action *WebSearchAction
+	if isWebSearch {
+		action = &WebSearchAction{Type: "search"}
+		itemName = ""
+	}
+	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok && !isCustom && !isToolSearch && !isWebSearch {
 		state.toolNamespace[idx] = ns
 		itemName, itemNamespace = ns.Name, ns.Namespace
 	}
@@ -2045,11 +2138,12 @@ func announceChatToolItem(
 			CallID:    stored.ID,
 			Name:      itemName,
 			Namespace: itemNamespace,
+			Action:    action,
 			Status:    "in_progress",
 		},
 	})}
-	// 迟到宣告时补发已累积的参数增量（custom/tool_search 的输入收尾统一下发，不补发）。
-	if !isCustom && !isToolSearch && stored.Function.Arguments != "" {
+	// 迟到宣告时补发已累积的参数增量（custom/tool_search/web_search 的输入收尾统一下发，不补发）。
+	if !isCustom && !isToolSearch && !isWebSearch && stored.Function.Arguments != "" {
 		events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.ToolOutputIndex[idx],
 			ItemID:      state.ToolItemIDs[idx],
@@ -2078,6 +2172,12 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 		itemID, opened := state.ToolItemIDs[i]
 		if !opened {
 			continue
+		}
+		if state.toolClosed != nil && state.toolClosed[i] {
+			continue
+		}
+		if state.toolClosed != nil {
+			state.toolClosed[i] = true
 		}
 		// 名字始终未到导致尚未宣告的调用，收尾前按最终名字兜底宣告。
 		events = append(events, announceChatToolItem(state, i, toolCall, true)...)
@@ -2130,6 +2230,27 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 					CallID:    toolCall.ID,
 					Arguments: arguments,
 					Status:    "completed",
+				},
+			}))
+			continue
+		}
+		if state.toolIsWebSearch[i] {
+			// web_search 调用按 web_search_call 项收尾
+			var args struct {
+				Query string `json:"query"`
+			}
+			_ = json.Unmarshal([]byte(arguments), &args)
+			events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+				OutputIndex: outputIndex,
+				Item: &ResponsesOutput{
+					Type:   "web_search_call",
+					ID:     itemID,
+					CallID: toolCall.ID,
+					Action: &WebSearchAction{
+						Type:  "search",
+						Query: args.Query,
+					},
+					Status: "completed",
 				},
 			}))
 			continue
@@ -2218,6 +2339,23 @@ func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutp
 			})
 			continue
 		}
+		if state.toolIsWebSearch[i] {
+			var args struct {
+				Query string `json:"query"`
+			}
+			_ = json.Unmarshal([]byte(arguments), &args)
+			outputs = append(outputs, ResponsesOutput{
+				Type:   "web_search_call",
+				ID:     generateItemID(),
+				CallID: toolCall.ID,
+				Action: &WebSearchAction{
+					Type:  "search",
+					Query: args.Query,
+				},
+				Status: "completed",
+			})
+			continue
+		}
 		name, namespace := toolCall.Function.Name, ""
 		if ns, ok := state.toolNamespace[i]; ok {
 			name, namespace = ns.Name, ns.Namespace
@@ -2277,4 +2415,70 @@ func nonEmpty(value, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// HasWebSearchCall reports whether any streamed tool call was identified as a web_search invocation.
+func (s *ChatCompletionsToResponsesStreamState) HasWebSearchCall() bool {
+	if s == nil {
+		return false
+	}
+	for i, isWS := range s.toolIsWebSearch {
+		if isWS && s.ToolCalls[i] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// GetWebSearchCall returns the tool call ID and query of the first web_search call, if any.
+func (s *ChatCompletionsToResponsesStreamState) GetWebSearchCall() (toolCallID, query string, ok bool) {
+	if s == nil {
+		return "", "", false
+	}
+	for i, isWS := range s.toolIsWebSearch {
+		if isWS && s.ToolCalls[i] != nil {
+			tc := s.ToolCalls[i]
+			var args struct {
+				Query string `json:"query"`
+			}
+			_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+			return tc.ID, args.Query, true
+		}
+	}
+	return "", "", false
+}
+
+// StoredToolCallsSlice returns an ordered slice of all tool calls accumulated during the stream.
+func (s *ChatCompletionsToResponsesStreamState) StoredToolCallsSlice() []ChatToolCall {
+	if s == nil || len(s.ToolCalls) == 0 {
+		return nil
+	}
+	calls := make([]ChatToolCall, 0, len(s.ToolCalls))
+	for i := 0; i < len(s.ToolCalls); i++ {
+		if tc, ok := s.ToolCalls[i]; ok && tc != nil {
+			calls = append(calls, *tc)
+		}
+	}
+	return calls
+}
+
+// CloseChatToolItems emits function_call_arguments.done + output_item.done for
+// every tool call opened during the stream.
+func CloseChatToolItems(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	return closeChatToolItems(state)
+}
+
+// NextOutputIndex returns the current output index.
+func (s *ChatCompletionsToResponsesStreamState) NextOutputIndex() int {
+	if s == nil {
+		return 0
+	}
+	return s.nextOutputIndex
+}
+
+// SetNextOutputIndex sets the next output index.
+func (s *ChatCompletionsToResponsesStreamState) SetNextOutputIndex(idx int) {
+	if s != nil {
+		s.nextOutputIndex = idx
+	}
 }
