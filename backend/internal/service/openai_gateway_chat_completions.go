@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -431,6 +432,18 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			)
 			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 		}
+		responsesMode, _ := account.Extra[openai_compat.ExtraKeyResponsesMode].(string)
+		if account.IsOpenAIApiKey() &&
+			openai_compat.NormalizeResponsesSupportMode(responsesMode) == openai_compat.ResponsesSupportModeAuto &&
+			openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportYes &&
+			!isResponsesShape &&
+			isConvertedResponsesInputStringRejection(resp.StatusCode, respBody) {
+			logger.L().Info("openai chat_completions: structured Responses input rejected, falling back to raw chat completions",
+				zap.Int64("account_id", account.ID),
+				zap.Int("upstream_status", resp.StatusCode),
+			)
+			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+		}
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -481,6 +494,30 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	}
 
 	return result, handleErr
+}
+
+var responsesInputStringValidationError = regexp.MustCompile(`['"]loc['"]\s*:\s*\(\s*['"]body['"]\s*,\s*['"]input['"]\s*,\s*['"]str['"]\s*\)\s*,\s*['"]msg['"]\s*:\s*['"]Input should be a valid string['"]`)
+
+func isConvertedResponsesInputStringRejection(status int, responseBody []byte) bool {
+	if status != http.StatusBadRequest {
+		return false
+	}
+	message := gjson.GetBytes(responseBody, "error.message").String()
+	if responsesInputStringValidationError.MatchString(message) {
+		return true
+	}
+	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.code").String()))
+	typ := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.type").String()))
+	if code != "invalid_type" && typ != "invalid_type" {
+		return false
+	}
+	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
+	if param != "input" {
+		return false
+	}
+	message = strings.ToLower(strings.TrimSpace(message))
+	return strings.Contains(message, "expected a string") &&
+		(strings.Contains(message, "got an array") || strings.Contains(message, "got an object"))
 }
 
 func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
