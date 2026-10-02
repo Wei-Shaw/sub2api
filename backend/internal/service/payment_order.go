@@ -481,8 +481,10 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		if merchantID := strings.TrimSpace(sel.Config["merchantId"]); merchantID != "" {
 			snapshot["merchant_id"] = merchantID
 		}
-		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	// 每个网关都要记币种：缺了它 PaymentOrderCurrency 会回落成 VND，
+	// 按 USD 计价的 NOWPayments 订单在统计里就被当成 VND。
+	snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 
 	if len(snapshot) == 1 {
 		return nil

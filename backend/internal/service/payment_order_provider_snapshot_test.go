@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +40,21 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 	require.NotContains(t, snapshot, "secretKey")
 	require.NotContains(t, snapshot, "supported_types")
 	require.NotContains(t, snapshot, "instance_name")
+}
+
+func TestBuildPaymentOrderProviderSnapshot_RecordsNonSePayCurrency(t *testing.T) {
+	t.Parallel()
+
+	// 回归：NOWPayments 按 USD 计价，快照缺 currency 时统计会把它当成 VND。
+	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "7",
+		ProviderKey: payment.TypeNowPayments,
+		Config:      map[string]string{"apiKey": "k", "currency": "usd"},
+	}, CreateOrderRequest{})
+	require.Equal(t, "USD", snapshot["currency"])
+
+	order := &dbent.PaymentOrder{ProviderSnapshot: snapshot}
+	require.Equal(t, "USD", PaymentOrderCurrency(order))
 }
 
 func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
