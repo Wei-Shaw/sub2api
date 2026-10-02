@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -294,11 +295,58 @@ func TestHandle429_OllamaUsesValidRetryAfter(t *testing.T) {
 	require.False(t, reset.After(after.Add(120*time.Second)), "reset %v > now+120s", reset)
 }
 
-func TestHandle429_OllamaFallsBackToSecondsCooldown(t *testing.T) {
-	acct := ollama429Account(302, PlatformAnthropic)
+func TestHandle429_OllamaFallbackFlooredAtOneHour(t *testing.T) {
+	// With no usable Retry-After, the immediate cooldown must never drop below
+	// ollamaUsage429FallbackCooldownFloor, whatever the global 429 fallback
+	// says: default settings, an enabled sub-floor value, and a fully disabled
+	// global fallback all end up at the floor. The floor keeps quota-driven
+	// usage accounts out of the 429 -> recover -> 429 spin while the probe is
+	// blind.
+	cases := []struct {
+		name     string
+		settings string // raw SettingKeyRateLimit429CooldownSettings JSON; empty = no setting service
+	}{
+		{name: "default_settings_without_setting_service"},
+		{name: "enabled_below_floor", settings: `{"enabled":true,"cooldown_seconds":5}`},
+		{name: "disabled", settings: `{"enabled":false,"cooldown_seconds":12}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			acct := ollama429Account(302, PlatformAnthropic)
+			repo := newOllama429Repo(acct)
+			scheduler := newOllama429SchedulerStub(true)
+			svc, _ := ollama429Fixture(t, repo, scheduler)
+			if tc.settings != "" {
+				settingRepo := newMockSettingRepo()
+				settingRepo.data[SettingKeyRateLimit429CooldownSettings] = tc.settings
+				svc.SetSettingService(NewSettingService(settingRepo, &config.Config{}))
+			}
+
+			before := time.Now()
+			svc.handle429(context.Background(), acct, http.Header{}, nil) // no Retry-After
+			after := time.Now()
+
+			require.Equal(t, 1, scheduler.count())
+			reset := repo.currentReset(acct.ID)
+			require.NotNil(t, reset)
+			require.False(t, reset.Before(before.Add(ollamaUsage429FallbackCooldownFloor)),
+				"reset %v < now+floor(%v)", reset, ollamaUsage429FallbackCooldownFloor)
+			require.False(t, reset.After(after.Add(ollamaUsage429FallbackCooldownFloor)),
+				"reset %v > now+floor(%v)", reset, ollamaUsage429FallbackCooldownFloor)
+		})
+	}
+}
+
+func TestHandle429_OllamaUsesGlobalCooldownAboveFloor(t *testing.T) {
+	// A global fallback above the floor stays authoritative for ollama usage
+	// accounts: the floor only raises shorter values.
+	acct := ollama429Account(305, PlatformOpenAI)
 	repo := newOllama429Repo(acct)
 	scheduler := newOllama429SchedulerStub(true)
 	svc, _ := ollama429Fixture(t, repo, scheduler)
+	settingRepo := newMockSettingRepo()
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = `{"enabled":true,"cooldown_seconds":7200}`
+	svc.SetSettingService(NewSettingService(settingRepo, &config.Config{}))
 
 	before := time.Now()
 	svc.handle429(context.Background(), acct, http.Header{}, nil) // no Retry-After
@@ -307,9 +355,8 @@ func TestHandle429_OllamaFallsBackToSecondsCooldown(t *testing.T) {
 	require.Equal(t, 1, scheduler.count())
 	reset := repo.currentReset(acct.ID)
 	require.NotNil(t, reset)
-	def := defaultRateLimit429CooldownSeconds
-	require.False(t, reset.Before(before.Add(time.Duration(def)*time.Second)))
-	require.False(t, reset.After(after.Add(time.Duration(def)*time.Second)))
+	require.False(t, reset.Before(before.Add(7200*time.Second)), "reset %v < now+7200s", reset)
+	require.False(t, reset.After(after.Add(7200*time.Second)), "reset %v > now+7200s", reset)
 }
 
 func TestHandle429_OllamaScheduleRejectedStillCooled(t *testing.T) {
@@ -333,7 +380,7 @@ func TestHandle429_OllamaDoesNotShrinkConfirmedLongCooldown(t *testing.T) {
 	svc, _ := ollama429Fixture(t, repo, scheduler)
 
 	// A 429 with no useful Retry-After arrives while a +1h reset is already set;
-	// the 5s fallback must not shrink it.
+	// the floored fallback must not shrink it.
 	svc.handle429(context.Background(), acct, http.Header{}, nil)
 
 	reset := repo.currentReset(acct.ID)
@@ -555,8 +602,8 @@ func TestHandle429_OllamaSchedulerAbsentStillNotifiesRuntime(t *testing.T) {
 	rec, ok := blocker.last()
 	require.True(t, ok)
 	require.Equal(t, "ollama_429", rec.reason)
-	require.False(t, rec.until.Before(before.Add(defaultRateLimit429CooldownSeconds*time.Second)))
-	require.False(t, rec.until.After(after.Add(defaultRateLimit429CooldownSeconds*time.Second)))
+	require.False(t, rec.until.Before(before.Add(ollamaUsage429FallbackCooldownFloor)))
+	require.False(t, rec.until.After(after.Add(ollamaUsage429FallbackCooldownFloor)))
 }
 
 // ollama429LinkRepo drives a real probe->callback linkage through the actual
