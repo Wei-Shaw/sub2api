@@ -445,6 +445,40 @@ describe('PaymentView recharge rate preview', () => {
   })
 })
 
+describe('PaymentView recharge bonus preview', () => {
+  async function mountWithTiers(mode: 'bonus' | 'discount') {
+    routeState.path = '/purchase'
+    routeState.query = {}
+    getExchangeRate.mockResolvedValue({ data: { rate: '26000', gateway_currency: 'VND' } })
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({
+      methods: { wxpay: { ...checkoutInfoFixture().data.methods.wxpay, currency: 'VND' } },
+      recharge_bonus_tiers: [{ min_amount: 100000, bonus_percent: 5 }],
+      recharge_bonus_mode: mode,
+    }))
+    const wrapper = shallowMount(PaymentView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Teleport: true, Transition: false } },
+    })
+    await flushPromises()
+    // 260000 VND / 26000 = 10.00 USD 到账基数
+    wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 260000)
+    await flushPromises()
+    return wrapper
+  }
+
+  it('matches the tier on the VND amount and adds the bonus in USD', async () => {
+    const wrapper = await mountWithTiers('bonus')
+    expect(wrapper.get('[data-testid="recharge-bonus-row"]').text()).toContain('+$0.50')
+    expect(wrapper.text()).toContain('$10.50')
+  })
+
+  it('discounts the VND payment and keeps the USD credit in discount mode', async () => {
+    const wrapper = await mountWithTiers('discount')
+    expect(wrapper.get('[data-testid="recharge-discount-row"]').text()).toContain(formatPaymentAmount(13000, 'VND'))
+    expect(wrapper.text()).toContain(formatPaymentAmount(247000, 'VND'))
+    expect(wrapper.text()).toContain('$10.00')
+  })
+})
+
 describe('PaymentView subscription confirmation amounts', () => {
   it('shows the converted pay amount using the subscription rate, not the balance multiplier', async () => {
     const wrapper = await mountSubscriptionConfirm({
