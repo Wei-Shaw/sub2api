@@ -95,6 +95,8 @@ export default {
       refreshTitle: '汇总频率',
       refreshHint: '影响矩阵时间粒度与刷新节奏',
       refreshAria: '汇总频率',
+      selectPlatform: '选择平台',
+      addPlatform: '添加平台',
       platformsTitle: '平台与模型',
       platformsHint: '留空 = 展示全部真实模型名；填写后仅名单内单独成行，其余归入「其他」',
       modelsPlaceholder: '留空=全部真实模型；或填写主流模型名单（其余归其他）',
