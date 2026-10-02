@@ -1732,6 +1732,105 @@ func TestClient_FetchAvailableModels_EmptyModels_RealCall(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Client.RetrieveUserQuotaSummary
+// ---------------------------------------------------------------------------
+
+func TestClient_RetrieveUserQuotaSummary_Success_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/v1internal:retrieveUserQuotaSummary") {
+			t.Errorf("URL 路径不匹配: got %s", r.URL.Path)
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer test-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+		}
+		var reqBody RetrieveUserQuotaSummaryRequest
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+		}
+		if reqBody.Project != "project-abc" {
+			t.Errorf("Project 不匹配: got %s", reqBody.Project)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"groups": [{
+				"displayName": "Gemini Models",
+				"buckets": [
+					{"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.7887,"resetTime":"08/29/2026 14:25:41"},
+					{"bucketId":"gemini-5h","window":"5h","remaining":{"remainingFraction":0.9661,"resetTime":"08/24/2026 20:03:40"}}
+				]
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URL})
+	client := mustNewClient(t, "")
+	resp, rawResp, err := client.RetrieveUserQuotaSummary(context.Background(), "test-token", "project-abc", defaultFetchAvailableModelsBodyLimit)
+	if err != nil {
+		t.Fatalf("RetrieveUserQuotaSummary 失败: %v", err)
+	}
+	groups := resp.GetGroups()
+	if len(groups) != 1 || len(groups[0].Buckets) != 2 {
+		t.Fatalf("额度组数量不匹配: %+v", groups)
+	}
+	weekly, ok := groups[0].Buckets[0].GetRemainingFraction()
+	if !ok || weekly != 0.7887 {
+		t.Errorf("weekly remainingFraction 不匹配: got %f, ok=%v", weekly, ok)
+	}
+	fiveHour, ok := groups[0].Buckets[1].GetRemainingFraction()
+	if !ok || fiveHour != 0.9661 {
+		t.Errorf("5h remainingFraction 不匹配: got %f, ok=%v", fiveHour, ok)
+	}
+	if groups[0].Buckets[1].GetResetTime() != "08/24/2026 20:03:40" {
+		t.Errorf("嵌套 resetTime 未正确读取")
+	}
+	if rawResp == nil || rawResp["groups"] == nil {
+		t.Error("rawResp groups 不应为空")
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummary_WrappedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"response":{"groups":[{"displayName":"Claude and GPT models","buckets":[]}]}}`))
+	}))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URL})
+	client := mustNewClient(t, "")
+	resp, _, err := client.RetrieveUserQuotaSummary(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
+	if err != nil {
+		t.Fatalf("RetrieveUserQuotaSummary 失败: %v", err)
+	}
+	groups := resp.GetGroups()
+	if len(groups) != 1 || groups[0].DisplayName != "Claude and GPT models" {
+		t.Fatalf("wrapped response 解析失败: %+v", groups)
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummary_URLFallback(t *testing.T) {
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer first.Close()
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"groups":[]}`))
+	}))
+	defer second.Close()
+
+	withMockBaseURLs(t, []string{first.URL, second.URL})
+	client := mustNewClient(t, "")
+	if _, _, err := client.RetrieveUserQuotaSummary(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit); err != nil {
+		t.Fatalf("fallback 后应成功: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LoadCodeAssist 和 FetchAvailableModels 的 408 fallback 测试
 // ---------------------------------------------------------------------------
 
