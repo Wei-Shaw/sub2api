@@ -81,6 +81,7 @@ var (
 type NotificationEmailService struct {
 	settingRepo  SettingRepository
 	emailService *EmailService
+	telegram     *telegramNotifier
 }
 
 type NotificationEmailEventInfo struct {

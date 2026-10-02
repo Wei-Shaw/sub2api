@@ -521,7 +521,7 @@ func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Cont
 			currentBalance = fmt.Sprintf("%.2f", user.Balance)
 		}
 	}
-	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	input := NotificationEmailSendInput{
 		Event:          NotificationEmailEventBalanceRechargeSuccess,
 		RecipientEmail: o.UserEmail,
 		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
@@ -533,7 +533,9 @@ func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Cont
 			"current_balance": currentBalance,
 			"order_id":        strconv.FormatInt(o.ID, 10),
 		},
-	})
+	}
+	s.notificationEmailService.NotifyTelegram(input)
+	return s.notificationEmailService.Send(ctx, input)
 }
 
 func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
@@ -558,7 +560,7 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 			}
 		}
 	}
-	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	input := NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionPurchaseSuccess,
 		RecipientEmail: o.UserEmail,
 		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
@@ -566,7 +568,9 @@ func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context
 		SourceType:     "payment_order",
 		SourceID:       strconv.FormatInt(o.ID, 10),
 		Variables:      variables,
-	})
+	}
+	s.notificationEmailService.NotifyTelegram(input)
+	return s.notificationEmailService.Send(ctx, input)
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {

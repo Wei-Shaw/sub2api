@@ -53,6 +53,14 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
+// ProvideNotificationEmailService turns on the Telegram channel, which needs the
+// user repository to find each user's linked Telegram ID.
+func ProvideNotificationEmailService(settingRepo SettingRepository, emailService *EmailService, userRepo UserRepository) *NotificationEmailService {
+	svc := NewNotificationEmailService(settingRepo, emailService)
+	svc.EnableTelegram(userRepo)
+	return svc
+}
+
 // ProvideAuthService wires the optional captcha providers into AuthService while
 // keeping NewAuthService's public constructor compatible with existing tests.
 func ProvideAuthService(
@@ -923,7 +931,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
 	NewEmailService,
-	NewNotificationEmailService,
+	ProvideNotificationEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewTencentCaptchaService,
