@@ -6,6 +6,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -264,6 +265,129 @@ func TestCCBufferedFromNativeAnthropic_HappyPathStillConverts(t *testing.T) {
 	}
 	if res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 5 {
 		t.Fatalf("expected usage 10/5, got %+v", res.Usage)
+	}
+}
+
+func TestCCStreamingFromNativeAnthropic_MessageStopCompletesWithoutEOF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		_, _ = pw.Write([]byte(miniAnthropicSSEStream()))
+	}()
+	defer func() {
+		_ = pw.Close()
+		_ = pr.Close()
+	}()
+
+	start := time.Now()
+	res, err := svc.handleCCStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, start)
+	if err != nil {
+		t.Fatalf("message_stop must complete the stream without waiting for EOF: %v", err)
+	}
+	if res == nil || res.Usage.OutputTokens != 5 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("message_stop completion waited for the idle timeout: %v", elapsed)
+	}
+	if !strings.Contains(rec.Body.String(), "data: [DONE]") {
+		t.Fatalf("expected [DONE] terminator, got %q", rec.Body.String())
+	}
+}
+
+func TestCCBufferedFromNativeAnthropic_MessageStopCompletesWithoutEOF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		_, _ = pw.Write([]byte(miniAnthropicSSEStream()))
+	}()
+	defer func() {
+		_ = pw.Close()
+		_ = pr.Close()
+	}()
+
+	start := time.Now()
+	res, err := svc.handleCCBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, start)
+	if err != nil {
+		t.Fatalf("message_stop must complete the buffered stream without waiting for EOF: %v", err)
+	}
+	if res == nil || res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 5 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("message_stop completion waited for the idle timeout: %v", elapsed)
+	}
+}
+
+func TestResponsesStreamingFromNativeAnthropic_MessageStopCompletesWithoutEOF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		_, _ = pw.Write([]byte(miniAnthropicSSEStream()))
+	}()
+	defer func() {
+		_ = pw.Close()
+		_ = pr.Close()
+	}()
+
+	start := time.Now()
+	res, err := svc.handleResponsesStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, start, apicompat.ResponsesClientToolMapping{})
+	if err != nil {
+		t.Fatalf("message_stop must complete the Responses stream without waiting for EOF: %v", err)
+	}
+	if res == nil || res.Usage.OutputTokens != 5 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("message_stop completion waited for the idle timeout: %v", elapsed)
+	}
+}
+
+func TestNativeMessagesStreaming_MessageStopCompletesWithoutEOF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		_, _ = pw.Write([]byte(miniAnthropicSSEStream()))
+	}()
+	defer func() {
+		_ = pw.Close()
+		_ = pr.Close()
+	}()
+
+	start := time.Now()
+	res, err := svc.handleNativeAnthropicStreamingResponse(context.Background(), resp, c, &Account{ID: 33}, "glm-4.7", "glm-4.7", "glm-4.7", nil, start)
+	if err != nil {
+		t.Fatalf("message_stop must complete the native Messages stream without waiting for EOF: %v", err)
+	}
+	if res == nil || res.Usage.OutputTokens != 5 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("message_stop completion waited for the idle timeout: %v", elapsed)
 	}
 }
 
