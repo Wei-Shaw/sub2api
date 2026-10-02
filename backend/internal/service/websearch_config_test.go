@@ -67,6 +67,41 @@ func TestValidateWebSearchConfig_NilQuotaLimit(t *testing.T) {
 	require.NoError(t, validateWebSearchConfig(cfg))
 }
 
+// Keys are merged in after validation because the admin API never echoes secrets
+// back, so a keyed provider without a key is valid at this stage —
+// SaveWebSearchEmulationConfig enforces the key once the merge has run. Adding a
+// key requirement here would reject every save whose payload omits the secret.
+func TestValidateWebSearchConfig_KeyedProviderCheckedAfterMerge(t *testing.T) {
+	cfg := &WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave"}},
+	}
+	require.NoError(t, validateWebSearchConfig(cfg))
+}
+
+func TestValidateWebSearchConfig_SearxngWithBaseURL(t *testing.T) {
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{{Type: "searxng", BaseURL: "http://searxng:8080"}},
+	}
+	require.NoError(t, validateWebSearchConfig(cfg))
+}
+
+// SearXNG has no key to authenticate with, so the instance address is the only
+// thing a searxng entry cannot do without.
+func TestValidateWebSearchConfig_SearxngRequiresBaseURL(t *testing.T) {
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{{Type: "searxng"}},
+	}
+	require.ErrorContains(t, validateWebSearchConfig(cfg), "searxng requires base_url")
+}
+
+func TestValidateWebSearchConfig_SearxngBlankBaseURL(t *testing.T) {
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{{Type: "searxng", BaseURL: "   "}},
+	}
+	require.ErrorContains(t, validateWebSearchConfig(cfg), "searxng requires base_url")
+}
+
 // --- parseWebSearchConfigJSON ---
 
 func TestParseWebSearchConfigJSON_ValidJSON(t *testing.T) {
