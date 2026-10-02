@@ -1,0 +1,53 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug"
+
+run_mode: "standard"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "root"
+  password: "123456"
+  dbname: "sub2api"
+  sslmode: "disable"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime_minutes: 30
+  conn_max_idle_time_minutes: 5
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: "123456"
+  db: 0
+  pool_size: 128
+  min_idle_conns: 10
+  enable_tls: false
+
+log:
+  level: "debug"
+  format: "console"
+  service_name: "sub2api"
+  env: "development"
+  caller: true
+  stacktrace_level: "error"
+  output:
+    to_stdout: true
+    to_file: false
+
+jwt:
+  secret: "local-dev-secret-do-not-use-in-production"
+  expire_hour: 168
+
+totp:
+  encryption_key: "99ae6dadd4a4e3b166180b42207d2fedb6b52e6466a685232123e0a13a71d6a6"
+
+default:
+  admin_email: "admin@sub2api.local"
+  admin_password: "admin123"
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
