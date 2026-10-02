@@ -89,6 +89,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return err
 	}
+	// 与 HTTP Forward 同一道 codex_cli_only 门：客户端身份在握手时即固定，
+	// 按本次转发的账号与首帧判定一次；换号重入时对新账号重新判定。
+	restrictionResult := s.detectCodexClientRestriction(c, account, firstClientMessage)
+	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, firstClientMessage)
+	if restrictionResult.Enabled && !restrictionResult.Matched {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, CodexClientRestrictionMessage(restrictionResult), ErrCodexClientRestricted)
+	}
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
