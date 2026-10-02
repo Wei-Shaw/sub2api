@@ -22,9 +22,12 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 		name        string
 		requestTier string
 		stream      bool
+		oauth       bool
 	}{
 		{name: "priority_nonstream", requestTier: "priority", stream: false},
 		{name: "fast_stream", requestTier: "fast", stream: true},
+		{name: "oauth_priority_nonstream", requestTier: "priority", stream: false, oauth: true},
+		{name: "oauth_fast_stream", requestTier: "fast", stream: true, oauth: true},
 	}
 
 	for _, tc := range cases {
@@ -39,6 +42,7 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 			cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 			cfg.Gateway.OpenAIWS.Enabled = true
 			cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+			cfg.Gateway.OpenAIWS.OAuthEnabled = true
 			cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
 			cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
 			cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
@@ -77,6 +81,10 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 				Extra:       map[string]any{"responses_websockets_v2_enabled": true},
 			}
 
+			if tc.oauth {
+				account.Type = AccountTypeOAuth
+				account.Credentials = map[string]any{"access_token": "fixture-token", "chatgpt_account_id": "fixture-account"}
+			}
 			body := []byte(fmt.Sprintf(
 				`{"model":"gpt-5.5","stream":%t,"service_tier":%q,"input":[{"type":"input_text","text":"hi"}]}`,
 				tc.stream, tc.requestTier,
@@ -90,6 +98,11 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 			require.NotNil(t, result.ServiceTier)
 			require.Equal(t, "priority", *result.ServiceTier)
 			require.Equal(t, "default", result.UpstreamResponseServiceTier)
+			clientTier := "default"
+			if tc.oauth {
+				clientTier = "priority"
+			}
+			require.Contains(t, rec.Body.String(), `"service_tier":"`+clientTier+`"`)
 			require.Equal(t, "priority", captureConn.lastWrite["service_tier"],
 				"outbound WS payload still carries the requested Fast tier")
 		})
