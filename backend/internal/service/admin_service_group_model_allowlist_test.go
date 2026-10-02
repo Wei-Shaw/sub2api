@@ -29,7 +29,7 @@ func TestAdminService_CreateGroup_RejectsEmptyEnabledModelAllowlist(t *testing.T
 	require.Nil(t, repo.created, "拒绝时不得落库")
 }
 
-func TestAdminService_CreateGroup_RejectsInvalidAllowlistWildcard(t *testing.T) {
+func TestAdminService_CreateGroup_AcceptsInteriorAllowlistWildcard(t *testing.T) {
 	repo := &groupRepoStubForAdmin{createID: 51}
 	svc := &adminServiceImpl{groupRepo: repo}
 
@@ -40,11 +40,9 @@ func TestAdminService_CreateGroup_RejectsInvalidAllowlistWildcard(t *testing.T) 
 		ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-5.4"}},
 	})
 
-	require.Error(t, err)
-	appErr := infraerrors.FromError(err)
-	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
-	require.Equal(t, "INVALID_MODEL_ALLOWLIST", appErr.Reason)
-	require.Nil(t, repo.created, "拒绝时不得落库")
+	require.NoError(t, err)
+	require.NotNil(t, repo.created)
+	require.Equal(t, []string{"gpt-*-5.4"}, repo.created.ModelAllowlist.Models)
 }
 
 func TestAdminService_CreateGroup_NormalizesModelAllowlist(t *testing.T) {
@@ -83,7 +81,7 @@ func TestAdminService_UpdateGroup_RejectsEmptyEnabledModelAllowlist(t *testing.T
 	require.Nil(t, repo.updated, "拒绝时不得落库")
 }
 
-func TestAdminService_UpdateGroup_RejectsInvalidAllowlistWildcard(t *testing.T) {
+func TestAdminService_UpdateGroup_AcceptsInteriorAllowlistWildcard(t *testing.T) {
 	existing := &Group{ID: 1, Name: "existing", Platform: PlatformOpenAI, Status: StatusActive}
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -92,11 +90,9 @@ func TestAdminService_UpdateGroup_RejectsInvalidAllowlistWildcard(t *testing.T) 
 		ModelAllowlist: &GroupModelAllowlist{Enabled: true, Models: []string{"foo-*bar"}},
 	})
 
-	require.Error(t, err)
-	appErr := infraerrors.FromError(err)
-	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
-	require.Equal(t, "INVALID_MODEL_ALLOWLIST", appErr.Reason)
-	require.Nil(t, repo.updated, "拒绝时不得落库")
+	require.NoError(t, err)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, []string{"foo-*bar"}, repo.updated.ModelAllowlist.Models)
 }
 
 func TestAdminService_UpdateGroup_NormalizesAndResetsModelAllowlist(t *testing.T) {

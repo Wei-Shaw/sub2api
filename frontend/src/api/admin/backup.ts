@@ -15,6 +15,19 @@ export interface BackupScheduleConfig {
   cron_expr: string
   retain_days: number
   retain_count: number
+  monthly_archive?: BackupMonthlyArchiveConfig
+}
+
+export interface BackupMonthlyArchiveConfig {
+  enabled: boolean
+  days: number[]
+  include_month_end: boolean
+  retain_count: number // 0 = permanent
+}
+
+export interface BackupMonthlyArchive {
+  dates: string[]
+  retain_count: number
 }
 
 export interface BackupRecord {
@@ -32,8 +45,10 @@ export interface BackupRecord {
   expires_at?: string
   progress?: string
   restore_status?: string
+  restore_started_at?: string
   restore_error?: string
   restored_at?: string
+  monthly_archive?: BackupMonthlyArchive
 }
 
 export interface BackupPart {
@@ -152,8 +167,8 @@ export async function getBackup(id: string): Promise<BackupRecord> {
   return data
 }
 
-export async function deleteBackup(id: string): Promise<void> {
-  await apiClient.delete(`/admin/backups/${id}`)
+export async function deleteBackup(id: string, deleteArchived = false): Promise<void> {
+  await apiClient.delete(`/admin/backups/${id}`, deleteArchived ? { params: { delete_archived: true } } : undefined)
 }
 
 export async function getDownloadURL(id: string): Promise<BackupDownloadResponse> {

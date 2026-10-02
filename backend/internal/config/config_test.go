@@ -79,6 +79,15 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadSimpleModeKeyRateLimitEnabledFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.SimpleModeKeyRateLimitEnabled)
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")
@@ -452,11 +461,11 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if !cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled {
 		t.Fatalf("Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = false, want true")
 	}
-	if cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor != 1.0 {
-		t.Fatalf("Gateway.OpenAIWS.OAuthMaxConnsFactor = %v, want 1.0", cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor)
+	if cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor != 5.0 {
+		t.Fatalf("Gateway.OpenAIWS.OAuthMaxConnsFactor = %v, want 5.0", cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor)
 	}
-	if cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor != 1.0 {
-		t.Fatalf("Gateway.OpenAIWS.APIKeyMaxConnsFactor = %v, want 1.0", cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor)
+	if cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor != 5.0 {
+		t.Fatalf("Gateway.OpenAIWS.APIKeyMaxConnsFactor = %v, want 5.0", cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor)
 	}
 	if cfg.Gateway.OpenAIWS.StickySessionTTLSeconds != 3600 {
 		t.Fatalf("Gateway.OpenAIWS.StickySessionTTLSeconds = %d, want 3600", cfg.Gateway.OpenAIWS.StickySessionTTLSeconds)
@@ -574,7 +583,7 @@ func TestLoadDefaultOpenAICompactModel(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, "gpt-5.4", cfg.Gateway.OpenAICompactModel)
+	require.Equal(t, "gpt-5.5", cfg.Gateway.OpenAICompactModel)
 }
 
 func TestLoadOpenAICompactModelFromEnv(t *testing.T) {
@@ -2628,5 +2637,44 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.ImageStreamDataIntervalTimeout <= cfg.Gateway.StreamDataIntervalTimeout {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
+	}
+}
+
+func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
+	for _, loader := range []struct {
+		name string
+		load func() (*Config, error)
+	}{{"Load", Load}, {"LoadForBootstrap", LoadForBootstrap}} {
+		t.Run(loader.name, func(t *testing.T) {
+			for _, tt := range []struct {
+				name  string
+				yaml  string
+				env   string
+				unset bool
+				want  bool
+			}{
+				{name: "unset env uses application default", unset: true, want: true},
+				{name: "empty env uses application default", want: true},
+				{name: "unset env preserves yaml false", unset: true, yaml: "simple_mode:\n  auto_create_default_groups: false\n", want: false},
+				{name: "empty env preserves yaml false", yaml: "simple_mode:\n  auto_create_default_groups: false\n", want: false},
+				{name: "env false overrides yaml true", yaml: "simple_mode:\n  auto_create_default_groups: true\n", env: "false", want: false},
+				{name: "env false without yaml", env: "false", want: false},
+				{name: "env true overrides yaml false", yaml: "simple_mode:\n  auto_create_default_groups: false\n", env: "true", want: true},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					resetViperWithJWTSecret(t)
+					t.Setenv("SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS", tt.env)
+					if tt.unset {
+						require.NoError(t, os.Unsetenv("SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS"))
+					}
+					path := filepath.Join(t.TempDir(), "config.yaml")
+					require.NoError(t, os.WriteFile(path, []byte("run_mode: simple\n"+tt.yaml), 0o600))
+					t.Setenv("CONFIG_FILE", path)
+					cfg, err := loader.load()
+					require.NoError(t, err)
+					require.Equal(t, tt.want, cfg.SimpleMode.AutoCreateDefaultGroups)
+				})
+			}
+		})
 	}
 }

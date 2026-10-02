@@ -91,7 +91,7 @@ func TestGeminiV1BetaListModels_FiltersFallbackByAllowlist(t *testing.T) {
 	repo := &geminiAllowlistAccountRepoStub{gatewayModelsAccountRepoStub: gatewayModelsAccountRepoStub{
 		byGroup: map[int64][]service.Account{
 			// 只有 antigravity 账号：Gemini 选号失败后回落静态模型列表。
-			41: {{ID: 2, Platform: service.PlatformAntigravity, Status: service.StatusActive, Schedulable: true}},
+			41: {{ID: 2, Platform: service.PlatformAntigravity, Extra: map[string]any{"mixed_scheduling": true}, Status: service.StatusActive, Schedulable: true}},
 		},
 	}}
 	h := &GatewayHandler{
@@ -109,7 +109,7 @@ func TestGeminiV1BetaListModels_FiltersFallbackByAllowlist(t *testing.T) {
 			Platform: service.PlatformGemini,
 			ModelAllowlist: service.GroupModelAllowlist{
 				Enabled: true,
-				Models:  []string{"gemini-2.5-pro", "gemini-3-*"},
+				Models:  []string{"gemini-3.8-flash-high", "gemini-3-*"},
 			},
 		},
 	})
@@ -129,8 +129,8 @@ func TestGeminiV1BetaListModels_FiltersFallbackByAllowlist(t *testing.T) {
 		names = append(names, model.Name)
 	}
 	// models/ 前缀的候选形式也应命中条目。
-	require.Contains(t, names, "models/gemini-2.5-pro")
-	require.Contains(t, names, "models/gemini-3-pro-preview")
+	require.Contains(t, names, "models/gemini-3.8-flash-high")
+	require.Contains(t, names, "models/gemini-3-flash")
 	require.NotContains(t, names, "models/gemini-2.5-flash")
 	require.NotContains(t, names, "models/gemini-2.0-flash")
 }

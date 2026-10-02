@@ -57,17 +57,14 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
-func TestWithDefaultMaxReasoningEffortMultiplier_Fable51(t *testing.T) {
-	base := &ChannelModelPricing{BillingMode: BillingModeToken}
-	got := withDefaultMaxReasoningEffortMultiplier(base, "claude-fable-5-1")
-	require.NotSame(t, base, got)
-	require.NotNil(t, got.MaxReasoningEffortMultiplier)
-	require.Equal(t, 3.0, *got.MaxReasoningEffortMultiplier)
-	require.Nil(t, base.MaxReasoningEffortMultiplier)
-
-	configured := 1.25
-	custom := &ChannelModelPricing{MaxReasoningEffortMultiplier: &configured}
-	require.Same(t, custom, withDefaultMaxReasoningEffortMultiplier(custom, "claude-fable-5-1"))
+func TestListPlazaGroups_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
+	ch := plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-fable-5-1")
+	svc := newPlazaService([]Channel{ch}, []Group{{ID: 10, Platform: "anthropic"}}, nil)
+	groups, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Len(t, groups[0].Models, 1)
+	require.Empty(t, groups[0].Models[0].Pricing.ReasoningEffortMultipliers)
 }
 
 func TestListPlazaGroups_DedupFirstWinsWithPricingUpgrade(t *testing.T) {
@@ -268,7 +265,8 @@ func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
 	}}
 	groups := []Group{
 		{ID: 10, Name: "g-media", Platform: "openai", RateMultiplier: 1,
-			ImagePrice1K: &imgPrice, ImageRateIndependent: true, ImageRateMultiplier: 1},
+			ImagePrice1K: &imgPrice, ImageRateIndependent: true, ImageRateMultiplier: 1,
+			VideoRateIndependent: true, VideoRateMultiplier: 0.7},
 		{ID: 20, Name: "g-plain", Platform: "openai", RateMultiplier: 0.1},
 	}
 	svc := newPlazaService(channels, groups, nil)
@@ -282,6 +280,8 @@ func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
 
 	media := byName["g-media"]
 	require.True(t, media.ImageRateIndependent)
+	require.True(t, media.VideoRateIndependent)
+	require.InDelta(t, 0.7, media.VideoRateMultiplier, 1e-9)
 	require.InDelta(t, 1.0, media.ImageRateMultiplier, 1e-9)
 	require.Len(t, media.Models, 1)
 	p := media.Models[0].Pricing
@@ -298,6 +298,7 @@ func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
 
 	plain := byName["g-plain"]
 	require.False(t, plain.ImageRateIndependent)
+	require.False(t, plain.VideoRateIndependent)
 	require.Len(t, plain.Models, 1)
 	pp := plain.Models[0].Pricing
 	require.NotNil(t, pp)

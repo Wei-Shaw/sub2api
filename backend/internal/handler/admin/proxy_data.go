@@ -182,8 +182,8 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 					Protocol: existing.Protocol,
 					Host:     existing.Host,
 					Port:     existing.Port,
-					Username: existing.Username,
-					Password: existing.Password,
+					Username: &existing.Username,
+					Password: &existing.Password,
 				}
 				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, updateInput); err != nil {
 					result.Errors = append(result.Errors, DataImportError{
@@ -266,8 +266,8 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 				Protocol:       created.Protocol,
 				Host:           created.Host,
 				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
+				Username:       &created.Username,
+				Password:       &created.Password,
 			}); err != nil {
 				result.Errors = append(result.Errors, DataImportError{
 					Kind:     "proxy",

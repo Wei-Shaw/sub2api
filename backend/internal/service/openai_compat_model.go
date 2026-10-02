@@ -4,9 +4,13 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 func NormalizeOpenAICompatRequestedModel(model string) string {
+	if openai.IsGPT61SolModelSpelling(model) {
+		return "gpt-6.1-sol"
+	}
 	trimmed := strings.TrimSpace(model)
 	if trimmed == "" {
 		return ""
@@ -20,6 +24,20 @@ func NormalizeOpenAICompatRequestedModel(model string) string {
 }
 
 func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {
+	if req != nil && openai.IsGPT61SolModelSpelling(req.Model) {
+		canonical := openai.CanonicalizeOpenAIModelAliasSpelling(req.Model)
+		if effort, ok := strings.CutPrefix(canonical, "gpt-6.1-sol-"); ok && effort != "openai-compact" {
+			req.Model = "gpt-6.1-sol"
+			if req.OutputConfig == nil {
+				req.OutputConfig = &apicompat.AnthropicOutputConfig{}
+			}
+			if req.OutputConfig.Effort == "" {
+				req.OutputConfig.Effort = effort
+			}
+			return
+		}
+	}
+
 	if req == nil {
 		return
 	}
@@ -107,6 +125,9 @@ func openAIReasoningEffortToClaudeOutputEffort(effort string) string {
 // normally translated to OpenAI xhigh, but GPT-5.6 accepts the original max
 // value on Responses and Chat Completions.
 func openAICompatAnthropicReasoningEffort(req *apicompat.AnthropicRequest, upstreamModel, convertedEffort string) string {
+	if convertedEffort == "none" {
+		return convertedEffort
+	}
 	if req == nil || req.OutputConfig == nil || !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
 		return convertedEffort
 	}

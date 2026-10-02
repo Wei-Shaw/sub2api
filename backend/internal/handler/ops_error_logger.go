@@ -1124,8 +1124,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				// A marked in-band error is a visible request failure even though its
 				// wire status is already 200. Otherwise retain recovered attempts as a
 				// provider-health row whose 2xx status keeps it outside request SLA.
-				if len(service.GetOpsStreamErrors(c)) > 0 {
+				if streamErrs := service.GetOpsStreamErrors(c); len(streamErrs) > 0 {
 					logOpsStreamError(c, ops, status)
+					// 请求级带内结果不承载上游归因，此前尝试的上游错误仍按恢复行记录。
+					if opsStreamErrorsAllRequestScoped(streamErrs) {
+						logOpsRecoveredUpstream(c, ops, status)
+					}
 				} else {
 					logOpsRecoveredUpstream(c, ops, status)
 				}
@@ -1140,6 +1144,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		// Skip logging if the error should be filtered based on settings
 		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
+			return
+		}
+		if shouldSkipOpsClientClosed(c, ops, status) {
 			return
 		}
 
@@ -1405,22 +1412,31 @@ func opsRequestTypeFromContext(c *gin.Context) *int16 {
 	return nil
 }
 
-// logOpsStreamError 记录一次挂在已固化 HTTP 200 SSE 流上的就地错误。
-// 由于 wire 状态码停留在 200，常规的 status>=400 捕获路径永远不会触发；
-// handleStreamingAwareError 通过 service.MarkOpsStreamError 标记这类错误，
-// 此函数据此补记一条错误日志，让并发限流/流内失败在错误看板里可见。
-//
-// 仅在 status<400 且不存在上游错误上下文时调用：上游透传错误已由中间件的
-// upstream-context 分支落库，无需在此重复记录。
+// logOpsStreamError 记录挂在 2xx 响应上的带内错误（就地 SSE error 帧、非流式正文里的
+// 请求级结果等）。由于 wire 状态码停留在 2xx，常规的 status>=400 捕获路径不会触发；
+// 标记方通过 service.MarkOpsStreamError / MarkOpsStreamErrorValue 登记，此函数据此补记
+// 错误日志。上游错误上下文（若有）是否参与分类与归因由标记的 RequestScoped 决定。
 func logOpsStreamError(c *gin.Context, ops *service.OpsService, wireStatus int) {
 	for _, streamErr := range service.GetOpsStreamErrors(c) {
 		logOpsStreamErrorValue(c, ops, wireStatus, streamErr)
 	}
 }
 
+func opsStreamErrorsAllRequestScoped(streamErrs []service.OpsStreamError) bool {
+	if len(streamErrs) == 0 {
+		return false
+	}
+	for _, streamErr := range streamErrs {
+		if !streamErr.RequestScoped {
+			return false
+		}
+	}
+	return true
+}
+
 func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus int, streamErr service.OpsStreamError) {
 	// 命中 skip_monitoring=true 透传规则的请求跳过落库，与其它分支一致。
-	if streamErr.SkipMonitoring || (streamErr.Turn == 0 && shouldSkipFinalOpsFailure(c)) {
+	if streamErr.SkipMonitoring || (streamErr.Turn == 0 && !streamErr.RequestScoped && shouldSkipFinalOpsFailure(c)) {
 		return
 	}
 
@@ -1435,9 +1451,19 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		classifyStatus = wireStatus
 	}
 	normalizedType := normalizeOpsErrorType(streamErr.ErrType, streamErr.Code)
-	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, streamErr.Message, streamErr.Code, classifyStatus)
+	var phase, errorOwner, errorSource string
+	var isBusinessLimited bool
+	if streamErr.RequestScoped {
+		// 请求级带内结果只按错误类型分类，此前尝试残留的上游错误上下文不参与判定。
+		phase = classifyOpsPhase(normalizedType, streamErr.Message, streamErr.Code)
+		isBusinessLimited = true
+		errorOwner = classifyOpsErrorOwner(phase, streamErr.Message)
+		errorSource = classifyOpsErrorSource(phase, streamErr.Message)
+	} else {
+		phase, isBusinessLimited, errorOwner, errorSource = classifyOpsErrorLog(c, normalizedType, streamErr.Message, streamErr.Code, classifyStatus)
+	}
 	recordedStatus := wireStatus
-	if streamErr.CountTowardsSLA && streamErr.IntendedStatus >= 400 {
+	if streamErr.IntendedStatus >= 400 && (streamErr.CountTowardsSLA || streamErr.RequestScoped) {
 		recordedStatus = streamErr.IntendedStatus
 	}
 	errorBody := ""
@@ -1488,8 +1514,8 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 			}
 			return ""
 		}(),
-		// 就地 SSE 错误只出现在流式请求上。
-		Stream:           true,
+		// 带内错误默认挂在 SSE 流上；NonStream 标记的来自非流式 2xx 响应体。
+		Stream:           !streamErr.NonStream,
 		InboundEndpoint:  GetInboundEndpoint(c),
 		UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
 		RequestedModel:   modelName,
@@ -1530,8 +1556,10 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		CreatedAt: time.Now(),
 	}
 	applyOpsLatencyFieldsFromContext(c, entry)
-	applyOpsUpstreamFieldsFromContext(c, entry)
-	if streamErr.Turn > 0 {
+	if !streamErr.RequestScoped {
+		applyOpsUpstreamFieldsFromContext(c, entry)
+	}
+	if streamErr.Turn > 0 && !streamErr.RequestScoped {
 		applyOpsStreamErrorSnapshot(entry, streamErr)
 	}
 
@@ -2464,6 +2492,21 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 	}
 
 	return false
+}
+
+// shouldSkipOpsClientClosed 按 IgnoreContextCanceled 过滤纯客户端取消的 499。
+// 499 表示客户端在响应提交前断开（见 failoverClientGone），通常不带
+// "context canceled" 文案，shouldSkipOpsErrorLog 的文本过滤命中不了。
+// 本次请求未观察到上游错误时是纯客户端取消；已有上游错误的 499 表示上游失败后
+// 客户端没等到换号结果就离开，仍按上游失败落库。
+func shouldSkipOpsClientClosed(c *gin.Context, ops *service.OpsService, status int) bool {
+	if status != statusClientClosedRequest || ops == nil {
+		return false
+	}
+	if !ops.OpsAdvancedSettingsSnapshot().IgnoreContextCanceled {
+		return false
+	}
+	return !hasOpsUpstreamErrorContext(c)
 }
 
 // shouldSkipOpsErrorLogForCyber：cyber_policy 命中的请求由 recordCyberPolicyIfMarked

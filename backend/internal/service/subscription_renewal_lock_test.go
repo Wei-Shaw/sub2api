@@ -115,6 +115,22 @@ func TestAssignOrExtendSubscriptionSerializedRenewalsAccumulateDays(t *testing.T
 	require.Equal(t, initialExpiry.AddDate(0, 0, 14), second.ExpiresAt)
 }
 
+func TestExtendSubscriptionUsesLockedCurrentRow(t *testing.T) {
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	initialExpiry := now.AddDate(0, 0, 10)
+	repo := &lockingRenewalRepo{current: UserSubscription{
+		ID: 37, UserID: 41, GroupID: 43, ExpiresAt: initialExpiry, Status: SubscriptionStatusActive,
+	}}
+	svc := NewSubscriptionService(nil, repo, nil, nil, nil)
+	svc.now = func() time.Time { return now }
+
+	updated, err := svc.ExtendSubscription(context.Background(), 7, 5)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.lockReads)
+	require.Equal(t, initialExpiry.AddDate(0, 0, 5), updated.ExpiresAt)
+}
+
 func TestAssignSubscriptionDoesNotReactivateRowSuspendedAfterStaleRead(t *testing.T) {
 	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
 	windowStart := now.Add(-24 * time.Hour)

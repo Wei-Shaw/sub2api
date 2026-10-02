@@ -50,8 +50,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://apikey.fun/register?aff=SUB2API"><img src="assets/partners/logos/apikey-fun.png" alt="APIKEY.FUN" width="150"></a></td>
-<td>感谢 APIKEY.FUN 赞助了本项目！<a href="https://apikey.fun/register?aff=SUB2API">APIKEY.FUN</a> 是 sub2api 开源项目的核心贡献者之一，致力于提供开放、稳定、高性价比的 AI API 接入服务。平台支持 Claude、OpenAI、Gemini 等热门模型的 API 中转服务，价格低至官方原价的 7%。通过专属链接 <a href="https://apikey.fun/register?aff=SUB2API">APIKEY</a> 注册，可享受充值最高 95 折优惠。</td>
+<td width="180"><a href="https://apikey.fan/register?aff=SUB2API"><img src="assets/partners/logos/apikey-fun.png" alt="APIKEY.FUN" width="150"></a></td>
+<td>感谢 APIKEY.FUN 赞助了本项目！<a href="https://apikey.fan/register?aff=SUB2API">APIKEY.FUN</a> 是 sub2api 开源项目的核心贡献者之一，致力于提供开放、稳定、高性价比的 AI API 接入服务。平台支持 Claude、OpenAI、Gemini 等热门模型的 API 中转服务，价格低至官方原价的 7%。通过专属链接 <a href="https://apikey.fan/register?aff=SUB2API">APIKEY</a> 注册，可享受充值最高 95 折优惠。</td>
 </tr>
 
 <tr>
@@ -102,14 +102,6 @@
 <tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
 <td>感谢 Proxy4Free 赞助本项目！Proxy4Free 是面向开发者和 AI 应用的数据代理服务商，提供住宅代理、静态住宅代理、ISP 代理及数据中心代理等多种代理解决方案，适用于 Web Scraping、Browser Automation、AI Agent 等场景。支持全球 IP 资源、稳定连接与灵活切换，帮助开发者提升数据采集成功率，降低 IP 封禁风险。通过<a href="https://www.proxy4free.com/?keyword=4yjqecpc">此链接注册</a>即可开始体验，轻松构建更稳定、高效的自动化工作流。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://www.fastaitoken.com/register"><img src="assets/partners/logos/fastaitoken.jpg" alt="fastaitoken" width="150"></a></td>
-<td>🎉 感谢 FastAIToken 对本项目的赞助！ <a href="http://www.fastaitoken.com/register">FastAIToken</a> 是面向开发者的 AI API 聚合平台，支持 OpenAI、Claude、Gemini 等主流大模型，充值 1:1，1 元 = 1 美元 API 额度，让开发者以更低成本、更便捷地使用全球领先的大模型服务。<br>
-
-🚀 平台提供多种渠道自由选择：超级低价的0.02x OpenAI 福利分组（限时）、低至 0.25x OpenAI 分组、0.7x Claude 95%固定缓存、1.2x Claude Max 渠道；同时提供公开状态页，实时展示各分组的可用率、延迟及运行状态，服务透明可靠，并提供 7×24 小时真人技术支持（非机器人），快速响应开发者需求。
 </td>
 </tr>
 
@@ -226,6 +218,30 @@ underscores_in_headers on;
 ```
 
 Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），这会导致多账号环境下的粘性会话功能失效。
+
+## Codex Fast/Flex 策略说明
+
+管理员后台的 `系统设置 -> 网关服务 -> OpenAI Fast/Flex 策略` 只负责处理请求体中的 `service_tier`，不会修改 Codex 客户端的模型目录，也不会让 Codex UI 自动出现 Speed 或 `/fast` 选项。
+
+策略支持以下处理方式：
+
+- `pass`：保留客户端传入的 `service_tier`；`fast` 会规范为上游使用的 `priority`。
+- `filter`：移除 `service_tier`，按普通优先级请求。
+- `block`：拒绝匹配的 Fast/Flex 请求。
+- `force_priority`：将匹配请求强制设置为 `priority`，会按 Priority/Fast 价格计费。为避免升级后改变既有规则语义，`all` 只匹配显式存在的 tier；如需让省略 `service_tier` 的 OpenAI 请求也强制升级，必须新增 `service_tier=missing + force_priority` 规则。非 OpenAI 平台不会执行缺省 tier 注入。这种方式可以让请求实际使用 Fast，但 Codex UI 仍可能不显示 Fast 状态。
+
+Codex 的 Fast 入口由客户端模型目录驱动。只有当前模型目录声明了 `additional_speed_tiers: ["fast"]` 和对应的 `service_tiers`，Codex 才会显示 `/fast`。通过 API Key 或自定义模型提供商连接 Sub2API 时，如果模型目录没有这些字段，即使后台配置了 `force_priority`，重启 Codex 后也不会出现 Speed 选项。
+
+客户端可在 `~/.codex/config.toml` 中直接指定默认请求级别：
+
+```toml
+service_tier = "fast"
+
+[features]
+fast_mode = true
+```
+
+其中 `service_tier = "fast"` 会让请求携带 Fast 设置；`features.fast_mode` 只启用客户端 Fast 功能。模型目录没有声明 Fast 能力时，`/fast` 仍可能不显示。可通过 Sub2API 使用记录确认最终 `service_tier` 是否为 `priority`。
 
 ---
 
@@ -719,7 +735,10 @@ OAuth / Setup Token 图片请求使用 Responses 主控模型调用 `image_gener
 简易模式适合个人开发者或内部团队快速使用，不依赖完整 SaaS 功能。
 
 - 启用方式：设置环境变量 `RUN_MODE=simple`
+- 默认每次启动会补齐默认分组。设置 `SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS=false`（或 YAML `simple_mode.auto_create_default_groups: false`）可自行管理分组。默认值为 `true`；关闭后不删除已有分组，不改变运行时自动绑定或管理员并发设置。
 - 功能差异：隐藏 SaaS 相关功能，跳过计费流程
+- 可选密钥窗口：设置 `SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=true` 后，按每个 API Key 配置的 5 小时、1 天、7 天消费窗口进行限制，默认值为 `false`；启用后仍跳过余额和订阅扣费。
+- 窗口限制以数据库为准，只记录 API Key 窗口用量。它在请求完成后记账，并发中的请求可能以各自最终费用超过窗口上限。启用前的历史用量不会自动补算。
 - 安全注意事项：生产环境需同时设置 `SIMPLE_MODE_CONFIRM=true` 才允许启动
 
 ---

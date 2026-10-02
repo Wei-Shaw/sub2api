@@ -45,8 +45,8 @@ type UpdateProxyRequest struct {
 	Protocol       string                 `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h"`
 	Host           string                 `json:"host"`
 	Port           int                    `json:"port" binding:"omitempty,min=1,max=65535"`
-	Username       string                 `json:"username"`
-	Password       string                 `json:"password"`
+	Username       *string                `json:"username"`
+	Password       *string                `json:"password"`
 	Status         string                 `json:"status" binding:"omitempty,oneof=active inactive"`
 	ExpiresAt      dto.NullableInt64Field `json:"expires_at"`
 	FallbackMode   string                 `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
@@ -187,13 +187,19 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		t := time.Unix(*req.ExpiresAt.Value, 0).UTC()
 		expiresAt = &t
 	}
+	if req.Username != nil {
+		*req.Username = strings.TrimSpace(*req.Username)
+	}
+	if req.Password != nil {
+		*req.Password = strings.TrimSpace(*req.Password)
+	}
 	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
 		Name:           strings.TrimSpace(req.Name),
 		Protocol:       strings.TrimSpace(req.Protocol),
 		Host:           strings.TrimSpace(req.Host),
 		Port:           req.Port,
-		Username:       strings.TrimSpace(req.Username),
-		Password:       strings.TrimSpace(req.Password),
+		Username:       req.Username,
+		Password:       req.Password,
 		Status:         strings.TrimSpace(req.Status),
 		ExpiresAt:      expiresAt,
 		ClearExpiresAt: req.ExpiresAt.Set && expiresAt == nil,

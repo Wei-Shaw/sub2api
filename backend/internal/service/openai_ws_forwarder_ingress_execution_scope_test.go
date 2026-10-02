@@ -310,10 +310,21 @@ func runOpenAIWSCodexThreadPair(t *testing.T, threadA, threadB string) (serverEr
 	close(gatedConn.gate)
 
 	readCtxA, cancelA := context.WithTimeout(context.Background(), 5*time.Second)
-	_, completedA, aReadErr := connA.Read(readCtxA)
+	defer cancelA()
+	for {
+		var completedA []byte
+		_, completedA, aReadErr = connA.Read(readCtxA)
+		if aReadErr != nil {
+			break
+		}
+		require.Equal(t, "resp_thread_a", gjson.GetBytes(completedA, "response.id").String())
+		if threadA != threadB {
+			break
+		}
+		// 抢占关闭帧异步发送，已在飞的响应可能先到达；同线程必须继续读到关闭帧。
+	}
 	cancelA()
 	if aReadErr == nil {
-		require.Equal(t, "resp_thread_a", gjson.GetBytes(completedA, "response.id").String())
 		require.NoError(t, connA.Close(coderws.StatusNormalClosure, "done"))
 	}
 	require.NoError(t, connB.Close(coderws.StatusNormalClosure, "done"))

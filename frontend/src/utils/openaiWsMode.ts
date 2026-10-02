@@ -44,13 +44,23 @@ export const isOpenAIWSModeEnabled = (mode: OpenAIWSMode): boolean => {
   return mode !== OPENAI_WS_MODE_OFF
 }
 
-export const resolveOpenAIWSModeConcurrencyHintKey = (
+export const resolveOpenAIWSModeHintKey = (
   mode: OpenAIWSMode
-): 'admin.accounts.openai.wsModeConcurrencyHint' | 'admin.accounts.openai.wsModePassthroughHint' => {
-  if (mode === OPENAI_WS_MODE_PASSTHROUGH || mode === OPENAI_WS_MODE_HTTP_BRIDGE) {
-    return 'admin.accounts.openai.wsModePassthroughHint'
+):
+  | 'admin.accounts.openai.wsModeCtxPoolHint'
+  | 'admin.accounts.openai.wsModePassthroughHint'
+  | 'admin.accounts.openai.wsModeHttpBridgeHint'
+  | null => {
+  switch (mode) {
+    case OPENAI_WS_MODE_CTX_POOL:
+      return 'admin.accounts.openai.wsModeCtxPoolHint'
+    case OPENAI_WS_MODE_PASSTHROUGH:
+      return 'admin.accounts.openai.wsModePassthroughHint'
+    case OPENAI_WS_MODE_HTTP_BRIDGE:
+      return 'admin.accounts.openai.wsModeHttpBridgeHint'
+    default:
+      return null
   }
-  return 'admin.accounts.openai.wsModeConcurrencyHint'
 }
 
 export const resolveOpenAIWSModeFromExtra = (

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -19,6 +20,9 @@ import (
 	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
 	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type pluginRuntime struct {
@@ -31,7 +35,7 @@ type pluginRuntime struct {
 	doneOnce     sync.Once
 }
 
-func startPluginRuntime(ctx context.Context, installation *PluginInstallation, startTimeout time.Duration, socketDir string) (*pluginRuntime, error) {
+func startPluginRuntime(ctx context.Context, installation *PluginInstallation, startTimeout time.Duration, socketDir string, hostServices pluginv1.HostServiceServer) (*pluginRuntime, error) {
 	if installation == nil {
 		return nil, errors.New("插件安装记录为空")
 	}
@@ -66,11 +70,12 @@ func startPluginRuntime(ctx context.Context, installation *PluginInstallation, s
 		client.Kill()
 		return nil, fmt.Errorf("获取插件传输能力: %w", err)
 	}
-	api, ok := dispensed.(pluginv1.TransportPluginClient)
-	if !ok {
+	transportClient, ok := dispensed.(*pluginv1.TransportClient)
+	if !ok || transportClient.TransportPluginClient == nil {
 		client.Kill()
 		return nil, errors.New("插件未实现传输 gRPC 客户端")
 	}
+	api := transportClient.TransportPluginClient
 	runtime := &pluginRuntime{
 		installation: installation,
 		client:       client,
@@ -97,7 +102,54 @@ func startPluginRuntime(ctx context.Context, installation *PluginInstallation, s
 		}
 		return nil, fmt.Errorf("插件不健康: %s", health.Message)
 	}
+	// 可选地把宿主服务（HostService）反向暴露给插件。这是叠加在传输契约之上的能力：
+	// 老插件不实现 InitHostServices（返回 Unimplemented），此处静默跳过，绝不阻断启动。
+	offerPluginHostServices(ctx, installation, api, transportClient.Broker, hostServices, startTimeout)
 	return runtime, nil
+}
+
+// offerPluginHostServices 在 go-plugin broker 上启动一个宿主服务实例，并通过
+// InitHostServices 把 broker 流 id 交给插件。服务生命周期与插件进程绑定：client.Kill()
+// 会关闭 broker，AcceptAndServe 随之 GracefulStop，无需手动清理。整个过程尽力而为，
+// 任何失败都只记录日志、不影响插件转发能力。
+func offerPluginHostServices(
+	ctx context.Context,
+	installation *PluginInstallation,
+	api pluginv1.TransportPluginClient,
+	broker *hcplugin.GRPCBroker,
+	hostServices pluginv1.HostServiceServer,
+	startTimeout time.Duration,
+) {
+	if broker == nil || hostServices == nil || api == nil {
+		return
+	}
+	brokerID := broker.NextId()
+	go broker.AcceptAndServe(brokerID, func(opts []grpc.ServerOption) *grpc.Server {
+		server := grpc.NewServer(opts...)
+		pluginv1.RegisterHostServiceServer(server, hostServices)
+		return server
+	})
+	initCtx, cancel := context.WithTimeout(ctx, startTimeout)
+	defer cancel()
+	resp, err := api.InitHostServices(initCtx, &pluginv1.InitHostServicesRequest{
+		HostServiceId:         brokerID,
+		HostServiceApiVersion: pluginv1.HostServiceAPIVersion,
+	})
+	pluginKey := ""
+	if installation != nil {
+		pluginKey = installation.PluginKey
+	}
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			slog.Debug("plugin_host_services_unimplemented", "plugin", pluginKey)
+		} else {
+			slog.Warn("plugin_host_services_init_failed", "plugin", pluginKey, "error", err)
+		}
+		return
+	}
+	if resp != nil && !resp.Ready {
+		slog.Debug("plugin_host_services_declined", "plugin", pluginKey, "message", resp.Message)
+	}
 }
 
 func (r *pluginRuntime) validateAndApplyConfig(ctx context.Context, configJSON []byte) error {
@@ -159,6 +211,23 @@ func (r *pluginRuntime) checkHealth(ctx context.Context) error {
 		return errors.New(message)
 	}
 	return nil
+}
+
+// status returns the plugin's passive Health response, including any status_json
+// blob it exposes for the config UI. It performs no config apply and no upstream
+// call, so it is safe to serve from a lightweight, ungated status endpoint.
+func (r *pluginRuntime) status(ctx context.Context) (*pluginv1.HealthResponse, error) {
+	if r == nil || r.api == nil || r.client == nil || r.client.Exited() {
+		return nil, errors.New("插件进程已退出")
+	}
+	health, err := r.api.Health(ctx, &pluginv1.HealthRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("插件状态查询失败: %w", err)
+	}
+	if health == nil {
+		return nil, errors.New("插件未返回状态")
+	}
+	return health, nil
 }
 
 func (r *pluginRuntime) beginRequest() bool {

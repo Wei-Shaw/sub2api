@@ -1996,3 +1996,255 @@ func TestClassifyOpsLocalModelConfigurationWithoutIngressMarkStaysRouting(t *tes
 	require.True(t, isBusinessLimited)
 	require.Equal(t, "platform", errorOwner)
 }
+
+// 带内错误也可能出现在非流式 2xx 响应体里（如 Gemini generateContent 的 finishReason）：
+// NonStream 标记落库 stream=false，未标记的沿用流式。
+func TestLogOpsStreamError_NonStreamInBandContentPolicy(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.7-flash:generateContent", nil)
+	setOpsRequestContext(c, "gemini-3.7-flash", false)
+
+	service.MarkOpsStreamErrorValue(c, service.OpsStreamError{
+		ErrType:        "invalid_request_error",
+		Code:           "PROHIBITED_CONTENT",
+		Message:        "Gemini content policy stop (finishReason=PROHIBITED_CONTENT): Response stopped due to prohibited content.",
+		IntendedStatus: http.StatusBadRequest,
+		RequestScoped:  true,
+		NonStream:      true,
+	})
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	logOpsStreamError(c, ops, http.StatusOK)
+
+	job := <-opsErrorLogQueue
+	require.NotNil(t, job.entry)
+	require.False(t, job.entry.Stream)
+	require.Equal(t, "invalid_request_error", job.entry.ErrorType)
+	require.Equal(t, "request", job.entry.ErrorPhase)
+	require.Equal(t, "client", job.entry.ErrorOwner)
+	require.True(t, job.entry.IsBusinessLimited)
+	require.Equal(t, http.StatusBadRequest, job.entry.StatusCode, "请求级带内结果按 IntendedStatus 落库，才能进入错误列表")
+	require.Equal(t, "P3", job.entry.Severity)
+	require.Equal(t, "gemini-3.7-flash", job.entry.Model)
+	require.Contains(t, job.entry.ErrorBody, "PROHIBITED_CONTENT")
+}
+
+// 请求级带内结果（RequestScoped）：此前尝试残留的上游错误上下文不参与分类、不做上游归因，
+// 按业务限制计；透传规则的 skip_monitoring 残留也不影响它落库。
+func TestLogOpsStreamError_RequestScopedIgnoresResidualUpstreamContext(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.7-flash:streamGenerateContent", nil)
+	setOpsRequestContext(c, "gemini-3.7-flash", true)
+	c.Set(service.OpsUpstreamStatusCodeKey, http.StatusTooManyRequests)
+	c.Set(service.OpsUpstreamErrorMessageKey, "earlier attempt was rate limited")
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+		UpstreamStatusCode: http.StatusTooManyRequests,
+		Message:            "earlier attempt was rate limited",
+		SkipMonitoring:     true,
+	}})
+
+	service.MarkOpsStreamErrorValue(c, service.OpsStreamError{
+		ErrType:        "invalid_request_error",
+		Code:           "PROHIBITED_CONTENT",
+		Message:        "Gemini content policy stop (finishReason=PROHIBITED_CONTENT): Response stopped due to prohibited content.",
+		IntendedStatus: http.StatusBadRequest,
+		RequestScoped:  true,
+	})
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	logOpsStreamError(c, ops, http.StatusOK)
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.NotNil(t, job.entry)
+	require.Equal(t, "invalid_request_error", job.entry.ErrorType)
+	require.Equal(t, "request", job.entry.ErrorPhase)
+	require.Equal(t, "client", job.entry.ErrorOwner)
+	require.Equal(t, "client_request", job.entry.ErrorSource)
+	require.True(t, job.entry.IsBusinessLimited)
+	require.True(t, job.entry.Stream)
+	require.Equal(t, http.StatusBadRequest, job.entry.StatusCode)
+	require.Nil(t, job.entry.UpstreamStatusCode, "残留的 429 不得贴到内容策略行上")
+	require.Nil(t, job.entry.UpstreamErrorMessage)
+	require.Nil(t, job.entry.UpstreamErrorsJSON)
+	require.Contains(t, job.entry.ErrorBody, "PROHIBITED_CONTENT")
+}
+
+// 请求级带内结果与此前尝试的上游错误并存时，中间件既落带内错误行，也保留恢复行的 provider 遥测。
+func TestOpsErrorLoggerMiddleware_RequestScopedInBandErrorKeepsRecoveredTelemetry(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1beta/models/gemini-3.7-flash:generateContent", func(c *gin.Context) {
+		setOpsRequestContext(c, "gemini-3.7-flash", false)
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusTooManyRequests,
+			Message:            "earlier attempt was rate limited",
+		}})
+		service.MarkOpsStreamErrorValue(c, service.OpsStreamError{
+			ErrType:        "invalid_request_error",
+			Code:           "SAFETY",
+			Message:        "Gemini content policy stop (finishReason=SAFETY): Response stopped due to safety reasons.",
+			IntendedStatus: http.StatusBadRequest,
+			RequestScoped:  true,
+			NonStream:      true,
+		})
+		c.JSON(http.StatusOK, gin.H{"candidates": []any{}})
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.7-flash:generateContent", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	require.Equal(t, int64(2), OpsErrorLogQueueLength())
+	inBand := <-opsErrorLogQueue
+	require.Equal(t, "invalid_request_error", inBand.entry.ErrorType)
+	require.Equal(t, "request", inBand.entry.ErrorPhase)
+	require.Equal(t, "client", inBand.entry.ErrorOwner)
+	require.True(t, inBand.entry.IsBusinessLimited)
+	require.False(t, inBand.entry.Stream)
+	require.Equal(t, http.StatusBadRequest, inBand.entry.StatusCode)
+	require.Nil(t, inBand.entry.UpstreamStatusCode)
+	require.Nil(t, inBand.entry.UpstreamErrorsJSON)
+
+	recovered := <-opsErrorLogQueue
+	require.Equal(t, "upstream", recovered.entry.ErrorPhase)
+	require.Equal(t, "provider", recovered.entry.ErrorOwner)
+	require.Equal(t, http.StatusOK, recovered.entry.StatusCode)
+	require.Equal(t, "Recovered upstream error 429: earlier attempt was rate limited", recovered.entry.ErrorMessage)
+}
+
+// 非请求级带内失败（如上游错误信封）仍与既有语义一致：上游上下文参与分类并做归因，只落一行。
+func TestOpsErrorLoggerMiddleware_UpstreamInBandFailureStillSingleRow(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1beta/models/gemini-3.7-flash:streamGenerateContent", func(c *gin.Context) {
+		setOpsRequestContext(c, "gemini-3.7-flash", true)
+		service.SetOpsUpstreamError(c, http.StatusTooManyRequests, "quota", "")
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusTooManyRequests,
+			Message:            "quota",
+			Kind:               "stream_failed",
+		}})
+		service.MarkOpsStreamFailure(c, "rate_limit_error", "RESOURCE_EXHAUSTED", "quota", http.StatusTooManyRequests)
+		c.Data(http.StatusOK, "text/event-stream", []byte("data: {\"error\":{\"code\":429}}\n\n"))
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.7-flash:streamGenerateContent", nil))
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, "rate_limit_error", job.entry.ErrorType)
+	require.Equal(t, "upstream", job.entry.ErrorPhase)
+	require.Equal(t, "provider", job.entry.ErrorOwner)
+	require.Equal(t, http.StatusTooManyRequests, job.entry.StatusCode)
+	require.True(t, job.entry.Stream)
+	require.NotNil(t, job.entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusTooManyRequests, *job.entry.UpstreamStatusCode)
+}
+
+// Gemini 带内信号登记使用的错误类型必须都在 ops 白名单里，否则会被归一化成 api_error。
+func TestNormalizeOpsErrorType_KeepsGeminiInBandSignalTypes(t *testing.T) {
+	for _, errType := range []string{
+		"invalid_request_error", "authentication_error", "permission_error",
+		"not_found_error", "rate_limit_error", "upstream_error",
+	} {
+		require.Equal(t, errType, normalizeOpsErrorType(errType, "PROHIBITED_CONTENT"), errType)
+	}
+}
+
+type opsAdvancedSettingsRepoStub struct {
+	service.SettingRepository
+	advanced string
+}
+
+func (r *opsAdvancedSettingsRepoStub) GetValue(context.Context, string) (string, error) {
+	return "", service.ErrSettingNotFound
+}
+
+func (r *opsAdvancedSettingsRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return map[string]string{service.SettingKeyOpsAdvancedSettings: r.advanced}, nil
+}
+
+func (r *opsAdvancedSettingsRepoStub) Set(context.Context, string, string) error {
+	return nil
+}
+
+// serveClientClosedRequest 以已取消的请求 context 走 failoverClientGone，复现网关标记 499 的收尾路径。
+func serveClientClosedRequest(t *testing.T, ops *service.OpsService, prepare func(c *gin.Context)) {
+	t.Helper()
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/messages", func(c *gin.Context) {
+		if prepare != nil {
+			prepare(c)
+		}
+		failoverClientGone(c)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/messages", nil).WithContext(ctx))
+	require.Equal(t, statusClientClosedRequest, recorder.Code)
+	require.Zero(t, recorder.Body.Len())
+}
+
+func TestOpsErrorLoggerMiddleware_SkipsPureClientClosed(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	require.True(t, ops.OpsAdvancedSettingsSnapshot().IgnoreContextCanceled)
+
+	serveClientClosedRequest(t, ops, nil)
+
+	require.Zero(t, OpsErrorLogQueueLength(), "纯客户端取消的 499 按 IgnoreContextCanceled 跳过")
+}
+
+func TestOpsErrorLoggerMiddleware_RecordsClientClosedAfterUpstreamFailure(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	serveClientClosedRequest(t, ops, func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			AccountID: 7, UpstreamStatusCode: 524, Kind: "failover", Message: "upstream timeout",
+		}})
+	})
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength(), "上游失败后客户端离开仍按上游失败落库")
+	job := <-opsErrorLogQueue
+	require.Equal(t, statusClientClosedRequest, job.entry.StatusCode)
+	require.Equal(t, "upstream", job.entry.ErrorPhase)
+	require.NotNil(t, job.entry.UpstreamStatusCode)
+	require.Equal(t, 524, *job.entry.UpstreamStatusCode)
+}
+
+func TestOpsErrorLoggerMiddleware_RecordsClientClosedWhenIgnoreContextCanceledDisabled(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	settings := &opsAdvancedSettingsRepoStub{advanced: `{"ignore_context_canceled":false}`}
+	ops := service.NewOpsService(nil, settings, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	require.False(t, ops.OpsAdvancedSettingsSnapshot().IgnoreContextCanceled)
+
+	serveClientClosedRequest(t, ops, nil)
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, statusClientClosedRequest, job.entry.StatusCode)
+}

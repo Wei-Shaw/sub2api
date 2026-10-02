@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 const apiMocks = vi.hoisted(() => ({
+  showError: vi.fn(),
   getPlatformQuotas: vi.fn(),
   updatePlatformQuotas: vi.fn(),
   resetPlatformQuotaWindow: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: apiMocks.showError,
     showSuccess: vi.fn(),
   }),
 }))
@@ -49,7 +50,7 @@ vi.mock('@/components/common/BaseDialog.vue', () => ({
 }))
 
 import UserPlatformQuotaModal from '../UserPlatformQuotaModal.vue'
-import type { UserSubscription } from '@/types'
+import type { PlatformQuotaUpdateItem, UserSubscription } from '@/types'
 
 function makeUser(overrides: { subscriptions?: UserSubscription[] } = {}) {
   return { id: 99, email: 'u@example.com', ...overrides } as any
@@ -74,20 +75,73 @@ beforeEach(() => {
 })
 
 describe('UserPlatformQuotaModal', () => {
+  it.each([0, 4, 14])('does not turn a negative limit in input %s into unlimited', async (index) => {
+    const w = await mountAndOpen()
+    await w.findAll('input[type=number]')[index].setValue('-1')
+    await w.findAll('button').find(b => b.text() === 'admin.users.platformQuota.save')!.trigger('click')
+    await flushPromises()
+    expect(apiMocks.updatePlatformQuotas).not.toHaveBeenCalled()
+    expect(apiMocks.showError).toHaveBeenCalledWith('admin.users.platformQuota.invalidNumber')
+    expect(w.emitted('success')).toBeUndefined()
+    w.unmount()
+  })
+
+  it.each([['0', 0], ['', null]])('preserves the meaning of a limit entered as %j', async (input, expected) => {
+    const w = await mountAndOpen()
+    await w.findAll('input[type=number]')[0].setValue(input)
+    await w.findAll('button').find(b => b.text() === 'admin.users.platformQuota.save')!.trigger('click')
+    await flushPromises()
+    expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
+    expect(apiMocks.updatePlatformQuotas.mock.calls[0][1][0].daily_limit_usd).toBe(expected)
+    w.unmount()
+  })
+
   it('挂载并 show=true 时调用 getPlatformQuotas', async () => {
     await mountAndOpen()
     expect(apiMocks.getPlatformQuotas).toHaveBeenCalledWith(99)
   })
 
-  it('空数据渲染 5 个 platform 行', async () => {
+  it('renders all ten supported platforms with empty limits', async () => {
     const w = await mountAndOpen()
-    const html = w.html()
-    expect(html).toContain('anthropic')
-    expect(html).toContain('openai')
-    expect(html).toContain('gemini')
-    expect(html).toContain('antigravity')
-    expect(html).toContain('grok')
+    const rows = w.findAll('tbody tr')
+    expect(rows.map(row => row.find('td').text())).toEqual([
+      'anthropic', 'openai', 'gemini', 'antigravity', 'grok',
+      'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go',
+    ])
+    for (const row of rows) {
+      const inputs = row.findAll('input[type=number]')
+      expect(inputs).toHaveLength(3)
+      expect(inputs.map(input => input.element.value)).toEqual(['', '', ''])
+    }
+    w.unmount()
   })
+
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const)(
+    'saves edits to %s without erasing existing platform limits', async (platform) => {
+      const existing: PlatformQuotaUpdateItem[] = [
+        { platform: 'openai', daily_limit_usd: 10, weekly_limit_usd: 20, monthly_limit_usd: 100 },
+        ...(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const).map(p => ({
+          platform: p, daily_limit_usd: 0, weekly_limit_usd: null, monthly_limit_usd: 50,
+        })),
+      ]
+      apiMocks.getPlatformQuotas.mockResolvedValueOnce({ platform_quotas: existing })
+      const w = await mountAndOpen()
+      const row = w.findAll('tbody tr').find(r => r.find('td').text() === platform)!
+      const inputs = row.findAll('input[type=number]')
+      expect(inputs.map(input => input.element.value)).toEqual(['0', '', '50'])
+      await inputs[1].setValue('12.5')
+      await w.findAll('button').find(b => b.text() === 'admin.users.platformQuota.save')!.trigger('click')
+      await flushPromises()
+      const expected = existing.map(item => item.platform === platform
+        ? { ...item, weekly_limit_usd: 12.5 }
+        : item)
+      expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
+      expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledWith(99, expect.arrayContaining(expected))
+      expect(apiMocks.updatePlatformQuotas.mock.calls[0][1]).toHaveLength(10)
+      expect(w.emitted('success')).toHaveLength(1)
+      w.unmount()
+    },
+  )
 
   it('已有数据正确填充 limit input', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
@@ -98,13 +152,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 5 platforms × 3 windows = 15 inputs
-    expect(inputs.length).toBe(15)
+    // 10 platforms × 3 windows = 30 inputs
+    expect(inputs.length).toBe(30)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整 5 platform payload', async () => {
+  it('保存提交完整 10 platform payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -121,7 +175,7 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(5) // 5 platforms always submitted
+    expect(payload).toHaveLength(10) // 10 platforms always submitted
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
   })
@@ -186,7 +240,7 @@ describe('UserPlatformQuotaModal', () => {
   it('未配置限额的平台重置按钮禁用并提示不可用', async () => {
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
-    expect(resetBtns.length).toBe(15) // 5 平台 × 3 窗口
+    expect(resetBtns.length).toBe(30) // 10 平台 × 3 窗口
     for (const b of resetBtns) {
       expect((b.element as HTMLButtonElement).disabled).toBe(true)
       expect(b.attributes('title')).toBe('admin.users.platformQuota.reset.unavailable')

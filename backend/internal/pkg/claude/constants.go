@@ -18,14 +18,17 @@ const (
 	BetaTokenCounting            = "token-counting-2024-11-01"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
+	// Legacy structured output compatibility; forwarded only when explicitly requested.
+	BetaStructuredOutputs = "structured-outputs-2025-11-13"
 
 	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
-	BetaPromptCachingScope      = "prompt-caching-scope-2026-01-05"
-	BetaEffort                  = "effort-2025-11-24"
-	BetaRedactThinking          = "redact-thinking-2026-02-12"
-	BetaContextManagement       = "context-management-2025-06-27"
-	BetaThinkingBindingControls = "thinking-binding-controls-2026-08-01"
-	BetaExtendedCacheTTL        = "extended-cache-ttl-2025-04-11"
+	BetaPromptCachingScope          = "prompt-caching-scope-2026-01-05"
+	BetaEffort                      = "effort-2025-11-24"
+	BetaRedactThinking              = "redact-thinking-2026-02-12"
+	BetaContextManagement           = "context-management-2025-06-27"
+	BetaThinkingBindingControls     = "thinking-binding-controls-2026-08-01"
+	BetaMidConversationOutputConfig = "mid-conversation-output-config-2026-07-01"
+	BetaExtendedCacheTTL            = "extended-cache-ttl-2025-04-11"
 
 	// server-side refusal fallback beta 字段族（beta Messages API 专有）。
 	// 客户端（Claude Code / SDK / OpenCode 等）会默认透传 body.fallbacks /
@@ -101,26 +104,32 @@ func FullClaudeCodeMimicryBetas() []string {
 		BetaEffort,
 		BetaContextManagement,
 		BetaThinkingBindingControls,
+		BetaMidConversationOutputConfig,
 		BetaExtendedCacheTTL,
 	}
 }
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
-var DefaultHeaders = map[string]string{
-	// Keep these in sync with recent Claude CLI traffic to reduce the chance
-	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
-	// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
-	"User-Agent":                                "claude-cli/" + CLIVersion() + " (external, cli)",
-	"X-Stainless-Lang":                          "js",
-	"X-Stainless-Package-Version":               "0.94.0",
-	"X-Stainless-OS":                            "Linux",
-	"X-Stainless-Arch":                          "arm64",
-	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v24.3.0",
-	"X-Stainless-Retry-Count":                   "0",
-	"X-Stainless-Timeout":                       "600",
-	"X-App":                                     "cli",
-	"Anthropic-Dangerous-Direct-Browser-Access": "true",
+// 每次调用现构造：User-Agent 走 DefaultUserAgent()（运行期可变版本号），
+// 不再在包 init 时固化。同一次请求内应只取一次 UA 字符串并在出站头与
+// billing 两条路径间复用，避免版本缓存翻转瞬间头/体不一致。
+func DefaultHeaders() map[string]string {
+	return map[string]string{
+		// Keep these in sync with recent Claude CLI traffic to reduce the chance
+		// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
+		// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
+		"User-Agent":                                DefaultUserAgent(),
+		"X-Stainless-Lang":                          "js",
+		"X-Stainless-Package-Version":               "0.94.0",
+		"X-Stainless-OS":                            "Linux",
+		"X-Stainless-Arch":                          "arm64",
+		"X-Stainless-Runtime":                       "node",
+		"X-Stainless-Runtime-Version":               "v24.3.0",
+		"X-Stainless-Retry-Count":                   "0",
+		"X-Stainless-Timeout":                       "600",
+		"X-App":                                     "cli",
+		"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	}
 }
 
 // Model 表示一个 Claude 模型
@@ -170,10 +179,22 @@ var DefaultModels = []Model{
 		CreatedAt:   "2026-05-29T00:00:00Z",
 	},
 	{
+		ID:          "claude-opus-5-5",
+		Type:        "model",
+		DisplayName: "Claude Opus 5.5",
+		CreatedAt:   "2026-09-22T00:00:00Z",
+	},
+	{
 		ID:          "claude-opus-5",
 		Type:        "model",
 		DisplayName: "Claude Opus 5",
 		CreatedAt:   "2026-07-25T00:00:00Z",
+	},
+	{
+		ID:          "claude-sonnet-5-5",
+		Type:        "model",
+		DisplayName: "Claude Sonnet 5.5",
+		CreatedAt:   "2026-09-28T00:00:00Z",
 	},
 	{
 		ID:          "claude-sonnet-5",
