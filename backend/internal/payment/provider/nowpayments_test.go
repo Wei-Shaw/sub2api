@@ -49,6 +49,18 @@ func newTestNowPayments(t *testing.T, overrides map[string]string) *NowPayments 
 	return provider
 }
 
+type rewriteHostTransport struct {
+	target *url.URL
+}
+
+func (rt rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = rt.target.Scheme
+	clone.URL.Host = rt.target.Host
+	clone.Host = rt.target.Host
+	return http.DefaultTransport.RoundTrip(clone)
+}
+
 // pointNowPaymentsAtServer redirects the provider's fixed upstream host at a
 // test server; the base URL is derived from env, so this is the only seam.
 func pointNowPaymentsAtServer(t *testing.T, p *NowPayments, srv *httptest.Server) {
@@ -184,8 +196,12 @@ func TestGetBasePaymentTypeCoversNowPayments(t *testing.T) {
 	if got := payment.GetBasePaymentType(payment.TypeNowPaymentsCrypto); got != payment.TypeNowPayments {
 		t.Fatalf("base type = %q, want %q", got, payment.TypeNowPayments)
 	}
-	if got := payment.GetBasePaymentType(payment.TypeSePayCard); got != payment.TypeSePay {
-		t.Fatalf("base type = %q, want %q", got, payment.TypeSePay)
+	if got := payment.GetBasePaymentType(payment.TypeGPMPayBankTransfer); got != payment.TypeGPMPay {
+		t.Fatalf("base type = %q, want %q", got, payment.TypeGPMPay)
+	}
+	// Historical orders from the removed SePay gateway keep their stored type.
+	if got := payment.GetBasePaymentType("sepay_bank_transfer"); got != "sepay_bank_transfer" {
+		t.Fatalf("base type = %q, want legacy value unchanged", got)
 	}
 }
 

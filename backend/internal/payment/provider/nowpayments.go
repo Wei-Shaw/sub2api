@@ -63,8 +63,8 @@ func (e *nowPaymentsHTTPError) Error() string {
 
 // NowPayments 实现 payment.Provider，接入 NOWPayments 的托管收银台（invoice）。
 //
-// 与 SePay 不同，NOWPayments 的收银台是一个普通的 GET 链接（invoice_url），
-// 因此 CreatePayment 直接返回 PayURL，不需要自动提交表单的中转页。
+// NOWPayments 的收银台是一个普通的 GET 链接（invoice_url），
+// 因此 CreatePayment 直接返回 PayURL。
 //
 // 结算判定完全依赖 IPN 回调：回调体用 IPN Secret 做 HMAC-SHA512 签名，
 // 官方各语言 SDK 与 WooCommerce 插件都只认这一条路径，上游没有「按账单号查订单」

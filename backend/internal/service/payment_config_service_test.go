@@ -78,7 +78,7 @@ func TestGetPaymentConfigKeepsStoredEnabledTypes(t *testing.T) {
 	client := newPaymentConfigServiceTestClient(t)
 
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
+		SetProviderKey(payment.TypeGPMPay).
 		SetName("EasyPay Alipay").
 		SetConfig("{}").
 		SetSupportedTypes("alipay").
@@ -92,7 +92,7 @@ func TestGetPaymentConfigKeepsStoredEnabledTypes(t *testing.T) {
 		entClient: client,
 		settingRepo: &paymentConfigSettingRepoStub{
 			values: map[string]string{
-				SettingEnabledPaymentTypes: payment.TypeSePayBankTransfer + "," + payment.TypeSePayNapas + "," + payment.TypeSePayCard,
+				SettingEnabledPaymentTypes: payment.TypeGPMPayBankTransfer + "," + payment.TypeNowPaymentsCrypto,
 			},
 		},
 	}
@@ -102,7 +102,7 @@ func TestGetPaymentConfigKeepsStoredEnabledTypes(t *testing.T) {
 		t.Fatalf("GetPaymentConfig returned error: %v", err)
 	}
 
-	want := []string{payment.TypeSePayBankTransfer, payment.TypeSePayNapas, payment.TypeSePayCard}
+	want := []string{payment.TypeGPMPayBankTransfer, payment.TypeNowPaymentsCrypto}
 	if len(cfg.EnabledTypes) != len(want) {
 		t.Fatalf("EnabledTypes len = %d, want %d (%v)", len(cfg.EnabledTypes), len(want), cfg.EnabledTypes)
 	}

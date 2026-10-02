@@ -247,10 +247,9 @@ func paymentOrderQueryReference(order *dbent.PaymentOrder, prov payment.Provider
 		providerKey = strings.TrimSpace(order.PaymentType)
 	}
 
-	// SePay 的订单查询用 order_invoice_number，也就是我们的 out_trade_no；
-	// 上游交易号只在网关分配了自己的编号时才作为查询依据。
-	// GPM Pay 同理：查询按转账备注里的订单码搜索，订单码由 out_trade_no 生成。
-	if base := payment.GetBasePaymentType(providerKey); base == payment.TypeSePay || base == payment.TypeGPMPay {
+	// GPM Pay 没有上游订单：查询按转账备注里的订单码搜索，订单码由 out_trade_no 生成；
+	// 其余网关只在分配了自己的交易号时才以它作为查询依据。
+	if base := payment.GetBasePaymentType(providerKey); base == payment.TypeGPMPay {
 		return strings.TrimSpace(order.OutTradeNo)
 	}
 	if tradeNo := strings.TrimSpace(order.PaymentTradeNo); tradeNo != "" {

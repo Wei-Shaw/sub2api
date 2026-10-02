@@ -99,13 +99,6 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		})
 		return fmt.Errorf("provider mismatch: expected %s, got %s", expectedProviderKey, pk)
 	}
-	if err := validateProviderNotificationMetadata(o, pk, metadata); err != nil {
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_PROVIDER_METADATA_MISMATCH", pk, map[string]any{
-			"detail":  err.Error(),
-			"tradeNo": tradeNo,
-		})
-		return err
-	}
 	if !isValidProviderAmount(paid) {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", pk, map[string]any{
 			"expected": o.PayAmount,
@@ -151,10 +144,6 @@ var decimalAmountToleranceMinorUnit = decimal.NewFromFloat(amountToleranceMinorU
 // isValidProviderAmount 金额必须为正。decimal 不存在 NaN/Inf，无需额外判定。
 func isValidProviderAmount(amount decimal.Decimal) bool {
 	return amount.IsPositive()
-}
-
-func validateProviderNotificationMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
-	return validateProviderSnapshotMetadata(order, providerKey, metadata)
 }
 
 func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentType string, orderProviderKey string, instanceProviderKey string) string {

@@ -7,7 +7,7 @@ function f202RawSnapshot(overrides: Record<string, unknown> = {}): string {
     amount: 10,
     qrCode: 'qr-123',
     expiresAt: '2099-01-01T00:10:00.000Z',
-    paymentType: 'sepay_bank_transfer',
+    paymentType: 'gpmpay_bank_transfer',
     payUrl: '',
     outTradeNo: 'sub2_123',
     currency: 'VND',

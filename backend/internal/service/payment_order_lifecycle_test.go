@@ -46,7 +46,7 @@ func (p *paymentOrderLifecycleQueryProvider) ProviderKey() string {
 	if p.key != "" {
 		return p.key
 	}
-	return payment.TypeSePayBankTransfer
+	return payment.TypeGPMPayBankTransfer
 }
 
 func (p *paymentOrderLifecycleQueryProvider) SupportedTypes() []payment.PaymentType {
@@ -179,7 +179,7 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-UPSTREAM-TRADE-NO").
 		SetOutTradeNo("sub2_checkpaid_trade_no_missing").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -280,7 +280,7 @@ func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-UPSTREAM-RETRY").
 		SetOutTradeNo("sub2_checkpaid_retry_zero_amount").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -378,7 +378,7 @@ func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-ZERO-AMOUNT").
 		SetOutTradeNo("sub2_checkpaid_zero_amount").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -470,7 +470,7 @@ func TestVerifyOrderByOutTradeNoDoesNotCancelUnpaidUpstreamOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-PENDING").
 		SetOutTradeNo("sub2_checkpaid_pending").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -527,7 +527,7 @@ func TestCancelOrderStillClosesUnpaidUpstreamOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CANCEL-PENDING").
 		SetOutTradeNo("sub2_cancel_pending").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -569,9 +569,9 @@ func TestReconcilePendingOrdersBackfillsPaidOrder(t *testing.T) {
 	client := newPaymentOrderLifecycleTestClient(t)
 
 	user, err := client.User.Create().
-		SetEmail("sepay-reconcile@example.com").
+		SetEmail("gpmpay-reconcile@example.com").
 		SetPasswordHash("hash").
-		SetUsername("sepay-reconcile-user").
+		SetUsername("gpmpay-reconcile-user").
 		Save(ctx)
 	require.NoError(t, err)
 
@@ -582,9 +582,9 @@ func TestReconcilePendingOrdersBackfillsPaidOrder(t *testing.T) {
 		SetAmount(50).
 		SetPayAmount(50).
 		SetFeeRate(0).
-		SetRechargeCode("SEPAY-RECONCILE").
-		SetOutTradeNo("sub2_sepay_reconcile").
-		SetPaymentType(payment.TypeSePay).
+		SetRechargeCode("GPMPAY-RECONCILE").
+		SetOutTradeNo("sub2_gpmpay_reconcile").
+		SetPaymentType(payment.TypeGPMPay).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -632,9 +632,9 @@ func TestReconcilePendingOrdersBackfillsPaidOrder(t *testing.T) {
 	)
 	registry := payment.NewRegistry()
 	provider := &paymentOrderLifecycleQueryProvider{
-		key: payment.TypeSePay,
+		key: payment.TypeGPMPay,
 		resp: &payment.QueryOrderResponse{
-			TradeNo: "sepay-upstream-trade-123",
+			TradeNo: "gpmpay-upstream-trade-123",
 			Status:  payment.ProviderStatusPaid,
 			Amount:  decimal.NewFromInt(50),
 		},
@@ -658,7 +658,7 @@ func TestReconcilePendingOrdersBackfillsPaidOrder(t *testing.T) {
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
-	require.Equal(t, "sepay-upstream-trade-123", reloaded.PaymentTradeNo)
+	require.Equal(t, "gpmpay-upstream-trade-123", reloaded.PaymentTradeNo)
 	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
 	require.Len(t, redeemRepo.useCalls, 1)
 }
@@ -683,7 +683,7 @@ func TestReconcilePendingOrdersQueriesBankTransferOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("ALIPAY-RECONCILE").
 		SetOutTradeNo("sub2_alipay_reconcile").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -695,7 +695,7 @@ func TestReconcilePendingOrdersQueriesBankTransferOrder(t *testing.T) {
 
 	registry := payment.NewRegistry()
 	provider := &paymentOrderLifecycleQueryProvider{
-		key: payment.TypeSePayBankTransfer,
+		key: payment.TypeGPMPayBankTransfer,
 		resp: &payment.QueryOrderResponse{
 			TradeNo: order.OutTradeNo,
 			Status:  payment.ProviderStatusPending,
@@ -736,7 +736,7 @@ func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsFor
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-EXISTING-TRADE-NO").
 		SetOutTradeNo("sub2_checkpaid_use_out_trade_no").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("upstream-trade-existing").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -810,17 +810,17 @@ func TestPaymentOrderAllowsRegistryFallbackOnlyForLegacyOrdersWithoutPinnedProvi
 	t.Parallel()
 
 	require.True(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType: payment.TypeSePayBankTransfer,
+		PaymentType: payment.TypeGPMPayBankTransfer,
 	}))
 
 	instanceID := "12"
 	require.False(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType:        payment.TypeSePayBankTransfer,
+		PaymentType:        payment.TypeGPMPayBankTransfer,
 		ProviderInstanceID: &instanceID,
 	}))
 
 	require.False(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType: payment.TypeSePayBankTransfer,
+		PaymentType: payment.TypeGPMPayBankTransfer,
 		ProviderSnapshot: map[string]any{
 			"schema_version":       2,
 			"provider_instance_id": "12",
@@ -828,19 +828,35 @@ func TestPaymentOrderAllowsRegistryFallbackOnlyForLegacyOrdersWithoutPinnedProvi
 	}))
 }
 
-func TestPaymentOrderQueryReferenceUsesOutTradeNoForOfficialProviders(t *testing.T) {
+func TestPaymentOrderQueryReferenceUsesOutTradeNoForGPMPay(t *testing.T) {
 	t.Parallel()
 
 	order := &dbent.PaymentOrder{
-		PaymentType:    payment.TypeSePayNapas,
+		PaymentType:    payment.TypeGPMPayBankTransfer,
 		OutTradeNo:     "sub2_out_trade_no",
-		PaymentTradeNo: "wx-transaction-id",
+		PaymentTradeNo: "bank-transaction-id",
 	}
 
 	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, &paymentOrderLifecycleQueryProvider{}))
 	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, paymentFulfillmentTestProvider{
-		key: payment.TypeSePayNapas,
+		key: payment.TypeGPMPay,
 	}))
+}
+
+func TestPaymentOrderQueryReferenceUsesPaymentTradeNoForOtherProviders(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType:    payment.TypeNowPaymentsCrypto,
+		OutTradeNo:     "sub2_out_trade_no",
+		PaymentTradeNo: "np-payment-id",
+	}
+	provider := paymentFulfillmentTestProvider{key: payment.TypeNowPayments}
+
+	require.Equal(t, "np-payment-id", paymentOrderQueryReference(order, provider))
+
+	order.PaymentTradeNo = ""
+	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, provider))
 }
 
 func newPaymentOrderLifecycleTestClient(t *testing.T) *dbent.Client {

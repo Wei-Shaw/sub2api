@@ -20,9 +20,6 @@ export type OrderStatus =
   | 'REFUND_FAILED'
 
 export type PaymentType =
-  | 'sepay_bank_transfer'
-  | 'sepay_napas'
-  | 'sepay_card'
   | 'nowpayments_crypto'
   | 'gpmpay_bank_transfer'
 
@@ -201,12 +198,7 @@ export interface ExchangeRateInfo {
   source?: string
 }
 
-/**
- * `form_post` means the gateway checkout is reached through a signed HTTP POST
- * form rather than a plain redirect; the backend serves an auto-submitting
- * bridge page and hands us its URL in `pay_url`.
- */
-export type CreateOrderResultType = 'order_created' | 'form_post'
+export type CreateOrderResultType = 'order_created'
 
 export interface CreateOrderResult {
   order_id: number

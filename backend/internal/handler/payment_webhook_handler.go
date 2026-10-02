@@ -37,12 +37,6 @@ func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *
 	}
 }
 
-// SePayNotify handles SePay payment notifications.
-// POST /api/v1/payment/webhook/sepay
-func (h *PaymentWebhookHandler) SePayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeSePay)
-}
-
 // NowPaymentsNotify handles NOWPayments IPN callbacks.
 // POST /api/v1/payment/webhook/nowpayments
 func (h *PaymentWebhookHandler) NowPaymentsNotify(c *gin.Context) {
@@ -136,38 +130,27 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 // extractOutTradeNo parses the webhook body to find the out_trade_no.
 // This allows looking up the correct provider instance before verification.
-// SePay posts JSON, but form-encoded bodies are accepted too so a gateway that
-// switches encodings does not silently lose instance pinning.
+// Form-encoded bodies are accepted too so a gateway that switches encodings
+// does not silently lose instance pinning.
 func extractOutTradeNo(rawBody string) string {
 	trimmed := strings.TrimSpace(rawBody)
 	if trimmed == "" {
 		return ""
 	}
 	if strings.HasPrefix(trimmed, "{") {
-		// order_invoice_number is SePay's name for it, order_id is NOWPayments'.
+		// order_id is NOWPayments' name for it.
 		var payload struct {
-			OrderInvoiceNumber string          `json:"order_invoice_number"`
-			OrderID            string          `json:"order_id"`
-			Order              json.RawMessage `json:"order"`
-			Content            string          `json:"content"`
-			Data               struct {
-				OrderInvoiceNumber string `json:"order_invoice_number"`
-				OrderID            string `json:"order_id"`
+			OrderID string `json:"order_id"`
+			Content string `json:"content"`
+			Data    struct {
+				OrderID string `json:"order_id"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
 			return ""
 		}
-		// SePay 真实 IPN 把订单嵌在 order 下；order.order_id 是 SePay 自己的单号，不能用。
-		var nestedOrder struct {
-			OrderInvoiceNumber string `json:"order_invoice_number"`
-		}
-		_ = json.Unmarshal(payload.Order, &nestedOrder)
 		for _, candidate := range []string{
-			payload.OrderInvoiceNumber,
-			nestedOrder.OrderInvoiceNumber,
 			payload.OrderID,
-			payload.Data.OrderInvoiceNumber,
 			payload.Data.OrderID,
 			// GPM Pay only echoes the order code inside the transfer memo.
 			payment.OutTradeNoFromTransferContent(payload.Content),
@@ -181,9 +164,6 @@ func extractOutTradeNo(rawBody string) string {
 	values, err := url.ParseQuery(trimmed)
 	if err != nil {
 		return ""
-	}
-	if v := strings.TrimSpace(values.Get("order_invoice_number")); v != "" {
-		return v
 	}
 	return strings.TrimSpace(values.Get("order_id"))
 }
@@ -207,7 +187,7 @@ func verifyNotificationWithProviders(ctx context.Context, providers []payment.Pr
 	return "", nil, fmt.Errorf("no webhook provider could verify notification")
 }
 
-// writeSuccessResponse 返回服务商要求的成功响应。SePay 接受纯文本 "success"。
+// writeSuccessResponse 返回服务商要求的成功响应（纯文本 "success"）。
 func writeSuccessResponse(c *gin.Context, providerKey string) {
 	_ = providerKey
 	c.String(http.StatusOK, "success")

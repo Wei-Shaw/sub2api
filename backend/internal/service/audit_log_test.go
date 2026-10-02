@@ -89,13 +89,13 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 		"proxy_key": "socks5|1.2.3.4|1080|proxyuser|proxypass-ddd",
 		"custom_key": "sk-custom-eee",
 		"config": {
-			"secretKey": "sepay-secret-fff",
-			"SecretKey": "sepay-secret-ggg",
-			"secret_key": "sepay-secret-hhh",
+			"secretKey": "gateway-secret-fff",
+			"SecretKey": "gateway-secret-ggg",
+			"secret_key": "gateway-secret-hhh",
 			"privateKey": "legacy-pem-iii",
 			"webhookSecret": "whsec-jjj"
 		},
-		"provider_key": "sepay",
+		"provider_key": "gpmpay",
 		"name": "instance-1"
 	}`)
 	out := RedactAuditBody(raw, "application/json")
@@ -103,7 +103,7 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 	for _, secret := range []string{
 		"sk-session-aaa", "pem-body-bbb", "sa-blob-ccc",
 		"proxypass-ddd", "sk-custom-eee",
-		"sepay-secret-fff", "sepay-secret-ggg", "sepay-secret-hhh",
+		"gateway-secret-fff", "gateway-secret-ggg", "gateway-secret-hhh",
 		"legacy-pem-iii", "whsec-jjj",
 	} {
 		if strings.Contains(out, secret) {
@@ -111,7 +111,7 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 		}
 	}
 	// provider_key 是渠道标识而非密钥，必须保留以便追责。
-	if !strings.Contains(out, `"provider_key":"sepay"`) {
+	if !strings.Contains(out, `"provider_key":"gpmpay"`) {
 		t.Fatalf("provider_key should be preserved for accountability: %s", out)
 	}
 	if !strings.Contains(out, "instance-1") {

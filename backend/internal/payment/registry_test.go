@@ -34,11 +34,11 @@ func TestRegistryRegisterAndGetProvider(t *testing.T) {
 	p := &mockProvider{
 		name:           "TestPay",
 		key:            "testpay",
-		supportedTypes: []PaymentType{TypeSePayBankTransfer, TypeSePayNapas},
+		supportedTypes: []PaymentType{TypeGPMPayBankTransfer, TypeNowPaymentsCrypto},
 	}
 	r.Register(p)
 
-	got, err := r.GetProvider(TypeSePayBankTransfer)
+	got, err := r.GetProvider(TypeGPMPayBankTransfer)
 	if err != nil {
 		t.Fatalf("GetProvider(alipay) error: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestRegistryRegisterAndGetProvider(t *testing.T) {
 		t.Fatalf("GetProvider(alipay) key = %q, want %q", got.ProviderKey(), "testpay")
 	}
 
-	got2, err := r.GetProvider(TypeSePayNapas)
+	got2, err := r.GetProvider(TypeNowPaymentsCrypto)
 	if err != nil {
 		t.Fatalf("GetProvider(wxpay) error: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestRegistryGetProviderByKey(t *testing.T) {
 	p := &mockProvider{
 		name:           "EasyPay",
 		key:            "easypay",
-		supportedTypes: []PaymentType{TypeSePayBankTransfer},
+		supportedTypes: []PaymentType{TypeGPMPayBankTransfer},
 	}
 	r.Register(p)
 
@@ -112,11 +112,11 @@ func TestRegistryGetProviderKeyKnownType(t *testing.T) {
 	p := &mockProvider{
 		name:           "Stripe",
 		key:            "stripe",
-		supportedTypes: []PaymentType{TypeSePay},
+		supportedTypes: []PaymentType{TypeGPMPay},
 	}
 	r.Register(p)
 
-	key := r.GetProviderKey(TypeSePay)
+	key := r.GetProviderKey(TypeGPMPay)
 	if key != "stripe" {
 		t.Fatalf("GetProviderKey(stripe) = %q, want %q", key, "stripe")
 	}
@@ -129,12 +129,12 @@ func TestRegistrySupportedTypes(t *testing.T) {
 	p1 := &mockProvider{
 		name:           "EasyPay",
 		key:            "easypay",
-		supportedTypes: []PaymentType{TypeSePayBankTransfer, TypeSePayNapas},
+		supportedTypes: []PaymentType{TypeGPMPayBankTransfer, TypeNowPaymentsCrypto},
 	}
 	p2 := &mockProvider{
 		name:           "Stripe",
 		key:            "stripe",
-		supportedTypes: []PaymentType{TypeSePay},
+		supportedTypes: []PaymentType{TypeGPMPay},
 	}
 	r.Register(p1)
 	r.Register(p2)
@@ -148,7 +148,7 @@ func TestRegistrySupportedTypes(t *testing.T) {
 	for _, tp := range types {
 		typeSet[tp] = true
 	}
-	for _, expected := range []PaymentType{TypeSePayBankTransfer, TypeSePayNapas, TypeSePay} {
+	for _, expected := range []PaymentType{TypeGPMPayBankTransfer, TypeNowPaymentsCrypto, TypeGPMPay} {
 		if !typeSet[expected] {
 			t.Fatalf("SupportedTypes() missing %q", expected)
 		}
@@ -172,17 +172,17 @@ func TestRegistryOverwriteExisting(t *testing.T) {
 	p1 := &mockProvider{
 		name:           "OldPay",
 		key:            "old",
-		supportedTypes: []PaymentType{TypeSePayBankTransfer},
+		supportedTypes: []PaymentType{TypeGPMPayBankTransfer},
 	}
 	p2 := &mockProvider{
 		name:           "NewPay",
 		key:            "new",
-		supportedTypes: []PaymentType{TypeSePayBankTransfer},
+		supportedTypes: []PaymentType{TypeGPMPayBankTransfer},
 	}
 	r.Register(p1)
 	r.Register(p2)
 
-	got, err := r.GetProvider(TypeSePayBankTransfer)
+	got, err := r.GetProvider(TypeGPMPayBankTransfer)
 	if err != nil {
 		t.Fatalf("GetProvider error: %v", err)
 	}

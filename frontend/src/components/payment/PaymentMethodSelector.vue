@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GPMPAY_BANK_TRANSFER, METHOD_ORDER, SEPAY_BANK_TRANSFER } from './providerConfig'
+import { GPMPAY_BANK_TRANSFER, METHOD_ORDER } from './providerConfig'
 import paymentIcon from '@/assets/icons/payment.svg'
 
 export interface PaymentMethodOption {
@@ -72,10 +72,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-// SePay ships no per-method marks, so every method uses the neutral payment
-// glyph rather than a borrowed brand icon.
+// Bank transfer uses the neutral payment glyph rather than a borrowed brand icon.
 const METHOD_ICONS: Record<string, string> = {
-  [SEPAY_BANK_TRANSFER]: paymentIcon,
   [GPMPAY_BANK_TRANSFER]: paymentIcon,
 }
 

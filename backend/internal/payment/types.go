@@ -14,16 +14,12 @@ type PaymentType = string
 
 // Supported payment type constants.
 //
-// TypeSePay and TypeNowPayments are provider keys; the remaining constants are
-// the user-facing payment methods an instance of that provider offers. For
-// SePay they map one-to-one onto the gateway's payment_method values.
+// TypeNowPayments and TypeGPMPay are provider keys; the remaining constants are
+// the user-facing payment methods an instance of that provider offers.
+//
+// SePay was removed; historical orders still carry sepay_* payment types, which
+// GetBasePaymentType returns unchanged.
 const (
-	TypeSePay             PaymentType = "sepay"
-	TypeSePayBankTransfer PaymentType = "sepay_bank_transfer"
-	// Napas 与银行卡已经停售，只保留常量给历史订单和它们的收银台重放用。
-	TypeSePayNapas PaymentType = "sepay_napas"
-	TypeSePayCard  PaymentType = "sepay_card"
-
 	TypeNowPayments       PaymentType = "nowpayments"
 	TypeNowPaymentsCrypto PaymentType = "nowpayments_crypto"
 
@@ -33,7 +29,7 @@ const (
 
 // providerKeyPrefixes are the provider keys that user-facing payment types are
 // prefixed with. No key may be a prefix of another one.
-var providerKeyPrefixes = []PaymentType{TypeSePay, TypeNowPayments, TypeGPMPay}
+var providerKeyPrefixes = []PaymentType{TypeNowPayments, TypeGPMPay}
 
 // IsProviderKey reports whether a string names one of the gateways this build
 // ships. Keep every "is this a known gateway" check on this one list: a second
@@ -104,8 +100,8 @@ const (
 const DefaultLoadBalanceStrategy = "round-robin"
 
 // GetBasePaymentType extracts the base payment method from a composite key.
-// For example, "sepay_card" maps back to "sepay" and "nowpayments_crypto" to
-// "nowpayments". Unknown values are returned unchanged.
+// For example, "nowpayments_crypto" maps back to "nowpayments". Unknown values
+// are returned unchanged.
 func GetBasePaymentType(t string) string {
 	for _, key := range providerKeyPrefixes {
 		if strings.HasPrefix(t, key) {
@@ -127,7 +123,7 @@ func MinorUnitToDecimalAmount(value int64, currency string) decimal.Decimal {
 type CreatePaymentRequest struct {
 	OrderID     string // Internal order ID
 	Amount      string // 支付金额，按服务商实例配置的币种解释
-	PaymentType string // e.g. "sepay_bank_transfer"
+	PaymentType string // e.g. "gpmpay_bank_transfer"
 	Subject     string // Product description
 	NotifyURL   string // Webhook callback URL
 	ReturnURL   string // Browser redirect URL after payment
@@ -140,10 +136,6 @@ type CreatePaymentResultType = string
 
 const (
 	CreatePaymentResultOrderCreated CreatePaymentResultType = "order_created"
-	// CreatePaymentResultFormPost means the payer must reach the gateway through
-	// an HTTP POST form rather than a plain redirect. FormAction and FormFields
-	// carry everything the auto-submitting checkout page needs.
-	CreatePaymentResultFormPost CreatePaymentResultType = "form_post"
 )
 
 // CreatePaymentResponse is returned after successfully initiating a payment.
@@ -154,18 +146,6 @@ type CreatePaymentResponse struct {
 	Currency   string                  // 服务商支付币种
 	PaymentEnv string                  // 服务商前端环境标识
 	ResultType CreatePaymentResultType // Typed result contract for frontend flows
-	FormAction string                  // POST target for CreatePaymentResultFormPost
-	// FormFields are the signed form inputs, in submission order. Order is
-	// significant: SePay recomputes the signature over a fixed field sequence
-	// and rejects a form whose inputs are arranged differently, so this must
-	// stay an ordered list rather than a map.
-	FormFields []FormField
-}
-
-// FormField is a single hidden input of a form-post checkout.
-type FormField struct {
-	Name  string
-	Value string
 }
 
 // QueryOrderResponse describes the payment status from the upstream provider.
@@ -195,7 +175,7 @@ type PaymentNotification struct {
 // InstanceSelection holds the selected provider instance and its decrypted config.
 type InstanceSelection struct {
 	InstanceID     string
-	ProviderKey    string // Provider key of the selected instance (e.g. "sepay")
+	ProviderKey    string // Provider key of the selected instance (e.g. "gpmpay")
 	Config         map[string]string
 	SupportedTypes string // Comma-separated list of supported payment types from the instance
 	PaymentMode    string // Payment display mode: "qrcode", "redirect", "popup"
@@ -205,7 +185,7 @@ type InstanceSelection struct {
 type Provider interface {
 	// Name returns a human-readable name for this provider.
 	Name() string
-	// ProviderKey returns the unique key identifying this provider type (e.g. "sepay").
+	// ProviderKey returns the unique key identifying this provider type (e.g. "gpmpay").
 	ProviderKey() string
 	// SupportedTypes returns the list of payment types this provider handles.
 	SupportedTypes() []PaymentType

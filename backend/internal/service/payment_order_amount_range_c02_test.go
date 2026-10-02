@@ -100,7 +100,7 @@ func TestC02CreateOrderAmountRangeUsesGatewayCurrency(t *testing.T) {
 				UserID:         1,
 				Amount:         tc.amount,
 				AmountCurrency: tc.currency,
-				PaymentType:    "sepay",
+				PaymentType:    payment.TypeGPMPay,
 				OrderType:      payment.OrderTypeBalance,
 			})
 			require.Error(t, err)

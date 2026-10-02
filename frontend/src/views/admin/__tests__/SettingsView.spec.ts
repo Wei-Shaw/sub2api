@@ -1753,7 +1753,7 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("prompts for step-up and retries provider writes once verified", async () => {
-    const provider = { id: 7, provider_key: "sepay", enabled: true, supported_types: [] };
+    const provider = { id: 7, provider_key: "gpmpay", enabled: true, supported_types: [] };
     getProviders.mockResolvedValue({ data: [provider] });
     updateProvider
       .mockRejectedValueOnce({ status: 403, code: "STEP_UP_REQUIRED", message: "step-up" })
@@ -1778,7 +1778,7 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("silently drops a provider delete when step-up is cancelled", async () => {
-    const provider = { id: 9, provider_key: "sepay", enabled: true, supported_types: [] };
+    const provider = { id: 9, provider_key: "gpmpay", enabled: true, supported_types: [] };
     getProviders.mockResolvedValue({ data: [provider] });
     deleteProvider.mockRejectedValueOnce({ status: 403, code: "STEP_UP_REQUIRED", message: "step-up" });
 

@@ -17,7 +17,7 @@ import (
 )
 
 // validateProviderConfig runs the provider's constructor to surface config-level
-// errors at save time (e.g. sepay missing secretKey), instead of only failing
+// errors at save time (e.g. gpmpay missing webhookSecret), instead of only failing
 // when an order is created. Returns the structured ApplicationError from the
 // constructor so the frontend i18n layer can localize it.
 //
@@ -107,7 +107,6 @@ var pendingOrderStatuses = []string{
 // Key matching is case-insensitive. Non-listed keys (e.g. merchantId, env,
 // currency) are returned in plaintext by the admin GET API.
 var providerSensitiveConfigFields = map[string]map[string]struct{}{
-	payment.TypeSePay:       {"secretkey": {}, "ipnsecretkey": {}},
 	payment.TypeNowPayments: {"apikey": {}, "ipnsecretkey": {}},
 	payment.TypeGPMPay:      {"apitoken": {}, "webhooksecret": {}},
 }
@@ -117,7 +116,6 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 // all provider identity fields that are snapshotted into orders or used by
 // webhook verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
-	payment.TypeSePay:       {"merchantid": {}, "secretkey": {}, "env": {}, "currency": {}},
 	payment.TypeNowPayments: {"apikey": {}, "ipnsecretkey": {}, "env": {}, "currency": {}},
 	payment.TypeGPMPay:      {"webhooksecret": {}, "bankbin": {}, "accountnumber": {}},
 }
@@ -260,7 +258,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		}
 	}
 	// Validate merged config when the instance will end up enabled.
-	// This surfaces provider-level errors (e.g. sepay missing secretKey) at save time,
+	// This surfaces provider-level errors (e.g. gpmpay missing webhookSecret) at save time,
 	// so admins see them in the dialog instead of only when an order is created.
 	finalEnabled := current.Enabled
 	if req.Enabled != nil {
@@ -404,8 +402,8 @@ func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id in
 
 // encryptConfig serialises a provider config and encrypts it for storage.
 //
-// Provider configs hold live payment gateway credentials (the SePay merchant
-// secretKey). With it an attacker can sign a valid checkout for an arbitrary
+// Provider configs hold live payment gateway credentials (the GPM Pay webhook
+// secret). With it an attacker can sign a valid notification for an arbitrary
 // order, so a single leaked row defeats the signature verification entirely.
 // They are never written in the clear.
 //

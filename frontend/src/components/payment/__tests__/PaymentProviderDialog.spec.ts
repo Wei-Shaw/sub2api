@@ -3,19 +3,15 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import {
-  PROVIDER_SEPAY,
-  SEPAY_BANK_TRANSFER,
+  GPMPAY_BANK_TRANSFER,
+  PROVIDER_GPMPAY,
   WEBHOOK_PATHS,
 } from '@/components/payment/providerConfig'
 import type { ProviderInstance } from '@/types/payment'
 
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
-  'admin.settings.payment.sepayWebhookHint': 'Configure the SePay IPN endpoint.',
-  'admin.settings.payment.field_merchantId': 'Merchant ID',
-  'admin.settings.payment.field_secretKey': 'Secret Key',
-  'admin.settings.payment.field_env': 'Environment',
-  'admin.settings.payment.field_currency': 'Payment currency',
+  'admin.settings.payment.gpmPayWebhookHint': 'Configure the GPM Pay webhook endpoint.',
   'admin.settings.payment.validationFieldRequired': 'Missing {field}',
 }
 
@@ -35,12 +31,12 @@ vi.mock('vue-i18n', () => ({
 function providerFactory(overrides: Partial<ProviderInstance> = {}): ProviderInstance {
   return {
     id: 1,
-    provider_key: PROVIDER_SEPAY,
-    name: 'SePay',
+    provider_key: PROVIDER_GPMPAY,
+    name: 'GPM Pay',
     config: {},
-    supported_types: [SEPAY_BANK_TRANSFER],
+    supported_types: [GPMPAY_BANK_TRANSFER],
     enabled: true,
-    payment_mode: 'redirect',
+    payment_mode: '',
     limits: '',
     sort_order: 0,
     ...overrides,
@@ -53,12 +49,11 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
       show: true,
       saving: false,
       editing: options.editing ?? null,
-      allKeyOptions: [{ value: PROVIDER_SEPAY, label: 'SePay' }],
-      enabledKeyOptions: [{ value: PROVIDER_SEPAY, label: 'SePay' }],
+      allKeyOptions: [{ value: PROVIDER_GPMPAY, label: 'GPM Pay' }],
+      enabledKeyOptions: [{ value: PROVIDER_GPMPAY, label: 'GPM Pay' }],
       allPaymentTypes: [
-        { value: SEPAY_BANK_TRANSFER, label: 'VietQR' },
+        { value: GPMPAY_BANK_TRANSFER, label: 'VietQR' },
       ],
-      redirectLabel: 'Redirect',
     },
     global: {
       stubs: {
@@ -81,47 +76,43 @@ type DialogVm = {
   reset: (key: string) => void
   loadProvider: (provider: ProviderInstance) => void
   config: Record<string, string>
-  form: { supported_types: string[]; payment_mode: string; provider_key: string; name: string }
+  form: { supported_types: string[]; provider_key: string; name: string }
   handleSave: () => void
 }
 
 describe('PaymentProviderDialog', () => {
-  it('shows the SePay webhook endpoint so the admin can paste it into the merchant portal', () => {
+  it('shows the GPM Pay webhook endpoint so the admin can paste it into the gateway portal', () => {
     const wrapper = mountDialog()
 
-    expect(wrapper.text()).toContain(messages['admin.settings.payment.sepayWebhookHint'])
-    expect(wrapper.text()).toContain(WEBHOOK_PATHS[PROVIDER_SEPAY])
+    expect(wrapper.text()).toContain(messages['admin.settings.payment.gpmPayWebhookHint'])
+    expect(wrapper.text()).toContain(WEBHOOK_PATHS[PROVIDER_GPMPAY])
   })
 
-  it('defaults a new instance to redirect mode and the VietQR method', async () => {
+  it('defaults a new instance to the VietQR method', async () => {
     const wrapper = mountDialog()
     const vm = wrapper.vm as unknown as DialogVm
 
-    vm.reset(PROVIDER_SEPAY)
+    vm.reset(PROVIDER_GPMPAY)
     await nextTick()
 
-    // SePay reaches its checkout through a signed POST form, so redirect is the
-    // only mode that actually completes a payment.
-    expect(vm.form.payment_mode).toBe('redirect')
-    expect(vm.form.supported_types).toEqual([SEPAY_BANK_TRANSFER])
+    expect(vm.form.supported_types).toEqual([GPMPAY_BANK_TRANSFER])
   })
 
-  it('applies the SePay config defaults', async () => {
+  it('applies the GPM Pay config defaults', async () => {
     const wrapper = mountDialog()
     const vm = wrapper.vm as unknown as DialogVm
 
-    vm.reset(PROVIDER_SEPAY)
+    vm.reset(PROVIDER_GPMPAY)
     await nextTick()
 
-    expect(vm.config.env).toBe('production')
-    expect(vm.config.currency).toBe('VND')
+    expect(vm.config.allowSimulated).toBe('false')
   })
 
   it('blocks saving until the merchant credentials are filled in', async () => {
     const wrapper = mountDialog()
     const vm = wrapper.vm as unknown as DialogVm
 
-    vm.reset(PROVIDER_SEPAY)
+    vm.reset(PROVIDER_GPMPAY)
     await nextTick()
     vm.handleSave()
     await nextTick()
@@ -133,10 +124,15 @@ describe('PaymentProviderDialog', () => {
     const wrapper = mountDialog()
     const vm = wrapper.vm as unknown as DialogVm
 
-    vm.reset(PROVIDER_SEPAY)
+    vm.reset(PROVIDER_GPMPAY)
     await nextTick()
-    Object.assign(vm.config, { merchantId: 'MERCHANT_TEST', secretKey: 'sk_test_123' })
-    vm.form.name = 'SePay VN'
+    Object.assign(vm.config, {
+      apiToken: 'tok_test_123',
+      webhookSecret: 'whsec_test',
+      bankBin: '970422',
+      accountNumber: '0123456789',
+    })
+    vm.form.name = 'GPM Pay VN'
     await nextTick()
 
     vm.handleSave()
@@ -144,18 +140,21 @@ describe('PaymentProviderDialog', () => {
 
     const saved = wrapper.emitted('save')
     expect(saved).toHaveLength(1)
-    const payload = saved![0][0] as { provider_key: string; config: Record<string, string> }
-    expect(payload.provider_key).toBe(PROVIDER_SEPAY)
-    expect(payload.config.merchantId).toBe('MERCHANT_TEST')
-    expect(payload.config.secretKey).toBe('sk_test_123')
-    expect(payload.config.notifyUrl).toContain(WEBHOOK_PATHS[PROVIDER_SEPAY])
+    const payload = saved![0][0] as { provider_key: string; payment_mode: string; config: Record<string, string> }
+    expect(payload.provider_key).toBe(PROVIDER_GPMPAY)
+    expect(payload.payment_mode).toBe('')
+    expect(payload.config.apiToken).toBe('tok_test_123')
+    expect(payload.config.webhookSecret).toBe('whsec_test')
+    expect(payload.config.notifyUrl).toContain(WEBHOOK_PATHS[PROVIDER_GPMPAY])
+    // The payer never leaves our QR page, so there is no return URL.
+    expect(payload.config.returnUrl).toBeUndefined()
   })
 
   it('leaves the secret blank when editing so an untouched field preserves the stored value', async () => {
     // The admin GET API omits sensitive fields entirely; submitting a blank
     // secret is how the backend is told to keep the existing one.
     const stored = providerFactory({
-      config: { merchantId: 'MERCHANT_TEST', env: 'sandbox', currency: 'VND' },
+      config: { bankBin: '970422', accountNumber: '0123456789', allowSimulated: 'false' },
     })
     const wrapper = mountDialog({ editing: stored })
     const vm = wrapper.vm as unknown as DialogVm
@@ -163,8 +162,9 @@ describe('PaymentProviderDialog', () => {
     vm.loadProvider(stored)
     await nextTick()
 
-    expect(vm.config.merchantId).toBe('MERCHANT_TEST')
-    expect(vm.config.secretKey ?? '').toBe('')
+    expect(vm.config.accountNumber).toBe('0123456789')
+    expect(vm.config.apiToken ?? '').toBe('')
+    expect(vm.config.webhookSecret ?? '').toBe('')
 
     vm.handleSave()
     await nextTick()

@@ -7,7 +7,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// DefaultPaymentCurrency 是网关的默认结算币种。SePay（越南）以越南盾结算；
+// DefaultPaymentCurrency 是网关的默认结算币种：GPM Pay（越南银行转账）以越南盾结算；
 // 币种表与按币种换算的机制保留下来，后续接入 USD 时不需要再改动这里之外的代码。
 const DefaultPaymentCurrency = "VND"
 

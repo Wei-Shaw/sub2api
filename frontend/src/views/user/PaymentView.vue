@@ -886,9 +886,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     persistRecoverySnapshot(decision.recovery)
 
     if (decision.kind === 'redirect_waiting' && decision.paymentState.payUrl) {
-      // The SePay checkout is reached through a signed POST form served by our
-      // own bridge page, so a popup that the browser blocks must still fall
-      // back to a same-tab navigation rather than stranding the order.
+      // A popup that the browser blocks must still fall back to a same-tab
+      // navigation rather than stranding the order.
       if (isMobileDevice()) {
         window.location.href = decision.paymentState.payUrl
         return

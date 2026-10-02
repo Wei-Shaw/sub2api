@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// 用户可以按 USD 或 VND 填充值金额，但 SePay 只结算 VND，而账户余额只记 USD。
+// 用户可以按 USD 或 VND 填充值金额，但银行转账网关只结算 VND，而账户余额只记 USD。
 // 两个方向的换算都要一个可信的 USD/VND 汇率，这里从越南外贸银行（Vietcombank）
 // 的公开牌价接口取。
 const (

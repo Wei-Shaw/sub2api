@@ -69,7 +69,7 @@ type StorageWriter = Pick<Storage, 'removeItem' | 'setItem'>
 /**
  * Normalize a payment method identifier.
  *
- * Each SePay method is its own user-facing choice, so unlike the previous
+ * Each payment method is its own user-facing choice, so unlike the previous
  * multi-gateway aliasing this never folds a method onto the gateway key —
  * doing so would make the order pick a method the user did not press.
  */
@@ -136,8 +136,7 @@ export function decidePaymentLaunch(
   }, context.now)
 
   const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
-  const prefersRedirect = result.result_type === 'form_post'
-    || normalizedPaymentMode === 'redirect'
+  const prefersRedirect = normalizedPaymentMode === 'redirect'
     || normalizedPaymentMode === 'popup'
     || (context.isMobile && !!baseState.payUrl)
   const prefersQr = normalizedPaymentMode === 'qrcode'

@@ -7,10 +7,9 @@ import {
 } from '../paymentUx'
 
 describe('normalizePaymentMethodForDisplay', () => {
-  it('keeps each SePay method distinct', () => {
-    expect(normalizePaymentMethodForDisplay(' sepay_bank_transfer ')).toBe('sepay_bank_transfer')
-    expect(normalizePaymentMethodForDisplay('SEPAY_NAPAS')).toBe('sepay_napas')
-    expect(normalizePaymentMethodForDisplay('sepay_card')).toBe('sepay_card')
+  it('keeps each method distinct', () => {
+    expect(normalizePaymentMethodForDisplay(' gpmpay_bank_transfer ')).toBe('gpmpay_bank_transfer')
+    expect(normalizePaymentMethodForDisplay('NOWPAYMENTS_CRYPTO')).toBe('nowpayments_crypto')
   })
 
   it('passes an unrecognised method through unchanged', () => {
@@ -19,7 +18,7 @@ describe('normalizePaymentMethodForDisplay', () => {
   })
 
   it('builds the i18n key from the normalised method', () => {
-    expect(paymentMethodI18nKey('SEPAY_CARD')).toBe('payment.methods.sepay_card')
+    expect(paymentMethodI18nKey('GPMPAY_BANK_TRANSFER')).toBe('payment.methods.gpmpay_bank_transfer')
   })
 })
 
@@ -32,7 +31,7 @@ describe('describePaymentScenarioError', () => {
   ])('explains %s as a temporarily unavailable method', (reason) => {
     expect(describePaymentScenarioError(
       { reason },
-      { paymentMethod: 'sepay_bank_transfer', isMobile: false },
+      { paymentMethod: 'gpmpay_bank_transfer', isMobile: false },
     )).toEqual({
       messageKey: 'payment.errors.methodUnavailable',
       hintKey: 'payment.errors.methodRetryDesktopHint',
@@ -42,7 +41,7 @@ describe('describePaymentScenarioError', () => {
   it('gives a mobile-specific hint on mobile', () => {
     expect(describePaymentScenarioError(
       { reason: 'PAYMENT_GATEWAY_ERROR' },
-      { paymentMethod: 'sepay_card', isMobile: true },
+      { paymentMethod: 'nowpayments_crypto', isMobile: true },
     )).toEqual({
       messageKey: 'payment.errors.methodUnavailable',
       hintKey: 'payment.errors.methodRetryMobileHint',
@@ -54,11 +53,11 @@ describe('describePaymentScenarioError', () => {
     // unavailable would hide the real reason (e.g. a daily limit).
     expect(describePaymentScenarioError(
       { reason: 'DAILY_LIMIT_EXCEEDED' },
-      { paymentMethod: 'sepay_napas', isMobile: false },
+      { paymentMethod: 'gpmpay_bank_transfer', isMobile: false },
     )).toBeNull()
     expect(describePaymentScenarioError(
       new Error('boom'),
-      { paymentMethod: 'sepay_napas', isMobile: false },
+      { paymentMethod: 'gpmpay_bank_transfer', isMobile: false },
     )).toBeNull()
   })
 

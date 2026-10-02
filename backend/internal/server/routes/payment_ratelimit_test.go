@@ -65,11 +65,10 @@ func TestPaymentUnauthenticatedRoutesArePerIPRateLimited(t *testing.T) {
 	router, mr := newPaymentRoutesTestRouter(t, `{"enabled":true,"public_ip_rpm":2}`)
 
 	routes := []struct{ method, path string }{
-		{http.MethodPost, "/api/v1/payment/webhook/sepay"},
+		{http.MethodPost, "/api/v1/payment/webhook/gpmpay"},
 		{http.MethodPost, "/api/v1/payment/webhook/nowpayments"},
 		{http.MethodPost, "/api/v1/payment/public/orders/verify"},
 		{http.MethodPost, "/api/v1/payment/public/orders/resolve"},
-		{http.MethodGet, "/api/v1/payment/checkout"},
 	}
 	for _, rt := range routes {
 		mr.FlushAll()
@@ -84,5 +83,19 @@ func TestPaymentUnauthenticatedRoutesArePerIPRateLimited(t *testing.T) {
 				require.Equal(t, http.StatusTooManyRequests, rec.Code, "%s %s request %d", rt.method, rt.path, i)
 			}
 		}
+	}
+}
+
+func TestPaymentRemovedSePayRoutesAreNotMounted(t *testing.T) {
+	router, _ := newPaymentRoutesTestRouter(t, `{"enabled":false}`)
+
+	for _, rt := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/payment/webhook/sepay"},
+		{http.MethodGet, "/api/v1/payment/checkout"},
+	} {
+		req := httptest.NewRequest(rt.method, rt.path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusNotFound, rec.Code, "%s %s", rt.method, rt.path)
 	}
 }

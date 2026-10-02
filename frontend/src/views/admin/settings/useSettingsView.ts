@@ -69,7 +69,6 @@ import {
   METHOD_ORDER,
   PROVIDER_NOWPAYMENTS,
   PROVIDER_GPMPAY,
-  PROVIDER_SEPAY,
   isProviderKeyEnabled,
 } from "@/components/payment/providerConfig";
 import {
@@ -3890,7 +3889,6 @@ export function useSettingsView() {
   > | null>(null);
 
   const providerKeyOptions = computed(() => [
-    { value: PROVIDER_SEPAY, label: t("admin.settings.payment.providerSepay") },
     {
       value: PROVIDER_NOWPAYMENTS,
       label: t("admin.settings.payment.providerNowPayments"),
@@ -3958,7 +3956,7 @@ export function useSettingsView() {
   function openCreateProvider() {
     editingProvider.value = null;
     providerDialogRef.value?.reset(
-      enabledProviderKeyOptions.value[0]?.value || "easypay",
+      enabledProviderKeyOptions.value[0]?.value || PROVIDER_GPMPAY,
     );
     showProviderDialog.value = true;
   }

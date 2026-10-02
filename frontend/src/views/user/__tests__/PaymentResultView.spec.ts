@@ -179,7 +179,7 @@ describe('PaymentResultView', () => {
   })
 
   it('reports a failed gateway return instead of claiming the payment is still on its way', async () => {
-    // SePay sends status=failed on its error_url while the order stays PENDING
+    // A gateway can send status=failed on its return URL while the order stays PENDING
     // until it expires. Saying "still pending, will refresh automatically" is
     // both wrong and a promise this page cannot keep.
     routeState.query = {
@@ -641,7 +641,7 @@ describe('PaymentResultView', () => {
     expect(labels).toEqual(['payment.result.backToRecharge', 'payment.result.viewOrders'])
   })
 
-  it('renders each SePay method under its own label', async () => {
+  it('renders a retired SePay method from a historical order under its own label', async () => {
     // The methods are distinct user choices, so the result page must not fold
     // one onto another when naming what the payer used.
     routeState.query = {

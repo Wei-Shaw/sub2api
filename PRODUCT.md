@@ -19,7 +19,7 @@ Sub2API is an AI API gateway. It pools upstream subscription and API-key account
 
 ## Positioning
 
-This is a fork of Wei-Shaw/sub2api (origin: YunaBotDeveloper/sub2api) built for a commercial relay service in the Vietnamese market. What sets it apart from the upstream and from generic relays is local payments: built-in SePay bank transfer, Napas and card top-up (`docs/PAYMENT.md`), aimed at Vietnamese customers. It competes with other relays on price and stability.
+This is a fork of Wei-Shaw/sub2api (origin: YunaBotDeveloper/sub2api) built for a commercial relay service in the Vietnamese market. What sets it apart from the upstream and from generic relays is local payments: built-in GPM Pay bank transfer (VietQR) and NOWPayments crypto top-up (`docs/PAYMENT.md`), aimed at Vietnamese customers. It competes with other relays on price and stability.
 
 ## Operating Context
 

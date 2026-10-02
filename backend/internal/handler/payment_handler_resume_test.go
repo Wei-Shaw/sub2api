@@ -56,7 +56,7 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 		SetFeeRate(0.03).
 		SetRechargeCode("PUBLIC-VERIFY").
 		SetOutTradeNo("legacy-order-no").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("trade-public-verify").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(service.OrderStatusPending).
@@ -145,7 +145,7 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 		SetFeeRate(0.03).
 		SetRechargeCode("PUBLIC-RESOLVE").
 		SetOutTradeNo("resolve-order-no").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("trade-public-resolve").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(service.OrderStatusPaid).
@@ -161,7 +161,7 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 	token, err := resumeSvc.CreateToken(service.ResumeTokenClaims{
 		OrderID:            order.ID,
 		UserID:             user.ID,
-		PaymentType:        payment.TypeSePayBankTransfer,
+		PaymentType:        payment.TypeGPMPayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 	require.Equal(t, 103.0, resp.Data["pay_amount"])
 	require.Equal(t, 0.03, resp.Data["fee_rate"])
 	require.Equal(t, "USD", resp.Data["currency"])
-	require.Equal(t, payment.TypeSePayBankTransfer, resp.Data["payment_type"])
+	require.Equal(t, payment.TypeGPMPayBankTransfer, resp.Data["payment_type"])
 	require.Equal(t, payment.OrderTypeBalance, resp.Data["order_type"])
 	require.Equal(t, service.OrderStatusPaid, resp.Data["status"])
 	require.Contains(t, resp.Data, "created_at")
@@ -234,7 +234,7 @@ func TestResolveOrderPublicByResumeTokenReturnsBadRequestForMismatchedToken(t *t
 		SetFeeRate(0.03).
 		SetRechargeCode("PUBLIC-RESOLVE-MISMATCH").
 		SetOutTradeNo("resolve-order-mismatch-no").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("trade-public-resolve-mismatch").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(service.OrderStatusPaid).
@@ -249,7 +249,7 @@ func TestResolveOrderPublicByResumeTokenReturnsBadRequestForMismatchedToken(t *t
 	token, err := resumeSvc.CreateToken(service.ResumeTokenClaims{
 		OrderID:            order.ID,
 		UserID:             user.ID + 999,
-		PaymentType:        payment.TypeSePayBankTransfer,
+		PaymentType:        payment.TypeGPMPayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)

@@ -81,8 +81,8 @@ func (s *PaymentResumeService) ensureSigningKey() error {
 
 // NormalizeVisibleMethod 归一化用户可见的支付方式标识。
 //
-// 这里刻意不折叠成网关键：sepay_bank_transfer / sepay_napas / sepay_card 是三个
-// 独立的可见方式，折叠成 sepay 会让下单时选不中用户点的那一个。
+// 这里刻意不折叠成网关键：同一网关下的多个可见方式（如 xxx_bank_transfer / xxx_card）
+// 是各自独立的，折叠成网关键会让下单时选不中用户点的那一个。
 func NormalizeVisibleMethod(method string) string {
 	return strings.TrimSpace(method)
 }

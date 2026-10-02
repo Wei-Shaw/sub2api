@@ -48,7 +48,7 @@ func c06CreatePendingOrder(t *testing.T, ctx context.Context, client *dbent.Clie
 		SetFeeRate(0).
 		SetRechargeCode("C06-TRANSIENT").
 		SetOutTradeNo("sub2_c06_transient").
-		SetPaymentType(payment.TypeSePayBankTransfer).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -77,7 +77,7 @@ func TestC06ConfirmPaymentSurfacesTransientOrderLoadError(t *testing.T) {
 		OrderID: order.OutTradeNo,
 		Amount:  decimal.NewFromFloat(order.PayAmount),
 		Status:  payment.NotificationStatusSuccess,
-	}, payment.TypeSePay)
+	}, payment.TypeGPMPay)
 	require.Error(t, err)
 	require.ErrorIs(t, err, c06ErrTransientDB)
 	require.False(t, errors.Is(err, ErrOrderNotFound))
@@ -114,7 +114,7 @@ func TestC06ConfirmPaymentStillIgnoresMissingLegacyOrder(t *testing.T) {
 		OrderID: "sub2_987654",
 		Amount:  decimal.NewFromInt(10),
 		Status:  payment.NotificationStatusSuccess,
-	}, payment.TypeSePay)
+	}, payment.TypeGPMPay)
 	require.NoError(t, err)
 
 	err = svc.alreadyProcessed(ctx, &dbent.PaymentOrder{ID: 987654})
