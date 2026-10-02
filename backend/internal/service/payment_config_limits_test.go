@@ -154,40 +154,40 @@ func TestPcGroupByPaymentType(t *testing.T) {
 
 	t.Run("instance is grouped under each supported method", func(t *testing.T) {
 		t.Parallel()
-		bank := makeInstance(1, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayCard, "")
-		napas := makeInstance(2, payment.TypeSePay, payment.TypeSePayNapas, "")
+		bank := makeInstance(1, payment.TypeGPMPay, payment.TypeGPMPayBankTransfer+",legacy_card", "")
+		crypto := makeInstance(2, payment.TypeNowPayments, payment.TypeNowPaymentsCrypto, "")
 
-		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{bank, napas})
+		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{bank, crypto})
 
-		if len(groups[payment.TypeSePayBankTransfer]) != 1 || groups[payment.TypeSePayBankTransfer][0].ID != 1 {
-			t.Fatalf("bank transfer group should contain only instance 1, got %v", groups[payment.TypeSePayBankTransfer])
+		if len(groups[payment.TypeGPMPayBankTransfer]) != 1 || groups[payment.TypeGPMPayBankTransfer][0].ID != 1 {
+			t.Fatalf("bank transfer group should contain only instance 1, got %v", groups[payment.TypeGPMPayBankTransfer])
 		}
-		if len(groups[payment.TypeSePayCard]) != 1 || groups[payment.TypeSePayCard][0].ID != 1 {
-			t.Fatalf("card group should contain only instance 1, got %v", groups[payment.TypeSePayCard])
+		if len(groups["legacy_card"]) != 1 || groups["legacy_card"][0].ID != 1 {
+			t.Fatalf("second method group should contain only instance 1, got %v", groups["legacy_card"])
 		}
-		if len(groups[payment.TypeSePayNapas]) != 1 || groups[payment.TypeSePayNapas][0].ID != 2 {
-			t.Fatalf("napas group should contain only instance 2, got %v", groups[payment.TypeSePayNapas])
+		if len(groups[payment.TypeNowPaymentsCrypto]) != 1 || groups[payment.TypeNowPaymentsCrypto][0].ID != 2 {
+			t.Fatalf("crypto group should contain only instance 2, got %v", groups[payment.TypeNowPaymentsCrypto])
 		}
 	})
 
 	t.Run("multiple instances share the same method groups", func(t *testing.T) {
 		t.Parallel()
-		first := makeInstance(1, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayNapas, "")
-		second := makeInstance(2, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayNapas, "")
+		first := makeInstance(1, payment.TypeGPMPay, payment.TypeGPMPayBankTransfer+","+payment.TypeNowPaymentsCrypto, "")
+		second := makeInstance(2, payment.TypeGPMPay, payment.TypeGPMPayBankTransfer+","+payment.TypeNowPaymentsCrypto, "")
 
 		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{first, second})
 
-		if len(groups[payment.TypeSePayBankTransfer]) != 2 {
-			t.Fatalf("bank transfer group should have 2 instances, got %d", len(groups[payment.TypeSePayBankTransfer]))
+		if len(groups[payment.TypeGPMPayBankTransfer]) != 2 {
+			t.Fatalf("bank transfer group should have 2 instances, got %d", len(groups[payment.TypeGPMPayBankTransfer]))
 		}
-		if len(groups[payment.TypeSePayNapas]) != 2 {
-			t.Fatalf("napas group should have 2 instances, got %d", len(groups[payment.TypeSePayNapas]))
+		if len(groups[payment.TypeNowPaymentsCrypto]) != 2 {
+			t.Fatalf("crypto group should have 2 instances, got %d", len(groups[payment.TypeNowPaymentsCrypto]))
 		}
 	})
 
 	t.Run("instance with no supported types is grouped under nothing", func(t *testing.T) {
 		t.Parallel()
-		inst := makeInstance(1, payment.TypeSePay, "", "")
+		inst := makeInstance(1, payment.TypeGPMPay, "", "")
 
 		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{inst})
 
@@ -201,19 +201,19 @@ func TestPcAggregateMethodCurrency(t *testing.T) {
 	t.Parallel()
 
 	svc := &PaymentConfigService{}
-	stripe := makeInstance(1, payment.TypeSePay, payment.TypeSePay, "")
+	stripe := makeInstance(1, payment.TypeNowPayments, payment.TypeNowPaymentsCrypto, "")
 	stripe.Config = `{"currency":"hkd"}`
 	currency, ok := svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe})
 	require.True(t, ok)
 	require.Equal(t, "HKD", currency)
 
-	airwallex := makeInstance(2, payment.TypeSePay, payment.TypeSePay, "")
+	airwallex := makeInstance(2, payment.TypeNowPayments, payment.TypeNowPaymentsCrypto, "")
 	airwallex.Config = `{"currency":"usd"}`
 	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe, airwallex})
 	require.False(t, ok)
 	require.Empty(t, currency)
 
-	easypay := makeInstance(3, payment.TypeSePay, payment.TypeSePayBankTransfer, "")
+	easypay := makeInstance(3, payment.TypeGPMPay, payment.TypeGPMPayBankTransfer, "")
 	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{easypay})
 	require.True(t, ok)
 	require.Equal(t, payment.DefaultPaymentCurrency, currency)
@@ -224,19 +224,19 @@ func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
 	client := newPaymentConfigServiceTestClient(t)
 
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("SePay VND").
+		SetProviderKey(payment.TypeNowPayments).
+		SetName("NOWPayments VND").
 		SetConfig(`{"currency":"VND"}`).
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeNowPaymentsCrypto).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("SePay USD").
+		SetProviderKey(payment.TypeNowPayments).
+		SetName("NOWPayments USD").
 		SetConfig(`{"currency":"USD"}`).
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeNowPaymentsCrypto).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
@@ -244,9 +244,9 @@ func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
 	svc := &PaymentConfigService{entClient: client}
 	resp, err := svc.GetAvailableMethodLimits(ctx)
 	require.NoError(t, err)
-	require.NotContains(t, resp.Methods, payment.TypeSePayCard)
+	require.NotContains(t, resp.Methods, payment.TypeNowPaymentsCrypto)
 
-	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeSePayCard)
+	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeNowPaymentsCrypto)
 	require.Error(t, err)
 	appErr := infraerrors.FromError(err)
 	require.Equal(t, "PAYMENT_METHOD_CURRENCY_CONFLICT", appErr.Reason)

@@ -53,15 +53,13 @@ const props = defineProps<{
 }>()
 
 const colorMap: Record<string, string> = {
-  sepay_bank_transfer: 'bg-accent',
-  sepay_napas: 'bg-success',
-  sepay_card: 'bg-fg-muted',
+  gpmpay_bank_transfer: 'bg-accent',
+  nowpayments_crypto: 'bg-success',
 }
 
 const barColorMap: Record<string, string> = {
-  sepay_bank_transfer: 'bg-accent',
-  sepay_napas: 'bg-success',
-  sepay_card: 'bg-fg-muted',
+  gpmpay_bank_transfer: 'bg-accent',
+  nowpayments_crypto: 'bg-success',
 }
 
 const maxAmounts = computed<CurrencyAmounts>(() => {

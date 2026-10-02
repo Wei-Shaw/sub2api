@@ -16,7 +16,6 @@ type paymentOrderProviderSnapshot struct {
 	ProviderKey        string
 	PaymentMode        string
 	MerchantAppID      string
-	MerchantID         string
 	Currency           string
 }
 
@@ -31,7 +30,6 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 		ProviderKey:        psSnapshotStringValue(order.ProviderSnapshot["provider_key"]),
 		PaymentMode:        psSnapshotStringValue(order.ProviderSnapshot["payment_mode"]),
 		MerchantAppID:      psSnapshotStringValue(order.ProviderSnapshot["merchant_app_id"]),
-		MerchantID:         psSnapshotStringValue(order.ProviderSnapshot["merchant_id"]),
 		Currency:           psSnapshotStringValue(order.ProviderSnapshot["currency"]),
 	}
 	if snapshot.SchemaVersion == 0 &&
@@ -39,7 +37,6 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 		snapshot.ProviderKey == "" &&
 		snapshot.PaymentMode == "" &&
 		snapshot.MerchantAppID == "" &&
-		snapshot.MerchantID == "" &&
 		snapshot.Currency == "" {
 		return nil
 	}
@@ -124,39 +121,4 @@ func expectedNotificationProviderKeyForOrder(registry *payment.Registry, order *
 	}
 
 	return expectedNotificationProviderKey(registry, order.PaymentType, orderProviderKey, instanceProviderKey)
-}
-
-func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
-	if order == nil || len(metadata) == 0 {
-		return nil
-	}
-
-	snapshot := psOrderProviderSnapshot(order)
-	if snapshot == nil {
-		return nil
-	}
-
-	if strings.TrimSpace(providerKey) != payment.TypeSePay {
-		return nil
-	}
-	if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-		actual := strings.TrimSpace(metadata["merchant_id"])
-		if actual == "" {
-			return fmt.Errorf("sepay notification missing merchant_id")
-		}
-		if !strings.EqualFold(expected, actual) {
-			return fmt.Errorf("sepay merchant_id mismatch: expected %s, got %s", expected, actual)
-		}
-	}
-	if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-		actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-		if actual == "" {
-			return fmt.Errorf("sepay notification missing currency")
-		}
-		if !strings.EqualFold(expected, actual) {
-			return fmt.Errorf("sepay currency mismatch: expected %s, got %s", expected, actual)
-		}
-	}
-
-	return nil
 }

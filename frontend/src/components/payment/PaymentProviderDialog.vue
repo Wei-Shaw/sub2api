@@ -29,26 +29,9 @@
         </div>
       </div>
 
-      <!-- Toggles + Payment mode + Supported types (single row) -->
+      <!-- Toggles + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <div v-if="supportsPaymentMode" class="flex items-center gap-2">
-          <span class="text-meta font-medium text-fg-muted">{{ t('admin.settings.payment.paymentMode') }}</span>
-          <div class="flex gap-1.5">
-            <button
-              v-for="mode in paymentModeOptions"
-              :key="mode.value"
-              type="button"
-              @click="form.payment_mode = mode.value"
-              :class="[
-                'rounded-sm border px-2.5 py-1 text-meta font-medium transition-all',
-                form.payment_mode === mode.value
-                  ? 'border-accent bg-accent text-white dark:text-surface-sunken'
-                  : 'border-border-strong bg-surface text-fg-muted hover:border-accent hover:text-accent-strong',
-              ]"
-            >{{ mode.label }}</button>
-          </div>
-        </div>
         <div v-if="availableTypes.length > 1" class="flex items-center gap-2">
           <span class="text-meta font-medium text-fg-muted">{{ t('admin.settings.payment.supportedTypes') }}</span>
           <div class="flex flex-wrap gap-1.5">
@@ -238,47 +221,11 @@ import {
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
-  PAYMENT_MODE_QRCODE,
-  PAYMENT_MODE_POPUP,
-  PAYMENT_MODE_REDIRECT,
-  PROVIDER_SEPAY,
   PROVIDER_NOWPAYMENTS,
   PROVIDER_GPMPAY,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
-
-/** Default payment_mode per provider key. SePay reaches its checkout through a
- * signed POST form and NOWPayments through its hosted invoice URL, so a
- * redirect is the only mode that actually works for either. */
-function defaultPaymentMode(providerKey: string): string {
-  if (providerKey === PROVIDER_GPMPAY) return PAYMENT_MODE_QRCODE
-  return providerKey === PROVIDER_SEPAY || providerKey === PROVIDER_NOWPAYMENTS
-    ? PAYMENT_MODE_REDIRECT
-    : ''
-}
-
-/** Provider keys whose admin UI exposes a payment_mode selector.
- * NOWPayments has nothing to choose: we render no QR of our own for it. */
-function providerSupportsPaymentMode(providerKey: string): boolean {
-  return providerKey === PROVIDER_SEPAY
-}
-
-/** Allowed payment_mode values per provider. Used to coerce DB values
- * from a different provider (or stale data) back to the default. */
-function isValidPaymentMode(providerKey: string, mode: string): boolean {
-  if (providerKey === PROVIDER_SEPAY) {
-    return mode === PAYMENT_MODE_REDIRECT || mode === PAYMENT_MODE_QRCODE || mode === PAYMENT_MODE_POPUP
-  }
-  if (providerKey === PROVIDER_NOWPAYMENTS) {
-    return mode === PAYMENT_MODE_REDIRECT
-  }
-  // GPM Pay has no hosted page: our own VietQR is the only way to pay.
-  if (providerKey === PROVIDER_GPMPAY) {
-    return mode === PAYMENT_MODE_QRCODE
-  }
-  return mode === ''
-}
 
 const props = defineProps<{
   show: boolean
@@ -307,10 +254,9 @@ const { t } = useI18n()
 // --- Form state ---
 const form = reactive({
   name: '',
-  provider_key: PROVIDER_SEPAY,
+  provider_key: PROVIDER_GPMPAY,
   supported_types: [] as string[],
   enabled: true,
-  payment_mode: PAYMENT_MODE_QRCODE,
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
@@ -328,20 +274,12 @@ const providerWebhookUrl = computed(() => {
 })
 
 const providerWebhookHint = computed(() => {
-  if (form.provider_key === PROVIDER_NOWPAYMENTS) return 'admin.settings.payment.nowPaymentsWebhookHint'
-  if (form.provider_key === PROVIDER_GPMPAY) return 'admin.settings.payment.gpmPayWebhookHint'
-  return 'admin.settings.payment.sepayWebhookHint'
+  return form.provider_key === PROVIDER_NOWPAYMENTS
+    ? 'admin.settings.payment.nowPaymentsWebhookHint'
+    : 'admin.settings.payment.gpmPayWebhookHint'
 })
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
-
-const supportsPaymentMode = computed(() => providerSupportsPaymentMode(form.provider_key))
-
-const paymentModeOptions = computed(() => [
-  { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
-  { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-  { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
-])
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes)
@@ -383,7 +321,6 @@ function toggleType(type: string) {
 
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  form.payment_mode = defaultPaymentMode(form.provider_key)
   clearConfig()
   applyDefaults()
 }
@@ -499,7 +436,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
+    payment_mode: '',
     config: filteredConfig,
     limits: serializeLimits(),
   })
@@ -518,7 +455,6 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultPaymentMode(defaultKey)
   clearConfig()
   applyDefaults()
 }
@@ -530,12 +466,6 @@ function loadProvider(provider: ProviderInstance) {
     ? [...provider.supported_types]
     : []
   form.enabled = provider.enabled
-  // Coerce to a valid value for this provider. Guards against stale data
-  // (e.g. "popup" written by an older client) showing up as an unselected
-  // button in the dialog.
-  form.payment_mode = isValidPaymentMode(provider.provider_key, provider.payment_mode || '')
-    ? (provider.payment_mode || '')
-    : defaultPaymentMode(provider.provider_key)
   clearConfig()
   // Pre-fill config from API response. Backend omits sensitive fields entirely,
   // so those inputs stay blank — submitting blank preserves the stored secret.

@@ -25,10 +25,11 @@ func TestValidateProviderRequest(t *testing.T) {
 		types       string
 		wantErr     bool
 	}{
-		{name: "sepay instance", providerKey: payment.TypeSePay, instName: "SePay", types: payment.TypeSePayBankTransfer},
+		{name: "gpmpay instance", providerKey: payment.TypeGPMPay, instName: "GPM Pay", types: payment.TypeGPMPayBankTransfer},
 		{name: "nowpayments instance", providerKey: payment.TypeNowPayments, instName: "NOWPayments", types: payment.TypeNowPaymentsCrypto},
-		{name: "empty supported types is allowed", providerKey: payment.TypeSePay, instName: "SePay", types: ""},
-		{name: "blank name is rejected", providerKey: payment.TypeSePay, instName: "  ", types: payment.TypeSePayCard, wantErr: true},
+		{name: "empty supported types is allowed", providerKey: payment.TypeGPMPay, instName: "GPM Pay", types: ""},
+		{name: "blank name is rejected", providerKey: payment.TypeGPMPay, instName: "  ", types: payment.TypeGPMPayBankTransfer, wantErr: true},
+		{name: "removed sepay provider key is rejected", providerKey: "sepay", instName: "SePay", types: "sepay_bank_transfer", wantErr: true},
 		{name: "removed provider key is rejected", providerKey: "stripe", instName: "Stripe", types: "stripe", wantErr: true},
 		{name: "unknown provider key is rejected", providerKey: "nosuchgateway", instName: "X", types: "", wantErr: true},
 	}
@@ -52,15 +53,17 @@ func TestValidateProviderRequest(t *testing.T) {
 func TestIsSensitiveProviderConfigField(t *testing.T) {
 	t.Parallel()
 
-	// The merchant secret is the only credential a SePay instance holds; it
-	// must never be echoed back by the admin GET API. Everything else is
-	// identity configuration the admin needs to see in order to edit the instance.
-	assert.True(t, isSensitiveProviderConfigField(payment.TypeSePay, "secretKey"))
-	assert.True(t, isSensitiveProviderConfigField(payment.TypeSePay, "SECRETKEY"))
-	assert.False(t, isSensitiveProviderConfigField(payment.TypeSePay, "merchantId"))
-	assert.False(t, isSensitiveProviderConfigField(payment.TypeSePay, "env"))
-	assert.False(t, isSensitiveProviderConfigField(payment.TypeSePay, "currency"))
-	assert.False(t, isSensitiveProviderConfigField("unknown", "secretKey"))
+	// The API token and webhook secret are the credentials a GPM Pay instance
+	// holds; they must never be echoed back by the admin GET API. Everything
+	// else is identity configuration the admin needs to see in order to edit
+	// the instance.
+	assert.True(t, isSensitiveProviderConfigField(payment.TypeGPMPay, "apiToken"))
+	assert.True(t, isSensitiveProviderConfigField(payment.TypeGPMPay, "WEBHOOKSECRET"))
+	assert.False(t, isSensitiveProviderConfigField(payment.TypeGPMPay, "bankBin"))
+	assert.False(t, isSensitiveProviderConfigField(payment.TypeGPMPay, "accountNumber"))
+	assert.True(t, isSensitiveProviderConfigField(payment.TypeNowPayments, "ipnSecretKey"))
+	assert.False(t, isSensitiveProviderConfigField(payment.TypeNowPayments, "currency"))
+	assert.False(t, isSensitiveProviderConfigField("unknown", "apiToken"))
 }
 
 func TestUpdateProviderInstancePersistsEnabledAndSupportedTypes(t *testing.T) {
@@ -74,21 +77,21 @@ func TestUpdateProviderInstancePersistsEnabledAndSupportedTypes(t *testing.T) {
 	}
 
 	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    payment.TypeSePay,
-		Name:           "sepay-instance",
-		Config:         validSePayProviderConfig(t),
-		SupportedTypes: []string{payment.TypeSePayBankTransfer},
+		ProviderKey:    payment.TypeGPMPay,
+		Name:           "gpmpay-instance",
+		Config:         validGPMPayProviderConfig(t),
+		SupportedTypes: []string{},
 		Enabled:        false,
 	})
 	require.NoError(t, err)
 
 	updated, err := svc.UpdateProviderInstance(ctx, int64(instance.ID), UpdateProviderInstanceRequest{
 		Enabled:        boolPtrValue(true),
-		SupportedTypes: []string{payment.TypeSePayBankTransfer, payment.TypeSePayCard},
+		SupportedTypes: []string{payment.TypeGPMPayBankTransfer},
 	})
 	require.NoError(t, err)
 	assert.True(t, updated.Enabled)
-	assert.Equal(t, payment.TypeSePayBankTransfer+","+payment.TypeSePayCard, updated.SupportedTypes)
+	assert.Equal(t, payment.TypeGPMPayBankTransfer, updated.SupportedTypes)
 }
 
 func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t *testing.T) {
@@ -100,10 +103,9 @@ func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t
 		fieldName    string
 		wantValue    string
 	}{
-		{name: "merchantId", updateConfig: map[string]string{"merchantId": "MERCHANT_UPDATED"}, fieldName: "merchantId", wantValue: "MERCHANT_TEST"},
-		{name: "secretKey", updateConfig: map[string]string{"secretKey": "sk_test_updated"}, fieldName: "secretKey", wantValue: "sk_test_123"},
-		{name: "env", updateConfig: map[string]string{"env": "production"}, fieldName: "env", wantValue: "sandbox"},
-		{name: "currency", updateConfig: map[string]string{"currency": "USD"}, fieldName: "currency", wantValue: "VND"},
+		{name: "webhookSecret", updateConfig: map[string]string{"webhookSecret": "whsec_updated"}, fieldName: "webhookSecret", wantValue: "whsec_test_123"},
+		{name: "bankBin", updateConfig: map[string]string{"bankBin": "970436"}, fieldName: "bankBin", wantValue: "970422"},
+		{name: "accountNumber", updateConfig: map[string]string{"accountNumber": "9999999999"}, fieldName: "accountNumber", wantValue: "0123456789"},
 	}
 
 	for _, tc := range tests {
@@ -119,10 +121,10 @@ func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t
 			}
 
 			instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-				ProviderKey:    payment.TypeSePay,
+				ProviderKey:    payment.TypeGPMPay,
 				Name:           "protected-config-instance",
-				Config:         validSePayProviderConfig(t),
-				SupportedTypes: []string{payment.TypeSePayBankTransfer},
+				Config:         validGPMPayProviderConfig(t),
+				SupportedTypes: []string{payment.TypeGPMPayBankTransfer},
 				Enabled:        true,
 			})
 			require.NoError(t, err)
@@ -154,10 +156,10 @@ func TestUpdateProviderInstanceAllowsSafeConfigChangesWhilePendingOrders(t *test
 	}
 
 	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    payment.TypeSePay,
+		ProviderKey:    payment.TypeGPMPay,
 		Name:           "safe-config-instance",
-		Config:         validSePayProviderConfig(t),
-		SupportedTypes: []string{payment.TypeSePayBankTransfer},
+		Config:         validGPMPayProviderConfig(t),
+		SupportedTypes: []string{payment.TypeGPMPayBankTransfer},
 		Enabled:        true,
 	})
 	require.NoError(t, err)
@@ -166,14 +168,14 @@ func TestUpdateProviderInstanceAllowsSafeConfigChangesWhilePendingOrders(t *test
 	// notifyUrl is not part of the merchant identity, so it stays editable even
 	// while the instance still has orders in flight.
 	updated, err := svc.UpdateProviderInstance(ctx, int64(instance.ID), UpdateProviderInstanceRequest{
-		Config: map[string]string{"notifyUrl": "https://merchant.example.com/sepay/notify"},
+		Config: map[string]string{"notifyUrl": "https://merchant.example.com/gpmpay/notify"},
 	})
 	require.NoError(t, err)
 
 	stored, err := svc.decryptConfig(updated.Config)
 	require.NoError(t, err)
-	assert.Equal(t, "https://merchant.example.com/sepay/notify", stored["notifyUrl"])
-	assert.Equal(t, "MERCHANT_TEST", stored["merchantId"])
+	assert.Equal(t, "https://merchant.example.com/gpmpay/notify", stored["notifyUrl"])
+	assert.Equal(t, "0123456789", stored["accountNumber"])
 }
 
 func TestListProviderInstancesWithConfigMasksSecretKey(t *testing.T) {
@@ -187,10 +189,10 @@ func TestListProviderInstancesWithConfigMasksSecretKey(t *testing.T) {
 	}
 
 	_, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    payment.TypeSePay,
+		ProviderKey:    payment.TypeGPMPay,
 		Name:           "masked-instance",
-		Config:         validSePayProviderConfig(t),
-		SupportedTypes: []string{payment.TypeSePayBankTransfer},
+		Config:         validGPMPayProviderConfig(t),
+		SupportedTypes: []string{payment.TypeGPMPayBankTransfer},
 		Enabled:        true,
 	})
 	require.NoError(t, err)
@@ -198,9 +200,11 @@ func TestListProviderInstancesWithConfigMasksSecretKey(t *testing.T) {
 	instances, err := svc.ListProviderInstancesWithConfig(ctx)
 	require.NoError(t, err)
 	require.Len(t, instances, 1)
-	_, hasSecret := instances[0].Config["secretKey"]
-	assert.False(t, hasSecret, "secretKey must not leave the server")
-	assert.Equal(t, "MERCHANT_TEST", instances[0].Config["merchantId"])
+	_, hasToken := instances[0].Config["apiToken"]
+	assert.False(t, hasToken, "apiToken must not leave the server")
+	_, hasSecret := instances[0].Config["webhookSecret"]
+	assert.False(t, hasSecret, "webhookSecret must not leave the server")
+	assert.Equal(t, "0123456789", instances[0].Config["accountNumber"])
 }
 
 func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance) {
@@ -239,20 +243,20 @@ func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client 
 }
 
 func providerPendingOrderPaymentType(providerKey string) string {
-	if providerKey == payment.TypeSePay {
-		return payment.TypeSePayBankTransfer
+	if providerKey == payment.TypeGPMPay {
+		return payment.TypeGPMPayBankTransfer
 	}
 	return providerKey
 }
 
-func validSePayProviderConfig(t *testing.T) map[string]string {
+func validGPMPayProviderConfig(t *testing.T) map[string]string {
 	t.Helper()
 
 	return map[string]string{
-		"merchantId": "MERCHANT_TEST",
-		"secretKey":  "sk_test_123",
-		"env":        "sandbox",
-		"currency":   "VND",
+		"apiToken":      "gpm_token_123",
+		"webhookSecret": "whsec_test_123",
+		"bankBin":       "970422",
+		"accountNumber": "0123456789",
 	}
 }
 
@@ -267,7 +271,7 @@ func TestEveryShippedGatewayCanBeAdded(t *testing.T) {
 	// in the admin UI is indistinguishable from a gateway that does not exist.
 	// This is what a second hand-maintained list of provider keys buys you, so
 	// pin the two config maps to the same source of truth as the validator.
-	for _, providerKey := range []string{payment.TypeSePay, payment.TypeNowPayments} {
+	for _, providerKey := range []string{payment.TypeGPMPay, payment.TypeNowPayments} {
 		require.True(t, payment.IsProviderKey(providerKey), providerKey)
 		require.NoError(t, validateProviderRequest(providerKey, "Instance", ""), providerKey)
 		assert.NotEmpty(t, providerSensitiveConfigFields[providerKey], providerKey)
@@ -275,7 +279,8 @@ func TestEveryShippedGatewayCanBeAdded(t *testing.T) {
 	}
 
 	assert.False(t, payment.IsProviderKey("stripe"))
-	// A payment method is not a gateway: "sepay_bank_transfer" must never pass
+	assert.False(t, payment.IsProviderKey("sepay"))
+	// A payment method is not a gateway: "gpmpay_bank_transfer" must never pass
 	// as a provider key just because it starts with one.
-	assert.False(t, payment.IsProviderKey(payment.TypeSePayBankTransfer))
+	assert.False(t, payment.IsProviderKey(payment.TypeGPMPayBankTransfer))
 }

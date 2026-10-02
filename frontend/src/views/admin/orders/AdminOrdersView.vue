@@ -168,10 +168,8 @@ const statusFilterOptions = computed(() => [
 
 const paymentTypeFilterOptions = computed(() => [
   { value: '', label: t('payment.admin.allPaymentTypes') },
-  { value: 'sepay_bank_transfer', label: t('payment.methods.sepay_bank_transfer') },
-  { value: 'sepay_napas', label: t('payment.methods.sepay_napas') },
-  { value: 'sepay_card', label: t('payment.methods.sepay_card') },
   { value: 'gpmpay_bank_transfer', label: t('payment.methods.gpmpay_bank_transfer') },
+  { value: 'nowpayments_crypto', label: t('payment.methods.nowpayments_crypto') },
 ])
 
 const orderTypeFilterOptions = computed(() => [

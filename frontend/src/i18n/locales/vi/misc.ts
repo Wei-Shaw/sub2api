@@ -308,6 +308,7 @@ export default {
     actualPay: 'Thực trả',
     createOrder: 'Xác nhận thanh toán',
     methods: {
+      // Retired gateway: kept so orders placed through SePay still render a name.
       sepay: 'SePay',
       sepay_bank_transfer: 'VietQR',
       sepay_napas: 'Chuyển khoản Napas',
@@ -420,10 +421,6 @@ export default {
         'Các đơn chưa thanh toán đang giữ {held} trong giới hạn hôm nay. Hãy thanh toán hoặc hủy chúng, hoặc đợi đến {held_until}. Còn lại: {remaining}.',
       PAYMENT_GATEWAY_ERROR: 'Phương thức thanh toán không khả dụng.',
       NO_AVAILABLE_INSTANCE: 'Hiện không có kênh thanh toán nào khả dụng.',
-      SEPAY_CONFIG_MISSING_KEY: 'Cấu hình SePay thiếu khóa bắt buộc: {field}.',
-      SEPAY_CONFIG_INVALID_ENV: 'Môi trường SePay phải là sandbox hoặc production.',
-      SEPAY_CONFIG_INVALID_CURRENCY: 'Loại tiền tệ SePay không hợp lệ.',
-      SEPAY_UNSUPPORTED_PAYMENT_TYPE: 'SePay không hỗ trợ phương thức thanh toán này.',
       NOWPAYMENTS_CONFIG_MISSING_KEY: 'Cấu hình NOWPayments thiếu khóa bắt buộc: {field}.',
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'Môi trường NOWPayments phải là sandbox hoặc production.',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'Loại tiền tệ NOWPayments không hợp lệ.',

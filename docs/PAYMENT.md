@@ -1,6 +1,6 @@
 # Payment System Configuration Guide
 
-Sub2API has a built-in payment system that enables user self-service top-up without deploying a separate payment service. The gateway is [SePay](https://sepay.vn) (Vietnam).
+Sub2API has a built-in payment system that enables user self-service top-up without deploying a separate payment service. Two gateways are supported: GPM Pay (Vietnamese bank transfer via VietQR) and [NOWPayments](https://nowpayments.io) (crypto).
 
 ---
 
@@ -14,20 +14,16 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 - [Webhook Configuration](#webhook-configuration)
 - [Payment Flow](#payment-flow)
 - [Refunds](#refunds)
+- [Migrating from SePay](#migrating-from-sepay)
 
 ---
 
 ## Supported Payment Methods
 
-| Payment type | SePay `payment_method` | Description |
-|--------------|------------------------|-------------|
-| `sepay_bank_transfer` | `BANK_TRANSFER` | VietQR bank transfer |
-
-`sepay_napas` and `sepay_card` were retired in migration 241. Orders created
-before that still carry those types and still reach the checkout, so the
-provider keeps their `payment_method` mapping — but neither is offered for a new
-order, and the migration strips both from every instance's **supported types**
-and from `ENABLED_PAYMENT_TYPES`.
+| Payment type | Provider key | Description |
+|--------------|--------------|-------------|
+| `gpmpay_bank_transfer` | `gpmpay` | VietQR bank transfer, settled in VND |
+| `nowpayments_crypto` | `nowpayments` | NOWPayments hosted crypto invoice |
 
 > Evaluate the security, reliability, and compliance of any payment provider on
 > your own — this project does not endorse or guarantee any of them.
@@ -39,8 +35,8 @@ and from `ENABLED_PAYMENT_TYPES`.
 1. Go to Admin Dashboard → **Settings** → **Payment Settings** tab
 2. Enable **Payment**
 3. Configure basic parameters (amount range, timeout, etc.)
-4. Add at least one SePay provider instance in **Provider Management**
-5. Register the webhook URL in the SePay merchant portal (see [Webhook Configuration](#webhook-configuration))
+4. Add at least one GPM Pay or NOWPayments provider instance in **Provider Management**
+5. Register the webhook URL in the provider's dashboard (see [Webhook Configuration](#webhook-configuration))
 6. Users can now top up from the frontend
 
 ---
@@ -64,10 +60,12 @@ Configure the following in Admin Dashboard **Settings → Payment Settings**:
 
 ### Currency
 
-The gateway settlement currency is **VND**, which is a zero-decimal currency: an
-amount of `250000` means ₫250,000 and fractional amounts are rejected. A provider
-instance may select another currency only if the merchant account is enabled for
-it.
+GPM Pay always settles in **VND**, which is a zero-decimal currency: an amount of
+`250000` means ₫250,000 and fractional amounts are rejected.
+
+NOWPayments prices each invoice in the instance's configured `currency` (`USD` or
+`VND`; the admin dialog defaults to `USD`). The customer still pays in crypto and
+NOWPayments converts at checkout time.
 
 The subscription rate setting (1 USD = X gateway currency) converts a plan's USD
 price into the settlement currency. It is opt-in: leave it at `0` and plan prices
@@ -75,9 +73,9 @@ are charged as-is.
 
 ### Top-up in USD or VND
 
-Account balances are denominated in USD, but SePay settles in VND. A customer may
-type the top-up amount in either currency; the picker sits next to the quick-amount
-buttons and is hidden when the gateway already settles in USD.
+Account balances are denominated in USD, but GPM Pay settles in VND. A customer
+may type the top-up amount in either currency; the picker sits next to the
+quick-amount buttons and is hidden when the gateway already settles in USD.
 
 The rate comes from the Vietcombank published board
 (`portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx`), **Sell**
@@ -109,24 +107,41 @@ re-derives both amounts from the submitted `amount` and `amount_currency`.
 
 ## Provider Configuration
 
-A SePay provider instance needs the following credentials from the
-[SePay merchant portal](https://my.sepay.vn):
+Instance config is encrypted at rest with `security.secret_encryption_key`, and
+saving an instance fails until that key is set. Sensitive fields are never
+returned by the admin API; when editing an instance, leaving a sensitive field
+blank keeps the stored value.
 
-| Field | Sensitive | Description |
-|-------|-----------|-------------|
-| `merchantId` | No | Merchant code |
-| `secretKey` | **Yes** | Merchant secret key, used to sign the checkout and verify callbacks |
-| `env` | No | `production` or `sandbox` |
-| `currency` | No | Settlement currency. SePay settles in `VND` only |
-| `ipnSecretKey` | **Yes** | Optional. Only needed when the merchant portal sets IPN auth type to `SECRET_KEY` |
+### GPM Pay
 
-`secretKey` is encrypted at rest with `security.secret_encryption_key` and is
-never returned by the admin API. When editing an instance, leaving the secret
-field blank keeps the stored value.
+GPM Pay watches a Vietnamese bank account and signs a webhook for every transfer
+into it. It has no upstream order: Sub2API builds the VietQR itself, with an
+order code in the transfer memo, and matches incoming transfers by that code.
 
-`merchantId`, `secretKey`, `env` and `currency` cannot be changed while the
-instance still has in-progress orders — those orders were signed with the old
-values and would fail verification.
+| Field | Sensitive | Required | Description |
+|-------|-----------|----------|-------------|
+| `apiToken` | **Yes** | Yes | GPM Pay API token, used to look up transactions when a webhook was missed |
+| `webhookSecret` | **Yes** | Yes | Signing secret of the GPM Pay HMAC webhook. You choose it; enter the same value in GPM Pay |
+| `bankBin` | No | Yes | 6-digit NAPAS BIN of the receiving bank (e.g. `970422` for MB), used to build the VietQR |
+| `accountNumber` | No | Yes | The bank account GPM Pay watches |
+| `allowSimulated` | No | No | `true` credits transfers made with GPM Pay's simulator. Testing only — anyone with dashboard access can simulate a transfer. Default `false` |
+
+`webhookSecret`, `bankBin` and `accountNumber` cannot be changed while the
+instance still has in-progress orders: the pending QR codes point at that
+account, and their webhooks are verified with that secret.
+
+### NOWPayments
+
+| Field | Sensitive | Required | Description |
+|-------|-----------|----------|-------------|
+| `apiKey` | **Yes** | Yes | NOWPayments API key |
+| `ipnSecretKey` | **Yes** | Yes | IPN secret generated in the NOWPayments dashboard. NOWPayments has no order lookup to double-check a callback, so the signature is the only proof it is genuine |
+| `env` | No | No | `production` (default) or `sandbox`. Sandbox API keys do not work against production and vice versa |
+| `currency` | No | No | Fiat currency invoices are priced in: `USD` or `VND` |
+| `payCurrency` | No | No | Lock every invoice to one coin (e.g. `usdttrc20`). Leave blank to let the customer pick at checkout |
+
+`apiKey`, `ipnSecretKey`, `env` and `currency` cannot be changed while the
+instance still has in-progress orders.
 
 ---
 
@@ -134,10 +149,9 @@ values and would fail verification.
 
 Add instances in Admin Dashboard **Settings → Payment Settings → Provider Management**.
 
-- **Supported types** — which of the three methods this instance offers
-- **Payment mode** — `redirect` (required for SePay; see below), `qrcode`, `popup`
+- **Supported types** — the payment method this instance offers (each gateway has one)
 - **Limits** — per-method daily limit and single-order min/max; a limits entry
-  under the gateway key `sepay` applies to every method of the instance
+  under the gateway key (`gpmpay` or `nowpayments`) applies to every method of the instance
 - **Sort order** — display order on the checkout page
 
 Several enabled instances may serve the same payment method; orders are spread
@@ -147,24 +161,53 @@ across them by the configured load-balance strategy.
 
 ## Webhook Configuration
 
-Register this URL as the payment notification (IPN) endpoint in the SePay
-merchant portal:
-
-```
-https://your-domain.com/api/v1/payment/webhook/sepay
-```
-
 The admin provider dialog shows the exact URL for your deployment.
 
-SePay posts JSON with the order nested under `order`, and reports
-`order.order_status = CAPTURED` once the money is taken.
+### GPM Pay
 
-**How a callback is trusted.** The callback body is only used to locate the
-order via `order.order_invoice_number`. Whether the order is actually paid — and
-for how much — is decided by a server-to-server order query against the SePay
-Open API using the merchant's Basic credentials. A forged callback therefore
-cannot mark an order paid. When `ipnSecretKey` is configured, the `X-Secret-Key`
-request header is compared in constant time first and a mismatch is rejected.
+```
+https://your-domain.com/api/v1/payment/webhook/gpmpay
+```
+
+1. Pick a webhook secret and save it in the GPM Pay instance in Sub2API
+   (`webhookSecret`), with the instance enabled.
+2. In the GPM Pay dashboard (**Integrations → Webhooks**), register the URL above
+   as an HMAC webhook with the same secret, and leave `fireOnSimulated` off.
+
+GPM Pay pings the URL when the webhook is registered, which is why the secret has
+to be saved in Sub2API first. The ping is acknowledged and ignored.
+
+**How a webhook is trusted.** Each request carries
+`X-GPMPay-Signature: t=<unix>,v1=<hex>`, where `v1` is HMAC-SHA256 with the
+webhook secret over `"<t>." + rawBody`. A request is rejected if the signature
+does not match or `t` is more than 300 seconds from the server clock. GPM Pay
+posts every transfer on the account, so outgoing transfers and transfers whose
+memo carries no order code are acknowledged and ignored. Simulated transfers are
+ignored too unless the instance sets `allowSimulated=true`.
+
+The order is recovered from the memo code, which is the order's `out_trade_no`
+without the underscore, uppercased (banks routinely uppercase memos and strip
+punctuation). A transfer that pays less than the order, or more than a
+small rounding tolerance, is not credited and is recorded in the order's audit log as
+`PAYMENT_AMOUNT_MISMATCH`.
+
+### NOWPayments
+
+```
+https://your-domain.com/api/v1/payment/webhook/nowpayments
+```
+
+Add the URL as the IPN callback in the NOWPayments dashboard
+(**Settings → Payments → IPN**) and paste the IPN secret it generates into the
+instance's `ipnSecretKey`.
+
+**How a callback is trusted.** The `x-nowpayments-sig` header must be the
+HMAC-SHA512, keyed with the IPN secret, of the body re-serialized with sorted
+keys. Callbacks without a valid signature are rejected. Only `finished` credits
+the order; `failed` and `expired` fail it; intermediate states (`waiting`,
+`confirming`, `sending`, `partially_paid`) are acknowledged and the order keeps
+waiting. The credited amount is the invoice's `price_amount` in the configured
+fiat currency, never the crypto amount actually sent.
 
 ---
 
@@ -177,21 +220,16 @@ User selects amount and payment method
   Create Order (PENDING)
   ├─ Validate amount range, pending order count, daily limit
   ├─ Load balance to select provider instance
-  └─ Sign the SePay checkout fields (local HMAC, no upstream call)
-     over the documented field order: order_amount, merchant, currency,
-     operation, order_description, order_invoice_number, customer_id,
-     payment_method, success_url, error_url, cancel_url
+  └─ GPM Pay:     build a VietQR locally (no upstream call) with the
+                  order code in the transfer memo
+     NOWPayments: create a hosted invoice and get its invoice URL
        │
        ▼
-  Browser is sent to /api/v1/payment/checkout?token=<resume token>
-  └─ That page auto-submits the signed form to SePay
-     (SePay's checkout accepts POST only, so a plain redirect cannot reach it)
+  GPM Pay:     user scans the QR on the checkout page and transfers
+  NOWPayments: user is sent to the invoice URL and pays in crypto
        │
        ▼
-  User completes payment at SePay
-       │
-       ▼
-  Webhook callback → upstream order query confirms status and amount → Order PAID
+  Signed webhook → order located and amount checked → Order PAID
        │
        ▼
   Auto top-up to user balance → Order COMPLETED
@@ -220,11 +258,35 @@ produces them any more.
   is reconciled without waiting for expiry
 - The background job runs every 60 seconds
 
+For GPM Pay the upstream query searches the account's incoming transactions for
+the order code (using `apiToken`). For NOWPayments the callback is the real
+settlement signal: a new order only holds the invoice id, which the payment
+lookup cannot resolve, so the query reports it as pending.
+
 ---
 
 ## Refunds
 
-The SePay SDK exposes no refund API, so Sub2API has no refund flow: there are no
-refund endpoints, no admin refund actions, and no user refund requests. Handle
-refunds directly in the SePay merchant portal and adjust the user's balance
-manually from the admin dashboard.
+Sub2API has no refund flow: there are no refund endpoints, no admin refund
+actions, and no user refund requests. Handle refunds outside Sub2API (a bank
+transfer back to the customer, or through NOWPayments) and adjust the user's
+balance manually from the admin dashboard.
+
+---
+
+## Migrating from SePay
+
+SePay has been removed. Migration `248_retire_sepay_provider.sql` runs at startup
+and:
+
+- disables every `sepay` provider instance (instances are kept, because
+  historical orders reference them)
+- strips `sepay_*` entries from the `ENABLED_PAYMENT_TYPES` setting, leaving
+  GPM Pay and NOWPayments entries untouched
+- snapshots both beforehand into `payment_provider_instances_backup_248` and
+  `settings_payment_backup_248`
+
+Historical orders keep their `sepay_*` payment types and still display. Pending
+SePay orders are left as they are: the gateway can no longer be queried, so they
+simply expire unpaid. Before deploying, check for pending SePay orders, since a
+customer who pays one after the upgrade will not be credited automatically.

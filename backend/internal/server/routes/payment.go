@@ -84,15 +84,9 @@ func RegisterPaymentRoutes(
 	webhook := v1.Group("/payment/webhook")
 	webhook.Use(panelRateLimiter.PublicIP())
 	{
-		webhook.POST("/sepay", webhookHandler.SePayNotify)
 		webhook.POST("/nowpayments", webhookHandler.NowPaymentsNotify)
 		webhook.POST("/gpmpay", webhookHandler.GPMPayNotify)
 	}
-
-	// --- Hosted checkout bridge (no auth) ---
-	// SePay 收银台要求 POST 表单，浏览器无法直接跳转过去；这里用一个自动提交页
-	// 承接跳转，访问凭据是建单时签发的 resume token。
-	v1.GET("/payment/checkout", panelRateLimiter.PublicIP(), paymentHandler.Checkout)
 
 	// --- Admin payment endpoints (admin auth) ---
 	adminGroup := v1.Group("/admin/payment")

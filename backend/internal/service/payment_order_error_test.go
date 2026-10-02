@@ -34,16 +34,16 @@ func TestClassifyCreatePaymentErrorKeepsProviderDetail(t *testing.T) {
 func TestClassifyCreatePaymentErrorWrapsPlainErrors(t *testing.T) {
 	t.Parallel()
 
-	err := classifyCreatePaymentError(CreateOrderRequest{}, "sepay", errors.New("dial tcp: timeout"))
+	err := classifyCreatePaymentError(CreateOrderRequest{}, "gpmpay", errors.New("dial tcp: timeout"))
 	require.Error(t, err)
 
 	var appErr *infraerrors.ApplicationError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, "PAYMENT_GATEWAY_ERROR", appErr.Reason)
 	assert.Contains(t, appErr.Message, "dial tcp: timeout")
-	assert.Equal(t, "sepay", appErr.Metadata["provider_key"])
+	assert.Equal(t, "gpmpay", appErr.Metadata["provider_key"])
 
-	assert.NoError(t, classifyCreatePaymentError(CreateOrderRequest{}, "sepay", nil))
+	assert.NoError(t, classifyCreatePaymentError(CreateOrderRequest{}, "gpmpay", nil))
 }
 
 func TestBuildPaymentNotifyURL(t *testing.T) {
@@ -58,13 +58,13 @@ func TestBuildPaymentNotifyURL(t *testing.T) {
 	assert.Equal(t, "https://panel.example.com/api/v1/payment/webhook/nowpayments", got)
 
 	// The path and query of the return URL must not leak into the webhook URL.
-	got, err = buildPaymentNotifyURL("https://panel.example.com:8443/payment/result?order_id=7", "sepay")
+	got, err = buildPaymentNotifyURL("https://panel.example.com:8443/payment/result?order_id=7", "gpmpay")
 	require.NoError(t, err)
-	assert.Equal(t, "https://panel.example.com:8443/api/v1/payment/webhook/sepay", got)
+	assert.Equal(t, "https://panel.example.com:8443/api/v1/payment/webhook/gpmpay", got)
 
 	// No return URL means no derivable origin. That is not an error here — only
 	// the gateways that need a callback get to refuse, and refusing for all of
-	// them would take SePay down with it.
+	// them would take the others down with it.
 	got, err = buildPaymentNotifyURL("", "nowpayments")
 	require.NoError(t, err)
 	assert.Empty(t, got)

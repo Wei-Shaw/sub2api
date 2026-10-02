@@ -13,7 +13,7 @@ func TestValidateSelectedCreateOrderAmountCurrencyRejectsFractionalZeroDecimal(t
 	t.Parallel()
 
 	err := validateSelectedCreateOrderAmountCurrency("100.50", &payment.InstanceSelection{
-		ProviderKey: payment.TypeSePay,
+		ProviderKey: payment.TypeNowPayments,
 		Config:      map[string]string{"currency": "JPY"},
 	})
 	if err == nil {

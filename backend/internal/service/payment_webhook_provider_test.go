@@ -49,14 +49,14 @@ func newWebhookProviderTestLoadBalancer(client *dbent.Client) payment.LoadBalanc
 	return payment.NewDefaultLoadBalancer(client, []byte(webhookProviderTestEncryptionKey))
 }
 
-func encryptValidWebhookSePayConfig(t *testing.T, suffix string) string {
+func encryptValidWebhookGPMPayConfig(t *testing.T, suffix string) string {
 	t.Helper()
 
 	return encryptWebhookProviderConfig(t, map[string]string{
-		"merchantId": "MERCHANT_" + suffix,
-		"secretKey":  "sk_test_" + suffix,
-		"env":        "sandbox",
-		"currency":   "VND",
+		"apiToken":      "gpm_token_" + suffix,
+		"webhookSecret": "whsec_" + suffix,
+		"bankBin":       "970422",
+		"accountNumber": "0123456789",
 	})
 }
 
@@ -64,17 +64,17 @@ func TestGetOrderProviderInstanceResolvesUniqueLegacyProviderKey(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	inst, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
 		SetConfig(encryptWebhookProviderConfig(t, map[string]string{"secretKey": "sk_test_legacy_provider_key"})).
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
-	providerKey := payment.TypeSePay
+	providerKey := payment.TypeGPMPay
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeSePay,
+		PaymentType: payment.TypeGPMPay,
 		ProviderKey: &providerKey,
 	}
 
@@ -93,24 +93,24 @@ func TestGetOrderProviderInstanceLeavesAmbiguousLegacyOrderUnresolved(t *testing
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeSePayNapas,
+		PaymentType: payment.TypeGPMPayBankTransfer,
 	}
 
 	svc := &PaymentService{
@@ -127,25 +127,25 @@ func TestGetOrderProviderInstanceLeavesLegacyProviderKeyUnresolvedWhenHistorical
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-disabled-legacy").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-disabled-legacy").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(false).
 		Save(ctx)
 	require.NoError(t, err)
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-enabled-current").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-enabled-current").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
-	providerKey := payment.TypeSePay
+	providerKey := payment.TypeGPMPay
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeSePay,
+		PaymentType: payment.TypeGPMPay,
 		ProviderKey: &providerKey,
 	}
 
@@ -163,21 +163,21 @@ func TestGetOrderProviderInstanceUsesProviderSnapshotWhenPinnedColumnMissing(t *
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	inst, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-snapshot").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-snapshot").
 		SetConfig(encryptWebhookProviderConfig(t, map[string]string{"secretKey": "sk_snapshot"})).
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	order := &dbent.PaymentOrder{
 		ID:          42,
-		PaymentType: payment.TypeSePay,
+		PaymentType: payment.TypeGPMPay,
 		ProviderSnapshot: map[string]any{
 			"schema_version":       1,
 			"provider_instance_id": strconv.FormatInt(inst.ID, 10),
-			"provider_key":         payment.TypeSePay,
+			"provider_key":         payment.TypeGPMPay,
 		},
 	}
 
@@ -196,21 +196,21 @@ func TestGetOrderProviderInstanceRejectsMissingSnapshotInstanceWithoutLegacyFall
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-legacy-fallback").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-legacy-fallback").
 		SetConfig(encryptWebhookProviderConfig(t, map[string]string{"secretKey": "sk_legacy"})).
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	order := &dbent.PaymentOrder{
 		ID:          43,
-		PaymentType: payment.TypeSePay,
+		PaymentType: payment.TypeGPMPay,
 		ProviderSnapshot: map[string]any{
 			"schema_version":       1,
 			"provider_instance_id": "999999",
-			"provider_key":         payment.TypeSePay,
+			"provider_key":         payment.TypeGPMPay,
 		},
 	}
 
@@ -228,21 +228,21 @@ func TestGetOrderProviderInstanceRejectsMissingSnapshotInstanceWithoutLegacyFall
 func TestGetWebhookProviderRejectsAmbiguousRegistryFallbackForMultipleInstances(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
-	sepayConfigA := encryptValidWebhookSePayConfig(t, "a")
-	sepayConfigB := encryptValidWebhookSePayConfig(t, "b")
+	gpmpayConfigA := encryptValidWebhookGPMPayConfig(t, "a")
+	gpmpayConfigB := encryptValidWebhookGPMPayConfig(t, "b")
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
-		SetConfig(sepayConfigA).
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
+		SetConfig(gpmpayConfigA).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-b").
-		SetConfig(sepayConfigB).
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-b").
+		SetConfig(gpmpayConfigB).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestGetWebhookProviderRejectsAmbiguousRegistryFallbackForMultipleInstances(
 		providersLoaded: true,
 	}
 
-	_, err = svc.GetWebhookProviders(ctx, payment.TypeSePay, "")
+	_, err = svc.GetWebhookProviders(ctx, payment.TypeGPMPay, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "ambiguous")
 }
@@ -263,18 +263,18 @@ func TestGetWebhookProvidersRejectAmbiguousFallbackWithoutOrderReference(t *test
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayBankTransfer).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-b").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-b").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayBankTransfer).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
@@ -285,7 +285,7 @@ func TestGetWebhookProvidersRejectAmbiguousFallbackWithoutOrderReference(t *test
 		providersLoaded: true,
 	}
 
-	_, err = svc.GetWebhookProviders(ctx, payment.TypeSePay, "")
+	_, err = svc.GetWebhookProviders(ctx, payment.TypeGPMPay, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "ambiguous")
 }
@@ -294,18 +294,18 @@ func TestGetWebhookProviderAllowsSingleInstanceRegistryFallback(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-a").
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-a").
 		SetConfig("{}").
-		SetSupportedTypes(payment.TypeSePayCard).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	registry := payment.NewRegistry()
 	registry.Register(webhookProviderTestDouble{
-		key:   payment.TypeSePay,
-		types: []payment.PaymentType{payment.TypeSePayCard},
+		key:   payment.TypeGPMPay,
+		types: []payment.PaymentType{payment.TypeGPMPayBankTransfer},
 	})
 
 	svc := &PaymentService{
@@ -314,11 +314,11 @@ func TestGetWebhookProviderAllowsSingleInstanceRegistryFallback(t *testing.T) {
 		providersLoaded: true,
 	}
 
-	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSePay, "")
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeGPMPay, "")
 	require.NoError(t, err)
 	require.Len(t, providers, 1)
 	prov := providers[0]
-	require.Equal(t, payment.TypeSePay, prov.ProviderKey())
+	require.Equal(t, payment.TypeGPMPay, prov.ProviderKey())
 }
 
 func TestGetWebhookProviderRejectsRegistryFallbackForPinnedOrder(t *testing.T) {
@@ -341,7 +341,7 @@ func TestGetWebhookProviderRejectsRegistryFallbackForPinnedOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("TEST-RECHARGE").
 		SetOutTradeNo("sub2_test_pinned_order").
-		SetPaymentType(payment.TypeSePayNapas).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -354,8 +354,8 @@ func TestGetWebhookProviderRejectsRegistryFallbackForPinnedOrder(t *testing.T) {
 
 	registry := payment.NewRegistry()
 	registry.Register(webhookProviderTestDouble{
-		key:   payment.TypeSePay,
-		types: []payment.PaymentType{payment.TypeSePayNapas},
+		key:   payment.TypeGPMPay,
+		types: []payment.PaymentType{payment.TypeGPMPayBankTransfer},
 	})
 
 	svc := &PaymentService{
@@ -364,7 +364,7 @@ func TestGetWebhookProviderRejectsRegistryFallbackForPinnedOrder(t *testing.T) {
 		providersLoaded: true,
 	}
 
-	_, err = svc.GetWebhookProviders(ctx, payment.TypeSePay, "sub2_test_pinned_order")
+	_, err = svc.GetWebhookProviders(ctx, payment.TypeGPMPay, "sub2_test_pinned_order")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "provider instance")
 }
@@ -379,21 +379,21 @@ func TestGetWebhookProviderUsesProviderSnapshotBeforeRegistryFallback(t *testing
 		Save(ctx)
 	require.NoError(t, err)
 
-	sepayConfigA := encryptValidWebhookSePayConfig(t, "snapshot-a")
-	sepayConfigB := encryptValidWebhookSePayConfig(t, "snapshot-b")
+	gpmpayConfigA := encryptValidWebhookGPMPayConfig(t, "snapshot-a")
+	gpmpayConfigB := encryptValidWebhookGPMPayConfig(t, "snapshot-b")
 	instA, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-snapshot-a").
-		SetConfig(sepayConfigA).
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-snapshot-a").
+		SetConfig(gpmpayConfigA).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeSePay).
-		SetName("sepay-snapshot-b").
-		SetConfig(sepayConfigB).
-		SetSupportedTypes(payment.TypeSePayNapas).
+		SetProviderKey(payment.TypeGPMPay).
+		SetName("gpmpay-snapshot-b").
+		SetConfig(gpmpayConfigB).
+		SetSupportedTypes(payment.TypeGPMPayBankTransfer).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
@@ -407,7 +407,7 @@ func TestGetWebhookProviderUsesProviderSnapshotBeforeRegistryFallback(t *testing
 		SetFeeRate(0).
 		SetRechargeCode("SNAPSHOT-WEBHOOK").
 		SetOutTradeNo("sub2_test_snapshot_webhook_order").
-		SetPaymentType(payment.TypeSePayNapas).
+		SetPaymentType(payment.TypeGPMPayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -417,7 +417,7 @@ func TestGetWebhookProviderUsesProviderSnapshotBeforeRegistryFallback(t *testing
 		SetProviderSnapshot(map[string]any{
 			"schema_version":       1,
 			"provider_instance_id": strconv.FormatInt(instA.ID, 10),
-			"provider_key":         payment.TypeSePay,
+			"provider_key":         payment.TypeGPMPay,
 			"payment_mode":         "native",
 		}).
 		Save(ctx)
@@ -430,8 +430,8 @@ func TestGetWebhookProviderUsesProviderSnapshotBeforeRegistryFallback(t *testing
 		providersLoaded: true,
 	}
 
-	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSePay, "sub2_test_snapshot_webhook_order")
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeGPMPay, "sub2_test_snapshot_webhook_order")
 	require.NoError(t, err)
 	require.Len(t, providers, 1)
-	require.Equal(t, payment.TypeSePay, providers[0].ProviderKey())
+	require.Equal(t, payment.TypeGPMPay, providers[0].ProviderKey())
 }

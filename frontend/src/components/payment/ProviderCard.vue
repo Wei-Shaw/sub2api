@@ -64,7 +64,8 @@ import type { TypeOption } from './providerConfig'
 import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP, PAYMENT_MODE_REDIRECT } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
-  sepay: 'admin.settings.payment.providerSepay',
+  nowpayments: 'admin.settings.payment.providerNowPayments',
+  gpmpay: 'admin.settings.payment.providerGpmPay',
 }
 
 const props = defineProps<{

@@ -117,7 +117,7 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 
 	var matched []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		// A bare provider key (e.g. "sepay") matches any instance of that
+		// A bare provider key (e.g. "gpmpay") matches any instance of that
 		// gateway, so the checkout page can aggregate its sub-methods.
 		if paymentType == inst.ProviderKey || InstanceSupportsType(inst.SupportedTypes, paymentType) {
 			matched = append(matched, inst)

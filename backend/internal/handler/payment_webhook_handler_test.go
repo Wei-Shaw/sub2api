@@ -45,7 +45,7 @@ func TestUnknownOrderWebhookAcksWithSuccess(t *testing.T) {
 	// 2) The success body is what handleNotify emits on the ack path.
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	writeSuccessResponse(c, payment.TypeSePay)
+	writeSuccessResponse(c, payment.TypeGPMPay)
 	require.Equal(t, http.StatusOK, w.Code,
 		"the gateway requires 2xx to stop retrying; anything else restarts the retry loop")
 	require.Equal(t, "success", w.Body.String())
@@ -68,18 +68,28 @@ func TestExtractOutTradeNo(t *testing.T) {
 		want    string
 	}{
 		{
-			name:    "sepay json payload",
-			rawBody: `{"merchant":"M1","order_invoice_number":"sub2_123","order_status":"COMPLETED"}`,
+			name:    "nowpayments top level order_id",
+			rawBody: `{"order_id":"sub2_123","payment_status":"finished"}`,
 			want:    "sub2_123",
 		},
 		{
-			name:    "sepay nested json payload",
-			rawBody: `{"data":{"order_invoice_number":"sub2_456"}}`,
+			name:    "nested data order_id",
+			rawBody: `{"data":{"order_id":"sub2_456"}}`,
 			want:    "sub2_456",
 		},
 		{
+			name:    "non-object order does not lose other candidates",
+			rawBody: `{"order":"SP-9","order_id":"sub2_np"}`,
+			want:    "sub2_np",
+		},
+		{
+			name:    "gpmpay transfer memo",
+			rawBody: `{"content":"IBFT SUB220260930AB3KX9MQFT2627","transferAmount":50000}`,
+			want:    "sub2_20260930AB3KX9MQ",
+		},
+		{
 			name:    "form encoded payload",
-			rawBody: "order_invoice_number=sub2_789&order_status=COMPLETED",
+			rawBody: "order_id=sub2_789&payment_status=finished",
 			want:    "sub2_789",
 		},
 		{
@@ -105,11 +115,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 	firstErr := errors.New("wrong provider")
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeSePayNapas,
+			key:       payment.TypeNowPaymentsCrypto,
 			verifyErr: firstErr,
 		},
 		webhookHandlerProviderStub{
-			key: payment.TypeSePayNapas,
+			key: payment.TypeNowPaymentsCrypto,
 			notification: &payment.PaymentNotification{
 				OrderID: "sub2_42",
 				TradeNo: "trade-42",
@@ -120,7 +130,7 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 
 	providerKey, notification, err := verifyNotificationWithProviders(context.Background(), providers, "{}", map[string]string{"wechatpay-signature": "sig"})
 	require.NoError(t, err)
-	require.Equal(t, payment.TypeSePayNapas, providerKey)
+	require.Equal(t, payment.TypeNowPaymentsCrypto, providerKey)
 	require.NotNil(t, notification)
 	require.Equal(t, "sub2_42", notification.OrderID)
 }
@@ -128,11 +138,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 func TestVerifyNotificationWithProvidersFailsWhenAllProvidersReject(t *testing.T) {
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeSePayNapas,
+			key:       payment.TypeNowPaymentsCrypto,
 			verifyErr: errors.New("verify failed a"),
 		},
 		webhookHandlerProviderStub{
-			key:       payment.TypeSePayNapas,
+			key:       payment.TypeNowPaymentsCrypto,
 			verifyErr: errors.New("verify failed b"),
 		},
 	}

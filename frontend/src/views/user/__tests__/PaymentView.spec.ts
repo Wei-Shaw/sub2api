@@ -667,7 +667,7 @@ describe('PaymentView gateway return', () => {
       amount: 100000,
       qrCode: '',
       expiresAt: '2099-01-01T00:10:00.000Z',
-      paymentType: 'sepay_bank_transfer',
+      paymentType: 'nowpayments_crypto',
       payUrl: 'https://pay.example.com/session/7',
       outTradeNo: 'sub2_20260904abcd1234',
       clientSecret: '',

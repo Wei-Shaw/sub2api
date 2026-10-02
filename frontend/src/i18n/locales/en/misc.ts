@@ -308,6 +308,7 @@ export default {
     actualPay: 'Actual Payment',
     createOrder: 'Confirm Payment',
     methods: {
+      // Retired gateway: kept so orders placed through SePay still render a name.
       sepay: 'SePay',
       sepay_bank_transfer: 'VietQR',
       sepay_napas: 'Napas Bank Transfer',
@@ -420,10 +421,6 @@ export default {
         "Unpaid pending orders are holding {held} of today's limit. Pay or cancel them, or wait until {held_until}. Remaining: {remaining}.",
       PAYMENT_GATEWAY_ERROR: 'Payment method is unavailable.',
       NO_AVAILABLE_INSTANCE: 'No payment channel available right now.',
-      SEPAY_CONFIG_MISSING_KEY: 'SePay config missing required key: {field}.',
-      SEPAY_CONFIG_INVALID_ENV: 'SePay environment must be either sandbox or production.',
-      SEPAY_CONFIG_INVALID_CURRENCY: 'SePay currency is invalid.',
-      SEPAY_UNSUPPORTED_PAYMENT_TYPE: 'SePay does not support this payment method.',
       NOWPAYMENTS_CONFIG_MISSING_KEY: 'NOWPayments config missing required key: {field}.',
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'NOWPayments environment must be either sandbox or production.',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'NOWPayments currency is invalid.',

@@ -37,10 +37,6 @@ const (
 	TencentCaptchaRceDomain = "https://rce.tencentrio.com"
 	// TencentCaptchaWorkerSource 是天御国际站创建验证码 Web Worker 时使用的来源。
 	TencentCaptchaWorkerSource = "blob:"
-	// SePayCheckoutDomain 是 SePay 生产环境收银台域名。
-	SePayCheckoutDomain = "https://pay.sepay.vn"
-	// SePaySandboxCheckoutDomain 是 SePay 沙箱环境收银台域名。
-	SePaySandboxCheckoutDomain = "https://pay-sandbox.sepay.vn"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -65,9 +61,6 @@ var requiredCSPDirectiveValues = []struct {
 	{"frame-src", TencentCaptchaGlobalDomain},
 	{"frame-src", TencentCaptchaPrehandleDomain},
 	{"worker-src", TencentCaptchaWorkerSource},
-	// 收银台跳转是一次表单 POST，因此需要放开 form-action，而不是脚本或 iframe。
-	{"form-action", SePayCheckoutDomain},
-	{"form-action", SePaySandboxCheckoutDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.

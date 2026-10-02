@@ -19,17 +19,16 @@ import (
 func TestNormalizeVisibleMethods(t *testing.T) {
 	t.Parallel()
 
-	// 归一化只做去空白和去重：sepay_* 是三个独立的可见方式，
-	// 折叠成网关键会让下单选不中用户点的那一个。
+	// 归一化只做去空白和去重：可见方式不能折叠成网关键，
+	// 否则下单选不中用户点的那一个。
 	got := NormalizeVisibleMethods([]string{
-		payment.TypeSePayBankTransfer,
-		" " + payment.TypeSePayNapas + " ",
-		payment.TypeSePayCard,
-		payment.TypeSePayBankTransfer,
+		payment.TypeGPMPayBankTransfer,
+		" " + payment.TypeNowPaymentsCrypto + " ",
+		payment.TypeGPMPayBankTransfer,
 		"",
 	})
 
-	want := []string{payment.TypeSePayBankTransfer, payment.TypeSePayNapas, payment.TypeSePayCard}
+	want := []string{payment.TypeGPMPayBankTransfer, payment.TypeNowPaymentsCrypto}
 	if len(got) != len(want) {
 		t.Fatalf("NormalizeVisibleMethods len = %d, want %d (%v)", len(got), len(want), got)
 	}

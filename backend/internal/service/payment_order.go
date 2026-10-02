@@ -477,11 +477,6 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		snapshot["payment_mode"] = paymentMode
 	}
 
-	if providerKey == payment.TypeSePay {
-		if merchantID := strings.TrimSpace(sel.Config["merchantId"]); merchantID != "" {
-			snapshot["merchant_id"] = merchantID
-		}
-	}
 	// 每个网关都要记币种：缺了它 PaymentOrderCurrency 会回落成 VND，
 	// 按 USD 计价的 NOWPayments 订单在统计里就被当成 VND。
 	snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
@@ -658,14 +653,6 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		}
 		return nil, classifyCreatePaymentError(req, sel.ProviderKey, err)
 	}
-	// 表单式收银台没有可直接跳转的链接：把用户先送到本站的自动提交页，
-	// 由它带着签名字段 POST 到网关。令牌即 resume token，页面据此定位订单。
-	if pr.ResultType == payment.CreatePaymentResultFormPost {
-		if resumeToken == "" {
-			return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
-		}
-		pr.PayURL = BuildCheckoutRedirectPath(resumeToken)
-	}
 	sanitizeCreatePaymentResponseDetails(pr)
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).
 		SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).
@@ -720,7 +707,7 @@ const paymentWebhookPathPrefix = "/api/v1/payment/webhook/"
 // Host 可能是内网名字，写进去网关根本回调不到，而 IPN 是有些网关唯一的到账凭据。
 //
 // canonicalReturnURL 为空时返回空串：不是所有网关都需要这个字段，需要的那个
-// 自己会拒绝。在这里一刀切地报错会把 SePay 也一起挡下来。
+// 自己会拒绝。在这里一刀切地报错会把不需要它的网关也一起挡下来。
 func buildPaymentNotifyURL(canonicalReturnURL, providerKey string) (string, error) {
 	canonicalReturnURL = strings.TrimSpace(canonicalReturnURL)
 	providerKey = strings.TrimSpace(providerKey)

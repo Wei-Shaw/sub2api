@@ -59,7 +59,7 @@ func TestCreateOrderInTxSubscriptionConsumesDailyLimitInGatewayCurrency(t *testi
 	cfg := &PaymentConfig{MaxPendingOrders: 10, OrderTimeoutMin: 30, DailyLimit: 300000}
 	req := CreateOrderRequest{
 		UserID:      user.ID,
-		PaymentType: payment.TypeSePayBankTransfer,
+		PaymentType: payment.TypeGPMPayBankTransfer,
 		OrderType:   payment.OrderTypeSubscription,
 	}
 	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}

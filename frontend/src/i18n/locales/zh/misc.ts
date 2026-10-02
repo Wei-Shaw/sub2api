@@ -332,6 +332,7 @@ export default {
     actualPay: '实付金额',
     createOrder: '确认支付',
     methods: {
+      // Retired gateway: kept so orders placed through SePay still render a name.
       sepay: 'SePay',
       sepay_bank_transfer: 'VietQR',
       sepay_napas: 'Napas 银行转账',
@@ -444,10 +445,6 @@ export default {
         '待支付订单占用了今日额度 {held}，请先完成或取消，或等待 {held_until} 后自动释放。剩余额度 {remaining}',
       PAYMENT_GATEWAY_ERROR: '支付方式不可用',
       NO_AVAILABLE_INSTANCE: '暂无可用的支付通道',
-      SEPAY_CONFIG_MISSING_KEY: 'SePay 配置缺少必填项：{field}。',
-      SEPAY_CONFIG_INVALID_ENV: 'SePay 环境只能是 sandbox 或 production。',
-      SEPAY_CONFIG_INVALID_CURRENCY: 'SePay 币种不合法。',
-      SEPAY_UNSUPPORTED_PAYMENT_TYPE: 'SePay 不支持该支付方式。',
       NOWPAYMENTS_CONFIG_MISSING_KEY: 'NOWPayments 配置缺少必填项：{field}。',
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'NOWPayments 环境只能是 sandbox 或 production。',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'NOWPayments 币种不合法。',
