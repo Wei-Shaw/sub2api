@@ -177,7 +177,7 @@ func testDatabase(c *gin.Context) {
 // TestRedisRequest represents Redis test request
 type TestRedisRequest struct {
 	Host      string `json:"host" binding:"required"`
-	Port      int    `json:"port" binding:"required"`
+	Port      int    `json:"port"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	DB        int    `json:"db"`
@@ -192,13 +192,9 @@ func testRedis(c *gin.Context) {
 		return
 	}
 
-	// Security: Validate inputs
-	if !validateHostname(req.Host) {
-		response.Error(c, http.StatusBadRequest, "Invalid hostname format")
-		return
-	}
-	if !validatePort(req.Port) {
-		response.Error(c, http.StatusBadRequest, "Invalid port number")
+	// Validate TCP and Unix socket settings without relaxing PostgreSQL validation.
+	if err := validateRedisConnection(req.Host, req.Port, req.EnableTLS); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if req.DB < 0 || req.DB > 15 {
@@ -281,12 +277,8 @@ func install(c *gin.Context) {
 	}
 
 	// Redis validation
-	if !validateHostname(req.Redis.Host) {
-		response.Error(c, http.StatusBadRequest, "Invalid Redis hostname")
-		return
-	}
-	if !validatePort(req.Redis.Port) {
-		response.Error(c, http.StatusBadRequest, "Invalid Redis port")
+	if err := validateRedisConnection(req.Redis.Host, req.Redis.Port, req.Redis.EnableTLS); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if req.Redis.DB < 0 || req.Redis.DB > 15 {
