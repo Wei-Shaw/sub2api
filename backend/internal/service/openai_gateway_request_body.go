@@ -1430,17 +1430,32 @@ func normalizeOpenAIResponseFormatSchemasBody(body []byte) ([]byte, bool, error)
 }
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
-	if account == nil || !account.IsOpenAI() {
+	if account == nil {
 		return body, false, nil
 	}
 	normalized := body
 	changed := false
-	if account.IsOpenAIOAuthLike() {
-		var err error
-		normalized, changed, err = normalizeOpenAIResponsesLegacyIngress(body)
+	if planOpenAIResponsesAdaptation(account, normalized).normalizeAgentMessages {
+		next, normalizedAgentMessages, err := normalizeOpenAIResponsesAgentMessages(normalized)
 		if err != nil {
 			return body, false, err
 		}
+		if normalizedAgentMessages {
+			normalized = next
+			changed = true
+		}
+	}
+	if !account.IsOpenAI() {
+		return normalized, changed, nil
+	}
+	if account.IsOpenAIOAuthLike() {
+		var err error
+		var legacyChanged bool
+		normalized, legacyChanged, err = normalizeOpenAIResponsesLegacyIngress(normalized)
+		if err != nil {
+			return body, false, err
+		}
+		changed = changed || legacyChanged
 	}
 	if next, normalizedReasoningContent, err := normalizeOpenAIResponsesReasoningContentReplay(normalized); err != nil {
 		return body, false, err

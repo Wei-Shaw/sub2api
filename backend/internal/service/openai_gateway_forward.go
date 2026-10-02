@@ -137,13 +137,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	nativeCNResponses := account.UsesNativeCNResponses()
-	nativeDeepSeekResponses := account.Platform == PlatformDeepseek && nativeCNResponses
-	if nativeDeepSeekResponses && account.Type == AccountTypeAPIKey && !compactPath &&
-		needsOpenAIResponsesClientToolAdaptation(body) {
-		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+	adaptationPlan := planOpenAIResponsesAdaptation(account, body)
+	if adaptationPlan.normalizeAgentMessages {
+		normalizedBody, _, normalizeErr := normalizeOpenAIResponsesAgentMessages(body)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		body = normalizedBody
+	}
+	if shouldAdaptOpenAIResponsesClientTools(account, c, body) {
+		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientToolsForFunctionUpstream(body)
 		if adaptErr != nil {
-			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
+			return nil, fmt.Errorf("adapt %s Responses client tools: %w", account.Platform, adaptErr)
 		}
 		body = adaptedBody
 		setOpenAIResponsesClientToolMapping(c, mapping)
@@ -386,7 +391,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
+	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !account.UsesNativeResponsesProtocol() {
 		markPatchSet("instructions", defaultCodexSynthInstructions(upstreamModel))
 	}
 	if billingModel != requestedModel {
