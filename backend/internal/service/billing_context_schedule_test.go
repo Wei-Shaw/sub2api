@@ -308,15 +308,15 @@ func scheduleScenarios() []scheduleScenario {
 			name: "gpt-5.6 缺 cache_write 时按策略补 1.25 倍并带阶梯", model: "gpt-5.6-sol", platform: PlatformOpenAI, groupPlatform: PlatformOpenAI,
 			group: enabledGroup(PlatformOpenAI),
 			catalog: mustCatalogFromJSON(`{"gpt-5.6-sol": {"litellm_provider": "openai", "mode": "chat",
-				"input_cost_per_token": 5e-06, "output_cost_per_token": 3e-05, "cache_read_input_token_cost": 5e-07,
-				"input_cost_per_token_above_272k_tokens": 1e-05,
-				"output_cost_per_token_above_272k_tokens": 4.5e-05,
-				"cache_read_input_token_cost_above_272k_tokens": 1e-06}}`),
+				"input_cost_per_token": 4e-06, "output_cost_per_token": 2e-05, "cache_read_input_token_cost": 4e-07,
+				"input_cost_per_token_above_272k_tokens": 8e-06,
+				"output_cost_per_token_above_272k_tokens": 3e-05,
+				"cache_read_input_token_cost_above_272k_tokens": 8e-07}}`),
 			wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
-				requireTier(t, s.Tiers[0], 0, intPtr(272000), "≤272K", p(5e-6), p(30e-6), p(6.25e-6), p(0.5e-6))
-				requireTier(t, s.Tiers[1], 272000, nil, ">272K", p(10e-6), p(45e-6), p(12.5e-6), p(1e-6))
+				requireTier(t, s.Tiers[0], 0, intPtr(272000), "≤272K", p(4e-6), p(20e-6), p(5e-6), p(0.4e-6))
+				requireTier(t, s.Tiers[1], 272000, nil, ">272K", p(8e-6), p(30e-6), p(10e-6), p(0.8e-6))
 			},
 		},
 		{
