@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -106,5 +107,50 @@ func TestSchedulerMetadataAccountDropsInvalidUpstreamBillingProbe(t *testing.T) 
 		})
 
 		require.NotContains(t, metadata.Extra, service.UpstreamBillingProbeExtraKey)
+	}
+}
+
+func TestSchedulerMetadataAccountPreservesEndpointCapabilities(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		capabilities any
+		baseURL      string
+		seedance     bool
+		chat         bool
+		embeddings   bool
+	}{
+		{name: "Seedance", capabilities: []string{"seedance"}, baseURL: "https://ark.example.com", seedance: true},
+		{name: "JSON capabilities", capabilities: []any{"seedance", "embeddings"}, baseURL: "https://ark.example.com", seedance: true, embeddings: true},
+		{name: "Seedance without URL", capabilities: []string{"seedance"}},
+		{name: "Seedance with blank URL", capabilities: []string{"seedance"}, baseURL: "  "},
+		{name: "embeddings only", capabilities: []string{"embeddings"}, embeddings: true},
+		{name: "chat only", capabilities: []string{"chat_completions"}, chat: true},
+		{name: "legacy unrestricted", chat: true, embeddings: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := service.Account{
+				ID:       25,
+				Platform: service.PlatformOpenAI,
+				Type:     service.AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"base_url": tt.baseURL,
+				},
+			}
+			if tt.capabilities != nil {
+				account.Credentials["openai_capabilities"] = tt.capabilities
+			}
+			_, payload, err := marshalSchedulerCacheAccount(account)
+			require.NoError(t, err)
+			var metadata service.Account
+			require.NoError(t, json.Unmarshal(payload, &metadata))
+			for capability, want := range map[service.OpenAIEndpointCapability]bool{
+				service.OpenAIEndpointCapabilitySeedance:        tt.seedance,
+				service.OpenAIEndpointCapabilityChatCompletions: tt.chat,
+				service.OpenAIEndpointCapabilityEmbeddings:      tt.embeddings,
+			} {
+				require.Equal(t, want, account.SupportsOpenAIEndpointCapability(capability), "full account: %s", capability)
+				require.Equal(t, want, metadata.SupportsOpenAIEndpointCapability(capability), "cached metadata: %s", capability)
+			}
+		})
 	}
 }
