@@ -1564,6 +1564,85 @@ func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	}
 }
 
+func TestClient_RetrieveUserQuotaSummary_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/v1internal:retrieveUserQuotaSummary") {
+			t.Errorf("URL 路径不匹配: got %s", r.URL.Path)
+		}
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer test-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type 不匹配: got %s", ct)
+		}
+
+		var reqBody RetrieveUserQuotaSummaryRequest
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+		}
+		if reqBody.Project != "project-xyz" {
+			t.Errorf("Project 不匹配: got %s, want project-xyz", reqBody.Project)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"buckets": [
+				{
+					"bucketId": "gemini-3.8-flash",
+					"displayName": "Gemini 3.8 Flash",
+					"remainingFraction": 0.75,
+					"resetTime": "2026-09-23T20:00:00Z"
+				}
+			],
+			"groups": [
+				{
+					"displayName": "Gemini Flash Group",
+					"buckets": [
+						{
+							"bucketId": "gemini-flash-group-bucket",
+							"displayName": "Gemini Flash",
+							"remainingFraction": 0.8
+						}
+					]
+				}
+			],
+			"description": "quota description"
+		}`))
+	}))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URL})
+
+	client := mustNewClient(t, "")
+	resp, rawResp, err := client.RetrieveUserQuotaSummary(context.Background(), "test-token", "project-xyz", defaultFetchAvailableModelsBodyLimit)
+	if err != nil {
+		t.Fatalf("RetrieveUserQuotaSummary 失败: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("resp 不应为 nil")
+	}
+	if len(resp.Buckets) != 1 {
+		t.Fatalf("Buckets 数量不匹配: got %d, want 1", len(resp.Buckets))
+	}
+	if resp.Buckets[0].BucketID != "gemini-3.8-flash" {
+		t.Errorf("BucketID 不匹配: got %s, want gemini-3.8-flash", resp.Buckets[0].BucketID)
+	}
+	if resp.Buckets[0].RemainingFraction != 0.75 {
+		t.Errorf("RemainingFraction 不匹配: got %f, want 0.75", resp.Buckets[0].RemainingFraction)
+	}
+	if len(resp.Groups) != 1 || len(resp.Groups[0].Buckets) != 1 {
+		t.Fatal("Groups 数量或结构不匹配")
+	}
+	if rawResp == nil || rawResp["buckets"] == nil {
+		t.Fatal("rawResp 不应为 nil 且应包含 buckets")
+	}
+}
+
 func TestClient_FetchAvailableModels_RejectsNonPositiveBodyLimit(t *testing.T) {
 	client := mustNewClient(t, "")
 	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", 0)

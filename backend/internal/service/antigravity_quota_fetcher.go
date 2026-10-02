@@ -83,8 +83,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
 	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
 
+	// 调用 RetrieveUserQuotaSummary 获取真实额度桶摘要（对应 agy /usage，非关键路径，平滑降级）
+	quotaSummaryResp, _, summaryErr := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	if summaryErr != nil {
+		slog.Warn("failed to fetch antigravity user quota summary", "error", summaryErr)
+	}
+
 	// 转换为 UsageInfo
-	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
+	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp, quotaSummaryResp)
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,
@@ -128,64 +134,135 @@ func normalizeTier(raw string) string {
 }
 
 // buildUsageInfo 将 API 响应转换为 UsageInfo。
-func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAvailableModelsResponse, tierRaw, tierNormalized string, loadResp *antigravity.LoadCodeAssistResponse) *UsageInfo {
+func (f *AntigravityQuotaFetcher) buildUsageInfo(
+	modelsResp *antigravity.FetchAvailableModelsResponse,
+	tierRaw, tierNormalized string,
+	loadResp *antigravity.LoadCodeAssistResponse,
+	optQuotaSummary ...*antigravity.RetrieveUserQuotaSummaryResponse,
+) *UsageInfo {
+	var quotaSummaryResp *antigravity.RetrieveUserQuotaSummaryResponse
+	if len(optQuotaSummary) > 0 {
+		quotaSummaryResp = optQuotaSummary[0]
+	}
+
 	now := time.Now()
 	info := &UsageInfo{
 		UpdatedAt:               &now,
 		AntigravityQuota:        make(map[string]*AntigravityModelQuota),
 		AntigravityQuotaDetails: make(map[string]*AntigravityModelDetail),
+		AntigravityQuotaSummary: quotaSummaryResp,
 		SubscriptionTier:        tierNormalized,
 		SubscriptionTierRaw:     tierRaw,
 	}
 
-	// 遍历所有模型，填充 AntigravityQuota 和 AntigravityQuotaDetails
-	for modelName, modelInfo := range modelsResp.Models {
-		if modelInfo.QuotaInfo == nil {
-			continue
-		}
+	// 1. 遍历 modelsResp，填充 AntigravityQuota 和 AntigravityQuotaDetails
+	if modelsResp != nil {
+		for modelName, modelInfo := range modelsResp.Models {
+			if modelInfo.QuotaInfo == nil {
+				continue
+			}
 
-		// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比
-		utilization := int((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100)
+			// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比
+			utilization := int((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100)
 
-		info.AntigravityQuota[modelName] = &AntigravityModelQuota{
-			Utilization: utilization,
-			ResetTime:   modelInfo.QuotaInfo.ResetTime,
-		}
+			info.AntigravityQuota[modelName] = &AntigravityModelQuota{
+				Utilization: utilization,
+				ResetTime:   modelInfo.QuotaInfo.ResetTime,
+			}
 
-		// 填充模型详细能力信息
-		detail := &AntigravityModelDetail{
-			DisplayName:        modelInfo.DisplayName,
-			SupportsImages:     modelInfo.SupportsImages,
-			SupportsThinking:   modelInfo.SupportsThinking,
-			ThinkingBudget:     modelInfo.ThinkingBudget,
-			Recommended:        modelInfo.Recommended,
-			MaxTokens:          modelInfo.MaxTokens,
-			MaxOutputTokens:    modelInfo.MaxOutputTokens,
-			SupportedMimeTypes: modelInfo.SupportedMimeTypes,
+			// 填充模型详细能力信息
+			detail := &AntigravityModelDetail{
+				DisplayName:        modelInfo.DisplayName,
+				SupportsImages:     modelInfo.SupportsImages,
+				SupportsThinking:   modelInfo.SupportsThinking,
+				ThinkingBudget:     modelInfo.ThinkingBudget,
+				Recommended:        modelInfo.Recommended,
+				MaxTokens:          modelInfo.MaxTokens,
+				MaxOutputTokens:    modelInfo.MaxOutputTokens,
+				SupportedMimeTypes: modelInfo.SupportedMimeTypes,
+			}
+			info.AntigravityQuotaDetails[modelName] = detail
 		}
-		info.AntigravityQuotaDetails[modelName] = detail
+	}
+
+	// 2. 如果存在 QuotaSummary，将以模型 ID 命名的桶补充到 AntigravityQuota。
+	// AntigravityQuota 的键约定为模型名（渠道监控会逐项输出为模型档位），因此：
+	//   - 仅接受形如模型 ID 的 BucketID，DisplayName 或 "weekly" 等汇总桶只保留在 AntigravityQuotaSummary 中；
+	//   - 不覆盖 fetchAvailableModels 已返回的模型数据，也不让后出现的同名桶覆盖先出现的桶。
+	if quotaSummaryResp != nil {
+		applyBucket := func(b antigravity.QuotaSummaryBucket) {
+			if b.Disabled || b.RemainingFraction < 0 || !isAntigravityModelBucketID(b.BucketID) {
+				return
+			}
+			if _, exists := info.AntigravityQuota[b.BucketID]; exists {
+				return
+			}
+			utilization := int((1.0 - b.RemainingFraction) * 100)
+			if utilization < 0 {
+				utilization = 0
+			} else if utilization > 100 {
+				utilization = 100
+			}
+			info.AntigravityQuota[b.BucketID] = &AntigravityModelQuota{
+				Utilization: utilization,
+				ResetTime:   b.ResetTime,
+			}
+		}
+		for _, b := range quotaSummaryResp.Buckets {
+			applyBucket(b)
+		}
+		for _, g := range quotaSummaryResp.Groups {
+			for _, b := range g.Buckets {
+				applyBucket(b)
+			}
+		}
 	}
 
 	// 废弃模型转发规则
-	if len(modelsResp.DeprecatedModelIDs) > 0 {
+	if modelsResp != nil && len(modelsResp.DeprecatedModelIDs) > 0 {
 		info.ModelForwardingRules = make(map[string]string, len(modelsResp.DeprecatedModelIDs))
 		for oldID, deprecated := range modelsResp.DeprecatedModelIDs {
 			info.ModelForwardingRules[oldID] = deprecated.NewModelID
 		}
 	}
 
-	// 同时设置 FiveHour 用于兼容展示（取主要模型）
-	priorityModels := []string{"claude-sonnet-4-20250514", "claude-sonnet-4", "gemini-2.5-pro"}
+	// 同时设置 FiveHour 用于兼容展示（取主要模型，优先考虑 Gemini 3.8 / 3 Flash）
+	priorityModels := []string{
+		"gemini-3.8-flash", "gemini-3.8-flash-high",
+		"gemini-3-flash", "claude-sonnet-4-6",
+		"claude-sonnet-4-20250514", "claude-sonnet-4", "gemini-2.5-pro",
+	}
 	for _, modelName := range priorityModels {
-		if modelInfo, ok := modelsResp.Models[modelName]; ok && modelInfo.QuotaInfo != nil {
-			utilization := (1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100
-			progress := &UsageProgress{
-				Utilization: utilization,
+		if modelsResp != nil {
+			if modelInfo, ok := modelsResp.Models[modelName]; ok && modelInfo.QuotaInfo != nil {
+				utilization := (1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100
+				progress := &UsageProgress{
+					Utilization: utilization,
+				}
+				if modelInfo.QuotaInfo.ResetTime != "" {
+					if resetTime, err := time.Parse(time.RFC3339, modelInfo.QuotaInfo.ResetTime); err == nil {
+						progress.ResetsAt = &resetTime
+						progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+						if progress.RemainingSeconds < 0 {
+							progress.RemainingSeconds = 0
+						}
+					}
+				}
+				info.FiveHour = progress
+				break
 			}
-			if modelInfo.QuotaInfo.ResetTime != "" {
-				if resetTime, err := time.Parse(time.RFC3339, modelInfo.QuotaInfo.ResetTime); err == nil {
+		}
+		if q, ok := info.AntigravityQuota[modelName]; ok && q != nil {
+			progress := &UsageProgress{
+				Utilization: float64(q.Utilization),
+			}
+			if q.ResetTime != "" {
+				if resetTime, err := time.Parse(time.RFC3339, q.ResetTime); err == nil {
 					progress.ResetsAt = &resetTime
 					progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+					if progress.RemainingSeconds < 0 {
+						progress.RemainingSeconds = 0
+					}
 				}
 			}
 			info.FiveHour = progress
@@ -204,6 +281,23 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 	}
 
 	return info
+}
+
+// antigravityModelBucketPrefixes 为 Antigravity 模型 ID 的已知前缀，用于区分模型桶与汇总桶
+var antigravityModelBucketPrefixes = []string{"gemini-", "claude-", "gpt-"}
+
+// isAntigravityModelBucketID 判断 quota summary 的 BucketID 是否为模型 ID
+func isAntigravityModelBucketID(bucketID string) bool {
+	if bucketID == "" || strings.ContainsAny(bucketID, " \t") {
+		return false
+	}
+	lower := strings.ToLower(bucketID)
+	for _, prefix := range antigravityModelBucketPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetProxyURL 获取账户的代理 URL
