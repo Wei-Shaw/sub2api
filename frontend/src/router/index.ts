@@ -91,6 +91,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/telegram/callback',
+    name: 'TelegramOAuthCallback',
+    component: () => import('@/views/auth/TelegramCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Telegram OAuth Callback',
+      titleKey: 'auth.telegramCallbackPageTitle'
+    }
+  },
+  {
     path: '/auth/wechat/callback',
     name: 'WeChatOAuthCallback',
     component: () => import('@/views/auth/WechatCallbackView.vue'),
@@ -747,6 +757,7 @@ const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
+  '/auth/telegram/callback',
   '/auth/dingtalk/callback',
   '/auth/dingtalk/email-completion',
   '/auth/oidc/callback',

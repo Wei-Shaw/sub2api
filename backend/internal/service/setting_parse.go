@@ -464,6 +464,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.LinuxDoConnectClientSecretConfigured = result.LinuxDoConnectClientSecret != ""
 
+	result.TelegramOAuthEnabled = settings[SettingKeyTelegramOAuthEnabled] == "true"
+	result.TelegramOAuthBotToken = strings.TrimSpace(settings[SettingKeyTelegramOAuthBotToken])
+	result.TelegramOAuthBotTokenConfigured = result.TelegramOAuthBotToken != ""
+	result.TelegramOAuthRedirectURL = strings.TrimSpace(settings[SettingKeyTelegramOAuthRedirectURL])
+
 	// DingTalk Connect 设置：
 	// - 兼容 config.yaml/env
 	// - 支持后台系统设置覆盖并持久化（存储于 DB）

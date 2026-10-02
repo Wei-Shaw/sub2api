@@ -1017,6 +1017,7 @@ export default {
         email: 'Email',
         linuxdo: 'LinuxDo',
         dingtalk: 'DingTalk',
+        telegram: 'Telegram',
         oidc: '{providerName}',
         wechat: 'WeChat',
       },

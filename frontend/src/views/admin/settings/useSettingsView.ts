@@ -151,6 +151,7 @@ export type SettingsForm = Omit<
   tencent_captcha_cloud_secret_key: string;
   aliyun_captcha_access_key_secret: string;
   linuxdo_connect_client_secret: string;
+  telegram_oauth_bot_token: string;
   dingtalk_connect_client_secret: string;
   wechat_connect_app_secret: string;
   wechat_connect_open_app_secret: string;
@@ -1074,6 +1075,10 @@ export function useSettingsView() {
     linuxdo_connect_client_secret: "",
     linuxdo_connect_client_secret_configured: false,
     linuxdo_connect_redirect_url: "",
+    telegram_oauth_enabled: false,
+    telegram_oauth_bot_token: "",
+    telegram_oauth_bot_token_configured: false,
+    telegram_oauth_redirect_url: "",
     // DingTalk Connect OAuth 登录
     dingtalk_connect_enabled: false,
     dingtalk_connect_client_id: "",
@@ -1877,6 +1882,18 @@ export function useSettingsView() {
   }
 
 
+  // Telegram returns to the frontend callback, not an API route.
+  const telegramRedirectUrlSuggestion = computed(() =>
+    currentOrigin ? `${currentOrigin}/auth/telegram/callback` : "",
+  );
+
+  async function setAndCopyTelegramRedirectUrl() {
+    const url = telegramRedirectUrlSuggestion.value;
+    if (!url) return;
+    form.telegram_oauth_redirect_url = url;
+    await copyToClipboard(url, t("admin.settings.linuxdo.redirectUrlSetAndCopied"));
+  }
+
   const githubOAuthRedirectUrlSuggestion = computed(() => {
     return buildApiCallbackUrl("/auth/oauth/github/callback");
   });
@@ -2336,6 +2353,7 @@ export function useSettingsView() {
       form.tencent_captcha_cloud_secret_key = "";
       form.aliyun_captcha_access_key_secret = "";
       form.linuxdo_connect_client_secret = "";
+      form.telegram_oauth_bot_token = "";
       form.dingtalk_connect_client_secret = "";
       form.github_oauth_client_secret = "";
       form.google_oauth_client_secret = "";
@@ -2790,6 +2808,9 @@ export function useSettingsView() {
         linuxdo_connect_client_secret:
           form.linuxdo_connect_client_secret || undefined,
         linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
+        telegram_oauth_enabled: form.telegram_oauth_enabled,
+        telegram_oauth_bot_token: form.telegram_oauth_bot_token || undefined,
+        telegram_oauth_redirect_url: form.telegram_oauth_redirect_url,
         dingtalk_connect_enabled: form.dingtalk_connect_enabled,
         dingtalk_connect_client_id: form.dingtalk_connect_client_id,
         dingtalk_connect_client_secret:
@@ -3106,6 +3127,7 @@ export function useSettingsView() {
       form.turnstile_secret_key = "";
       form.aliyun_captcha_access_key_secret = "";
       form.linuxdo_connect_client_secret = "";
+      form.telegram_oauth_bot_token = "";
       form.dingtalk_connect_client_secret = "";
       form.github_oauth_client_secret = "";
       form.google_oauth_client_secret = "";
@@ -4592,6 +4614,8 @@ export function useSettingsView() {
     buildApiCallbackUrl,
     linuxdoRedirectUrlSuggestion,
     setAndCopyLinuxdoRedirectUrl,
+    telegramRedirectUrlSuggestion,
+    setAndCopyTelegramRedirectUrl,
     githubOAuthRedirectUrlSuggestion,
     googleOAuthRedirectUrlSuggestion,
     setAndCopyEmailOAuthRedirectUrl,

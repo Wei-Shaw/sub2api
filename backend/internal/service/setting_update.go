@@ -237,6 +237,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyLinuxDoConnectClientSecret] = settings.LinuxDoConnectClientSecret
 	}
 
+	updates[SettingKeyTelegramOAuthEnabled] = strconv.FormatBool(settings.TelegramOAuthEnabled)
+	updates[SettingKeyTelegramOAuthRedirectURL] = settings.TelegramOAuthRedirectURL
+	if settings.TelegramOAuthBotToken != "" {
+		updates[SettingKeyTelegramOAuthBotToken] = settings.TelegramOAuthBotToken
+	}
+
 	// DingTalk Connect OAuth 登录
 	updates[SettingKeyDingTalkConnectEnabled] = strconv.FormatBool(settings.DingTalkConnectEnabled)
 	updates[SettingKeyDingTalkConnectClientID] = settings.DingTalkConnectClientID

@@ -335,6 +335,16 @@ export default {
         forwardedClientIpHeadersLimit: 'Chỉ cho phép tối đa {max} header IP client tùy chỉnh.',
         removeForwardedClientIpHeader: 'Xóa {header}'
       },
+      telegram: {
+        title: 'Đăng nhập Telegram',
+        description: 'Cho phép người dùng đăng nhập bằng tài khoản Telegram',
+        enable: 'Bật đăng nhập Telegram',
+        enableHint: 'Hiển thị đăng nhập Telegram ở trang đăng nhập/đăng ký',
+        botToken: 'Bot Token',
+        botTokenHint: "Lấy từ {'@'}BotFather. Cần chạy thêm /setdomain trong {'@'}BotFather với domain của trang này, nếu không Telegram sẽ từ chối đăng nhập.",
+        redirectUrl: 'Callback URL',
+        redirectUrlHint: 'Trang frontend mà Telegram quay về (…/auth/telegram/callback). Domain phải trùng với domain đã đặt qua /setdomain.'
+      },
       linuxdo: {
         title: 'Đăng nhập LinuxDo Connect',
         description: 'Cấu hình LinuxDo Connect OAuth cho người dùng cuối đăng nhập Sub2API',

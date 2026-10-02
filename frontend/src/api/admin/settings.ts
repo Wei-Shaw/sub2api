@@ -448,6 +448,11 @@ export interface SystemSettings {
   linuxdo_connect_client_secret_configured: boolean;
   linuxdo_connect_redirect_url: string;
 
+  // Telegram Login settings
+  telegram_oauth_enabled: boolean;
+  telegram_oauth_bot_token_configured: boolean;
+  telegram_oauth_redirect_url: string;
+
   // DingTalk Connect OAuth settings
   dingtalk_connect_enabled: boolean;
   dingtalk_connect_client_id: string;
@@ -799,6 +804,9 @@ export interface UpdateSettingsRequest {
   linuxdo_connect_client_id?: string;
   linuxdo_connect_client_secret?: string;
   linuxdo_connect_redirect_url?: string;
+  telegram_oauth_enabled?: boolean;
+  telegram_oauth_bot_token?: string;
+  telegram_oauth_redirect_url?: string;
   dingtalk_connect_enabled?: boolean;
   dingtalk_connect_client_id?: string;
   dingtalk_connect_client_secret?: string;

@@ -108,6 +108,23 @@ func RegisterAuthRoutes(
 			h.Auth.LinuxDoOAuthStart(c)
 		})
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
+		auth.GET("/oauth/telegram/start", h.Auth.TelegramOAuthStart)
+		auth.POST("/oauth/telegram/start", rateLimiter.LimitWithOptions("oauth-telegram-start", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.TelegramOAuthStart)
+		auth.GET("/oauth/telegram/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.TelegramOAuthStart(c)
+		})
+		auth.POST("/oauth/telegram/callback", h.Auth.TelegramOAuthCallback)
+		auth.POST("/oauth/telegram/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-telegram-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteTelegramOAuthRegistration,
+		)
 		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
 		auth.POST("/oauth/wechat/start", rateLimiter.LimitWithOptions("oauth-wechat-start", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

@@ -230,6 +230,7 @@ type UserIdentitySummarySet struct {
 	OIDC     UserIdentitySummary `json:"oidc"`
 	WeChat   UserIdentitySummary `json:"wechat"`
 	DingTalk UserIdentitySummary `json:"dingtalk"`
+	Telegram UserIdentitySummary `json:"telegram"`
 }
 
 type StartUserIdentityBindingRequest struct {
@@ -350,6 +351,7 @@ func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID in
 		OIDC:     s.buildProviderIdentitySummary("oidc", user, records),
 		WeChat:   s.buildProviderIdentitySummary("wechat", user, records),
 		DingTalk: s.buildProviderIdentitySummary("dingtalk", user, records),
+		Telegram: s.buildProviderIdentitySummary("telegram", user, records),
 	}
 
 	s.applyExplicitProviderAvailability(ctx, &summaries)
@@ -370,6 +372,7 @@ func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, sum
 		SettingKeyWeChatConnectMobileEnabled,
 		SettingKeyWeChatConnectMode,
 		SettingKeyDingTalkConnectEnabled,
+		SettingKeyTelegramOAuthEnabled,
 	})
 	if err != nil {
 		return
@@ -380,6 +383,9 @@ func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, sum
 	}
 	if raw, ok := settings[SettingKeyDingTalkConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
 		disableIdentityBindAction(&summaries.DingTalk)
+	}
+	if settings[SettingKeyTelegramOAuthEnabled] != "true" {
+		disableIdentityBindAction(&summaries.Telegram)
 	}
 	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
 		disableIdentityBindAction(&summaries.OIDC)
@@ -795,7 +801,7 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 		return true
 	}
 
-	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk"} {
+	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk", "telegram"} {
 		if candidate == provider {
 			continue
 		}
@@ -873,6 +879,8 @@ func buildUserIdentityBindAuthorizeURL(provider, redirectTo string) (string, err
 		path = "/api/v1/auth/oauth/wechat/bind/start"
 	case "dingtalk":
 		path = "/api/v1/auth/oauth/dingtalk/bind/start"
+	case "telegram":
+		path = "/api/v1/auth/oauth/telegram/bind/start"
 	default:
 		return "", ErrIdentityProviderInvalid
 	}
@@ -893,6 +901,8 @@ func normalizeUserIdentityProvider(provider string) string {
 		return "wechat"
 	case "dingtalk":
 		return "dingtalk"
+	case "telegram":
+		return "telegram"
 	case "email":
 		return "email"
 	default:
