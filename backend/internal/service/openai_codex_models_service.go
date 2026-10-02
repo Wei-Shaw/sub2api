@@ -1286,7 +1286,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 				return stringSliceContains(modalities, "image")
 			}
 		}
-		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
+		if isDeepSeekCodexImageInputModel(account, upstreamModel) {
 			return account.Type == AccountTypeAPIKey
 		}
 		if account.Platform != PlatformOpenAI || !isOpenAICodexImageInputModel(upstreamModel) {
@@ -1320,6 +1320,56 @@ func isOfficialOpenAICodexAccount(account *Account) bool {
 		return true
 	}
 	return account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL())
+}
+
+// isDeepSeekCodexImageInputModel reports DeepSeek models with native image
+// input. DeepSeek-V4.1-Flash (2026-09-10) is served as deepseek-flash and
+// replaced the retired deepseek-v4-flash-vision-exp. DeepSeek's own API also
+// routes the legacy deepseek-v4-flash name to V4.1-Flash, but third-party hosts
+// of the open-weight V4-Flash stay text-only, so that name only counts there.
+func isDeepSeekCodexImageInputModel(account *Account, model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "deepseek-flash", "deepseek-v4-flash-vision-exp":
+		return true
+	case "deepseek-v4-flash":
+		return isOfficialDeepSeekCodexAccount(account)
+	default:
+		return false
+	}
+}
+
+// isOfficialDeepSeekCodexAccount reports whether every endpoint that can serve
+// Codex traffic for the account is DeepSeek's own API. Unlike
+// targetsDeepSeekAPIHost, platform=deepseek alone is not enough because
+// base_url and api_base_urls may point at another host.
+func isOfficialDeepSeekCodexAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	// Chat Completions (including the Responses fallback) uses the OpenAI base
+	// URL; native Responses on adaptive accounts has its own per-protocol URL.
+	baseURLs := []string{account.GetOpenAIBaseURL()}
+	if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
+		baseURLs = append(baseURLs, account.GetCNProtocolBaseURL(APIProtocolResponses))
+	}
+	for _, baseURL := range baseURLs {
+		if !isOfficialDeepSeekBaseURL(baseURL) {
+			return false
+		}
+	}
+	return true
+}
+
+func isOfficialDeepSeekBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	official, err := url.Parse(DefaultDeepseekBaseURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSuffix(parsed.Hostname(), "."), official.Hostname())
 }
 
 func isGrokCodexImageInputModel(model string) bool {
