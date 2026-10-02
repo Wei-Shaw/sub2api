@@ -1497,7 +1497,7 @@ func compositeOwnershipQueryPlatforms() []string {
 	return []string{
 		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
-		PlatformOllamaCloud,
+		PlatformTypeSafe, PlatformOllamaCloud,
 	}
 }
 

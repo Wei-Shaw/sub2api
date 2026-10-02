@@ -31,8 +31,9 @@ func TestOllamaCloudPlatform_SchedulerSnapshotPlatforms(t *testing.T) {
 	t.Parallel()
 
 	platforms := schedulerSnapshotPlatforms()
-	require.Len(t, platforms, 11)
+	require.Len(t, platforms, 12)
 	require.Contains(t, platforms[:], PlatformOllamaCloud)
+	require.Contains(t, platforms[:], PlatformTypeSafe)
 
 	seen := make(map[string]struct{}, len(platforms))
 	for _, platform := range platforms {
@@ -45,7 +46,7 @@ func TestOllamaCloudPlatform_SchedulerSnapshotPlatforms(t *testing.T) {
 	// 桶数必须与平台数组长度一致：每平台 single+forced，anthropic/gemini 各多一个 mixed。
 	const groupID int64 = 7701
 	require.Equal(t, len(platforms)*2+2, schedulerCanonicalBucketCount())
-	require.Equal(t, 24, schedulerCanonicalBucketCount())
+	require.Equal(t, 26, schedulerCanonicalBucketCount())
 
 	buckets := schedulerCanonicalBuckets(groupID)
 	require.Len(t, buckets, schedulerCanonicalBucketCount())
