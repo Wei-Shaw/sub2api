@@ -213,6 +213,11 @@ func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error
 	if s == nil || s.cache == nil {
 		return nil
 	}
+	// 先登记本进程心跳：同实例上一代进程随之判死，之后启动的进程也会保留本进程的槽位。
+	// 登记失败时不清理，宁可让残留等 TTL 过期，也不误删存活进程的在途槽位。
+	if err := s.heartbeatProcess(ctx); err != nil {
+		return err
+	}
 	return s.cache.CleanupStaleProcessSlots(ctx, RequestIDPrefix())
 }
 
