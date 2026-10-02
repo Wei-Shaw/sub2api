@@ -292,6 +292,21 @@ func (c *openAIWSToolCallReplayCollector) AllItems() []json.RawMessage {
 	return slices.Clone(c.allItems)
 }
 
+// openAIWSHTTPBridgeReplayOutputItems 过滤出可以作为下一轮 input 重放的输出项。
+// 不带 encrypted_content 的 reasoning 在 store=false 下只剩一个上游查不到的 id，
+// 重放会被拒（Item with id 'rs_...' not found），其余输出项原样保留。
+func openAIWSHTTPBridgeReplayOutputItems(items []json.RawMessage) []json.RawMessage {
+	replayable := make([]json.RawMessage, 0, len(items))
+	for _, item := range items {
+		if gjson.GetBytes(item, "type").String() == "reasoning" &&
+			strings.TrimSpace(gjson.GetBytes(item, "encrypted_content").String()) == "" {
+			continue
+		}
+		replayable = append(replayable, item)
+	}
+	return replayable
+}
+
 func (c *openAIWSToolCallReplayCollector) addAllItem(item gjson.Result) {
 	if !item.Exists() || item.Type != gjson.JSON {
 		return
@@ -673,7 +688,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			Duration:                      time.Since(turnStart),
 			FirstTokenMs:                  firstTokenMs,
 		}
-		if replayInput := replayCollector.Items(); len(replayInput) > 0 {
+		// 续轮重放模型的完整输出（消息、reasoning、工具调用），与 previous_response_id
+		// 在上游保存的上下文一致；只重放工具调用会让模型看不到自己上一轮的回复和推理。
+		if replayInput := openAIWSHTTPBridgeReplayOutputItems(replayCollector.AllItems()); len(replayInput) > 0 {
 			result.wsReplayInput = replayInput
 			result.wsReplayInputExists = true
 		}
