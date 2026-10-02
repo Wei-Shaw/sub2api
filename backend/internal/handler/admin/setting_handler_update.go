@@ -81,6 +81,11 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
+	// Telegram Login
+	TelegramOAuthEnabled     bool   `json:"telegram_oauth_enabled"`
+	TelegramOAuthBotToken    string `json:"telegram_oauth_bot_token"`
+	TelegramOAuthRedirectURL string `json:"telegram_oauth_redirect_url"`
+
 	// DingTalk Connect OAuth 登录
 	DingTalkConnectEnabled                 bool   `json:"dingtalk_connect_enabled"`
 	DingTalkConnectClientID                string `json:"dingtalk_connect_client_id"`
@@ -870,6 +875,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	// Telegram Login validation (an empty bot token keeps the stored one).
+	req.TelegramOAuthBotToken = strings.TrimSpace(req.TelegramOAuthBotToken)
+	req.TelegramOAuthRedirectURL = strings.TrimSpace(req.TelegramOAuthRedirectURL)
+	if req.TelegramOAuthBotToken != "" {
+		if botID, _, ok := strings.Cut(req.TelegramOAuthBotToken, ":"); !ok || botID == "" || strings.Trim(botID, "0123456789") != "" {
+			response.BadRequest(c, "Telegram Bot Token must look like 123456789:ABC...")
+			return
+		}
+	}
+	if req.TelegramOAuthEnabled {
+		if req.TelegramOAuthBotToken == "" && !previousSettings.TelegramOAuthBotTokenConfigured {
+			response.BadRequest(c, "Telegram Bot Token is required when enabled")
+			return
+		}
+		if err := config.ValidateAbsoluteHTTPURL(req.TelegramOAuthRedirectURL); err != nil {
+			response.BadRequest(c, "Telegram Redirect URL must be an absolute http(s) URL")
+			return
+		}
+	}
+
 	// DingTalk Connect 参数验证
 	// 防御性：任何写入路径上把已废弃的 corp_restriction_policy=whitelist 入参 coerce 为 none，
 	// 避免任何直连 admin API 的客户端把死值写回 DB（前端 UI 已无此选项）。
@@ -1616,6 +1641,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:                 req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:             req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:              req.LinuxDoConnectRedirectURL,
+		TelegramOAuthEnabled:                   req.TelegramOAuthEnabled,
+		TelegramOAuthBotToken:                  req.TelegramOAuthBotToken,
+		TelegramOAuthRedirectURL:               req.TelegramOAuthRedirectURL,
 		DingTalkConnectEnabled:                 req.DingTalkConnectEnabled,
 		DingTalkConnectClientID:                req.DingTalkConnectClientID,
 		DingTalkConnectClientSecret:            req.DingTalkConnectClientSecret,
@@ -2257,6 +2285,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:                                 updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:                   updatedSettings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:                              updatedSettings.LinuxDoConnectRedirectURL,
+		TelegramOAuthEnabled:                                   updatedSettings.TelegramOAuthEnabled,
+		TelegramOAuthBotTokenConfigured:                        updatedSettings.TelegramOAuthBotTokenConfigured,
+		TelegramOAuthRedirectURL:                               updatedSettings.TelegramOAuthRedirectURL,
 		DingTalkConnectEnabled:                                 updatedSettings.DingTalkConnectEnabled,
 		DingTalkConnectClientID:                                updatedSettings.DingTalkConnectClientID,
 		DingTalkConnectClientSecretConfigured:                  updatedSettings.DingTalkConnectClientSecretConfigured,

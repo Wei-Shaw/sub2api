@@ -1013,3 +1013,44 @@ func oidcResolveProviderMetadata(ctx context.Context, discoveryURL string) (*oid
 	}
 	return metadata, nil
 }
+
+// TelegramOAuthConfig is the effective Telegram Login configuration.
+type TelegramOAuthConfig struct {
+	BotToken    string
+	RedirectURL string // absolute frontend callback URL; its origin is sent to Telegram
+}
+
+// BotID is the numeric bot id Telegram expects in the auth URL (token prefix before ':').
+func (c TelegramOAuthConfig) BotID() string {
+	id, _, _ := strings.Cut(c.BotToken, ":")
+	return id
+}
+
+// GetTelegramOAuthConfig returns the Telegram Login config, or an error if disabled/misconfigured.
+func (s *SettingService) GetTelegramOAuthConfig(ctx context.Context) (TelegramOAuthConfig, error) {
+	if s == nil || s.settingRepo == nil {
+		return TelegramOAuthConfig{}, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyTelegramOAuthEnabled,
+		SettingKeyTelegramOAuthBotToken,
+		SettingKeyTelegramOAuthRedirectURL,
+	})
+	if err != nil {
+		return TelegramOAuthConfig{}, fmt.Errorf("get telegram oauth settings: %w", err)
+	}
+	if settings[SettingKeyTelegramOAuthEnabled] != "true" {
+		return TelegramOAuthConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
+	}
+	cfg := TelegramOAuthConfig{
+		BotToken:    strings.TrimSpace(settings[SettingKeyTelegramOAuthBotToken]),
+		RedirectURL: strings.TrimSpace(settings[SettingKeyTelegramOAuthRedirectURL]),
+	}
+	if cfg.BotToken == "" || cfg.BotID() == "" {
+		return TelegramOAuthConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "telegram bot token not configured")
+	}
+	if err := config.ValidateAbsoluteHTTPURL(cfg.RedirectURL); err != nil {
+		return TelegramOAuthConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "telegram redirect url invalid")
+	}
+	return cfg, nil
+}

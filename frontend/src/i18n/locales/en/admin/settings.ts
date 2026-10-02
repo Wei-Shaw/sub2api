@@ -335,6 +335,16 @@ export default {
         forwardedClientIpHeadersLimit: 'At most {max} custom client-IP headers are allowed.',
         removeForwardedClientIpHeader: 'Remove {header}'
       },
+      telegram: {
+        title: 'Telegram Login',
+        description: 'Let end users sign in with their Telegram account',
+        enable: 'Enable Telegram Login',
+        enableHint: 'Show Telegram login on the login/register pages',
+        botToken: 'Bot Token',
+        botTokenHint: "From {'@'}BotFather. Also run /setdomain in {'@'}BotFather with the site domain, or Telegram will reject the login.",
+        redirectUrl: 'Callback URL',
+        redirectUrlHint: 'Frontend page Telegram returns to (…/auth/telegram/callback). Its domain must match the one set via /setdomain.'
+      },
       linuxdo: {
         title: 'LinuxDo Connect Login',
         description: 'Configure LinuxDo Connect OAuth for Sub2API end-user login',

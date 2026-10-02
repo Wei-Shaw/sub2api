@@ -69,6 +69,12 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
 
+	// Telegram Login
+	TelegramOAuthEnabled            bool
+	TelegramOAuthBotToken           string
+	TelegramOAuthBotTokenConfigured bool
+	TelegramOAuthRedirectURL        string
+
 	// DingTalk Connect OAuth 登录
 	DingTalkConnectEnabled                 bool
 	DingTalkConnectClientID                string
@@ -372,6 +378,7 @@ type PublicSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled      bool
+	TelegramOAuthEnabled     bool
 	DingTalkOAuthEnabled     bool
 	WeChatOAuthEnabled       bool
 	WeChatOAuthOpenEnabled   bool

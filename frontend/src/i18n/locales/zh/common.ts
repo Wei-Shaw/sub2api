@@ -345,6 +345,17 @@ export default {
       completing: '正在完成注册...',
       completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
     },
+    telegram: {
+      signIn: '使用 Telegram 登录',
+      callbackTitle: '正在通过 Telegram 登录',
+      callbackProcessing: '正在验证 Telegram 登录信息，请稍候...',
+      callbackHint: '如果页面未自动跳转，请返回登录页重试。',
+      callbackMissingToken: '登录信息缺失，请返回重试。',
+      invitationRequired: '该 Telegram 账号尚未注册，站点已开启邀请码注册，请输入邀请码以完成注册。',
+      completeRegistration: '完成注册',
+      completing: '正在完成注册...',
+      completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
+    },
     dingtalk: {
       signIn: '钉钉登录',
       callbackTitle: '正在完成钉钉登录',
@@ -420,6 +431,7 @@ export default {
       wechatNotConfigured: '微信登录尚未配置。'
     },
     linuxdoCallbackPageTitle: 'LinuxDo 登录回调',
+    telegramCallbackPageTitle: 'Telegram 登录回调',
     dingtalkCallbackPageTitle: '钉钉登录回调',
     dingtalkProviderName: '钉钉',
     oidcCallbackPageTitle: 'OIDC 登录回调',

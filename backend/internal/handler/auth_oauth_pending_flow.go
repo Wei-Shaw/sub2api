@@ -1524,6 +1524,10 @@ func clearOAuthLogoutCookies(c *gin.Context) {
 	wechatClearCookie(c, wechatOAuthModeCookieName, secureCookie)
 	wechatClearCookie(c, wechatOAuthBindUserCookieName, secureCookie)
 
+	telegramSetCookie(c, telegramOAuthRedirectCookie, "", -1, secureCookie)
+	telegramSetCookie(c, telegramOAuthIntentCookieName, "", -1, secureCookie)
+	telegramSetCookie(c, telegramOAuthBindUserCookieName, "", -1, secureCookie)
+
 }
 
 func buildPendingOAuthSessionStatusPayload(session *dbent.PendingAuthSession) gin.H {

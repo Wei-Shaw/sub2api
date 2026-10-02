@@ -3,10 +3,10 @@
     <div class="space-y-6">
       <div>
         <h2 class="text-h2 font-bold text-accent-strong">
-          {{ t('auth.linuxdo.callbackTitle') }}
+          {{ t(`auth.${provider}.callbackTitle`) }}
         </h2>
         <p class="mt-1 text-body text-fg-muted">
-          {{ isProcessing ? t('auth.linuxdo.callbackProcessing') : t('auth.linuxdo.callbackHint') }}
+          {{ isProcessing ? t(`auth.${provider}.callbackProcessing`) : t(`auth.${provider}.callbackHint`) }}
         </p>
       </div>
 
@@ -75,7 +75,7 @@
 
           <template v-if="needsInvitation">
             <p class="text-body text-fg">
-              {{ t('auth.linuxdo.invitationRequired') }}
+              {{ t(`auth.${provider}.invitationRequired`) }}
             </p>
             <div>
               <input
@@ -92,7 +92,7 @@
               :disabled="isSubmitting || !invitationCode.trim()"
               @click="handleSubmitInvitation"
             >
-              {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') }}
+              {{ isSubmitting ? t(`auth.${provider}.completing`) : t(`auth.${provider}.completeRegistration`) }}
             </button>
           </template>
 
@@ -305,7 +305,10 @@ const totpTempToken = ref('')
 const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
-const providerName = 'LinuxDo'
+// Telegram reuses this view; see TelegramCallbackView.vue.
+const props = withDefaults(defineProps<{ provider?: 'linuxdo' | 'telegram' }>(), { provider: 'linuxdo' })
+const provider = props.provider
+const providerName = provider === 'telegram' ? 'Telegram' : 'LinuxDo'
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsChooser = computed(() => pendingAccountAction.value === 'choose_account_action')
@@ -349,7 +352,7 @@ function persistPendingAuthSession(redirect?: string) {
   authStore.setPendingAuthSession({
     token: '',
     token_field: 'pending_oauth_token',
-    provider: 'linuxdo',
+    provider,
     redirect: sanitizeRedirectPath(redirect || redirectTo.value)
   })
 }
@@ -580,7 +583,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
   }
 
   if (!isOAuthLoginCompletion(completion)) {
-    throw new Error(t('auth.linuxdo.callbackMissingToken'))
+    throw new Error(t(`auth.${provider}.callbackMissingToken`))
   }
 
   persistOAuthTokenContext(completion)
@@ -636,10 +639,10 @@ async function handleSubmitInvitation() {
   try {
     const affCode = loadOAuthAffiliateCode()
     const decision = currentAdoptionDecision()
-    const completion: LinuxDoPendingActionResponse = legacyPendingOAuthToken.value
+    const completion: LinuxDoPendingActionResponse = legacyPendingOAuthToken.value || provider !== 'linuxdo'
       ? (
-          await apiClient.post<LinuxDoPendingActionResponse>('/auth/oauth/linuxdo/complete-registration', {
-            pending_oauth_token: legacyPendingOAuthToken.value,
+          await apiClient.post<LinuxDoPendingActionResponse>(`/auth/oauth/${provider}/complete-registration`, {
+            pending_oauth_token: legacyPendingOAuthToken.value || undefined,
             invitation_code: invitationCode.value.trim(),
             ...oauthAffiliatePayload(affCode),
             ...serializeAdoptionDecision(decision)
@@ -652,7 +655,7 @@ async function handleSubmitInvitation() {
   } catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     invitationError.value =
-      err.response?.data?.message || err.message || t('auth.linuxdo.completeRegistrationFailed')
+      err.response?.data?.message || err.message || t(`auth.${provider}.completeRegistrationFailed`)
   } finally {
     isSubmitting.value = false
   }

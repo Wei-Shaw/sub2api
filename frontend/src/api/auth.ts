@@ -28,6 +28,7 @@ export type OAuthLoginProvider =
   | 'github'
   | 'google'
   | 'linuxdo'
+  | 'telegram'
   | 'dingtalk'
   | 'wechat'
   | 'oidc'

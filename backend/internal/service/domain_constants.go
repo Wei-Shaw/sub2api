@@ -220,6 +220,9 @@ const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
 // DingTalkConnectSyntheticEmailDomain 是 DingTalk Connect 用户的合成邮箱后缀（RFC 保留域名）。
 const DingTalkConnectSyntheticEmailDomain = "@dingtalk-connect.invalid"
 
+// TelegramConnectSyntheticEmailDomain is the synthetic email suffix for Telegram users (RFC reserved TLD).
+const TelegramConnectSyntheticEmailDomain = "@telegram-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
@@ -305,6 +308,12 @@ const (
 	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"
 	SettingKeyLinuxDoConnectClientSecret = "linuxdo_connect_client_secret"
 	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
+
+	// Telegram Login settings; the redirect URL is the absolute frontend
+	// callback (its origin must match the domain set via BotFather /setdomain).
+	SettingKeyTelegramOAuthEnabled     = "telegram_oauth_enabled"
+	SettingKeyTelegramOAuthBotToken    = "telegram_oauth_bot_token"
+	SettingKeyTelegramOAuthRedirectURL = "telegram_oauth_redirect_url"
 
 	// DingTalk Connect OAuth 登录设置
 	SettingKeyDingTalkConnectEnabled                 = "dingtalk_connect_enabled"

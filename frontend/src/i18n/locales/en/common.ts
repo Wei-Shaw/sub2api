@@ -345,6 +345,17 @@ export default {
       completing: 'Completing registration…',
       completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
     },
+    telegram: {
+      signIn: 'Continue with Telegram',
+      callbackTitle: 'Signing you in with Telegram',
+      callbackProcessing: 'Completing Telegram login, please wait...',
+      callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
+      callbackMissingToken: 'Missing login token, please try again.',
+      invitationRequired: 'This Telegram account is not yet registered. The site requires an invitation code — please enter one to complete registration.',
+      completeRegistration: 'Complete Registration',
+      completing: 'Completing registration…',
+      completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
+    },
     dingtalk: {
       signIn: 'Continue with DingTalk',
       callbackTitle: 'Signing you in with DingTalk',
@@ -421,6 +432,7 @@ export default {
       wechatNotConfigured: 'WeChat sign-in is not configured yet.'
     },
     linuxdoCallbackPageTitle: 'LinuxDo Sign-In Callback',
+    telegramCallbackPageTitle: 'Telegram Sign-In Callback',
     dingtalkCallbackPageTitle: 'DingTalk Sign-In Callback',
     dingtalkProviderName: 'DingTalk',
     oidcCallbackPageTitle: 'OIDC Sign-In Callback',

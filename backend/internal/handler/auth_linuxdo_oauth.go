@@ -512,6 +512,11 @@ type completeLinuxDoOAuthRequest struct {
 // the invitation code and creating the user account.
 // POST /api/v1/auth/oauth/linuxdo/complete-registration
 func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
+	h.completeOAuthRegistration(c, "linuxdo")
+}
+
+// completeOAuthRegistration is shared by providers whose pending session carries a synthetic email.
+func (h *AuthHandler) completeOAuthRegistration(c *gin.Context, signupSource string) {
 	var req completeLinuxDoOAuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
@@ -594,7 +599,7 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		req.InvitationCode,
 		req.AffCode,
 		pendingOAuthPromoCode(session),
-		"linuxdo",
+		signupSource,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)

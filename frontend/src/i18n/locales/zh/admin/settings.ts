@@ -334,6 +334,16 @@ export default {
         forwardedClientIpHeadersLimit: '自定义客户端 IP 请求头最多允许 {max} 个。',
         removeForwardedClientIpHeader: '移除 {header}'
       },
+      telegram: {
+        title: 'Telegram 登录',
+        description: '允许终端用户使用 Telegram 账号登录',
+        enable: '启用 Telegram 登录',
+        enableHint: '在登录/注册页显示 Telegram 登录',
+        botToken: 'Bot Token',
+        botTokenHint: "从 {'@'}BotFather 获取。还需在 {'@'}BotFather 中执行 /setdomain 绑定本站域名，否则 Telegram 会拒绝登录。",
+        redirectUrl: '回调地址',
+        redirectUrlHint: 'Telegram 授权后返回的前端页面（…/auth/telegram/callback），其域名必须与 /setdomain 设置的一致。'
+      },
       linuxdo: {
         title: 'LinuxDo Connect 登录',
         description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',

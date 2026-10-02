@@ -397,6 +397,9 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'dingtalk') {
     return props.dingtalkEnabled
   }
+  if (provider === 'telegram') {
+    return true // backend clears can_bind when Telegram login is disabled
+  }
   if (provider === 'oidc') {
     return props.oidcEnabled
   }
@@ -433,6 +436,17 @@ const providerItems = computed(() => [
       (getBindingDetails('dingtalk')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('dingtalk') && getBindingDetails('dingtalk')?.can_unbind),
     details: getBindingDetails('dingtalk'),
+  },
+  {
+    provider: 'telegram' as const,
+    label: t('profile.authBindings.providers.telegram'),
+    bound: getBindingStatus('telegram'),
+    canBind:
+      !getBindingStatus('telegram') &&
+      isProviderEnabledForBinding('telegram') &&
+      (getBindingDetails('telegram')?.can_bind ?? false),
+    canUnbind: Boolean(getBindingStatus('telegram') && getBindingDetails('telegram')?.can_unbind),
+    details: getBindingDetails('telegram'),
   },
   {
     provider: 'oidc' as const,

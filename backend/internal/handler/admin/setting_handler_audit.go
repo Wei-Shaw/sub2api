@@ -164,6 +164,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
 		changed = append(changed, "linuxdo_connect_redirect_url")
 	}
+	if before.TelegramOAuthEnabled != after.TelegramOAuthEnabled {
+		changed = append(changed, "telegram_oauth_enabled")
+	}
+	if req.TelegramOAuthBotToken != "" {
+		changed = append(changed, "telegram_oauth_bot_token")
+	}
+	if before.TelegramOAuthRedirectURL != after.TelegramOAuthRedirectURL {
+		changed = append(changed, "telegram_oauth_redirect_url")
+	}
 	if before.DingTalkConnectEnabled != after.DingTalkConnectEnabled {
 		changed = append(changed, "dingtalk_connect_enabled")
 	}

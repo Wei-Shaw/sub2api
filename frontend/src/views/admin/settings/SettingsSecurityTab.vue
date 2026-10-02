@@ -1289,6 +1289,70 @@
       </div>
     </div>
 
+    <!-- Telegram Login -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">{{ t("admin.settings.telegram.title") }}</h2>
+        <p class="mt-1 text-sm text-fg-muted">
+          {{ t("admin.settings.telegram.description") }}
+        </p>
+      </div>
+      <div class="card-body space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="font-medium text-fg">{{ t("admin.settings.telegram.enable") }}</label>
+            <p class="text-sm text-fg-muted">{{ t("admin.settings.telegram.enableHint") }}</p>
+          </div>
+          <Toggle v-model="form.telegram_oauth_enabled" />
+        </div>
+
+        <div v-if="form.telegram_oauth_enabled" class="border-t border-border pt-4">
+          <div class="grid grid-cols-1 gap-6">
+            <div>
+              <label class="input-label">{{ t("admin.settings.telegram.botToken") }}</label>
+              <input
+                v-model="form.telegram_oauth_bot_token"
+                type="password"
+                class="input font-mono text-sm"
+                :placeholder="
+                  form.telegram_oauth_bot_token_configured
+                    ? t('admin.settings.linuxdo.clientSecretConfiguredPlaceholder')
+                    : '123456789:ABC...'
+                "
+              />
+              <p class="input-hint">{{ t("admin.settings.telegram.botTokenHint") }}</p>
+            </div>
+
+            <div>
+              <label class="input-label">{{ t("admin.settings.telegram.redirectUrl") }}</label>
+              <input
+                v-model="form.telegram_oauth_redirect_url"
+                type="url"
+                class="input font-mono text-sm"
+                placeholder="https://example.com/auth/telegram/callback"
+              />
+              <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm w-fit"
+                  @click="setAndCopyTelegramRedirectUrl"
+                >
+                  {{ t("admin.settings.linuxdo.quickSetCopy") }}
+                </button>
+                <code
+                  v-if="telegramRedirectUrlSuggestion"
+                  class="code select-all break-all px-2 py-1 text-xs text-fg-muted"
+                >
+                  {{ telegramRedirectUrlSuggestion }}
+                </code>
+              </div>
+              <p class="input-hint">{{ t("admin.settings.telegram.redirectUrlHint") }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- GitHub / Google 邮箱快捷登录 -->
     <div class="card">
       <div
@@ -2533,8 +2597,10 @@ const {
   setAndCopyEmailOAuthRedirectUrl,
   setAndCopyLinuxdoRedirectUrl,
   setAndCopyOIDCRedirectUrl,
+  setAndCopyTelegramRedirectUrl,
   setAndCopyWeChatRedirectUrl,
   t,
+  telegramRedirectUrlSuggestion,
   tencentCaptchaLinks,
   wechatRedirectUrlSuggestion,
 } = ctx;

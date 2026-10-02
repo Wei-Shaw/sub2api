@@ -345,6 +345,17 @@ export default {
       completing: 'Đang hoàn tất đăng ký…',
       completeRegistrationFailed: 'Đăng ký thất bại. Vui lòng kiểm tra mã mời và thử lại.'
     },
+    telegram: {
+      signIn: 'Tiếp tục với Telegram',
+      callbackTitle: 'Đang đăng nhập bằng Telegram',
+      callbackProcessing: 'Đang hoàn tất đăng nhập Telegram, vui lòng chờ...',
+      callbackHint: 'Nếu không được chuyển hướng tự động, hãy quay lại trang đăng nhập và thử lại.',
+      callbackMissingToken: 'Thiếu token đăng nhập, vui lòng thử lại.',
+      invitationRequired: 'Tài khoản Telegram này chưa được đăng ký. Trang web yêu cầu mã mời — vui lòng nhập mã để hoàn tất đăng ký.',
+      completeRegistration: 'Hoàn tất đăng ký',
+      completing: 'Đang hoàn tất đăng ký…',
+      completeRegistrationFailed: 'Đăng ký thất bại. Vui lòng kiểm tra mã mời và thử lại.'
+    },
     dingtalk: {
       signIn: 'Tiếp tục với DingTalk',
       callbackTitle: 'Đang đăng nhập bằng DingTalk',
@@ -421,6 +432,7 @@ export default {
       wechatNotConfigured: 'Chưa cấu hình đăng nhập WeChat.'
     },
     linuxdoCallbackPageTitle: 'Callback đăng nhập LinuxDo',
+    telegramCallbackPageTitle: 'Callback đăng nhập Telegram',
     dingtalkCallbackPageTitle: 'Callback đăng nhập DingTalk',
     dingtalkProviderName: 'DingTalk',
     oidcCallbackPageTitle: 'Callback đăng nhập OIDC',

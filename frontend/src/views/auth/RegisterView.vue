@@ -347,6 +347,14 @@
           :show-divider="false"
           @start="handleOAuthStart"
         />
+        <TelegramOAuthSection
+          v-if="telegramOAuthEnabled"
+          :disabled="registrationActionDisabled"
+          :aff-code="formData.aff_code"
+          :promo-code="formData.promo_code"
+          :show-divider="false"
+          @start="handleOAuthStart"
+        />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
           :disabled="registrationActionDisabled"
@@ -386,6 +394,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
+import TelegramOAuthSection from '@/components/auth/TelegramOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
@@ -457,6 +466,7 @@ const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
+const telegramOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
@@ -546,6 +556,7 @@ const validationToastMessage = computed(() =>
 const showOAuthLogin = computed(
   () =>
     linuxdoOAuthEnabled.value ||
+    telegramOAuthEnabled.value ||
     wechatOAuthEnabled.value ||
     oidcOAuthEnabled.value ||
     githubOAuthEnabled.value ||
@@ -615,6 +626,7 @@ onMounted(async () => {
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    telegramOAuthEnabled.value = settings.telegram_oauth_enabled ?? false
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
