@@ -27,6 +27,20 @@ func TestGatewayRoutesCodexModelsManifestPathIsRegistered(t *testing.T) {
 	require.Equal(t, registered["/v1/models"], registered["/models"], "root alias should use the same platform-aware handler")
 }
 
+func TestGatewayRoutesModelAvailabilityPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	registered := false
+	for _, route := range router.Routes() {
+		if route.Method == http.MethodPost && route.Path == "/v1/models/availability" {
+			registered = true
+			break
+		}
+	}
+
+	require.True(t, registered, "POST /v1/models/availability should be registered")
+}
+
 func TestDispatchCodexModelsGatewayKeepsOnlyOpenAIOnLiveManifestHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {

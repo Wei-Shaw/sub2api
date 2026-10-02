@@ -191,6 +191,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.Use(groupModelAllowlist)
+	gateway.POST("/models/availability", requireGroupAnthropic, h.Gateway.ModelAvailability)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
 	{
