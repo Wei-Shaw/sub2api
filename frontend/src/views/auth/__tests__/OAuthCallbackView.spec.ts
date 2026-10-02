@@ -125,6 +125,17 @@ describe('OAuthCallbackView', () => {
     expect(wrapper.find('.bg-danger-50').exists()).toBe(false)
   })
 
+  it('returns to login when the provider denied sign-in', async () => {
+    routeState.path = '/auth/oauth/callback'
+    locationState.current.hash = '#error=provider_error&error_message=access_denied'
+
+    mount(OAuthCallbackView)
+    await vi.waitFor(() => expect(routerReplaceMock).toHaveBeenCalledWith('/login'))
+
+    expect(showErrorMock).toHaveBeenCalledWith('auth.oauth.accessDenied')
+    expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
+  })
+
   it('does not render manual copy fields for direct email oauth callback visits', async () => {
     routeState.path = '/auth/oauth/callback'
     exchangePendingOAuthCompletionMock.mockRejectedValue(new Error('pending session not found'))

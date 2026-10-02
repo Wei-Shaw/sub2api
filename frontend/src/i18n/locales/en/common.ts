@@ -451,6 +451,7 @@ export default {
       callbackHint: 'Copy the code and state back to the admin authorization flow when needed.',
       invalidCallbackTitle: 'Invalid sign-in callback',
       invalidCallbackHint: 'This page does not contain a valid authorization result. Return to the login page and start quick sign-in again.',
+      accessDenied: 'Sign-in was cancelled or denied. Please try again.',
       code: 'Code',
       state: 'State',
       fullUrl: 'Full URL',

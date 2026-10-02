@@ -363,7 +363,13 @@ onMounted(async () => {
     params.get('error_description') || params.get('error_message') || ''
 
   if (fragmentError) {
-    appStore.showError(fragmentErrorDescription || fragmentError)
+    // Backend-reported sign-in failure (e.g. the user cancelled at Google): back to login.
+    appStore.showError(
+      fragmentErrorDescription === 'access_denied'
+        ? t('auth.oauth.accessDenied')
+        : fragmentErrorDescription || fragmentError
+    )
+    await router.replace('/login')
     return
   }
   if (!tokenResponse) {

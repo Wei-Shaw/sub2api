@@ -451,6 +451,7 @@ export default {
       callbackHint: 'Sao chép code và state về luồng ủy quyền của quản trị viên khi cần.',
       invalidCallbackTitle: 'Callback đăng nhập không hợp lệ',
       invalidCallbackHint: 'Trang này không chứa kết quả ủy quyền hợp lệ. Hãy quay lại trang đăng nhập và bắt đầu đăng nhập nhanh lại.',
+      accessDenied: 'Đăng nhập đã bị huỷ hoặc bị từ chối. Vui lòng thử lại.',
       code: 'Code',
       state: 'State',
       fullUrl: 'URL đầy đủ',

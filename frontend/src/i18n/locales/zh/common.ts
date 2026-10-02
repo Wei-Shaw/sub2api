@@ -450,6 +450,7 @@ export default {
       callbackHint: '按需将授权码和状态值复制回后台授权流程。',
       invalidCallbackTitle: '无效的登录回调',
       invalidCallbackHint: '当前页面缺少有效的授权结果，请返回登录页重新发起快捷登录。',
+      accessDenied: '登录已取消或被拒绝，请重试。',
       code: '授权码',
       state: '状态',
       fullUrl: '完整URL',
