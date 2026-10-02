@@ -831,12 +831,13 @@ func TestPassthroughLifecycle_FirstOutputTimeoutRemainsBounded(t *testing.T) {
 	}
 }
 
-func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *testing.T) {
+func TestPassthroughLifecycle_EmptyDeltaTimeoutClosesWithoutFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
 	upstream.Send(`{"type":"response.created","response":{"id":"resp_preamble","model":"gpt-5.1"}}`)
+	upstream.Send(`{"type":"response.output_text.delta","delta":"","SSE-Keep-Alive":true}`)
 	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), passthroughLifecycleAccount())
 	defer server.Close()
 	clientConn := dialPassthroughLifecycleClient(t, server)
@@ -845,6 +846,9 @@ func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *tes
 	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	heartbeat, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"type":"response.output_text.delta","delta":"","SSE-Keep-Alive":true}`, string(heartbeat))
 	_, err = readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
 	var websocketCloseErr coderws.CloseError
 	require.ErrorAs(t, err, &websocketCloseErr)

@@ -1144,7 +1144,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return nil, s.newOpenAIWSRateLimitFailoverError(account, lease.HandshakeHeaders(), upstreamMessage, errMsgRaw)
 				}
 			}
-			isTokenEvent := isOpenAIWSTokenEvent(eventType)
+			isTokenEvent := isOpenAIWSTokenEvent(eventType, upstreamMessage)
 			if isTokenEvent {
 				tokenEventCount++
 			}

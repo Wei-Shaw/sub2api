@@ -50,6 +50,8 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 
 			captureConn := &openAIWSCaptureConn{
 				events: [][]byte{
+					[]byte(`{"type":"response.output_text.delta","delta":"","SSE-Keep-Alive":true}`),
+					[]byte(`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`),
 					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`),
 				},
 			}
@@ -84,6 +86,7 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 			result, err := svc.Forward(context.Background(), c, account, body)
 			require.NoError(t, err)
 			require.NotNil(t, result)
+			require.Nil(t, result.FirstTokenMs, "empty prelude and usage-only terminal must not start TTFT")
 			require.True(t, result.OpenAIWSMode, "must take HTTP POST → forwardOpenAIWSV2, not HTTP fallback")
 			require.Equal(t, tc.stream, result.Stream)
 			require.Equal(t, "resp_tier_v2", result.RequestID)

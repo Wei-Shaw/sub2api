@@ -573,6 +573,12 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) notifyDeadlineChanged() {
 
 func openAIWSPassthroughStartsSemanticOutput(payload []byte) bool {
 	eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+	// Heartbeat deltas are forwarded, but must not replace the first-output
+	// deadline with the active-read deadline. Other commit boundaries stay intact.
+	if strings.HasSuffix(eventType, ".delta") && gjson.ValidBytes(payload) {
+		delta := gjson.GetBytes(payload, "delta")
+		return delta.Type == gjson.String && delta.Str != ""
+	}
 	switch eventType {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 		return true

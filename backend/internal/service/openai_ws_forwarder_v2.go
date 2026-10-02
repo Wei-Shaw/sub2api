@@ -370,6 +370,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
+	streamOutputObserved := false
 	needModelReplace := originalModel != mappedModel
 	var mappedModelBytes []byte
 	if needModelReplace && mappedModel != "" {
@@ -624,7 +625,7 @@ readLoop:
 			responseID = eventResponseID
 		}
 
-		isTokenEvent := isOpenAIWSTokenEvent(eventType)
+		isTokenEvent := isOpenAIWSTokenEvent(eventType, message)
 		if isTokenEvent {
 			tokenEventCount++
 		}
@@ -740,9 +741,10 @@ readLoop:
 		}
 
 		if reqStream {
-			// 在首个 token 前先缓冲事件（如 response.created），
-			// 以便上游早期断连时仍可安全回退到 HTTP，不给下游发送半截流。
-			shouldBuffer := firstTokenMs == nil && !isTokenEvent && !isTerminalEvent
+			// Keep the downstream commit boundary independent of TTFT: encrypted
+			// reasoning can start the metric while the attempt is still buffered.
+			streamOutputObserved = streamOutputObserved || openAIWSPassthroughStartsSemanticOutput(message)
+			shouldBuffer := !streamOutputObserved && !isTerminalEvent
 			if shouldBuffer {
 				buffered := make([]byte, len(message))
 				copy(buffered, message)

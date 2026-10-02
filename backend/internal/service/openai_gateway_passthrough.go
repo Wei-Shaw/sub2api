@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1174,6 +1175,13 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	if trimmed == "" {
 		return false
 	}
+	// Empty delta heartbeats must not commit an attempt or disarm its
+	// first-output watchdog. Keep other structural/retry boundaries separate
+	// from the stricter TTFT classifier.
+	if strings.HasPrefix(eventType, "response.") && strings.HasSuffix(eventType, ".delta") && gjson.Valid(trimmed) {
+		delta := gjson.Get(trimmed, "delta")
+		return delta.Type == gjson.String && delta.Str != ""
+	}
 	switch strings.TrimSpace(eventType) {
 	case "response.failed":
 		return false
@@ -1191,83 +1199,15 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsMetadata(eventType)
 }
 
-func openAIStreamItemHasVisibleOutput(item gjson.Result) bool {
-	if item.Get("arguments").String() != "" || item.Get("input").String() != "" || item.Get("result").String() != "" {
-		return true
-	}
-	for _, path := range []string{"content", "summary"} {
-		for _, part := range item.Get(path).Array() {
-			if part.Get("text").String() != "" || part.Get("transcript").String() != "" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Structural progress can commit an attempt and disarm first-output failover,
-// but TTFT should start only when the stream carries content a client can use.
+// Structural progress can commit an attempt without supplying model content.
 func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "" || trimmed == "[DONE]" || !gjson.Valid(trimmed) {
-		return false
-	}
-	eventType = strings.TrimSpace(eventType)
-	if eventType == "" {
-		eventType = strings.TrimSpace(gjson.Get(trimmed, "type").String())
-	}
-	if strings.HasSuffix(eventType, ".delta") {
-		delta := gjson.Get(trimmed, "delta")
-		return delta.Exists() && delta.String() != ""
-	}
-	switch eventType {
-	case "response.output_text.done",
-		"response.reasoning_summary_text.done",
-		"response.reasoning_text.done",
-		"response.audio_transcript.done":
-		return gjson.Get(trimmed, "text").String() != ""
-	case "response.function_call_arguments.done":
-		return gjson.Get(trimmed, "arguments").String() != ""
-	case "response.custom_tool_call_input.done":
-		return gjson.Get(trimmed, "input").String() != ""
-	case "response.image_generation_call.partial_image":
-		return gjson.Get(trimmed, "partial_image_b64").String() != ""
-	case "response.content_part.added", "response.content_part.done",
-		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
-		part := gjson.Get(trimmed, "part")
-		return part.Get("text").String() != "" || part.Get("transcript").String() != ""
-	case "response.output_item.added", "response.output_item.done":
-		return openAIStreamItemHasVisibleOutput(gjson.Get(trimmed, "item"))
-	case "response.completed", "response.done":
-		for _, item := range gjson.Get(trimmed, "response.output").Array() {
-			if openAIStreamItemHasVisibleOutput(item) {
-				return true
-			}
-		}
-	}
-	return false
+	return openai.ResponsesStreamHasOutput(data, eventType, false)
 }
 
-// openAIStreamDataStartsSemanticTTFT 保留 900194fab 之前的 first_token_ms
-// 口径：跳过 Responses preamble 后，首个语义 SSE 事件即视为首 token。
+// Semantic TTFT includes nonempty encrypted output, but not empty structures,
+// heartbeats, usage-only terminal events, or errors forced through to the client.
 func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "" || trimmed == "[DONE]" {
-		return false
-	}
-	eventType = strings.TrimSpace(eventType)
-	if eventType == "" && gjson.Valid(trimmed) {
-		eventType = strings.TrimSpace(gjson.Get(trimmed, "type").String())
-	}
-	switch eventType {
-	case "response.failed":
-		return false
-	case "error":
-		payload := []byte(trimmed)
-		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
-	default:
-		return !openAIStreamEventIsMetadata(eventType)
-	}
+	return openai.ResponsesStreamHasOutput(data, eventType, true)
 }
 
 func (s *OpenAIGatewayService) openAITTFTMode(ctx context.Context) string {
@@ -1282,11 +1222,11 @@ func (s *OpenAIGatewayService) openAITTFTMode(ctx context.Context) string {
 	return normalizeOpenAITTFTMode(mode)
 }
 
-func openAIStreamDataStartsTTFT(data, eventType string, forceOutput bool, mode string) bool {
+func openAIStreamDataStartsTTFT(data, eventType string, mode string) bool {
 	if mode == OpenAITTFTModeVisible {
 		return openAIStreamDataStartsVisibleOutput(data, eventType)
 	}
-	return forceOutput || openAIStreamDataStartsSemanticTTFT(data, eventType)
+	return openAIStreamDataStartsSemanticTTFT(data, eventType)
 }
 
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
@@ -2175,7 +2115,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				openAIResponsesCompletedEventIsEmpty(dataBytes, usage) {
 				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
 			}
-			if firstTokenMs == nil && openAIStreamDataStartsTTFT(trimmedData, eventType, forceFlushFailedEvent, ttftMode) {
+			if firstTokenMs == nil && openAIStreamDataStartsTTFT(trimmedData, eventType, ttftMode) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}

@@ -114,6 +114,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 		events: [][]byte{
 			[]byte(`{"type":"response.output_item.done","item":{"id":"ig_ingress_1","type":"image_generation_call","status":"generating","result":"iVBORw0KGgoAAAANSUhEUg/+=="}}`),
 			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(`{"type":"response.output_text.delta","delta":""}`),
 			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_2","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
 		},
 	}
@@ -147,11 +148,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	}
 
 	serverErrCh := make(chan error, 1)
-	turnTerminalCh := make(chan string, 2)
+	turnResultCh := make(chan *OpenAIForwardResult, 2)
 	hooks := &OpenAIWSIngressHooks{
 		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
 			if turnErr == nil && result != nil {
-				turnTerminalCh <- result.UpstreamTerminalEvent
+				turnResultCh <- result
 			}
 		},
 	}
@@ -222,11 +223,18 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	require.Equal(t, "resp_ingress_turn_1", gjson.GetBytes(firstTurnEvent, "response.id").String())
 
 	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_ingress_turn_1"}`)
+	heartbeat := readMessage()
+	require.JSONEq(t, `{"type":"response.output_text.delta","delta":""}`, string(heartbeat))
 	secondTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_2", gjson.GetBytes(secondTurnEvent, "response.id").String())
-	require.Equal(t, "response.completed", <-turnTerminalCh, "首轮 turn 应保留成功终态")
-	require.Equal(t, "response.completed", <-turnTerminalCh, "第二轮 turn 应保留成功终态")
+	firstResult, secondResult := <-turnResultCh, <-turnResultCh
+	require.Equal(t, "response.completed", firstResult.UpstreamTerminalEvent)
+	require.NotNil(t, firstResult.FirstTokenMs, "completed image is real output")
+	require.Equal(t, "response.completed", secondResult.UpstreamTerminalEvent)
+	require.Nil(t, secondResult.FirstTokenMs, "empty second turn must not inherit first turn TTFT")
+	require.Equal(t, 1, secondResult.Usage.InputTokens)
+	require.Equal(t, 1, secondResult.Usage.OutputTokens)
 
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 

@@ -69,6 +69,10 @@ func TestProxyOpenAIWSHTTPBridgeTurn_KeepsOutboundAndObservedServiceTiersSeparat
 	// policy. This test covers the local observer while preserving the canonical
 	// outbound priority tier independently.
 	sse := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"","SSE-Keep-Alive":true}`,
+		``,
+		`data: {"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`,
+		``,
 		`data: {"type":"response.completed","response":{"id":"resp_tier","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`,
 		``,
 	}, "\n")
@@ -95,6 +99,7 @@ func TestProxyOpenAIWSHTTPBridgeTurn_KeepsOutboundAndObservedServiceTiersSeparat
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Nil(t, result.FirstTokenMs, "empty prelude and usage-only terminal must not start TTFT")
 	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.NotNil(t, result.ServiceTier)
 	require.Equal(t, "priority", *result.ServiceTier)

@@ -1317,6 +1317,8 @@ func TestRelay_NoSemanticOutputTerminalSequence_FirstTokenMsNil(t *testing.T) {
 
 			clientConn := newPassthroughTestFrameConn(nil, false)
 			upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+				{msgType: coderws.MessageText, payload: []byte(`{"type":"response.output_text.delta","delta":"","SSE-Keep-Alive":true}`)},
+				{msgType: coderws.MessageText, payload: []byte(`{"type":"response.output_text.delta","delta":""}`)},
 				{
 					msgType: coderws.MessageText,
 					payload: []byte(`{"type":"response.created","response":{"id":"resp_no_output"}}`),
@@ -1356,7 +1358,8 @@ func TestRelay_NoSemanticOutputTerminalSequence_FirstTokenMsNil(t *testing.T) {
 			require.Nil(t, turn.FirstTokenMs)
 			require.Equal(t, terminalEvent, result.TerminalEventType)
 			require.Nil(t, result.FirstTokenMs)
-			require.Equal(t, int64(5), result.UpstreamToClientFrames)
+			require.Equal(t, int64(7), result.UpstreamToClientFrames, "empty events must still be forwarded")
+			require.Equal(t, Usage{InputTokens: 2}, result.Usage)
 		})
 	}
 }

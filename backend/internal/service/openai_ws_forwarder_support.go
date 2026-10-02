@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -366,28 +367,10 @@ func (s *OpenAIGatewayService) handleOpenAIWSDialTransientFailure(ctx context.Co
 	s.handleOpenAIAccountUpstreamError(ctx, account, dialErr.StatusCode, dialErr.ResponseHeaders, dialErr.ResponseBody, canonicalModel)
 }
 
-func isOpenAIWSTokenEvent(eventType string) bool {
-	eventType = strings.TrimSpace(eventType)
-	if eventType == "" {
-		return false
-	}
-	switch eventType {
-	case "response.created", "response.in_progress", "response.output_item.added", "response.output_item.done":
-		return false
-	}
-	if strings.Contains(eventType, ".delta") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output_text") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output") {
-		return true
-	}
-	// 终止事件（response.completed/done/failed/...）由 isOpenAIWSTerminalEvent 单独处理。
-	// 不能把它们当作 token event，否则当上游没有可识别的 delta 时，
-	// firstTokenMs 会被填到终止时刻，等于把"总耗时"误报为"首 token 延迟"。
-	return false
+// WS retains its non-terminal semantic TTFT contract. A terminal snapshot
+// alone must not turn total duration into first-token latency (issue #2651).
+func isOpenAIWSTokenEvent(eventType string, payload []byte) bool {
+	return !isOpenAIWSTerminalEvent(eventType) && openai.ResponsesStreamHasOutput(string(payload), eventType, true)
 }
 
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {
