@@ -96,12 +96,25 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 				lowered = append(lowered, raw)
 				continue
 			}
+			if adapter.CustomTools[name] {
+				changed = true
+				continue
+			}
 			copy := copyClientTool(tool)
 			copy["type"] = "function"
-			copy["parameters"] = json.RawMessage(customToolInputSchema)
+			copy["parameters"] = customToolFunctionParameters(name)
 			delete(copy, "format")
 			adapter.CustomTools[name] = true
 			lowered = append(lowered, copy)
+			changed = true
+		case "apply_patch":
+			if adapter.CustomTools[applyPatchToolName] || functionNames[applyPatchToolName] {
+				changed = true
+				continue
+			}
+			adapter.CustomTools[applyPatchToolName] = true
+			functionNames[applyPatchToolName] = true
+			lowered = append(lowered, lowerApplyPatchTool(tool))
 			changed = true
 		case "tool_search":
 			if seenSearch {
@@ -238,11 +251,28 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) (b
 					normalizeLoweredFunctionItemID(typed)
 					changed = true
 				}
+			case "apply_patch_call":
+				if adapter.CustomTools[applyPatchToolName] {
+					typed["type"] = "function_call"
+					typed["name"] = applyPatchToolName
+					typed["arguments"] = customToolCallArguments(applyPatchCallInput(typed))
+					delete(typed, "input")
+					delete(typed, "operation")
+					normalizeLoweredFunctionItemID(typed)
+					changed = true
+				}
 			case "custom_tool_call_output":
 				typed["type"] = "function_call_output"
 				normalizeLoweredFunctionItemID(typed)
 				normalizeClientToolOutput(typed)
 				changed = true
+			case "apply_patch_call_output":
+				if adapter.CustomTools[applyPatchToolName] {
+					typed["type"] = "function_call_output"
+					normalizeLoweredFunctionItemID(typed)
+					normalizeClientToolOutput(typed)
+					changed = true
+				}
 			case "tool_search_call":
 				if adapter.ToolSearch {
 					typed["type"] = "function_call"
@@ -442,6 +472,11 @@ func rewriteClientToolChoice(req map[string]any, adapter *ResponsesClientToolMap
 	name := strings.TrimSpace(stringValue(choice["name"]))
 	if typ == "custom" && adapter.CustomTools[name] {
 		choice["type"] = "function"
+		return true
+	}
+	if typ == "apply_patch" && adapter.CustomTools[applyPatchToolName] {
+		choice["type"] = "function"
+		choice["name"] = applyPatchToolName
 		return true
 	}
 	if typ == "tool_search" && adapter.ToolSearch {
