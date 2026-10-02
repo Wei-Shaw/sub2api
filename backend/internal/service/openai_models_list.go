@@ -225,7 +225,7 @@ func projectAccountModelsBody(body []byte, account *Account, group *Group, codex
 		}
 		target, matched := account.ResolveMappedModel(id)
 		raw, available := byID[strings.TrimSpace(target)]
-		if !matched || !available {
+		if (!matched && !account.modelMappingAdmitsUnlisted()) || !available {
 			continue
 		}
 		seen[id] = struct{}{}
