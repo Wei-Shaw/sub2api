@@ -61,3 +61,36 @@ func TestOpsRepositoryListRequestDetails_LatencySort(t *testing.T) {
 		})
 	}
 }
+
+func TestListRequestDetailsUsesSingleCyberErrorRepresentation(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	repo := &opsRepository{db: db}
+	start := time.Date(2026, 9, 2, 1, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	filter := &service.OpsRequestDetailFilter{
+		StartTime: &start,
+		EndTime:   &end,
+		Page:      1,
+		PageSize:  10,
+	}
+	cyberBoundary := `(?s)FROM usage_logs ul.*COALESCE\(ul\.request_type, 0\) <> 4.*UNION ALL.*FROM ops_error_logs o.*\(COALESCE\(o\.status_code, 0\) >= 400 OR o\.error_type = 'cyber_policy'\)`
+
+	mock.ExpectQuery(cyberBoundary+`.*SELECT COUNT\(1\) FROM combined`).
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery(cyberBoundary+`.*SELECT.*FROM combined.*LIMIT \$3 OFFSET \$4`).
+		WithArgs(start, end, 10, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"kind", "created_at", "request_id", "platform", "model", "duration_ms", "first_token_ms", "status_code", "error_id",
+			"phase", "severity", "message", "user_id", "api_key_id", "account_id", "group_id", "stream",
+		}))
+
+	items, total, err := repo.ListRequestDetails(context.Background(), filter)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Zero(t, total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
