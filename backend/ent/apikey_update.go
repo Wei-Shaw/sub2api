@@ -120,6 +120,24 @@ func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
 	return _u
 }
 
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (_u *APIKeyUpdate) SetRoutingGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.SetRoutingGroupIds(v)
+	return _u
+}
+
+// AppendRoutingGroupIds appends value to the "routing_group_ids" field.
+func (_u *APIKeyUpdate) AppendRoutingGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.AppendRoutingGroupIds(v)
+	return _u
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (_u *APIKeyUpdate) ClearRoutingGroupIds() *APIKeyUpdate {
+	_u.mutation.ClearRoutingGroupIds()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
 	_u.mutation.SetStatus(v)
@@ -593,6 +611,17 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.RoutingGroupIds(); ok {
+		_spec.SetField(apikey.FieldRoutingGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRoutingGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldRoutingGroupIds, value)
+		})
+	}
+	if _u.mutation.RoutingGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldRoutingGroupIds, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 	}
@@ -904,6 +933,24 @@ func (_u *APIKeyUpdateOne) SetNillableGroupID(v *int64) *APIKeyUpdateOne {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (_u *APIKeyUpdateOne) SetRoutingGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.SetRoutingGroupIds(v)
+	return _u
+}
+
+// AppendRoutingGroupIds appends value to the "routing_group_ids" field.
+func (_u *APIKeyUpdateOne) AppendRoutingGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.AppendRoutingGroupIds(v)
+	return _u
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (_u *APIKeyUpdateOne) ClearRoutingGroupIds() *APIKeyUpdateOne {
+	_u.mutation.ClearRoutingGroupIds()
 	return _u
 }
 
@@ -1409,6 +1456,17 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RoutingGroupIds(); ok {
+		_spec.SetField(apikey.FieldRoutingGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRoutingGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldRoutingGroupIds, value)
+		})
+	}
+	if _u.mutation.RoutingGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldRoutingGroupIds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)

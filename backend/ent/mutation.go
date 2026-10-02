@@ -108,51 +108,53 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	deleted_at              *time.Time
+	key                     *string
+	name                    *string
+	routing_group_ids       *[]int64
+	appendrouting_group_ids []int64
+	status                  *string
+	last_used_at            *time.Time
+	ip_whitelist            *[]string
+	appendip_whitelist      []string
+	ip_blacklist            *[]string
+	appendip_blacklist      []string
+	quota                   *float64
+	addquota                *float64
+	quota_used              *float64
+	addquota_used           *float64
+	expires_at              *time.Time
+	rate_limit_5h           *float64
+	addrate_limit_5h        *float64
+	rate_limit_1d           *float64
+	addrate_limit_1d        *float64
+	rate_limit_7d           *float64
+	addrate_limit_7d        *float64
+	usage_5h                *float64
+	addusage_5h             *float64
+	usage_1d                *float64
+	addusage_1d             *float64
+	usage_7d                *float64
+	addusage_7d             *float64
+	window_5h_start         *time.Time
+	window_1d_start         *time.Time
+	window_7d_start         *time.Time
+	clearedFields           map[string]struct{}
+	user                    *int64
+	cleareduser             bool
+	group                   *int64
+	clearedgroup            bool
+	usage_logs              map[int64]struct{}
+	removedusage_logs       map[int64]struct{}
+	clearedusage_logs       bool
+	done                    bool
+	oldValue                func(context.Context) (*APIKey, error)
+	predicates              []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -529,6 +531,71 @@ func (m *APIKeyMutation) GroupIDCleared() bool {
 func (m *APIKeyMutation) ResetGroupID() {
 	m.group = nil
 	delete(m.clearedFields, apikey.FieldGroupID)
+}
+
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (m *APIKeyMutation) SetRoutingGroupIds(i []int64) {
+	m.routing_group_ids = &i
+	m.appendrouting_group_ids = nil
+}
+
+// RoutingGroupIds returns the value of the "routing_group_ids" field in the mutation.
+func (m *APIKeyMutation) RoutingGroupIds() (r []int64, exists bool) {
+	v := m.routing_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingGroupIds returns the old "routing_group_ids" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldRoutingGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingGroupIds: %w", err)
+	}
+	return oldValue.RoutingGroupIds, nil
+}
+
+// AppendRoutingGroupIds adds i to the "routing_group_ids" field.
+func (m *APIKeyMutation) AppendRoutingGroupIds(i []int64) {
+	m.appendrouting_group_ids = append(m.appendrouting_group_ids, i...)
+}
+
+// AppendedRoutingGroupIds returns the list of values that were appended to the "routing_group_ids" field in this mutation.
+func (m *APIKeyMutation) AppendedRoutingGroupIds() ([]int64, bool) {
+	if len(m.appendrouting_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendrouting_group_ids, true
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (m *APIKeyMutation) ClearRoutingGroupIds() {
+	m.routing_group_ids = nil
+	m.appendrouting_group_ids = nil
+	m.clearedFields[apikey.FieldRoutingGroupIds] = struct{}{}
+}
+
+// RoutingGroupIdsCleared returns if the "routing_group_ids" field was cleared in this mutation.
+func (m *APIKeyMutation) RoutingGroupIdsCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldRoutingGroupIds]
+	return ok
+}
+
+// ResetRoutingGroupIds resets all changes to the "routing_group_ids" field.
+func (m *APIKeyMutation) ResetRoutingGroupIds() {
+	m.routing_group_ids = nil
+	m.appendrouting_group_ids = nil
+	delete(m.clearedFields, apikey.FieldRoutingGroupIds)
 }
 
 // SetStatus sets the "status" field.
@@ -1532,7 +1599,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1553,6 +1620,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, apikey.FieldGroupID)
+	}
+	if m.routing_group_ids != nil {
+		fields = append(fields, apikey.FieldRoutingGroupIds)
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
@@ -1624,6 +1694,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case apikey.FieldGroupID:
 		return m.GroupID()
+	case apikey.FieldRoutingGroupIds:
+		return m.RoutingGroupIds()
 	case apikey.FieldStatus:
 		return m.Status()
 	case apikey.FieldLastUsedAt:
@@ -1679,6 +1751,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case apikey.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case apikey.FieldRoutingGroupIds:
+		return m.OldRoutingGroupIds(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
 	case apikey.FieldLastUsedAt:
@@ -1768,6 +1842,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case apikey.FieldRoutingGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingGroupIds(v)
 		return nil
 	case apikey.FieldStatus:
 		v, ok := value.(string)
@@ -2016,6 +2097,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldRoutingGroupIds) {
+		fields = append(fields, apikey.FieldRoutingGroupIds)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2056,6 +2140,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldRoutingGroupIds:
+		m.ClearRoutingGroupIds()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2106,6 +2193,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case apikey.FieldRoutingGroupIds:
+		m.ResetRoutingGroupIds()
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
