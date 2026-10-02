@@ -25,8 +25,8 @@ func stripSQLLineComments(content string) string {
 		if idx := strings.Index(line, "--"); idx >= 0 {
 			line = line[:idx]
 		}
-		b.WriteString(line)
-		b.WriteString("\n")
+		_, _ = b.WriteString(line)
+		_, _ = b.WriteString("\n")
 	}
 	return b.String()
 }
