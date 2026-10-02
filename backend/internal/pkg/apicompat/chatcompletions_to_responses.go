@@ -88,10 +88,11 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
 	}
 
-	// tool_choice: already compatible format — pass through directly.
+	// tool_choice: strings and Responses-shaped objects pass through; a named
+	// Chat choice nests the name under "function" and must be flattened.
 	// Legacy function_call needs mapping.
 	if len(req.ToolChoice) > 0 {
-		out.ToolChoice = req.ToolChoice
+		out.ToolChoice = convertChatToolChoiceToResponses(req.ToolChoice)
 	} else if len(req.FunctionCall) > 0 {
 		tc, err := convertChatFunctionCallToToolChoice(req.FunctionCall)
 		if err != nil {
@@ -488,6 +489,34 @@ func defaultStrictFalse(src *bool) *bool {
 		return &value
 	}
 	return src
+}
+
+// convertChatToolChoiceToResponses maps a Chat Completions tool_choice to the
+// Responses API shape.
+//
+//	{"type":"function","function":{"name":"X"}} → {"type":"function","name":"X"}
+//
+// Strings ("auto", "none", "required") and objects that already use the
+// Responses shape are returned unchanged.
+func convertChatToolChoiceToResponses(raw json.RawMessage) json.RawMessage {
+	var choice struct {
+		Type     string `json:"type"`
+		Function *struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(raw, &choice); err != nil || choice.Type != "function" || choice.Function == nil {
+		return raw
+	}
+	name := strings.TrimSpace(choice.Function.Name)
+	if name == "" {
+		return raw
+	}
+	flat, err := json.Marshal(map[string]string{"type": "function", "name": name})
+	if err != nil {
+		return raw
+	}
+	return flat
 }
 
 // convertChatFunctionCallToToolChoice maps the legacy function_call field to a
