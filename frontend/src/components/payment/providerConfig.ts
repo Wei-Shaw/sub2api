@@ -32,6 +32,7 @@ export interface CallbackPaths {
 /** Provider keys of the supported gateways. */
 export const PROVIDER_SEPAY = 'sepay'
 export const PROVIDER_NOWPAYMENTS = 'nowpayments'
+export const PROVIDER_GPMPAY = 'gpmpay'
 
 /**
  * User-facing SePay payment methods.
@@ -45,14 +46,18 @@ export const SEPAY_BANK_TRANSFER = 'sepay_bank_transfer'
 /** NOWPayments offers a single method: its hosted crypto checkout. */
 export const NOWPAYMENTS_CRYPTO = 'nowpayments_crypto'
 
+/** GPM Pay offers a single method: a VietQR transfer we render ourselves. */
+export const GPMPAY_BANK_TRANSFER = 'gpmpay_bank_transfer'
+
 /** Maps provider key -> available payment types. */
 export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   [PROVIDER_SEPAY]: [SEPAY_BANK_TRANSFER],
   [PROVIDER_NOWPAYMENTS]: [NOWPAYMENTS_CRYPTO],
+  [PROVIDER_GPMPAY]: [GPMPAY_BANK_TRANSFER],
 }
 
 /** Fixed display order for user-facing payment methods. */
-export const METHOD_ORDER = [SEPAY_BANK_TRANSFER, NOWPAYMENTS_CRYPTO] as const
+export const METHOD_ORDER = [SEPAY_BANK_TRANSFER, GPMPAY_BANK_TRANSFER, NOWPAYMENTS_CRYPTO] as const
 
 /** Payment mode constants. */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
@@ -77,6 +82,7 @@ export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
 export const WEBHOOK_PATHS: Record<string, string> = {
   [PROVIDER_SEPAY]: '/api/v1/payment/webhook/sepay',
   [PROVIDER_NOWPAYMENTS]: '/api/v1/payment/webhook/nowpayments',
+  [PROVIDER_GPMPAY]: '/api/v1/payment/webhook/gpmpay',
 }
 
 export const RETURN_PATH = '/payment/result'
@@ -85,6 +91,8 @@ export const RETURN_PATH = '/payment/result'
 export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
   [PROVIDER_SEPAY]: { notifyUrl: WEBHOOK_PATHS[PROVIDER_SEPAY], returnUrl: RETURN_PATH },
   [PROVIDER_NOWPAYMENTS]: { notifyUrl: WEBHOOK_PATHS[PROVIDER_NOWPAYMENTS], returnUrl: RETURN_PATH },
+  // The payer never leaves our QR page, so there is nothing to return to.
+  [PROVIDER_GPMPAY]: { notifyUrl: WEBHOOK_PATHS[PROVIDER_GPMPAY] },
 }
 
 /**
@@ -155,6 +163,34 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
       optional: true,
       clearable: true,
       hintKey: 'admin.settings.payment.field_payCurrencyHint',
+    },
+  ],
+  [PROVIDER_GPMPAY]: [
+    { key: 'apiToken', label: 'API Token', sensitive: true },
+    {
+      // The HMAC signature is the only proof a GPM Pay webhook is genuine.
+      key: 'webhookSecret',
+      label: 'Webhook Secret',
+      sensitive: true,
+      hintKey: 'admin.settings.payment.field_gpmPayWebhookSecretHint',
+    },
+    {
+      key: 'bankBin',
+      label: 'Bank BIN',
+      sensitive: false,
+      hintKey: 'admin.settings.payment.field_gpmPayBankBinHint',
+    },
+    { key: 'accountNumber', label: 'Account Number', sensitive: false },
+    {
+      key: 'allowSimulated',
+      label: 'Allow Simulated',
+      sensitive: false,
+      defaultValue: 'false',
+      hintKey: 'admin.settings.payment.field_gpmPayAllowSimulatedHint',
+      options: [
+        { value: 'false', label: 'No' },
+        { value: 'true', label: 'Yes' },
+      ],
     },
   ],
 }

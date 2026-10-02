@@ -331,6 +331,8 @@ export default {
       sepay_card: '银行卡（Visa / Mastercard / JCB）',
       nowpayments: 'NOWPayments',
       nowpayments_crypto: '加密货币（BTC / ETH / USDT 等）',
+      gpmpay: 'GPM Pay',
+      gpmpay_bank_transfer: 'VietQR（银行转账）',
     },
     status: {
       pending: '待支付',
@@ -349,6 +351,7 @@ export default {
     },
     qr: {
       scanToPay: '请扫码支付',
+      transferMemo: '转账备注',
       payInNewWindow: '请在新窗口中完成支付',
       payInNewWindowHint: '支付页面已在新窗口打开，请在新窗口中完成支付后返回此页面',
       openPayWindow: '重新打开支付页面',
@@ -440,6 +443,8 @@ export default {
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'NOWPayments 环境只能是 sandbox 或 production。',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'NOWPayments 币种不合法。',
       NOWPAYMENTS_UNSUPPORTED_PAYMENT_TYPE: 'NOWPayments 不支持该支付方式。',
+      GPMPAY_CONFIG_MISSING_KEY: 'GPM Pay 配置缺少必填项：{field}。',
+      GPMPAY_UNSUPPORTED_PAYMENT_TYPE: 'GPM Pay 不支持该支付方式。',
       PAYMENT_PROVIDER_MISCONFIGURED: '支付通道配置错误，请联系管理员',
       PENDING_ORDERS: '该服务商有未完成的订单，请等待订单完成后再操作',
       CANCEL_RATE_LIMITED: '取消订单过于频繁，请稍后再试',

@@ -171,6 +171,7 @@ const paymentTypeFilterOptions = computed(() => [
   { value: 'sepay_bank_transfer', label: t('payment.methods.sepay_bank_transfer') },
   { value: 'sepay_napas', label: t('payment.methods.sepay_napas') },
   { value: 'sepay_card', label: t('payment.methods.sepay_card') },
+  { value: 'gpmpay_bank_transfer', label: t('payment.methods.gpmpay_bank_transfer') },
 ])
 
 const orderTypeFilterOptions = computed(() => [

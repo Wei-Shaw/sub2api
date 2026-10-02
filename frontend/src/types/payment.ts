@@ -24,6 +24,7 @@ export type PaymentType =
   | 'sepay_napas'
   | 'sepay_card'
   | 'nowpayments_crypto'
+  | 'gpmpay_bank_transfer'
 
 export type OrderType = 'balance' | 'subscription'
 

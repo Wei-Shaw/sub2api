@@ -42,7 +42,7 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		return nil
 	}
 	// Look up order by out_trade_no (the external order ID we sent to the provider)
-	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
+	order, err := s.findOrderByOutTradeNo(ctx, n.OrderID)
 	if err != nil {
 		// Fallback only for true legacy "sub2_N" DB-ID payloads when the
 		// current out_trade_no lookup genuinely did not find an order.

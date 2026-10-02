@@ -61,6 +61,7 @@ import { useAdminSettingsStore } from "@/stores/adminSettings";
 import {
   METHOD_ORDER,
   PROVIDER_NOWPAYMENTS,
+  PROVIDER_GPMPAY,
   PROVIDER_SEPAY,
   isProviderKeyEnabled,
 } from "@/components/payment/providerConfig";
@@ -3868,6 +3869,7 @@ export function useSettingsView() {
       value: PROVIDER_NOWPAYMENTS,
       label: t("admin.settings.payment.providerNowPayments"),
     },
+    { value: PROVIDER_GPMPAY, label: t("admin.settings.payment.providerGpmPay") },
   ]);
 
   const enabledProviderKeyOptions = computed(() =>

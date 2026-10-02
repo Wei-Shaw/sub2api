@@ -30,12 +30,24 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 	return providers[0], nil
 }
 
+// findOrderByOutTradeNo looks an order up by out_trade_no, retrying
+// case-insensitively on a miss: bank-transfer gateways echo the order code
+// through the transfer memo, which banks often uppercase (see payment.OutTradeNoFromTransferContent).
+// ponytail: the fallback scans lower(out_trade_no) unindexed; add a functional index if payment_orders grows large.
+func (s *PaymentService) findOrderByOutTradeNo(ctx context.Context, outTradeNo string) (*dbent.PaymentOrder, error) {
+	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+	if !dbent.IsNotFound(err) {
+		return order, err
+	}
+	return s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNoEqualFold(outTradeNo)).Only(ctx)
+}
+
 // GetWebhookProviders returns provider candidates that can verify the webhook.
 // A callback that carries an out_trade_no resolves to exactly the instance that
 // created the order; the registry fallback only covers single-instance setups.
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
-		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+		order, err := s.findOrderByOutTradeNo(ctx, outTradeNo)
 		if err != nil && !dbent.IsNotFound(err) {
 			// 瞬时 DB 错误不能当成订单不存在去走兜底，否则回调会被 ACK 掉。
 			return nil, fmt.Errorf("load order %s: %w", outTradeNo, err)

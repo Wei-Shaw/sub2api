@@ -307,6 +307,8 @@ export default {
       sepay_card: 'Card (Visa / Mastercard / JCB)',
       nowpayments: 'NOWPayments',
       nowpayments_crypto: 'Crypto (BTC / ETH / USDT ...)',
+      gpmpay: 'GPM Pay',
+      gpmpay_bank_transfer: 'VietQR (bank transfer)',
     },
     status: {
       pending: 'Pending',
@@ -325,6 +327,7 @@ export default {
     },
     qr: {
       scanToPay: 'Scan to Pay',
+      transferMemo: 'Transfer memo',
       payInNewWindow: 'Complete Payment in New Window',
       payInNewWindowHint: 'The payment page has opened in a new window. Please complete the payment there and return to this page.',
       openPayWindow: 'Reopen Payment Page',
@@ -416,6 +419,8 @@ export default {
       NOWPAYMENTS_CONFIG_INVALID_ENV: 'NOWPayments environment must be either sandbox or production.',
       NOWPAYMENTS_CONFIG_INVALID_CURRENCY: 'NOWPayments currency is invalid.',
       NOWPAYMENTS_UNSUPPORTED_PAYMENT_TYPE: 'NOWPayments does not support this payment method.',
+      GPMPAY_CONFIG_MISSING_KEY: 'GPM Pay config missing required key: {field}.',
+      GPMPAY_UNSUPPORTED_PAYMENT_TYPE: 'GPM Pay does not support this payment method.',
       PAYMENT_PROVIDER_MISCONFIGURED: 'Payment provider misconfigured. Please contact an administrator.',
       PENDING_ORDERS: 'This provider has pending orders. Please wait for them to complete before making changes.',
       CANCEL_RATE_LIMITED: 'Too many cancellations. Please try again later.',

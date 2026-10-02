@@ -26,11 +26,14 @@ const (
 
 	TypeNowPayments       PaymentType = "nowpayments"
 	TypeNowPaymentsCrypto PaymentType = "nowpayments_crypto"
+
+	TypeGPMPay             PaymentType = "gpmpay"
+	TypeGPMPayBankTransfer PaymentType = "gpmpay_bank_transfer"
 )
 
 // providerKeyPrefixes are the provider keys that user-facing payment types are
 // prefixed with. No key may be a prefix of another one.
-var providerKeyPrefixes = []PaymentType{TypeSePay, TypeNowPayments}
+var providerKeyPrefixes = []PaymentType{TypeSePay, TypeNowPayments, TypeGPMPay}
 
 // IsProviderKey reports whether a string names one of the gateways this build
 // ships. Keep every "is this a known gateway" check on this one list: a second
