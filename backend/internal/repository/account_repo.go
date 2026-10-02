@@ -2410,29 +2410,22 @@ func (r *accountRepository) SetRateLimitedIfUnchanged(
 	return true, nil
 }
 
-func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
-	if scope == "" {
-		return nil
-	}
-	now := time.Now().UTC()
+// modelRateLimitPayload 生成 extra.model_rate_limits.<scope> 的 JSON。
+// SetModelRateLimit 和模型降级守卫共用，保证调度侧读到的形状一致。
+func modelRateLimitPayload(now, resetAt time.Time, reason string) ([]byte, error) {
 	payload := map[string]string{
-		"rate_limited_at":     now.Format(time.RFC3339),
+		"rate_limited_at":     now.UTC().Format(time.RFC3339),
 		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
 	}
-	if len(reason) > 0 {
-		if value := strings.TrimSpace(reason[0]); value != "" {
-			payload["reason"] = value
-		}
+	if value := strings.TrimSpace(reason); value != "" {
+		payload["reason"] = value
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+	return json.Marshal(payload)
+}
 
-	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(
-		ctx,
-		`UPDATE accounts SET 
+// setModelRateLimitSQL 把单个 scope 的限流窗口写进 extra.model_rate_limits。
+// $1=scope $2=payload $3=id
+const setModelRateLimitSQL = `UPDATE accounts SET 
 			extra = jsonb_set(
 				jsonb_set(COALESCE(extra, '{}'::jsonb), '{model_rate_limits}'::text[], COALESCE(extra->'model_rate_limits', '{}'::jsonb), true),
 				ARRAY['model_rate_limits', $1]::text[],
@@ -2440,11 +2433,23 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 				true
 			),
 			updated_at = NOW()
-		WHERE id = $3 AND deleted_at IS NULL`,
-		scope,
-		raw,
-		id,
-	)
+		WHERE id = $3 AND deleted_at IS NULL`
+
+func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	if scope == "" {
+		return nil
+	}
+	reasonText := ""
+	if len(reason) > 0 {
+		reasonText = reason[0]
+	}
+	raw, err := modelRateLimitPayload(time.Now(), resetAt, reasonText)
+	if err != nil {
+		return err
+	}
+
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, setModelRateLimitSQL, scope, raw, id)
 	if err != nil {
 		return err
 	}

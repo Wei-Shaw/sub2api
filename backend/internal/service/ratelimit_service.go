@@ -39,6 +39,14 @@ type RateLimitService struct {
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 
+	// 模型降级守卫（见 model_downgrade_guard.go）：命中计数器、观察记录存储，
+	// 以及 RecordUsage 热路径上的短 TTL 配置缓存。
+	modelDowngradeCounter    ModelDowngradeCounterCache
+	modelDowngradeObserved   ModelDowngradeObservedCache
+	modelDowngradeSettingsMu sync.RWMutex
+	modelDowngradeSettings   *ModelDowngradeGuardSettings
+	modelDowngradeSettingsAt time.Time
+
 	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
 	openaiTeamLinkedMu     sync.Mutex
 	openaiTeamLinkedRecent map[string]time.Time

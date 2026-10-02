@@ -598,6 +598,14 @@ const (
 	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
 
 	// =========================
+	// Model Downgrade Guard
+	// =========================
+
+	// SettingKeyModelDowngradeGuardSettings stores JSON config for the upstream
+	// model downgrade guard (explicit downgrade pairs + threshold + action + ratio cap).
+	SettingKeyModelDowngradeGuardSettings = "model_downgrade_guard_settings"
+
+	// =========================
 	// Request Rectifier (请求整流器)
 	// =========================
 

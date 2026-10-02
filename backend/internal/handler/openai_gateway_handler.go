@@ -2856,6 +2856,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
 		// BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号。
 		var turnPricing openAIWSTurnPricing
+		// 非首轮 turn 的客户端模型：BeforeRequest 先于 BeforeTurn 执行并解析出本轮
+		// 实际生效模型（含 session.update 轮换），BeforeTurn 的账号资格复核按它取
+		// 调度模型，避免沿用建连时刻的首轮模型。
+		var turnClientModel atomic.Pointer[string]
 		// Passthrough ingress does not invoke BeforeTurn for the first frame.
 		if err := checkSimpleModeTurnBilling(); err != nil {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
@@ -2892,6 +2896,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				// 交给紧随其后的 BeforeTurn 做账号资格复核（BeforeTurn 只拿得到 turn）。
+				turnClientModel.Store(&model)
 				// 分组级模型白名单：后续 turn 同样校验客户端模型（省略 model 时
 				// 沿用会话实际生效模型，含 session.update 轮换后的模型），不通过
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
@@ -2909,6 +2915,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				return nil
 			},
+			// 返回值即本轮写入上游 payload 的渠道模型。BeforeTurn 的账号资格复核
+			// 不复用这里的结果（各入口调用本钩子与 BeforeTurn 的先后顺序不同），
+			// 而是走 service 里同口径的 openAIWSTurnForwardModel 重算；改这里的
+			// 映射口径时那边要同步。
 			MapRequestModel: func(turn int, originalModel string) (string, error) {
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
@@ -2954,6 +2964,35 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				turnPricing.freeze(turnAt)
 				if turn == 1 {
 					return nil
+				}
+				// 账号资格逐轮复核：WS 入口只在握手时选一次号，之后账号被管理员
+				// 停调度（schedulable=false）、status 变为非 active、临时下线、
+				// 按模型限流（model_rate_limits）或命中 runtime blocker，已建立的
+				// 连接都感知不到，会一直用这个号跑到客户端自己断开。这里在两轮
+				// 之间（下一轮 response.create 已到、尚未写上游）关闭客户端 WS，
+				// Codex 等客户端会自动重连，握手时重新选号。首轮由握手准入负责，
+				// 不重复。
+				//
+				// 模型口径：这里只传「客户端本轮声明的模型」，渠道映射、账号级
+				// model_mapping 和上游别名归一都由 service 内部按与实际转发相同的
+				// 方式复算。不要在这里先映射一遍——各 WS 入口里 MapRequestModel
+				// 与 BeforeTurn 的顺序并不一致（ctx_pool / http_bridge 在上一轮
+				// 末尾解析下一帧时就映射好了，passthrough 则在 BeforeTurn 之后才
+				// 映射），只有共用同一个解析入口，检查用的模型键才与实际发往上游
+				// 的模型一致。
+				turnEligibilityModel := reqModel
+				if clientModel := turnClientModel.Load(); clientModel != nil && strings.TrimSpace(*clientModel) != "" {
+					turnEligibilityModel = strings.TrimSpace(*clientModel)
+				}
+				if reason, closeErr := h.gatewayService.EnforceOpenAIWSTurnAccountEligibility(
+					turnCtx, account, apiKey.GroupID, sessionHash, turnEligibilityModel,
+				); closeErr != nil {
+					reqLog.Warn("openai.websocket_turn_account_ineligible",
+						zap.Int64("account_id", account.ID),
+						zap.Int("turn", turn),
+						zap.String("reason", reason),
+						zap.String("client_model", turnEligibilityModel))
+					return closeErr
 				}
 				// 防御式清理：避免异常路径下旧槽位覆盖导致泄漏。
 				releaseTurnSlots()

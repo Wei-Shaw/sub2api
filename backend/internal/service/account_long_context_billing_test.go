@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -289,4 +290,20 @@ func TestAdminServiceBulkUpdateAccountsRejectsMalformedValueForMixedTargetsInclu
 	require.Nil(t, result)
 	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
 	require.Zero(t, repo.bulkUpdateCalls)
+}
+
+func (*longContextBillingRepoStub) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*longContextBillingRepoStub) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*longContextBillingRepoStub) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (ModelDowngradeBlockApplyResult, error) {
+	return ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*longContextBillingRepoStub) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
 }

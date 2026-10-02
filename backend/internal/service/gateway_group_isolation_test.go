@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -360,4 +361,20 @@ func TestGroupIsolation_SimpleMode_GroupedAccountAlsoSchedulable(t *testing.T) {
 	require.NoError(t, err, "SimpleMode 下已分组账号也应可调度")
 	require.NotNil(t, acc)
 	require.Equal(t, int64(1), acc.ID, "SimpleMode 应能调度已分组账号")
+}
+
+func (*groupAwareMockAccountRepo) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*groupAwareMockAccountRepo) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*groupAwareMockAccountRepo) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (ModelDowngradeBlockApplyResult, error) {
+	return ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*groupAwareMockAccountRepo) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
 }
