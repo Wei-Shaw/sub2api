@@ -1251,6 +1251,7 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 		// Both oauth and setup-token use OAuth token flow
 		return s.getOAuthToken(ctx, account)
 	case AccountTypeAPIKey:
+		account = pinAccountAPIKey(account)
 		apiKey := account.GetCredential("api_key")
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")

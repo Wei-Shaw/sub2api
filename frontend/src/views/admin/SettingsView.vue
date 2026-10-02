@@ -6723,6 +6723,82 @@
                 </p>
               </div>
 
+              <!-- Footer Legal Info -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.site.footerLegalTitle") }}
+                </h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.footerLegalDescription") }}
+                </p>
+                <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerIcpNumber") }}
+                    </label>
+                    <input
+                      v-model="form.footer_icp_number"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.site.footerIcpNumberPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerIcpNumberHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerIcpUrl") }}
+                    </label>
+                    <input
+                      v-model="form.footer_icp_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.site.footerIcpUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerIcpUrlHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerPsbNumber") }}
+                    </label>
+                    <input
+                      v-model="form.footer_psb_number"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.site.footerPsbNumberPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerPsbNumberHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerPsbUrl") }}
+                    </label>
+                    <input
+                      v-model="form.footer_psb_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.site.footerPsbUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerPsbUrlHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <!-- Compact Home Page -->
               <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div>
@@ -7927,27 +8003,6 @@
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ t("admin.settings.payment.description") }}
-                <a
-                  :href="paymentGuideHref"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                >
-                  <svg
-                    class="mr-0.5 h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  {{ t("admin.settings.payment.configGuide") }}
-                </a>
               </p>
             </div>
             <div class="space-y-4 p-6">
@@ -8392,27 +8447,6 @@
                   </div>
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") }}
-                    <a
-                      :href="paymentMethodsHref"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
-                    >
-                      {{ t("admin.settings.payment.findProvider") }}
-                      <svg
-                        class="mb-0.5 ml-0.5 inline h-3 w-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                    </a>
                   </p>
                 </div>
                 <!-- Row 5: Help image + text -->
@@ -8893,6 +8927,100 @@
               </div>
             </div>
           </div>
+
+          <!-- Account Balance Low Notification (upstream / CN payg) -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.accountBalanceNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.accountBalanceNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <label
+                  class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >{{ t("admin.settings.accountBalanceNotify.enabled") }}</label
+                >
+                <Toggle v-model="form.account_balance_low_notify_enabled" />
+              </div>
+              <div v-if="form.account_balance_low_notify_enabled" class="space-y-4">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >{{ t("admin.settings.accountBalanceNotify.threshold") }}</label
+                  >
+                  <input
+                    v-model.number="form.account_balance_low_notify_threshold"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.accountBalanceNotify.thresholdHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >{{ t("admin.settings.accountBalanceNotify.emails") }}</label
+                  >
+                  <div class="space-y-2">
+                    <div
+                      v-for="(entry, index) in form.account_balance_low_notify_emails ||
+                      []"
+                      :key="index"
+                      class="flex items-center gap-2"
+                    >
+                      <label
+                        class="relative inline-flex items-center cursor-pointer shrink-0"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="!entry.disabled"
+                          @change="entry.disabled = !entry.disabled"
+                          class="sr-only peer"
+                        />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                        ></div>
+                      </label>
+                      <input
+                        v-model="entry.email"
+                        type="email"
+                        class="input flex-1"
+                        :placeholder="
+                          t('admin.settings.accountBalanceNotify.emailPlaceholder')
+                        "
+                      />
+                      <button
+                        @click="form.account_balance_low_notify_emails.splice(index, 1)"
+                        class="btn btn-secondary px-2"
+                        type="button"
+                      >
+                        <Icon name="x" size="xs" class="h-4 w-4" />
+                      </button>
+                    </div>
+                    <button
+                      @click="addAccountBalanceNotifyEmail"
+                      class="btn btn-secondary btn-sm"
+                      type="button"
+                    >
+                      + {{ t("admin.settings.accountBalanceNotify.addEmail") }}
+                    </button>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.accountBalanceNotify.emailsHint") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -9076,18 +9204,6 @@ const isZhLocale = computed(() => locale.value.startsWith("zh"));
 function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
 }
-
-const paymentGuideHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
-);
-
-const paymentMethodsHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
-);
 
 type SettingsTab =
   | "general"
@@ -9806,6 +9922,10 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  footer_icp_number: "",
+  footer_icp_url: "",
+  footer_psb_number: "",
+  footer_psb_url: "",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -10041,6 +10161,9 @@ const form = reactive<SettingsForm>({
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
+  account_balance_low_notify_enabled: false,
+  account_balance_low_notify_threshold: 0,
+  account_balance_low_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_mode: 'v1' as 'v1' | 'v2',
@@ -10697,6 +10820,17 @@ const addQuotaNotifyEmail = () => {
     form.account_quota_notify_emails = [];
   }
   form.account_quota_notify_emails.push({
+    email: "",
+    disabled: false,
+    verified: true,
+  });
+};
+
+const addAccountBalanceNotifyEmail = () => {
+  if (!form.account_balance_low_notify_emails) {
+    form.account_balance_low_notify_emails = [];
+  }
+  form.account_balance_low_notify_emails.push({
     email: "",
     disabled: false,
     verified: true,
@@ -11513,6 +11647,10 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      footer_icp_number: form.footer_icp_number,
+      footer_icp_url: form.footer_icp_url,
+      footer_psb_number: form.footer_psb_number,
+      footer_psb_url: form.footer_psb_url,
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
@@ -11774,6 +11912,12 @@ async function saveSettings() {
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
+      ).filter((e) => e.email.trim() !== ""),
+      account_balance_low_notify_enabled: form.account_balance_low_notify_enabled,
+      account_balance_low_notify_threshold:
+        Number(form.account_balance_low_notify_threshold) || 0,
+      account_balance_low_notify_emails: (
+        form.account_balance_low_notify_emails || []
       ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
       channel_monitor_enabled: form.channel_monitor_enabled,

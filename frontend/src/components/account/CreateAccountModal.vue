@@ -1160,6 +1160,50 @@
             :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
           />
         </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-group-antigravity">
+            {{ t('admin.accounts.upstreamBilling.upstreamGroup') }}
+          </label>
+          <input
+            id="create-upstream-group-antigravity"
+            v-model="upstreamGroup"
+            type="text"
+            class="input font-mono"
+            data-testid="upstream-group-antigravity"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamGroupPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamGroupHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-rate-antigravity">
+            {{ t('admin.accounts.upstreamBilling.upstreamRateMultiplier') }}
+          </label>
+          <input
+            id="create-upstream-rate-antigravity"
+            v-model="upstreamRateMultiplier"
+            type="text"
+            inputmode="decimal"
+            class="input font-mono"
+            data-testid="upstream-rate-multiplier-antigravity"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamRateMultiplierPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamRateMultiplierHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-access-token-antigravity">
+            {{ t('admin.accounts.upstreamBilling.upstreamAccessToken') }}
+          </label>
+          <input
+            id="create-upstream-access-token-antigravity"
+            v-model="upstreamAccessToken"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            data-testid="upstream-access-token-antigravity"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamAccessTokenPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamAccessTokenHint') }}</p>
+        </div>
       </div>
 
       <!-- Vertex Service Account -->
@@ -1431,6 +1475,12 @@
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <AccountAPIKeyPoolEditor
+          v-model:strategy="apiKeyStrategy"
+          v-model:primary-weight="apiKeyPrimaryWeight"
+          v-model:extras="apiKeyExtras"
+          mode="create"
+        />
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
@@ -1447,6 +1497,66 @@
             data-testid="upstream-billing-auto-probe"
             :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
           />
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-group">
+            {{ t('admin.accounts.upstreamBilling.upstreamGroup') }}
+          </label>
+          <input
+            id="create-upstream-group"
+            v-model="upstreamGroup"
+            type="text"
+            class="input font-mono"
+            data-testid="upstream-group"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamGroupPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamGroupHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-rate">
+            {{ t('admin.accounts.upstreamBilling.upstreamRateMultiplier') }}
+          </label>
+          <input
+            id="create-upstream-rate"
+            v-model="upstreamRateMultiplier"
+            type="text"
+            inputmode="decimal"
+            class="input font-mono"
+            data-testid="upstream-rate-multiplier"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamRateMultiplierPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamRateMultiplierHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-upstream-access-token">
+            {{ t('admin.accounts.upstreamBilling.upstreamAccessToken') }}
+          </label>
+          <input
+            id="create-upstream-access-token"
+            v-model="upstreamAccessToken"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            data-testid="upstream-access-token"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamAccessTokenPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamAccessTokenHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="create-balance-probe-source">
+            {{ t('admin.accounts.upstreamBalance.source') }}
+          </label>
+          <select
+            id="create-balance-probe-source"
+            v-model="balanceProbeSource"
+            class="input"
+            data-testid="balance-probe-source"
+          >
+            <option value="">{{ t('admin.accounts.upstreamBalance.sourceNone') }}</option>
+            <option value="sub2api">{{ t('admin.accounts.upstreamBalance.sourceSub2API') }}</option>
+            <option value="newapi">{{ t('admin.accounts.upstreamBalance.sourceNewAPI') }}</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.upstreamBalance.sourceHint') }}</p>
         </div>
 
         <!-- Gemini API Key tier selection -->
@@ -2601,6 +2711,11 @@
           </button>
         </div>
       </div>
+
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
 
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
@@ -3955,10 +4070,20 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import AccountAPIKeyPoolEditor from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import type { APIKeyExtraDraft } from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import { applyAPIKeyPool } from '@/utils/apiKeyPool'
+import {
+  applyAvailabilityScheduleToExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
+  applyBalanceProbeSource,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
   cloneOpenCodeGoProtocolRules,
@@ -4171,7 +4296,14 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const apiKeyStrategy = ref<'round_robin' | 'weighted'>('round_robin')
+const apiKeyPrimaryWeight = ref(1)
+const apiKeyExtras = ref<APIKeyExtraDraft[]>([])
 const upstreamBillingAutoProbeEnabled = ref(true)
+const upstreamGroup = ref('')
+const upstreamRateMultiplier = ref('')
+const upstreamAccessToken = ref('')
+const balanceProbeSource = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
@@ -4443,6 +4575,22 @@ const validateGrokOAuthUpstreamConfig = (): boolean => {
 }
 
 // 把已通过校验的自定义上游地址与请求头覆写写入 credentials
+const applyUpstreamBillingCredentials = (credentials: Record<string, unknown>) => {
+  const trimmedUpstreamGroup = upstreamGroup.value.trim()
+  if (trimmedUpstreamGroup) {
+    credentials.upstream_group = trimmedUpstreamGroup
+  }
+  const trimmedRate = upstreamRateMultiplier.value.trim()
+  if (trimmedRate) {
+    credentials.upstream_rate_multiplier = trimmedRate
+  }
+  const trimmedAccessToken = upstreamAccessToken.value.trim()
+  if (trimmedAccessToken) {
+    credentials.upstream_access_token = trimmedAccessToken
+  }
+  applyBalanceProbeSource(credentials, balanceProbeSource.value, 'create')
+}
+
 const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
   if (grokOAuthCustomBaseUrlEnabled.value) {
     credentials.base_url = grokOAuthBaseUrl.value.trim()
@@ -4524,6 +4672,8 @@ const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-antigravity-model-mapping')
@@ -5350,8 +5500,15 @@ const resetForm = () => {
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  apiKeyStrategy.value = 'round_robin'
+  apiKeyPrimaryWeight.value = 1
+  apiKeyExtras.value = []
   upstreamRequestIdHeader.value = ''
   upstreamBillingAutoProbeEnabled.value = true
+  upstreamGroup.value = ''
+  upstreamRateMultiplier.value = ''
+  upstreamAccessToken.value = ''
+  balanceProbeSource.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5429,6 +5586,8 @@ const resetForm = () => {
   vertexLocation.value = 'global'
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
+  availabilityScheduleEnabled.value = false
+  availabilityScheduleRules.value = []
   geminiOAuthType.value = 'code_assist'
   geminiTierGoogleOne.value = 'google_one_free'
   geminiTierGcp.value = 'gcp_standard'
@@ -5564,6 +5723,30 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  const scheduleErrorCode = validateAvailabilityScheduleRules(
+    availabilityScheduleEnabled.value,
+    availabilityScheduleRules.value
+  )
+  if (scheduleErrorCode) {
+    const message =
+      scheduleErrorCode === 'empty'
+        ? t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+        : scheduleErrorCode === 'time'
+          ? t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+          : scheduleErrorCode === 'weekdays'
+            ? t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+            : t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    appStore.showError(message)
+    return
+  }
+  const extra: Record<string, unknown> = { ...(payload.extra || {}) }
+  applyAvailabilityScheduleToExtra(
+    extra,
+    availabilityScheduleEnabled.value,
+    availabilityScheduleRules.value
+  )
+  payload = { ...payload, extra }
+
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })
@@ -5752,6 +5935,7 @@ const handleSubmit = async () => {
       base_url: upstreamBaseUrl.value.trim(),
       api_key: upstreamApiKey.value.trim()
     }
+    applyUpstreamBillingCredentials(credentials)
 
     // Antigravity 只使用映射模式
     const antigravityModelMapping = buildModelMappingObject(
@@ -5798,6 +5982,10 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (apiKeyExtras.value.some((item) => !item.key.trim())) {
+    appStore.showError(t('admin.accounts.apiKeyPool.keyRequired'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5815,6 +6003,16 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  applyUpstreamBillingCredentials(credentials)
+  const poolExtras = apiKeyExtras.value.filter((item) => item.key.trim())
+  if (poolExtras.length > 0) {
+    applyAPIKeyPool(credentials, {
+      strategy: apiKeyStrategy.value,
+      primaryKey: apiKeyValue.value.trim(),
+      primaryWeight: apiKeyPrimaryWeight.value,
+      extras: poolExtras
+    })
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
