@@ -88,7 +88,8 @@ func TestParseKimiUsageTiers(t *testing.T) {
 		],
 		"usage": {"limit": 10000, "remaining": 4000, "resetTime": "2026-08-18T00:00:00Z"}
 	}`)
-	tiers := parseKimiUsageTiers(body)
+	tiers, err := parseKimiUsageTiers(body)
+	require.NoError(t, err)
 	require.Len(t, tiers, 2)
 	require.Equal(t, "5h", tiers[0].Window)
 	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9) // (1000-600)/1000*100
@@ -98,11 +99,44 @@ func TestParseKimiUsageTiers(t *testing.T) {
 	require.Equal(t, "2026-08-18T00:00:00Z", tiers[1].ResetAt)
 }
 
-// TestParseKimiUsageTiers_LimitZero 不应除零：limit=0 → utilization=0。
+// TestParseKimiUsageTiers_LimitZero limit<=0 没有可用分母：以前会静默产出一条
+// 0% 的假窗口（并把真实快照覆盖掉），现在按「窗口已声明但字段非法」判解析失败。
 func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"limits":[{"detail":{"limit":0,"remaining":0,"resetTime":"2026-08-14T15:00:00Z"}}]}`)
-	tiers := parseKimiUsageTiers(body)
+	tiers, err := parseKimiUsageTiers(body)
+	require.Error(t, err)
+	require.Empty(t, tiers)
+	require.Contains(t, err.Error(), "kimi 5h window")
+	require.Contains(t, err.Error(), `"limit"`)
+}
+
+// 声明了 usage / detail 但字段缺失 → 解析失败；没声明 → 窗口缺席，正常返回。
+func TestParseKimiUsageTiers_DeclaredButInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseKimiUsageTiers([]byte(`{"usage":{}}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "kimi weekly window")
+
+	_, err = parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"remaining":5,"resetTime":"2026-08-14T15:00:00Z"}}]}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "kimi 5h window")
+
+	_, err = parseKimiUsageTiers([]byte(`{"usage":{"limit":100,"remaining":"abc"}}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"remaining"`)
+
+	// 只有 limits，没有 usage：周窗口缺席，不是错误。
+	tiers, err := parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"limit":100,"remaining":40}}]}`))
+	require.NoError(t, err)
+	require.Len(t, tiers, 1)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 60.0, tiers[0].UsedPercent, 1e-9)
+
+	// remaining > limit：仍按 0 已用夹住，不当错误。
+	tiers, err = parseKimiUsageTiers([]byte(`{"usage":{"limit":100,"remaining":140}}`))
+	require.NoError(t, err)
 	require.Len(t, tiers, 1)
 	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
 }
@@ -118,7 +152,8 @@ func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
 			{"type":"TOKENS_LIMIT","unit":3,"percentage":20,"nextResetTime":1700000099999}
 		]
 	}`)
-	tiers := parseZhipuTokenTiers(data)
+	tiers, err := parseZhipuTokenTiers(data)
+	require.NoError(t, err)
 	require.Len(t, tiers, 2)
 	require.Equal(t, "5h", tiers[0].Window)
 	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
@@ -130,7 +165,8 @@ func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
 func TestParseZhipuTokenTiers_SingleTierOldPlan(t *testing.T) {
 	t.Parallel()
 	data := gjson.Parse(`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":15,"nextResetTime":1700000000000}]}`)
-	tiers := parseZhipuTokenTiers(data)
+	tiers, err := parseZhipuTokenTiers(data)
+	require.NoError(t, err)
 	require.Len(t, tiers, 1)
 	require.Equal(t, "5h", tiers[0].Window)
 }
@@ -146,7 +182,8 @@ func TestParseZhipuTokenTiers_FallbackHeuristic(t *testing.T) {
 			{"type":"TOKENS_LIMIT","percentage":10}
 		]
 	}`)
-	tiers := parseZhipuTokenTiers(data)
+	tiers, err := parseZhipuTokenTiers(data)
+	require.NoError(t, err)
 	require.Len(t, tiers, 2)
 	require.Equal(t, "5h", tiers[0].Window)
 	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9) // 无 reset 优先 5h
@@ -158,7 +195,24 @@ func TestParseZhipuTokenTiers_FallbackHeuristic(t *testing.T) {
 func TestParseZhipuTokenTiers_IgnoresNonTokenEntries(t *testing.T) {
 	t.Parallel()
 	data := gjson.Parse(`{"limits":[{"type":"OTHER_LIMIT","unit":3,"percentage":99}]}`)
-	require.Empty(t, parseZhipuTokenTiers(data))
+	tiers, err := parseZhipuTokenTiers(data)
+	require.NoError(t, err)
+	require.Empty(t, tiers)
+}
+
+// 条目声明了窗口却没有 percentage：以前当 0% 用（把真实用量抹平），现在判解析失败。
+func TestParseZhipuTokenTiers_MissingPercentage(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"nextResetTime":1700000000000}]}`)
+	tiers, err := parseZhipuTokenTiers(data)
+	require.Error(t, err)
+	require.Empty(t, tiers)
+	require.Contains(t, err.Error(), "zhipu 5h window")
+	require.Contains(t, err.Error(), `"percentage"`)
+
+	negative := gjson.Parse(`{"limits":[{"type":"CREDIT_LIMIT","percentage":-1}]}`)
+	_, err = parseZhipuTokenTiers(negative)
+	require.Error(t, err)
 }
 
 // TestCNQuotaExtraUpdates 验证 tier 列表落 Extra 快照键的 provider 前缀与窗口映射。
@@ -186,7 +240,8 @@ func TestParseOpenCodeGoUsageTiers(t *testing.T) {
 			"monthly": {"percent": 22.2, "resetsAt": "2026-10-01T00:00:00Z"}
 		}
 	}`)
-	tiers := parseOpenCodeGoUsageTiers(body)
+	tiers, err := parseOpenCodeGoUsageTiers(body)
+	require.NoError(t, err)
 	require.Len(t, tiers, 3)
 	require.Equal(t, "5h", tiers[0].Window)
 	require.Equal(t, 12.5, tiers[0].UsedPercent)
@@ -202,7 +257,27 @@ func TestParseOpenCodeGoUsageTiers(t *testing.T) {
 	require.Equal(t, 22.2, updates["opencode_go_monthly_used_percent"])
 	require.Equal(t, "2026-10-01T00:00:00Z", updates["opencode_go_monthly_reset_at"])
 
-	require.Empty(t, parseOpenCodeGoUsageTiers([]byte(`{"ok":true}`)))
+	// usage 容器缺失 → 解析失败（容器校验也会先拦一道）。
+	_, err = parseOpenCodeGoUsageTiers([]byte(`{"ok":true}`))
+	require.Error(t, err)
+}
+
+// 节点存在但 percent 缺失 → 解析失败；节点不存在 → 窗口缺席。
+func TestParseOpenCodeGoUsageTiers_DeclaredButInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseOpenCodeGoUsageTiers([]byte(`{"usage":{"rolling":{"percent":10},"weekly":{}}}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "opencode_go weekly window")
+	require.Contains(t, err.Error(), `"percent"`)
+
+	_, err = parseOpenCodeGoUsageTiers([]byte(`{"usage":{"rolling":{"percent":-5}}}`))
+	require.Error(t, err)
+
+	tiers, err := parseOpenCodeGoUsageTiers([]byte(`{"usage":{"rolling":{"percent":10,"resetsAt":"2026-09-07T12:00:00Z"}}}`))
+	require.NoError(t, err)
+	require.Len(t, tiers, 1)
+	require.Equal(t, "5h", tiers[0].Window)
 }
 
 // TestCNProviderResponseIndicatesInsufficientBalance 覆盖中英文余额不足文案与否定用例。
@@ -290,7 +365,8 @@ func TestParseMiniMaxUsageTiers(t *testing.T) {
 			}
 		]
 	}`)
-	tiers := parseMiniMaxUsageTiers(body)
+	tiers, err := parseMiniMaxUsageTiers(body)
+	require.NoError(t, err)
 	require.Len(t, tiers, 2)
 	require.Equal(t, "5h", tiers[0].Window)
 	require.InDelta(t, 75, tiers[0].UsedPercent, 1e-9)
@@ -299,7 +375,7 @@ func TestParseMiniMaxUsageTiers(t *testing.T) {
 	require.InDelta(t, 60, tiers[1].UsedPercent, 1e-9)
 	require.Equal(t, time.UnixMilli(weeklyEndMs).UTC().Format(time.RFC3339), tiers[1].ResetAt)
 
-	noWeekly := parseMiniMaxUsageTiers([]byte(`{
+	noWeekly, err := parseMiniMaxUsageTiers([]byte(`{
 		"model_remains": [{
 			"model_name": "general",
 			"current_interval_remaining_percent": 80,
@@ -308,11 +384,32 @@ func TestParseMiniMaxUsageTiers(t *testing.T) {
 			"current_weekly_remaining_percent": 10
 		}]
 	}`))
+	require.NoError(t, err)
 	require.Len(t, noWeekly, 1)
 	require.Equal(t, "5h", noWeekly[0].Window)
 	require.InDelta(t, 20, noWeekly[0].UsedPercent, 1e-9)
 
-	require.Nil(t, parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video","current_interval_remaining_percent":5}]}`)))
+	// 没有 general 条目：容器在但不是编程套餐载荷 → 解析失败。
+	_, err = parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video","current_interval_remaining_percent":5}]}`))
+	require.Error(t, err)
+}
+
+// 周限额已开启（status==1）却读不到百分比 → 解析失败，不能把周窗口悄悄丢掉。
+func TestParseMiniMaxUsageTiers_DeclaredButInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseMiniMaxUsageTiers([]byte(`{"model_remains":[{
+		"model_name":"general",
+		"current_interval_remaining_percent":80,
+		"current_weekly_status":1
+	}]}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "minimax weekly window")
+	require.Contains(t, err.Error(), `"current_weekly_remaining_percent"`)
+
+	_, err = parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"general","current_weekly_status":0}]}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "minimax 5h window")
 }
 
 func TestGetCodingPlanProvider_MiniMax(t *testing.T) {

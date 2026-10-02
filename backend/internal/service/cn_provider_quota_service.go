@@ -223,6 +223,14 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		return result, nil
 	}
 
+	// HTTP 2xx 但响应体不是合法 JSON：中间网关的错误页、登录跳转、WAF 拦截页都长这样。
+	// 这类响应绝不能当成「成功但窗口全没了」——cnQuotaExtraUpdates 会把缺席的窗口置空，
+	// 等于用一个垃圾响应抹掉有效快照（阈值停调也会跟着解除）。
+	if !gjson.ValidBytes(bodyBytes) {
+		result.Error = cnQuotaInvalidResponseError("response body is not valid JSON")
+		return result, nil
+	}
+
 	// 智谱业务级错误（HTTP 2xx 但 success=false）。
 	if provider == PlatformZhipu {
 		if success := gjson.GetBytes(bodyBytes, "success"); success.Exists() && !success.Bool() {
@@ -235,17 +243,10 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		}
 	}
 
-	var tiers []CNQuotaTier
-	switch provider {
-	case PlatformKimi:
-		tiers = parseKimiUsageTiers(bodyBytes)
-	case PlatformOpenCodeGo:
-		tiers = parseOpenCodeGoUsageTiers(bodyBytes)
-		result.PlanLevel = "OpenCode Go"
-	case PlatformZhipu:
-		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
-		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
-	case PlatformMiniMax:
+	// MiniMax 业务级错误（HTTP 2xx 但 base_resp.status_code != 0）。
+	// 与智谱一样放在结构校验之前：业务错误响应本来就没有 model_remains，
+	// 应该回原始错误文案而不是笼统的「结构不对」。
+	if provider == PlatformMiniMax {
 		if status := gjson.GetBytes(bodyBytes, "base_resp.status_code"); status.Exists() && status.Int() != 0 {
 			msg := strings.TrimSpace(gjson.GetBytes(bodyBytes, "base_resp.status_msg").String())
 			if msg == "" {
@@ -254,9 +255,48 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			result.Error = fmt.Sprintf("API error (%d): %s", status.Int(), msg)
 			return result, nil
 		}
-		tiers = parseMiniMaxUsageTiers(bodyBytes)
+	}
+
+	// 合法 JSON 但没有解析器要读的容器：同样不可信，不落快照。
+	if issue := cnQuotaResponseShapeIssue(provider, bodyBytes); issue != "" {
+		result.Error = cnQuotaInvalidResponseError(issue)
+		return result, nil
+	}
+
+	var (
+		tiers    []CNQuotaTier
+		parseErr error
+	)
+	switch provider {
+	case PlatformKimi:
+		tiers, parseErr = parseKimiUsageTiers(bodyBytes)
+	case PlatformOpenCodeGo:
+		tiers, parseErr = parseOpenCodeGoUsageTiers(bodyBytes)
+		result.PlanLevel = "OpenCode Go"
+	case PlatformZhipu:
+		tiers, parseErr = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
+		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
+	case PlatformMiniMax:
+		tiers, parseErr = parseMiniMaxUsageTiers(bodyBytes)
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "current_subscribe_title").String())
 	}
+	// 窗口已声明但字段读不出来：与「结构不对」同等对待——报错、不落快照。
+	// 缺席的窗口（节点根本没声明）不会走到这里，仍然按正常成功路径被清理。
+	if parseErr != nil {
+		result.Error = cnQuotaInvalidResponseError(parseErr.Error())
+		return result, nil
+	}
+
+	// 兜底：结构看着对，却一个窗口都没解析出来。Coding Plan 账号不存在「零窗口」
+	// 这种正常状态（额度窗口与用量无关，0% 也会下发），所以这多半是上游改了字段名
+	// 或回了空壳。这种响应不落快照，避免把有效快照清成空。
+	// 真正需要支持的「窗口被取消」场景（如 MiniMax 关掉周限额）仍然有其它档位，
+	// tiers 非空，照常走 cnQuotaExtraUpdates 的显式清理。
+	if len(tiers) == 0 {
+		result.Error = cnQuotaInvalidResponseError("no usage window parsed from the response")
+		return result, nil
+	}
+
 	result.Tiers = tiers
 	result.Success = true
 	result.CredentialValid = true
@@ -268,6 +308,48 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		result.Persisted = true
 	}
 	return result, nil
+}
+
+// cnQuotaInvalidResponseError 拼接「响应不可信」的错误文案（带机器可读前缀）。
+func cnQuotaInvalidResponseError(detail string) string {
+	msg := "CN_QUOTA_INVALID_RESPONSE: unexpected upstream payload"
+	if detail == "" {
+		return msg
+	}
+	return msg + " (" + detail + ")"
+}
+
+// cnQuotaResponseShapeIssue 校验 2xx 响应体是否具备该供应商解析器要读的容器，
+// 返回空串表示结构可用。路径与各 parse*UsageTiers 保持一一对应。
+func cnQuotaResponseShapeIssue(provider string, body []byte) string {
+	switch provider {
+	case PlatformKimi:
+		// parseKimiUsageTiers：limits[].detail → 5h，usage → 周窗口，有其一即可解析。
+		if gjson.GetBytes(body, "limits").IsArray() || gjson.GetBytes(body, "usage").IsObject() {
+			return ""
+		}
+		return `missing "limits" array and "usage" object`
+	case PlatformOpenCodeGo:
+		// parseOpenCodeGoUsageTiers：usage.{rolling,weekly,monthly}。
+		if gjson.GetBytes(body, "usage").IsObject() {
+			return ""
+		}
+		return `missing "usage" object`
+	case PlatformZhipu:
+		// parseZhipuTokenTiers：data.limits[]。
+		if gjson.GetBytes(body, "data.limits").IsArray() {
+			return ""
+		}
+		return `missing "data.limits" array`
+	case PlatformMiniMax:
+		// parseMiniMaxUsageTiers：model_remains[]。
+		if gjson.GetBytes(body, "model_remains").IsArray() {
+			return ""
+		}
+		return `missing "model_remains" array`
+	default:
+		return "unsupported coding plan provider"
+	}
 }
 
 func (s *CNProviderQuotaService) loadCodingPlanAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -355,59 +437,109 @@ func zhipuQuotaHost(baseURL string) string {
 	}
 }
 
+// cnQuotaParseError 表示「窗口已声明，但必需字段缺失/非法」。
+//
+// 关键区分：
+//   - 窗口压根没声明 → 视为缺席，正常返回，cnQuotaExtraUpdates 会把该窗口清掉；
+//   - 窗口声明了但字段读不出来 → 整次探测判失败，不落快照，保留旧快照。
+//
+// 否则一个字段缺失就会被当成「0% 或窗口消失」，把 90% 的有效快照抹掉、
+// 顺带解除阈值停调。
+type cnQuotaParseError struct {
+	Provider string
+	Window   string
+	Field    string
+	Reason   string
+}
+
+func (e *cnQuotaParseError) Error() string {
+	scope := e.Provider + " payload"
+	if e.Window != "" {
+		scope = fmt.Sprintf("%s %s window", e.Provider, e.Window)
+	}
+	return fmt.Sprintf("%s: field %q %s", scope, e.Field, e.Reason)
+}
+
+func cnQuotaFieldError(provider, window, field, reason string) error {
+	return &cnQuotaParseError{Provider: provider, Window: window, Field: field, Reason: reason}
+}
+
+const (
+	cnQuotaReasonPositiveNumber = "is missing or not a positive number"
+	cnQuotaReasonNonNegative    = "is missing or not a non-negative number"
+)
+
+// cnRequiredNonNegative 读取一个必须存在且 >= 0 的数值字段。
+func cnRequiredNonNegative(node gjson.Result, provider, window, field string) (float64, error) {
+	value, ok := cnParseF64(node.Get(field).Value())
+	if !ok || value < 0 {
+		return 0, cnQuotaFieldError(provider, window, field, cnQuotaReasonNonNegative)
+	}
+	return value, nil
+}
+
 // parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。
 //
 //   - limits[].detail.{limit,remaining,resetTime} → 5h 窗口（取首个 detail）
 //   - usage.{limit,remaining,resetTime} → 周窗口
 //
 // utilization = (limit-remaining)/limit*100。
-func parseKimiUsageTiers(body []byte) []CNQuotaTier {
+// detail / usage 未声明 → 该窗口缺席；声明了但 limit/remaining 读不出来 → 解析失败。
+func parseKimiUsageTiers(body []byte) ([]CNQuotaTier, error) {
 	var tiers []CNQuotaTier
 
+	var fiveHourErr error
 	if limits := gjson.GetBytes(body, "limits"); limits.IsArray() {
 		limits.ForEach(func(_, item gjson.Result) bool {
 			detail := item.Get("detail")
 			if !detail.Exists() {
-				return true
+				return true // 没有 detail 的条目跳过，继续找下一个
 			}
-			limit, _ := cnParseF64(detail.Get("limit").Value())
-			remaining, _ := cnParseF64(detail.Get("remaining").Value())
-			used := limit - remaining
-			if used < 0 {
-				used = 0
+			tier, err := kimiWindowTier(detail, "5h")
+			if err != nil {
+				fiveHourErr = err
+				return false
 			}
-			var util float64
-			if limit > 0 {
-				util = used / limit * 100
-			}
-			tiers = append(tiers, CNQuotaTier{
-				Window:      "5h",
-				UsedPercent: util,
-				ResetAt:     cnNormalizeResetTime(detail.Get("resetTime").Value()),
-			})
+			tiers = append(tiers, tier)
 			return false // 取首个 detail 作为 5h 窗口
 		})
 	}
-
-	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
-		limit, _ := cnParseF64(usage.Get("limit").Value())
-		remaining, _ := cnParseF64(usage.Get("remaining").Value())
-		used := limit - remaining
-		if used < 0 {
-			used = 0
-		}
-		var util float64
-		if limit > 0 {
-			util = used / limit * 100
-		}
-		tiers = append(tiers, CNQuotaTier{
-			Window:      "weekly",
-			UsedPercent: util,
-			ResetAt:     cnNormalizeResetTime(usage.Get("resetTime").Value()),
-		})
+	if fiveHourErr != nil {
+		return nil, fiveHourErr
 	}
 
-	return tiers
+	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
+		tier, err := kimiWindowTier(usage, "weekly")
+		if err != nil {
+			return nil, err
+		}
+		tiers = append(tiers, tier)
+	}
+
+	return tiers, nil
+}
+
+// kimiWindowTier 从 {limit, remaining, resetTime} 构造窗口。
+// limit 必须 > 0：limit<=0 没有可用的分母，旧实现会静默产出一条 0% 的假窗口。
+// remaining > limit 仍按 0 已用夹住（上游偶发的超发值，不当错误）。
+func kimiWindowTier(node gjson.Result, window string) (CNQuotaTier, error) {
+	limit, ok := cnParseF64(node.Get("limit").Value())
+	if !ok || limit <= 0 {
+		return CNQuotaTier{}, cnQuotaFieldError(PlatformKimi, window, "limit", cnQuotaReasonPositiveNumber)
+	}
+	remaining, err := cnRequiredNonNegative(node, PlatformKimi, window, "remaining")
+	if err != nil {
+		return CNQuotaTier{}, err
+	}
+	used := limit - remaining
+	if used < 0 {
+		used = 0
+	}
+	return CNQuotaTier{
+		Window:      window,
+		UsedPercent: used / limit * 100,
+		ResetAt:     cnNormalizeResetTime(node.Get("resetTime").Value()),
+	}, nil
 }
 
 // parseMiniMaxUsageTiers 解析 MiniMax Token Plan / Coding Plan remains 响应。
@@ -416,10 +548,13 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 // 展示已用 = 100 - remaining：
 //   - 5h：current_interval_remaining_percent + end_time
 //   - 周限额：仅 current_weekly_status == 1 时用 current_weekly_remaining_percent + weekly_end_time
-func parseMiniMaxUsageTiers(body []byte) []CNQuotaTier {
+//
+// current_weekly_status != 1 → 周限额未开启（窗口缺席，不是错误）；
+// 开启了却读不到 current_weekly_remaining_percent → 解析失败，不落快照。
+func parseMiniMaxUsageTiers(body []byte) ([]CNQuotaTier, error) {
 	remains := gjson.GetBytes(body, "model_remains")
 	if !remains.IsArray() {
-		return nil
+		return nil, cnQuotaFieldError(PlatformMiniMax, "", "model_remains", "is missing or not an array")
 	}
 	var general gjson.Result
 	remains.ForEach(func(_, item gjson.Result) bool {
@@ -429,36 +564,35 @@ func parseMiniMaxUsageTiers(body []byte) []CNQuotaTier {
 		}
 		return true
 	})
+	// 容器校验已确认这是一份额度响应，却没有编程套餐条目 → 结构不可信。
 	if !general.Exists() {
-		return nil
+		return nil, cnQuotaFieldError(PlatformMiniMax, "", `model_remains[model_name="general"]`, "is missing")
 	}
 
 	var tiers []CNQuotaTier
-	if remaining, ok := cnParseF64(general.Get("current_interval_remaining_percent").Value()); ok {
-		used := 100 - remaining
-		if used < 0 {
-			used = 0
-		}
-		tiers = append(tiers, CNQuotaTier{
-			Window:      "5h",
-			UsedPercent: used,
-			ResetAt:     minimaxResetTime(general.Get("end_time")),
-		})
+	remaining, err := cnRequiredNonNegative(general, PlatformMiniMax, "5h", "current_interval_remaining_percent")
+	if err != nil {
+		return nil, err
 	}
+	tiers = append(tiers, minimaxTier("5h", remaining, general.Get("end_time")))
+
 	if general.Get("current_weekly_status").Int() == 1 {
-		if remaining, ok := cnParseF64(general.Get("current_weekly_remaining_percent").Value()); ok {
-			used := 100 - remaining
-			if used < 0 {
-				used = 0
-			}
-			tiers = append(tiers, CNQuotaTier{
-				Window:      "weekly",
-				UsedPercent: used,
-				ResetAt:     minimaxResetTime(general.Get("weekly_end_time")),
-			})
+		weeklyRemaining, err := cnRequiredNonNegative(general, PlatformMiniMax, "weekly", "current_weekly_remaining_percent")
+		if err != nil {
+			return nil, err
 		}
+		tiers = append(tiers, minimaxTier("weekly", weeklyRemaining, general.Get("weekly_end_time")))
 	}
-	return tiers
+	return tiers, nil
+}
+
+// minimaxTier 把「剩余百分比」换算成已用百分比（上游偶发 >100 的剩余值夹到 0 已用）。
+func minimaxTier(window string, remainingPercent float64, resetNode gjson.Result) CNQuotaTier {
+	used := 100 - remainingPercent
+	if used < 0 {
+		used = 0
+	}
+	return CNQuotaTier{Window: window, UsedPercent: used, ResetAt: minimaxResetTime(resetNode)}
 }
 
 func minimaxResetTime(v gjson.Result) string {
@@ -509,7 +643,7 @@ func classifyZhipuWindowUnit(unit int64) cnZhipuWindow {
 // 只让 TOKENS_LIMIT 参与 5h/weekly 槽位竞争，避免信用额度百分比污染阈值停调
 // 快照；仅当无任何 TOKENS_LIMIT 条目时才降级用 CREDIT_LIMIT 展示。
 // 老套餐只回 1 条 TOKENS_LIMIT，自然降级为仅 5h；新套餐回 2 条。
-func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
+func parseZhipuTokenTiers(data gjson.Result) ([]CNQuotaTier, error) {
 	type entry struct {
 		resetMs    int64
 		hasReset   bool
@@ -545,14 +679,17 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 	var creditFallback []entry
 	hasTokensLimit := false
 
+	var parseErr error
 	data.Get("limits").ForEach(func(_, item gjson.Result) bool {
 		limitType := strings.ToUpper(strings.TrimSpace(item.Get("type").String()))
 		if limitType != "TOKENS_LIMIT" && limitType != "CREDIT_LIMIT" {
-			return true
+			return true // 其它 limit 类型本来就不参与窗口，跳过不算错
 		}
-		percentage := 0.0
-		if p, ok := cnParseF64(item.Get("percentage").Value()); ok {
-			percentage = p
+		// 条目已经声明了窗口，percentage 读不出来就不能当 0% 用：那会把真实用量抹平。
+		percentage, err := cnRequiredNonNegative(item, PlatformZhipu, zhipuWindowLabel(item), "percentage")
+		if err != nil {
+			parseErr = err
+			return false
 		}
 		var (
 			resetMs  int64
@@ -579,6 +716,9 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 		}
 		return true
 	})
+	if parseErr != nil {
+		return nil, parseErr
+	}
 
 	// 无任何 TOKENS_LIMIT 条目（部分套餐只报信用额度）：降级用 CREDIT_LIMIT 展示。
 	if !hasTokensLimit {
@@ -608,13 +748,42 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 	if weeklySet {
 		tiers = append(tiers, CNQuotaTier{Window: "weekly", UsedPercent: weekly.percentage, ResetAt: weekly.resetISO})
 	}
-	return tiers
+	return tiers, nil
+}
+
+// zhipuWindowLabel 给错误信息用的窗口名：unit 能判就报 5h/weekly，
+// 判不出来就留空（此时条目还没进槽位，报「payload」更诚实）。
+func zhipuWindowLabel(item gjson.Result) string {
+	switch classifyZhipuWindowUnit(item.Get("unit").Int()) {
+	case cnZhipuWindow5h:
+		return "5h"
+	case cnZhipuWindowWeekly:
+		return "weekly"
+	default:
+		return ""
+	}
 }
 
 // cnQuotaExtraUpdates 根据 tier 列表构造 provider 维度的 Extra 快照更新。
+//
+// 探测成功后的快照必须与本次返回的窗口集合完全一致：先把 5h / weekly / monthly
+// 三组键一律置空，再用本次 tiers 覆盖。否则上游停发某个窗口
+// （如 MiniMax current_weekly_status != 1、智谱换套餐）后，旧值会永远留在 extra 里，
+// 继续被展示、继续参与阈值停调。
+//
+// 这里用 nil 而不是删键：UpdateExtra 走 JSONB `extra || $1::jsonb` 合并，删不掉键，
+// nil 会写成 JSON null。读侧（cnThresholdCandidate / cnProviderQuotaSnapshotReset /
+// 前端 CNProviderQuotaCell）统一把 null 当作「窗口不存在」。
+// 注意：只有探测成功才会走到这里，失败路径不落快照，旧值原样保留。
 func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) map[string]any {
 	updates := map[string]any{
 		cnExtraKey(provider, cnExtraSuffixUsageUpdated): now.Format(time.RFC3339),
+		cnExtraKey(provider, cnExtraSuffix5hUsed):       nil,
+		cnExtraKey(provider, cnExtraSuffix5hReset):      nil,
+		cnExtraKey(provider, cnExtraSuffixWeeklyUsed):   nil,
+		cnExtraKey(provider, cnExtraSuffixWeeklyReset):  nil,
+		cnExtraKey(provider, cnExtraSuffixMonthlyUsed):  nil,
+		cnExtraKey(provider, cnExtraSuffixMonthlyReset): nil,
 	}
 	for _, t := range tiers {
 		switch t.Window {
@@ -645,10 +814,11 @@ func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) ma
 //	{ "usage": { "rolling": {percent, resetsAt}, "weekly": {...}, "monthly": {...} } }
 //
 // percent 为已用百分比（0-100）；rolling 映射为 5h 窗口。
-func parseOpenCodeGoUsageTiers(body []byte) []CNQuotaTier {
+// 窗口节点不存在 → 该窗口缺席；节点在但 percent 读不出来 → 解析失败，不落快照。
+func parseOpenCodeGoUsageTiers(body []byte) ([]CNQuotaTier, error) {
 	usage := gjson.GetBytes(body, "usage")
 	if !usage.Exists() {
-		return nil
+		return nil, cnQuotaFieldError(PlatformOpenCodeGo, "", "usage", "is missing")
 	}
 	var tiers []CNQuotaTier
 	for _, item := range []struct {
@@ -663,16 +833,9 @@ func parseOpenCodeGoUsageTiers(body []byte) []CNQuotaTier {
 		if !node.Exists() {
 			continue
 		}
-		percentNode := node.Get("percent")
-		if !percentNode.Exists() {
-			continue
-		}
-		used, ok := cnParseF64(percentNode.Value())
-		if !ok {
-			continue
-		}
-		if used < 0 {
-			used = 0
+		used, err := cnRequiredNonNegative(node, PlatformOpenCodeGo, item.window, "percent")
+		if err != nil {
+			return nil, err
 		}
 		tiers = append(tiers, CNQuotaTier{
 			Window:      item.window,
@@ -680,7 +843,7 @@ func parseOpenCodeGoUsageTiers(body []byte) []CNQuotaTier {
 			ResetAt:     cnNormalizeResetTime(node.Get("resetsAt").Value()),
 		})
 	}
-	return tiers
+	return tiers, nil
 }
 
 // cnParseF64 把 JSON 数值或字符串解析为 float64（兼容 "100" 与 100）。
