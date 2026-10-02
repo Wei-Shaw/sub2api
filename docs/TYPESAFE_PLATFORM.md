@@ -38,7 +38,14 @@
 
 ## 生产信息
 
-- 旧实现的私有迁移 `240_typesafe_platform.sql` 已在生产应用；切到上游后由上游迁移
-  `241_add_typesafe_platform.sql` 承接。
-- 前置条件：`241` 的两个 CHECK 列表缺 `ollama_cloud`，会收窄 ollama_cloud 的配额与 composite 路由约束
-  （有存量行时启动期迁移中止）。该补丁属于 `priv-infra` 叠加层，本分支不改迁移。
+- 旧实现的私有迁移 `240_typesafe_platform.sql` 已在生产应用；`239` 保持原字节，`240` 已应用不可修改（历史
+  源可缺）。切到上游后由上游迁移 `241_add_typesafe_platform.sql` 承接，`241` 保留上游原文、不加 checksum
+  白名单。
+- `241` 的两个 CHECK 列表缺 `ollama_cloud`，会收窄 ollama_cloud 的配额与 composite 路由约束（有存量行时
+  启动期迁移中止）。补救不在 `priv-infra`（那里只有 CI / scripts / 历史清理迁移 `911`），而在独立 feature
+  分支 `feature/ollama-typesafe-migration-compat`（`e2069e629`，仅 origin）：新增
+  `912_restore_ollama_cloud_platform_checks.sql` 与测试，由 integration 重建自动扫描纳入。
+- 空表升级前提：停旧 app → 确认 DB 非 probe、连接数 0、`user_platform_quotas` /
+  `composite_model_routes` 存量行全 0、`241` 未应用且全量 checksum 符合原始 / 已知白名单 → 在 replicas 0
+  打 tag 构建部署 → 恢复 replicas 1 由产品依次应用上游 `241`、`912`，union 校验通过后才对外服务。若已有
+  Ollama 存量行，`912` 救不了先失败的 `241`。
