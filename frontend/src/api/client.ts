@@ -52,7 +52,11 @@ apiClient.interceptors.request.use(
     }
 
     // Attach timezone for all GET requests (backend may use it for default date ranges)
-    if (config.method === 'get') {
+    // Public settings are global and do not depend on the user's timezone. Avoid
+    // adding a needless query parameter so all users share one CDN cache key.
+    const requestURL = String(config.url || '')
+    const isPublicSettingsRequest = requestURL === '/settings/public'
+    if (config.method === 'get' && !isPublicSettingsRequest) {
       if (!config.params) {
         config.params = {}
       }
@@ -60,7 +64,6 @@ apiClient.interceptors.request.use(
     }
 
     if (config.headers) {
-      const requestURL = String(config.url || '')
       if (shouldMarkAdminUIRequest(requestURL)) {
         config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
       }

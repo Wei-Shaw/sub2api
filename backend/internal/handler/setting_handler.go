@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -12,6 +16,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const brandingAssetCacheControl = "public, max-age=31536000, immutable"
+
+// Public settings change infrequently and are safe to share through a CDN.
+// Keep browser and shared-cache lifetimes short enough that admin changes do
+// not remain stale for long, while allowing a CDN to refresh asynchronously.
+const publicSettingsCacheControl = "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
 
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
@@ -43,7 +54,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.PublicSettings{
+	publicSettings := dto.PublicSettings{
 		RegistrationEnabled:                 settings.RegistrationEnabled,
 		EmailVerifyEnabled:                  settings.EmailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:        settings.ForceEmailOnThirdPartySignup,
@@ -123,7 +134,54 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		RiskControlEnabled: settings.RiskControlEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
-	})
+	}
+
+	// The ETag is based on the complete public payload rather than only the
+	// branding fields, so caches can reliably detect any public setting change.
+	payload, err := json.Marshal(publicSettings)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	hash := sha256.Sum256(payload)
+	etag := `"` + hex.EncodeToString(hash[:]) + `"`
+	c.Header("Cache-Control", publicSettingsCacheControl)
+	c.Header("ETag", etag)
+	if ifNoneMatch := strings.TrimSpace(c.GetHeader("If-None-Match")); ifNoneMatch == etag || ifNoneMatch == "*" {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	response.Success(c, publicSettings)
+}
+
+// GetPublicBrandingAsset serves the content-addressed site logo. The URL embeds
+// a hash of the logo bytes, so it is safe for a CDN to cache it immutably; a
+// new logo simply gets a new URL. A cache miss reloads site_logo so a freshly
+// started instance can serve a URL that another instance minted.
+// GET/HEAD /api/v1/settings/public/:asset
+func (h *SettingHandler) GetPublicBrandingAsset(c *gin.Context) {
+	// A transient miss must not be cached by an intermediate CDN while a
+	// rolling deploy has instances with different in-memory state.
+	c.Header("Cache-Control", "no-store")
+
+	content, contentType, ok := h.settingService.GetSiteBrandingAsset(c.Request.Context(), c.Request.URL.Path)
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	c.Header("Cache-Control", brandingAssetCacheControl)
+	// An uploaded SVG must not be able to run script when opened as a document.
+	c.Header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.Request.Method == http.MethodHead {
+		c.Header("Content-Type", contentType)
+		c.Header("Content-Length", strconv.Itoa(len(content)))
+		c.Status(http.StatusOK)
+		return
+	}
+	c.Data(http.StatusOK, contentType, content)
 }
 
 // UnsubscribeNotificationEmail handles optional notification email opt-outs.

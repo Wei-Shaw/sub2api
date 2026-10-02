@@ -238,12 +238,16 @@ func RegisterAuthRoutes(
 		)
 	}
 
-	// 公开设置（无需认证）：每次请求都会查询 DB，按客户端 IP 兜底限流，
-	// 防止匿名高频刷接口打爆数据库（反代内部地址会被自动跳过，不会误伤）。
+	// 公开设置（无需认证）：源站请求会查询 DB，响应支持 CDN 缓存；同时按客户端
+	// IP 兜底限流，防止缓存未命中时匿名高频请求打爆数据库。
 	settings := v1.Group("/settings")
 	settings.Use(panelRateLimiter.PublicIP())
 	{
 		settings.GET("/public", h.Setting.GetPublicSettings)
+		// 内容寻址的站点 Logo 资源：URL 带内容哈希，可安全用 immutable 长缓存。
+		// 归在 /settings/public 前缀下，复用已有反代规则，无需额外 location。
+		settings.GET("/public/:asset", h.Setting.GetPublicBrandingAsset)
+		settings.HEAD("/public/:asset", h.Setting.GetPublicBrandingAsset)
 		settings.GET("/email-unsubscribe", h.Setting.UnsubscribeNotificationEmail)
 	}
 
