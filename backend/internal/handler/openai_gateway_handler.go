@@ -2431,7 +2431,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if blocked := blockedModelAllowlistCandidate(apiKey.Group, requestmodel.FromBodyCandidates("", "application/json", firstMessage)); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
+		message := fmt.Sprintf("Model %q is not available for this group", blocked)
+		writeOpenAIWSRejection(ctx, wsConn, http.StatusNotFound, "invalid_request_error", "model_not_found", message)
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, message)
 		return
 	}
 	// Keep the client model in the frame for admission, response identity and usage.
@@ -2460,6 +2462,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
+		writeOpenAIWSRejection(ctx, wsConn, http.StatusBadRequest, "invalid_request_error", "", "previous_response_id must be a response.id (resp_*), not a message id")
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
 		return
 	}
@@ -2482,6 +2485,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		writeOpenAIWSRejection(ctx, wsConn, http.StatusForbidden, "permission_error", "", service.ImageGenerationPermissionMessage())
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -2570,6 +2574,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
+		writeOpenAIWSBillingRejection(ctx, wsConn, err)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 		return
 	}
@@ -2579,6 +2584,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	inflightCtx, inflightDone, inflightErr := reserveInflightBalanceCtx(ctx, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, firstMessage))
 	if inflightErr != nil {
 		reqLog.Info("openai.websocket_inflight_reservation_rejected", zap.Error(inflightErr))
+		writeOpenAIWSBillingRejection(ctx, wsConn, inflightErr)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 		return
 	}
@@ -2594,6 +2600,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return nil
 		}
 		if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(ctx, apiKey)); err != nil {
+			writeOpenAIWSBillingRejection(ctx, wsConn, err)
 			return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "billing check failed", err)
 		}
 		return nil
@@ -2901,7 +2908,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
+					message := fmt.Sprintf("Model %q is not available for this group", blocked)
+					writeOpenAIWSRejection(ctx, wsConn, http.StatusNotFound, "invalid_request_error", "model_not_found", message)
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, message, nil)
 				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
@@ -3874,6 +3883,40 @@ func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason s
 	_ = conn.CloseNow()
 }
 
+// writeOpenAIWSRejection sends the Responses error event for a request the
+// gateway rejects locally, carrying the HTTP status the same rejection returns
+// on HTTP. WebSocket clients such as Codex classify an error event by its
+// status (400 and 429 end the turn, like the HTTP response would); without a
+// status the close that follows looks like a retryable transport failure, so
+// the client resends the same rejected request and may abandon WebSocket for
+// the rest of the session.
+func writeOpenAIWSRejection(ctx context.Context, conn *coderws.Conn, status int, errType, code, message string) {
+	if conn == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	errorObject := gin.H{"type": errType, "message": message}
+	if code != "" {
+		errorObject["code"] = code
+	}
+	payload, err := json.Marshal(gin.H{"type": "error", "status": status, "error": errorObject})
+	if err != nil {
+		return
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, payload)
+}
+
+// writeOpenAIWSBillingRejection mirrors the HTTP billing rejection
+// (billingErrorDetails) before the policy close.
+func writeOpenAIWSBillingRejection(ctx context.Context, conn *coderws.Conn, err error) {
+	status, code, message, _ := billingErrorDetails(err)
+	writeOpenAIWSRejection(ctx, conn, status, code, "", message)
+}
+
 func openAIWSNextAttemptMessage(current, retryPayload []byte, retryCurrentTurn bool) ([]byte, bool) {
 	if !retryCurrentTurn {
 		return append([]byte(nil), current...), true
@@ -3938,6 +3981,7 @@ func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, deci
 	payload, err := json.Marshal(gin.H{
 		"event_id": "evt_content_moderation_blocked",
 		"type":     "error",
+		"status":   contentModerationStatus(decision),
 		"error": gin.H{
 			"type":    "invalid_request_error",
 			"code":    contentModerationErrorCode(decision),
@@ -3945,7 +3989,7 @@ func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, deci
 		},
 	})
 	if err != nil {
-		payload = []byte(`{"event_id":"evt_content_moderation_blocked","type":"error","error":{"type":"invalid_request_error","code":"content_policy_violation","message":"content moderation blocked this request"}}`)
+		payload = []byte(`{"event_id":"evt_content_moderation_blocked","type":"error","status":403,"error":{"type":"invalid_request_error","code":"content_policy_violation","message":"content moderation blocked this request"}}`)
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -3964,6 +4008,7 @@ func writeCyberSessionBlockedWSError(ctx context.Context, conn *coderws.Conn) {
 	payload, err := json.Marshal(gin.H{
 		"event_id": "evt_cyber_session_blocked",
 		"type":     "error",
+		"status":   http.StatusForbidden,
 		"error": gin.H{
 			"type":    "permission_error",
 			"code":    "session_blocked_by_cyber_policy",
@@ -3971,7 +4016,7 @@ func writeCyberSessionBlockedWSError(ctx context.Context, conn *coderws.Conn) {
 		},
 	})
 	if err != nil {
-		payload = []byte(`{"event_id":"evt_cyber_session_blocked","type":"error","error":{"type":"permission_error","code":"session_blocked_by_cyber_policy","message":"This session is blocked by cyber-security policy, please start a new session"}}`)
+		payload = []byte(`{"event_id":"evt_cyber_session_blocked","type":"error","status":403,"error":{"type":"permission_error","code":"session_blocked_by_cyber_policy","message":"This session is blocked by cyber-security policy, please start a new session"}}`)
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

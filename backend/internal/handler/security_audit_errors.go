@@ -135,7 +135,7 @@ func writeSecurityAuditWSError(ctx context.Context, conn *coderws.Conn, decision
 		ctx = context.Background()
 	}
 	payload, err := json.Marshal(gin.H{
-		"event_id": "evt_prompt_guard_rejected", "type": "error",
+		"event_id": "evt_prompt_guard_rejected", "type": "error", "status": securityAuditStatus(decision),
 		"error": gin.H{"type": "invalid_request_error", "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision)},
 	})
 	if err != nil {
