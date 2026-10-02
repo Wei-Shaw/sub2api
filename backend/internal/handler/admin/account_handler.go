@@ -2789,6 +2789,15 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// The model picker answers from the shared upstream catalog whenever discovery
+// works. When it does not, the answer comes from local data instead: the account
+// mapping, or the static default catalog. Those are different sets of models, and
+// the switch used to be invisible, so the local answer now marks itself.
+const (
+	modelsListSourceHeader  = "X-Sub2API-Models-Source"
+	modelsListSourceLocally = "local-fallback"
+)
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2809,26 +2818,42 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
 		// retain the legacy local catalog below so the test dialog remains usable.
 		if h.accountTestService != nil {
-			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
+			models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account)
+			if fetchErr == nil {
 				response.Success(c, models)
 				return
 			}
+			// Discovery failure is an expected outcome (upstreams without a
+			// /models endpoint, transient outages), but it must not be silent:
+			// the branches below answer from local data instead, which is a
+			// different set of models than the catalog would have produced.
+			slog.Warn("account_models_catalog_unavailable",
+				"account_id", accountID, "platform", account.Platform, "error", fetchErr)
 		}
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
 		if account.IsOpenAIPassthroughEnabled() {
+			c.Header(modelsListSourceHeader, modelsListSourceLocally)
 			response.Success(c, openai.DefaultModels)
 			return
 		}
 
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
+			c.Header(modelsListSourceHeader, modelsListSourceLocally)
 			response.Success(c, openai.DefaultModels)
 			return
 		}
 
-		// Return mapped models
-		var models []openai.Model
+		// Return mapped models. The keys are sorted so two identical requests
+		// return the same list: iterating the map directly randomizes the order.
+		requestedModels := make([]string, 0, len(mapping))
 		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []openai.Model
+		for _, requestedModel := range requestedModels {
 			var found bool
 			for _, dm := range openai.DefaultModels {
 				if dm.ID == requestedModel {
@@ -2846,6 +2871,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				})
 			}
 		}
+		c.Header(modelsListSourceHeader, modelsListSourceLocally)
 		response.Success(c, models)
 		return
 	}

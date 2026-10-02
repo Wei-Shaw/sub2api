@@ -1569,6 +1569,7 @@ export default {
       startingTestForAccount: 'Starting test for account: {name}',
       testAccountTypeLabel: 'Account type: {type}',
       selectTestModel: 'Select Test Model',
+      unlistedModelHint: 'Not listed upstream',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
       imagePromptLabel: 'Image prompt',

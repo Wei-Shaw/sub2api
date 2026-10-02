@@ -67,7 +67,18 @@
           value-key="id"
           label-key="display_name"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
-        />
+        >
+          <template #option="{ option, selected }">
+            <span class="select-option-label">{{ option.display_name || option.id }}</span>
+            <span
+              v-if="option.unlisted"
+              class="flex-shrink-0 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.unlistedModelHint') }}
+            </span>
+            <Icon v-if="selected" name="check" size="sm" class="text-primary-500" :stroke-width="2" />
+          </template>
+        </Select>
       </div>
 
       <div v-if="isOpenAIAccount" class="space-y-1.5">
@@ -495,6 +506,11 @@ const modelOptionsForMode = computed(() => {
   }
   return []
 })
+
+// The option rows are rendered here so a model the upstream catalog does not
+// advertise can be labelled. It stays selectable: the gateway routes it through
+// the account mapping, and the badge only explains that the catalog never
+// mentions it.
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
