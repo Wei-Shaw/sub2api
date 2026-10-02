@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	// Embed the IANA timezone database so standalone binaries can resolve
+	// configured locations on platforms such as Windows without system tzdata.
+	_ "time/tzdata"
 )
 
 var (
