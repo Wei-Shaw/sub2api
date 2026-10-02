@@ -400,3 +400,116 @@ func TestTypeSafeModelsListCandidates(t *testing.T) {
 	require.Equal(t, []string{typesafe.JevLatestModel}, defaultModelsListCandidateIDs(PlatformTypeSafe))
 	require.NotContains(t, compositeDefaultModelsListCandidateIDs(), typesafe.JevLatestModel)
 }
+
+func TestResolveSystemOneUpstreamBodyAppliesChannelAndAccountMapping(t *testing.T) {
+	body := []byte(`{"model":"jev-judge-v1","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`)
+
+	t.Run("channel mapping rewrites the request and account mapping keeps jev-latest", func(t *testing.T) {
+		account := &Account{ID: 31, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"api_key":       "ts-secret",
+			"model_mapping": map[string]any{"jev-latest": "jev-latest"},
+		}}
+		got, upstreamModel, err := ResolveSystemOneUpstreamBody(body, "jev-judge-v1", ChannelMappingResult{MappedModel: "jev-latest", Mapped: true}, account)
+		require.NoError(t, err)
+		require.Equal(t, "jev-latest", upstreamModel)
+		require.JSONEq(t, `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`, string(got))
+	})
+
+	t.Run("account model_mapping rewrites the request without a channel mapping", func(t *testing.T) {
+		account := &Account{ID: 32, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"api_key":       "ts-secret",
+			"model_mapping": map[string]any{"jev-judge-v1": "jev-latest"},
+		}}
+		got, upstreamModel, err := ResolveSystemOneUpstreamBody(body, "jev-judge-v1", ChannelMappingResult{MappedModel: "jev-judge-v1"}, account)
+		require.NoError(t, err)
+		require.Equal(t, "jev-latest", upstreamModel)
+		require.JSONEq(t, `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`, string(got))
+	})
+}
+
+func TestResolveSystemOneUpstreamBodyRejectsModelsThatNeverMapToJevLatest(t *testing.T) {
+	body := []byte(`{"model":"jev-judge-v1","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`)
+	for _, tc := range []struct {
+		name    string
+		model   string
+		account *Account
+	}{
+		{
+			name:    "unknown model without any mapping",
+			model:   "gpt-6.1-sol",
+			account: &Account{ID: 41, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "ts-secret"}},
+		},
+		{
+			name:  "account mapping lands on an unsupported typesafe model",
+			model: "jev-judge-v1",
+			account: &Account{ID: 42, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+				"api_key":       "ts-secret",
+				"model_mapping": map[string]any{"jev-judge-v1": "jev-1.13.0"},
+			}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requestBody := body
+			if tc.model != "jev-judge-v1" {
+				requestBody = []byte(`{"model":"` + tc.model + `","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`)
+			}
+			_, _, err := ResolveSystemOneUpstreamBody(requestBody, tc.model, ChannelMappingResult{MappedModel: tc.model}, tc.account)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "model must be jev-latest")
+		})
+	}
+}
+
+func TestResolveSystemOneUpstreamBodyKeepsKeyHygiene(t *testing.T) {
+	account := &Account{ID: 51, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key":       "ts-secret",
+		"model_mapping": map[string]any{"jev-latest": "jev-latest"},
+	}}
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"duplicate model", `{"model":"jev-latest","model":"jev-latest","state":"x","questions":{"q":{"type":"noul"}}}`, `duplicate field "model"`},
+		{"case variant model", `{"model":"jev-latest","MODEL":"jev-latest","state":"x","questions":{"q":{"type":"noul"}}}`, `must be written as "model"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := ResolveSystemOneUpstreamBody([]byte(tc.body), "jev-latest", ChannelMappingResult{MappedModel: "jev-latest"}, account)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestForwardSystemOneSendsAndBillsTheMappedJevLatestModel(t *testing.T) {
+	responseBody := []byte(`{"model":"jev-1.13.0","answers":{},"usage":{"input_tokens":9,"output_tokens":3}}`)
+	var sent []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		sent, err = io.ReadAll(r.Body)
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(responseBody)
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	svc := newSystemOneTestService(&systemOneHTTPUpstream{do: server.Client().Do})
+	account := &Account{ID: 61, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url":      server.URL,
+		"api_key":       "ts-secret",
+		"model_mapping": map[string]any{"jev-judge-v1": "jev-latest"},
+	}}
+	body := []byte(`{"model":"jev-judge-v1","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`)
+	attemptBody, upstreamModel, err := ResolveSystemOneUpstreamBody(body, "jev-judge-v1", ChannelMappingResult{MappedModel: "jev-judge-v1"}, account)
+	require.NoError(t, err)
+	require.Equal(t, typesafe.JevLatestModel, upstreamModel)
+
+	result, err := svc.ForwardSystemOne(context.Background(), newSystemOneTestContext(), account, attemptBody)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`, string(sent))
+	require.Equal(t, typesafe.JevLatestModel, result.Model)
+	require.Equal(t, "jev-1.13.0", result.UpstreamResponseModel)
+	require.Equal(t, 9, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+}

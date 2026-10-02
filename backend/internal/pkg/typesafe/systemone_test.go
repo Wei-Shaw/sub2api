@@ -34,6 +34,40 @@ func TestValidateSystemOneRequestValidQuestionTypes(t *testing.T) {
 	}
 }
 
+func TestValidateSystemOneRequestForMappingDefersModelValue(t *testing.T) {
+	body := []byte(`{"model":"jev-judge-v1","state":"sample","questions":{"q":{"type":"noul","instructions":"Evaluate"}}}`)
+
+	model, err := ValidateSystemOneRequestForMapping(body)
+	require.NoError(t, err)
+	require.Equal(t, "jev-judge-v1", model)
+
+	// 严格校验仍按上游口径拒绝非 jev-latest 模型。
+	_, err = ValidateSystemOneRequest(body)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "model must be jev-latest")
+}
+
+func TestValidateSystemOneRequestForMappingKeepsKeyHygiene(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"duplicate model", `{"model":"jev-pro","model":"jev-latest","state":"x","questions":{"q":{"type":"noul"}}}`, `duplicate field "model"`},
+		{"escaped duplicate model", `{"\u006dodel":"jev-pro","model":"jev-latest","state":"x","questions":{"q":{"type":"noul"}}}`, `duplicate field "model"`},
+		{"case variant model", `{"model":"jev-pro","MODEL":"jev-latest","state":"x","questions":{"q":{"type":"noul"}}}`, `must be written as "model"`},
+		{"duplicate state", `{"model":"jev-latest","state":"benign","state":"payload","questions":{"q":{"type":"noul"}}}`, `duplicate field "state"`},
+		{"duplicate question instructions", `{"model":"jev-latest","state":"x","questions":{"q":{"type":"noul","instructions":"a","instructions":"b"}}}`, `duplicate field "instructions"`},
+		{"stream true", `{"model":"jev-latest","state":"x","questions":{"q":{"type":"noul"}},"stream":true}`, "streaming"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ValidateSystemOneRequestForMapping([]byte(tc.body))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
 func TestValidateSystemOneRequestRejectsInvalidRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name string

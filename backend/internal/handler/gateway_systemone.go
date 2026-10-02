@@ -63,7 +63,9 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
-	model, err := typesafe.ValidateSystemOneRequest(body)
+	// 结构与键名卫生沿用上游校验；模型名先不钉死，等渠道 / 账号 model_mapping
+	// 解析完再对改写后的请求体重跑严格校验（见 ResolveSystemOneUpstreamBody）。
+	model, err := typesafe.ValidateSystemOneRequestForMapping(body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
@@ -85,6 +87,8 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, model)
+	// 渠道映射后的模型名才是调度与上游请求实际使用的模型名。
+	routingModel := service.SystemOneRoutingModel(channelMapping, model)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	streamStarted := false
@@ -126,7 +130,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		if failoverClientGone(c) {
 			return
 		}
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, "", model, fs.FailedAccountIDs, "", subject.UserID)
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, "", routingModel, fs.FailedAccountIDs, "", subject.UserID)
 		if err == nil && (selection == nil || selection.Account == nil) {
 			err = service.ErrNoAvailableAccounts
 		}
@@ -136,7 +140,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 				return
 			}
 			if len(fs.FailedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, model, model, service.PlatformTypeSafe)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, routingModel, model, service.PlatformTypeSafe)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -194,10 +198,27 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		account = latest
 		accountRelease = wrapReleaseOnDone(c.Request.Context(), accountRelease)
 		setOpsSelectedAccount(c, account.ID, account.Platform)
-		service.SetOpsUpstreamModel(c, model)
+
+		// 渠道 + 账号 model_mapping 写入本次尝试真正发往上游的请求体；改写结果必须
+		// 仍是上游唯一支持的 jev-latest，否则按上游校验口径拒绝，不发送未知模型。
+		attemptBody, upstreamModel, resolveErr := service.ResolveSystemOneUpstreamBody(body, model, channelMapping, account)
+		if resolveErr != nil {
+			if accountRelease != nil {
+				accountRelease()
+			}
+			reqLog.Info("systemone.model_mapping_rejected",
+				zap.Int64("account_id", account.ID),
+				zap.String("requested_model", model),
+				zap.String("routing_model", routingModel),
+				zap.Error(resolveErr),
+			)
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", resolveErr.Error())
+			return
+		}
+		service.SetOpsUpstreamModel(c, upstreamModel)
 
 		forwardStart := time.Now()
-		result, forwardErr := h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, body)
+		result, forwardErr := h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, attemptBody)
 		if accountRelease != nil {
 			accountRelease()
 		}

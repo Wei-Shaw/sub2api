@@ -22,7 +22,22 @@ var (
 	systemOneQuestionFields = []string{"type", "instructions", "criteria"}
 )
 
+// ValidateSystemOneRequest 校验 System One 请求并返回模型名。
+// TypeSafe 官方只提供 jev-latest，模型名必须完全等于它。
 func ValidateSystemOneRequest(body []byte) (string, error) {
+	return validateSystemOneRequest(body, true)
+}
+
+// ValidateSystemOneRequestForMapping 与 ValidateSystemOneRequest 执行完全相同的
+// 结构校验与键名卫生检查（重复键、大小写/Unicode 折叠变体一律拒绝），但不把模型名
+// 钉死为 jev-latest：网关先据此取出客户端请求的模型名，叠加渠道 / 账号 model_mapping
+// 后改写请求体，再对改写结果重跑 ValidateSystemOneRequest，保证真正发往上游的模型名
+// 仍是 jev-latest；未命中任何映射的未知模型最终仍按上游口径被拒绝。
+func ValidateSystemOneRequestForMapping(body []byte) (string, error) {
+	return validateSystemOneRequest(body, false)
+}
+
+func validateSystemOneRequest(body []byte, requireSupportedModel bool) (string, error) {
 	var envelope systemOneEnvelope
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return "", errors.New("invalid JSON request")
@@ -38,7 +53,7 @@ func ValidateSystemOneRequest(body []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if model != JevLatestModel {
+	if requireSupportedModel && model != JevLatestModel {
 		return "", fmt.Errorf("model must be %s", JevLatestModel)
 	}
 	if err := validateStringObjectOrArray(envelope.State, "state"); err != nil {

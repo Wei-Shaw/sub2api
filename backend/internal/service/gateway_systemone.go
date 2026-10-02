@@ -30,6 +30,46 @@ func (e *SystemOneUpstreamError) Error() string {
 	return fmt.Sprintf("typesafe upstream rejected request with status %d", e.StatusCode)
 }
 
+// SystemOneRoutingModel 返回渠道映射后实际用于调度与上游请求的模型名：
+// 命中渠道映射时用映射结果，否则沿用客户端请求的模型名。
+func SystemOneRoutingModel(mapping ChannelMappingResult, requestedModel string) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if mapping.Mapped {
+		if mapped := strings.TrimSpace(mapping.MappedModel); mapped != "" {
+			return mapped
+		}
+	}
+	return requestedModel
+}
+
+// ResolveSystemOneUpstreamBody 把分组渠道映射与账号 model_mapping 逐级写入真正发往
+// 上游的请求体：body 为客户端原始请求体，requestedModel 为客户端请求的模型名，
+// mapping 为渠道映射结果，account 为本次尝试选中的账号。
+//
+// 改写完成后重跑 System One 严格校验：该协议只支持 jev-latest，映射链最终落到其它
+// 模型名（或未命中任何映射的未知模型）时直接返回校验错误，绝不把未知模型发往上游；
+// 校验同时保留上游对重复键 / 大小写变体的拒绝，不做任何放宽。
+func ResolveSystemOneUpstreamBody(body []byte, requestedModel string, mapping ChannelMappingResult, account *Account) ([]byte, string, error) {
+	routingModel := SystemOneRoutingModel(mapping, requestedModel)
+	upstreamBody := body
+	if routingModel != strings.TrimSpace(requestedModel) {
+		upstreamBody = ReplaceModelInBody(upstreamBody, routingModel)
+	}
+	upstreamModel := routingModel
+	if account != nil {
+		if mapped := strings.TrimSpace(account.GetMappedModel(routingModel)); mapped != "" {
+			upstreamModel = mapped
+		}
+	}
+	if upstreamModel != routingModel {
+		upstreamBody = ReplaceModelInBody(upstreamBody, upstreamModel)
+	}
+	if _, err := typesafe.ValidateSystemOneRequest(upstreamBody); err != nil {
+		return nil, "", err
+	}
+	return upstreamBody, upstreamModel, nil
+}
+
 func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, account *Account, body []byte) (*SystemOneForwardResult, error) {
 	started := time.Now()
 	if account == nil || !account.IsTypeSafe() || account.Type != AccountTypeAPIKey {
