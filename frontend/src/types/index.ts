@@ -1115,14 +1115,16 @@ export interface OllamaCloudUsageWindow {
 
 export interface OllamaCloudUsageModel {
   model: string
-  window: 'five_hour' | 'seven_day'
+  window: 'five_hour' | 'seven_day' | 'monthly'
   requests: number
 }
 
 export interface OllamaCloudUsageData {
+  email?: string
   plan?: string
   five_hour?: OllamaCloudUsageWindow
   seven_day?: OllamaCloudUsageWindow
+  monthly?: OllamaCloudUsageWindow
   balance?: string
   models?: OllamaCloudUsageModel[]
 }

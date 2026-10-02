@@ -12,6 +12,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ const (
 	OllamaCloudUsageMinFetchInterval = ollamaCloudUsageMinIntervalMinutes * time.Minute
 
 	ollamaCloudUsageSettingsURL            = "https://ollama.com/settings"
+	ollamaCloudUsageProfileURL             = "https://ollama.com/api/me"
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
 	ollamaCloudUsageMaxIntervalMinutes     = 24 * 60
@@ -49,6 +51,7 @@ const (
 	ollamaCloudUsageCycleInterval          = time.Minute
 	ollamaCloudUsageManualRefreshInterval  = 30 * time.Second
 	ollamaCloudUsageRequestTimeout         = 15 * time.Second
+	ollamaCloudUsageProfileTimeout         = 5 * time.Second
 	ollamaCloudUsageMaxBodyBytes           = 512 * 1024
 	ollamaCloudUsageMaxSessionBytes        = 16 * 1024
 	ollamaCloudUsageMaxPerCycle            = 20
@@ -110,6 +113,7 @@ type OllamaCloudUsageModelWindow string
 const (
 	OllamaCloudUsageModelWindowFiveHour OllamaCloudUsageModelWindow = "five_hour"
 	OllamaCloudUsageModelWindowSevenDay OllamaCloudUsageModelWindow = "seven_day"
+	OllamaCloudUsageModelWindowMonthly  OllamaCloudUsageModelWindow = "monthly"
 )
 
 // OllamaCloudUsageModel is the window-scoped model/request pair exposed by Ollama's usage DOM.
@@ -121,9 +125,11 @@ type OllamaCloudUsageModel struct {
 
 // OllamaCloudUsageData intentionally excludes raw HTML and browser-session data.
 type OllamaCloudUsageData struct {
+	Email    string                  `json:"email,omitempty"`
 	Plan     string                  `json:"plan,omitempty"`
 	FiveHour *OllamaCloudUsageWindow `json:"five_hour,omitempty"`
 	SevenDay *OllamaCloudUsageWindow `json:"seven_day,omitempty"`
+	Monthly  *OllamaCloudUsageWindow `json:"monthly,omitempty"`
 	Balance  string                  `json:"balance,omitempty"`
 	Models   []OllamaCloudUsageModel `json:"models,omitempty"`
 }
@@ -924,6 +930,7 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now), false)
 	}
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, ollamaCloudUsageMaxBodyBytes+1))
+	_ = resp.Body.Close()
 	if readErr != nil {
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_read_failed", 0, false)
 	}
@@ -937,6 +944,7 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 	if parseErr != nil {
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_html", 0, false)
 	}
+	data.Email = s.fetchOllamaCloudAccountEmail(ctx, account, proxyURL)
 	snapshot := &OllamaCloudUsageSnapshot{
 		Status:        OllamaCloudUsageStatusOK,
 		Data:          data,
@@ -1086,8 +1094,52 @@ func ollamaCloudUsageGroupFingerprint(account *Account) (string, bool) {
 	return hex.EncodeToString(sum[:]), true
 }
 
+// fetchOllamaCloudAccountEmail uses the API key rather than the web session,
+// so the displayed address belongs to the key configured on this account.
+// Profile lookup is optional and never turns a successful usage fetch into a failure.
+func (s *OllamaCloudUsageService) fetchOllamaCloudAccountEmail(ctx context.Context, account *Account, proxyURL string) string {
+	apiKey, _ := account.Credentials["api_key"].(string)
+	if apiKey == "" || !httpguts.ValidHeaderFieldValue(apiKey) {
+		return ""
+	}
+	requestCtx, cancel := context.WithTimeout(WithHTTPUpstreamRedirectsDisabled(ctx), ollamaCloudUsageProfileTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, ollamaCloudUsageProfileURL, nil)
+	if err != nil || !isExactOllamaCloudProfileURL(req.URL) {
+		return ""
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("User-Agent", "sub2api-ollama-usage/1")
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil || resp == nil || resp.Body == nil {
+		return ""
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK || (resp.Request != nil && !isExactOllamaCloudProfileURL(resp.Request.URL)) {
+		return ""
+	}
+	var profile struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&profile); err != nil {
+		return ""
+	}
+	email := strings.TrimSpace(profile.Email)
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email || len(email) > 254 {
+		return ""
+	}
+	return email
+}
+
 func isExactOllamaCloudSettingsURL(parsed *url.URL) bool {
 	return parsed != nil && parsed.Scheme == "https" && parsed.Host == "ollama.com" && parsed.Path == "/settings" &&
+		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" && parsed.RawPath == ""
+}
+
+func isExactOllamaCloudProfileURL(parsed *url.URL) bool {
+	return parsed != nil && parsed.Scheme == "https" && parsed.Host == "ollama.com" && parsed.Path == "/api/me" &&
 		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" && parsed.RawPath == ""
 }
 

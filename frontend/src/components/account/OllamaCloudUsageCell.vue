@@ -20,6 +20,14 @@
       color="emerald"
       data-testid="ollama-cloud-seven-day"
     />
+    <UsageProgressBar
+      v-if="snapshot?.data?.monthly"
+      label="mo"
+      :utilization="snapshot.data.monthly.used_percent"
+      :resets-at="snapshot.data.monthly.reset_at"
+      color="purple"
+      data-testid="ollama-cloud-monthly"
+    />
     <div v-if="state.configured" class="flex items-center pt-0.5">
       <button
         type="button"
