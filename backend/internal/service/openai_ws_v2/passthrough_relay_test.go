@@ -42,6 +42,40 @@ type closeSpyFrameConn struct {
 	closeCalls atomic.Int32
 }
 
+type drainErrorFrameConn struct {
+	FrameConn
+	draining <-chan struct{}
+	err      error
+}
+
+func (c *drainErrorFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	select {
+	case <-c.draining:
+		return 0, nil, c.err
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	}
+}
+
+func TestRelayClientDisconnectPreservesUpstreamDrainError(t *testing.T) {
+	draining := make(chan struct{})
+	upstreamErr := errors.New("upstream failed during usage drain")
+	client := newPassthroughTestFrameConn(nil, true)
+	upstream := &drainErrorFrameConn{FrameConn: newPassthroughTestFrameConn(nil, false), draining: draining, err: upstreamErr}
+	_, exit := Relay(context.Background(), client, upstream, []byte(`{"type":"response.create"}`), RelayOptions{
+		FirstMessageSent:     true,
+		UpstreamDrainTimeout: time.Second,
+		OnTrace: func(event RelayTraceEvent) {
+			if event.Stage == "first_exit" {
+				close(draining)
+			}
+		},
+	})
+	require.NotNil(t, exit)
+	require.Equal(t, "read_upstream", exit.Stage)
+	require.ErrorIs(t, exit.Err, upstreamErr)
+}
+
 type eofReplacementFrameConn struct {
 	FrameConn
 	err error
@@ -682,6 +716,43 @@ func TestRelay_OnTurnComplete_BareErrorWithoutIDBeforeLaterCompleted(t *testing.
 	require.Equal(t, "resp_next", turns[1].RequestID)
 	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 2}, turns[1].Usage)
 	require.Equal(t, Usage{InputTokens: 8, OutputTokens: 3}, result.Usage)
+}
+
+func TestRelay_OnTurnComplete_BareErrorAssociatesAuthoritativeResponse(t *testing.T) {
+	for _, terminal := range []string{"response.completed", "response.done", "response.failed", "response.incomplete"} {
+		for _, responseID := range []string{"resp_active", "resp_next"} {
+			t.Run(terminal+"/"+responseID, func(t *testing.T) {
+				client := newPassthroughTestFrameConn(nil, false)
+				upstream := newPassthroughTestFrameConn([]passthroughTestFrame{
+					{msgType: coderws.MessageText, payload: []byte(`{"type":"response.created","response":{"id":"resp_active"}}`)},
+					{msgType: coderws.MessageText, payload: []byte(`{"type":"error","usage":{"input_tokens":2,"output_tokens":1},"error":{"message":"recoverable error"}}`)},
+					{msgType: coderws.MessageText, payload: []byte(`{"type":"rate_limits.updated"}`)},
+					{msgType: coderws.MessageText, payload: []byte(`{"type":"` + terminal + `","response":{"id":"` + responseID + `","usage":{"input_tokens":9,"output_tokens":4}}}`)},
+				}, true)
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				var turns []RelayTurnResult
+				result, exit := Relay(ctx, client, upstream, []byte(`{"type":"response.create","model":"gpt-5.1"}`), RelayOptions{
+					OnTurnComplete: func(turn RelayTurnResult) { turns = append(turns, turn) },
+				})
+				require.Nil(t, exit)
+				if responseID == "resp_active" {
+					require.Len(t, turns, 1)
+					require.Equal(t, Usage{InputTokens: 9, OutputTokens: 4}, result.Usage)
+				} else {
+					require.Len(t, turns, 2)
+					require.Equal(t, "error", turns[0].TerminalEventType)
+					require.Equal(t, "resp_active", turns[0].RequestID)
+					require.Equal(t, Usage{InputTokens: 2, OutputTokens: 1}, turns[0].Usage)
+					require.Equal(t, Usage{InputTokens: 11, OutputTokens: 5}, result.Usage)
+				}
+				last := turns[len(turns)-1]
+				require.Equal(t, terminal, last.TerminalEventType)
+				require.Equal(t, responseID, last.RequestID)
+				require.Equal(t, Usage{InputTokens: 9, OutputTokens: 4}, last.Usage)
+			})
+		}
+	}
 }
 
 func TestRelay_OnTurnComplete_AuxiliaryFrameDoesNotSettleBareErrorBeforeFailed(t *testing.T) {

@@ -98,6 +98,41 @@ func TestGroupModelAllowlistDisabledDoesNotReadBody(t *testing.T) {
 	}
 }
 
+// 队列等待复核需要当前请求的模型：即使初始白名单关闭，受限 Key 也必须记录
+// 客户端候选模型（含重复键），并把请求体完整回填给 handler。
+func TestGroupModelAllowlistCapturesModelsForQueuedKeyWhenDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	key := allowlistAPIKey(false)
+	key.ConcurrencyLimit = 1
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyAPIKey), key)
+		c.Next()
+	})
+	router.Use(GroupModelAllowlist())
+	router.POST("/v1/responses", func(c *gin.Context) {
+		permissions := service.APIKeyQueueRequestPermissionsFromContext(c.Request.Context())
+		if len(permissions.Models) != 2 || permissions.Models[0] != "gpt-5.4" || permissions.Models[1] != "gpt-5.4" {
+			t.Errorf("captured candidates = %v, want the duplicated client models", permissions.Models)
+		}
+		body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
+		if err != nil {
+			t.Errorf("handler reread body: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if string(body) != `{"model":"gpt-5.4","model":"gpt-5.4"}` {
+			t.Errorf("handler saw wrong body: %s", body)
+		}
+		c.Status(http.StatusOK)
+	})
+
+	w := doJSON(t, router, http.MethodPost, "/v1/responses", `{"model":"gpt-5.4","model":"gpt-5.4"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // 白名单开启但请求不携带模型时同样不应读体之外产生副作用：读体是必要开销，
 // 这里验证读取后请求体被完整回填（handler 可零拷贝重读）。
 func TestGroupModelAllowlistEnabledModelFreeRequestRestoresBody(t *testing.T) {
