@@ -196,7 +196,7 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 	if daysRemaining != 7 && daysRemaining != 3 && daysRemaining != 1 {
 		return
 	}
-	if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+	input := NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionExpiryReminder,
 		RecipientEmail: sub.User.Email,
 		RecipientName:  firstNonEmpty(sub.User.Username, sub.User.Email),
@@ -209,7 +209,9 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 			"expiry_time":        sub.ExpiresAt.Format("2006-01-02 15:04"),
 			"days_remaining":     strconv.Itoa(daysRemaining),
 		},
-	}); err != nil {
+	}
+	s.notificationEmailService.NotifyTelegram(input)
+	if err := s.notificationEmailService.Send(ctx, input); err != nil {
 		log.Printf("[SubscriptionExpiry] Send expiry reminder failed: subscription=%d user=%d err=%v", sub.ID, sub.UserID, err)
 	}
 }

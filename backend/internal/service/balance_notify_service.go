@@ -124,6 +124,19 @@ func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user
 	recipients := s.collectBalanceNotifyRecipients(user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
 		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold)
+	// Telegram 只发一次，不随邮件收件人数量重复；去重键与邮件同为按天。
+	s.notificationEmailService.NotifyTelegram(NotificationEmailSendInput{
+		Event:       NotificationEmailEventBalanceLow,
+		UserID:      user.ID,
+		SourceType:  "balance_low",
+		SourceID:    strconv.FormatInt(user.ID, 10),
+		ReminderKey: time.Now().UTC().Format("2006-01-02"),
+		Variables: map[string]string{
+			"current_balance": fmt.Sprintf("%.2f", newBalance),
+			"threshold":       fmt.Sprintf("%.2f", threshold),
+			"recharge_url":    rechargeURL,
+		},
+	})
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

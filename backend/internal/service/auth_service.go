@@ -1779,7 +1779,9 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 
 	// 提前确定家族ID：作为 access token 的会话ID（sid），保证同一会话的
 	// access/refresh token 可以互相关联（单会话撤销、step-up 授权绑定）。
-	if familyID == "" {
+	// 没有传入家族ID即为新会话：所有登录方式最终都走到这里，刷新则沿用旧家族。
+	newSession := familyID == ""
+	if newSession {
 		familyBytes := make([]byte, 16)
 		if _, err := rand.Read(familyBytes); err != nil {
 			return nil, fmt.Errorf("generate family id: %w", err)
@@ -1797,6 +1799,10 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 	refreshToken, err := s.generateRefreshToken(ctx, user, familyID)
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	if newSession {
+		s.notifyLoginTelegram(ctx, user)
 	}
 
 	return &TokenPair{
