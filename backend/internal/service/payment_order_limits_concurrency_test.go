@@ -116,7 +116,7 @@ func TestCreateOrderInTxRechargeCodeDoesNotLeakOrderID(t *testing.T) {
 			&User{ID: user.ID, Email: user.Email, Username: user.Username},
 			nil,
 			&PaymentConfig{MaxPendingOrders: 10, OrderTimeoutMin: 30},
-			10, 0, 10,
+			10, 0, 10, 0,
 			nil,
 		)
 		require.NoError(t, err)
@@ -380,11 +380,11 @@ func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
 	}
 	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}
 
-	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
+	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, 0, nil)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, first.Status)
 
-	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
+	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, 0, nil)
 	require.Error(t, err)
 	require.Equal(t, "DAILY_LIMIT_PENDING_HOLD", infraerrors.Reason(err))
 
@@ -394,7 +394,7 @@ func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
 		Save(ctx)
 	require.NoError(t, err)
 
-	third, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
+	third, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, 0, nil)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, third.Status)
 }

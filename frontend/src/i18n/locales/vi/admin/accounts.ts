@@ -96,6 +96,12 @@ export default {
       schedulableEnabled: 'Đã bật lập lịch',
       schedulableDisabled: 'Đã tắt lập lịch',
       failedToToggleSchedulable: 'Chuyển trạng thái lập lịch thất bại',
+      priorityQuick: {
+        raise: 'Tăng ưu tiên (giá trị -1)',
+        lower: 'Giảm ưu tiên (giá trị +1)',
+        editHint: 'Bấm để nhập giá trị; số nhỏ hơn được dùng trước',
+        failed: 'Cập nhật ưu tiên thất bại'
+      },
       groupCountTotal: 'Tổng cộng {count} nhóm',
       platforms: {
         anthropic: 'Anthropic',
@@ -109,6 +115,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        typesafe: 'TypeSafe / Jev',
       },
       cnProviders: {
         accountMode: {
@@ -875,7 +882,7 @@ export default {
       customErrorCodes: 'Mã lỗi tùy chỉnh',
       customErrorCodesHint: 'Chỉ dừng lập lịch với các mã lỗi đã chọn',
       customErrorCodesWarning:
-        'Chỉ các mã lỗi đã chọn mới dừng lập lịch. Các lỗi khác sẽ trả về 500.',
+        'Mã lỗi tùy chỉnh chỉ lọc cách xử lý lỗi tài khoản thông thường (như dừng lập lịch hoặc đánh dấu giới hạn tốc độ). Chúng không quyết định việc request có được thử lại hay chuyển sang tài khoản khác. Lỗi không được chọn vẫn có thể gây thử lại hoặc đổi tài khoản, và mã trạng thái trả về client tùy thuộc vào đường gateway và quy tắc truyền lỗi, không phải lúc nào cũng là 500. Danh sách trống nghĩa là không lọc.',
       customErrorCodes429Warning:
         '429 đã có cơ chế xử lý giới hạn tốc độ tích hợp sẵn. Thêm vào mã lỗi tùy chỉnh sẽ vô hiệu hóa tài khoản thay vì tạm thời giới hạn tốc độ. Bạn có chắc không?',
       customErrorCodes529Warning:

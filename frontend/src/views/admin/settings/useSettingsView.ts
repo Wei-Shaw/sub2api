@@ -13,6 +13,13 @@ import {
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import {
+  normalizeRechargeBonusMode,
+  normalizeRechargeBonusTiers,
+  sanitizeRechargeBonusTiersForSubmit,
+  type RechargeBonusMode,
+  type RechargeBonusTierDraft,
+} from "@/utils/rechargeBonus";
+import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
   normalizeAccountSchedulingThresholdsMap,
@@ -173,6 +180,10 @@ export type SettingsForm = Omit<
   openai_advanced_scheduler_weight_upstream_cost: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
+  // 充值赠送阶梯编辑态：允许留空的行，提交时清洗为 RechargeBonusTier[]
+  payment_recharge_bonus_tiers: RechargeBonusTierDraft[];
+  payment_recharge_bonus_mode: RechargeBonusMode;
+  payment_recharge_bonus_notice: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
@@ -995,6 +1006,9 @@ export function useSettingsView() {
     payment_recharge_fee_rate: 0,
     payment_exchange_rate_markup_percent: 0,
     payment_exchange_rate_max_age_hours: 24,
+    payment_recharge_bonus_tiers: [],
+    payment_recharge_bonus_mode: "bonus",
+    payment_recharge_bonus_notice: "",
     payment_enabled_types: [],
     payment_help_image_url: "",
     payment_help_text: "",
@@ -2275,6 +2289,13 @@ export function useSettingsView() {
             }))
           : defaultLoginAgreementDocuments();
       Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+      form.payment_recharge_bonus_tiers = normalizeRechargeBonusTiers(
+        settings.payment_recharge_bonus_tiers,
+      );
+      form.payment_recharge_bonus_mode = normalizeRechargeBonusMode(
+        settings.payment_recharge_bonus_mode,
+      );
+      form.payment_recharge_bonus_notice = settings.payment_recharge_bonus_notice || "";
       form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
       form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
         settings.account_scheduling_thresholds,
@@ -2928,6 +2949,11 @@ export function useSettingsView() {
         payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
         payment_exchange_rate_markup_percent: Number(form.payment_exchange_rate_markup_percent) || 0,
         payment_exchange_rate_max_age_hours: Number(form.payment_exchange_rate_max_age_hours) || 24,
+        payment_recharge_bonus_tiers: sanitizeRechargeBonusTiersForSubmit(
+          form.payment_recharge_bonus_tiers,
+        ),
+        payment_recharge_bonus_mode: form.payment_recharge_bonus_mode,
+        payment_recharge_bonus_notice: form.payment_recharge_bonus_notice,
         payment_enabled_types: form.payment_enabled_types,
         payment_load_balance_strategy: form.payment_load_balance_strategy,
         payment_product_name_prefix: form.payment_product_name_prefix,

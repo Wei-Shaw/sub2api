@@ -56,7 +56,11 @@
             </div>
             <!-- 只有充值单才有"到账"这回事，订阅单买的是订阅本身。amount 一律以
                  USD 记账，用网关币种格式化它会把 60 USD 显示成 60 VND。 -->
-            <div v-if="hasAmountFields(order) && order.order_type === 'balance' && order.amount !== order.pay_amount" class="flex items-center justify-between gap-4 py-2">
+            <div v-if="hasAmountFields(order) && orderBonusAmount(order) > 0" class="flex items-center justify-between gap-4 py-2">
+              <span class="shrink-0 text-fg-muted">{{ t('payment.orders.bonusAmount') }}</span>
+              <span class="text-right tabular-nums text-accent-strong">+{{ formatPaymentAmount(orderBonusAmount(order), 'USD', localeCode) }}</span>
+            </div>
+            <div v-if="hasAmountFields(order) && order.order_type === 'balance' && (order.amount !== order.pay_amount || orderBonusAmount(order) > 0)" class="flex items-center justify-between gap-4 py-2">
               <span class="shrink-0 text-fg-muted">{{ t('payment.orders.creditedAmount') }}</span>
               <span class="text-right tabular-nums text-fg">{{ formatPaymentAmount(order.amount, 'USD', localeCode) }}</span>
             </div>
@@ -271,6 +275,12 @@ function hasOrderId(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder 
 
 function hasAmountFields(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
   return !!nextOrder && 'pay_amount' in nextOrder && typeof nextOrder.pay_amount === 'number' && 'amount' in nextOrder && typeof nextOrder.amount === 'number'
+}
+
+/** 充值赠送额度（USD）；老接口/订阅订单没有该字段时视为 0 */
+function orderBonusAmount(target: unknown): number {
+  const value = (target as { bonus_amount?: unknown } | null | undefined)?.bonus_amount
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 }
 
 function hasPaymentType(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {

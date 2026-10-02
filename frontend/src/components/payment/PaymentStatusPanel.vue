@@ -23,7 +23,12 @@
           </div>
           <div class="flex justify-between gap-4 py-2">
             <dt class="text-fg-muted">{{ t('payment.orders.amount') }}</dt>
-            <dd class="tabular-nums text-fg">{{ formatCreditedAmount(paidOrder.amount) }}</dd>
+            <dd class="tabular-nums text-fg">
+              {{ formatCreditedAmount(paidOrder.amount) }}
+              <span v-if="(paidOrder.bonus_amount ?? 0) > 0" class="ml-1 text-meta text-accent-strong">
+                ({{ t('payment.orders.bonusIncluded', { amount: formatCreditedAmount(paidOrder.bonus_amount ?? 0) }) }})
+              </span>
+            </dd>
           </div>
           <div class="flex justify-between gap-4 py-2">
             <dt class="text-fg-muted">{{ t('payment.orders.payAmount') }}</dt>

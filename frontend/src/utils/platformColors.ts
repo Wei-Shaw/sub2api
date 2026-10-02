@@ -16,6 +16,7 @@ export type Platform =
   | 'deepseek'
   | 'minimax'
   | 'opencode_go'
+  | 'typesafe'
   | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
@@ -30,6 +31,7 @@ const BADGE: Record<Platform, string> = {
   deepseek: 'bg-surface-sunken text-fg border-border-strong',
   minimax: 'bg-surface-sunken text-fg border-border-strong',
   opencode_go: 'bg-surface-sunken text-fg border-border-strong',
+  typesafe: 'bg-surface-sunken text-fg border-border-strong',
   composite: 'bg-surface-sunken text-fg border-border-strong',
 }
 const BADGE_DEFAULT = 'bg-surface-sunken text-fg border-border-strong'
@@ -46,6 +48,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
   deepseek: 'bg-surface-sunken text-fg',
   minimax: 'bg-surface-sunken text-fg',
   opencode_go: 'bg-surface-sunken text-fg',
+  typesafe: 'bg-surface-sunken text-fg',
   composite: 'bg-surface-sunken text-fg',
 }
 
@@ -61,6 +64,7 @@ const BORDER: Record<Platform, string> = {
   deepseek: 'border-border',
   minimax: 'border-border',
   opencode_go: 'border-border',
+  typesafe: 'border-border',
   composite: 'border-border',
 }
 const BORDER_DEFAULT = 'border-border'
@@ -77,6 +81,7 @@ const BORDER_STRONG: Record<Platform, string> = {
   deepseek: 'border-border-strong',
   minimax: 'border-border-strong',
   opencode_go: 'border-border-strong',
+  typesafe: 'border-border-strong',
   composite: 'border-border-strong',
 }
 const BORDER_STRONG_DEFAULT = 'border-border-strong'
@@ -94,6 +99,7 @@ const ACCENT: Record<Platform, string> = {
   deepseek: 'rgb(var(--accent))',
   minimax: 'rgb(var(--accent))',
   opencode_go: 'rgb(var(--accent))',
+  typesafe: 'rgb(var(--accent))',
   composite: 'rgb(var(--accent))',
 }
 const ACCENT_DEFAULT = 'rgb(var(--accent))'
@@ -110,6 +116,7 @@ const ACCENT_BAR: Record<Platform, string> = {
   deepseek: ' bg-accent',
   minimax: ' bg-accent',
   opencode_go: ' bg-accent',
+  typesafe: ' bg-accent',
   composite: ' bg-accent',
 }
 const ACCENT_BAR_DEFAULT = ' bg-accent'
@@ -126,6 +133,7 @@ const TEXT: Record<Platform, string> = {
   deepseek: 'text-fg',
   minimax: 'text-fg',
   opencode_go: 'text-fg',
+  typesafe: 'text-fg',
   composite: 'text-fg',
 }
 const TEXT_DEFAULT = 'text-fg'
@@ -142,6 +150,7 @@ const ICON: Record<Platform, string> = {
   deepseek: 'text-accent',
   minimax: 'text-accent',
   opencode_go: 'text-accent',
+  typesafe: 'text-accent',
   composite: 'text-accent',
 }
 const ICON_DEFAULT = 'text-accent'
@@ -158,6 +167,7 @@ const BUTTON: Record<Platform, string> = {
   deepseek: 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken',
   minimax: 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken',
   opencode_go: 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken',
+  typesafe: 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken',
   composite: 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken',
 }
 const BUTTON_DEFAULT = 'bg-accent text-white hover:bg-accent-strong dark:text-surface-sunken'
@@ -174,6 +184,7 @@ const DISCOUNT: Record<Platform, string> = {
   deepseek: 'bg-danger-weak text-danger-strong',
   minimax: 'bg-danger-weak text-danger-strong',
   opencode_go: 'bg-danger-weak text-danger-strong',
+  typesafe: 'bg-danger-weak text-danger-strong',
   composite: 'bg-danger-weak text-danger-strong',
 }
 const DISCOUNT_DEFAULT = 'bg-danger-weak text-danger-strong'
@@ -190,6 +201,7 @@ const GRADIENT: Record<Platform, string> = {
   deepseek: 'bg-accent',
   minimax: 'bg-accent',
   opencode_go: 'bg-accent',
+  typesafe: 'bg-accent',
   composite: 'bg-accent',
 }
 const GRADIENT_DEFAULT = 'bg-accent'
@@ -206,6 +218,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   deepseek: 'text-white',
   minimax: 'text-white',
   opencode_go: 'text-white',
+  typesafe: 'text-white',
   composite: 'text-white',
 }
 const GRADIENT_TEXT_DEFAULT = 'text-white'
@@ -221,6 +234,7 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   deepseek: 'text-white/80',
   minimax: 'text-white/80',
   opencode_go: 'text-white/80',
+  typesafe: 'text-white/80',
   composite: 'text-white/80',
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-white/80'
@@ -239,6 +253,7 @@ function isPlatform(p: string): p is Platform {
     p === 'deepseek' ||
     p === 'minimax' ||
     p === 'opencode_go' ||
+    p === 'typesafe' ||
     p === 'composite'
   )
 }
@@ -307,6 +322,7 @@ export function platformLabel(p: string): string {
     case 'deepseek': return 'DeepSeek'
     case 'minimax': return 'MiniMax'
     case 'opencode_go': return 'OpenCode'
+    case 'typesafe': return 'TypeSafe / Jev'
     case 'composite': return 'Composite'
     default: return p || 'API'
   }

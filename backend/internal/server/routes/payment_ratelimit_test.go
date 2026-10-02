@@ -56,6 +56,7 @@ func newPaymentRoutesTestRouter(t *testing.T, panelRateLimitSettings string) (*g
 		servermiddleware.StepUpAuthMiddleware(fakePaymentStepUp),
 		settings,
 		servermiddleware.NewPanelRateLimiter(rdb, settings),
+		rdb,
 	)
 	return router, mr
 }
