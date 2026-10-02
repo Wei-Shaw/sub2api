@@ -264,9 +264,9 @@ func TestBuildUpstreamRequestOAuthMimic_MidConversationOutputConfig(t *testing.T
 	}
 }
 
-// API-key passthrough 透传路径：客户端 header 带/不带该 beta 时，
-// 出站 header 与 body 的 message-level output_config 必须同进同退。
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_MidConversationOutputConfigConsistentWithClientHeader(t *testing.T) {
+// Strict passthrough preserves caller headers and body independently; beta
+// validation and any required error document belong to the upstream provider.
+func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesMidConversationOutputConfigAndClientHeader(t *testing.T) {
 	cases := []struct {
 		name       string
 		clientBeta string
@@ -283,7 +283,7 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_MidConversationOutputCon
 			name:       "client_header_missing_beta",
 			clientBeta: "oauth-2025-04-20",
 			wantField:  false,
-			wantMsgLen: 1,
+			wantMsgLen: 2,
 		},
 	}
 	for _, tc := range cases {
@@ -309,10 +309,10 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_MidConversationOutputCon
 
 			require.Equalf(t, tc.wantField, anthropicBetaTokensContains(outBeta, claude.BetaMidConversationOutputConfig),
 				"出站 header 必须与客户端传入的 beta 一致（outgoing beta=%q）", outBeta)
-			require.Equal(t, tc.wantField, gjson.GetBytes(outBody, "messages.0.output_config").Exists(),
-				"header/body 必须一致")
+			require.Equal(t, body, outBody)
+			require.True(t, gjson.GetBytes(outBody, "messages.0.output_config").Exists())
 			require.Len(t, gjson.GetBytes(outBody, "messages").Array(), tc.wantMsgLen,
-				"缺 beta 时空控制 system 消息整条删除；带 beta 时保留")
+				"strict mode preserves messages regardless of beta header")
 		})
 	}
 }

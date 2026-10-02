@@ -380,7 +380,7 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	}
 
 	// Determine if ping is needed (streaming + ping format defined)
-	needPing := isStream && h.pingFormat != ""
+	needPing := isStream && h.pingFormat != "" && !c.GetBool("gateway_suppress_wait_ping")
 
 	var flusher http.Flusher
 	if needPing {
