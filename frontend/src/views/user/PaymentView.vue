@@ -60,6 +60,12 @@
             <template v-else>
             <section class="card">
               <div class="card-body space-y-5">
+                <div
+                  v-if="renderedBonusNotice"
+                  class="markdown-body border border-accent bg-accent-weak px-4 py-3 text-body text-fg"
+                  data-testid="recharge-bonus-notice"
+                  v-html="renderedBonusNotice"
+                ></div>
                 <div>
                   <AmountInput
                     v-model="amount"
@@ -87,18 +93,26 @@
                   <tbody>
                     <tr>
                       <td class="text-fg-muted">{{ t('payment.paymentAmount') }}</td>
-                      <td class="text-right tabular-nums">{{ formatSelectedPaymentAmount(validAmount) }}</td>
+                      <td class="text-right tabular-nums" :class="{ 'text-fg-subtle line-through': discountAmount > 0 }">{{ formatSelectedPaymentAmount(validAmount) }}</td>
+                    </tr>
+                    <tr v-if="discountAmount > 0" data-testid="recharge-discount-row">
+                      <td class="text-fg-muted">{{ t('payment.rechargeBonus.discountLabelWithPercent', { percent: formatRechargeBonusNumber(bonusQuote.percent) }) }}</td>
+                      <td class="text-right tabular-nums text-accent-strong">-{{ formatSelectedPaymentAmount(discountAmount) }}</td>
                     </tr>
                     <tr v-if="feeRate > 0">
                       <td class="text-fg-muted">{{ t('payment.fee') }} ({{ feeRate }}%)</td>
                       <td class="text-right tabular-nums">{{ formatSelectedPaymentAmount(feeAmount) }}</td>
                     </tr>
-                    <tr v-if="feeRate > 0" class="row-total">
+                    <tr v-if="feeRate > 0 || discountAmount > 0" class="row-total">
                       <td>{{ t('payment.actualPay') }}</td>
                       <td class="text-right text-h2 tabular-nums text-accent-strong">{{ formatSelectedPaymentAmount(totalAmount) }}</td>
                     </tr>
-                    <tr :class="{ 'row-total': feeRate <= 0 }">
-                      <td :class="feeRate <= 0 ? '' : 'text-fg-muted'">{{ t('payment.creditedBalance') }}</td>
+                    <tr v-if="bonusQuote.mode !== 'discount' && bonusQuote.bonus > 0" data-testid="recharge-bonus-row">
+                      <td class="text-fg-muted">{{ t('payment.rechargeBonus.amountLabelWithPercent', { percent: formatRechargeBonusNumber(bonusQuote.percent) }) }}</td>
+                      <td class="text-right tabular-nums text-accent-strong">+${{ bonusQuote.bonus.toFixed(2) }}</td>
+                    </tr>
+                    <tr :class="{ 'row-total': feeRate <= 0 && discountAmount <= 0 }">
+                      <td :class="feeRate <= 0 && discountAmount <= 0 ? '' : 'text-fg-muted'">{{ t('payment.creditedBalance') }}</td>
                       <td class="text-right tabular-nums">${{ creditedAmount.toFixed(2) }}</td>
                     </tr>
                   </tbody>
@@ -287,6 +301,7 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -561,7 +576,31 @@ const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((usdAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const baseCreditedAmount = computed(() => Math.round((usdAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+
+// 充值优惠预览，镜像后端 quoteRechargeBonusConverted：阶梯按网关币种金额命中，
+// 赠送/折扣落在 USD 到账基数上（等效倍率 = 到账基数 / 网关金额）。
+const bonusQuote = computed(() => {
+  const gateway = validAmount.value
+  const base = baseCreditedAmount.value
+  const tiers = normalizeRechargeBonusTiers(checkout.value.recharge_bonus_tiers)
+  const mode = normalizeRechargeBonusMode(checkout.value.recharge_bonus_mode)
+  // 到账基数为 0 时倍率会退化成 1（把 VND 当 USD），与后端一样直接不报优惠。
+  if (gateway <= 0 || base <= 0) return { ...quoteRechargeBonus([], gateway, { mode }), base, credited: base }
+  return quoteRechargeBonus(tiers, gateway, {
+    multiplier: base / gateway,
+    mode,
+    currencyDigits: currencyFractionDigits(selectedCurrency.value),
+  })
+})
+const payBaseAmount = computed(() => bonusQuote.value.payBase)
+const discountAmount = computed(() => roundPaymentAmount(validAmount.value - payBaseAmount.value, selectedCurrency.value))
+const creditedAmount = computed(() => bonusQuote.value.credited)
+const renderedBonusNotice = computed(() => {
+  const raw = (checkout.value.recharge_bonus_notice || '').trim()
+  if (!raw) return ''
+  return DOMPurify.sanitize(marked.parse(raw, { async: false, gfm: true, breaks: true }))
+})
 
 // Tier table: plans are printed columns sharing hairlines (cells use -ml-px/-mt-px).
 // 2-col for up to 2 plans, 3-col for 3+.
@@ -673,15 +712,16 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
 )
 
 const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
+// 手续费与实付按折后基数算（后端 limitAmount = quote.PayBase）；赠金模式下 payBase 就是 validAmount。
 const feeAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
+  feeRate.value > 0 && payBaseAmount.value > 0
+    ? Math.ceil(((payBaseAmount.value * feeRate.value) / 100) * 100) / 100
     : 0
 )
 const totalAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.round((validAmount.value + feeAmount.value) * 100) / 100
-    : validAmount.value
+  feeRate.value > 0 && payBaseAmount.value > 0
+    ? Math.round((payBaseAmount.value + feeAmount.value) * 100) / 100
+    : payBaseAmount.value
 )
 
 const amountError = computed(() => {
