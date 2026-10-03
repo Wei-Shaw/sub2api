@@ -178,7 +178,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if normalized {
 			body = normalizedBody
 		}
-		reqStream = gjson.GetBytes(body, "stream").Bool()
+		// OAuth normalization forces upstream SSE, but reqStream selects the
+		// response framing requested by the client. Compact always returns JSON.
+		if isOpenAIResponsesCompactPath(c) {
+			reqStream = false
+		}
 
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
@@ -2430,6 +2434,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		// Gin does not overwrite the content type copied from the SSE upstream.
+		c.Header("Content-Type", contentType)
 		c.Data(resp.StatusCode, contentType, body)
 	}
 
