@@ -900,6 +900,18 @@ func (_u *GroupUpdate) ClearModelRouting() *GroupUpdate {
 	return _u
 }
 
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (_u *GroupUpdate) SetSchedulerConfig(v map[string]interface{}) *GroupUpdate {
+	_u.mutation.SetSchedulerConfig(v)
+	return _u
+}
+
+// ClearSchedulerConfig clears the value of the "scheduler_config" field.
+func (_u *GroupUpdate) ClearSchedulerConfig() *GroupUpdate {
+	_u.mutation.ClearSchedulerConfig()
+	return _u
+}
+
 // SetModelRoutingEnabled sets the "model_routing_enabled" field.
 func (_u *GroupUpdate) SetModelRoutingEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetModelRoutingEnabled(v)
@@ -1831,6 +1843,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ModelRoutingCleared() {
 		_spec.ClearField(group.FieldModelRouting, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SchedulerConfig(); ok {
+		_spec.SetField(group.FieldSchedulerConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.SchedulerConfigCleared() {
+		_spec.ClearField(group.FieldSchedulerConfig, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
@@ -3094,6 +3112,18 @@ func (_u *GroupUpdateOne) ClearModelRouting() *GroupUpdateOne {
 	return _u
 }
 
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (_u *GroupUpdateOne) SetSchedulerConfig(v map[string]interface{}) *GroupUpdateOne {
+	_u.mutation.SetSchedulerConfig(v)
+	return _u
+}
+
+// ClearSchedulerConfig clears the value of the "scheduler_config" field.
+func (_u *GroupUpdateOne) ClearSchedulerConfig() *GroupUpdateOne {
+	_u.mutation.ClearSchedulerConfig()
+	return _u
+}
+
 // SetModelRoutingEnabled sets the "model_routing_enabled" field.
 func (_u *GroupUpdateOne) SetModelRoutingEnabled(v bool) *GroupUpdateOne {
 	_u.mutation.SetModelRoutingEnabled(v)
@@ -4055,6 +4085,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ModelRoutingCleared() {
 		_spec.ClearField(group.FieldModelRouting, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SchedulerConfig(); ok {
+		_spec.SetField(group.FieldSchedulerConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.SchedulerConfigCleared() {
+		_spec.ClearField(group.FieldSchedulerConfig, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)

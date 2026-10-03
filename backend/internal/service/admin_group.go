@@ -387,6 +387,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		normalizeCreateGroupInputForSimpleMode(input)
 	}
+	input.Scheduler = NormalizeGroupSchedulerConfig(input.Scheduler)
+	if err := ValidateGroupSchedulerConfig(input.Scheduler); err != nil {
+		return nil, err
+	}
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
@@ -562,6 +566,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Name:                            input.Name,
 		Description:                     input.Description,
 		Platform:                        platform,
+		Scheduler:                       input.Scheduler,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
@@ -765,6 +770,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 	// 渠道缓存里存了 groupID → platform 的映射，改了平台要让它失效（见函数末尾）
 	previousPlatform := group.Platform
+	if input.Scheduler != nil {
+		group.Scheduler = NormalizeGroupSchedulerConfig(*input.Scheduler)
+		if err := ValidateGroupSchedulerConfig(group.Scheduler); err != nil {
+			return nil, err
+		}
+	}
 
 	if input.Name != "" {
 		group.Name = input.Name

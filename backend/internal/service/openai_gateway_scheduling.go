@@ -242,6 +242,80 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 	return s.setStickySessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
 }
 
+// openAIHighAvailabilityEnabled is deliberately scoped to the existing
+// OpenAI advanced scheduler. Legacy callers and hand-built configs keep their
+// previous ordering when the new strategy is absent or disabled.
+func (s *OpenAIGatewayService) openAIHighAvailabilityEnabled() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(s.cfg.Gateway.OpenAIScheduler.Strategy), "high_availability")
+}
+
+func (s *OpenAIGatewayService) openAIStickyBindingMode() string {
+	if s == nil || s.cfg == nil {
+		return "keep_original"
+	}
+	mode := strings.ToLower(strings.TrimSpace(s.cfg.Gateway.OpenAIScheduler.StickyBindingMode))
+	if mode == "rebind_on_failover" {
+		return mode
+	}
+	return "keep_original"
+}
+
+type openAIHealthCircuitConfig struct {
+	enabled   bool
+	threshold int
+	window    time.Duration
+	cooldown  time.Duration
+}
+
+func (s *OpenAIGatewayService) openAIHealthCircuitConfig() openAIHealthCircuitConfig {
+	result := openAIHealthCircuitConfig{
+		enabled:   true,
+		threshold: 3,
+		window:    60 * time.Second,
+		cooldown:  30 * time.Second,
+	}
+	if s == nil || s.cfg == nil {
+		return result
+	}
+	cfg := s.cfg.Gateway.OpenAIScheduler
+	result.enabled = cfg.HealthCircuitEnabled
+	if cfg.HealthCircuitFailureThreshold > 0 {
+		result.threshold = cfg.HealthCircuitFailureThreshold
+	}
+	if cfg.HealthCircuitWindowSeconds > 0 {
+		result.window = time.Duration(cfg.HealthCircuitWindowSeconds) * time.Second
+	}
+	if cfg.HealthCircuitCooldownSeconds > 0 {
+		result.cooldown = time.Duration(cfg.HealthCircuitCooldownSeconds) * time.Second
+	}
+	return result
+}
+
+// RebindStickySessionAfterFailover migrates a session binding only after the
+// caller has committed to trying another account for the same request. It is
+// intentionally separate from BindStickySessionAfterProfitAdmission, which is
+// called for ordinary successful admissions and must not reinterpret them as
+// failover events.
+func (s *OpenAIGatewayService) RebindStickySessionAfterFailover(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	if !s.openAIHighAvailabilityEnabled() || s.openAIStickyBindingMode() != "rebind_on_failover" {
+		return nil
+	}
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+}
+
+// preserveStickyBindingAfterHealthEscape distinguishes a temporary health
+// escape from a request failover. The default preserves the original binding;
+// explicit rebind mode can opt into migration for health escapes as well.
+func (s *OpenAIGatewayService) preserveStickyBindingAfterHealthEscape() bool {
+	if !s.openAIHighAvailabilityEnabled() || s == nil || s.cfg == nil {
+		return true
+	}
+	return s.openAIStickyBindingMode() != "rebind_on_failover" || !s.cfg.Gateway.OpenAIScheduler.FailoverOnHealthEscape
+}
+
 // SelectAccount selects an OpenAI account with sticky session support
 func (s *OpenAIGatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*Account, error) {
 	return s.SelectAccountForModel(ctx, groupID, sessionHash, "")
