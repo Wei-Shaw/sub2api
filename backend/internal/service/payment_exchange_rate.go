@@ -19,6 +19,9 @@ type ExchangeRateInfo struct {
 	Rate      string    `json:"rate"`
 	FetchedAt time.Time `json:"fetched_at"`
 	Source    string    `json:"source"`
+	// TierRate is VND per 1 USD for gateways that don't settle in VND. Recharge
+	// bonus tiers are priced in VND, so the form needs it to preview the bonus.
+	TierRate string `json:"tier_rate,omitempty"`
 }
 
 // ExchangeRate returns the rate used to price orders for a payment type.
@@ -35,7 +38,14 @@ func (s *PaymentService) ExchangeRate(ctx context.Context, paymentType string) (
 		methodCurrency = resolved
 	}
 	if strings.EqualFold(methodCurrency, "USD") {
-		return &ExchangeRateInfo{GatewayCurrency: methodCurrency, Rate: "1", Source: "identity"}, nil
+		info := &ExchangeRateInfo{GatewayCurrency: methodCurrency, Rate: "1", Source: "identity"}
+		// Best effort: without it the form just shows no bonus; the order path decides.
+		if s.exchangeRateService != nil {
+			if rate, _, err := s.exchangeRateService.EffectiveRate(ctx); err == nil && rate.IsPositive() {
+				info.TierRate = rate.String()
+			}
+		}
+		return info, nil
 	}
 	if s.exchangeRateService == nil {
 		return nil, infraerrors.ServiceUnavailable("EXCHANGE_RATE_UNAVAILABLE",

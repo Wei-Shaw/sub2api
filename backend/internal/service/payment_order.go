@@ -85,8 +85,8 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
-		// 阈值按网关币种的支付金额命中；赠送/折扣按 USD 到账基数计算。
-		quote := quoteRechargeBonusConverted(cfg, gatewayAmount, calculateCreditedBalance(creditedUSD, cfg.BalanceRechargeMultiplier), methodCurrency)
+		// 阈值按 VND 命中；赠送/折扣按 USD 到账基数计算。
+		quote := quoteRechargeBonusConverted(cfg, gatewayAmount, s.rechargeBonusTierAmount(ctx, gatewayAmount, creditedUSD, methodCurrency), calculateCreditedBalance(creditedUSD, cfg.BalanceRechargeMultiplier), methodCurrency)
 		limitAmount = quote.PayBase
 		bonusAmount = quote.Bonus
 		orderAmount = quote.Credited
@@ -162,16 +162,36 @@ func (s *PaymentService) resolveOrderAmounts(ctx context.Context, req CreateOrde
 	return charged, req.Amount, nil
 }
 
+// rechargeBonusTierAmount 返回用于命中优惠阶梯的金额。阶梯阈值按 VND 配置，
+// 非 VND 网关（如 NOWPayments 按 USD 计价）先把 USD 金额折成 VND 再比较，
+// 否则 $10 永远够不到 100000 的门槛。汇率拿不到时不给优惠，而不是挡住下单。
+func (s *PaymentService) rechargeBonusTierAmount(ctx context.Context, gatewayAmount, creditedUSD float64, methodCurrency string) float64 {
+	if strings.EqualFold(methodCurrency, payment.DefaultPaymentCurrency) {
+		return gatewayAmount
+	}
+	amount, err := s.convertUSDToGateway(ctx, creditedUSD, payment.DefaultPaymentCurrency)
+	if err != nil {
+		slog.Warn("[Payment] recharge bonus tier amount: exchange rate unavailable, skipping bonus", "currency", methodCurrency, "error", err)
+		return 0
+	}
+	return amount
+}
+
 // quoteRechargeBonusConverted 是 quoteRechargeBonus 的换汇版：上游假设「支付金额 × 倍率 = 到账」，
-// 本 fork 支付币种（VND）与到账币种（USD）不同。这里把「USD 到账基数 / 网关金额」作为等效倍率传给
-// 上游报价，阶梯仍按网关币种金额命中，赠送/折扣额度落在 USD 上。
-func quoteRechargeBonusConverted(cfg *PaymentConfig, gatewayAmount, baseCredited float64, currency string) rechargeBonusQuote {
+// 本 fork 支付币种（VND/USD）与到账币种（USD）不同。阶梯按 tierAmount（VND）命中，
+// 命中档位后把「USD 到账基数 / 网关金额」作为等效倍率交给上游报价，赠送/折扣额度落在 USD 上。
+func quoteRechargeBonusConverted(cfg *PaymentConfig, gatewayAmount, tierAmount, baseCredited float64, currency string) rechargeBonusQuote {
 	// baseCredited 为 0 时等效倍率会被归一成 1，等于把 VND 当 USD 记账，必须提前挡住。
 	if cfg == nil || gatewayAmount <= 0 || baseCredited <= 0 {
 		return rechargeBonusQuote{PayBase: gatewayAmount, Credited: baseCredited}
 	}
+	tier, ok := matchRechargeBonusTier(cfg.RechargeBonusTiers, tierAmount)
+	if !ok {
+		return rechargeBonusQuote{PayBase: gatewayAmount, Credited: baseCredited}
+	}
 	fx := *cfg
 	fx.BalanceRechargeMultiplier = baseCredited / gatewayAmount
+	fx.RechargeBonusTiers = []RechargeBonusTier{{MinAmount: 0, BonusPercent: tier.BonusPercent}}
 	return quoteRechargeBonus(&fx, gatewayAmount, currency)
 }
 
