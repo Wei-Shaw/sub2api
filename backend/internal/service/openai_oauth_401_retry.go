@@ -27,8 +27,17 @@ func (s *OpenAIGatewayService) tryRefreshOpenAIHTTP401(ctx context.Context, acco
 		return "", false
 	}
 	if account.IsShadow() {
+		if s.accountRepo == nil {
+			return "", false
+		}
 		owner, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 		if err != nil || owner == nil {
+			return "", false
+		}
+		// A shadow inherits its owner's proxy. Keep the transport used by
+		// the rejected request if the owner changed after selection.
+		if (account.ProxyID == nil) != (owner.ProxyID == nil) ||
+			(account.ProxyID != nil && *account.ProxyID != *owner.ProxyID) {
 			return "", false
 		}
 		account = owner
@@ -71,6 +80,9 @@ func sameOpenAI401RecoveryAccount(account, expected *Account) bool {
 }
 
 func (p *OpenAITokenProvider) refreshRejectedAccessToken(ctx context.Context, account *Account, rejectedToken string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	rejectedToken = strings.TrimSpace(rejectedToken)
 	if p == nil || p.refreshAPI == nil || p.executor == nil || p.accountRepo == nil ||
 		rejectedToken == "" || !sameOpenAI401RecoveryAccount(account, account) {
@@ -84,6 +96,11 @@ func (p *OpenAITokenProvider) refreshRejectedAccessToken(ctx context.Context, ac
 	result, err := p.refreshAPI.RefreshIfNeeded(withOAuthRefreshRequestPath(ctx), account, executor, 0)
 	if err != nil {
 		p.metrics.refreshFailure.Add(1)
+		return "", err
+	}
+	// Reusing an already rotated token can bypass the executor's cancellation
+	// check. The caller must not retry a request that has ended.
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	fresh := result.Account
@@ -109,6 +126,9 @@ func (p *OpenAITokenProvider) refreshRejectedAccessToken(ctx context.Context, ac
 			return "", errors.New("OpenAI OAuth cache invalidation failed after 401 recovery")
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	return token, nil
 }
 
@@ -117,6 +137,9 @@ func (p *OpenAITokenProvider) waitForOpenAI401Rotation(ctx context.Context, expe
 	for i := 0; i < openAILockMaxAttempts; i++ {
 		fresh, err := p.accountRepo.GetByID(ctx, expected.ID)
 		if err != nil {
+			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		if !sameOpenAI401RecoveryAccount(fresh, expected) {

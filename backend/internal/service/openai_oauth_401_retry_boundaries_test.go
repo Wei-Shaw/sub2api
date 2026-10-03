@@ -232,3 +232,97 @@ func TestOpenAIOAuth401RecoveryCancellationAndAccountChanges(t *testing.T) {
 		require.Zero(t, executor.refreshCalls)
 	})
 }
+
+// A durable winner can make RefreshIfNeeded return without invoking the
+// executor. Cancellation at that boundary must still stop recovery.
+type openAI401CancelledWinnerRepo struct {
+	AccountRepository
+	account *Account
+	cancel  context.CancelFunc
+}
+
+func (r *openAI401CancelledWinnerRepo) GetByID(context.Context, int64) (*Account, error) {
+	r.cancel()
+	return snapshotOAuthRefreshAccount(r.account), nil
+}
+
+func TestOpenAIOAuth401CancelledWinnerIsNotRetried(t *testing.T) {
+	old := newOpenAI401TestAccount()
+	fresh := snapshotOAuthRefreshAccount(old)
+	fresh.Credentials["access_token"] = "winner-at"
+	fresh.Credentials["refresh_token"] = "winner-rt"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	repo := &openAI401CancelledWinnerRepo{account: fresh, cancel: cancel}
+	executor := &refreshAPIExecutorStub{}
+	provider := NewOpenAITokenProvider(repo, nil, nil)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil), executor)
+	token, err := provider.refreshRejectedAccessToken(ctx, old, "rejected-at")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, token)
+	require.Zero(t, executor.refreshCalls)
+	require.Equal(t, "old-rt", old.GetOpenAIRefreshToken())
+}
+
+func TestOpenAIOAuth401ShadowRefreshesCredentialOwner(t *testing.T) {
+	owner := newOpenAI401TestAccount()
+	shadow := &Account{ID: 5543, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, ParentAccountID: &owner.ID,
+		Credentials: map[string]any{"model_mapping": map[string]any{"spark": "gpt-5.6-sol"}}}
+	expectedShadow := shallowCopyMap(shadow.Credentials)
+	repo := &refreshAPIAccountRepo{account: owner}
+	cache := newOpenAITokenCacheStub()
+	cache.tokens[OpenAITokenCacheKey(owner)] = "rejected-at"
+	executor := &refreshAPIExecutorStub{credentials: map[string]any{
+		"access_token": "fresh-at", "refresh_token": "rotated-rt",
+		"expires_at": time.Now().Add(2 * time.Hour).Format(time.RFC3339)}}
+	provider := NewOpenAITokenProvider(repo, cache, nil)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), executor)
+	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
+	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), shadow,
+		http.StatusUnauthorized, []byte(`{"error":{"code":"invalid_api_key"}}`), "rejected-at")
+	require.True(t, recovered)
+	require.Equal(t, "fresh-at", token)
+	require.Equal(t, owner.ID, repo.account.ID)
+	require.Equal(t, "rotated-rt", repo.account.GetOpenAIRefreshToken())
+	require.Equal(t, 1, executor.refreshCalls)
+	require.Equal(t, expectedShadow, shadow.Credentials)
+	require.NotContains(t, cache.tokens, OpenAITokenCacheKey(owner))
+}
+
+func TestOpenAIOAuth401ShadowChangedProxyNotRetried(t *testing.T) {
+	owner := newOpenAI401TestAccount()
+	proxyID := int64(44)
+	owner.ProxyID = &proxyID
+	// The selected shadow still represents the old direct transport.
+	shadow := &Account{ID: 5543, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, ParentAccountID: &owner.ID}
+	repo := &refreshAPIAccountRepo{account: owner}
+	executor := &refreshAPIExecutorStub{credentials: map[string]any{
+		"access_token": "fresh-at", "refresh_token": "rotated-rt"}}
+	provider := NewOpenAITokenProvider(repo, nil, nil)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil), executor)
+	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
+	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), shadow,
+		http.StatusUnauthorized, nil, "rejected-at")
+	require.False(t, recovered)
+	require.Empty(t, token)
+	require.Zero(t, executor.refreshCalls)
+	require.Equal(t, "old-rt", owner.GetOpenAIRefreshToken())
+}
+
+func TestOpenAIOAuth401AgentIdentityNotRefreshed(t *testing.T) {
+	account := newOpenAI401TestAccount()
+	account.Credentials["auth_mode"] = OpenAIAuthModeAgentIdentity
+	repo := &refreshAPIAccountRepo{account: account}
+	executor := &refreshAPIExecutorStub{}
+	provider := NewOpenAITokenProvider(repo, nil, nil)
+	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil), executor)
+	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
+	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), account,
+		http.StatusUnauthorized, nil, "rejected-at")
+	require.False(t, recovered)
+	require.Empty(t, token)
+	require.Zero(t, executor.refreshCalls)
+	require.Zero(t, repo.updateCredentialsCalls)
+}
