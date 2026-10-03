@@ -124,8 +124,8 @@ const labelClass = computed(() => {
 // 监控页「Pro/7 天」类组合标签。百分比列在两种模式下保持不变。
 const labelSizeClass = computed(() =>
   props.labelWidth === 'auto'
-    ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
-    : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
+    ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium whitespace-nowrap'
+    : 'min-w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium whitespace-nowrap'
 )
 
 // Progress bar color based on utilization
