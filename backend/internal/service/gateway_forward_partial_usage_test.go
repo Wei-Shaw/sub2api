@@ -138,13 +138,14 @@ func TestGatewayService_Forward_StreamReadErrorAfterOutputPreservesPartialUsage(
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
 	require.NoError(t, err)
 
-	// message_start 已写出（含 usage），随后上游连接异常中断。
+	// 可见正文已释放 message_start（含 usage），随后上游连接异常中断。
 	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body: &streamReadCloser{
-			payload: []byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":9,\"cache_creation_input_tokens\":4}}}\n\n"),
-			err:     io.ErrUnexpectedEOF,
+			payload: []byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":9,\"cache_creation_input_tokens\":4}}}\n\n" +
+				"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\n"),
+			err: io.ErrUnexpectedEOF,
 		},
 	}}
 	svc := newForwardPartialUsageServiceForTest(upstream)
@@ -179,9 +180,12 @@ func TestGatewayService_Forward_StreamErrorWithoutUsageReturnsNilResult(t *testi
 	account := newAnthropicOAuthAccountForPartialUsageTest()
 
 	result, err := svc.Forward(context.Background(), c, account, parsed)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing terminal event")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Contains(t, string(failoverErr.ResponseBody), "empty_visible_output")
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
 	require.Nil(t, result, "无已观测 usage 时不应返回部分结果")
+	require.Empty(t, rec.Body.String(), "只有上游 ping 的失败尝试不能泄露语义事件")
 }
 
 func TestGatewayService_Forward_FailoverErrorKeepsNilResult(t *testing.T) {
@@ -261,6 +265,47 @@ func TestGatewayService_Forward_PreOutputSSEOverloadedErrorUsesSemantic529(t *te
 	require.Empty(t, rec.Body.String(), "pre-output overload must remain eligible for account failover")
 }
 
+func TestGatewayService_Forward_CommentOnlySSEOverloadKeepsSafeFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+	require.NoError(t, err)
+
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	const raw = `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
+	go func() {
+		defer writer.Close()
+		_, _ = io.WriteString(writer, "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":7}}}\n\n")
+		time.Sleep(1100 * time.Millisecond)
+		_, _ = io.WriteString(writer, "event: error\ndata: "+raw+"\n\n")
+	}()
+	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       reader,
+	}}
+	repo := &gatewayForwardErrorPolicyRepoStub{}
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize, StreamKeepaliveInterval: 1}}
+	svc := &GatewayService{
+		cfg: cfg, responseHeaderFilter: compileResponseHeaderFilter(cfg), httpUpstream: upstream,
+		rateLimitService: NewRateLimitService(repo, nil, cfg, nil, nil), deferredService: &DeferredService{},
+	}
+	result, err := svc.Forward(context.Background(), c, newAnthropicOAuthAccountForPartialUsageTest(), parsed)
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.Nil(t, result)
+	// Forward 包装 typed SSE 错误后仍须保留安全标志和原来的账号冷却语义。
+	require.True(t, failover.SafeToFailoverAfterWrite)
+	require.Equal(t, 529, failover.StatusCode)
+	require.JSONEq(t, raw, string(failover.ResponseBody))
+	require.Equal(t, 1, repo.overloadCalls)
+	require.Equal(t, ": ping\n\n", rec.Body.String())
+}
+
 func TestGatewayService_Forward_PostOutputSSEOverloadedErrorKeepsExistingStatus(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -274,6 +319,7 @@ func TestGatewayService_Forward_PostOutputSSEOverloadedErrorKeepsExistingStatus(
 
 	const errorJSON = `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
 	fixture := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n\n" +
+		"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\n" +
 		"event: error\ndata: " + errorJSON + "\n\n"
 	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -297,9 +343,11 @@ func TestGatewayService_Forward_PostOutputSSEOverloadedErrorKeepsExistingStatus(
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusForbidden, failoverErr.StatusCode)
+	require.False(t, failoverErr.SafeToFailoverAfterWrite)
 	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
 	require.Zero(t, repo.tempCalls)
 	require.Contains(t, rec.Body.String(), "message_start")
+	require.Contains(t, rec.Body.String(), "answer")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamMissingTerminalPreservesPartialUsage(t *testing.T) {
