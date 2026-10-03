@@ -438,8 +438,20 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 		}
 
 		if role == "system" {
-			systemParts = append(systemParts, parts...)
-			continue
+			// 只有对话开始前的 system 消息才并入 systemInstruction。
+			// 对话中途出现的 system 消息（如客户端逐轮注入的状态提示）必须留在原位：
+			// systemInstruction 排在 contents 之前，把它们提到那里等于每轮都往
+			// 已有对话内容的前面插入新文本，上游前缀缓存会因此逐轮失效。
+			if len(contents) == 0 {
+				systemParts = append(systemParts, parts...)
+				continue
+			}
+			// 保持角色交替：优先并入前一个 user 轮次，否则单独成为一个 user 轮次。
+			if last := &contents[len(contents)-1]; last.Role == "user" {
+				last.Parts = append(last.Parts, parts...)
+				continue
+			}
+			role = "user"
 		}
 
 		// 只有 Gemini 模型支持 dummy thinking block workaround
