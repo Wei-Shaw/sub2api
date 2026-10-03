@@ -2077,11 +2077,13 @@ const closeCcsClientSelect = () => {
 
 const importToMagpie = (row: ApiKey) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
-  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const siteName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
   const link = buildMagpieImportLink({
     baseUrl,
     platform: row.group?.platform,
-    providerName,
+    siteName,
+    keyId: row.id,
+    keyName: row.name,
     apiKey: row.key,
     website: window.location.origin,
     keysUrl: `${window.location.origin}${window.location.pathname}`

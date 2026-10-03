@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAGPIE_IMPORT_URL,
+  MAGPIE_NAME_MAX_BYTES,
   buildMagpieImportLink,
   magpieSlug,
   resolveMagpieImportEndpoints,
-  resolveMagpieProviderId
+  resolveMagpieProviderId,
+  resolveMagpieProviderName
 } from '@/utils/magpieImport'
 import type { GroupPlatform } from '@/types'
 
@@ -16,7 +18,9 @@ function paramsFromLink(link: string): URLSearchParams {
 
 const baseInput = {
   baseUrl: 'https://api.example.com',
-  providerName: 'Sub2API',
+  siteName: 'Sub2API',
+  keyId: 42,
+  keyName: 'laptop',
   apiKey: 'sk-test'
 }
 
@@ -34,7 +38,8 @@ describe('magpieImport utils', () => {
     expect(new URL(link).search).toBe('')
 
     const params = paramsFromLink(link)
-    expect(params.get('name')).toBe('Sub2API')
+    expect(params.get('name')).toBe('Sub2API-laptop')
+    expect(params.get('id')).toBe('sub2api-42')
     expect(params.get('key')).toBe('sk-test')
   })
 
@@ -125,27 +130,56 @@ describe('magpieImport utils', () => {
     expect(params.has('catalog')).toBe(false)
   })
 
-  it('lets Magpie derive the id when the name has ASCII letters or digits', () => {
-    expect(resolveMagpieProviderId('鱼鱼连线 YYLX', 'https://app.yylx.io')).toBeUndefined()
+  it('gives every key a provider id of its own', () => {
+    const first = paramsFromLink(buildMagpieImportLink({ ...baseInput, platform: 'anthropic' }))
+    const second = paramsFromLink(
+      buildMagpieImportLink({ ...baseInput, keyId: 43, keyName: 'laptop', apiKey: 'sk-other', platform: 'anthropic' })
+    )
+    const again = paramsFromLink(
+      buildMagpieImportLink({ ...baseInput, keyName: 'renamed', platform: 'openai' })
+    )
 
-    const params = paramsFromLink(buildMagpieImportLink({ ...baseInput, platform: 'anthropic' }))
-    expect(params.has('id')).toBe(false)
+    expect(first.get('id')).toBe('sub2api-42')
+    expect(second.get('id')).toBe('sub2api-43')
+    expect(again.get('id')).toBe('sub2api-42')
   })
 
-  it('falls back to the API host as id when the name would slug to nothing', () => {
-    expect(resolveMagpieProviderId('鱼鱼连线', 'https://app.yylx.io/v1/')).toBe('app-yylx-io')
-    expect(resolveMagpieProviderId('鱼鱼连线', 'not a url')).toBe('sub2api')
+  it('prefixes the provider id with the site name slug', () => {
+    expect(resolveMagpieProviderId('鱼鱼连线 YYLX', 'https://app.yylx.io', 7)).toBe('yylx-7')
+  })
+
+  it('falls back to the API host as id prefix when the name would slug to nothing', () => {
+    expect(resolveMagpieProviderId('鱼鱼连线', 'https://app.yylx.io/v1/', 7)).toBe('app-yylx-io-7')
+    expect(resolveMagpieProviderId('鱼鱼连线', 'not a url', 7)).toBe('sub2api-7')
 
     const params = paramsFromLink(
       buildMagpieImportLink({
         ...baseInput,
         baseUrl: 'https://app.yylx.io',
-        providerName: '鱼鱼连线',
+        siteName: '鱼鱼连线',
+        keyName: '工作',
         platform: 'anthropic'
       })
     )
-    expect(params.get('name')).toBe('鱼鱼连线')
-    expect(params.get('id')).toBe('app-yylx-io')
+    expect(params.get('name')).toBe('鱼鱼连线-工作')
+    expect(params.get('id')).toBe('app-yylx-io-42')
+  })
+
+  it('names the provider after the site alone when the key name is blank', () => {
+    expect(resolveMagpieProviderName(' Sub2API ', '  ')).toBe('Sub2API')
+  })
+
+  it('keeps the name within the bytes Magpie keeps, on a character boundary', () => {
+    const name = resolveMagpieProviderName('鱼鱼连线', '很长的密钥名称'.repeat(10))
+    const bytes = new TextEncoder().encode(name).length
+
+    expect(bytes).toBeLessThanOrEqual(MAGPIE_NAME_MAX_BYTES)
+    expect(bytes).toBeGreaterThan(MAGPIE_NAME_MAX_BYTES - 3)
+    expect(name.startsWith('鱼鱼连线-很长的密钥名称')).toBe(true)
+  })
+
+  it('keeps a name within the limit unchanged', () => {
+    expect(resolveMagpieProviderName('Sub2API', 'k'.repeat(10))).toBe(`Sub2API-${'k'.repeat(10)}`)
   })
 
   it('passes the site pages through when given', () => {

@@ -23,13 +23,20 @@ export interface MagpieImportEndpoints {
 export interface MagpieImportLinkInput {
   baseUrl: string
   platform?: GroupPlatform | null
-  providerName: string
+  siteName: string
+  /** The API key's id on this site: it makes the provider id, so each key is its own provider. */
+  keyId: number
+  /** The API key's name, shown after the site name. */
+  keyName: string
   apiKey: string
   /** The site's homepage. Magpie keeps it only when it is https. */
   website?: string
   /** The page where users mint keys. Magpie keeps it only when it is https. */
   keysUrl?: string
 }
+
+/** Magpie cuts a longer name at this many bytes, which can split a multi-byte character. */
+export const MAGPIE_NAME_MAX_BYTES = 80
 
 const MAGPIE_CATALOG_BY_PLATFORM: Partial<Record<GroupPlatform, string>> = {
   anthropic: 'anthropic',
@@ -84,35 +91,53 @@ export function resolveMagpieImportEndpoints(
   }
 }
 
-/**
- * Magpie derives the provider id from the name and rejects a link whose name
- * has no ASCII letters or digits (a Chinese-only site name, for example).
- * Return an explicit id from the API host in that case; otherwise let Magpie
- * derive it so the id matches what a hand-typed name would get.
- */
-export function resolveMagpieProviderId(providerName: string, baseUrl: string): string | undefined {
-  if (magpieSlug(providerName)) {
-    return undefined
+function truncateUtf8(value: string, maxBytes: number): string {
+  const encoder = new TextEncoder()
+  let out = ''
+  let used = 0
+  for (const char of value) {
+    const size = encoder.encode(char).length
+    if (used + size > maxBytes) {
+      break
+    }
+    out += char
+    used += size
   }
+  return out
+}
 
-  let host = ''
-  try {
-    host = new URL(baseUrl).hostname
-  } catch {
-    host = ''
+/**
+ * Magpie offers to replace the provider whose id an import link repeats, so
+ * the id carries the key's id: another key of the site becomes a provider of
+ * its own, and importing the same key again updates its provider. The prefix
+ * is the site name's slug, or the API host's when the name has no ASCII
+ * letters or digits.
+ */
+export function resolveMagpieProviderId(siteName: string, baseUrl: string, keyId: number): string {
+  let prefix = magpieSlug(siteName)
+  if (!prefix) {
+    try {
+      prefix = magpieSlug(new URL(baseUrl).hostname)
+    } catch {
+      prefix = ''
+    }
   }
-  return magpieSlug(host) || 'sub2api'
+  return `${prefix || 'sub2api'}-${keyId}`
+}
+
+/** "Site-key name", within the bytes Magpie keeps of a name. */
+export function resolveMagpieProviderName(siteName: string, keyName: string): string {
+  const site = siteName.trim()
+  const key = keyName.trim()
+  return truncateUtf8(key ? `${site}-${key}` : site, MAGPIE_NAME_MAX_BYTES)
 }
 
 export function buildMagpieImportLink(input: MagpieImportLinkInput): string {
   const endpoints = resolveMagpieImportEndpoints(input.platform, input.baseUrl)
   const params = new URLSearchParams()
 
-  params.set('name', input.providerName)
-  const id = resolveMagpieProviderId(input.providerName, input.baseUrl)
-  if (id) {
-    params.set('id', id)
-  }
+  params.set('name', resolveMagpieProviderName(input.siteName, input.keyName))
+  params.set('id', resolveMagpieProviderId(input.siteName, input.baseUrl, input.keyId))
   if (endpoints.chat) {
     params.set('chat', endpoints.chat)
   }
