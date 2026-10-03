@@ -99,7 +99,14 @@ func TestAccountHandlerSyncUpstreamModelsPreviewEdit(t *testing.T) {
 			require.Len(t, upstream.requests, 1)
 			require.Equal(t, "https://draft.example/v1/models", upstream.requests[0].URL.String())
 			require.Equal(t, "Bearer "+tc.wantKey, upstream.requests[0].Header.Get("Authorization"))
-			require.Equal(t, []string{"preserved"}, upstream.requests[0].Header["x-test-header"])
+			// Header overrides preserve wire casing, which need not be canonical.
+			var customHeaderValues []string
+			for name, values := range upstream.requests[0].Header {
+				if strings.EqualFold(name, "X-Test-Header") {
+					customHeaderValues = append(customHeaderValues, values...)
+				}
+			}
+			require.Equal(t, []string{"preserved"}, customHeaderValues)
 			require.Equal(t, []string{tc.wantProxy}, upstream.proxyURLs)
 			require.Equal(t, []int64{0}, upstream.accountIDs)
 			require.Zero(t, repo.writes, "preview must not persist complete capability metadata")
