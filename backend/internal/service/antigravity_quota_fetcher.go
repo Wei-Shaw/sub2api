@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 const (
@@ -56,12 +58,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
-	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
-	if err != nil {
-		// 403 Forbidden: 不报错，返回 is_forbidden 标记
+	bodyLimit := resolveModelsListReadLimit(f.cfg)
+
+	// 调用 API 获取配额 (旧端点)
+	modelsResp, modelsRaw, modelsErr := client.FetchAvailableModels(ctx, accessToken, projectID, bodyLimit)
+	if modelsErr != nil {
+		// 403 Forbidden: 明确禁止访问，立即返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
-		if errors.As(err, &forbiddenErr) {
+		if errors.As(modelsErr, &forbiddenErr) {
 			now := time.Now()
 			fbType := classifyForbiddenType(forbiddenErr.Body)
 			return &QuotaResult{
@@ -77,16 +81,42 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 				},
 			}, nil
 		}
-		return nil, err
 	}
 
 	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
 	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
 
 	// 调用 RetrieveUserQuotaSummary 获取真实额度桶摘要（对应 agy /usage，非关键路径，平滑降级）
-	quotaSummaryResp, _, summaryErr := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	quotaSummaryResp, summaryRaw, summaryErr := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, bodyLimit)
 	if summaryErr != nil {
-		slog.Warn("failed to fetch antigravity user quota summary", "error", summaryErr)
+		slog.Warn("failed to fetch antigravity user quota summary, falling back to available models",
+			"account_id", account.ID,
+			"error", logredact.RedactText(summaryErr.Error()),
+		)
+	}
+
+	// 降级与容错策略：
+	// 1. 若两者均失败：返回错误（优先返回 modelsErr，附带脱敏后的 summaryErr）
+	if modelsErr != nil && quotaSummaryResp == nil {
+		if summaryErr != nil {
+			return nil, fmt.Errorf("fetch available models failed: %w (quota summary also failed: %s)",
+				modelsErr, logredact.RedactText(summaryErr.Error()))
+		}
+		return nil, modelsErr
+	}
+
+	// 2. 若 modelsErr != nil 但 quotaSummaryResp != nil：记录警告并使用 quotaSummary 进行软降级
+	if modelsErr != nil {
+		slog.Warn("failed to fetch available models, recovering from quota summary",
+			"account_id", account.ID,
+			"error", logredact.RedactText(modelsErr.Error()),
+		)
+	}
+
+	// 原始数据 raw：优先使用 modelsRaw，若不可用则回退至 summaryRaw
+	raw := modelsRaw
+	if len(raw) == 0 {
+		raw = summaryRaw
 	}
 
 	// 转换为 UsageInfo
@@ -94,7 +124,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,
-		Raw:       modelsRaw,
+		Raw:       raw,
 	}, nil
 }
 
@@ -103,7 +133,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, client *antigravity.Client, accessToken string) (raw, normalized string, loadResp *antigravity.LoadCodeAssistResponse) {
 	loadResp, _, err := client.LoadCodeAssist(ctx, accessToken)
 	if err != nil {
-		slog.Warn("failed to fetch subscription tier", "error", err)
+		slog.Warn("failed to fetch subscription tier", "error", logredact.RedactText(err.Error()))
 		return "", "", nil
 	}
 	if loadResp == nil {
@@ -163,7 +193,7 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 			}
 
 			// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比
-			utilization := int((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100)
+			utilization := int(math.Round((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100))
 
 			info.AntigravityQuota[modelName] = &AntigravityModelQuota{
 				Utilization: utilization,
@@ -197,7 +227,7 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 			if _, exists := info.AntigravityQuota[b.BucketID]; exists {
 				return
 			}
-			utilization := int((1.0 - b.RemainingFraction) * 100)
+			utilization := int(math.Round((1.0 - b.RemainingFraction) * 100))
 			if utilization < 0 {
 				utilization = 0
 			} else if utilization > 100 {
