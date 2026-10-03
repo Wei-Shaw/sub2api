@@ -38,12 +38,18 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 }
 
 type syncUpstreamHTTPUpstream struct {
-	resp      *http.Response
-	responses []*http.Response
-	err       error
+	requests   []*http.Request
+	proxyURLs  []string
+	accountIDs []int64
+	resp       *http.Response
+	responses  []*http.Response
+	err        error
 }
 
 func (u *syncUpstreamHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.requests = append(u.requests, req)
+	u.proxyURLs = append(u.proxyURLs, proxyURL)
+	u.accountIDs = append(u.accountIDs, accountID)
 	if u.err != nil {
 		return nil, u.err
 	}
@@ -59,11 +65,15 @@ func (u *syncUpstreamHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string,
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
-func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
+func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream service.HTTPUpstream, repos ...service.AccountRepository) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	var repo service.AccountRepository
+	if len(repos) > 0 {
+		repo = repos[0]
+	}
 	accountTestSvc := service.NewAccountTestService(
-		nil,
+		repo,
 		nil,
 		nil,
 		nil,

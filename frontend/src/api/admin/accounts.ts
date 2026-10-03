@@ -642,6 +642,12 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
 }
 
 export interface SyncUpstreamPreviewParams {
+  // Reuse the saved secret when editing an account with a blank API key.
+  account_id?: number
+  proxy_id?: number
+  api_protocol?: string
+  account_mode?: string
+  api_base_urls?: Record<string, string>
   platform: string
   type: string
   base_url?: string
@@ -650,7 +656,7 @@ export interface SyncUpstreamPreviewParams {
 }
 
 /**
- * Preview upstream models without a saved account (create-flow)
+ * Preview upstream models using draft credentials without saving the account
  * @param params - Connection credentials
  * @returns List of model IDs returned by the upstream
  */

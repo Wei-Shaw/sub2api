@@ -269,3 +269,33 @@ describe('ModelWhitelistSelector', () => {
     expect(syncButton?.exists()).toBe(true)
   })
 })
+
+
+describe('editing connection credentials', () => {
+  it('previews the current draft even when an account ID exists, and retries corrected input', async () => {
+    syncUpstreamModels.mockReset()
+    syncUpstreamModelsPreview.mockReset()
+      .mockRejectedValueOnce(new Error('Invalid draft key'))
+      .mockResolvedValueOnce({ models: ['draft-model'] })
+    const draft = {
+      account_id: 46, platform: 'openai', type: 'apikey',
+      base_url: 'https://new.example/v1', api_key: 'wrong-key',
+    }
+    const wrapper = mountSelector({ accountId: 46, syncCredentials: draft })
+    const sync = async () => {
+      await wrapper.findAll('button').find(b => b.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+      await flushPromises()
+    }
+    await sync()
+    expect(syncUpstreamModelsPreview).toHaveBeenLastCalledWith(draft)
+    expect(wrapper.emitted('upstream-synced')).toBeUndefined()
+    const corrected = { ...draft, api_key: 'corrected-key' }
+    await wrapper.setProps({ syncCredentials: corrected })
+    await sync()
+    expect(syncUpstreamModelsPreview).toHaveBeenLastCalledWith(corrected)
+    expect(syncUpstreamModels).not.toHaveBeenCalled()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['draft-model']]])
+    expect(wrapper.emitted('upstream-synced')).toEqual([[]])
+    wrapper.unmount()
+  })
+})
