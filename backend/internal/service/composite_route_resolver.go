@@ -66,7 +66,21 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			if _, detectable := DetectModelPlatform(model); !detectable {
 				return decision, fmt.Errorf("resolve account model ownership: %w", err)
 			}
+		} else if len(normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms)) > 1 {
+			// 稳定候选池：同一公开模型由多个平台同时提供。Matched=true 且
+			// TargetPlatform 为空，不回退 generic/detector，也不在此猜单平台；
+			// 选择期由统一 OpenAI 兼容 selector 按既有 priority/load/sticky 决定。
+			return CompositeRouteDecision{
+				Matched:            true,
+				Source:             CompositeRouteSourceAccountPool,
+				GroupID:            groupID,
+				PublicModel:        model,
+				CandidatePlatforms: normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms),
+				Endpoint:           endpoint,
+			}, nil
 		} else if ownership.Ambiguous {
+			// 旧形态保护：Ambiguous=true 但未携带候选集合（老 mock / 异常输入）
+			// 仍明确失败，不伪造 pool，也不让 detector 猜单平台。
 			decision.Reason = "model is exposed by multiple provider platforms"
 			return decision, nil
 		} else if ownership.Matched {

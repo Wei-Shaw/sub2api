@@ -601,12 +601,24 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 				return nil, err
 			}
 			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+		} else if account.IsMultiProtocolAPIKey() {
+			// 多协议网关缺 base 时必须显式失败：targetURL 初值即官方域名，
+			// 回落它会把第三方 key 明文发到 api.openai.com。
+			return nil, fmt.Errorf("account %d has no openai responses base url", account.ID)
 		}
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	// DeepSeek / Kimi 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
-	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	// DeepSeek / Kimi / Ollama Cloud 原生 Responses 端点为无状态实现
+	// （见 normalizeDeepSeekResponsesRequestBody）；conversation 显式 400。
+	body, normalizeErr := normalizeDeepSeekResponsesRequestBody(account, body)
+	if normalizeErr != nil {
+		var statelessErr *openAIResponsesStatelessFieldError
+		if errors.As(normalizeErr, &statelessErr) {
+			respondOpenAIStatelessFieldError(c, statelessErr)
+		}
+		return nil, normalizeErr
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

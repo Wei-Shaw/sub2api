@@ -663,7 +663,10 @@ func (s *GatewayService) inflightEstimateDeps() inflightEstimateDeps {
 				return accounts, err
 			},
 			func(ctx context.Context, apiKey *APIKey, model string) (string, bool, bool) {
-				platform, forced, err := s.resolvePlatform(ctx, apiKey.GroupID, apiKey.Group, model)
+				// 本分支 resolvePlatform 返回携带 composite 池决策的 ctx；该快照闭包
+				// 无法透传 ctx（上游接口只收 platform/forced），池决策场景下账号级
+				// 映射估算退化为走兜底路径，行为安全。
+				_, platform, forced, err := s.resolvePlatform(ctx, apiKey.GroupID, apiKey.Group, model)
 				return platform, forced, err == nil
 			},
 		)

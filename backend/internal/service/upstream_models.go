@@ -625,7 +625,7 @@ func upstreamModelRegistryBaseURL(account *Account) string {
 		return ""
 	}
 	switch {
-	case account.IsOpenAI() || account.IsCNProvider() || account.IsOpenCodeGo():
+	case account.IsOpenAI() || account.IsCNProvider() || account.IsOpenCodeGo() || account.IsOllamaCloud():
 		return account.GetOpenAIFormatBaseURL()
 	case account.IsGrok():
 		return account.GetGrokBaseURL()
@@ -687,6 +687,12 @@ func matchModelsDevProviderByKnownHost(registry map[string]modelsDevProvider, ac
 		providerID = "openai"
 	case "opencode.ai":
 		providerID = "opencode-go"
+	case "ollama.com":
+		// 实测 models.dev registry（api.json）：provider ID 是 `ollama-cloud`
+		// （不是 "ollama"），且其 api 字段为 https://ollama.com/v1 —— 常规
+		// base 走上方 API-URL 匹配即可命中；本 case 兜底 registry 形态漂移
+		// （api 字段缺失/变更）或非常规路径形式，避免官方 host 静默丢元数据。
+		providerID = "ollama-cloud"
 	default:
 		return modelsDevProvider{}, false
 	}
@@ -792,9 +798,9 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
 	case account.IsGrok():
 		return s.buildGrokUpstreamModelsRequest(ctx, account)
-	case account.IsOpenAI() || account.IsCNProvider() || account.IsOpenCodeGo():
-		// 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go
-		// 复用 OpenAI /v1/models 探测。
+	case account.IsOpenAI() || account.IsCNProvider() || account.IsOpenCodeGo() || account.IsOllamaCloud():
+		// 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）、OpenCode Go 与
+		// Ollama Cloud 复用 OpenAI /v1/models 探测。
 		return s.buildOpenAIUpstreamModelsRequest(ctx, account)
 	case account.IsGemini():
 		return s.buildGeminiUpstreamModelsRequest(ctx, account)

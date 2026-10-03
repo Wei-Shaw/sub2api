@@ -142,6 +142,60 @@ func TestSetAnthropicAPIKeyAuthHeader_OllamaCloudForcesBearer(t *testing.T) {
 	}
 }
 
+// TestGetAnthropicAPIKeyAuthScheme_OllamaCloudRelayOverride：C34 残余——平台化
+// 的 ollama_cloud 账号挂反代 base 时可经 extra 显式选 Bearer；缺省仍 x-api-key；
+// 官方 ollama.com base 的强制 Bearer 不经本函数、不受影响（host 分支先行）。
+func TestGetAnthropicAPIKeyAuthScheme_OllamaCloudRelayOverride(t *testing.T) {
+	tests := []struct {
+		name  string
+		base  string
+		extra map[string]any
+		want  string
+	}{
+		{
+			name:  "反代 base + extra 显式 Bearer → Bearer",
+			base:  "https://relay.example.com",
+			extra: map[string]any{anthropicAPIKeyAuthSchemeExtraKey: AnthropicAPIKeyAuthSchemeAuthorizationBearer},
+			want:  AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+		{
+			name: "反代 base 无 extra → 保持 x-api-key",
+			base: "https://relay.example.com",
+			want: AnthropicAPIKeyAuthSchemeXAPIKey,
+		},
+		{
+			name:  "官方 ollama.com base 也读 extra（强制 Bearer 由 host 分支保证）",
+			base:  "https://ollama.com",
+			extra: map[string]any{anthropicAPIKeyAuthSchemeExtraKey: AnthropicAPIKeyAuthSchemeAuthorizationBearer},
+			want:  AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := newOllamaCloudAnthropicAuthAccount(tt.base, tt.extra)
+			account.Platform = PlatformOllamaCloud
+			require.Equal(t, tt.want, account.GetAnthropicAPIKeyAuthScheme())
+		})
+	}
+
+	// 官方 base 恒 Bearer 不受 extra 影响：ollama_cloud 账号 + 显式 x_api_key
+	// extra，host 分支仍强制 Bearer。
+	account := newOllamaCloudAnthropicAuthAccount("https://ollama.com", map[string]any{
+		anthropicAPIKeyAuthSchemeExtraKey: AnthropicAPIKeyAuthSchemeXAPIKey,
+	})
+	account.Platform = PlatformOllamaCloud
+	header := http.Header{}
+	setAnthropicAPIKeyAuthHeader(header, account, "ollama-cloud-key", "https://ollama.com")
+	require.Equal(t, "Bearer ollama-cloud-key", header.Get("Authorization"))
+	require.Empty(t, header.Get("x-api-key"))
+
+	// Anthropic 平台回归：显式 x_api_key extra → x-api-key 不变。
+	anthropicAccount := newOllamaCloudAnthropicAuthAccount("https://api.anthropic.com", map[string]any{
+		anthropicAPIKeyAuthSchemeExtraKey: AnthropicAPIKeyAuthSchemeXAPIKey,
+	})
+	require.Equal(t, AnthropicAPIKeyAuthSchemeXAPIKey, anthropicAccount.GetAnthropicAPIKeyAuthScheme())
+}
+
 // TestSetAnthropicAPIKeyAuthHeader_CNAdaptiveBaseURLResolution：adaptive 账号经
 // GetCNProtocolBaseURL(anthropic) / GetAnthropicProtocolBaseURL 选出的分协议地址
 // 才是判定依据，Chat Completions 地址（GetOpenAIBaseURL 选到的 CC base）不参与。

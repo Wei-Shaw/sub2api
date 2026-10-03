@@ -12,5 +12,7 @@ describe('Composite channel platform options', () => {
     expect(declaration).toContain("'deepseek'")
     expect(declaration).toContain("'minimax'")
     expect(declaration).toContain("'opencode_go'")
+    expect(declaration).toContain("'typesafe'")
+    expect(declaration).toContain("'ollama_cloud'")
   })
 })

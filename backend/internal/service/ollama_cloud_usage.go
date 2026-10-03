@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,10 @@ const (
 	// floor inside the SQL due filter.
 	OllamaCloudUsageMinFetchInterval = ollamaCloudUsageMinIntervalMinutes * time.Minute
 
+	// 决策记录：抓取目标恒为官方 settings 页，硬编码且不做可配置——保住
+	// isExactOllamaCloudSettingsURL 的 host 门禁、不扩大 SSRF 面（请求发出前与
+	// 重定向后都复核该 URL）。反代账号 eligible=false 是预期，见
+	// IsOllamaCloudUsageAccount 注释。
 	ollamaCloudUsageSettingsURL            = "https://ollama.com/settings"
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
@@ -62,8 +67,13 @@ var (
 	ErrOllamaCloudUsageUnavailable = infraerrors.ServiceUnavailable(
 		"OLLAMA_CLOUD_USAGE_UNAVAILABLE", "Ollama Cloud usage is unavailable",
 	)
+	// 文案由平台白名单（OllamaCloudUsagePlatforms）派生，白名单变化时不再漂移；
+	// 错误码 OLLAMA_CLOUD_USAGE_ACCOUNT_INVALID 是对外契约，不得改名。
+	ollamaCloudUsageAccountInvalidMessage = "account must be an official Ollama Cloud API key account (platform " +
+		strings.Join(OllamaCloudUsagePlatforms, "/") + ") using https://ollama.com"
+
 	ErrOllamaCloudUsageAccountInvalid = infraerrors.BadRequest(
-		"OLLAMA_CLOUD_USAGE_ACCOUNT_INVALID", "account must be an OpenAI or Anthropic API key account using https://ollama.com",
+		"OLLAMA_CLOUD_USAGE_ACCOUNT_INVALID", ollamaCloudUsageAccountInvalidMessage,
 	)
 	ErrOllamaCloudUsageSessionRequired = infraerrors.BadRequest(
 		"OLLAMA_CLOUD_USAGE_SESSION_REQUIRED", "an Ollama web session must be configured first",
@@ -148,8 +158,22 @@ type OllamaCloudUsageSnapshot struct {
 
 // OllamaCloudUsageState is the dedicated DTO exposed to administrators.
 type OllamaCloudUsageState struct {
-	AccountID               int64                     `json:"account_id"`
-	Eligible                bool                      `json:"eligible"`
+	AccountID int64 `json:"account_id"`
+	Eligible  bool  `json:"eligible"`
+	// EligibleReason 说明 eligible=false 的具体原因（"" 表示合格）：
+	// platform_not_eligible / wrong_account_type / unsupported_base_url，
+	// 供管理端区分「平台不合规 / 类型不对 / base_url 反代」。
+	EligibleReason string `json:"eligible_reason,omitempty"`
+	// Mode 是 Ollama Cloud 双额度模式：ollama_legacy（5h/7d 滚动窗口）/
+	// ollama_credits（月度美元信用池），由 GetOllamaCloudAccountMode 解析
+	// credentials.account_mode，未设置或值不认识时保守默认 legacy。
+	// 非 ollama_cloud 平台（含用量白名单里的 legacy 宿主平台）留空。
+	Mode string `json:"mode,omitempty"`
+	// MonthlyCreditUSD 是 credits 模式的月度信用池分母（USD），读
+	// credentials.monthly_credit_usd（建号表单录入）。凭据缺失、无法解析或
+	// 非正数时为 nil——表示「无该字段」，不报错也不填假值，前端回落为只
+	// 展示原始余额文本。
+	MonthlyCreditUSD        *float64                  `json:"monthly_credit_usd,omitempty"`
 	Configured              bool                      `json:"configured"`
 	AutoRefreshEnabled      bool                      `json:"auto_refresh_enabled"`
 	EncryptionKeyConfigured bool                      `json:"encryption_key_configured"`
@@ -1010,7 +1034,16 @@ func OllamaCloudUsageStateFromAccount(account *Account) *OllamaCloudUsageState {
 		return state
 	}
 	state.AccountID = account.ID
-	state.Eligible = IsOllamaCloudUsageAccount(account)
+	// mode / monthly credit 在资格判定之前填充：不合格的 ollama_cloud 账号
+	// （反代 base_url、oauth 类型）同样带着额度模式与原因码下发，供管理端
+	// 解释「为什么没有窗口/余额」。GetOllamaCloudAccountMode 对非
+	// ollama_cloud 平台返回空串，Mode 随 omitempty 留空。
+	state.Mode = account.GetOllamaCloudAccountMode()
+	if credit := account.GetCredentialAsFloat64("monthly_credit_usd"); credit > 0 {
+		state.MonthlyCreditUSD = &credit
+	}
+	state.EligibleReason = ollamaCloudUsageEligibilityReason(account)
+	state.Eligible = state.EligibleReason == ""
 	if !state.Eligible {
 		return state
 	}
@@ -1020,26 +1053,70 @@ func OllamaCloudUsageStateFromAccount(account *Account) *OllamaCloudUsageState {
 	return state
 }
 
-// isOllamaCloudUsagePlatform 收敛 Ollama Cloud 用量窗口的平台白名单。官方
-// ollama.com base_url 除官方两平台外，也允许挂在经 OpenAI 网关转发的国产
-// OpenAI 兼容平台下（用户把 Ollama Cloud key 挂在 kimi/zhipu/deepseek 分组
-// 里跑托管的 glm/kimi/deepseek 模型）。repository 侧 SQL 白名单
-// （ollamaCloudUsagePlatformsSQL）是本列表的镜像，两侧必须同步修改。
-func isOllamaCloudUsagePlatform(platform string) bool {
-	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
-		return true
-	default:
-		return false
-	}
+// ollamaCloudUsageLegacyPlatforms 是 platform 化之前承载官方 ollama.com
+// base_url 的宿主平台（openai/anthropic 与经 OpenAI 网关转发的国产 OpenAI
+// 兼容平台——用户把 Ollama Cloud key 挂在 kimi/zhipu/deepseek 等分组里跑托管
+// 模型）。存量账号迁到 platform=ollama_cloud（增量 6 存量改写）之前仍靠它进入
+// 用量链路。
+var ollamaCloudUsageLegacyPlatforms = []string{
+	PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
 }
 
-func IsOllamaCloudUsageAccount(account *Account) bool {
-	if account == nil || account.Type != AccountTypeAPIKey || !isOllamaCloudUsagePlatform(account.Platform) {
-		return false
+// OllamaCloudUsagePlatforms 是 Ollama Cloud 用量平台白名单的权威列表
+// （legacy 宿主平台 + platform=ollama_cloud 本体）。repository 侧 SQL 白名单
+// ollamaCloudUsagePlatformsSQL 直接由本列表派生，新增平台只改这里。
+var OllamaCloudUsagePlatforms = append(slices.Clone(ollamaCloudUsageLegacyPlatforms), PlatformOllamaCloud)
+
+// ollamaCloudUsageIneligible* 是 EligibleReason 的取值（D9）：与
+// ollamaCloudUsageEligibilityReason 的判定顺序一一对应。
+const (
+	ollamaCloudUsageIneligiblePlatform    = "platform_not_eligible"
+	ollamaCloudUsageIneligibleAccountType = "wrong_account_type"
+	ollamaCloudUsageIneligibleBaseURL     = "unsupported_base_url"
+)
+
+// isOllamaCloudUsagePlatform 收敛 Ollama Cloud 用量窗口的平台白名单：新
+// platform 本体 + platform 化之前的 legacy 宿主平台。
+func isOllamaCloudUsagePlatform(platform string) bool {
+	return platform == PlatformOllamaCloud || slices.Contains(ollamaCloudUsageLegacyPlatforms, platform)
+}
+
+// ollamaCloudUsageEligibilityReason 返回账号进不了用量链路的具体原因（""
+// 表示三条件全部通过）。IsOllamaCloudUsageAccount 与
+// OllamaCloudUsageStateFromAccount 共用本判定，避免两份条件各自漂移。
+func ollamaCloudUsageEligibilityReason(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if !isOllamaCloudUsagePlatform(account.Platform) {
+		return ollamaCloudUsageIneligiblePlatform
+	}
+	if account.Type != AccountTypeAPIKey {
+		return ollamaCloudUsageIneligibleAccountType
 	}
 	baseURL, _ := account.Credentials["base_url"].(string)
-	return isOllamaCloudBaseURL(baseURL)
+	if !isOllamaCloudBaseURL(baseURL) {
+		return ollamaCloudUsageIneligibleBaseURL
+	}
+	return ""
+}
+
+// IsOllamaCloudUsageAccount 报告账号是否进入 Ollama Cloud 用量链路。三个条件
+// 全部满足才为 true：
+//   - 平台在白名单内（platform=ollama_cloud 或 legacy 宿主平台）；
+//   - 类型为 apikey（用量身份复用账号的官方 API key，oauth 账号没有）；
+//   - credentials.base_url 是官方 ollama.com host（严格 https、无多余
+//     path/query，见 isOllamaCloudBaseURL）。
+//
+// platform=ollama_cloud 账号同样受 host 门禁约束：反代域名即使平台合规也是
+// eligible=false——这是预期行为（抓取恒打官方 settings 页，见
+// ollamaCloudUsageSettingsURL 的决策记录），不是 bug。原因码见
+// OllamaCloudUsageState.EligibleReason。
+func IsOllamaCloudUsageAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	return ollamaCloudUsageEligibilityReason(account) == ""
 }
 
 func isOllamaCloudBaseURL(raw string) bool {

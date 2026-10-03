@@ -299,6 +299,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformTypeSafe:
 		return []string{typesafe.JevLatestModel}
+	case PlatformOllamaCloud:
+		return DefaultOllamaCloudModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -322,7 +324,7 @@ func compositeDefaultModelsListCandidateIDs() []string {
 	// TypeSafe stays out of the static composite candidates (jev-latest only works
 	// through /v1/systemone); groups with TypeSafe accounts still get it from the
 	// account model mappings collected by GetGroupModelsListCandidates.
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOllamaCloud} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue

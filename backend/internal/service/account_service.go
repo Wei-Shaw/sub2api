@@ -208,6 +208,8 @@ type UpdateAccountRequest struct {
 type AccountService struct {
 	accountRepo AccountRepository
 	groupRepo   GroupRepository
+	// B2-③ 保存期无价门禁用：ollama_cloud 账号保存时断言可出站模型名全部可定价。
+	billingService *BillingService
 }
 
 type groupExistenceBatchChecker interface {
@@ -215,10 +217,11 @@ type groupExistenceBatchChecker interface {
 }
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository) *AccountService {
+func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository, billingService *BillingService) *AccountService {
 	return &AccountService{
-		accountRepo: accountRepo,
-		groupRepo:   groupRepo,
+		accountRepo:    accountRepo,
+		groupRepo:      groupRepo,
+		billingService: billingService,
 	}
 }
 
@@ -252,6 +255,11 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
 		account.AutoPauseOnExpired = true
+	}
+
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+		return nil, err
 	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -324,6 +332,11 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		return nil, fmt.Errorf("get account: %w", err)
 	}
 
+	// B2-③ 保存期无价门禁的触发判定快照：必须在应用本次请求的变更之前采集。
+	prevPlatform := account.Platform
+	prevOutboundSet := append([]string(nil), ollamaCloudOutboundModelNames(account)...)
+	prevSchedulable := ollamaCloudSchedulableBySave(account)
+
 	// 更新字段
 	if req.Name != nil {
 		account.Name = *req.Name
@@ -374,6 +387,16 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	// 先验证分组是否存在（在任何写操作之前）
 	if req.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *req.GroupIDs); err != nil {
+			return nil, err
+		}
+	}
+
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	// 只在可能改变可出站模型集合（platform / model_mapping / allowed_models）
+	// 或影响调度准入（启用）的更新上重验；name、notes、并发数、状态等维护性
+	// 更新放行，避免锁死缺 mapping/清单的存量账号。
+	if ollamaCloudPricingGateRevalidationNeeded(prevPlatform, prevOutboundSet, prevSchedulable, account) {
+		if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
 			return nil, err
 		}
 	}
@@ -522,8 +545,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformTypeSafe:
 		// TypeSafe credentials are API keys; inference failures drive health and cooldown state.
 		return nil
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
-		// 国产 OpenAI 兼容供应商与 OpenCode：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOllamaCloud:
+		// 国产 OpenAI 兼容供应商、OpenCode 与 Ollama Cloud：凭证为 API Key，
+		// 实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)
