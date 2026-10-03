@@ -299,7 +299,14 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :model-mappings="modelMappings"
+                :platform="account?.platform || 'anthropic'"
+                :account-id="account?.id"
+                :sync-credentials="syncPreviewCredentials"
+                @upstream-synced="onUpstreamModelsSynced"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -779,7 +786,14 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="onUpstreamModelsSynced"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -991,7 +1005,14 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="onUpstreamModelsSynced"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -3352,6 +3373,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const upstreamModelsPreviewed = ref(false)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -4112,6 +4134,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     return
   }
   // 进入回填窗口：抑制 CN 模式/协议 watcher 联动重置 base_url（见 syncingForm 注释）。
+  upstreamModelsPreviewed.value = false
   syncingForm.value = true
   void nextTick(() => {
     syncingForm.value = false
@@ -4564,6 +4587,39 @@ watch(
   },
   { immediate: true }
 )
+
+// Preview edits without persisting credentials or capability metadata. A blank
+// key asks the backend to reuse the saved secret (admin responses redact it).
+const syncPreviewCredentials = computed(() => {
+  const account = props.account
+  if (!account || account.type !== 'apikey') return undefined
+  const adaptiveBaseUrls: Record<string, string> = {}
+  if (isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive') {
+    const defaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, currentOpenCodeOrCNMode())
+    for (const item of editAdaptiveProtocolOptions.value) {
+      adaptiveBaseUrls[item.value] = (editAdaptiveBaseUrls.value[item.value] || defaults[item.value]).trim()
+    }
+  }
+  const baseUrl = adaptiveBaseUrls.chat_completions || editBaseUrl.value.trim()
+  return {
+    account_id: account.id,
+    platform: account.platform,
+    type: account.type,
+    base_url: baseUrl || defaultBaseUrl.value,
+    api_key: editApiKey.value.trim(),
+    proxy_id: form.proxy_id ?? 0,
+    model_mapping: buildModelRestrictionMapping() ?? {},
+    ...(isCNApiKeyAccount.value ? {
+      api_protocol: editApiProtocol.value,
+      account_mode: currentOpenCodeOrCNMode(),
+      api_base_urls: adaptiveBaseUrls,
+    } : {}),
+  }
+})
+
+const onUpstreamModelsSynced = () => {
+  if (syncPreviewCredentials.value) upstreamModelsPreviewed.value = true
+}
 
 // Model mapping helpers
 const addModelMapping = () => {
@@ -5103,10 +5159,25 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 }
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  const syncPreviewedModels = upstreamModelsPreviewed.value
   submitting.value = true
   try {
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
     updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
+    if (syncPreviewedModels) {
+      // Only persist capability metadata after the edited connection is saved.
+      try {
+        const result = await adminAPI.accounts.syncUpstreamModels(accountID)
+        const warnings = result.warnings ?? []
+        if (warnings.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
+          appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+        } else if (warnings.some(warning => warning.code === 'upstream_model_metadata_partial')) {
+          appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
+        }
+      } catch {
+        appStore.showWarning(t('admin.accounts.syncUpstreamModelsFailed'))
+      }
+    }
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()
