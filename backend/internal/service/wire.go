@@ -195,6 +195,7 @@ func ProvideOpenAIQuotaService(
 ) *OpenAIQuotaService {
 	service := NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory, referralClient)
 	service.agentIdentityWS = openAIGatewayService
+	service.runtimeBlocker = openAIGatewayService
 	return service
 }
 
@@ -249,6 +250,7 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.runtimeBlocker = openAIGatewayService
 	return service
 }
 
