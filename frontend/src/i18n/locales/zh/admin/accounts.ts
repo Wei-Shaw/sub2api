@@ -963,6 +963,7 @@ export default {
       enterErrorCode: '输入错误码 (100-599)',
       invalidErrorCode: '请输入有效的 HTTP 错误码 (100-599)',
       errorCodeExists: '该错误码已被选中',
+      windowActivation: { title: '自动触发 5h 窗口', hint: '仅在服务器时区设定的时段内，窗口到期且没有新 5h 倒计时时，每 5 分钟最多发一次真实测试请求；00:00 表示次日零点。测试会消耗少量上游额度。', start: '开始时间（服务器时区）', end: '结束时间（服务器时区）', jitter: '最大随机延后（分钟）', jitterHint: '每个账号、每轮窗口分别随机延后 0 至此分钟数；0 表示不延后。', invalid: '起止时间无效、相同，或随机延后不在 0–60 分钟内' },
       interceptWarmupRequests: '拦截预热请求',
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
       headerOverride: {
