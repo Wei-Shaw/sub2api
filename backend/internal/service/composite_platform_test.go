@@ -218,13 +218,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline},
 		platforms,
 	)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

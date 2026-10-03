@@ -53,29 +53,17 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, err
 	}
 
-	// OpenCode Go：按模型原生协议分流。规则未命中兜底 Chat Completions。
-	if account.IsOpenCodeGo() {
-		mapped := resolveOpenCodeGoMappedModel(account, body, defaultMappedModel)
-		switch openCodeGoNativeProtocol(account, mapped) {
-		case APIProtocolAnthropic:
-			return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
-		case APIProtocolResponses:
-			break
-		default:
-			return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
-		}
-	} else if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
-		// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点时，
-		// /v1/messages 请求零转换直通（仅模型名映射 + 少量 body 清洗），完整保留
-		// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
-		// 必须先于 ShouldUseResponsesAPI 分流：Anthropic 协议账号经 probe 落标
-		// openai_responses_supported=false，会先命中下方的 CC 直转分支。
+	// 上游协议统一由 resolveUpstreamProtocol 判定（按模型分流时带上游模型目录）。Anthropic 分流必须先于
+	// ShouldUseResponsesAPI：Anthropic 协议账号经 probe 落标
+	// openai_responses_supported=false，否则会命中 CC 直转。
+	switch s.resolveUpstreamProtocolFor(account, APIProtocolAnthropic, upstreamRoutingModel(account, body, defaultMappedModel)) {
+	case APIProtocolAnthropic:
+		// 上游为供应商原生 Anthropic 端点：/v1/messages 零转换直通（仅模型名映射 +
+		// 少量 body 清洗），完整保留 thinking / tool_use / cache 语义。
 		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
-	}
-
-	// 固定 chat_completions 的 CN 账号，以及不支持 Responses 的其他 APIKey
-	// 账号，均将 Messages 转为 CC；固定 responses 的 CN 账号不受探针旧值覆盖。
-	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+	case APIProtocolChatCompletions:
+		// 固定 chat_completions 的多协议账号、规则命中 CC 的按模型分流账号，以及
+		// 不支持 Responses 的其他 APIKey 账号，均将 Messages 转为 CC。
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)

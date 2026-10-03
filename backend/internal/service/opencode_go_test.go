@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenCodeGoModelProtocol(t *testing.T) {
+func TestOpenCodeGoDefaultProtocolRules(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		model string
@@ -28,114 +28,111 @@ func TestOpenCodeGoModelProtocol(t *testing.T) {
 		{"unknown-model", APIProtocolChatCompletions},
 	}
 	for _, tc := range cases {
-		require.Equal(t, tc.want, OpenCodeGoModelProtocol(tc.model), "model=%s", tc.model)
+		require.Equal(t, tc.want, matchProtocolRules(tc.model, DefaultOpenCodeGoProtocolRules()), "model=%s", tc.model)
 	}
 }
 
-func TestResolveOpenCodeGoUpstreamProtocol(t *testing.T) {
+func TestOpenCodeGoModelRoutedProtocol(t *testing.T) {
 	t.Parallel()
 	adaptive := &Account{Platform: PlatformOpenCodeGo, Credentials: map[string]any{"api_protocol": APIProtocolAdaptive}}
-	require.Equal(t, APIProtocolAnthropic, adaptive.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
-	require.Equal(t, APIProtocolResponses, adaptive.ResolveOpenCodeGoUpstreamProtocol("grok-4.6"))
-	require.Equal(t, APIProtocolChatCompletions, adaptive.ResolveOpenCodeGoUpstreamProtocol("glm-5.3"))
+	require.Equal(t, APIProtocolAnthropic, adaptive.resolveModelRoutedProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolResponses, adaptive.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolChatCompletions, adaptive.resolveModelRoutedProtocol("glm-5.3"))
 
 	pinned := &Account{Platform: PlatformOpenCodeGo, Credentials: map[string]any{"api_protocol": APIProtocolChatCompletions}}
-	require.Equal(t, APIProtocolChatCompletions, pinned.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolChatCompletions, pinned.resolveModelRoutedProtocol("minimax-m3"))
 
 	empty := &Account{Platform: PlatformOpenCodeGo}
-	require.Equal(t, APIProtocolResponses, empty.ResolveOpenCodeGoUpstreamProtocol("gpt-5.6-luna"))
+	require.Equal(t, APIProtocolResponses, empty.resolveModelRoutedProtocol("gpt-5.6-luna"))
 	require.Equal(t, AccountModeGo, empty.GetOpenCodeAccountMode())
 	require.True(t, empty.IsOpenCodeGoPlan())
 
 	zen := &Account{Platform: PlatformOpenCodeGo, Credentials: map[string]any{"account_mode": AccountModeZen, "api_protocol": APIProtocolAdaptive}}
-	require.Equal(t, APIProtocolChatCompletions, zen.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
-	require.Equal(t, APIProtocolAnthropic, zen.ResolveOpenCodeGoUpstreamProtocol("claude-opus-4-6"))
+	require.Equal(t, APIProtocolChatCompletions, zen.resolveModelRoutedProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolAnthropic, zen.resolveModelRoutedProtocol("claude-opus-4-6"))
 	require.Equal(t, DefaultOpenCodeZenBaseURL, zen.GetOpenAIBaseURL())
-
-	require.Equal(t, "", (&Account{Platform: PlatformKimi}).ResolveOpenCodeGoUpstreamProtocol("glm-5.3"))
 }
 
-func TestResolveOpenCodeGoUpstreamProtocolUsesAccountRules(t *testing.T) {
+func TestOpenCodeGoModelRoutedProtocolUsesAccountRules(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformOpenCodeGo,
 		Credentials: map[string]any{
 			"api_protocol": APIProtocolAdaptive,
-			openCodeGoProtocolRulesKey: []any{
+			protocolRulesCredentialKey: []any{
 				map[string]any{"pattern": "grok-*", "protocol": APIProtocolChatCompletions},
 				map[string]any{"pattern": "deepseek-v4-flash", "protocol": APIProtocolResponses},
 				map[string]any{"pattern": "qwen*", "protocol": APIProtocolAnthropic},
 			},
 		},
 	}
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("grok-4.6"))
-	require.Equal(t, APIProtocolResponses, account.ResolveOpenCodeGoUpstreamProtocol("deepseek-v4-flash"))
-	require.Equal(t, APIProtocolAnthropic, account.ResolveOpenCodeGoUpstreamProtocol("qwen3.8-max"))
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("glm-5.3"))
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("deepseek-v4-flash"))
+	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("qwen3.8-max"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("glm-5.3"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("minimax-m3"))
 }
 
-func TestResolveOpenCodeGoUpstreamProtocolEmptyRulesAreAllChatCompletions(t *testing.T) {
+func TestOpenCodeGoModelRoutedProtocolEmptyRulesAreAllChatCompletions(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformOpenCodeGo,
 		Credentials: map[string]any{
-			openCodeGoProtocolRulesKey: []any{},
+			protocolRulesCredentialKey: []any{},
 		},
 	}
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("grok-4.6"))
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("minimax-m3"))
 }
 
-func TestResolveOpenCodeGoUpstreamProtocolFirstMatchWins(t *testing.T) {
+func TestOpenCodeGoModelRoutedProtocolFirstMatchWins(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformOpenCodeGo,
 		Credentials: map[string]any{
-			openCodeGoProtocolRulesKey: []any{
+			protocolRulesCredentialKey: []any{
 				map[string]any{"pattern": "gpt-5.6-luna", "protocol": APIProtocolChatCompletions},
 				map[string]any{"pattern": "gpt-*", "protocol": APIProtocolResponses},
 			},
 		},
 	}
-	require.Equal(t, APIProtocolChatCompletions, account.ResolveOpenCodeGoUpstreamProtocol("gpt-5.6-luna"))
-	require.Equal(t, APIProtocolResponses, account.ResolveOpenCodeGoUpstreamProtocol("gpt-5.4"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("gpt-5.6-luna"))
+	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("gpt-5.4"))
 }
 
-func TestOpenCodeGoNativeProtocolUnmatchedFallsBackToChatCompletions(t *testing.T) {
+func TestOpenCodeGoUnmatchedFallsBackToChatCompletions(t *testing.T) {
 	t.Parallel()
 	withRules := &Account{
 		Platform: PlatformOpenCodeGo,
 		Credentials: map[string]any{
 			"api_protocol": APIProtocolAdaptive,
-			openCodeGoProtocolRulesKey: []any{
+			protocolRulesCredentialKey: []any{
 				map[string]any{"pattern": "grok-*", "protocol": APIProtocolResponses},
 				map[string]any{"pattern": "gpt-*", "protocol": APIProtocolResponses},
 				map[string]any{"pattern": "qwen*", "protocol": APIProtocolAnthropic},
 			},
 		},
 	}
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(withRules, "deepseek-v4-flash"))
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(withRules, "glm-5.3"))
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(withRules, "omen-alpha"))
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(withRules, "kimi-k3"))
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(withRules, "unknown-model"))
-	require.Equal(t, APIProtocolResponses, openCodeGoNativeProtocol(withRules, "grok-4.6"))
-	require.Equal(t, APIProtocolAnthropic, openCodeGoNativeProtocol(withRules, "qwen3.8-flash"))
+	require.Equal(t, APIProtocolChatCompletions, withRules.resolveModelRoutedProtocol("deepseek-v4-flash"))
+	require.Equal(t, APIProtocolChatCompletions, withRules.resolveModelRoutedProtocol("glm-5.3"))
+	require.Equal(t, APIProtocolChatCompletions, withRules.resolveModelRoutedProtocol("omen-alpha"))
+	require.Equal(t, APIProtocolChatCompletions, withRules.resolveModelRoutedProtocol("kimi-k3"))
+	require.Equal(t, APIProtocolChatCompletions, withRules.resolveModelRoutedProtocol("unknown-model"))
+	require.Equal(t, APIProtocolResponses, withRules.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolAnthropic, withRules.resolveModelRoutedProtocol("qwen3.8-flash"))
 
 	defaults := &Account{Platform: PlatformOpenCodeGo}
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(defaults, "deepseek-v4-flash"))
-	require.Equal(t, APIProtocolChatCompletions, openCodeGoNativeProtocol(nil, "grok-4.6"))
+	require.Equal(t, APIProtocolChatCompletions, defaults.resolveModelRoutedProtocol("deepseek-v4-flash"))
 }
 
 func TestParseOpenCodeGoProtocolRulesAcceptsTypedMaps(t *testing.T) {
 	t.Parallel()
-	rules, err := parseOpenCodeGoProtocolRules([]map[string]any{
+	rules, err := parseProtocolRules([]map[string]any{
 		{"pattern": "grok-*", "protocol": APIProtocolResponses},
 		{"pattern": "qwen*", "protocol": APIProtocolAnthropic},
 	})
 	require.NoError(t, err)
-	require.Equal(t, []OpenCodeGoProtocolRule{
+	require.Equal(t, []ProtocolRule{
 		{Pattern: "grok-*", Protocol: APIProtocolResponses},
 		{Pattern: "qwen*", Protocol: APIProtocolAnthropic},
 	}, rules)
@@ -154,9 +151,9 @@ func TestShouldForwardOpenAIResponsesViaRawChatCompletions_OpenCodeGoIgnoresProb
 		},
 	}
 	require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account))
-	require.Equal(t, APIProtocolResponses, account.ResolveOpenCodeGoUpstreamProtocol("grok-4.6"))
-	require.Equal(t, APIProtocolResponses, account.ResolveOpenCodeGoUpstreamProtocol("gpt-5.6-luna"))
-	require.Equal(t, APIProtocolAnthropic, account.ResolveOpenCodeGoUpstreamProtocol("qwen3.8-flash"))
+	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("gpt-5.6-luna"))
+	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("qwen3.8-flash"))
 }
 
 func TestStampOpenAIResponsesUpstreamEndpoint(t *testing.T) {
@@ -172,31 +169,31 @@ func TestStampOpenAIResponsesUpstreamEndpoint(t *testing.T) {
 
 func TestNormalizeOpenCodeGoProtocolRulesCredentials(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, NormalizeOpenCodeGoProtocolRulesCredentials(nil))
-	require.NoError(t, NormalizeOpenCodeGoProtocolRulesCredentials(map[string]any{}))
+	require.NoError(t, NormalizeProtocolRulesCredentials(nil))
+	require.NoError(t, NormalizeProtocolRulesCredentials(map[string]any{}))
 
 	creds := map[string]any{
-		openCodeGoProtocolRulesKey: []any{
+		protocolRulesCredentialKey: []any{
 			map[string]any{"pattern": " Grok-* ", "protocol": APIProtocolResponses},
 		},
 	}
-	require.NoError(t, NormalizeOpenCodeGoProtocolRulesCredentials(creds))
-	rules, ok := creds[openCodeGoProtocolRulesKey].([]any)
+	require.NoError(t, NormalizeProtocolRulesCredentials(creds))
+	rules, ok := creds[protocolRulesCredentialKey].([]any)
 	require.True(t, ok)
 	require.NotEmpty(t, rules)
 	entry, ok := rules[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "grok-*", entry["pattern"])
 
-	err := NormalizeOpenCodeGoProtocolRulesCredentials(map[string]any{
-		openCodeGoProtocolRulesKey: []any{
+	err := NormalizeProtocolRulesCredentials(map[string]any{
+		protocolRulesCredentialKey: []any{
 			map[string]any{"pattern": "*grok", "protocol": APIProtocolResponses},
 		},
 	})
 	require.Error(t, err)
 
-	err = NormalizeOpenCodeGoProtocolRulesCredentials(map[string]any{
-		openCodeGoProtocolRulesKey: []any{
+	err = NormalizeProtocolRulesCredentials(map[string]any{
+		protocolRulesCredentialKey: []any{
 			map[string]any{"pattern": "grok-*", "protocol": "adaptive"},
 		},
 	})
