@@ -84,6 +84,21 @@ func ResolveOpenAIWSClientFirstMessageTimeout(cfg *config.Config) time.Duration 
 	return time.Duration(seconds) * time.Second
 }
 
+// ResolveOpenAIWSTurnSlotWaitTimeout returns how long an ingress turn may wait
+// for the connection's bound account to free a concurrency slot. A zero or
+// negative configured value disables waiting, restoring the legacy behavior of a
+// single non-blocking attempt.
+func ResolveOpenAIWSTurnSlotWaitTimeout(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return time.Duration(config.DefaultOpenAIWSTurnSlotWaitTimeoutSeconds) * time.Second
+	}
+	seconds := cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds
+	if seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func ResolveOpenAIWSClientReadLimitBytes(cfg *config.Config) int64 {
 	if cfg == nil || cfg.Gateway.OpenAIWS.ClientReadLimitBytes <= 0 {
 		return openAIWSClientReadLimitBytesDefault
