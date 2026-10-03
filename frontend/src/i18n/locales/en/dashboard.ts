@@ -112,6 +112,8 @@ export default {
     copied: 'Copied!',
     importToCcSwitch: 'Import to CCS',
     importToMagpie: 'Import to Magpie',
+    importToCcSwitchTitle: 'Import to CC Switch',
+    importToMagpieTitle: 'Import to Magpie',
     enable: 'Enable',
     disable: 'Disable',
     nameLabel: 'Name',

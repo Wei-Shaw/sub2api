@@ -112,6 +112,8 @@ export default {
     copied: '已复制！',
     importToCcSwitch: '导入到 CCS',
     importToMagpie: '导入到 Magpie',
+    importToCcSwitchTitle: '导入到 CC Switch',
+    importToMagpieTitle: '导入到 Magpie',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',

@@ -404,17 +404,19 @@
               <button
                 v-if="!publicSettings?.hide_ccs_import_button"
                 @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                :title="t('keys.importToCcSwitchTitle')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400"
               >
-                <Icon name="upload" size="sm" />
+                <CcSwitchIcon class="h-4 w-4" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
               <!-- Import to Magpie Button -->
               <button
                 @click="importToMagpie(row)"
+                :title="t('keys.importToMagpieTitle')"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
               >
-                <Icon name="upload" size="sm" />
+                <MagpieIcon class="h-4 w-4" />
                 <span class="text-xs">{{ t('keys.importToMagpie') }}</span>
               </button>
               <!-- Toggle Status Button -->
@@ -1227,6 +1229,8 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import Select from '@/components/common/Select.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
+	import CcSwitchIcon from '@/components/icons/CcSwitchIcon.vue'
+	import MagpieIcon from '@/components/icons/MagpieIcon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
