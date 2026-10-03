@@ -392,7 +392,7 @@ func TestApplyOpenCodeUpstreamUserAgent(t *testing.T) {
 			if tt.seed != "" {
 				headers.Set("User-Agent", tt.seed)
 			}
-			applyOpenCodeUpstreamUserAgent(tt.account, tt.targetURL, headers)
+			applyOpenCodeUpstreamUserAgent(nil, tt.account, tt.targetURL, headers)
 			require.Equal(t, tt.want, headers.Get("User-Agent"))
 		})
 	}
@@ -400,7 +400,7 @@ func TestApplyOpenCodeUpstreamUserAgent(t *testing.T) {
 
 func TestApplyOpenCodeUpstreamUserAgentDropsNonCanonicalKeyVariants(t *testing.T) {
 	headers := http.Header{"user-agent": []string{"Python-urllib/3.13"}}
-	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+	applyOpenCodeUpstreamUserAgent(nil, &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
 		"https://opencode.ai/zen/go/v1/chat/completions", headers)
 
 	count := 0
@@ -414,8 +414,105 @@ func TestApplyOpenCodeUpstreamUserAgentDropsNonCanonicalKeyVariants(t *testing.T
 }
 
 func TestApplyOpenCodeUpstreamUserAgentNilSafe(t *testing.T) {
-	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+	applyOpenCodeUpstreamUserAgent(nil, &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
 		"https://opencode.ai/zen/go/v1/chat/completions", nil)
+}
+
+func TestParseOpenCodeClientVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		userAgent string
+		want      [3]int
+		wantOK    bool
+	}{
+		{
+			name:      "抓包真实 UA 带额外后缀段",
+			userAgent: openCodeUpstreamUserAgent,
+			want:      [3]int{1, 18, 34},
+			wantOK:    true,
+		},
+		{name: "仅版本号", userAgent: "opencode/1.18.0", want: [3]int{1, 18, 0}, wantOK: true},
+		{name: "版本号带 prerelease 后缀", userAgent: "opencode/1.19.0-beta.1", wantOK: false},
+		{name: "缺少 patch 段", userAgent: "opencode/1.18", wantOK: false},
+		{name: "非 opencode UA", userAgent: "Python-urllib/3.13", wantOK: false},
+		{name: "空版本", userAgent: "opencode/", wantOK: false},
+		{name: "非数字版本", userAgent: "opencode/v1.18.0", wantOK: false},
+		{name: "缺少前缀", userAgent: "1.18.0", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parseOpenCodeClientVersion(tt.userAgent)
+			require.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestMeetsOpenCodeFreeTierMinVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		userAgent string
+		want      bool
+	}{
+		{name: "抓包真实 UA", userAgent: openCodeUpstreamUserAgent, want: true},
+		{name: "恰好等于下限 1.18.0", userAgent: "opencode/1.18.0", want: true},
+		{name: "高于下限", userAgent: "opencode/1.19.0", want: true},
+		{name: "低于下限 1.17.9（Zen 返回 426）", userAgent: "opencode/1.17.9", want: false},
+		{name: "旧的兜底 UA（回归：曾撞 426）", userAgent: "opencode/1.0.0", want: false},
+		{name: "编程库 UA", userAgent: "Python-urllib/3.13", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, meetsOpenCodeFreeTierMinVersion(tt.userAgent))
+		})
+	}
+}
+
+// 回归：真实 opencode 客户端自带满足 Zen 版本闸门的 UA 时必须原样透传。
+// 出站降级到 1.0.0 会让合法请求被 Zen 以 426 UpgradeRequired 拒绝。
+func TestApplyOpenCodeUpstreamUserAgentPassesThroughRealClientUA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	targetURL := "https://opencode.ai/zen/v1/chat/completions"
+
+	t.Run("满足下限的真实客户端 UA 透传", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", openCodeUpstreamUserAgent)
+		headers := http.Header{"User-Agent": []string{"opencode/1.0.0"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
+
+	t.Run("低于下限的客户端 UA 收敛为兜底值", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", "opencode/1.17.0")
+		headers := http.Header{"User-Agent": []string{"opencode/1.17.0"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
+
+	t.Run("编程库 UA 收敛为兜底值（保留 Cloudflare 防护）", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", "Python-urllib/3.13")
+		headers := http.Header{"User-Agent": []string{"Python-urllib/3.13"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
+
+	t.Run("客户端未带 UA 时使用兜底值", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		headers := make(http.Header)
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
 }
 
 func TestOpenCodeUpstreamUserAgentCanonicalizedAfterPassthrough(t *testing.T) {

@@ -19,10 +19,23 @@ const (
 	// opencode.ai 前置 Cloudflare 按客户端 UA 签名做 bot 拦截：Python-urllib 等
 	// 编程库 UA 会被 CF error code 1010 拒绝并返回 403。网关透传白名单放行
 	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
-	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
-	// UA 格式（opencode/<version>）。
-	openCodeUpstreamUserAgent = "opencode/1.0.0"
+	// 凭证类 strike，健康账号因此被自动禁用。
+	//
+	// 取值必须满足 Zen free tier 的版本闸门：低于 opencode/1.18.0 的 UA 会被
+	// Zen 以 426 UpgradeRequired 拒绝（"OpenCode 1.18.0 or newer is required to
+	// use the free tier"），该文案来自真实 Zen 响应。格式沿用真实 opencode 客户端
+	// 的完整 UA（opencode/<ver> ai-sdk/provider-utils/<ver> runtime/bun/<ver>）。
+	openCodeUpstreamUserAgent = "opencode/1.18.34 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+
+	// openCodeUpstreamUserAgentPrefix 标识真实 opencode 客户端 UA。命中该前缀的
+	// 客户端自带版本号信息，可判定是否已满足 Zen 的1.18.0 版本下限。
+	openCodeUpstreamUserAgentPrefix = "opencode/"
+
 )
+
+// openCodeFreeTierMinClientVersion 是 Zen free tier 要求的最低 opencode 客户端
+// 版本（semver 三元组）。低于该版本返回 426 而非 403。
+var openCodeFreeTierMinClientVersion = [3]int{1, 18, 0}
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol
 // conversion (Responses↔Anthropic↔Chat Completions) can still recover
@@ -118,7 +131,11 @@ func isOfficialCommandCodeHost(targetURL string) bool {
 // x-opencode-session 同源：opencode 平台账号，或（任意平台账号）目标为官方主机。
 // 必须先于 Account.ApplyHeaderOverrides 调用——账号 header_overrides 中显式
 // 配置的 user-agent 仍拥有最终决定权。
-func applyOpenCodeUpstreamUserAgent(account *Account, targetURL string, headers http.Header) {
+//
+// 真实 opencode 客户端自带满足 Zen 版本闸门的 UA 时原样保留：Zen 的 free tier
+// 会对客户端版本做准入判断，出站降级到旧版本会把合法请求打成 426。编程库 UA
+// （Python-urllib 等）仍收敛为规范值，避免命中前置 Cloudflare bot 拦截。
+func applyOpenCodeUpstreamUserAgent(c *gin.Context, account *Account, targetURL string, headers http.Header) {
 	if headers == nil {
 		return
 	}
@@ -128,7 +145,7 @@ func applyOpenCodeUpstreamUserAgent(account *Account, targetURL string, headers 
 	case isOfficialCommandCodeHost(targetURL):
 		userAgent = CodexCanonicalUserAgent()
 	case account != nil && account.IsOpenCodeGo(), isOfficialOpenCodeHost(targetURL):
-		userAgent = openCodeUpstreamUserAgent
+		userAgent = openCodeCanonicalUserAgentForClient(c)
 	default:
 		return
 	}
@@ -143,6 +160,86 @@ func applyOpenCodeUpstreamUserAgent(account *Account, targetURL string, headers 
 		}
 	}
 	headers.Set("User-Agent", userAgent)
+}
+
+// openCodeCanonicalUserAgentForClient 返回本次出站使用的 opencode 客户端 UA。
+// 入站请求确实来自满足 Zen 版本下限的真实 opencode 客户端（携带 opencode/ 前缀
+// 且版本足够新）时透传该 UA；否则回落到规范兜底值。c 为 nil 表示调用方没有
+// 入站上下文（如账号连通性测试），此时一律使用兜底值。
+func openCodeCanonicalUserAgentForClient(c *gin.Context) string {
+	if c != nil && c.Request != nil {
+		if incoming := strings.TrimSpace(c.Request.UserAgent()); incoming != "" {
+			if meetsOpenCodeFreeTierMinVersion(incoming) {
+				return incoming
+			}
+		}
+	}
+	return openCodeUpstreamUserAgent
+}
+
+// meetsOpenCodeFreeTierMinVersion 判断客户端 UA 是否声明了不低于 Zen free tier
+// 要求的 opencode 版本。非 opencode/ 前缀或版本号不可解析时返回 false，交由调用方
+// 回落到规范兜底 UA——保留 opencode/<version> 前缀即可通过 Cloudflare 侧识别。
+func meetsOpenCodeFreeTierMinVersion(userAgent string) bool {
+	if !strings.HasPrefix(userAgent, openCodeUpstreamUserAgentPrefix) {
+		return false
+	}
+	version, ok := parseOpenCodeClientVersion(userAgent)
+	if !ok {
+		return false
+	}
+	return compareOpenCodeClientVersion(version, openCodeFreeTierMinClientVersion) >= 0
+}
+
+// parseOpenCodeClientVersion 从 opencode/<major>.<minor>.<patch> UA 中提取版本号。
+// UA 形如 "opencode/1.18.34 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"，
+// 版本段之后以空白分隔，因此只解析第一段且容忍额外后缀。
+func parseOpenCodeClientVersion(userAgent string) ([3]int, bool) {
+	if !strings.HasPrefix(userAgent, openCodeUpstreamUserAgentPrefix) {
+		return [3]int{}, false
+	}
+	rest := strings.TrimPrefix(userAgent, openCodeUpstreamUserAgentPrefix)
+	version := rest
+	if idx := strings.IndexFunc(rest, func(r rune) bool {
+		return r == ' ' || r == '\t'
+	}); idx >= 0 {
+		version = rest[:idx]
+	}
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var out [3]int
+	for i, part := range parts {
+		if part == "" {
+			return [3]int{}, false
+		}
+		n := 0
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return [3]int{}, false
+			}
+			n = n*10 + int(r-'0')
+			if n > 1<<20 {
+				return [3]int{}, false
+			}
+		}
+		out[i] = n
+	}
+	return out, true
+}
+
+// compareOpenCodeClientVersion 按 major→minor→patch 顺序比较两个版本号。
+func compareOpenCodeClientVersion(a, b [3]int) int {
+	for i := 0; i < 3; i++ {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
 
 func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool, bodies ...[]byte) string {
