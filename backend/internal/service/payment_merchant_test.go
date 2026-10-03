@@ -245,3 +245,26 @@ func TestNormalizeMerchantPayMethod(t *testing.T) {
 		require.Equal(t, tc.want, got, "raw=%q", tc.raw)
 	}
 }
+
+// 商户单的 provider_snapshot 曾用 merchant_id 存注册 ID（如 airport），与
+// validateProviderSnapshotMetadata 消费的渠道 mchid 键撞名，导致 wxpay 回调
+// 报 "mchid mismatch: expected airport"。回归：商户上下文改存 ext_merchant_id
+// 后，wxpay 元数据校验必须放行；含旧 merchant_id 的 snapshot 仍应被拒。
+func TestValidateProviderSnapshotMetadata_MerchantOrderWxpay(t *testing.T) {
+	order := &dbent.PaymentOrder{
+		OrderType:        payment.OrderTypeMerchant,
+		PaymentType:      payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{"ext_merchant_id": "airport", "out_order_id": "ord_1"},
+	}
+	metadata := map[string]string{"appid": "wx-app", "mchid": "1750950224", "currency": "CNY", "trade_state": "SUCCESS"}
+	require.NoError(t, validateProviderSnapshotMetadata(order, payment.TypeWxpay, metadata))
+
+	legacy := &dbent.PaymentOrder{
+		OrderType:        payment.OrderTypeMerchant,
+		PaymentType:      payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{"merchant_id": "airport", "out_order_id": "ord_1"},
+	}
+	err := validateProviderSnapshotMetadata(legacy, payment.TypeWxpay, metadata)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mchid mismatch")
+}

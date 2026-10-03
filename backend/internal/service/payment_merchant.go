@@ -106,8 +106,12 @@ type MerchantOrderStatus struct {
 }
 
 // merchantOrderSnapshot is the merchant context persisted on each order.
+// MerchantID (the A站 merchant registry id, e.g. "airport") is stored under
+// ext_merchant_id: the old merchant_id key collided with the channel-mchid
+// key that validateProviderSnapshotMetadata consumes, so wxpay notifications
+// for merchant orders failed the mchid check ("expected airport").
 type merchantOrderSnapshot struct {
-	MerchantID string `json:"merchant_id"`
+	MerchantID string `json:"ext_merchant_id"`
 	OutOrderID string `json:"out_order_id"`
 	NotifyURL  string `json:"notify_url"`
 	Subject    string `json:"subject"`
@@ -120,6 +124,14 @@ func merchantSnapshotOf(o *dbent.PaymentOrder) merchantOrderSnapshot {
 	}
 	raw, _ := json.Marshal(o.ProviderSnapshot)
 	_ = json.Unmarshal(raw, &snap)
+	if snap.MerchantID == "" {
+		// Legacy rows (pre-1.10) kept the registry id under merchant_id.
+		var legacy struct {
+			MerchantID string `json:"merchant_id"`
+		}
+		_ = json.Unmarshal(raw, &legacy)
+		snap.MerchantID = legacy.MerchantID
+	}
 	return snap
 }
 
@@ -263,10 +275,13 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 	}
 
 	snap := map[string]any{
-		"merchant_id":  m.ID,
-		"out_order_id": strings.TrimSpace(req.OutOrderID),
-		"notify_url":   notifyURL,
-		"subject":      subject,
+		// ext_merchant_id 而非 merchant_id：后者是渠道 mchid 校验的约定键，
+		// 商户注册 ID（如 airport）撞名会让 wxpay 回调校验误比对（见
+		// validateProviderSnapshotMetadata）。
+		"ext_merchant_id": m.ID,
+		"out_order_id":    strings.TrimSpace(req.OutOrderID),
+		"notify_url":      notifyURL,
+		"subject":         subject,
 	}
 
 	tx, err := s.entClient.Tx(ctx)
