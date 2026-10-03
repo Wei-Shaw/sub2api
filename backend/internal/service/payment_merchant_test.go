@@ -19,9 +19,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 
+	"database/sql"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	"database/sql"
 	_ "modernc.org/sqlite"
 )
 
@@ -216,4 +216,32 @@ func newMerchantEntClient(t *testing.T) *dbent.Client {
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func TestNormalizeMerchantPayMethod(t *testing.T) {
+	cases := []struct {
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{"", payment.TypeAlipay, false},
+		{"alipay", payment.TypeAlipay, false},
+		{"ALIPAY", payment.TypeAlipay, false},
+		{" wxpay ", payment.TypeWxpay, false},
+		{"WxPay", payment.TypeWxpay, false},
+		{"unionpay", "", true},
+		{"easypay", "", true},
+	}
+	for _, tc := range cases {
+		got, err := normalizeMerchantPayMethod(tc.raw)
+		if tc.wantErr {
+			require.Error(t, err, "raw=%q", tc.raw)
+			var appErr *infraerrors.ApplicationError
+			require.ErrorAs(t, err, &appErr)
+			require.Equal(t, "INVALID_PAY_METHOD", appErr.Reason)
+			continue
+		}
+		require.NoError(t, err, "raw=%q", tc.raw)
+		require.Equal(t, tc.want, got, "raw=%q", tc.raw)
+	}
 }

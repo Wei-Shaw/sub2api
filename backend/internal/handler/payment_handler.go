@@ -710,6 +710,7 @@ type merchantCreateOrderPayload struct {
 	NotifyURL string  `json:"notify_url"`
 	ReturnURL string  `json:"return_url"`
 	IsMobile  bool    `json:"is_mobile"`
+	PayMethod string  `json:"pay_method"`
 }
 
 // verifyMerchantAuth loads the raw body, verifies X-Merchant-Id/X-Timestamp/
@@ -754,6 +755,7 @@ func (h *PaymentHandler) CreateMerchantOrder(c *gin.Context) {
 		NotifyURL:  req.NotifyURL,
 		ReturnURL:  req.ReturnURL,
 		IsMobile:   req.IsMobile,
+		PayMethod:  req.PayMethod,
 		ClientIP:   c.ClientIP(),
 	})
 	if err != nil {

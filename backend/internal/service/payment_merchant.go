@@ -64,7 +64,24 @@ type MerchantCreateOrderRequest struct {
 	NotifyURL  string  `json:"notify_url"`
 	ReturnURL  string  `json:"return_url"`
 	IsMobile   bool    `json:"is_mobile"`
-	ClientIP   string  `json:"-"`
+	// PayMethod selects the channel: "alipay" (default) or "wxpay".
+	PayMethod string `json:"pay_method"`
+	ClientIP  string `json:"-"`
+}
+
+// normalizeMerchantPayMethod maps the optional pay_method to a provider type.
+// Empty keeps the historical default (alipay) so existing merchant callers
+// (the airport panel) need no change until they opt into wxpay.
+func normalizeMerchantPayMethod(raw string) (string, error) {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "", payment.TypeAlipay:
+		return payment.TypeAlipay, nil
+	case payment.TypeWxpay:
+		return payment.TypeWxpay, nil
+	default:
+		return "", infraerrors.BadRequest("INVALID_PAY_METHOD", "pay_method must be alipay or wxpay").
+			WithMetadata(map[string]string{"pay_method": raw})
+	}
 }
 
 // MerchantOrderResult is the API response for order creation.
@@ -190,6 +207,10 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 	if req.Amount <= 0 || isInvalidAmount(req.Amount) {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
+	payType, err := normalizeMerchantPayMethod(req.PayMethod)
+	if err != nil {
+		return nil, err
+	}
 	subject := strings.TrimSpace(req.Subject)
 	if subject == "" {
 		subject = "Order " + req.OutOrderID
@@ -227,7 +248,7 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 
 	sel, err := s.selectCreateOrderInstance(ctx, CreateOrderRequest{
 		UserID:      user.ID,
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payType,
 		OrderType:   payment.OrderTypeMerchant,
 		Amount:      req.Amount,
 	}, cfg, req.Amount)
@@ -267,7 +288,7 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 		SetFeeRate(0).
 		SetRechargeCode("").
 		SetOutTradeNo(outTradeNo).
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payType).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeMerchant).
 		SetProviderSnapshot(snap).
@@ -295,7 +316,7 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{
 		OrderID:     outTradeNo,
 		Amount:      payAmountStr,
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payType,
 		Subject:     subject,
 		ReturnURL:   strings.TrimSpace(req.ReturnURL),
 		ClientIP:    req.ClientIP,
@@ -307,7 +328,7 @@ func (s *PaymentService) CreateMerchantOrder(ctx context.Context, m *PaymentMerc
 		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
 			return nil, appErr
 		}
-		return nil, classifyCreatePaymentError(CreateOrderRequest{PaymentType: payment.TypeAlipay}, sel.ProviderKey, err)
+		return nil, classifyCreatePaymentError(CreateOrderRequest{PaymentType: payType}, sel.ProviderKey, err)
 	}
 
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).
