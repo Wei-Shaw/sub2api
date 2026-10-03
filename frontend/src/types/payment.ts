@@ -196,6 +196,8 @@ export interface ExchangeRateInfo {
   rate: string
   fetched_at?: string
   source?: string
+  /** VND per 1 USD for non-VND gateways; recharge bonus tiers are priced in VND. */
+  tier_rate?: string
 }
 
 export type CreateOrderResultType = 'order_created'

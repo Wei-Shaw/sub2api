@@ -301,7 +301,7 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
-import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
+import { formatRechargeBonusNumber, matchRechargeBonusTier, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -491,6 +491,7 @@ const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 // 这里只做预览，真正定价在后端用同一个汇率完成。
 const inputCurrency = ref(DEFAULT_PAYMENT_CURRENCY)
 const exchangeRate = ref(0)
+const tierRate = ref(0)
 const exchangeRateError = ref('')
 
 const currencyOptions = computed(() => {
@@ -556,10 +557,13 @@ async function loadExchangeRate() {
     const { data: info } = await paymentAPI.getExchangeRate(method)
     const parsed = Number(info.rate)
     exchangeRate.value = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    const parsedTier = Number(info.tier_rate)
+    tierRate.value = Number.isFinite(parsedTier) && parsedTier > 0 ? parsedTier : 0
     exchangeRateError.value = ''
   } catch (err) {
     // 汇率拿不到时只允许按网关币种充值：不要拿一个猜的价格给用户看。
     exchangeRate.value = 0
+    tierRate.value = 0
     exchangeRateError.value = extractApiErrorMessage(err) || t('payment.exchangeRateUnavailable')
   }
   if (!currencyOptions.value.includes(inputCurrency.value)) {
@@ -578,16 +582,23 @@ const subscriptionUsdToCnyRate = computed(() => {
 })
 const baseCreditedAmount = computed(() => Math.round((usdAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
 
-// 充值优惠预览，镜像后端 quoteRechargeBonusConverted：阶梯按网关币种金额命中，
+// 阶梯阈值按 VND 配置；非 VND 网关（如 crypto 按 USD）把 USD 金额折成 VND 再命中，镜像后端 rechargeBonusTierAmount。
+const tierAmount = computed(() => {
+  if (selectedCurrency.value === 'VND') return validAmount.value
+  if (tierRate.value <= 0) return 0
+  return ceilPaymentAmount(usdAmount.value * tierRate.value, 'VND')
+})
+
+// 充值优惠预览，镜像后端 quoteRechargeBonusConverted：阶梯按 VND 金额命中，
 // 赠送/折扣落在 USD 到账基数上（等效倍率 = 到账基数 / 网关金额）。
 const bonusQuote = computed(() => {
   const gateway = validAmount.value
   const base = baseCreditedAmount.value
-  const tiers = normalizeRechargeBonusTiers(checkout.value.recharge_bonus_tiers)
+  const tier = matchRechargeBonusTier(normalizeRechargeBonusTiers(checkout.value.recharge_bonus_tiers), tierAmount.value)
   const mode = normalizeRechargeBonusMode(checkout.value.recharge_bonus_mode)
   // 到账基数为 0 时倍率会退化成 1（把 VND 当 USD），与后端一样直接不报优惠。
-  if (gateway <= 0 || base <= 0) return { ...quoteRechargeBonus([], gateway, { mode }), base, credited: base }
-  return quoteRechargeBonus(tiers, gateway, {
+  if (gateway <= 0 || base <= 0 || !tier) return { ...quoteRechargeBonus([], gateway, { mode }), base, credited: base }
+  return quoteRechargeBonus([{ min_amount: 0, bonus_percent: tier.bonus_percent }], gateway, {
     multiplier: base / gateway,
     mode,
     currencyDigits: currencyFractionDigits(selectedCurrency.value),
