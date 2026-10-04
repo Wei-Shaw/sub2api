@@ -220,11 +220,11 @@ func TestApplyOpenCodeFreeTierGateBodyOnlyFillsMissingTool(t *testing.T) {
 	require.NoError(t, err)
 
 	requireGateTools(t, out, "function.name")
-	// 已有的 bash 定义必须原样保留，不能被覆盖成最小 schema。
+	// 已有的 bash 定义必须原样保留，不能被覆盖成官方 schema。
 	require.Equal(t, "mine", gjson.GetBytes(out, "tools.0.function.description").String())
 	require.True(t, gjson.GetBytes(out, "tools.0.function.parameters.properties.cmd").Exists())
-	// 客户端自带的其他工具不得丢失。
-	require.Equal(t, 2, len(gjson.GetBytes(out, "tools").Array()))
+	// 客户端 1 个 + 补齐 5 个缺失的官方工具。
+	require.Equal(t, 6, len(gjson.GetBytes(out, "tools").Array()))
 }
 
 func TestApplyOpenCodeFreeTierGateBodyKeepsClientTools(t *testing.T) {
@@ -235,7 +235,82 @@ func TestApplyOpenCodeFreeTierGateBodyKeepsClientTools(t *testing.T) {
 	require.NoError(t, err)
 
 	requireGateTools(t, out, "function.name")
-	require.Equal(t, 3, len(gjson.GetBytes(out, "tools").Array()), "不得重复注入或丢弃客户端工具")
+	// 客户端 3 个 + 补齐 4 个缺失的官方工具，且不得重复注入。
+	require.Equal(t, 7, len(gjson.GetBytes(out, "tools").Array()), "不得重复注入或丢弃客户端工具")
+	names := map[string]bool{}
+	for _, item := range gjson.GetBytes(out, "tools").Array() {
+		names[item.Get("function.name").String()] = true
+	}
+	require.True(t, names["my_tool"], "客户端自定义工具不得丢失")
+}
+
+// TestOpenCodeGateToolsAreSortedByName 钉住与官方客户端一致的字母序。
+func TestOpenCodeGateToolsAreSortedByName(t *testing.T) {
+	account := openCodeGateTestAccount(nil)
+	// 客户端故意用倒序提供，验证最终仍按字母序排列。
+	body := []byte(`{"model":"mimo-v2.6-flash-free","stream":true,"messages":[],"tools":[{"type":"function","function":{"name":"write","parameters":{"type":"object"}}},{"type":"function","function":{"name":"bash","parameters":{"type":"object"}}}]}`)
+
+	out, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectChat)
+	require.NoError(t, err)
+
+	names := make([]string, 0, 6)
+	for _, item := range gjson.GetBytes(out, "tools").Array() {
+		names = append(names, item.Get("function.name").String())
+	}
+	require.Equal(t, []string{"bash", "edit", "glob", "grep", "read", "write"}, names)
+}
+
+// TestOpenCodeGateToolChoiceNoneForToolLessRequests 钉住无工具请求的保护：
+// 补齐官方工具集的同时必须禁止工具调用，否则模型会调用客户端无法执行的工具。
+func TestOpenCodeGateToolChoiceNoneForToolLessRequests(t *testing.T) {
+	account := openCodeGateTestAccount(nil)
+
+	t.Run("原本无工具时补 tool_choice none", func(t *testing.T) {
+		body := []byte(`{"model":"mimo-v2.6-flash-free","stream":true,"messages":[{"role":"user","content":"summarize"}]}`)
+
+		out, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectChat)
+		require.NoError(t, err)
+
+		require.Equal(t, "none", gjson.GetBytes(out, "tool_choice").String())
+		require.Equal(t, 6, len(gjson.GetBytes(out, "tools").Array()))
+	})
+
+	t.Run("原本有工具时不改 tool_choice", func(t *testing.T) {
+		body := []byte(`{"model":"mimo-v2.6-flash-free","stream":true,"messages":[],"tool_choice":"auto","tools":[{"type":"function","function":{"name":"bash","parameters":{"type":"object"}}}]}`)
+
+		out, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectChat)
+		require.NoError(t, err)
+
+		require.Equal(t, "auto", gjson.GetBytes(out, "tool_choice").String(),
+			"客户端显式声明的 tool_choice 不得被覆盖")
+	})
+
+	t.Run("Anthropic 方言用对象形状", func(t *testing.T) {
+		body := []byte(`{"model":"mimo-v2.6-flash-free","stream":true,"max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+
+		out, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectAnthropic)
+		require.NoError(t, err)
+
+		require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String(),
+			"Anthropic 的 tool_choice 是对象，必须用 {\"type\":\"none\"}")
+	})
+}
+
+// TestApplyOpenCodeFreeTierGateSessionMirrorsAffinityHeaders 钉住与官方客户端一致的
+// affinity 头镜像。门禁本身不校验它们（实测只发 X-Opencode-Session 仍 200），
+// 补齐是为了让出站流量形态一致。
+func TestApplyOpenCodeFreeTierGateSessionMirrorsAffinityHeaders(t *testing.T) {
+	account := openCodeGateTestAccount(nil)
+	headers := http.Header{}
+	headers.Set(openCodeSessionHeader, "3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+	body := []byte(`{"model":"mimo-v2.6-flash-free"}`)
+
+	applyOpenCodeFreeTierGateSession(account, headers, body)
+
+	session := headers.Get(openCodeSessionHeader)
+	require.True(t, openCodeCanonicalSessionRe.MatchString(session))
+	require.Equal(t, session, headers.Get(openCodeSessionAffinityHeader))
+	require.Equal(t, session, headers.Get(openCodeSessionIDHeader))
 }
 
 func TestApplyOpenCodeFreeTierGateBodyPaidModelUntouched(t *testing.T) {

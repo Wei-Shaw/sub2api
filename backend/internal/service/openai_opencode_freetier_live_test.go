@@ -104,4 +104,23 @@ func TestLiveOpenCodeFreeTierGate(t *testing.T) {
 			"无客户端会话标识时门禁仍未通过上游校验，响应: %s", body)
 		require.NotContains(t, body, "FreeTierError")
 	})
+
+	t.Run("无工具请求组：补官方工具集 + tool_choice none 也必须放行", func(t *testing.T) {
+		// 模拟压缩/总结类请求：客户端不带任何工具。门禁会补官方 6 个工具并设
+		// tool_choice none。该组合无法从单元测试证明上游接受，必须打真实上游。
+		toolLess := []byte(`{"model":"` + model + `","stream":true,"messages":[{"role":"user","content":"summarize: hello"}]}`)
+
+		gated, err := applyOpenCodeFreeTierGateBody(account, toolLess, openCodeGateDialectChat)
+		require.NoError(t, err)
+		require.Equal(t, "none", gjson.GetBytes(gated, "tool_choice").String())
+		require.Len(t, gjson.GetBytes(gated, "tools").Array(), 6)
+
+		headers := http.Header{}
+		applyOpenCodeFreeTierGateSession(account, headers, gated)
+
+		status, body := do(t, headers, gated)
+		require.Equal(t, http.StatusOK, status,
+			"无工具请求 + tool_choice none 未通过上游校验，响应: %s", body)
+		require.NotContains(t, body, "FreeTierError")
+	})
 }

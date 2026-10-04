@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -60,8 +61,95 @@ const (
 // + 14 位字母数字，总长恒为 30。
 var openCodeCanonicalSessionRe = regexp.MustCompile(`^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
 
-// openCodeGateToolNames 是上游要求同时存在的工具名，顺序即注入顺序。
-var openCodeGateToolNames = []string{"bash", "read"}
+// openCodeGateTool 是官方 OpenCode 客户端内置工具的定义。
+type openCodeGateTool struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+// openCodeGateTools 是官方客户端的 6 个核心工具，按名称字母序（官方客户端
+// 即按此顺序发送）。与参考实现 cpa-plugin-opencodezen 的 officialGateTools 对齐。
+//
+// 门禁只校验工具名存在（bash 与 read 必须齐备，实测缺一即 403），补齐其余
+// 4 个是为了让出站流量与官方客户端形态一致，降低上游后续收紧规则时的回归风险。
+var openCodeGateTools = []openCodeGateTool{
+	{
+		Name:        "bash",
+		Description: "Execute bash commands in the workspace environment",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"command": openCodeGateStringSchema("Shell command string to execute"),
+			"workdir": openCodeGateStringSchema("Working directory. Defaults to the active Location; relative paths resolve within it."),
+		}, "command"),
+	},
+	{
+		Name:        "edit",
+		Description: "Edit a file by replacing text",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"path":       openCodeGateStringSchema("File path to edit. Relative paths resolve within the active Location."),
+			"oldString":  openCodeGateStringSchema("The string in the file to be replaced"),
+			"newString":  openCodeGateStringSchema("The string to replace oldString with"),
+			"replaceAll": openCodeGateBooleanSchema("Replace all occurrences of oldString (default false)"),
+		}, "path", "oldString", "newString"),
+	},
+	{
+		Name:        "glob",
+		Description: "Find files matching a glob pattern",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"pattern": openCodeGateStringSchema(`File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")`),
+			"path":    openCodeGateStringSchema("Relative directory to search in. Defaults to the active Location."),
+		}, "pattern"),
+	},
+	{
+		Name:        "grep",
+		Description: "Search file contents using regular expressions",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"pattern": openCodeGateStringSchema("Regex pattern to search for in file contents"),
+			"path":    openCodeGateStringSchema("Relative directory to search in. Defaults to the active Location."),
+		}, "pattern"),
+	},
+	{
+		Name:        "read",
+		Description: "Read file contents",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"path":   openCodeGateStringSchema("File path to read. Relative paths resolve within the active Location."),
+			"offset": openCodeGateNumberSchema("The 1-based directory entry or text line offset"),
+			"limit":  openCodeGateNumberSchema("The maximum number of lines to read (defaults to 2000)"),
+		}, "path"),
+	},
+	{
+		Name:        "write",
+		Description: "Write or overwrite file contents",
+		Parameters: openCodeGateObjectSchema(map[string]any{
+			"path":    openCodeGateStringSchema("File path to write. Relative paths resolve within the active Location."),
+			"content": openCodeGateStringSchema("Content to write to the file"),
+		}, "path", "content"),
+	},
+}
+
+func openCodeGateObjectSchema(properties map[string]any, required ...string) map[string]any {
+	req := make([]any, 0, len(required))
+	for _, name := range required {
+		req = append(req, name)
+	}
+	return map[string]any{
+		"type":       "object",
+		"properties": properties,
+		"required":   req,
+	}
+}
+
+func openCodeGateStringSchema(description string) map[string]any {
+	return map[string]any{"type": "string", "description": description}
+}
+
+func openCodeGateNumberSchema(description string) map[string]any {
+	return map[string]any{"type": "number", "description": description}
+}
+
+func openCodeGateBooleanSchema(description string) map[string]any {
+	return map[string]any{"type": "boolean", "description": description}
+}
 
 // canonicalOpenCodeID 把任意来源字符串确定性映射到上游规范 ID 形状
 // （<prefix>_ + 12 位小写 hex + 14 位字母数字，共 30 字符）。
@@ -171,6 +259,11 @@ func applyOpenCodeFreeTierGateSession(account *Account, headers http.Header, bod
 		}
 	}
 	headers.Set(openCodeSessionHeader, canonical)
+	// 官方客户端把会话值同时镜像到两个 affinity 头。门禁本身不校验它们
+	// （实测只发 X-Opencode-Session 仍 200），补齐是为了让出站流量与官方
+	// 客户端形态一致，降低上游后续收紧规则时的回归风险。
+	headers.Set(openCodeSessionAffinityHeader, canonical)
+	headers.Set(openCodeSessionIDHeader, canonical)
 }
 
 // openCodeGateSessionSeed 在既有一切会话来源都缺失时，从请求体推导一个跨轮次
@@ -238,7 +331,8 @@ func openCodeGateContentText(content gjson.Result) string {
 }
 
 // applyOpenCodeFreeTierGateBody 对出站 body 施加门禁要求：强制 stream:true，
-// 并按方言补齐缺失的 bash / read 工具。dialect 取 openCodeGateDialect* 之一。
+// 按方言补齐官方 6 个工具并按名称排序；原本不带工具的请求额外补
+// tool_choice 禁止工具调用。dialect 取 openCodeGateDialect* 之一。
 //
 // body 不是合法 JSON、或 tools 存在但不是数组时原样返回：门禁伪装是尽力而为
 // 的上游兼容层，绝不能因为形状意外而让请求在网关侧失败。
@@ -258,15 +352,15 @@ func applyOpenCodeFreeTierGateBody(account *Account, body []byte, dialect string
 		return body, fmt.Errorf("opencode free tier gate: force stream: %w", err)
 	}
 
-	tools, ok, err := openCodeGateToolsWithRequired(out, dialect)
+	plan, err := openCodeGateToolsWithRequired(out, dialect)
 	if err != nil {
 		return body, err
 	}
-	if !ok {
+	if plan == nil {
 		// tools 存在但不是数组：形状未知，不猜测也不改动。
 		return out, nil
 	}
-	encoded, err := json.Marshal(tools)
+	encoded, err := json.Marshal(plan.Tools)
 	if err != nil {
 		return body, fmt.Errorf("opencode free tier gate: encode tools: %w", err)
 	}
@@ -274,17 +368,33 @@ func applyOpenCodeFreeTierGateBody(account *Account, body []byte, dialect string
 	if err != nil {
 		return body, fmt.Errorf("opencode free tier gate: write tools: %w", err)
 	}
+	// 原本不带工具的请求（压缩/总结、纯聊天客户端）在补齐工具集后必须禁止工具
+	// 调用，否则模型会去调用客户端根本无法执行的工具。
+	if !plan.HadTools {
+		out, err = sjson.SetBytes(out, "tool_choice", openCodeGateToolChoiceNone(dialect))
+		if err != nil {
+			return body, fmt.Errorf("opencode free tier gate: set tool_choice: %w", err)
+		}
+	}
 	return out, nil
 }
 
-// openCodeGateToolsWithRequired 返回补齐 bash / read 之后的 tools 数组。
-// 第二个返回值为 false 表示 tools 存在但不是数组，调用方应放弃改动。
-func openCodeGateToolsWithRequired(body []byte, dialect string) ([]json.RawMessage, bool, error) {
+// openCodeGateToolPlan 是补齐官方工具集之后的计划。
+type openCodeGateToolPlan struct {
+	Tools    []json.RawMessage
+	HadTools bool
+}
+
+// openCodeGateToolsWithRequired 返回补齐官方 6 个工具并按名称排序后的工具集。
+//
+// 返回 nil 表示 tools 存在但不是数组：形状未知，调用方应放弃改动。
+// HadTools 记录原始请求是否本来就带工具，用于决定是否补 tool_choice: none。
+func openCodeGateToolsWithRequired(body []byte, dialect string) (*openCodeGateToolPlan, error) {
 	raw := gjson.GetBytes(body, "tools")
-	tools := make([]json.RawMessage, 0, 4)
+	tools := make([]json.RawMessage, 0, len(openCodeGateTools))
 	if raw.Exists() {
 		if !raw.IsArray() {
-			return nil, false, nil
+			return nil, nil
 		}
 		for _, item := range raw.Array() {
 			if item.Raw == "" {
@@ -293,6 +403,7 @@ func openCodeGateToolsWithRequired(body []byte, dialect string) ([]json.RawMessa
 			tools = append(tools, json.RawMessage(item.Raw))
 		}
 	}
+	hadTools := len(tools) > 0
 
 	present := make(map[string]bool, len(tools))
 	for _, item := range tools {
@@ -300,17 +411,21 @@ func openCodeGateToolsWithRequired(body []byte, dialect string) ([]json.RawMessa
 			present[name] = true
 		}
 	}
-	for _, name := range openCodeGateToolNames {
-		if present[name] {
+	for i := range openCodeGateTools {
+		if present[openCodeGateTools[i].Name] {
 			continue
 		}
-		encoded, err := openCodeGateToolJSON(name, dialect)
+		encoded, err := openCodeGateToolJSON(&openCodeGateTools[i], dialect)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		tools = append(tools, encoded)
 	}
-	return tools, true, nil
+	// 官方客户端按工具名排序发送，保持一致。
+	sort.SliceStable(tools, func(i, j int) bool {
+		return openCodeGateToolName(tools[i], dialect) < openCodeGateToolName(tools[j], dialect)
+	})
+	return &openCodeGateToolPlan{Tools: tools, HadTools: hadTools}, nil
 }
 
 // openCodeGateToolName 按方言取出工具条目名。chat 方言为 function.name，
@@ -322,47 +437,48 @@ func openCodeGateToolName(item json.RawMessage, dialect string) string {
 	return strings.TrimSpace(gjson.GetBytes(item, "name").String())
 }
 
-// openCodeGateToolJSON 构造最小可用的工具定义。参数 schema 固定为
-// {"type":"object"}：门禁只校验工具名存在，补充真实 schema 没有收益，反而
-// 会扩大与官方客户端流量的差异。
-func openCodeGateToolJSON(name, dialect string) (json.RawMessage, error) {
-	description := "Runs a persistent bash shell session."
-	if name == "read" {
-		description = "Reads a file from the local filesystem."
-	}
-	schema := map[string]any{"type": "object"}
-
+// openCodeGateToolJSON 按方言构造官方工具定义。
+func openCodeGateToolJSON(tool *openCodeGateTool, dialect string) (json.RawMessage, error) {
 	var entry map[string]any
 	switch dialect {
 	case openCodeGateDialectChat:
 		entry = map[string]any{
 			"type": "function",
 			"function": map[string]any{
-				"name":        name,
-				"description": description,
-				"parameters":  schema,
+				"name":        tool.Name,
+				"description": tool.Description,
+				"parameters":  tool.Parameters,
 			},
 		}
 	case openCodeGateDialectAnthropic:
 		// Anthropic 自定义工具无 type 包装，参数键为 input_schema。
 		entry = map[string]any{
-			"name":         name,
-			"description":  description,
-			"input_schema": schema,
+			"name":         tool.Name,
+			"description":  tool.Description,
+			"input_schema": tool.Parameters,
 		}
 	default:
 		entry = map[string]any{
 			"type":        "function",
-			"name":        name,
-			"description": description,
-			"parameters":  schema,
+			"name":        tool.Name,
+			"description": tool.Description,
+			"parameters":  tool.Parameters,
 		}
 	}
 	encoded, err := json.Marshal(entry)
 	if err != nil {
-		return nil, fmt.Errorf("opencode free tier gate: encode tool %s: %w", name, err)
+		return nil, fmt.Errorf("opencode free tier gate: encode tool %s: %w", tool.Name, err)
 	}
 	return encoded, nil
+}
+
+// openCodeGateToolChoiceNone 按方言返回「禁止调用工具」的取值。
+// Anthropic 的 tool_choice 是对象而非字符串。
+func openCodeGateToolChoiceNone(dialect string) any {
+	if dialect == openCodeGateDialectAnthropic {
+		return map[string]any{"type": "none"}
+	}
+	return "none"
 }
 
 // infraInvalidFreeTierGate 构造门禁模式非法时的 400 错误。

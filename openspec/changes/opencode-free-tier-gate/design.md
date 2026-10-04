@@ -132,6 +132,29 @@ id := prefix + "_" + hexPart + string(suffix)   // ses_ / msg_
 
 **关于「未知型号」的既有语义**：`getFallbackPricing` 以 `return nil` 收尾（`billing_service.go:1223`），且注释明确「未知型号不回退以避免误计价」（`:1055-1056`）——内置价卡**刻意没有通用兜底价**。这是仓库的有意设计，不是缺陷，本能力不改动它。
 
+### 3.6 与参考实现对保真度
+
+门禁的验收标准只是「四项硬性要求」，但参考实现 cpa-plugin-opencodezen 的伪装范围更大。对照它补齐了三处保真度差异。
+
+| 项 | 参考实现 | 我们的最小集 | 处理 |
+| --- | --- | --- | --- |
+| 会话头 | `X-Opencode-Session` + 镜像到 `X-Session-Affinity` / `X-Session-Id` | 只有 `X-Opencode-Session` | **已补齐镜像** |
+| 工具集 | 官方 6 个（bash/edit/glob/grep/read/write），官方 schema，按名排序 | 只有 bash+read，最小 `{"type":"object"}` schema | **已补齐** |
+| 无工具请求 | 注入全套 + `tool_choice: none` | 注入 bash+read，不设 `tool_choice` | **已补齐** |
+| `X-Opencode-Request` / `Client` / `Project` | 全部发送 | 不发 | 保持不发（实测非必需） |
+
+**实测验证**（真实上游，2026-10-04）：
+
+- 6 官方工具 + affinity 头 → 200
+- 6 官方工具 + `tool_choice: "none"` → 200
+- 只发 `X-Opencode-Session`、不发 affinity → 200（确认 affinity **不是**门禁要求）
+
+**为什么补齐而不是停在最小集**：门禁是上游单方面实现的校验，规则会变。最小集只能保证「今天能过」；与官方客户端形态越接近，上游收紧规则时的回归风险越低。affinity 头与 6 件套都属于这类防御性对齐。
+
+**`tool_choice` 的必要性**：补齐工具集会让原本无工具的请求（压缩/总结、纯聊天客户端）带上工具，模型可能去调用客户端根本无法执行的工具。参考实现用 `tool_choice: none` 解决，本能力照做。Anthropic 方言的 `tool_choice` 是对象而非字符串，用 `{"type":"none"}`。
+
+**关于 `jev-1.13-free`**：参考实现明确把它排除在注册之外（其提交信息为 "unsupported dialect models are not announced, specifically handling the jev-1.13-free model"），因为它走 `/systemone` 方言，而该方言属于独立的 `typesafe` 平台。本能力的目录仍包含它——运营者自行选择使用哪些模型，且实测该模型在 chat 与 responses 两个方言上均返回 500。
+
 ## 4. 风险与缓解
 
 | 风险 | 缓解 |

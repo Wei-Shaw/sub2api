@@ -60,6 +60,11 @@
 - **WHEN** 同一会话的后续轮次保持首条用户消息不变、仅追加历史消息
 - **THEN** 两次派生的会话值 MUST 相同，以保持上游 prompt cache 命中
 
+#### Scenario: 会话值镜像到 affinity 头
+- **WHEN** 系统发送 `X-Opencode-Session`
+- **THEN** 系统 MUST 把同一值同时写入 `X-Session-Affinity` 与 `X-Session-Id`
+- **THEN** 该镜像 MUST 与官方客户端行为一致（门禁本身不校验这两个头，实测只发 `X-Opencode-Session` 仍 200）
+
 #### Scenario: 铸造值形状
 - **WHEN** 系统铸造会话标识
 - **THEN** 值 MUST 以 `ses_` 开头，总长度 MUST 为 30，第 5 至 16 字符 MUST 为小写十六进制，末 14 字符 MUST 属于 `0-9A-Za-z`
@@ -76,16 +81,37 @@
 - **THEN** 该显式值 MUST 保持最终决定权
 
 ### Requirement: 出站 body 门禁伪装
-启用门禁时，系统 MUST 保证出站 body 的 `stream` 为 `true`，且 `tools` 数组中 MUST 同时存在名为 `bash` 与 `read` 的工具。缺失的工具 MUST 按 body 方言补齐；已存在的同名工具 MUST NOT 被重复注入或改动。补齐的工具 MUST 使用最小 `{"type":"object"}` 参数 schema。Chat Completions 方言 MUST 使用 `{"type":"function","function":{"name":...}}` 嵌套形状，Responses 与 Anthropic 方言 MUST 使用扁平 `{"type":"function","name":...}` 形状。body 不是合法 JSON 或结构不符时系统 MUST 原样返回，MUST NOT 报错中断请求。
+启用门禁时，系统 MUST 保证出站 body 的 `stream` 为 `true`，且 `tools` 数组中 MUST 同时存在名为 `bash` 与 `read` 的工具（这两项是门禁的硬性要求，实测缺一即 403）。
 
-#### Scenario: 无工具时补齐
+系统 MUST 把工具集补齐到官方客户端的 6 个核心工具（`bash`、`edit`、`glob`、`grep`、`read`、`write`），MUST 使用与官方客户端一致的参数 schema，并按工具名排序。已存在的同名工具 MUST NOT 被重复注入或改动，客户端自带的其他工具 MUST NOT 丢失。
+
+原本不带任何工具的请求（压缩/总结、纯聊天客户端）在补齐工具集后 MUST 同时禁止工具调用（Chat Completions 与 Responses 用 `"none"`，Anthropic 用 `{"type":"none"}`），否则模型会调用客户端无法执行的工具。客户端已显式声明 `tool_choice` 时 MUST NOT 覆盖。
+
+Chat Completions 方言 MUST 使用 `{"type":"function","function":{"name":...}}` 嵌套形状，Responses MUST 使用扁平 `{"type":"function","name":...}` 形状，Anthropic MUST 使用 `{"name":...,"input_schema":...}` 形状。body 不是合法 JSON 或结构不符时系统 MUST 原样返回，MUST NOT 报错中断请求。
+
+#### Scenario: 无工具时补齐到官方 6 件套
 - **WHEN** 出站 body 的 `tools` 缺失且模型为免费层
 - **THEN** 出站 `tools` MUST 同时含 `bash` 与 `read`
+- **THEN** 出站 `tools` MUST 为官方 6 件套且按名称排序
+- **THEN** 出站 `tool_choice` MUST 为禁止调用工具的取值
 
 #### Scenario: 仅缺一个工具
 - **WHEN** 出站 body 已有 `bash` 但缺 `read`
-- **THEN** 系统 MUST 只补 `read`
+- **THEN** 系统 MUST 只补缺失的官方工具
 - **THEN** 已有的 `bash` 定义 MUST 保持不变
+
+#### Scenario: 工具按名称排序
+- **WHEN** 客户端以非字母序提供工具
+- **THEN** 出站 `tools` MUST 按工具名升序排列
+
+#### Scenario: 客户端自带工具不丢失
+- **WHEN** 客户端提供了自定义工具 `my_tool`
+- **THEN** 出站 `tools` MUST 保留 `my_tool`
+- **THEN** 系统 MUST NOT 重复注入官方工具
+
+#### Scenario: 原本有工具时不改 tool_choice
+- **WHEN** 客户端请求已带 `tools` 且显式声明 `tool_choice`
+- **THEN** 出站 `tool_choice` MUST 保持客户端取值
 
 #### Scenario: 强制流式
 - **WHEN** 客户端请求 body 的 `stream` 为 `false` 或缺失且启用门禁

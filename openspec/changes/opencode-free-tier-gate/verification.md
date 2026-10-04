@@ -1,11 +1,46 @@
-# 验证：OpenCode Zen 免费层门禁伪装（2026-09-30）
+# 验证：OpenCode Zen 免费层门禁伪装（2026-09-30，第二轮 2026-10-04）
 
 ## 已实现
 
 - 账号级 `free_tier_gate` 凭据（`auto` 缺省 / `always` / `off`），存放于既有 `credentials` JSONB，无数据库迁移。
-- 门禁伪装：规范 `ses_` 会话标识（含缺失时自行派生）、满足版本下限的出站 UA、按方言补齐 `bash` + `read` 工具、强制 `stream:true`。
+- 门禁伪装：规范 `ses_` 会话标识（含缺失时自行派生，并镜像到 `X-Session-Affinity` / `X-Session-Id`）、满足版本下限的出站 UA、按方言补齐官方 6 件套工具并按名排序、无工具请求补 `tool_choice` 禁止调用、强制 `stream:true`。
 - 覆盖三条原生协议出站 funnel（Chat Completions / Responses / Anthropic Messages）与 4 条管理端连通性测试路径。
 - 官方免费层模型目录（11 个）。**定价逻辑未改动**（`billing_service.go` 零 diff）。
+
+## 第二轮：与参考实现对保真度（2026-10-04）
+
+门禁的验收标准只是四项硬性要求，但参考实现 cpa-plugin-opencodezen 的伪装范围更大。对照它补齐三处差异，改动前先用真实上游验证每一项可行。
+
+### 实测证据
+
+| 组合 | 结果 |
+| --- | --- |
+| 6 官方工具 + `X-Session-Affinity` / `X-Session-Id` | **200** |
+| 6 官方工具 + `tool_choice: "none"` | **200** |
+| 6 官方工具 + `tool_choice: "none"`，只发 `X-Opencode-Session`（无 affinity） | **200** |
+
+第三项证明 **affinity 头不是门禁要求**，补齐它纯粹是为了与官方客户端形态一致。
+
+### 补齐的三处
+
+| 项 | 参考实现 | 补齐前 | 补齐后 |
+| --- | --- | --- | --- |
+| 会话头 | `X-Opencode-Session` + 镜像到两个 affinity 头 | 只发 `X-Opencode-Session` | 镜像到 `X-Session-Affinity` / `X-Session-Id` |
+| 工具集 | 官方 6 个 + 官方 schema + 按名排序 | bash+read，最小 schema，不排序 | 官方 6 件套 + 官方 schema + 字母序 |
+| 无工具请求 | 注入全套 + `tool_choice: none` | 注入 bash+read，不设 `tool_choice` | 补 `tool_choice`（Anthropic 用 `{"type":"none"}`） |
+
+`tool_choice` 的意义：补齐工具集会让原本无工具的请求（压缩/总结、纯聊天客户端）带上工具，模型可能去调用客户端无法执行的工具。客户端已显式声明 `tool_choice` 时不覆盖。
+
+### 未采纳的一项
+
+参考实现还发送 `X-Opencode-Request` / `X-Opencode-Client` / `X-Opencode-Project`。本能力实测这三者**非门禁必需**（各自缺失仍 200），故保持不发，避免无谓放大与官方流量的形态差异。
+
+### 第二轮测试
+
+- 新增单元测试：工具按名排序、`tool_choice` 三态（无工具补 none / 有工具不覆盖 / Anthropic 对象形状）、affinity 镜像；工具数断言更新为 6 与 7。
+- live 测试新增「无工具请求组」，用真实上游验证 `tool_choice:"none"` 组合。
+- 全量 `go test -tags=unit ./...`：仅 `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort` 失败（既有失败）。
+  - 首轮全量跑还出现一次 `TestGatewayService_StreamingKeepaliveUsesNoopDeltaDuringToolUseForAffectedClaudeCodeVersion` 失败，单独重跑 3 次与全量重跑均通过，确认为**偶发**，与本改动无关（该用例走 Claude Code 路径，不经过 OpenCode 门禁）。
 
 ## 门禁规格的来源
 

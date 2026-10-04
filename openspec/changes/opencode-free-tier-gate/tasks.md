@@ -56,13 +56,23 @@
 - [x] 6.4 中英文 i18n（`admin.accounts.opencodeGo.freeTierGate.*`）：标题、三个选项文案、三段随模式变化的提示
 - [x] 6.5 新增 `OpenCodeFreeTierGateSelect.spec.ts`：三个选项渲染、提示随模式变化、change 事件、未知值回落 auto、凭据助手 create/edit 写入语义与往返一致性
 
-## 7. 验证
+## 7. 与参考实现对保真度（第二轮）
 
-- [x] 7.1 `go build ./...` 通过
-- [x] 7.2 `go test -tags=unit` 覆盖 `internal/service`、`internal/handler`、`internal/server` 各包；唯一失败 `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort` 经干净 HEAD 工作树复现，确认为既有失败，与本次改动无关
-- [x] 7.3 `gofmt -l` 无输出；`go vet ./internal/service/` 通过
-- [x] 7.4 真实上游联调（`openai_opencode_freetier_live_test.go`，`-tags=live`）：三组全部通过——对照组无门禁 403 FreeTierError、实验组返回 200、边界组（客户端不提供任何会话标识）返回 200
-- [x] 7.5 前端：`vue-tsc --noEmit` 通过；i18n 完整性检查通过；ESLint 通过；受影响的 4 个测试文件 173 个用例与新增 10 个用例全部通过
-- [x] 7.6 记录验证边界：Responses 方言因地理封锁（`403 RegionError`）无法从当前网络真实联调；`/zen/go` 付费链路的版本下限因认证先行失败（401）无法判定；`golangci-lint` 因传递依赖校验和不匹配无法安装，CI 的 lint 关卡未被本地覆盖
+- [x] 7.1 实测验证：6 官方工具 + affinity 头 → 200；6 官方工具 + `tool_choice:"none"` → 200；只发 `X-Opencode-Session` 不发 affinity → 200（确认 affinity 非门禁要求）
+- [x] 7.2 工具集从 bash+read 扩到官方 6 件套（bash/edit/glob/grep/read/write），使用官方 schema
+- [x] 7.3 工具按名称字母序排序（与官方客户端一致）
+- [x] 7.4 无工具请求补齐工具集后设 `tool_choice`：Chat/Responses 用 `"none"`，Anthropic 用 `{"type":"none"}`；客户端已显式声明时不覆盖
+- [x] 7.5 会话值镜像到 `X-Session-Affinity` / `X-Session-Id`（复用既有常量 `openai_gateway_scheduling.go:24-25`）
+- [x] 7.6 新增单元测试：字母序、tool_choice 三态、affinity 镜像、工具数断言更新
+- [x] 7.7 live 测试新增「无工具请求组」，用真实上游验证 `tool_choice:"none"` 组合
+
+## 8. 验证
+
+- [x] 8.1 `go build ./...` 通过
+- [x] 8.2 `go test -tags=unit ./...` 覆盖全后端；唯一失败 `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort` 经干净 HEAD 工作树复现，确认为既有失败，与本次改动无关
+- [x] 8.3 `gofmt -l` 无输出
+- [x] 8.4 真实上游联调（`openai_opencode_freetier_live_test.go`，`-tags=live`）：四组全部通过——对照组无门禁 403 FreeTierError、实验组返回 200、边界组（无会话标识）返回 200、无工具请求组（`tool_choice:none`）返回 200
+- [x] 8.5 前端：`vue-tsc --noEmit` 通过；i18n 完整性检查通过；ESLint 通过；受影响的 4 个测试文件 173 个用例与新增 10 个用例全部通过
+- [x] 8.6 记录验证边界：Responses 方言因地理封锁（`403 RegionError`）无法从当前网络真实联调；`/zen/go` 付费链路的版本下限因认证先行失败（401）无法判定；`golangci-lint` 因传递依赖校验和不匹配无法本地安装（CI 覆盖）
 
 
