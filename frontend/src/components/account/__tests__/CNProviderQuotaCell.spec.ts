@@ -40,6 +40,21 @@ const account = {
   }
 } as Account
 
+// Kimi 月付套餐快照：5h + monthly（usages.limit_month_total/code 已由后端映射）。
+const kimiMonthlyAccount = {
+  id: 9,
+  platform: 'kimi',
+  type: 'apikey',
+  credentials: { account_mode: 'coding' },
+  extra: {
+    kimi_5h_used_percent: 0,
+    kimi_5h_reset_at: '2026-10-04T09:22:25Z',
+    kimi_monthly_used_percent: 100,
+    kimi_monthly_reset_at: '2026-10-17T07:23:05Z',
+    kimi_usage_updated_at: new Date().toISOString()
+  }
+} as Account
+
 describe('CNProviderQuotaCell', () => {
   beforeEach(() => {
     queryQuota.mockReset()
@@ -82,6 +97,24 @@ describe('CNProviderQuotaCell', () => {
     expect(bars[1].props('utilization')).toBe(27)
     expect(bars[1].props('color')).toBe('emerald')
     expect(bars[1].props('resetsAt')).toBe('2026-08-22T00:00:00+08:00')
+  })
+
+  it('renders monthly tier for kimi monthly plan snapshots with a distinct color', async () => {
+    const wrapper = mount(CNProviderQuotaCell, { props: { account: kimiMonthlyAccount } })
+    await flushPromises()
+
+    // 新鲜快照：5h + monthly 两档直接渲染，不触发探测
+    expect(queryQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('100%')
+
+    const bars = wrapper.findAllComponents(UsageProgressBar)
+    expect(bars).toHaveLength(2)
+    expect(bars[0].props('label')).toBe('admin.accounts.cnProviders.window5h')
+    expect(bars[0].props('color')).toBe('indigo')
+    expect(bars[1].props('label')).toBe('admin.accounts.cnProviders.windowMonthly')
+    expect(bars[1].props('utilization')).toBe(100)
+    expect(bars[1].props('color')).toBe('purple')
+    expect(bars[1].props('resetsAt')).toBe('2026-10-17T07:23:05Z')
   })
 
   it('labels the refresh control with an explicit action verb, not a data caption', async () => {

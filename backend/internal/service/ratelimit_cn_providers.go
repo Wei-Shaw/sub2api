@@ -167,10 +167,11 @@ func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
 }
 
 // cnProviderQuotaSnapshotReset 读取 Coding Plan 账号快照中最早一个仍在未来的窗口
-// 重置时间（5h / weekly）。429 多数由 5h 滚动窗口触发，取较早的重置点可避免
-// 把账号冷却到 weekly 重置（可达数天）的过度停调；如果确是 weekly 窗口耗尽，
-// 周期额度探测刷新快照后阈值评估会再次停调到正确的时间点。
-// 无快照或均已过期返回 nil。
+// 重置时间（5h / weekly / monthly）。429 多数由 5h 滚动窗口触发，取较早的重置点
+// 可避免把账号冷却到 weekly/monthly 重置（可达数天）的过度停调；如果确是
+// weekly/monthly 窗口耗尽，周期额度探测刷新快照后阈值评估会再次停调到正确的
+// 时间点。monthly 快照目前由 OpenCode Go 与 Kimi 月付套餐写入，未写入的供应商
+// 不参与计算。无快照或均已过期返回 nil。
 func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
@@ -179,10 +180,7 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 		return nil
 	}
 	provider := account.Platform
-	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
-	if account.IsOpenCodeGo() {
-		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
-	}
+	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset, cnExtraSuffixMonthlyReset}
 	var earliest *time.Time
 	for _, suffix := range suffixes {
 		t := parseSchedulingResetAt(account.Extra[cnExtraKey(provider, suffix)])

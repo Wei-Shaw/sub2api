@@ -365,9 +365,9 @@ func cnProviderThresholdCandidates(account *Account, provider string) []*account
 	candidates := []*accountSchedulingThresholdCandidate{
 		cnThresholdCandidate(account.Extra, provider, "5h"),
 		cnThresholdCandidate(account.Extra, provider, "weekly"),
-	}
-	if provider == PlatformOpenCodeGo {
-		candidates = append(candidates, cnThresholdCandidate(account.Extra, provider, "monthly"))
+		// monthly 快照目前由 OpenCode Go 与 Kimi 月付套餐（limit_month_total /
+		// limit_month_code）写入；无月度窗口的供应商不会写入该键，候选自然为空。
+		cnThresholdCandidate(account.Extra, provider, "monthly"),
 	}
 	return candidates
 }

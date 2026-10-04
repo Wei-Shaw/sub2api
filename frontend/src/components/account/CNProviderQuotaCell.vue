@@ -12,7 +12,7 @@
         :key="tier.window"
         data-test="cn-provider-quota-tier"
         :label="windowLabel(tier.window)"
-        :color="tier.window === 'weekly' ? 'emerald' : 'indigo'"
+        :color="tierColor(tier.window)"
         :utilization="tier.used_percent"
         :resets-at="tier.reset_at"
       />
@@ -169,6 +169,13 @@ const windowLabel = (window: string) => {
   if (window === 'weekly') return t('admin.accounts.cnProviders.windowWeekly')
   if (window === 'monthly') return t('admin.accounts.cnProviders.windowMonthly')
   return t('admin.accounts.cnProviders.window5h')
+}
+
+// 窗口配色与 UsageProgressBar 的可用色对齐：5h=indigo、weekly=emerald、monthly=purple。
+const tierColor = (window: string): 'indigo' | 'emerald' | 'purple' => {
+  if (window === 'weekly') return 'emerald'
+  if (window === 'monthly') return 'purple'
+  return 'indigo'
 }
 
 const handleProbe = async () => {
