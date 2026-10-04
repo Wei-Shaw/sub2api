@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
@@ -560,6 +562,178 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUsesCodexProbeHeaders(t *testin
 	req := upstream.requests[0]
 	require.Equal(t, "https://compat-upstream.example/v1/responses", req.URL.String())
 	requireOpenAICodexProbeHeaders(t, req.Header)
+}
+
+func TestCreateOpenAITestPayloadPreservesBackgroundProbeContract(t *testing.T) {
+	for _, isOAuth := range []bool{false, true} {
+		payload := createOpenAITestPayload("probe-model", isOAuth)
+		body, err := json.Marshal(payload)
+		require.NoError(t, err)
+		require.Equal(t, "probe-model", gjson.GetBytes(body, "model").String())
+		require.Equal(t, "hi", gjson.GetBytes(body, "input.0.content.0.text").String())
+		require.Equal(t, openai.DefaultInstructions, gjson.GetBytes(body, "instructions").String())
+		require.True(t, gjson.GetBytes(body, "stream").Bool())
+		require.False(t, gjson.GetBytes(body, "max_output_tokens").Exists())
+		require.Equal(t, isOAuth, gjson.GetBytes(body, "store").Exists())
+		if isOAuth {
+			require.False(t, gjson.GetBytes(body, "store").Bool())
+		}
+	}
+}
+
+func TestAccountTestService_OpenAIPelicanProbeUsesResponsesTemplate(t *testing.T) {
+	ctx, recorder := newTestContext()
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"<svg></svg>\"}\n\ndata: {\"type\":\"response.completed\"}\n\n"))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-6-astra", "", AccountTestModePelican)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "https://compat-upstream.example/v1/responses", req.URL.String())
+	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
+	require.Equal(t, "pelican", req.Header.Get("X-A6API-Self-Test-Kind"))
+
+	body, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	require.Len(t, gjson.ParseBytes(body).Map(), 4)
+	require.Equal(t, "gpt-6-astra", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "Generate an SVG of a pelican riding a bicycle. Reply with the SVG code only.", gjson.GetBytes(body, "input").String())
+	require.Equal(t, float64(8192), gjson.GetBytes(body, "max_output_tokens").Float())
+	require.True(t, gjson.GetBytes(body, "stream").Bool())
+	require.Contains(t, recorder.Body.String(), `\u003csvg\u003e\u003c/svg\u003e`)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_OpenAIConnectionProbeUsesResponsesTemplate(t *testing.T) {
+	ctx, _ := newTestContext()
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n"))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          97,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: true},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-6-astra", "", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "https://compat-upstream.example/v1/responses", req.URL.String())
+	body, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	require.Len(t, gjson.ParseBytes(body).Map(), 4)
+	require.Equal(t, "gpt-6-astra", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "Reply with OK only.", gjson.GetBytes(body, "input").String())
+	require.Equal(t, float64(16), gjson.GetBytes(body, "max_output_tokens").Float())
+	require.True(t, gjson.GetBytes(body, "stream").Bool())
+}
+
+func TestAccountTestService_OpenAIFixedBenchmarks(t *testing.T) {
+	tests := []struct {
+		mode       string
+		wantPrompt string
+		wantTokens int64
+	}{
+		{AccountTestModeKnowledge, "不联网 你现在的知识库是什么时候的", 1024},
+		{AccountTestModeCounting, "在一个黑色的袋子里放有三种口味的糖果", 8192},
+	}
+	for _, tt := range tests {
+		for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+			t.Run(tt.mode+"/"+accountType, func(t *testing.T) {
+				ctx, recorder := newTestContext()
+				upstream := &httpUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"benchmark answer\"}\n\n" +
+						"data: {\"type\":\"response.completed\"}\n\n")),
+				}}
+				account := &Account{
+					ID:          98,
+					Platform:    PlatformOpenAI,
+					Type:        accountType,
+					Concurrency: 1,
+					Credentials: map[string]any{
+						"api_key":      "sk-test",
+						"access_token": "oauth-test",
+						"base_url":     "https://compat-upstream.example/v1",
+						"model_mapping": map[string]any{
+							"test-alias": "gpt-6-astra",
+						},
+					},
+					Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+				}
+				svc := &AccountTestService{
+					httpUpstream: upstream,
+					cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+				}
+				require.NoError(t, svc.testOpenAIAccountConnection(ctx, account, "test-alias", "ignored custom prompt", tt.mode))
+				require.NotNil(t, upstream.lastReq)
+				body := upstream.lastBody
+				require.Equal(t, "gpt-6-astra", gjson.GetBytes(body, "model").String())
+				require.True(t, gjson.GetBytes(body, "stream").Bool())
+				require.False(t, gjson.GetBytes(body, "tools").Exists())
+				require.Empty(t, upstream.lastReq.Header.Get("X-A6API-Self-Test-Kind"))
+				prompt := gjson.GetBytes(body, "input").String()
+				if accountType == AccountTypeOAuth {
+					require.Equal(t, chatgptCodexAPIURL, upstream.lastReq.URL.String())
+					require.Equal(t, "Bearer oauth-test", upstream.lastReq.Header.Get("Authorization"))
+					require.True(t, gjson.GetBytes(body, "input").IsArray())
+					prompt = gjson.GetBytes(body, "input.0.content").String()
+					require.Equal(t, "user", gjson.GetBytes(body, "input.0.role").String())
+					require.False(t, gjson.GetBytes(body, "max_output_tokens").Exists())
+					require.NotEmpty(t, gjson.GetBytes(body, "instructions").String())
+					require.True(t, gjson.GetBytes(body, "store").Exists())
+					require.False(t, gjson.GetBytes(body, "store").Bool())
+				} else {
+					require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
+					require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+					require.Equal(t, tt.wantTokens, gjson.GetBytes(body, "max_output_tokens").Int())
+				}
+				if tt.mode == AccountTestModeKnowledge {
+					require.Equal(t, tt.wantPrompt, prompt)
+					require.Equal(t, "none", gjson.GetBytes(body, "tool_choice").String())
+				} else {
+					require.Contains(t, prompt, tt.wantPrompt)
+					require.Contains(t, prompt, "不同的形状靠手感可以分辨")
+					require.Contains(t, prompt, "圆形苹果味匹配五角星桃子味糖果，或者有圆形桃子味匹配五角星苹果味糖果")
+					require.Contains(t, prompt, "| 形状 | 苹果味 | 桃子味 | 西瓜味 |")
+					require.Contains(t, prompt, "| 圆形 | 7 | 9 | 8 |")
+					require.Contains(t, prompt, "| 五角星形 | 7 | 6 | 4 |")
+				}
+				require.NotContains(t, prompt, "ignored custom prompt")
+				require.Contains(t, recorder.Body.String(), "benchmark answer")
+				require.Contains(t, recorder.Body.String(), `"success":true`)
+			})
+		}
+	}
 }
 
 func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsPath(t *testing.T) {

@@ -356,7 +356,7 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
-// mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
+// mode is optional; OpenAI modes include compact and fixed benchmark prompts.
 // opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
@@ -802,9 +802,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
+	isBenchmark := mode == AccountTestModePelican || mode == AccountTestModeKnowledge || mode == AccountTestModeCounting
 
 	// Route to image generation test if an image model is selected
-	if isOpenAIImageModel(testModelID) {
+	if !isBenchmark && isOpenAIImageModel(testModelID) {
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultOpenAIImageTestPrompt
@@ -856,7 +857,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		if !isBenchmark && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
 		apiURL = buildOpenAIResponsesURLForPlatform(credentialAccount.Platform, normalizedBaseURL)
@@ -877,7 +878,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	payload := createOpenAITestPayloadForMode(upstreamTestModelID, isOAuth, mode)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -931,6 +932,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	credentialAccount.ApplyHeaderOverrides(req.Header)
+	if mode == AccountTestModePelican {
+		req.Header.Set("X-A6API-Self-Test-Kind", "pelican")
+	}
 
 	// Get proxy URL
 	proxyURL := ""
@@ -2776,14 +2780,43 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 		"stream": true,
 	}
 
-	// OAuth accounts using ChatGPT internal API require store: false
+	// Usage refresh and adaptive provider probes share this legacy payload.
 	if isOAuth {
 		payload["store"] = false
 	}
-
-	// All accounts require instructions for Responses API
 	payload["instructions"] = openai.DefaultInstructions
+	return payload
+}
 
+// createOpenAITestPayloadForMode builds only the administrator-selected test request.
+func createOpenAITestPayloadForMode(modelID string, isOAuth bool, mode string) map[string]any {
+	payload := map[string]any{
+		"model":             modelID,
+		"input":             "Reply with OK only.",
+		"max_output_tokens": 16,
+		"stream":            true,
+	}
+	switch mode {
+	case AccountTestModePelican:
+		payload["input"] = "Generate an SVG of a pelican riding a bicycle. Reply with the SVG code only."
+		payload["max_output_tokens"] = 8192
+	case AccountTestModeKnowledge:
+		payload["input"] = "不联网 你现在的知识库是什么时候的"
+		payload["max_output_tokens"] = 1024
+		payload["tool_choice"] = "none"
+	case AccountTestModeCounting:
+		payload["input"] = `在一个黑色的袋子里放有三种口味的糖果，每种糖果有两种不同的形状（圆形和五角星形，不同的形状靠手感可以分辨）。现已知不同口味的糖和不同形状的数量统计如下表。参赛者需要在活动前决定摸出的糖果数目，那么，最少取出多少个糖果才能保证手中同时拥有不同形状的苹果味和桃子味的糖？（同时手中有圆形苹果味匹配五角星桃子味糖果，或者有圆形桃子味匹配五角星苹果味糖果都满足要求）
+
+| 形状 | 苹果味 | 桃子味 | 西瓜味 |
+| --- | --- | --- | --- |
+| 圆形 | 7 | 9 | 8 |
+| 五角星形 | 7 | 6 | 4 |`
+		payload["max_output_tokens"] = 8192
+	}
+	if isOAuth {
+		// Use the same input, instructions and unsupported-field rules as real OAuth traffic.
+		applyCodexOAuthTransform(payload, false, false)
+	}
 	return payload
 }
 

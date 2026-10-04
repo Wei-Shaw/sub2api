@@ -13,12 +13,22 @@ const (
 	// AccountTestModeCompact drives the remote-compaction probe test
 	// (native v2: streaming /responses with a compaction_trigger input item).
 	AccountTestModeCompact = "compact"
+	// AccountTestModePelican drives the pelican degradation benchmark over Responses.
+	AccountTestModePelican   = "pelican"
+	AccountTestModeKnowledge = "knowledge"
+	AccountTestModeCounting  = "counting"
 )
 
 func normalizeAccountTestMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case AccountTestModeCompact:
 		return AccountTestModeCompact
+	case AccountTestModePelican:
+		return AccountTestModePelican
+	case AccountTestModeKnowledge:
+		return AccountTestModeKnowledge
+	case AccountTestModeCounting:
+		return AccountTestModeCounting
 	default:
 		return AccountTestModeDefault
 	}

@@ -1,0 +1,38 @@
+name: Reconcile shared CI capacity
+
+on:
+  workflow_run:
+    workflows: [CI, CI router smoke]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed workflow run to reconcile
+        required: true
+        type: string
+      run_attempt:
+        description: Completed attempt to reconcile
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reconcile:
+    if: ${{ vars.CI_ROUTER_HOST != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: ttk9995/peiwan/.github/actions/ci-pool@b3bec8c44ddfd3fa2e0b2d560ba8a24335b0ba12
+        with:
+          action: reconcile
+          host: ${{ vars.CI_ROUTER_HOST }}
+          port: ${{ vars.CI_ROUTER_PORT || '22' }}
+          user: ${{ vars.CI_ROUTER_USER || 'ci-router' }}
+          ssh-key: ${{ secrets.CI_ROUTER_SSH_KEY }}
+          known-hosts: ${{ secrets.CI_ROUTER_KNOWN_HOSTS }}
+          token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id || inputs.run_id }}
+          run-attempt: ${{ github.event.workflow_run.run_attempt || inputs.run_attempt }}

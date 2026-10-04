@@ -187,12 +187,12 @@
           </div>
 
           <!-- Output Lines -->
-          <div v-for="(line, index) in outputLines" :key="index" :class="line.class">
+          <div v-for="(line, index) in outputLines" :key="index" class="whitespace-pre-wrap break-words" :class="line.class">
             {{ line.text }}
           </div>
 
           <!-- Streaming Content -->
-          <div v-if="streamingContent" class="text-green-400">
+          <div v-if="streamingContent" class="whitespace-pre-wrap break-words text-green-400">
             {{ streamingContent }}<span class="animate-pulse">_</span>
           </div>
 
@@ -232,13 +232,14 @@
           <div
             v-for="(image, index) in generatedImages"
             :key="`${image.url}-${index}`"
-            class="group/img relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
+            class="group/img relative max-w-full cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
             @click="previewImageUrl = image.url"
           >
             <img
               :src="image.url"
               :alt="t('admin.accounts.imagePreviewAlt', { index: index + 1 })"
               class="max-h-[360px] w-full object-contain"
+              @error="handlePreviewImageError(image)"
             />
             <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/20">
               <Icon name="eye" size="lg" class="text-white opacity-0 drop-shadow-lg transition-opacity group-hover/img:opacity-100" :stroke-width="2" />
@@ -249,6 +250,10 @@
           </div>
         </div>
       </div>
+
+      <p v-if="svgPreviewError" role="alert" class="text-sm text-red-600 dark:text-red-400">
+        {{ t('admin.accounts.openai.svgPreviewFailed') }}
+      </p>
 
       <div v-if="generatedAudios.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -375,6 +380,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
+import { createSvgPreviewUrl } from '@/utils/svgPreview'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -413,7 +419,8 @@ const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
-const testMode = ref<'default' | 'compact'>('default')
+const svgPreviewError = ref(false)
+const testMode = ref<'default' | 'compact' | 'pelican' | 'knowledge' | 'counting'>('default')
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -426,7 +433,10 @@ const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') },
+  { value: 'pelican', label: t('admin.accounts.openai.testModePelican') },
+  { value: 'knowledge', label: t('admin.accounts.openai.testModeKnowledge') },
+  { value: 'counting', label: t('admin.accounts.openai.testModeCounting') }
 ])
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
@@ -497,6 +507,7 @@ const modelOptionsForMode = computed(() => {
 })
 
 const supportsPromptInput = computed(() => {
+  if (isOpenAIAccount.value && testMode.value !== 'default') return false
   if (!isGrokAccount.value) {
     return supportsImageTest.value
   }
@@ -669,8 +680,39 @@ const testModeSummary = computed(() => {
         return t('admin.accounts.grok.textTestMode')
     }
   }
+  if (isOpenAIAccount.value && testMode.value !== 'default') {
+    return openAITestModeOptions.value.find((option) => option.value === testMode.value)?.label || ''
+  }
   if (supportsImageTest.value) return t('admin.accounts.imageTestMode')
+  if (isOpenAIAccount.value) return t('admin.accounts.openai.testModeDefault')
   return t('admin.accounts.testPrompt')
+})
+
+const sendingRequestLabel = computed(() => {
+  if (isGrokAccount.value) {
+    const modeLabels: Record<typeof grokTestMode.value, string> = {
+      text: t('admin.accounts.sendingTestMessage'),
+      image: t('admin.accounts.sendingImageRequest'),
+      video: t('admin.accounts.sendingVideoRequest'),
+      search: t('admin.accounts.grok.sendingSearchRequest'),
+      tts: t('admin.accounts.grok.sendingTTSRequest'),
+      stt: t('admin.accounts.grok.sendingSTTRequest'),
+      realtime: t('admin.accounts.grok.sendingRealtimeRequest')
+    }
+    return modeLabels[grokTestMode.value]
+  }
+  if (isOpenAIAccount.value && testMode.value === 'pelican') {
+    return t('admin.accounts.openai.sendingPelicanRequest')
+  }
+  if (isOpenAIAccount.value && testMode.value === 'knowledge') {
+    return t('admin.accounts.openai.sendingKnowledgeRequest')
+  }
+  if (isOpenAIAccount.value && testMode.value === 'counting') {
+    return t('admin.accounts.openai.sendingCountingRequest')
+  }
+  return supportsImageTest.value
+    ? t('admin.accounts.sendingImageRequest')
+    : t('admin.accounts.sendingTestMessage')
 })
 
 const canStartTest = computed(() => {
@@ -799,6 +841,7 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
+  svgPreviewError.value = false
 }
 
 const handleClose = () => {
@@ -816,6 +859,29 @@ const abortStream = () => {
 const addLine = (text: string, className: string = 'text-gray-300') => {
   outputLines.value.push({ text, class: className })
   scrollToBottom()
+}
+
+const finishTextOutput = () => {
+  if (!streamingContent.value) {
+    if (isOpenAIAccount.value && testMode.value === 'pelican' && generatedImages.value.length === 0) {
+      svgPreviewError.value = true
+    }
+    return
+  }
+  if (isOpenAIAccount.value && testMode.value === 'pelican') {
+    const url = createSvgPreviewUrl(streamingContent.value)
+    svgPreviewError.value = !url
+    if (url) generatedImages.value.push({ url, mimeType: 'image/svg+xml' })
+  }
+  addLine(streamingContent.value, 'text-green-300')
+  streamingContent.value = ''
+}
+
+const handlePreviewImageError = (image: PreviewMedia) => {
+  if (image.mimeType !== 'image/svg+xml') return
+  generatedImages.value = generatedImages.value.filter((preview) => preview !== image)
+  if (previewImageUrl.value === image.url) previewImageUrl.value = ''
+  svgPreviewError.value = true
 }
 
 const scrollToBottom = async () => {
@@ -836,6 +902,10 @@ const startTest = async () => {
     const modeLabel =
       grokTestModeOptions.value.find((o) => o.value === grokTestMode.value)?.label || grokTestMode.value
     addLine(t('admin.accounts.grok.selectedTestMode', { mode: modeLabel }), 'text-gray-400')
+  } else if (isOpenAIAccount.value) {
+    const modeLabel =
+      openAITestModeOptions.value.find((option) => option.value === testMode.value)?.label || testMode.value
+    addLine(t('admin.accounts.openai.selectedTestMode', { mode: modeLabel }), 'text-gray-400')
   }
   addLine('', 'text-gray-300')
 
@@ -955,26 +1025,7 @@ const handleEvent = (event: {
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
-      addLine(
-        isGrokAccount.value
-          ? grokTestMode.value === 'video'
-            ? t('admin.accounts.sendingVideoRequest')
-            : grokTestMode.value === 'image'
-              ? t('admin.accounts.sendingImageRequest')
-              : grokTestMode.value === 'search'
-                ? t('admin.accounts.grok.sendingSearchRequest')
-                : grokTestMode.value === 'tts'
-                  ? t('admin.accounts.grok.sendingTTSRequest')
-                  : grokTestMode.value === 'stt'
-                    ? t('admin.accounts.grok.sendingSTTRequest')
-                    : grokTestMode.value === 'realtime'
-                      ? t('admin.accounts.grok.sendingRealtimeRequest')
-                      : t('admin.accounts.sendingTestMessage')
-          : supportsImageTest.value
-            ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
-        'text-gray-400'
-      )
+      addLine(sendingRequestLabel.value, 'text-gray-400')
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
       break
@@ -1023,11 +1074,7 @@ const handleEvent = (event: {
       break
 
     case 'test_complete':
-      // Move streaming content to output lines
-      if (streamingContent.value) {
-        addLine(streamingContent.value, 'text-green-300')
-        streamingContent.value = ''
-      }
+      finishTextOutput()
       if (event.success) {
         status.value = 'success'
       } else {
@@ -1039,10 +1086,7 @@ const handleEvent = (event: {
     case 'error':
       status.value = 'error'
       errorMessage.value = event.error || t('common.unknownError')
-      if (streamingContent.value) {
-        addLine(streamingContent.value, 'text-green-300')
-        streamingContent.value = ''
-      }
+      finishTextOutput()
       break
   }
 }

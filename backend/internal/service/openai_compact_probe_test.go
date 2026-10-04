@@ -16,6 +16,12 @@ func TestNormalizeAccountTestMode(t *testing.T) {
 		{input: "default", want: AccountTestModeDefault},
 		{input: " compact ", want: AccountTestModeCompact},
 		{input: "COMPACT", want: AccountTestModeCompact},
+		{input: " pelican ", want: AccountTestModePelican},
+		{input: "PELICAN", want: AccountTestModePelican},
+		{input: " knowledge ", want: AccountTestModeKnowledge},
+		{input: "KNOWLEDGE", want: AccountTestModeKnowledge},
+		{input: " counting ", want: AccountTestModeCounting},
+		{input: "COUNTING", want: AccountTestModeCounting},
 		{input: "unknown", want: AccountTestModeDefault},
 	}
 

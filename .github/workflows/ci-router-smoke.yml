@@ -1,0 +1,64 @@
+name: CI router smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_runner_mode:
+        description: Validation runner selection
+        type: choice
+        default: auto
+        options: [auto, self-hosted, github-hosted]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  route:
+    name: Select shared CI pool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.route.outputs.mode }}
+      runner: ${{ steps.route.outputs.runner }}
+    steps:
+      - id: route
+        uses: ttk9995/peiwan/.github/actions/ci-pool@b3bec8c44ddfd3fa2e0b2d560ba8a24335b0ba12
+        with:
+          mode: ${{ vars.CI_ROUTER_HOST != '' && (inputs.ci_runner_mode || 'auto') || 'github-hosted' }}
+          host: ${{ vars.CI_ROUTER_HOST || '127.0.0.1' }}
+          port: ${{ vars.CI_ROUTER_PORT || '22' }}
+          user: ${{ vars.CI_ROUTER_USER || 'ci-router' }}
+          ssh-key: ${{ secrets.CI_ROUTER_SSH_KEY }}
+          known-hosts: ${{ secrets.CI_ROUTER_KNOWN_HOSTS }}
+          token: ${{ github.token }}
+
+  workload:
+    name: Router smoke workload
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - name: Hold a short overlap window
+        env:
+          CI_MODE: ${{ needs.route.outputs.mode }}
+        run: |
+          echo "Running CI mode=${CI_MODE} on ${RUNNER_NAME}"
+          sleep 120
+
+  release:
+    name: Release shared CI capacity
+    if: ${{ always() && needs.route.outputs.mode == 'self-hosted' }}
+    needs: [route, workload]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: ttk9995/peiwan/.github/actions/ci-pool@b3bec8c44ddfd3fa2e0b2d560ba8a24335b0ba12
+        with:
+          action: release
+          host: ${{ vars.CI_ROUTER_HOST }}
+          port: ${{ vars.CI_ROUTER_PORT || '22' }}
+          user: ${{ vars.CI_ROUTER_USER || 'ci-router' }}
+          ssh-key: ${{ secrets.CI_ROUTER_SSH_KEY }}
+          known-hosts: ${{ secrets.CI_ROUTER_KNOWN_HOSTS }}
+          token: ${{ github.token }}

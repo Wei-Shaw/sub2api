@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountTestModal from '../AccountTestModal.vue'
+import Select from '@/components/common/Select.vue'
 
 const { getAvailableModels, copyToClipboard } = vi.hoisted(() => ({
   getAvailableModels: vi.fn(),
@@ -76,8 +77,9 @@ function mountModal(account: Record<string, unknown> = {
     } as any,
     global: {
       stubs: {
+        transition: true,
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        Select: { template: '<div class="select-stub"></div>' },
+        Select: { props: ['modelValue', 'options'], emits: ['update:modelValue'], template: '<div class="select-stub"></div>' },
         TextArea: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -219,5 +221,119 @@ describe('AccountTestModal', () => {
       prompt: '',
       mode: 'compact'
     })
+  })
+
+  it.each(['pelican', 'knowledge', 'counting'])('OpenAI %s 测试使用当前选中的模型并显示流式回答', async (mode) => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-6-astra', display_name: 'GPT-6 Astra' },
+      { id: 'gpt-6-sol', display_name: 'GPT-6 Sol' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-6-sol"}\n',
+        'data: {"type":"content","text":"模型回答\\n完整分析"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 42,
+      name: 'OpenAI API Key',
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const [modelSelect, modeSelect] = wrapper.findAllComponents(Select)
+    expect(modelSelect.props('modelValue')).toBe('gpt-6-astra')
+    expect(modeSelect.props('options')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'knowledge' }),
+      expect.objectContaining({ value: 'counting' })
+    ]))
+    modelSelect.vm.$emit('update:modelValue', 'gpt-6-sol')
+    modeSelect.vm.$emit('update:modelValue', mode)
+    await flushPromises()
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    const request = vi.mocked(fetch).mock.calls[0][1]
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      model_id: 'gpt-6-sol',
+      prompt: '',
+      mode
+    })
+    expect(wrapper.text()).toContain('模型回答\n完整分析')
+    expect(wrapper.text()).toContain('admin.accounts.testCompleted')
+  })
+
+  it('鹈鹕测试把分段 SVG 回答显示为图片，保留代码并支持放大和重试清理', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-6-astra', display_name: 'GPT-6 Astra' }])
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480"><circle cx="100" cy="100" r="40" fill="red"/></svg>'
+    const output = `\`\`\`svg\n${svg}\n\`\`\``
+    vi.mocked(fetch).mockResolvedValue(createStreamResponse([
+      `data: ${JSON.stringify({ type: 'content', text: output.slice(0, 40) })}\n`,
+      `data: ${JSON.stringify({ type: 'content', text: output.slice(40) })}\n`,
+      'data: {"type":"test_complete","success":true}\n'
+    ]))
+    const wrapper = mountModal({ id: 42, name: 'OpenAI', platform: 'openai', type: 'apikey', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    wrapper.findAllComponents(Select)[1].vm.$emit('update:modelValue', 'pelican')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+
+    const preview = wrapper.find('img[alt="test-image-1"]')
+    expect(preview.exists()).toBe(true)
+    expect(decodeURIComponent(preview.attributes('src').split(',')[1])).toContain('viewBox="0 0 640 480"')
+    expect(wrapper.text()).toContain(output)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    await preview.trigger('click')
+    expect(document.body.querySelector('img[alt="admin.accounts.imageLightboxAlt"]')?.getAttribute('src')).toBe(preview.attributes('src'))
+
+    vi.mocked(fetch).mockResolvedValue(createStreamResponse([
+      'data: {"type":"content","text":"<svg>incomplete"}\n',
+      'data: {"type":"test_complete","success":true}\n'
+    ]))
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.retry'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('img[alt="test-image-1"]').exists()).toBe(false)
+    expect(document.body.querySelector('img[alt="admin.accounts.imageLightboxAlt"]')).toBeNull()
+    expect(wrapper.find('[role="alert"]').text()).toBe('admin.accounts.openai.svgPreviewFailed')
+    expect(wrapper.text()).toContain('<svg>incomplete')
+    wrapper.unmount()
+  })
+
+  it('SVG 图片加载失败显示提示，其他模式的 SVG 回答保持文本输出', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-6-astra', display_name: 'GPT-6 Astra' }])
+    const output = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20"/></svg>'
+    vi.mocked(fetch).mockImplementation(async () => createStreamResponse([
+      `data: ${JSON.stringify({ type: 'content', text: output })}\n`,
+      'data: {"type":"test_complete","success":true}\n'
+    ]))
+    const wrapper = mountModal({ id: 42, name: 'OpenAI', platform: 'openai', type: 'apikey', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const modeSelect = wrapper.findAllComponents(Select)[1]
+    modeSelect.vm.$emit('update:modelValue', 'pelican')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('img[alt="test-image-1"]').trigger('error')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('img[alt="test-image-1"]').exists()).toBe(false)
+
+    modeSelect.vm.$emit('update:modelValue', 'knowledge')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.retry'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('img[alt="test-image-1"]').exists()).toBe(false)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain(output)
+    wrapper.unmount()
   })
 })
