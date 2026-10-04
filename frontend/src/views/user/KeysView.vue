@@ -391,7 +391,18 @@
           </template>
 
           <template #cell-actions="{ row }">
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 whitespace-nowrap">
+              <button
+                type="button"
+                :title="t('keys.test.title')"
+                :aria-label="t('keys.test.title')"
+                data-test="test-api-key"
+                @click="testKey = row"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+              >
+                <Icon name="play" size="sm" />
+                <span class="text-xs">{{ t('keys.test.button') }}</span>
+              </button>
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
@@ -464,6 +475,13 @@
         />
       </template>
     </TablePageLayout>
+
+    <ApiKeyTestModal
+      :show="testKey !== null"
+      :api-key="testKey"
+      :base-url="publicSettings?.api_base_url || ''"
+      @close="testKey = null"
+    />
 
     <!-- Create/Edit Modal -->
     <BaseDialog
@@ -1211,6 +1229,7 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
+import ApiKeyTestModal from '@/components/keys/ApiKeyTestModal.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1406,6 +1425,7 @@ const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
+const testKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)

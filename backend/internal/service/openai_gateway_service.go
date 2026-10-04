@@ -84,6 +84,7 @@ var openaiAllowedHeaders = map[string]bool{
 	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
+	"x-a6api-self-test-kind":  true,
 	responsesLiteHeaderKey:    true,
 }
 
@@ -103,6 +104,7 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
+	"x-a6api-self-test-kind":  true,
 	responsesLiteHeaderKey:    true,
 }
 

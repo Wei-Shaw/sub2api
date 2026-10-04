@@ -3205,6 +3205,31 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesExplicitAPIKeyBetaH
 	require.Equal(t, "api-key-specific-beta", req.Header.Get("OpenAI-Beta"), "OAuth-only backport must not alter API-key passthrough headers")
 }
 
+func TestOpenAIBuildUpstreamRequestPreservesPelicanTestHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, passthrough := range []bool{false, true} {
+		t.Run(fmt.Sprintf("passthrough_%t", passthrough), func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			body := []byte(`{"model":"gpt-6-astra","input":"test","stream":true}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			c.Request.Header.Set("X-A6API-Self-Test-Kind", "pelican")
+			svc := &OpenAIGatewayService{cfg: &config.Config{
+				Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}},
+			}}
+			account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+			var req *http.Request
+			var err error
+			if passthrough {
+				req, err = svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, body, "token")
+			} else {
+				req, err = svc.buildUpstreamRequest(c.Request.Context(), c, account, body, "token", false, "", false)
+			}
+			require.NoError(t, err)
+			require.Equal(t, "pelican", req.Header.Get("X-A6API-Self-Test-Kind"))
+		})
+	}
+}
+
 func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

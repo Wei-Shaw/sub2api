@@ -105,6 +105,8 @@ func TestCORS_AllowedOrigin_HasAllowHeaders(t *testing.T) {
 				"允许的 origin 应收到 Allow-Headers")
 			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "X-Admin-UI-Request")
 			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "X-User-UI-Request")
+			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "X-A6API-Self-Test-Kind")
+			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "OpenAI-Beta")
 			assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"),
 				"允许的 origin 应收到 Allow-Methods")
 			assert.Contains(t, w.Header().Get("Access-Control-Expose-Headers"), "Server-Timing")

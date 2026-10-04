@@ -239,6 +239,7 @@ const mountView = async () => {
         SearchInput: SearchInputStub,
         Icon: IconStub,
         UseKeyModal: true,
+        ApiKeyTestModal: true,
         BulkEditKeysModal: true,
         EndpointPopover: true,
         GroupBadge: true,
@@ -295,6 +296,22 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it('opens tests with the selected user key and public gateway URL', async () => {
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://gateway.example/v1' })
+    const wrapper = await mountView()
+    const modal = wrapper.findComponent({ name: 'ApiKeyTestModal' })
+    expect(modal.props('show')).toBe(false)
+    await wrapper.get('[data-test="test-api-key"]').trigger('click')
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('apiKey')).toEqual(createApiKey())
+    expect(modal.props('baseUrl')).toBe('https://gateway.example/v1')
+    modal.vm.$emit('close')
+    await nextTick()
+    expect(modal.props('show')).toBe(false)
+    expect(modal.props('apiKey')).toBeNull()
+    wrapper.unmount()
   })
 
   it.each([
