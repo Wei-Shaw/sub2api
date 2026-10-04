@@ -39,8 +39,15 @@ func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, accou
 	if state == "" {
 		state = typeSafeTestDefaultState
 	}
+	// 出站模型名按账号 model_mapping 解析：typesafe 平台对接非 TypeSafe 上游
+	// （如 OpenCode Zen 的 systemone 端点）时，上游只认自己的模型名，写死
+	// jev-latest 会稳定失败。未命中映射时沿用规范模型名。
+	testModel := typesafe.JevLatestModel
+	if mapped, matched := account.ResolveMappedModel(testModel); matched && mapped != "" {
+		testModel = mapped
+	}
 	payload, err := json.Marshal(map[string]any{
-		"model": typesafe.JevLatestModel,
+		"model": testModel,
 		"state": state,
 		"questions": map[string]any{
 			typeSafeTestQuestionID: map[string]any{
@@ -59,7 +66,7 @@ func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, accou
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: typesafe.JevLatestModel})
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModel})
 
 	req, err := typesafe.NewSystemOneRequest(ctx, baseURL, apiKey, payload)
 	if err != nil {

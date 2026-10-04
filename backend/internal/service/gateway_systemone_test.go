@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type systemOneHTTPUpstream struct {
@@ -99,6 +100,96 @@ func TestForwardSystemOneForwardsNativeProtocolAndUsage(t *testing.T) {
 	require.Equal(t, "jev-1.13.0", result.UpstreamResponseModel)
 	require.Equal(t, 123, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
+// TestForwardSystemOneAppliesModelMapping 钉住新增行为：入站 model 由校验器固定为
+// jev-latest，出站前按账号 model_mapping 改写，使 typesafe 平台能对接只认自家
+// 模型名的 systemone 上游（如 OpenCode Zen 的 jev-1.13-free）。
+func TestForwardSystemOneAppliesModelMapping(t *testing.T) {
+	requestBody := []byte(`{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"Is it?"}}}`)
+	responseBody := []byte(`{"model":"jev-1.13-free","answers":{"q":{"type":"noul","noul":0.9}},"usage":{"input_tokens":10,"output_tokens":2}}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		// 出站 body 的 model 必须已按映射改写，其余字段保持不变。
+		require.Equal(t, "jev-1.13-free", gjson.GetBytes(got, "model").String())
+		require.Equal(t, "sample", gjson.GetBytes(got, "state").String())
+		require.Equal(t, "Is it?", gjson.GetBytes(got, "questions.q.instructions").String())
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(responseBody)
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	svc := newSystemOneTestService(&systemOneHTTPUpstream{do: server.Client().Do})
+	account := &Account{
+		ID:       21,
+		Platform: PlatformTypeSafe,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      server.URL,
+			"api_key":       "ts-secret",
+			"model_mapping": map[string]any{"jev-latest": "jev-1.13-free"},
+		},
+	}
+
+	result, err := svc.ForwardSystemOne(context.Background(), newSystemOneTestContext(), account, requestBody)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	require.Equal(t, "jev-1.13-free", result.UpstreamResponseModel)
+}
+
+// TestForwardSystemOneWithoutMappingKeepsBodyVerbatim 是回归护栏：账号未配
+// model_mapping 时出站 body 必须逐字节不变。
+func TestForwardSystemOneWithoutMappingKeepsBodyVerbatim(t *testing.T) {
+	requestBody := []byte(`{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"Is it?"}}}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Equal(t, requestBody, got)
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write([]byte(`{"model":"jev-latest","answers":{},"usage":{"input_tokens":1,"output_tokens":1}}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	svc := newSystemOneTestService(&systemOneHTTPUpstream{do: server.Client().Do})
+	account := &Account{ID: 22, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": server.URL, "api_key": "ts-secret"}}
+
+	_, err := svc.ForwardSystemOne(context.Background(), newSystemOneTestContext(), account, requestBody)
+	require.NoError(t, err)
+}
+
+func TestApplySystemOneModelMapping(t *testing.T) {
+	mapped := &Account{ID: 23, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"jev-latest": "jev-1.13-free"}}}
+	unmapped := &Account{ID: 24, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{}}
+
+	t.Run("命中映射时改写 model", func(t *testing.T) {
+		body := []byte(`{"model":"jev-latest","state":"x","questions":{}}`)
+		out := applySystemOneModelMapping(mapped, body)
+		require.Equal(t, "jev-1.13-free", gjson.GetBytes(out, "model").String())
+		require.Equal(t, "x", gjson.GetBytes(out, "state").String())
+	})
+
+	t.Run("未命中映射时原样返回", func(t *testing.T) {
+		body := []byte(`{"model":"jev-latest","state":"x","questions":{}}`)
+		require.Equal(t, body, applySystemOneModelMapping(unmapped, body))
+	})
+
+	t.Run("映射结果与原值相同时不改写", func(t *testing.T) {
+		same := &Account{ID: 25, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"model_mapping": map[string]any{"jev-latest": "jev-latest"}}}
+		body := []byte(`{"model":"jev-latest","state":"x","questions":{}}`)
+		require.Equal(t, body, applySystemOneModelMapping(same, body))
+	})
+
+	t.Run("空 body / 缺 model / nil 账号不 panic", func(t *testing.T) {
+		require.Empty(t, applySystemOneModelMapping(mapped, nil))
+		require.Equal(t, []byte(`{}`), applySystemOneModelMapping(mapped, []byte(`{}`)))
+		require.Equal(t, []byte(`{"model":"jev-latest"}`), applySystemOneModelMapping(nil, []byte(`{"model":"jev-latest"}`)))
+	})
 }
 
 func TestForwardSystemOneAllowsSuccessfulResponseWithoutModel(t *testing.T) {
