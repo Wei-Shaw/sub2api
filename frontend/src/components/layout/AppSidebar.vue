@@ -1114,9 +1114,11 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 
-/* 行右侧英文码(参考机场面板): 大写、宽字距、弱化色;折叠态由 sidebar-label-collapsed 隐藏 */
+/* 行右侧英文码(参考机场面板): 大写、宽字距、弱化色;固定宽度使各码左缘
+   对齐成同一竖列(列起点 = 行宽 - 右内边距 - 码宽),折叠态由 sidebar-label-collapsed 隐藏 */
 .sidebar-code {
   flex-shrink: 0;
+  width: 5.5rem;
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
