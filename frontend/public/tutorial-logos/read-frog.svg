@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Read Frog">
+  <title>Read Frog</title>
+  <defs>
+    <radialGradient id="g" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#EEF6A6"/>
+      <stop offset="0.75" stop-color="#BFD778"/>
+      <stop offset="1" stop-color="#8BAA55"/>
+    </radialGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-opacity=".25"/></filter>
+  </defs>
+  <path filter="url(#s)" d="M35 130C35 75 76 38 128 38s93 37 93 92c0 50-43 80-93 80s-93-30-93-80Z" fill="url(#g)" stroke="#789848" stroke-width="5"/>
+  <circle cx="72" cy="89" r="31" fill="#1F2430"/>
+  <circle cx="184" cy="89" r="31" fill="#1F2430"/>
+  <circle cx="62" cy="77" r="9" fill="#FFFFFF" opacity=".9"/>
+  <circle cx="174" cy="77" r="9" fill="#FFFFFF" opacity=".9"/>
+  <ellipse cx="65" cy="142" rx="34" ry="21" fill="#F5A0B6" opacity=".58"/>
+  <ellipse cx="191" cy="142" rx="34" ry="21" fill="#F5A0B6" opacity=".58"/>
+  <path d="M82 139c18 24 74 24 92 0" fill="none" stroke="#3F4A36" stroke-width="8" stroke-linecap="round"/>
+</svg>

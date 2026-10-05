@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="沉浸式翻译 / Immersive Translate">
+  <title>沉浸式翻译 / Immersive Translate</title>
+  <rect width="256" height="256" rx="42" fill="#E84B91"/>
+  <path d="M88 39c7 0 9 7 12 24 4 23 10 29 33 36 16 5 16 14 0 19-23 7-29 13-36 37-5 16-14 16-19 0-7-24-13-30-36-37-16-5-16-14 0-19 23-7 29-13 36-36 4-17 5-24 10-24Z" fill="#FFFFFF"/>
+  <path d="M134 57h39c26 0 42 17 42 43v13" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M55 153v20c0 19 15 34 34 34h20" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M132 207 167 121c2-5 5-7 11-7h8c6 0 9 2 11 7l35 86" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M160 168h44" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round"/>
+</svg>

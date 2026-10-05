@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="代码调用">
+  <title>代码调用 / Code Call</title>
+  <rect width="256" height="256" rx="56" fill="#111827"/>
+  <path d="M90 78 42 128l48 50" fill="none" stroke="#F9FAFB" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M166 78l48 50-48 50" fill="none" stroke="#F9FAFB" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M142 58 112 198" fill="none" stroke="#60A5FA" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="128" cy="128" r="18" fill="#22C55E"/>
+  <path d="M128 102v-18m0 88v-18m26-26h18m-88 0h18" stroke="#22C55E" stroke-width="10" stroke-linecap="round"/>
+</svg>

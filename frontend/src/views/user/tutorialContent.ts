@@ -24,6 +24,8 @@ export interface TutorialStep {
 export interface TutorialGuide {
   key: string
   name: string
+  /** 客户端官方图标(public/tutorial-logos/ 下的 SVG 路径) */
+  icon?: string
   endpoint: EndpointKey
   intro?: string
   steps: TutorialStep[]
@@ -190,6 +192,7 @@ export function buildGuides(base: string, model: string): TutorialGuide[] {
   return [
     {
       key: 'claude-code',
+      icon: '/tutorial-logos/claude-code.svg',
       name: 'Claude Code',
       endpoint: 'anthropic',
       intro: 'Claude Code 通过 Anthropic 协议接入,本站原生支持,无需任何插件。',
@@ -217,6 +220,7 @@ export function buildGuides(base: string, model: string): TutorialGuide[] {
     },
     {
       key: 'codex',
+      icon: '/tutorial-logos/codex.svg',
       name: 'Codex CLI',
       endpoint: 'responses',
       intro: 'Codex CLI 通过 OpenAI Responses 协议接入,同样原生支持。',
@@ -258,6 +262,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'dsh',
+      icon: '/tutorial-logos/dsh.svg',
       name: 'dsh',
       endpoint: 'responses',
       intro: 'dsh(DeepSeek Harness)通过 OpenAI Responses 协议接入。',
@@ -293,6 +298,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'opencode',
+      icon: '/tutorial-logos/opencode.svg',
       name: 'OpenCode',
       endpoint: 'openai',
       intro: 'OpenCode 通过 OpenAI 兼容协议接入,支持按 low / medium / high / xhigh 四档调整思考强度。',
@@ -315,6 +321,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'openclaw',
+      icon: '/tutorial-logos/openclaw.svg',
       name: 'OpenClaw',
       endpoint: 'openai',
       intro: 'OpenClaw 通过自定义模型供应商接入。',
@@ -333,6 +340,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'hermes',
+      icon: '/tutorial-logos/hermes.svg',
       name: 'Hermes',
       endpoint: 'openai',
       intro: 'Hermes 通过 hermes config 命令或 YAML 配置文件接入。',
@@ -372,6 +380,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'cherry-studio',
+      icon: '/tutorial-logos/cherry-studio.svg',
       name: 'Cherry Studio',
       endpoint: 'openai',
       steps: [
@@ -382,6 +391,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'nextweb-lobechat',
+      icon: '/tutorial-logos/chat-apps.svg',
       name: 'Next-Web / LobeChat',
       endpoint: 'openai',
       steps: [
@@ -392,6 +402,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'workbuddy',
+      icon: '/tutorial-logos/workbuddy.svg',
       name: 'WorkBuddy',
       endpoint: 'openai',
       intro: 'WorkBuddy 仅支持 OpenAI 兼容协议 API。',
@@ -407,6 +418,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'zcode',
+      icon: '/tutorial-logos/zcode.svg',
       name: 'ZCode',
       endpoint: 'openai',
       steps: [
@@ -418,6 +430,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'cursor',
+      icon: '/tutorial-logos/cursor.svg',
       name: 'Cursor',
       endpoint: 'openai',
       steps: [
@@ -429,6 +442,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'trae',
+      icon: '/tutorial-logos/trae.svg',
       name: 'TRAE SOLO',
       endpoint: 'openai',
       steps: [
@@ -440,6 +454,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'api',
+      icon: '/tutorial-logos/api.svg',
       name: '代码调用',
       endpoint: 'openai',
       intro: '直接调用 OpenAI 兼容接口,任选一种语言,把 model 换成上方选中的模型。',
@@ -447,6 +462,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'read-frog',
+      icon: '/tutorial-logos/read-frog.svg',
       name: 'Read Frog',
       endpoint: 'anthropic',
       steps: [
@@ -457,6 +473,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'kiss-translator',
+      icon: '/tutorial-logos/kiss-translator.svg',
       name: 'Kiss Translator',
       endpoint: 'anthropic',
       steps: [
@@ -467,6 +484,7 @@ requires_openai_auth = true`,
     },
     {
       key: 'immersive-translate',
+      icon: '/tutorial-logos/immersive-translate.svg',
       name: '沉浸式翻译',
       endpoint: 'openai',
       steps: [

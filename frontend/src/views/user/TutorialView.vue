@@ -48,7 +48,7 @@
                 v-for="guide in guides"
                 :key="guide.key"
                 type="button"
-                class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors"
+                class="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors"
                 :class="
                   selectedClient === guide.key
                     ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/25 dark:text-primary-300'
@@ -56,7 +56,13 @@
                 "
                 @click="selectedClient = guide.key"
               >
-                {{ guide.name }}
+                <img
+                  v-if="guide.icon"
+                  :src="guide.icon"
+                  :alt="guide.name"
+                  class="h-4 w-4 shrink-0 rounded-[3px] object-contain dark:bg-white dark:p-[2px]"
+                />
+                <span>{{ guide.name }}</span>
               </button>
             </div>
 

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="KISS Translator">
+  <title>KISS Translator</title>
+  <rect width="256" height="256" rx="34" fill="#2DA1E4"/>
+  <path d="M39 43v170" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+  <path d="M39 132 112 58" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 134 115 212" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M135 43h78" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+  <path d="M174 45v168" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round"/>
+</svg>
