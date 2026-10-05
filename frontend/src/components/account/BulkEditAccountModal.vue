@@ -133,6 +133,54 @@
         </div>
       </div>
 
+      <!-- 严格校验 Codex 签名的兼容中转：补齐 include 与 prompt_cache_key（仅 API Key） -->
+      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-ensure-codex-signature-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-ensure-codex-signature-enabled"
+            >
+              {{ t('admin.accounts.openai.ensureCodexSignature') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.ensureCodexSignatureDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIEnsureCodexSignature"
+            id="bulk-edit-openai-ensure-codex-signature-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-ensure-codex-signature-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-ensure-codex-signature-body"
+          :class="!enableOpenAIEnsureCodexSignature && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-ensure-codex-signature-label"
+        >
+          <button
+            id="bulk-edit-openai-ensure-codex-signature-toggle"
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiEnsureCodexSignatureEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="openaiEnsureCodexSignatureEnabled = !openaiEnsureCodexSignatureEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiEnsureCodexSignatureEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI API long-context billing -->
       <div
         v-if="allOpenAIPassthroughCapable"
@@ -1660,6 +1708,7 @@ const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIFlattenNamespaces = ref(false)
+const enableOpenAIEnsureCodexSignature = ref(false)
 const enableOpenAILongContextBilling = ref(false)
 const enableOpenAIEndpointCapabilities = ref(false)
 const enableOpenAIResponsesMode = ref(false)
@@ -1696,6 +1745,8 @@ const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
+// 严格校验 Codex 签名的兼容中转（仅 API Key）补齐 include / prompt_cache_key，缺省关闭
+const openaiEnsureCodexSignatureEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
@@ -1991,6 +2042,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_responses_flatten_namespaces = openaiFlattenNamespacesEnabled.value
   }
 
+  // 同理校验可见性：只对 OpenAI API Key 账号写这个键
+  if (enableOpenAIEnsureCodexSignature.value && allOpenAIAPIKey.value) {
+    const extra = ensureExtra()
+    extra.openai_responses_ensure_codex_signature = openaiEnsureCodexSignatureEnabled.value
+  }
+
   if (applyOpenAILongContextBilling) {
     const extra = ensureExtra()
     extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
@@ -2205,6 +2262,7 @@ const handleSubmit = async () => {
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
+    enableOpenAIEnsureCodexSignature.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
     (enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value) ||
     (enableOpenAIResponsesMode.value && allOpenAIAPIKey.value) ||
@@ -2367,6 +2425,7 @@ watch(
       enableGroups.value = false
       enableOpenAIPassthrough.value = false
       enableOpenAIFlattenNamespaces.value = false
+      enableOpenAIEnsureCodexSignature.value = false
       enableOpenAILongContextBilling.value = false
       enableOpenAIEndpointCapabilities.value = false
       enableOpenAIResponsesMode.value = false

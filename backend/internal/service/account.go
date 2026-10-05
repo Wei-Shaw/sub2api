@@ -2315,6 +2315,25 @@ func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
 	return ok && enabled
 }
 
+// IsOpenAIResponsesEnsureCodexSignatureEnabled 返回账号级"补齐 Codex 请求签名"开关。
+// 字段：accounts.extra.openai_responses_ensure_codex_signature，缺省 false（原样转发）。
+//
+// 部分 OpenAI 兼容中转（new-api 系）把 /v1/responses 上的
+// include:["reasoning.encrypted_content"] 与非空 prompt_cache_key 当作"请求来自
+// Codex 官方客户端"的证据，缺任一项一律回 400 invalid codex request。而 Codex
+// 客户端并非每次请求都带齐这两项（例如该轮不请求 reasoning 时），落到这类上游
+// 就会间歇性拒单——表现为同一模型"有的请求正常、有的报错"。
+//
+// 打开后本账号的出站 Responses 请求会补齐这两项签名。默认关闭：多数上游并不
+// 校验签名，只有把流量转发到这类严格中转的账号才需要开启。
+func (a *Account) IsOpenAIResponsesEnsureCodexSignatureEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_responses_ensure_codex_signature"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIWSAllowStoreRecoveryEnabled 返回账号级 store 恢复开关。
 // 字段：accounts.extra.openai_ws_allow_store_recovery。
 func (a *Account) IsOpenAIWSAllowStoreRecoveryEnabled() bool {

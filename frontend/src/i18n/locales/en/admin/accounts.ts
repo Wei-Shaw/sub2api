@@ -683,6 +683,9 @@ export default {
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
+        ensureCodexSignature: 'Complete the Codex request signature (compatibility)',
+        ensureCodexSignatureDesc:
+          'Disabled by default. Enable only when this API Key account is routed to a relay that validates the Codex client signature — such relays require include:["reasoning.encrypted_content"] and a non-empty prompt_cache_key on /responses, and answer 400 "invalid codex request" when either is missing. Codex does not send both on every request, which shows up as some requests succeeding and others failing on the same model. When enabled, outbound requests are completed with the missing field; a missing prompt_cache_key is derived from the session so turns of one conversation share it.',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',

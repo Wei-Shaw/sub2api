@@ -190,6 +190,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = normalized
 			originalBody = normalized
 		}
+		// 严格校验 Codex 签名的兼容中转（new-api 系）要求 include 与非空
+		// prompt_cache_key 齐备，否则 400 invalid codex request；账号级开关显式开启。
+		if account.IsOpenAIResponsesEnsureCodexSignatureEnabled() {
+			if signed, changed, signErr := ensureOpenAIResponsesCodexSignature(body); signErr != nil {
+				return nil, signErr
+			} else if changed {
+				body = signed
+				originalBody = signed
+			}
+		}
 		requestView = newOpenAIRequestView(body)
 		reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
 		originalModel = reqModel

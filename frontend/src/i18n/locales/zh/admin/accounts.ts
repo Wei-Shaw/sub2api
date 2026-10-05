@@ -801,6 +801,9 @@ export default {
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
+        ensureCodexSignature: '补齐 Codex 请求签名（兼容）',
+        ensureCodexSignatureDesc:
+          '默认关闭。仅当该 API Key 账号指向会校验 Codex 客户端签名的兼容中转时才开启：这类中转要求 /responses 同时带 include:["reasoning.encrypted_content"] 与非空 prompt_cache_key，缺任一项即回 400 invalid codex request。而 Codex 并非每次请求都带齐这两项，表现为同一模型"有的请求正常、有的报错"。开启后出站请求会自动补齐缺失项；prompt_cache_key 缺失时按会话派生，同一会话的各轮共用一个键。',
         longContextBilling: 'API 长上下文计费',
         longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
         responsesWebsocketsV2: 'Responses WebSocket v2',
