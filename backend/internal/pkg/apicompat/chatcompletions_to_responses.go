@@ -1,7 +1,9 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,6 +20,78 @@ type chatMessageContent struct {
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
+	return chatCompletionsToResponses(req, false)
+}
+
+var ErrUnsupportedInputAudio = errors.New("input_audio is not supported on this conversion route")
+
+func ChatCompletionsToResponsesForGemini(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
+	return chatCompletionsToResponses(req, true)
+}
+
+func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*ResponsesRequest, error) {
+	converted := *req
+	converted.Messages = append([]ChatMessage(nil), req.Messages...)
+	for index, message := range converted.Messages {
+		var parts []ChatContentPart
+		if err := json.Unmarshal(message.Content, &parts); err != nil {
+			var rawParts []json.RawMessage
+			if json.Unmarshal(message.Content, &rawParts) == nil {
+				for _, rawPart := range rawParts {
+					var probe struct {
+						Type string `json:"type"`
+					}
+					if json.Unmarshal(rawPart, &probe) == nil && probe.Type == "input_audio" {
+						if !allowAudio || message.Role != "user" {
+							return nil, ErrUnsupportedInputAudio
+						}
+						return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+					}
+				}
+			}
+			continue
+		}
+		changed := false
+		for partIndex, part := range parts {
+			if part.Type != "input_audio" {
+				continue
+			}
+			if !allowAudio || message.Role != "user" {
+				return nil, ErrUnsupportedInputAudio
+			}
+			var audio struct {
+				Data   string `json:"data"`
+				Format string `json:"format"`
+			}
+			if err := json.Unmarshal(part.InputAudio, &audio); err != nil {
+				return nil, fmt.Errorf("invalid input_audio: expected data and format strings")
+			}
+			mimeType := map[string]string{
+				"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
+				"flac": "audio/flac", "aac": "audio/aac", "mp4": "audio/mp4", "m4a": "audio/mp4",
+			}[audio.Format]
+			if mimeType == "" {
+				return nil, fmt.Errorf("unsupported input_audio format %q", audio.Format)
+			}
+			decoded, err := base64.StdEncoding.Strict().DecodeString(audio.Data)
+			if err != nil || len(decoded) == 0 {
+				return nil, fmt.Errorf("invalid input_audio data: expected non-empty base64")
+			}
+			parts[partIndex] = ChatContentPart{
+				Type: "file", PromptCacheBreakpoint: part.PromptCacheBreakpoint,
+				File: &ChatFile{FileData: "data:" + mimeType + ";base64," + audio.Data},
+			}
+			changed = true
+		}
+		if changed {
+			content, err := json.Marshal(parts)
+			if err != nil {
+				return nil, err
+			}
+			converted.Messages[index].Content = content
+		}
+	}
+	req = &converted
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}

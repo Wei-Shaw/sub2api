@@ -3488,6 +3488,18 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 							},
 						},
 					})
+				case "document":
+					if src, ok := bm["source"].(map[string]any); ok {
+						mediaType, _ := src["media_type"].(string)
+						data, _ := src["data"].(string)
+						if src["type"] == "base64" && strings.HasPrefix(mediaType, "audio/") && data != "" {
+							parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": mediaType, "data": data}})
+							continue
+						}
+					}
+					if encoded, err := json.Marshal(bm); err == nil {
+						parts = append(parts, map[string]any{"text": string(encoded)})
+					}
 				case "image":
 					if src, ok := bm["source"].(map[string]any); ok {
 						if srcType, _ := src["type"].(string); srcType == "base64" {
