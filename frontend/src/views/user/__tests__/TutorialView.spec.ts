@@ -73,13 +73,6 @@ describe('TutorialView', () => {
     expect(wrapper.text()).toContain('"model": "deepseek-v4-pro"')
   })
 
-  it('highlights the endpoint card of the active client', () => {
-    const wrapper = mount(TutorialView)
-    const anthropicCard = wrapper.findAll('button').find((b) => b.text().includes('Anthropic 兼容'))
-    expect(anthropicCard).toBeTruthy()
-    expect(anthropicCard!.classes()).toContain('border-primary-500')
-  })
-
   it('starts on the guide tab by default and syncs faq tab to the URL', async () => {
     const wrapper = mount(TutorialView)
     expect(wrapper.find('select').exists()).toBe(true)

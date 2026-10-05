@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-7xl space-y-6">
+    <div class="mx-auto max-w-5xl space-y-6">
       <!-- Page header -->
       <div>
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -11,9 +11,8 @@
         </p>
       </div>
 
-      <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <!-- Main card: guide / faq tabs -->
-        <div class="card min-w-0 flex-1">
+      <!-- Main card: guide / faq tabs -->
+      <div class="card">
           <div class="flex border-b border-gray-200 dark:border-dark-700">
             <button
               v-for="tab in TABS"
@@ -279,34 +278,6 @@
               </p>
             </div>
           </div>
-        </div>
-
-        <!-- Right sidebar: endpoints -->
-        <aside class="w-full shrink-0 space-y-3 lg:w-72">
-          <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('tutorial.guide.endpointTitle') }}</h3>
-            <p class="mt-1 text-xs leading-relaxed text-gray-400 dark:text-dark-500">{{ t('tutorial.guide.endpointHint') }}</p>
-          </div>
-          <button
-            v-for="ep in endpoints"
-            :key="ep.key"
-            type="button"
-            class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
-            :class="
-              activeGuide?.endpoint === ep.key
-                ? 'border-primary-500 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20'
-                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800/60'
-            "
-            @click="copyText(ep.url, `ep-${ep.key}`)"
-          >
-            <span class="flex items-center justify-between gap-2">
-              <span class="text-sm font-semibold" :class="activeGuide?.endpoint === ep.key ? 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white'">{{ ep.name }}</span>
-              <Icon :name="copiedKey === `ep-${ep.key}` ? 'check' : 'copy'" size="sm" class="text-gray-400" />
-            </span>
-            <span class="mt-1 block break-all font-mono text-xs text-gray-500 dark:text-dark-400">{{ ep.url }}</span>
-            <span class="mt-1 block text-xs text-gray-400 dark:text-dark-500">{{ ep.desc }}</span>
-          </button>
-        </aside>
       </div>
     </div>
   </AppLayout>
@@ -319,13 +290,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import {
-  buildEndpoints,
-  buildGuides,
-  FAQ_CATEGORIES,
-  FAQ_ITEMS,
-  TUTORIAL_MODELS,
-} from './tutorialContent'
+import { buildGuides, FAQ_CATEGORIES, FAQ_ITEMS, TUTORIAL_MODELS } from './tutorialContent'
 
 const TABS = ['guide', 'faq'] as const
 type Tab = (typeof TABS)[number]
@@ -361,8 +326,6 @@ const selectedClient = ref('claude-code')
 
 const guides = computed(() => buildGuides(apiBase.value, selectedModel.value))
 const activeGuide = computed(() => guides.value.find((g) => g.key === selectedClient.value) ?? guides.value[0])
-
-const endpoints = computed(() => buildEndpoints(apiBase.value))
 
 const codeTab = ref<CodeTab>('curl')
 

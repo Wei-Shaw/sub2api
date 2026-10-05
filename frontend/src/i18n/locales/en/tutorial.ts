@@ -15,8 +15,6 @@ export default {
       tabCurl: 'curl',
       tabPython: 'Python',
       tabSdk: 'OpenAI SDK',
-      endpointTitle: 'Endpoints',
-      endpointHint: 'The endpoint is the base URL you fill into your client. Pick the card matching your client protocol and click to copy. Guide content below is shown in Chinese.',
       configNote: '',
     },
 

@@ -57,15 +57,6 @@ export const FAQ_CATEGORIES = [
   { key: 'support', label: '账户与支持' },
 ] as const
 
-export function buildEndpoints(base: string): { key: EndpointKey; name: string; url: string; desc: string }[] {
-  return [
-    { key: 'openai', name: 'OpenAI 兼容', url: `${base}/v1/chat/completions`, desc: 'Cherry Studio、Next-Web、LobeChat、Cursor、TRAE SOLO、WorkBuddy 等' },
-    { key: 'anthropic', name: 'Anthropic 兼容', url: base, desc: 'Claude Code · 地址不带 /v1' },
-    { key: 'responses', name: 'OpenAI Responses', url: `${base}/v1`, desc: 'Codex CLI · dsh' },
-    { key: 'models', name: '模型列表', url: `${base}/v1/models`, desc: 'GET 请求 · 查看当前可用模型' },
-  ]
-}
-
 function claudeSettings(base: string, model: string): string {
   return JSON.stringify(
     {
@@ -385,7 +376,7 @@ requires_openai_auth = true`,
       endpoint: 'openai',
       steps: [
         { text: '打开 设置 → 模型服务 → 添加供应商,协议选择 OpenAI 兼容。' },
-        { text: 'API 地址填本站接入地址(右侧 OpenAI 兼容卡片,不带 /v1 也可),API Key 填你的 sk- 密钥。' },
+        { text: 'API 地址填 `${base}`(不带 /v1 也可,客户端会自动拼接路径),API Key 填你的 sk- 密钥。' },
         { text: '点击「获取模型列表」自动拉取,或手动添加模型名,对话时选择模型即可。' },
       ],
     },
@@ -410,7 +401,7 @@ requires_openai_auth = true`,
         { text: '打开 WorkBuddy,点击左下角的账户头像,在弹出的账户菜单中点击「设置」。' },
         { text: '在设置窗口左侧选择「模型」,然后点击右上方的「+ 添加模型」。' },
         {
-          text: '提供商选择「自定义 / Custom」,接口地址填完整路径(右侧 OpenAI 兼容卡片的地址),API Key 填你的 sk- 密钥,模型名称填上方选中的模型。根据模型能力确认高级配置后,点击「保存」。',
+          text: '提供商选择「自定义 / Custom」,接口地址填完整路径 `${base}/v1/chat/completions`,API Key 填你的 sk- 密钥,模型名称填上方选中的模型。根据模型能力确认高级配置后,点击「保存」。',
         },
         { text: '返回任务页面,在输入框右下角选择刚保存的模型。发送一条消息并收到正常回复,即表示配置成功。' },
       ],
@@ -422,7 +413,7 @@ requires_openai_auth = true`,
       name: 'ZCode',
       endpoint: 'openai',
       steps: [
-        { text: '打开 ZCode 设置并进入「Model settings」,点击「+ Add provider」。供应商名称填 稳得 AI,API Base URL 填本站接入地址(右侧 OpenAI Responses 卡片,不带 /chat/completions),API Key 填你的 sk- 密钥,然后保存。' },
+        { text: '打开 ZCode 设置并进入「Model settings」,点击「+ Add provider」。供应商名称填 稳得 AI,API Base URL 填 `${base}/v1`,API Key 填你的 sk- 密钥,然后保存。' },
         { text: '在该供应商的模型列表中点击「Add model」。Model ID 填上方选中的模型,Context window 按所选模型填写,然后保存。' },
         { text: '返回工作区,点击输入框右下角的「Choose model」,展开稳得 AI 并选择刚添加的模型。' },
         { text: '发送一条消息进行测试。看到 ZCode 正常回复,即表示配置成功。' },
@@ -436,7 +427,7 @@ requires_openai_auth = true`,
       steps: [
         { text: '打开 Cursor Settings,进入 Network,将 HTTP Compatibility Mode 改为 HTTP/1.1。' },
         { text: '进入 Models 页面,展开 API Keys,填入你的 sk- 密钥。' },
-        { text: '打开 Override OpenAI Base URL,填入本站接入地址(右侧 OpenAI 兼容卡片)。' },
+        { text: '打开 Override OpenAI Base URL,填入 `${base}/v1`。' },
         { text: '手动添加模型名,保存设置后返回对话页面选择该模型;记得点击 Verify 验证,能正常回复即配置完成。' },
       ],
     },
@@ -467,7 +458,7 @@ requires_openai_auth = true`,
       endpoint: 'anthropic',
       steps: [
         { text: '打开 Read Frog 设置页面,在左侧 API Providers 列表中选择 Anthropic 提供商。' },
-        { text: '按照界面填写 API Key、Base URL(本站接入地址,右侧 Anthropic 兼容卡片)和 Model(勾选自定义模型名称,填上方选中的模型)。' },
+        { text: '按照界面填写 API Key、Base URL(填 `${base}`)和 Model(勾选自定义模型名称,填上方选中的模型)。' },
         { text: '点击「Test Connection」验证连接,提示成功即配置完成。' },
       ],
     },
@@ -478,7 +469,7 @@ requires_openai_auth = true`,
       endpoint: 'anthropic',
       steps: [
         { text: '打开 Kiss Translator 设置页面,点击「Add」添加翻译服务,选择「Claude」。' },
-        { text: '按照界面填写 URL、Key 和 Model。注意 URL 需要填写完整地址(含 /v1/messages,右侧 Anthropic 兼容卡片加 /v1/messages),Key 填 sk- 密钥,Model 填上方选中的模型。' },
+        { text: '按照界面填写 URL、Key 和 Model。注意 URL 需要填写完整地址(`${base}/v1/messages`),Key 填 sk- 密钥,Model 填上方选中的模型。' },
         { text: '保存配置后,刷新页面即可使用翻译功能。' },
       ],
     },
@@ -489,7 +480,7 @@ requires_openai_auth = true`,
       endpoint: 'openai',
       steps: [
         { text: '打开沉浸式翻译设置页面,进入「AI 服务」选择「OpenAI」。' },
-        { text: '自定义 API 接口地址填完整路径(右侧 OpenAI 兼容卡片的地址),勾选「输入自定义模型名称」手动填入上方选中的模型,APIKEY 填你的 sk- 密钥。' },
+        { text: '自定义 API 接口地址填完整路径 `${base}/v1/chat/completions`,勾选「输入自定义模型名称」手动填入上方选中的模型,APIKEY 填你的 sk- 密钥。' },
         { text: '保存配置后,打开任意英文网页即可看到翻译效果。' },
       ],
     },
