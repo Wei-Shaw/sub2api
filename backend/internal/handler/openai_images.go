@@ -392,6 +392,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		userPrompt := service.ExtractUserPrompt(body, "openai_images")
 		if parsed.Multipart {
 			requestPayloadHash = service.HashUsageRequestPayload([]byte(parsed.StickySessionSeed()))
 		}
@@ -407,6 +408,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
+				UserPrompt:         userPrompt,
 				APIKey:             apiKey,
 				User:               apiKey.User,
 				Account:            account,
