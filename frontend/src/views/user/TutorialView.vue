@@ -54,8 +54,8 @@
           </div>
 
           <!-- Code samples -->
-          <div class="overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-sm dark:border-dark-700">
-            <div class="flex items-center justify-between border-b border-gray-700/70 px-4 py-2.5">
+          <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
               <div class="ml-1 flex gap-1">
                 <button
                   v-for="tab in CODE_TABS"
@@ -64,8 +64,8 @@
                   class="rounded px-2.5 py-1 text-xs transition-colors"
                   :class="
                     codeTab === tab
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:text-gray-200'
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'text-gray-500 hover:text-gray-800'
                   "
                   @click="codeTab = tab"
                 >
@@ -74,14 +74,14 @@
               </div>
               <button
                 type="button"
-                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:text-gray-200"
+                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:text-gray-800"
                 @click="copyText(quickstartCode, 'quickstart')"
               >
                 <Icon :name="copiedKey === 'quickstart' ? 'check' : 'copy'" size="sm" />
                 {{ copiedKey === 'quickstart' ? t('tutorial.guide.copied') : t('tutorial.guide.copy') }}
               </button>
             </div>
-            <pre class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-gray-300 sm:text-sm">{{ quickstartCode }}</pre>
+            <pre class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-gray-900 sm:text-sm">{{ quickstartCode }}</pre>
           </div>
 
           <p class="text-xs leading-relaxed text-gray-400 dark:text-dark-500">
@@ -109,7 +109,7 @@
                   <p class="mb-3 text-xs leading-relaxed text-gray-500 dark:text-dark-400">
                     {{ client.desc }}
                   </p>
-                  <pre class="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-300">{{ clientCode(client) }}</pre>
+                  <pre class="overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 font-mono text-[11px] leading-relaxed text-gray-900">{{ clientCode(client) }}</pre>
                 </div>
                 <button
                   type="button"
