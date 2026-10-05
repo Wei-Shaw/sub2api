@@ -120,7 +120,10 @@
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span class="sidebar-label sidebar-label-flex" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+              <span class="min-w-0 truncate">{{ item.label }}</span>
+              <span v-if="item.code" class="sidebar-code">{{ item.code }}</span>
+            </span>
           </router-link>
         </div>
       </template>
@@ -128,17 +131,6 @@
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <router-link
-            :to="userDashboardItem.path"
-            class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(userDashboardItem.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? userDashboardItem.label : undefined"
-            @click="handleMenuItemClick(userDashboardItem.path)"
-          >
-            <component :is="userDashboardItem.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ userDashboardItem.label }}</span>
-          </router-link>
-
           <template v-for="group in userNavGroups" :key="group.label">
             <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
               <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
@@ -157,7 +149,10 @@
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <span class="sidebar-label sidebar-label-flex" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+                <span class="min-w-0 truncate">{{ item.label }}</span>
+                <span v-if="item.code" class="sidebar-code">{{ item.code }}</span>
+              </span>
             </router-link>
           </template>
         </div>
@@ -217,6 +212,8 @@ import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 interface NavItem {
   path: string
   label: string
+  /** 行右侧的英文码(装饰性,如 HOME / KEYS),仅展开态显示 */
+  code?: string
   icon: unknown
   iconSvg?: string
   hideInSimpleMode?: boolean
@@ -720,41 +717,31 @@ const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
 
-// buildSelfNavGroups 按使用类型分组构造用户自己的导航（用户端主菜单）。
-// 仪表盘单独置顶(无分组标题)；四组：接入使用 → 数据与监控 → 订阅与支付 → 账户。
-// 帮助文档为内置 /tutorial 交互式教程页；自定义菜单里的 md:help 旧帮助页在此隐藏(数据保留,路由仍可访问)。
+// selfNavGroups 按参考设计分两大组（导航 / 服务），每项带右侧英文码。
+// 自定义菜单里的 md:help 旧帮助页在此隐藏(数据保留,路由仍可访问)。
 function selfNavGroups(): { label: string; items: NavItem[] }[] {
   return [
     {
-      label: t('nav.groupAccess'),
+      label: t('nav.groupNavigate'),
       items: [
-        { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-        { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
-        { path: '/tutorial', label: t('nav.tutorial'), icon: BookOpenIcon },
+        { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, code: 'HOME' },
+        { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, code: 'KEYS' },
+        { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess, code: 'IMAGE' },
+        { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, code: 'USAGE' },
+        { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels, code: 'CHANNELS' },
+        { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor, code: 'STATUS' },
+        { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate, code: 'INVITE' },
+        { path: '/tutorial', label: t('nav.tutorial'), icon: BookOpenIcon, code: 'DOCS' },
       ],
     },
     {
-      label: t('nav.groupData'),
+      label: t('nav.groupService'),
       items: [
-        { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-        { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-        { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
-      ],
-    },
-    {
-      label: t('nav.groupBilling'),
-      items: [
-        { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-        { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-        { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-        { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-      ],
-    },
-    {
-      label: t('nav.groupAccount'),
-      items: [
-        { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
-        { path: '/profile', label: t('nav.profile'), icon: UserIcon },
+        { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, code: 'SUBS' },
+        { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, code: 'SHOP' },
+        { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment, code: 'BILLS' },
+        { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, code: 'REDEEM' },
+        { path: '/profile', label: t('nav.profile'), icon: UserIcon, code: 'ACCOUNT' },
         ...customMenuItemsForUser.value.map((item): NavItem => ({
           path: `/custom/${item.id}`,
           label: item.label,
@@ -784,8 +771,7 @@ function finalizeNav(items: NavItem[]): NavItem[] {
   return authStore.isSimpleMode ? visible.filter(item => !item.hideInSimpleMode) : visible
 }
 
-// User navigation (regular user main menu): dashboard on top, then usage-type groups.
-const userDashboardItem = computed<NavItem>(() => ({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon }))
+// User navigation (regular user main menu): grouped by usage type (导航 / 服务).
 const userNavGroups = computed(() =>
   selfNavGroups()
     .map((g) => ({ label: g.label, items: finalizeNav(g.items) }))
@@ -1126,6 +1112,21 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+/* 行右侧英文码(参考机场面板): 大写、宽字距、弱化色;折叠态由 sidebar-label-collapsed 隐藏 */
+.sidebar-code {
+  flex-shrink: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(156 163 175 / 0.9);
+}
+.dark .sidebar-code {
+  color: rgb(100 116 139 / 0.9);
+}
+.sidebar-label-collapsed .sidebar-code {
+  display: none;
 }
 
 .sidebar-label-collapsed {
