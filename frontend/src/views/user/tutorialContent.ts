@@ -1,7 +1,8 @@
 // 教程正文内容(中文)。
 // - UI 框架文案(标签/按钮/搜索提示)在 i18n 的 tutorial 段;正文更新频率高且站点受众为中文,
 //   故独立成模块,不进 i18n(en 用户通过 fallbackLocale=zh 回退看到中文正文)。
-// - 内容与部署仓库 docs/user-help.md 保持同步,新增客户端/FAQ 两边都要改。
+// - 客户端清单与 krill-code 使用教程对齐(2026-10 从其线上产物提取步骤结构,接入地址替换为本站);
+//   内容同时镜像到部署仓库 docs/user-help.md,两处更新需同步。
 // - base 为站点接入地址(运行时取当前站点 origin),model 为用户在页面上下拉选中的模型。
 
 export type EndpointKey = 'openai' | 'anthropic' | 'responses' | 'models'
@@ -56,9 +57,9 @@ export const FAQ_CATEGORIES = [
 
 export function buildEndpoints(base: string): { key: EndpointKey; name: string; url: string; desc: string }[] {
   return [
-    { key: 'openai', name: 'OpenAI 兼容', url: `${base}/v1/chat/completions`, desc: 'Cherry Studio、Next-Web、LobeChat、Cursor、沉浸式翻译等' },
+    { key: 'openai', name: 'OpenAI 兼容', url: `${base}/v1/chat/completions`, desc: 'Cherry Studio、Next-Web、LobeChat、Cursor、TRAE SOLO、WorkBuddy 等' },
     { key: 'anthropic', name: 'Anthropic 兼容', url: base, desc: 'Claude Code · 地址不带 /v1' },
-    { key: 'responses', name: 'OpenAI Responses', url: `${base}/v1/responses`, desc: 'Codex CLI' },
+    { key: 'responses', name: 'OpenAI Responses', url: `${base}/v1`, desc: 'Codex CLI · dsh' },
     { key: 'models', name: '模型列表', url: `${base}/v1/models`, desc: 'GET 请求 · 查看当前可用模型' },
   ]
 }
@@ -79,6 +80,110 @@ function claudeSettings(base: string, model: string): string {
     null,
     2,
   )
+}
+
+function opencodeConfig(base: string, model: string): string {
+  return JSON.stringify(
+    {
+      $schema: 'https://opencode.ai/config.json',
+      provider: {
+        wende: {
+          npm: '@ai-sdk/openai',
+          name: '稳得 AI',
+          options: {
+            baseURL: `${base}/v1`,
+            apiKey: 'sk-你的密钥',
+          },
+          models: {
+            [model]: {
+              name: model,
+              reasoning: true,
+              tool_call: true,
+              limit: { context: 272000, output: 128000 },
+              options: {
+                reasoningEffort: 'medium',
+                textVerbosity: 'low',
+                reasoningSummary: 'auto',
+                store: false,
+              },
+              variants: {
+                low: { reasoningEffort: 'low', textVerbosity: 'low' },
+                medium: { reasoningEffort: 'medium', textVerbosity: 'low' },
+                high: { reasoningEffort: 'high', textVerbosity: 'low' },
+                xhigh: { reasoningEffort: 'xhigh', textVerbosity: 'low' },
+              },
+            },
+          },
+        },
+      },
+    },
+    null,
+    2,
+  )
+}
+
+function openclawConfig(base: string, model: string): string {
+  return JSON.stringify(
+    {
+      models: {
+        mode: 'merge',
+        providers: {
+          wende: {
+            baseUrl: `${base}/v1`,
+            apiKey: 'sk-你的密钥',
+            api: 'openai',
+            models: [
+              {
+                id: model,
+                name: model,
+                reasoning: false,
+                input: ['text', 'image'],
+                contextWindow: 1000000,
+                maxTokens: 65536,
+              },
+            ],
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          model: { primary: `wende/${model}` },
+          models: { [`wende/${model}`]: {} },
+        },
+      },
+      gateway: { mode: 'local' },
+    },
+    null,
+    2,
+  )
+}
+
+function dshSettings(base: string, model: string): string {
+  return `llm-pi-ai:
+  providers:
+    wende:
+      displayName: 稳得 AI
+      apiKeyEnv: WENDE_API_KEY
+      api: openai-responses
+      baseURL: ${base}/v1
+      models:
+        - id: ${model}
+          name: ${model} · 稳得 AI
+          contextWindow: 272000
+          maxTokens: 128000
+          input: [text, image]
+
+agent-default-model:
+  provider: wende
+  model: ${model}`
+}
+
+function hermesConfig(base: string, model: string): string {
+  return `model:
+  default: ${model}
+  provider: custom
+  base_url: ${base}/v1
+  api_key: sk-你的密钥`
 }
 
 export function buildGuides(base: string, model: string): TutorialGuide[] {
@@ -152,6 +257,120 @@ requires_openai_auth = true`,
       ],
     },
     {
+      key: 'dsh',
+      name: 'dsh',
+      endpoint: 'responses',
+      intro: 'dsh(DeepSeek Harness)通过 OpenAI Responses 协议接入。',
+      steps: [
+        { text: 'dsh 需要 Node.js 22.19 或更高版本,请先安装并确认版本:', commands: ['node --version'] },
+        { text: '在终端中执行下列命令,全局安装 dsh:', commands: ['npm install -g @deepseek-ai/dsh'] },
+        { text: '运行以下命令验证安装。若有版本号输出,则表示安装成功:', commands: ['dsh --version'] },
+        {
+          text: '创建并打开配置文件 ~/.dsh/settings.yaml。如果 .dsh 目录不存在,需要先行创建:',
+          commands: ['mkdir -p ~/.dsh'],
+          appendText: '然后打开配置文件:',
+          appendCommands: ['nano ~/.dsh/settings.yaml'],
+        },
+        {
+          text: '写入以下模型服务配置并保存:',
+          file: { path: '~/.dsh/settings.yaml', language: 'yaml', content: dshSettings(base, model) },
+        },
+        {
+          text: '打开(不存在会自动新建)~/.dsh/.credentials.yaml,写入密钥:',
+          commands: ['nano ~/.dsh/.credentials.yaml'],
+          file: {
+            path: '~/.dsh/.credentials.yaml',
+            language: 'yaml',
+            content: 'version: 1\n\nrefs:\n  WENDE_API_KEY: sk-你的密钥',
+          },
+        },
+        {
+          text: 'macOS / Linux 还需收紧凭据文件权限,否则 dsh 会拒绝加载该文件(Windows 无此限制):',
+          commands: ['chmod 600 ~/.dsh/.credentials.yaml'],
+        },
+        { text: '在终端运行 dsh,发送一句话能得到正常回复,即配置完成。' },
+      ],
+    },
+    {
+      key: 'opencode',
+      name: 'OpenCode',
+      endpoint: 'openai',
+      intro: 'OpenCode 通过 OpenAI 兼容协议接入,支持按 low / medium / high / xhigh 四档调整思考强度。',
+      steps: [
+        { text: '安装或更新 Node.js(v18.0 或更高版本)。' },
+        { text: '在终端中执行以下命令安装 OpenCode:', commands: ['npm install -g opencode-ai'] },
+        { text: '运行以下命令验证安装。若有版本号输出,则表示安装成功:', commands: ['opencode -v'] },
+        {
+          text: '创建并打开配置文件 ~/.config/opencode/opencode.json:',
+          commands: ['mkdir -p ~/.config/opencode'],
+          appendText: '然后打开配置文件:',
+          appendCommands: ['nano ~/.config/opencode/opencode.json'],
+        },
+        {
+          text: '将以下配置写入文件,保存后退出并重新启动 OpenCode 使新配置生效(Windows 路径为 C:\\Users\\你的用户名\\.config\\opencode\\opencode.json):',
+          file: { path: '~/.config/opencode/opencode.json', language: 'json', content: opencodeConfig(base, model) },
+        },
+        { text: '在终端运行 opencode,看到对话界面并能正常回复,即配置完成。' },
+      ],
+    },
+    {
+      key: 'openclaw',
+      name: 'OpenClaw',
+      endpoint: 'openai',
+      intro: 'OpenClaw 通过自定义模型供应商接入。',
+      steps: [
+        { text: '在终端执行以下命令打开配置文件 ~/.openclaw/openclaw.json:', commands: ['nano ~/.openclaw/openclaw.json'] },
+        {
+          text: '首次配置:将以下内容复制到配置文件,把 sk-你的密钥 替换为你的 API Key。已有配置请勿直接全量替换,按结构合并进 models 与 agents 段:',
+          file: { path: '~/.openclaw/openclaw.json', language: 'json', content: openclawConfig(base, model) },
+        },
+        {
+          text: '保存文件并退出,运行以下命令使配置生效:',
+          commands: ['openclaw gateway restart'],
+        },
+        { text: '启动后发送一条消息,能正常回复即配置完成。' },
+      ],
+    },
+    {
+      key: 'hermes',
+      name: 'Hermes',
+      endpoint: 'openai',
+      intro: 'Hermes 通过 hermes config 命令或 YAML 配置文件接入。',
+      steps: [
+        {
+          text: '在终端中执行以下命令,安装脚本会自动安装 Python、Git 等依赖(Windows 不支持原生安装,请先安装 WSL2 并在 WSL2 终端中运行):',
+          commands: ['curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash'],
+        },
+        {
+          text: '安装完成后,重新加载终端环境(macOS 执行 source ~/.zshrc,Linux 执行 source ~/.bashrc),然后验证安装:',
+          commands: ['hermes --version'],
+        },
+        {
+          text: '在终端中依次执行以下命令,配置模型提供商、Base URL、API Key 和默认模型:',
+          commands: [
+            'hermes config set model.provider custom',
+            `hermes config set model.base_url ${base}/v1`,
+            'hermes config set model.api_key sk-你的密钥',
+            `hermes config set model.default ${model}`,
+          ],
+        },
+        {
+          text: '以上命令会将配置写入 ~/.hermes/config.yaml,也可以直接编辑该文件,写入以下内容:',
+          file: { path: '~/.hermes/config.yaml', language: 'yaml', content: hermesConfig(base, model) },
+        },
+        {
+          text: '配置完成后,可以通过 -m 参数在对话时切换模型:',
+          commands: [`hermes chat -m ${model}`],
+          appendText: '也可以直接设置默认模型:',
+          appendCommands: [`hermes config set model.default ${model}`],
+        },
+        {
+          text: '验证配置,执行以下命令发送一条测试消息。如果返回正常的 AI 回复,则配置成功;进入交互式对话模式直接执行 hermes:',
+          commands: ['hermes chat -q "你好"'],
+        },
+      ],
+    },
+    {
       key: 'cherry-studio',
       name: 'Cherry Studio',
       endpoint: 'openai',
@@ -172,13 +391,29 @@ requires_openai_auth = true`,
       ],
     },
     {
-      key: 'immersive-translate',
-      name: '沉浸式翻译',
+      key: 'workbuddy',
+      name: 'WorkBuddy',
+      endpoint: 'openai',
+      intro: 'WorkBuddy 仅支持 OpenAI 兼容协议 API。',
+      steps: [
+        { text: '打开 WorkBuddy,点击左下角的账户头像,在弹出的账户菜单中点击「设置」。' },
+        { text: '在设置窗口左侧选择「模型」,然后点击右上方的「+ 添加模型」。' },
+        {
+          text: '提供商选择「自定义 / Custom」,接口地址填完整路径(右侧 OpenAI 兼容卡片的地址),API Key 填你的 sk- 密钥,模型名称填上方选中的模型。根据模型能力确认高级配置后,点击「保存」。',
+        },
+        { text: '返回任务页面,在输入框右下角选择刚保存的模型。发送一条消息并收到正常回复,即表示配置成功。' },
+      ],
+      tip: '测试提示语可以用「你好,请确认当前模型是否连接成功。」。',
+    },
+    {
+      key: 'zcode',
+      name: 'ZCode',
       endpoint: 'openai',
       steps: [
-        { text: '设置 → AI 服务 → OpenAI。' },
-        { text: '自定义 API 接口地址填完整路径(右侧 OpenAI 兼容卡片的地址)。' },
-        { text: '填入 API Key 与模型名,保存后即可翻译。' },
+        { text: '打开 ZCode 设置并进入「Model settings」,点击「+ Add provider」。供应商名称填 稳得 AI,API Base URL 填本站接入地址(右侧 OpenAI Responses 卡片,不带 /chat/completions),API Key 填你的 sk- 密钥,然后保存。' },
+        { text: '在该供应商的模型列表中点击「Add model」。Model ID 填上方选中的模型,Context window 按所选模型填写,然后保存。' },
+        { text: '返回工作区,点击输入框右下角的「Choose model」,展开稳得 AI 并选择刚添加的模型。' },
+        { text: '发送一条消息进行测试。看到 ZCode 正常回复,即表示配置成功。' },
       ],
     },
     {
@@ -186,9 +421,21 @@ requires_openai_auth = true`,
       name: 'Cursor',
       endpoint: 'openai',
       steps: [
-        { text: 'Settings → Models → OpenAI API Key。' },
-        { text: 'Base URL 填本站接入地址加 /v1 后缀,并填入你的 API Key。' },
-        { text: '手动添加模型名,添加完成后点击 Verify 验证,出现绿色对勾即接入成功。' },
+        { text: '打开 Cursor Settings,进入 Network,将 HTTP Compatibility Mode 改为 HTTP/1.1。' },
+        { text: '进入 Models 页面,展开 API Keys,填入你的 sk- 密钥。' },
+        { text: '打开 Override OpenAI Base URL,填入本站接入地址(右侧 OpenAI 兼容卡片)。' },
+        { text: '手动添加模型名,保存设置后返回对话页面选择该模型;记得点击 Verify 验证,能正常回复即配置完成。' },
+      ],
+    },
+    {
+      key: 'trae',
+      name: 'TRAE SOLO',
+      endpoint: 'openai',
+      steps: [
+        { text: '打开 TRAE SOLO 的模型设置,点击「添加模型」,展开「自定义配置」。' },
+        { text: 'API 格式选择「OpenAI 兼容」。自定义请求地址填本站接入地址,保持「完整 URL」关闭,不要在地址末尾添加斜杠(系统会自动补全 /chat/completions 路径)。' },
+        { text: '模型 ID 填上方选中的模型,API 密钥填你的 sk- 密钥。模型支持图片时,可以开启「多模态」。' },
+        { text: '提交保存后回到 TRAE SOLO 对话界面,选择刚添加的模型,发送一条消息测试,能正常回复即表示配置完成。' },
       ],
     },
     {
@@ -197,6 +444,36 @@ requires_openai_auth = true`,
       endpoint: 'openai',
       intro: '直接调用 OpenAI 兼容接口,任选一种语言,把 model 换成上方选中的模型。',
       steps: [],
+    },
+    {
+      key: 'read-frog',
+      name: 'Read Frog',
+      endpoint: 'anthropic',
+      steps: [
+        { text: '打开 Read Frog 设置页面,在左侧 API Providers 列表中选择 Anthropic 提供商。' },
+        { text: '按照界面填写 API Key、Base URL(本站接入地址,右侧 Anthropic 兼容卡片)和 Model(勾选自定义模型名称,填上方选中的模型)。' },
+        { text: '点击「Test Connection」验证连接,提示成功即配置完成。' },
+      ],
+    },
+    {
+      key: 'kiss-translator',
+      name: 'Kiss Translator',
+      endpoint: 'anthropic',
+      steps: [
+        { text: '打开 Kiss Translator 设置页面,点击「Add」添加翻译服务,选择「Claude」。' },
+        { text: '按照界面填写 URL、Key 和 Model。注意 URL 需要填写完整地址(含 /v1/messages,右侧 Anthropic 兼容卡片加 /v1/messages),Key 填 sk- 密钥,Model 填上方选中的模型。' },
+        { text: '保存配置后,刷新页面即可使用翻译功能。' },
+      ],
+    },
+    {
+      key: 'immersive-translate',
+      name: '沉浸式翻译',
+      endpoint: 'openai',
+      steps: [
+        { text: '打开沉浸式翻译设置页面,进入「AI 服务」选择「OpenAI」。' },
+        { text: '自定义 API 接口地址填完整路径(右侧 OpenAI 兼容卡片的地址),勾选「输入自定义模型名称」手动填入上方选中的模型,APIKEY 填你的 sk- 密钥。' },
+        { text: '保存配置后,打开任意英文网页即可看到翻译效果。' },
+      ],
     },
   ]
 }
