@@ -379,6 +379,46 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
   })
 
+  it('puts a deleted mapping source back on the whitelist without duplicating it', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Mapped account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await selectButtonByText(wrapper, 'admin.accounts.modelMapping')
+    await selectButtonByText(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('public-glm')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('glm-5.3')
+
+    const deleteButton = wrapper.findAll('button').find((candidate) =>
+      candidate.element.parentElement?.querySelector('input[placeholder="admin.accounts.requestModel"]')
+    )
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+
+    const allowed = (wrapper.vm as unknown as { allowedModels: string[] }).allowedModels
+    expect(allowed).toContain('public-glm')
+    expect(allowed.filter((model) => model === 'public-glm')).toHaveLength(1)
+    expect(allowed.filter((model) => model === 'gpt-5.6-sol')).toHaveLength(1)
+
+    await selectButtonByText(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('gpt-5.6-sol')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('gpt-6.1-sol')
+    const deleteKnown = wrapper.findAll('button').find((candidate) =>
+      candidate.element.parentElement?.querySelector('input[placeholder="admin.accounts.requestModel"]')
+    )
+    await deleteKnown!.trigger('click')
+
+    const allowedAfter = (wrapper.vm as unknown as { allowedModels: string[] }).allowedModels
+    expect(allowedAfter.filter((model) => model === 'gpt-5.6-sol')).toHaveLength(1)
+    expect(allowedAfter).toContain('public-glm')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    // 映射模式保存不读取白名单；空映射仍然表示允许全部模型。
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping).toBeUndefined()
+  })
+
   it('warns when post-create capability metadata remains incomplete', async () => {
     syncUpstreamModelsMock.mockResolvedValue({
       models: ['x-preview-f-free'],

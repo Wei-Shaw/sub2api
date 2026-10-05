@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -303,6 +303,20 @@ function buildOpenAIOAuthParentAccount() {
   } as any
 }
 
+async function clickButtonIncluding(wrapper: ReturnType<typeof mountModal>, text: string) {
+  const button = wrapper.findAll('button').find((candidate) => candidate.text().includes(text))
+  expect(button).toBeTruthy()
+  await button!.trigger('click')
+}
+
+async function clickDeleteBeside(wrapper: ReturnType<typeof mountModal>, placeholder: string) {
+  const button = wrapper.findAll('button').find((candidate) =>
+    candidate.element.parentElement?.querySelector(`input[placeholder="${placeholder}"]`)
+  )
+  expect(button).toBeTruthy()
+  await button!.trigger('click')
+}
+
 function mountModal(account = buildAccount(), renderGroupSelector = false) {
   return mount(EditAccountModal, {
     props: {
@@ -347,6 +361,50 @@ describe('EditAccountModal', () => {
     expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
       { from: 'gpt-latest', to: 'deepseek-chat' }
     ])
+  })
+
+  it('keeps a whitelisted model after deleting the rewrite that replaced it', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-5.6-sol': 'gpt-5.6-sol' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text().trim()).toBe('gpt-5.6-sol')
+
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelMapping')
+    await clickButtonIncluding(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('gpt-5.6-sol')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('gpt-6.1-sol')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.6-sol': 'gpt-6.1-sol'
+    })
+
+    await wrapper.setProps({
+      account: {
+        ...account,
+        credentials: {
+          ...account.credentials,
+          model_mapping: { 'gpt-5.6-sol': 'gpt-6.1-sol' }
+        }
+      }
+    })
+
+    expect(wrapper.find('[data-testid="model-whitelist-value"]').exists()).toBe(false)
+    await clickDeleteBeside(wrapper, 'admin.accounts.requestModel')
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelWhitelist')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text().trim()).toBe('gpt-5.6-sol')
+
+    updateAccountMock.mockClear()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
+    })
+    wrapper.unmount()
   })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
