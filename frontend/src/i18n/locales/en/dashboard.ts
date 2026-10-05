@@ -65,7 +65,7 @@ export default {
       baseUrl: 'BASE URL',
       authorization: 'AUTHORIZATION',
       copyUrl: 'Copy URL',
-      tutorial: 'Tutorial',
+      helpDocs: 'Help Docs',
       serviceOk: 'Service OK',
       noKey: 'No active key',
       createKey: 'Create one',

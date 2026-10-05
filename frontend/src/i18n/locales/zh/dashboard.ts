@@ -65,7 +65,7 @@ export default {
       baseUrl: 'BASE URL',
       authorization: 'AUTHORIZATION',
       copyUrl: '复制地址',
-      tutorial: '配置教程',
+      helpDocs: '帮助文档',
       serviceOk: '服务正常',
       noKey: '暂无可用密钥',
       createKey: '去创建',
