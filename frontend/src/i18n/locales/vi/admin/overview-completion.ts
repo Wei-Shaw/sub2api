@@ -1,5 +1,8 @@
 // Generated from the EN → VI locale gap audit.
 export default {
+  "dashboard": {
+    "actualSpending": "Chi tiêu thực tế ($)"
+  },
   "users": {
     "bulkDelete": {
       "action": "Xóa đã chọn ({count})",
@@ -36,7 +39,8 @@ export default {
     },
     "platforms": {
       "minimax": "MiniMax",
-      "opencode_go": "OpenCode"
+      "opencode_go": "OpenCode",
+      "typesafe": "TypeSafe / Jev"
     },
     "modelAllowlist": {
       "title": "Danh sách cho phép model",

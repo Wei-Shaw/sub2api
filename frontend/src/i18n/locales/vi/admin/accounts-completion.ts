@@ -1,6 +1,53 @@
 // Generated from the EN → VI locale gap audit.
 export default {
   "accounts": {
+    "priorityQuick": {
+      "raise": "Tăng độ ưu tiên (giá trị -1)",
+      "lower": "Giảm độ ưu tiên (giá trị +1)",
+      "editHint": "Bấm để nhập giá trị; giá trị thấp hơn sẽ được dùng trước",
+      "failed": "Không thể cập nhật độ ưu tiên"
+    },
+    "modelMappingConflict": "Ánh xạ {from} → {to} đã tồn tại. Hãy sửa hoặc xóa ánh xạ trong Model Mapping trước khi thêm model vào danh sách cho phép này",
+    "claudeResetCredits": {
+      "count": "Lần đặt lại",
+      "countTooltipLoad": "Kiểm tra số lần đặt lại Claude còn lại (chỉ đọc, không tiêu tốn lượt nào)",
+      "countTooltipRefresh": "Làm mới số lần đặt lại Claude còn lại (chỉ đọc, không tiêu tốn lượt nào)",
+      "fetched": "Đã kiểm tra lúc {time}",
+      "error": "Không thể kiểm tra credit đặt lại",
+      "ineligible": "Tài khoản này hiện không thể sử dụng chức năng đặt lại",
+      "cooldown": "Đang chờ đến {time}",
+      "expiresAt": "Hết hạn {time}",
+      "expiresAtFull": "Credit đặt lại hết hạn lúc: {time}",
+      "clears": "Xóa các cửa sổ: {windows}",
+      "notUsableNow": "Hiện không thể sử dụng",
+      "requiresLimit": "Chỉ sử dụng được sau khi chạm giới hạn",
+      "reset": "Đặt lại",
+      "resetTooltipNeedQuery": "Hãy kiểm tra số lượng trước; chỉ có thể đặt lại sau khi tìm thấy credit khả dụng",
+      "resetTooltipNone": "Hiện không có lượt đặt lại nào có thể sử dụng",
+      "resetTooltipReady": "Dùng 1 lượt đặt lại để xóa các cửa sổ giới hạn (sẽ yêu cầu xác nhận)",
+      "confirmTitle": "Xác nhận đặt lại Claude",
+      "confirmMessage": "Thao tác này sẽ dùng 1 credit đặt lại để khôi phục ngay {windows} cửa sổ ({count} lượt còn lại). Không thể hoàn tác. Tiếp tục?",
+      "windows": {
+        "fiveHour": "5 giờ",
+        "sevenDay": "7 ngày",
+        "sevenDayOverage": "Vượt mức 7 ngày"
+      },
+      "outcome": {
+        "reset": "Đã áp dụng đặt lại; đã xóa: {windows}",
+        "alreadyUsed": "Lượt đặt lại này đã được sử dụng; đang làm mới để xác nhận",
+        "cooldown": "Các lượt đặt lại đang trong thời gian chờ; hãy thử lại sau",
+        "cooldownUntil": "Các lượt đặt lại đang trong thời gian chờ đến {time}",
+        "notLimited": "Chưa chạm giới hạn nên không có gì được đặt lại và không dùng credit",
+        "ineligible": "Tài khoản này hiện không thể sử dụng chức năng đặt lại",
+        "unknown": "Chưa xác nhận được kết quả; tạm thời không cho phép dùng thêm. Hãy kiểm tra lại sau.",
+        "unavailable": "Dịch vụ đặt lại tạm thời không khả dụng; hãy thử lại sau",
+        "inProgress": "Yêu cầu đặt lại vẫn đang được xử lý; hãy kiểm tra lại sau ít phút",
+        "retryBackoff": "Yêu cầu đặt lại vừa thất bại; hãy thử lại sau một lát",
+        "busy": "Một lượt đặt lại khác đang được xử lý; hãy thử lại sau",
+        "notAvailable": "Hiện không có lượt đặt lại nào có thể sử dụng; không dùng credit",
+        "failed": "Yêu cầu đặt lại thất bại"
+      }
+    },
     "openaiProvision": {
       "statusTitle": "Trạng thái bổ sung OpenAI",
       "loading": "Đang tải trạng thái OpenAI...",
@@ -35,7 +82,8 @@ export default {
     },
     "platforms": {
       "minimax": "MiniMax",
-      "opencode_go": "OpenCode"
+      "opencode_go": "OpenCode",
+      "typesafe": "TypeSafe / Jev"
     },
     "cnProviders": {
       "zhipuTeam": {

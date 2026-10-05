@@ -20,6 +20,42 @@ export default {
           "rechargeOnly": "Ẩn “Gói đăng ký của tôi”, tab gói đăng ký trên trang mua, huy hiệu gói đăng ký ở header và bộ lọc loại thanh toán trong phần sử dụng; truy cập trực tiếp vào “Gói đăng ký của tôi” sẽ quay về dashboard. Sidebar quản trị cũng ẩn mục “Quản lý gói đăng ký” (trang vẫn truy cập được bằng URL). Thanh toán gói đăng ký hiện có và gói đăng ký từ mã đổi thưởng không bị ảnh hưởng.",
           "subscriptionOnly": "Trang mua chỉ cung cấp các gói đăng ký và mục trên sidebar hiển thị là “Gói đăng ký”; đơn nạp số dư sẽ bị từ chối. Mã đổi thưởng, khoản chi trả affiliate và các khoản cộng số dư khác không bị ảnh hưởng."
         }
+      },
+      "riskControl": {
+        "riskControlUserAllowlist": "Danh sách cho phép kiểm soát rủi ro",
+        "riskControlUserAllowlistHint": "Nhập từ khóa email để tìm người dùng phù hợp. Người dùng trong danh sách cho phép sẽ không kích hoạt việc khóa tài khoản hoặc chặn cục bộ, nhưng vẫn chịu các hạn chế từ upstream. Tính năng này thường dùng cho các relay downstream đáng tin cậy."
+      }
+    },
+    "payment": {
+      "rechargeBonus": {
+        "label": "Các mức khuyến mãi nạp tiền",
+        "hint": "Lần nạp số dư sẽ khớp với một mức dựa trên số tiền người dùng nhập (mức cao nhất không vượt quá số tiền đó). Để trống nếu không khuyến mãi. Không áp dụng cho gói đăng ký.",
+        "modeLabel": "Loại khuyến mãi",
+        "modeBonus": "Thưởng",
+        "modeDiscount": "Giảm giá",
+        "modeBonusHint": "Thưởng: số tiền thanh toán không đổi, số dư cơ sở được ghi có (số tiền × hệ số) sẽ được cộng thêm phần trăm.",
+        "modeDiscountHint": "Giảm giá: số dư ghi có giữ nguyên (số tiền × hệ số), còn số tiền thanh toán được giảm theo phần trăm; phải nhỏ hơn 100.",
+        "addTier": "Thêm mức",
+        "empty": "Chưa cấu hình mức khuyến mãi; số dư nạp sẽ được ghi có theo mệnh giá.",
+        "minAmountLabel": "Số tiền ≥",
+        "percentLabel": "Thưởng",
+        "percentLabelDiscount": "Giảm giá",
+        "removeTier": "Xóa mức",
+        "invalidMinAmount": "Số tiền phải là số ≥ 0, tối đa 2 chữ số thập phân",
+        "invalidPercent": "Phần trăm phải từ 0 đến 1000, tối đa 2 chữ số thập phân",
+        "invalidDiscountPercent": "Phần trăm giảm giá phải nhỏ hơn 100",
+        "duplicateMinAmount": "Ngưỡng này đã tồn tại",
+        "incompleteRow": "Điền cả số tiền và phần trăm để mức này có hiệu lực",
+        "previewTitle": "Xem trước phạm vi",
+        "previewRange": "{from} ~ {to}: thưởng {percent}%",
+        "previewRangeNone": "{from} ~ {to}: không thưởng",
+        "previewRangeDiscount": "{from} ~ {to}: giảm {percent}%",
+        "previewOpen": "≥ {from}: thưởng {percent}%",
+        "previewOpenDiscount": "≥ {from}: giảm {percent}%",
+        "previewOpenNone": "≥ {from}: không thưởng",
+        "noticeLabel": "Thông báo thưởng nạp tiền",
+        "noticeHint": "Hỗ trợ Markdown. Hiển thị ở đầu phần chọn số tiền trên trang nạp tiền; để trống để ẩn.",
+        "noticePlaceholder": "Ví dụ: 🎁 Ưu đãi giới hạn: nạp từ $100 được thêm 20%, từ $500 được thêm 30% …"
       }
     },
     "gatewayForwarding": {
