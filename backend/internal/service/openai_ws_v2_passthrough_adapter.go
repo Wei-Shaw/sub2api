@@ -1206,11 +1206,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				turnResult := &OpenAIForwardResult{
 					RequestID: turn.RequestID,
 					Usage: OpenAIUsage{
-						InputTokens:              turn.Usage.InputTokens,
-						OutputTokens:             turn.Usage.OutputTokens,
-						CacheCreationInputTokens: turn.Usage.CacheCreationInputTokens,
-						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
-						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
+						InputTokens:                     turn.Usage.InputTokens,
+						OutputTokens:                    turn.Usage.OutputTokens,
+						CacheCreationInputTokens:        turn.Usage.CacheCreationInputTokens,
+						CacheCreationInputTokensPresent: turn.Usage.CacheCreationInputTokensPresent,
+						CacheReadInputTokens:            turn.Usage.CacheReadInputTokens,
+						ImageOutputTokens:               turn.Usage.ImageOutputTokens,
 					},
 					Model:                         turnRequestModel,
 					UpstreamModel:                 openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),

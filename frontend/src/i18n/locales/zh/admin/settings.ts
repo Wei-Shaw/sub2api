@@ -1256,6 +1256,10 @@ export default {
         sourceHint: '启用后必须明确选择一个来源；未配置状态不会对外展示该支付方式。',
         sourceRequiredError: '{title} 已启用，请先选择支付来源。'
       },
+      openaiCacheWriteInference: {
+        title: '缓存写入 Token 推断',
+        description: '默认关闭。开启后，仅对 OpenAI OAuth/SetupToken 的成功请求维护缓存谱系；当上游缺失 cache-write 计数且下一轮缓存读取增长满足严格条件时，输出推断诊断。推断结果仅用于 telemetry，不参与计费、余额或用量落库。'
+      },
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',

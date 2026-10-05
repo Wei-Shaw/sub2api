@@ -1262,6 +1262,10 @@ export default {
         sourceHint: 'Choose an explicit source before enabling the method. Not configured methods are not exposed.',
         sourceRequiredError: 'Select a payment source before enabling {title}.'
       },
+      openaiCacheWriteInference: {
+        title: 'Cache-write token inference',
+        description: 'Disabled by default. When enabled, successful OpenAI OAuth/SetupToken turns are tracked and a missing cache-write count may be inferred from a safe subsequent cache-read increase. Inferred values are telemetry only and never affect billing, balances, or persisted usage.'
+      },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
         description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",

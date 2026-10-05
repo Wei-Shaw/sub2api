@@ -1259,7 +1259,12 @@ func mergeOpenAIUsageNonZero(dst *OpenAIUsage, src OpenAIUsage) {
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
 	}
-	if src.CacheCreationInputTokens > 0 {
+	if src.CacheCreationInputTokensPresent {
+		dst.CacheCreationInputTokensPresent = true
+		if src.CacheCreationInputTokens > 0 || dst.CacheCreationInputTokens == 0 {
+			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		}
+	} else if src.CacheCreationInputTokens > 0 {
 		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	}
 	if src.CacheReadInputTokens > 0 {
@@ -1533,7 +1538,7 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		)
 	}
 	cacheReadTokens := openAICacheReadTokensFromUsage(value)
-	cacheCreationTokens := openAICacheCreationTokensFromUsage(value)
+	cacheCreationTokens, cacheCreationTokensPresent := openAICacheCreationTokensFromUsageWithPresence(value)
 	imageOutputTokens := value.Get("output_tokens_details.image_tokens").Int()
 	if imageOutputTokens == 0 {
 		imageOutputTokens = value.Get("completion_tokens_details.image_tokens").Int()
@@ -1549,8 +1554,9 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		InputTokens:              int(inputTokens),
 		ImageInputTokens:         imageInputTokens,
 		OutputTokens:             int(outputTokens),
-		CacheCreationInputTokens: cacheCreationTokens,
-		CacheReadInputTokens:     cacheReadTokens,
+		CacheCreationInputTokens:        cacheCreationTokens,
+		CacheCreationInputTokensPresent: cacheCreationTokensPresent,
+		CacheReadInputTokens:            cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),
 	}, true
 }
@@ -1573,23 +1579,35 @@ func openAICacheReadTokensFromUsage(value gjson.Result) int {
 }
 
 func openAICacheCreationTokensFromUsage(value gjson.Result) int {
-	for _, nested := range []gjson.Result{
+	tokens, _ := openAICacheCreationTokensFromUsageWithPresence(value)
+	return tokens
+}
+
+func openAICacheCreationTokensFromUsageWithPresence(value gjson.Result) (int, bool) {
+	for _, candidate := range []gjson.Result{
 		value.Get("input_tokens_details.cache_write_tokens"),
 		value.Get("prompt_tokens_details.cache_write_tokens"),
 		value.Get("input_tokens_details.cache_creation_tokens"),
 		value.Get("prompt_tokens_details.cache_creation_tokens"),
 	} {
-		if nested.Exists() {
-			return max(int(nested.Int()), 0)
+		if candidate.Exists() {
+			return max(int(candidate.Int()), 0), true
 		}
 	}
 
-	return firstPositiveGJSONInt(
+	present := false
+	for _, candidate := range []gjson.Result{
 		value.Get("cache_write_tokens"),
 		value.Get("cache_creation_input_tokens"),
 		value.Get("cache_write_input_tokens"),
 		value.Get("cache_creation_tokens"),
-	)
+	} {
+		present = present || candidate.Exists()
+		if tokens := int(candidate.Int()); tokens > 0 {
+			return tokens, true
+		}
+	}
+	return 0, present
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {

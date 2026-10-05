@@ -196,6 +196,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.paymentVisibleMethods.sourceRequiredError": "{title} 已启用，请先选择支付来源。",
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
+    "admin.settings.openaiCacheWriteInference.title": "缓存写入 Token 推断",
+    "admin.settings.openaiCacheWriteInference.description": "默认关闭。开启后，仅对 OpenAI OAuth/SetupToken 的成功请求维护缓存谱系；当上游缺失 cache-write 计数且下一轮缓存读取增长满足严格条件时，输出推断诊断。推断结果仅用于 telemetry，不参与计费、余额或用量落库。",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle": "低倍率优先",
@@ -507,6 +509,7 @@ const baseSettingsResponse = {
   payment_visible_method_wxpay_enabled: true,
   openai_low_upstream_rate_priority_enabled: false,
   openai_oauth_scheduling_rate_multiplier: 1,
+  openai_cache_write_inference_enabled: false,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -1376,6 +1379,33 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateProvider).toHaveBeenCalledWith(7, { enabled: true });
     expect(getProviders).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads and saves cache-write inference as an explicit opt-in", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_cache_write_inference_enabled: false,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get(
+      '[data-testid="openai-cache-write-inference-toggle"]',
+    );
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.text()).toContain("缓存写入 Token 推断");
+    expect(wrapper.text()).toContain("不参与计费");
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_cache_write_inference_enabled: true,
+      }),
+    );
   });
 
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {

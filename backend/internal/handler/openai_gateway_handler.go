@@ -994,6 +994,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
 		}
 
+		// 只有成功完成的请求进入 cache-write lineage。错误/断开路径仍正常记账，
+		// 但不作为下一轮缓存写入推断证据。
+		if result != nil {
+			h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+		}
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		submitResponsesUsage(result)
 		reqLog.Debug("openai.request_completed",
@@ -1547,6 +1552,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
 		}
 
+		if result != nil {
+			h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+		}
 		submitMessagesUsage(result)
 		reqLog.Debug("openai_messages.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -3037,6 +3045,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if result == nil {
 					return
+				}
+				if turnErr == nil {
+					h.gatewayService.ObserveOpenAICacheWriteTelemetry(ctx, account, turnRequestedModel, sessionHash, result)
 				}
 				result.BillingModel = openAIWSTurnBillingModel(result, turnMapping, turnRequestedModel, turnUpstreamModel)
 				reqLog.Debug("openai.websocket_turn_billing",
