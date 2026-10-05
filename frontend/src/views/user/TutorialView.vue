@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="mx-auto max-w-7xl space-y-6">
       <!-- Page header -->
       <div>
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -11,225 +11,296 @@
         </p>
       </div>
 
-      <div class="card">
-        <!-- Tabs -->
-        <div class="flex border-b border-gray-200 dark:border-dark-700">
-          <button
-            v-for="tab in TABS"
-            :key="tab"
-            type="button"
-            class="-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors sm:px-5"
-            :class="
-              activeTab === tab
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200'
-            "
-            @click="activeTab = tab"
-          >
-            {{ t(`tutorial.tabs.${tab}`) }}
-          </button>
-        </div>
-
-        <!-- Guide tab -->
-        <div v-if="activeTab === 'guide'" class="space-y-8 p-5 sm:p-6">
-          <!-- Steps -->
-          <div class="grid gap-4 md:grid-cols-3">
-            <div
-              v-for="(step, index) in guideSteps"
-              :key="index"
-              class="rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50"
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <!-- Main card: guide / faq tabs -->
+        <div class="card min-w-0 flex-1">
+          <div class="flex border-b border-gray-200 dark:border-dark-700">
+            <button
+              v-for="tab in TABS"
+              :key="tab"
+              type="button"
+              class="-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors sm:px-5"
+              :class="
+                activeTab === tab
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200'
+              "
+              @click="activeTab = tab"
             >
-              <div
-                class="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white"
+              {{ t(`tutorial.tabs.${tab}`) }}
+            </button>
+          </div>
+
+          <!-- Guide tab -->
+          <div v-if="activeTab === 'guide'" class="space-y-6 p-5 sm:p-6">
+            <!-- Model selector -->
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-sm text-gray-500 dark:text-dark-400">{{ t('tutorial.guide.model') }}</span>
+              <select v-model="selectedModel" class="input w-56">
+                <option v-for="m in TUTORIAL_MODELS" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+
+            <!-- Client chips -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="mr-1 text-sm text-gray-500 dark:text-dark-400">{{ t('tutorial.guide.client') }}</span>
+              <button
+                v-for="guide in guides"
+                :key="guide.key"
+                type="button"
+                class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors"
+                :class="
+                  selectedClient === guide.key
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/25 dark:text-primary-300'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:border-dark-600 dark:bg-dark-800/60 dark:text-dark-300 dark:hover:text-white'
+                "
+                @click="selectedClient = guide.key"
               >
-                {{ index + 1 }}
+                {{ guide.name }}
+              </button>
+            </div>
+
+            <div class="border-t border-gray-100 dark:border-dark-700"></div>
+
+            <!-- Active guide -->
+            <div v-if="activeGuide" class="space-y-5">
+              <p v-if="activeGuide.intro" class="text-sm leading-relaxed text-gray-600 dark:text-dark-300">
+                {{ activeGuide.intro }}
+              </p>
+
+              <!-- API client: tabbed code samples -->
+              <template v-if="activeGuide.key === 'api'">
+                <div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-600">
+                  <div class="flex items-center justify-between border-b border-gray-200 px-4 py-2.5 dark:border-dark-600">
+                    <div class="ml-1 flex gap-1">
+                      <button
+                        v-for="tab in CODE_TABS"
+                        :key="tab"
+                        type="button"
+                        class="rounded px-2.5 py-1 text-xs transition-colors"
+                        :class="
+                          codeTab === tab
+                            ? 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white'
+                            : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200'
+                        "
+                        @click="codeTab = tab"
+                      >
+                        {{ codeTabLabel(tab) }}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200"
+                      @click="copyText(apiSample, 'api')"
+                    >
+                      <Icon :name="copiedKey === 'api' ? 'check' : 'copy'" size="sm" />
+                      {{ copiedKey === 'api' ? t('tutorial.guide.copied') : t('tutorial.guide.copy') }}
+                    </button>
+                  </div>
+                  <pre class="overflow-x-auto bg-white p-5 font-mono text-xs leading-relaxed text-gray-900 sm:text-sm dark:bg-dark-900 dark:text-gray-100">{{ apiSample }}</pre>
+                </div>
+              </template>
+
+              <!-- Step-by-step guide -->
+              <ol v-else class="space-y-6">
+                <li
+                  v-for="(step, si) in activeGuide.steps"
+                  :key="si"
+                  class="flex gap-3"
+                >
+                  <span class="pt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{{ si + 1 }}.</span>
+                  <div class="min-w-0 flex-1 space-y-3">
+                    <p class="text-sm leading-relaxed text-gray-800 dark:text-dark-200">{{ step.text }}</p>
+                    <div
+                      v-for="(cmd, ci) in step.commands ?? []"
+                      :key="ci"
+                      class="group relative flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800/60"
+                    >
+                      <code class="overflow-x-auto whitespace-pre font-mono text-sm text-gray-900 dark:text-gray-100">{{ cmd }}</code>
+                      <button
+                        type="button"
+                        class="shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 dark:hover:text-dark-200"
+                        @click="copyText(cmd, `cmd-${si}-${ci}`)"
+                      >
+                        <Icon :name="copiedKey === `cmd-${si}-${ci}` ? 'check' : 'copy'" size="sm" />
+                      </button>
+                    </div>
+                    <p v-if="step.appendText" class="text-sm leading-relaxed text-gray-800 dark:text-dark-200">{{ step.appendText }}</p>
+                    <div
+                      v-for="(cmd, ci) in step.appendCommands ?? []"
+                      :key="`a-${ci}`"
+                      class="group relative flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800/60"
+                    >
+                      <code class="overflow-x-auto whitespace-pre font-mono text-sm text-gray-900 dark:text-gray-100">{{ cmd }}</code>
+                      <button
+                        type="button"
+                        class="shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 dark:hover:text-dark-200"
+                        @click="copyText(cmd, `acmd-${si}-${ci}`)"
+                      >
+                        <Icon :name="copiedKey === `acmd-${si}-${ci}` ? 'check' : 'copy'" size="sm" />
+                      </button>
+                    </div>
+                    <!-- Config file card (mac-style dots + filename + copy) -->
+                    <div v-if="step.file" class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-600">
+                      <div class="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-dark-600 dark:bg-dark-800/60">
+                        <div class="flex items-center gap-3">
+                          <span class="flex gap-1.5">
+                            <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+                            <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+                            <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+                          </span>
+                          <span class="font-mono text-xs text-gray-500 dark:text-dark-400">{{ step.file.path }}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200"
+                          @click="copyText(step.file.content, `file-${si}`)"
+                        >
+                          <Icon :name="copiedKey === `file-${si}` ? 'check' : 'copy'" size="sm" />
+                          {{ copiedKey === `file-${si}` ? t('tutorial.guide.copied') : t('tutorial.guide.copy') }}
+                        </button>
+                      </div>
+                      <pre class="overflow-x-auto bg-white p-5 font-mono text-xs leading-relaxed text-gray-900 sm:text-sm dark:bg-dark-900 dark:text-gray-100">{{ step.file.content }}</pre>
+                    </div>
+                  </div>
+                </li>
+              </ol>
+
+              <!-- Extra section (e.g. env var usage) -->
+              <div v-if="activeGuide.extra" class="space-y-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-600 dark:bg-dark-800/40">
+                <p class="text-sm leading-relaxed text-gray-800 dark:text-dark-200">{{ activeGuide.extra.text }}</p>
+                <div
+                  v-for="(cmd, ci) in activeGuide.extra.commands"
+                  :key="ci"
+                  class="group relative flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-dark-600 dark:bg-dark-800/60"
+                >
+                  <code class="overflow-x-auto whitespace-pre font-mono text-sm text-gray-900 dark:text-gray-100">{{ cmd }}</code>
+                  <button
+                    type="button"
+                    class="shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-gray-700 group-hover:opacity-100 dark:hover:text-dark-200"
+                    @click="copyText(cmd, `extra-${ci}`)"
+                  >
+                    <Icon :name="copiedKey === `extra-${ci}` ? 'check' : 'copy'" size="sm" />
+                  </button>
+                </div>
               </div>
-              <h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {{ step.title }}
-              </h3>
-              <p class="text-xs leading-relaxed text-gray-500 dark:text-dark-400">
-                {{ step.desc }}
+
+              <!-- Tip -->
+              <div
+                v-if="activeGuide.tip"
+                class="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 text-xs leading-relaxed text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300"
+              >
+                {{ activeGuide.tip }}
+              </div>
+
+              <p class="text-xs leading-relaxed text-gray-400 dark:text-dark-500">{{ t('tutorial.guide.configNote') }}</p>
+            </div>
+          </div>
+
+          <!-- FAQ tab -->
+          <div v-else class="p-5 sm:p-6">
+            <!-- Search + category filter -->
+            <div class="mb-5 space-y-3">
+              <div class="relative max-w-md">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                  <Icon name="search" size="md" class="text-gray-400 dark:text-dark-500" />
+                </div>
+                <input
+                  v-model="faqQuery"
+                  type="text"
+                  :placeholder="t('tutorial.faq.searchPlaceholder')"
+                  class="input pl-10"
+                />
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  v-for="cat in FAQ_CATEGORIES"
+                  :key="cat.key"
+                  type="button"
+                  class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                  :class="
+                    activeCategory === cat.key
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-dark-300 dark:hover:bg-dark-600'
+                  "
+                  @click="activeCategory = cat.key"
+                >
+                  {{ cat.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Accordion list -->
+            <div v-if="filteredFaqItems.length" class="space-y-3">
+              <p class="text-xs text-gray-400 dark:text-dark-500">
+                {{ t('tutorial.faq.resultCount', { count: filteredFaqItems.length }) }}
+              </p>
+              <div
+                v-for="item in filteredFaqItems"
+                :key="item.id"
+                class="overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-dark-700 dark:bg-dark-800/50"
+              >
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+                  @click="toggleFaq(item.id)"
+                >
+                  <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ item.q }}</span>
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-200"
+                    :class="{ 'rotate-180': openFaqId === item.id }"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+                <div v-if="openFaqId === item.id" class="border-t border-gray-50 px-5 py-4 dark:border-dark-700/60">
+                  <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-300">{{ item.a }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-else class="flex flex-col items-center justify-center py-14 text-center">
+              <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700">
+                <Icon name="questionCircle" size="lg" class="text-gray-400" />
+              </div>
+              <p class="text-sm text-gray-500 dark:text-dark-400">
+                {{ t('tutorial.faq.noResult') }}
               </p>
             </div>
           </div>
+        </div>
 
-          <!-- Code samples -->
-          <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
-              <div class="ml-1 flex gap-1">
-                <button
-                  v-for="tab in CODE_TABS"
-                  :key="tab"
-                  type="button"
-                  class="rounded px-2.5 py-1 text-xs transition-colors"
-                  :class="
-                    codeTab === tab
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-500 hover:text-gray-800'
-                  "
-                  @click="codeTab = tab"
-                >
-                  {{ codeTabLabel(tab) }}
-                </button>
-              </div>
-              <button
-                type="button"
-                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:text-gray-800"
-                @click="copyText(quickstartCode, 'quickstart')"
-              >
-                <Icon :name="copiedKey === 'quickstart' ? 'check' : 'copy'" size="sm" />
-                {{ copiedKey === 'quickstart' ? t('tutorial.guide.copied') : t('tutorial.guide.copy') }}
-              </button>
-            </div>
-            <pre class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-gray-900 sm:text-sm">{{ quickstartCode }}</pre>
-          </div>
-
-          <p class="text-xs leading-relaxed text-gray-400 dark:text-dark-500">
-            {{ t('tutorial.guide.compatibilityNote') }}
-          </p>
-
-          <!-- Client setups -->
+        <!-- Right sidebar: endpoints -->
+        <aside class="w-full shrink-0 space-y-3 lg:w-72">
           <div>
-            <h2 class="mb-1 text-base font-semibold text-gray-900 dark:text-white">
-              {{ t('tutorial.guide.clientsTitle') }}
-            </h2>
-            <p class="mb-4 text-xs text-gray-400 dark:text-dark-500">
-              {{ clientDescNote }}
-            </p>
-            <div class="grid gap-4 md:grid-cols-3">
-              <div
-                v-for="client in clients"
-                :key="client.key"
-                class="flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-dark-700 dark:bg-dark-800/50"
-              >
-                <div class="flex-1 p-4">
-                  <h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {{ client.name }}
-                  </h3>
-                  <p class="mb-3 text-xs leading-relaxed text-gray-500 dark:text-dark-400">
-                    {{ client.desc }}
-                  </p>
-                  <pre class="overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 font-mono text-[11px] leading-relaxed text-gray-900">{{ clientCode(client) }}</pre>
-                </div>
-                <button
-                  type="button"
-                  class="flex items-center justify-center gap-1.5 border-t border-gray-100 px-4 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-dark-700 dark:text-dark-400 dark:hover:bg-dark-700/50 dark:hover:text-dark-200"
-                  @click="copyText(clientCode(client), `client-${client.key}`)"
-                >
-                  <Icon :name="copiedKey === `client-${client.key}` ? 'check' : 'copy'" size="sm" />
-                  {{ copiedKey === `client-${client.key}` ? t('tutorial.guide.copied') : t('tutorial.guide.copy') }}
-                </button>
-              </div>
-            </div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('tutorial.guide.endpointTitle') }}</h3>
+            <p class="mt-1 text-xs leading-relaxed text-gray-400 dark:text-dark-500">{{ t('tutorial.guide.endpointHint') }}</p>
           </div>
-
-          <!-- cc-switch tip -->
-          <div class="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 text-xs leading-relaxed text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/20 dark:text-primary-300">
-            {{ t('tutorial.guide.ccsTip') }}
-          </div>
-        </div>
-
-        <!-- FAQ tab -->
-        <div v-else class="p-5 sm:p-6">
-          <!-- Search + category filter -->
-          <div class="mb-5 space-y-3">
-            <div class="relative max-w-md">
-              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                <Icon name="search" size="md" class="text-gray-400 dark:text-dark-500" />
-              </div>
-              <input
-                v-model="faqQuery"
-                type="text"
-                :placeholder="t('tutorial.faq.searchPlaceholder')"
-                class="input pl-10"
-              />
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button
-                v-for="category in FAQ_CATEGORIES"
-                :key="category"
-                type="button"
-                class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-                :class="
-                  activeCategory === category
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-dark-300 dark:hover:bg-dark-600'
-                "
-                @click="activeCategory = category"
-              >
-                {{ t(`tutorial.faq.categories.${category}`) }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Accordion list -->
-          <div v-if="filteredFaqItems.length" class="space-y-3">
-            <p class="text-xs text-gray-400 dark:text-dark-500">
-              {{ t('tutorial.faq.resultCount', { count: filteredFaqItems.length }) }}
-            </p>
-            <div
-              v-for="item in filteredFaqItems"
-              :key="item.id"
-              class="overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-dark-700 dark:bg-dark-800/50"
-            >
-              <button
-                type="button"
-                class="flex w-full items-start justify-between gap-3 px-5 py-4 text-left"
-                @click="toggleFaq(item.id)"
-              >
-                <span class="min-w-0">
-                  <span class="block text-sm font-semibold text-gray-900 dark:text-white">
-                    {{ faqText(item.question) }}
-                  </span>
-                  <span class="mt-1 block text-xs leading-relaxed text-gray-400 dark:text-dark-500">
-                    {{ faqText(item.summary) }}
-                  </span>
-                </span>
-                <svg
-                  class="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-200"
-                  :class="{ 'rotate-180': openFaqId === item.id }"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                </svg>
-              </button>
-              <div v-if="openFaqId === item.id" class="border-t border-gray-50 px-5 py-4 dark:border-dark-700/60">
-                <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-300">
-                  {{ faqText(item.answer) }}
-                </p>
-                <ul v-if="item.points && item.points.length" class="mt-3 space-y-1.5 pl-1">
-                  <li
-                    v-for="(point, index) in item.points"
-                    :key="index"
-                    class="flex items-start gap-2 text-sm leading-relaxed text-gray-600 dark:text-dark-300"
-                  >
-                    <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary-400"></span>
-                    <span>{{ faqText(point) }}</span>
-                  </li>
-                </ul>
-                <div
-                  v-if="item.note"
-                  class="mt-4 rounded-lg border-l-4 border-primary-500 bg-primary-50 px-3.5 py-2.5 text-sm leading-relaxed text-primary-800 dark:bg-primary-900/25 dark:text-primary-200"
-                >
-                  <span class="mr-1.5 text-xs font-bold">TL;DR</span>{{ faqText(item.note) }}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Empty state -->
-          <div v-else class="flex flex-col items-center justify-center py-14 text-center">
-            <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700">
-              <Icon name="questionCircle" size="lg" class="text-gray-400" />
-            </div>
-            <p class="text-sm text-gray-500 dark:text-dark-400">
-              {{ t('tutorial.faq.noResult') }}
-            </p>
-          </div>
-        </div>
+          <button
+            v-for="ep in endpoints"
+            :key="ep.key"
+            type="button"
+            class="w-full rounded-xl border px-4 py-3 text-left transition-colors"
+            :class="
+              activeGuide?.endpoint === ep.key
+                ? 'border-primary-500 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20'
+                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800/60'
+            "
+            @click="copyText(ep.url, `ep-${ep.key}`)"
+          >
+            <span class="flex items-center justify-between gap-2">
+              <span class="text-sm font-semibold" :class="activeGuide?.endpoint === ep.key ? 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white'">{{ ep.name }}</span>
+              <Icon :name="copiedKey === `ep-${ep.key}` ? 'check' : 'copy'" size="sm" class="text-gray-400" />
+            </span>
+            <span class="mt-1 block break-all font-mono text-xs text-gray-500 dark:text-dark-400">{{ ep.url }}</span>
+            <span class="mt-1 block text-xs text-gray-400 dark:text-dark-500">{{ ep.desc }}</span>
+          </button>
+        </aside>
       </div>
     </div>
   </AppLayout>
@@ -242,28 +313,13 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-
-interface StepItem {
-  title: string
-  desc: string
-}
-
-interface ClientItem {
-  key: string
-  name: string
-  desc: string
-  code: string
-}
-
-interface FaqItem {
-  id: string
-  category: string
-  question: string
-  summary: string
-  answer: string
-  points: string[]
-  note?: string
-}
+import {
+  buildEndpoints,
+  buildGuides,
+  FAQ_CATEGORIES,
+  FAQ_ITEMS,
+  TUTORIAL_MODELS,
+} from './tutorialContent'
 
 const TABS = ['guide', 'faq'] as const
 type Tab = (typeof TABS)[number]
@@ -271,10 +327,7 @@ type Tab = (typeof TABS)[number]
 const CODE_TABS = ['curl', 'python', 'sdk'] as const
 type CodeTab = (typeof CODE_TABS)[number]
 
-const FAQ_CATEGORIES = ['all', 'billing', 'plans', 'quality', 'support'] as const
-type FaqCategory = (typeof FAQ_CATEGORIES)[number]
-
-const { t, tm, locale } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
@@ -294,33 +347,16 @@ watch(activeTab, (value) => {
   router.replace({ query: value === 'faq' ? { tab: 'faq' } : {} })
 })
 
-// ---------- Guide ----------
+// ---------- Guide state ----------
 const apiBase = computed(() => appStore.apiBaseUrl || window.location.origin)
 
-const guideSteps = computed<StepItem[]>(() => {
-  const raw = tm('tutorial.guide.steps') as unknown
-  if (Array.isArray(raw)) return raw as StepItem[]
-  return raw && typeof raw === 'object' ? (Object.values(raw) as StepItem[]) : []
-})
+const selectedModel = ref<string>(TUTORIAL_MODELS[0])
+const selectedClient = ref('claude-code')
 
-const clients = computed<ClientItem[]>(() => {
-  const raw = tm('tutorial.guide.clients') as unknown
-  if (Array.isArray(raw)) return raw as ClientItem[]
-  return raw && typeof raw === 'object' ? (Object.values(raw) as ClientItem[]) : []
-})
+const guides = computed(() => buildGuides(apiBase.value, selectedModel.value))
+const activeGuide = computed(() => guides.value.find((g) => g.key === selectedClient.value) ?? guides.value[0])
 
-const clientDescNote = computed(() =>
-  t('tutorial.guide.clientsDesc').replace(/\$BASE/g, apiBase.value),
-)
-
-function clientCode(client: ClientItem): string {
-  return client.code.replace(/\$BASE/g, apiBase.value)
-}
-
-// FAQ 文案中的 $BASE 占位符同样替换为真实接入地址
-function faqText(text: string): string {
-  return text.replace(/\$BASE/g, apiBase.value)
-}
+const endpoints = computed(() => buildEndpoints(apiBase.value))
 
 const codeTab = ref<CodeTab>('curl')
 
@@ -328,13 +364,40 @@ function codeTabLabel(tab: CodeTab) {
   return t(`tutorial.guide.tab${tab.charAt(0).toUpperCase()}${tab.slice(1)}`)
 }
 
-const quickstartCodes = computed<Record<CodeTab, string>>(() => ({
-  curl: `curl ${apiBase.value}/v1/chat/completions \\\n  -H "Authorization: Bearer sk-***" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "deepseek-v4-pro",\n    "messages": [{ "role": "user", "content": "你好" }]\n  }'`,
-  python: `import requests\n\nresp = requests.post(\n    "${apiBase.value}/v1/chat/completions",\n    headers={"Authorization": "Bearer sk-***"},\n    json={\n        "model": "qwen3.8-max",\n        "messages": [{"role": "user", "content": "你好"}],\n    },\n)\nprint(resp.json()["choices"][0]["message"]["content"])`,
-  sdk: `from openai import OpenAI\n\nclient = OpenAI(\n    api_key="sk-***",\n    base_url="${apiBase.value}/v1",\n)\n\nresp = client.chat.completions.create(\n    model="glm-5.3",\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(resp.choices[0].message.content)`,
+const apiSamples = computed<Record<CodeTab, string>>(() => ({
+  curl: `curl ${apiBase.value}/v1/chat/completions \\
+  -H "Authorization: Bearer sk-你的密钥" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${selectedModel.value}",
+    "messages": [{ "role": "user", "content": "你好" }]
+  }'`,
+  python: `import requests
+
+resp = requests.post(
+    "${apiBase.value}/v1/chat/completions",
+    headers={"Authorization": "Bearer sk-你的密钥"},
+    json={
+        "model": "${selectedModel.value}",
+        "messages": [{"role": "user", "content": "你好"}],
+    },
+)
+print(resp.json()["choices"][0]["message"]["content"])`,
+  sdk: `from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-你的密钥",
+    base_url="${apiBase.value}/v1",
+)
+
+resp = client.chat.completions.create(
+    model="${selectedModel.value}",
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(resp.choices[0].message.content)`,
 }))
 
-const quickstartCode = computed(() => quickstartCodes.value[codeTab.value])
+const apiSample = computed(() => apiSamples.value[codeTab.value])
 
 // ---------- Copy ----------
 const copiedKey = ref<string | null>(null)
@@ -355,24 +418,15 @@ async function copyText(text: string, key: string) {
 
 // ---------- FAQ ----------
 const faqQuery = ref('')
-const activeCategory = ref<FaqCategory>('all')
+const activeCategory = ref<string>('all')
 const openFaqId = ref<string | null>(null)
-
-const faqItems = computed<FaqItem[]>(() => {
-  const raw = tm('tutorial.faq.items') as unknown
-  if (Array.isArray(raw)) return raw as FaqItem[]
-  return raw && typeof raw === 'object' ? (Object.values(raw) as FaqItem[]) : []
-})
 
 const filteredFaqItems = computed(() => {
   const query = faqQuery.value.trim().toLowerCase()
-  return faqItems.value.filter((item) => {
+  return FAQ_ITEMS.filter((item) => {
     if (activeCategory.value !== 'all' && item.category !== activeCategory.value) return false
     if (!query) return true
-    const haystack = [item.question, item.summary, item.answer, item.note ?? '', ...(item.points ?? [])]
-      .join('\n')
-      .toLowerCase()
-    return haystack.includes(query)
+    return `${item.q}\n${item.a}`.toLowerCase().includes(query)
   })
 })
 
@@ -380,7 +434,7 @@ function toggleFaq(id: string) {
   openFaqId.value = openFaqId.value === id ? null : id
 }
 
-// Locale switch swaps FAQ/guide copy; collapse any expanded item to avoid stale state.
+// Locale switch swaps UI copy; collapse any expanded item to avoid stale state.
 watch(locale, () => {
   openFaqId.value = null
 })

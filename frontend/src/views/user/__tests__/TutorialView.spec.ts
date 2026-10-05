@@ -1,67 +1,40 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import TutorialView from '@/views/user/TutorialView.vue'
 
 const { routeQuery, routerReplaceMock } = vi.hoisted(() => ({
   routeQuery: {} as Record<string, string>,
-  routerReplaceMock: vi.fn()
+  routerReplaceMock: vi.fn(),
 }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: routeQuery }),
-  useRouter: () => ({ replace: routerReplaceMock })
+  useRouter: () => ({ replace: routerReplaceMock }),
 }))
 
 vi.mock('@/stores', () => ({
   useAppStore: () => ({
-    apiBaseUrl: 'https://api.example.com'
-  })
+    apiBaseUrl: 'https://api.example.com',
+  }),
 }))
 
-vi.mock('vue-i18n', async () => {
-  const { ref } = await import('vue')
-  return {
-    useI18n: () => ({
-      t: (key: string) => key,
-    tm: (key: string) => {
-      if (key === 'tutorial.guide.steps') {
-        return [{ title: 'Create key', desc: 'Create one on the API keys page' }]
-      }
-      if (key === 'tutorial.guide.clients') {
-        return [{ key: 'openai', name: 'OpenAI clients', desc: 'desc', code: 'Base URL: $BASE/v1' }]
-      }
-      if (key === 'tutorial.faq.items') {
-        return [
-          {
-            id: 'billing-how',
-            category: 'billing',
-            question: 'How does billing work?',
-            summary: 'Pay as you go',
-            answer: 'Charged per request.',
-            points: ['Point one'],
-            note: 'TLDR billing'
-          },
-          {
-            id: 'refund',
-            category: 'support',
-            question: 'Can I get a refund?',
-            summary: 'Balance yes, plans no',
-            answer: 'Contact support.',
-            points: [],
-            note: 'TLDR refund'
-          }
-        ]
-      }
-      return []
-    },
-      locale: ref('en')
-    })
-  }
-})
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => key,
+    locale: ref('zh'),
+  }),
+}))
 
 vi.mock('@/components/layout/AppLayout.vue', () => ({
-  default: { template: '<div><slot /></div>' }
+  default: { template: '<div><slot /></div>' },
 }))
+
+function button(wrapper: ReturnType<typeof mount>, text: string) {
+  const btn = wrapper.findAll('button').find((b) => b.text() === text)
+  if (!btn) throw new Error(`button not found: ${text}`)
+  return btn
+}
 
 describe('TutorialView', () => {
   beforeEach(() => {
@@ -69,54 +42,63 @@ describe('TutorialView', () => {
     Object.keys(routeQuery).forEach((key) => delete routeQuery[key])
   })
 
-  it('shows the guide tab by default', () => {
+  it('renders model select and default Claude Code guide with substituted base URL', () => {
     const wrapper = mount(TutorialView)
-    expect(wrapper.text()).toContain('Create key')
-    expect(wrapper.find('pre').text()).toContain('https://api.example.com/v1')
+    expect(wrapper.find('select').exists()).toBe(true)
+    expect(wrapper.text()).toContain('npm install -g @anthropic-ai/claude-code')
+    expect(wrapper.text()).toContain('"ANTHROPIC_BASE_URL": "https://api.example.com"')
+    expect(wrapper.text()).toContain('"ANTHROPIC_MODEL": "deepseek-v4-pro"')
   })
 
-  it('starts on the faq tab when route query has tab=faq', async () => {
-    routeQuery.tab = 'faq'
+  it('updates config file content when model changes', async () => {
     const wrapper = mount(TutorialView)
-    expect(wrapper.text()).toContain('How does billing work?')
-    expect(wrapper.text()).toContain('Can I get a refund?')
+    await wrapper.find('select').setValue('glm-5.3')
+    expect(wrapper.text()).toContain('"ANTHROPIC_MODEL": "glm-5.3"')
+    expect(wrapper.text()).toContain('"ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.3"')
   })
 
-  it('syncs ?tab=faq to the URL when switching tabs', async () => {
+  it('switches client guide via chips', async () => {
     const wrapper = mount(TutorialView)
-    const faqButton = wrapper.findAll('button').find((b) => b.text() === 'tutorial.tabs.faq')
-    expect(faqButton).toBeTruthy()
-    await faqButton!.trigger('click')
+    await button(wrapper, 'Codex CLI').trigger('click')
+    expect(wrapper.text()).toContain('npm install -g @openai/codex')
+    expect(wrapper.text()).toContain('wire_api = "responses"')
+    await button(wrapper, 'Cursor').trigger('click')
+    expect(wrapper.text()).toContain('Verify')
+  })
+
+  it('shows API code samples with selected model', async () => {
+    const wrapper = mount(TutorialView)
+    await button(wrapper, '代码调用').trigger('click')
+    expect(wrapper.text()).toContain('curl https://api.example.com/v1/chat/completions')
+    expect(wrapper.text()).toContain('"model": "deepseek-v4-pro"')
+  })
+
+  it('highlights the endpoint card of the active client', () => {
+    const wrapper = mount(TutorialView)
+    const anthropicCard = wrapper.findAll('button').find((b) => b.text().includes('Anthropic 兼容'))
+    expect(anthropicCard).toBeTruthy()
+    expect(anthropicCard!.classes()).toContain('border-primary-500')
+  })
+
+  it('starts on the guide tab by default and syncs faq tab to the URL', async () => {
+    const wrapper = mount(TutorialView)
+    expect(wrapper.find('select').exists()).toBe(true)
+    await button(wrapper, 'tutorial.tabs.faq').trigger('click')
     expect(routerReplaceMock).toHaveBeenCalledWith({ query: { tab: 'faq' } })
-    expect(wrapper.text()).toContain('How does billing work?')
+    expect(wrapper.text()).toContain('为什么同一个模型价格不一样?')
   })
 
-  it('expands an item to reveal the answer and TLDR note', async () => {
+  it('starts on the faq tab when route query has tab=faq', () => {
     routeQuery.tab = 'faq'
     const wrapper = mount(TutorialView)
-    const item = wrapper.findAll('button').find((b) => b.text().includes('How does billing work?'))
-    await item!.trigger('click')
-    expect(wrapper.text()).toContain('Charged per request.')
-    expect(wrapper.text()).toContain('Point one')
-    expect(wrapper.text()).toContain('TLDR billing')
+    expect(wrapper.text()).toContain('计费是怎么算的?什么时候扣余额?')
   })
 
   it('filters FAQ items by search keyword', async () => {
     routeQuery.tab = 'faq'
     const wrapper = mount(TutorialView)
-    const input = wrapper.find('input')
-    await input.setValue('refund')
-    expect(wrapper.text()).toContain('Can I get a refund?')
-    expect(wrapper.text()).not.toContain('How does billing work?')
-  })
-
-  it('filters FAQ items by category chip', async () => {
-    routeQuery.tab = 'faq'
-    const wrapper = mount(TutorialView)
-    const chip = wrapper.findAll('button').find((b) => b.text() === 'tutorial.faq.categories.support')
-    expect(chip).toBeTruthy()
-    await chip!.trigger('click')
-    expect(wrapper.text()).toContain('Can I get a refund?')
-    expect(wrapper.text()).not.toContain('How does billing work?')
+    await wrapper.find('input').setValue('兑换码')
+    expect(wrapper.text()).toContain('兑换码在哪里使用')
+    expect(wrapper.text()).not.toContain('模型是原版吗')
   })
 })

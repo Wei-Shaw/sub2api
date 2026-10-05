@@ -29,7 +29,7 @@
     </div>
     <div class="mt-3 flex gap-2">
       <button @click="copyUrl" class="btn btn-primary flex-1">{{ t('dashboard.quickAccess.copyUrl') }}</button>
-      <button @click="router.push(helpPath)" class="btn btn-secondary flex-1">{{ t('dashboard.quickAccess.helpDocs') }}</button>
+      <button @click="router.push('/tutorial')" class="btn btn-secondary flex-1">{{ t('dashboard.quickAccess.helpDocs') }}</button>
     </div>
   </div>
 </template>
@@ -50,13 +50,6 @@ const firstKey = ref<ApiKey | null>(null)
 
 const baseUrl = computed(() => appStore.cachedPublicSettings?.api_base_url || `${window.location.origin}/v1`)
 const maskedKey = computed(() => (firstKey.value ? maskApiKey(firstKey.value.key) : ''))
-
-// 帮助文档统一走 md:help 自定义页；菜单项还没加载完或不存在时回退到内置 /tutorial 路由（保留兜底）。
-const helpPath = computed(() => {
-  const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
-  const help = items.find((item) => item.page_slug === 'help' || item.url === 'md:help')
-  return help ? `/custom/${help.id}` : '/tutorial'
-})
 
 async function copyUrl() {
   try {
