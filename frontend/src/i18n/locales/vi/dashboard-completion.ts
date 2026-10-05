@@ -17,12 +17,38 @@ export default {
       "failureHint": "Không thể cập nhật các khóa này. Hãy điều chỉnh cài đặt và thử lại. Chỉ các khóa thất bại sẽ được thử lại."
     },
     "useKeyModal": {
+      "cliTabs": {
+        "systemOne": "System One"
+      },
+      "typesafe": {
+        "description": "Gọi Jev thông qua endpoint TypeSafe System One gốc.",
+        "note": "System One không hỗ trợ streaming và không tương thích với Chat Completions, Responses, Claude Code hoặc Codex."
+      },
+      "codexModelCatalog": {
+        "mode": "Nguồn danh mục",
+        "remote": "Danh mục từ xa (Codex 0.156.0+)",
+        "local": "Tệp cục bộ (client cũ)",
+        "oversized": "Danh mục đầy đủ vượt quá giới hạn từ xa 1 MiB. Đã chọn chế độ tệp cục bộ; hãy tải danh mục xuống đường dẫn đã cấu hình."
+      },
       "minimax": {
         "description": "Cấu hình Claude Code, Codex hoặc OpenCode thông qua nhóm MiniMax hiện tại.",
         "codexDescription": "Cấu hình Codex bằng xác thực API key thông qua nhóm MiniMax hiện tại.",
         "codexConfigTomlHint": "Tải danh mục model bên dưới, lưu cả hai tệp vào thư mục cấu hình Codex rồi khởi động lại Codex.",
         "codexNote": "Xuất SUB2API_API_KEY trước khi khởi động Codex. Danh mục đã tải chỉ chứa metadata của model, không chứa API key của bạn."
       }
+    }
+  },
+  "payment": {
+    "rechargeBonus": {
+      "creditedShort": "Nhận {amount}",
+      "payShort": "Thanh toán {amount}",
+      "amountLabel": "Thưởng",
+      "amountLabelWithPercent": "Thưởng (+{percent}%)",
+      "discountLabelWithPercent": "Giảm giá ({percent}% OFF)"
+    },
+    "orders": {
+      "bonusAmount": "Tiền thưởng",
+      "bonusIncluded": "đã gồm thưởng {amount}"
     }
   },
   "usage": {
