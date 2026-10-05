@@ -1108,6 +1108,8 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-label-flex {
+  /* 必须撑满行内剩余宽度,否则 space-between 失效,英文码会紧跟中文标签无法成列 */
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
