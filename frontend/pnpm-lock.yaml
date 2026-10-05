@@ -25,7 +25,7 @@ importers:
         version: 10.11.1(vue@3.5.42(typescript@5.6.3))
       axios:
         specifier: ^1.20.0
-        version: 1.20.0
+        version: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       chart.js:
         specifier: ^4.4.1
         version: 4.5.1
@@ -2921,10 +2921,6 @@ packages:
     resolution: {integrity: sha512-cyFbh3tkPhknnTD/0bLf0T0yy2ZIbqL05mttzbt4y1Zfr7NxqXQZ62dkBLKs3oHH/lpjmDRAnciJiSUyOy8XwQ==}
     engines: {node: '>=14'}
     hasBin: true
-
-  js-cookie@3.0.7:
-    resolution: {integrity: sha512-z/wZZgDrkNV1eA0ULjM/F9/50Ya8fbzgKneSpoPsXSGd0KnpdtHfOZWK+GcwLk+EZbS4F9RBhU+K2RgzuDaItw==}
-    engines: {node: '>=20'}
 
   js-cookie@3.0.8:
     resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
@@ -6425,7 +6421,7 @@ snapshots:
       '@types/js-cookie': 3.0.6
       dayjs: 1.11.23
       intersection-observer: 0.12.2
-      js-cookie: 3.0.7
+      js-cookie: 3.0.8
       lodash: 4.18.1
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -7732,8 +7728,6 @@ snapshots:
       glob: 13.0.6
       js-cookie: 3.0.8
       nopt: 10.0.1
-
-  js-cookie@3.0.7: {}
 
   js-cookie@3.0.8: {}
 
