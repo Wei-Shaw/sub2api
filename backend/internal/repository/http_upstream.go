@@ -466,6 +466,8 @@ func newGrokOfficialAPIFallbackRequest(req *http.Request) (*http.Request, error)
 	for _, header := range []string{
 		"X-XAI-Token-Auth",
 		"X-Grok-Client-Version",
+		"X-Grok-Client-Mode",
+		"X-Authenticateresponse",
 		"X-Grok-Client-Surface",
 		"X-UserID",
 		"X-Email",
@@ -531,6 +533,8 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
 	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	req.Header.Set("x-grok-client-mode", xai.CLIClientMode)
+	req.Header.Set("x-authenticateresponse", "authenticate-response")
 	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
 }
 
