@@ -100,7 +100,7 @@ func (h *MuseHandler) Authenticate(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, muse.ErrSessionCredentials):
-			response.Error(c, http.StatusBadRequest, "import the four Muse app HttpOnly cookies")
+			response.Error(c, http.StatusBadRequest, "import the Muse app HttpOnly session cookies")
 		case errors.Is(err, muse.ErrBusy):
 			response.Error(c, http.StatusConflict, "finish or resolve workspace work before renewing its app cookies")
 		case errors.Is(err, muse.ErrSessionExpired):
