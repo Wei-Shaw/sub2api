@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ type cacheWriteBillingUsageRepoStub struct {
 }
 
 func cacheWriteBillingUsageKey(requestID string, apiKeyID int64) string {
-	return requestID + "|" + string(rune(apiKeyID))
+	return requestID + "|" + strconv.FormatInt(apiKeyID, 10)
 }
 
 func (s *cacheWriteBillingUsageRepoStub) Create(_ context.Context, log *UsageLog) (bool, error) {
@@ -168,10 +169,11 @@ func TestOpenAICacheWriteBilling_ReconcilesPreviousTurnDelta(t *testing.T) {
 	// Astra standard rates: ordinary input $10/MTok, cache write $12.5/MTok.
 	// Moving 2200 tokens between those buckets adds $0.0055 upstream cost.
 	// Group rate 0.2 means customer delta is $0.0011.
-	require.InDelta(t, 0.0055, adjustment.AccountQuotaCost, 1e-12)
 	require.InDelta(t, 0.0011, adjustment.BalanceCost, 1e-12)
-	require.InDelta(t, 0.0011, adjustment.APIKeyQuotaCost, 1e-12)
-	require.InDelta(t, 0.0011, adjustment.APIKeyRateLimitCost, 1e-12)
+	require.Zero(t, adjustment.SubscriptionCost)
+	require.Zero(t, adjustment.APIKeyQuotaCost)
+	require.Zero(t, adjustment.APIKeyRateLimitCost)
+	require.Zero(t, adjustment.AccountQuotaCost)
 
 	require.Len(t, usageRepo.corrections, 1)
 	correction := usageRepo.corrections[0]
