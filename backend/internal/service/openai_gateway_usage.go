@@ -30,6 +30,10 @@ type OpenAIRecordUsageInput struct {
 	UserAgent          string // 请求的 User-Agent
 	IPAddress          string // 请求的客户端 IP 地址
 	SessionID          string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	// CacheWriteObservationID links this successful turn's cache observation to
+	// the billing snapshot recorded below. It is internal-only and never exposed
+	// to clients or persisted as prompt/session content.
+	CacheWriteObservationID string
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
