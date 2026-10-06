@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -29,17 +30,14 @@ func (s *cacheWriteBillingUsageRepoStub) Create(_ context.Context, log *UsageLog
 	return true, nil
 }
 
-func (s *cacheWriteBillingUsageRepoStub) ReconcileInferredCacheWrite(
-	_ context.Context,
-	correction *OpenAICacheWriteUsageCorrection,
-) (bool, error) {
-	if s.logs == nil {
-		return false, nil
+func (s *cacheWriteBillingUsageRepoStub) applyCorrection(correction *OpenAICacheWriteUsageCorrection) bool {
+	if s == nil || correction == nil || s.logs == nil {
+		return false
 	}
 	key := cacheWriteBillingUsageKey(correction.RequestID, correction.APIKeyID)
 	log := s.logs[key]
 	if log == nil {
-		return false, nil
+		return false
 	}
 	cloned := *correction
 	s.corrections = append(s.corrections, &cloned)
@@ -53,13 +51,14 @@ func (s *cacheWriteBillingUsageRepoStub) ReconcileInferredCacheWrite(
 		value := *correction.CorrectedAccountStatsCost
 		log.AccountStatsCost = &value
 	}
-	return true, nil
+	return true
 }
 
 type cacheWriteBillingRepoStub struct {
 	UsageBillingRepository
-	cmds []*UsageBillingCommand
-	seen map[string]struct{}
+	cmds      []*UsageBillingCommand
+	seen      map[string]struct{}
+	usageRepo *cacheWriteBillingUsageRepoStub
 }
 
 func (s *cacheWriteBillingRepoStub) Apply(_ context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
@@ -68,9 +67,14 @@ func (s *cacheWriteBillingRepoStub) Apply(_ context.Context, cmd *UsageBillingCo
 	}
 	cloned := *cmd
 	s.cmds = append(s.cmds, &cloned)
-	key := cmd.RequestID + "|" + string(rune(cmd.APIKeyID))
+	key := cmd.RequestID + "|" + strconv.FormatInt(cmd.APIKeyID, 10)
 	if _, ok := s.seen[key]; ok {
 		return &UsageBillingApplyResult{Applied: false}, nil
+	}
+	if cmd.CacheWriteCorrection != nil {
+		if s.usageRepo == nil || !s.usageRepo.applyCorrection(cmd.CacheWriteCorrection) {
+			return nil, errors.New("cache write correction target missing")
+		}
 	}
 	s.seen[key] = struct{}{}
 	return &UsageBillingApplyResult{Applied: true}, nil
@@ -80,6 +84,11 @@ func newCacheWriteBillingServiceForTest(
 	usageRepo UsageLogRepository,
 	billingRepo UsageBillingRepository,
 ) *OpenAIGatewayService {
+	if billingStub, ok := billingRepo.(*cacheWriteBillingRepoStub); ok {
+		if usageStub, usageOK := usageRepo.(*cacheWriteBillingUsageRepoStub); usageOK {
+			billingStub.usageRepo = usageStub
+		}
+	}
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1
 	svc := NewOpenAIGatewayService(
