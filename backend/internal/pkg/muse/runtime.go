@@ -23,7 +23,7 @@ var (
 	ErrGeneration           = errors.New("muse workspace identity changed")
 	ErrTransition           = errors.New("invalid muse turn transition")
 	ErrOwnerReview          = errors.New("muse turn needs owner review")
-	ErrTransportUnqualified = errors.New("muse subscription transport is not qualified")
+	ErrTransportUnqualified = errors.New("muse consumer app transport is not qualified")
 )
 
 type State string

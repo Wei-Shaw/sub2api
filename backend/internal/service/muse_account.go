@@ -20,7 +20,7 @@ func ValidateMuseAccount(platform, accountType string, credentials, extra map[st
 		return nil
 	}
 	if accountType != AccountTypeSession {
-		return infraerrors.BadRequest("MUSE_ACCOUNT_TYPE_INVALID", "Meta Muse requires a subscription session account")
+		return infraerrors.BadRequest("MUSE_ACCOUNT_TYPE_INVALID", "Meta Muse requires a consumer app session account")
 	}
 	bundle, ok := credentials["muse_session"].(map[string]any)
 	if !ok || len(bundle) == 0 {
