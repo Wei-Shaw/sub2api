@@ -42,14 +42,14 @@ type Profile struct {
 const (
 	PresetChrome = "chrome"
 	// PresetCodexCLI is the model-provider TLS ClientHello observed from the
-	// standalone codex-cli 0.156.1 on macOS arm64 (not its separate auth client).
-	PresetCodexCLI = "codex-cli-0.156.1-macos-arm64"
+	// standalone codex-cli 0.160.1 on macOS arm64 (not its separate auth client).
+	PresetCodexCLI = "codex-cli-0.160.1-macos-arm64"
 )
 
 // CodexCLIProfile returns a fresh, versioned transport identity. Keep this
 // separate from the Node/Claude default and from user-defined profiles.
 func CodexCLIProfile() *Profile {
-	return &Profile{Name: "Codex CLI 0.156.1 (macOS arm64)", Preset: PresetCodexCLI}
+	return &Profile{Name: "Codex CLI 0.160.1 (macOS arm64)", Preset: PresetCodexCLI}
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -409,7 +409,7 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	if profile != nil && strings.EqualFold(strings.TrimSpace(profile.Preset), PresetChrome) {
 		return buildChromePresetSpec(profile)
 	}
-	if profile != nil && profile.Preset == PresetCodexCLI {
+	if profile != nil && (profile.Preset == PresetCodexCLI || profile.Preset == "codex-cli-0.156.1-macos-arm64") {
 		return buildCodexCLISpec()
 	}
 	// Resolve effective values (profile overrides or built-in defaults)

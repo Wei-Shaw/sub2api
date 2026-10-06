@@ -330,11 +330,11 @@ func TestGetOpenAICodexClientVersionFallsBackOnError(t *testing.T) {
 // 较新 CLI 同步值使用完整 codex exec 身份，不能拆开覆盖默认 Desktop 的 Core/frontend 元组。
 func TestGetOpenAICodexCanonicalUserAgentUsesSyncedCLITuple(t *testing.T) {
 	svc := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
-		SettingKeyOpenAICodexClientVersionSynced: "0.156.1",
+		SettingKeyOpenAICodexClientVersionSynced: "0.160.2",
 	}}, nil)
 
 	require.Equal(t,
-		"codex_exec/0.156.1 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.156.1)",
+		"codex_exec/0.160.2 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.160.2)",
 		svc.GetOpenAICodexCanonicalUserAgent(context.Background()),
 	)
 }

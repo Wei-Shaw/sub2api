@@ -33,17 +33,10 @@ const (
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
-	// 结构按官方 Codex Desktop -> app-server 初始化链路生成的 User-Agent 对齐：
-	// {originator}/{core_version} ({OS} {OS_version}; {arch}) {terminal}
-	// ({clientInfo.name}; {clientInfo.version})
-	// Core/app/clientInfo 来自 2026-09-23 本机官方 Desktop 制品；真实 Desktop app-server
-	// 由 GUI 启动且没有终端环境，按同版官方检测逻辑得到 unknown。
+	// Default identity captured from official Codex CLI 0.160.1 in a terminal-free exec probe.
 	codexCLIUserAgentSuffix = " (Mac OS 15.6.0; arm64) unknown"
-	// codexCLIUserAgent 是历史名称，现表示编译期默认 Desktop UA。Core 与 Desktop
-	// frontend 是同一发布制品里的两个独立版本，必须作为完整元组固定，不能用独立
-	// CLI 自动同步值局部覆盖。
-	codexCLIUserAgent = openai.CodexDefaultOriginator + "/" + codexCLIVersion + codexCLIUserAgentSuffix +
-		" (" + openai.CodexDefaultOriginator + "; " + codexDesktopVersion + ")"
+	codexCLIUserAgent       = openai.CodexDefaultOriginator + "/" + codexCLIVersion + codexCLIUserAgentSuffix +
+		" (" + openai.CodexDefaultOriginator + "; " + codexCLIVersion + ")"
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
@@ -58,11 +51,8 @@ const (
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	openAIUpstreamEndpointContextKey   = "openai_actual_upstream_endpoint"
-	// codexCLIVersion 是历史名称，现表示默认 Desktop 制品内嵌的 Core 版本，并用于
-	// 推理面的 version 头。它必须与 codexDesktopVersion 原子更新。
-	codexCLIVersion = "0.155.0-alpha.9.2"
-	// codexDesktopVersion 是同一默认 Desktop 制品的 frontend/app 版本。
-	codexDesktopVersion = "26.915.31945"
+	// Verified stable CLI/Core version; automatic sync may select a newer release.
+	codexCLIVersion = "0.160.1"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。

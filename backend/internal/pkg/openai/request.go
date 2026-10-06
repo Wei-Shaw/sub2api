@@ -378,9 +378,9 @@ const CodexCLIOriginator = "codex_cli_rs"
 // CodexTUIOriginator 是官方交互式 TUI 的 originator。
 const CodexTUIOriginator = "codex-tui"
 
-// CodexDefaultOriginator 是网关默认使用的 Codex Desktop originator。
-// 默认完整画像取自 2026-09-11 本机官方 Desktop 制品的直接抓包结果。
-const CodexDefaultOriginator = "Codex Desktop"
+// CodexDefaultOriginator 是网关默认使用的 Codex CLI exec originator。
+// 默认完整画像取自 2026-10-05 官方 CLI 0.160.1 的本地隔离抓包。
+const CodexDefaultOriginator = "codex_exec"
 
 // CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{client}/{version} (...` 中的 version。
 // 与 ParseCodexEngineVersion 的区别：后者只取三段数字用于引擎版本比较（会丢掉 -alpha.4

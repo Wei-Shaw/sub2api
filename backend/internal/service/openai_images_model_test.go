@@ -22,7 +22,7 @@ func TestOpenAIImagesResponsesDriverAndImageModels(t *testing.T) {
 			t.Setenv("SUB2API_IMAGES_MAIN_MODEL", override)
 			driver := strings.TrimSpace(override)
 			if driver == "" {
-				driver = "gpt-5.6-luna"
+				driver = "gpt-6.1-sol"
 			}
 			for _, model := range []string{"gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08"} {
 				for _, quality := range []string{"xhigh", "max", "auto"} {

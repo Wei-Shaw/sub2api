@@ -360,7 +360,7 @@ go test ./...
 
 ## 9. 尚未解决
 
-已新增独立的 `codex-cli-0.156.1-macos-arm64` 模型提供者 TLS 预设。
+已更新为 `codex-cli-0.160.1-macos-arm64` 模型提供者 TLS 预设（保留旧预设 ID 兼容）。
 本机独立 CLI 对隔离 HTTPS 端点的抓包与 Sub2API 本地测试对照，JA3
 `e4d448cdfe06dc1243c1eb026c74ac9a`、扩展顺序、supported groups、point
 formats 及扩展 5/10/11/13/18/23 内容一致，且均未宣告 ALPN，使用 HTTP/1.1。
@@ -385,3 +385,22 @@ Desktop 制品原子取得 `Desktop version + build + bundled Core version`；�
 
 在此之前，默认画像是有意固定的本机快照。验证当日 appcast 已存在更高版本
 `26.903.71938`，所以“按本机为标准”保证的是可验证和内部一致，不等于始终追踪最新版本。
+
+## 2026-10-05：默认画像对齐稳定 CLI 0.160.1
+
+官方最新稳定 release 为 [rust-v0.160.1](https://github.com/openai/codex/releases/tag/rust-v0.160.1)。
+本机官方独立二进制 `codex-cli 0.160.1` 对隔离本地端点实测：
+
+```text
+User-Agent: codex_exec/0.160.1 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.160.1)
+originator: codex_exec
+version: 0.160.1
+```
+
+UA/originator 来自无终端环境 exec 请求抓取；version 来自同 tag 的
+`codex-rs/model-provider-info/src/lib.rs` 官方 OpenAI provider 定义，
+自定义 probe provider 不自动附加此头。默认完整画像现使用 CLI 同版元组，
+不再依赖旧 Desktop Core/frontend。管理员显式双版本画像仍整体保留。
+HTTPS ClientHello 实测 JA3 与原 0.156.1 快照完全一致，扩展
+5/10/11/13/18/23 内容也相同，没有 ALPN。旧 TLS preset ID 保持可用。
+这些验证仅覆盖本地协议画像，未验证真实账号或上游生图结果。

@@ -139,7 +139,7 @@ type codexOutboundIdentity struct {
 }
 
 // resolveCodexOutboundIdentity 由候选 User-Agent 推导自洽的出站身份快照。
-// candidateUA 为空时使用规范 User-Agent；推导不出官方身份时整体回退为默认 Desktop 身份。
+// candidateUA 为空时使用规范 User-Agent；推导不出官方身份时整体回退为默认 CLI 身份。
 //
 // 单版本模板跟随当前生效 Core 版本重建；管理员配置的双版本画像（Desktop、VS Code、
 // remote TUI 等）整体保留。UA 不包含连接拓扑或制品来源，不能从客户端名推断必须同版。
