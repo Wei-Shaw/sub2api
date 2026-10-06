@@ -10,7 +10,7 @@ export default {
         exportUnzip: "下載上方的匯出工具並解壓縮。",
         exportInstall: "開啟下方的瀏覽器擴充功能頁面，啟用「開發人員模式」，選擇「載入未封裝項目」，並選取解壓縮後的 muse-cookie-export 資料夾：",
         exportLogin: "在同一個瀏覽器設定檔登入你的帳號：",
-        exportDownload: "從瀏覽器的擴充功能選單開啟 Sub2API Muse session exporter，點選 Export session JSON，將 muse-session.json 儲存到電腦。",
+        exportDownload: "從瀏覽器的擴充功能選單開啟 Sub2API Muse session exporter，點選 Export session file，將 muse-session.json 儲存到電腦。",
         exportImport: "返回此頁，點選「選擇 Muse 登入檔案」，再從下載資料夾選取 muse-session.json。",
         exportPrivate: "此檔案可存取你的 Muse 帳號，請妥善保管。匯出工具只會在本機儲存檔案，不會傳送到其他伺服器。",
         importFile: "選擇 Muse 登入檔案",
