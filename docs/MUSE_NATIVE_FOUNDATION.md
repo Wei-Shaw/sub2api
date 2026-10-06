@@ -78,6 +78,8 @@ Redirects are disabled. Assigned-session metadata and returned `Set-Cookie` valu
 are validated; actual cookie expiry/deletion is honored. Unknown expiry stays
 unknown. The port does not copy synthetic seven-day expiry extension, swallow auth
 failures, clear shared browser cookies, or wake a VM during an authentication check.
+HTTP 401 establishes a rejected session; HTTP 403 remains an unverified access
+failure and does not tell an operator to replace otherwise valid cookies.
 
 Credential rotation uses the existing canonical workspace lock and account/proxy
 snapshot checks. It preserves opaque session extensions and model mapping. The
