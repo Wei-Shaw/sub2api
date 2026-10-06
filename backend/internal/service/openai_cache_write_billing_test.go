@@ -252,3 +252,85 @@ func TestOpenAICacheWriteTracker_PairsInferenceAndBillingSnapshotInEitherOrder(t
 		require.Equal(t, 100, ready.Inference.Tokens)
 	})
 }
+
+
+func TestOpenAICacheWriteBilling_TwoTurnEndToEnd(t *testing.T) {
+	resetOpenAICacheWriteInferenceSwitchForTest(t)
+
+	usageRepo := &cacheWriteBillingUsageRepoStub{}
+	billingRepo := &cacheWriteBillingRepoStub{}
+	svc := newCacheWriteBillingServiceForTest(usageRepo, billingRepo)
+	settingService := &SettingService{}
+	svc.settingService = settingService
+	settingService.refreshCachedSettings(&SystemSettings{OpenAICacheWriteInferenceEnabled: true})
+
+	groupID := int64(92)
+	group := &Group{ID: groupID, RateMultiplier: 0.2}
+	apiKey := &APIKey{ID: 503, GroupID: &groupID, Group: group}
+	user := &User{ID: 603}
+	account := &Account{ID: 703, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	cacheIdentity := "session-two-turn"
+
+	first := &OpenAIForwardResult{
+		RequestID: "req-turn-1",
+		Model:     "gpt-6-astra",
+		Usage: OpenAIUsage{
+			InputTokens:          154668,
+			CacheReadInputTokens: 152400,
+		},
+		Duration: time.Second,
+	}
+	firstObservationID := svc.ObserveOpenAICacheWriteTelemetry(
+		context.Background(), account, first.Model, cacheIdentity, first,
+	)
+	require.Equal(t, first.RequestID, firstObservationID)
+	require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result:                  first,
+		APIKey:                  apiKey,
+		User:                    user,
+		Account:                 account,
+		CacheWriteObservationID: firstObservationID,
+		RequestPayloadHash:      "payload-turn-1",
+	}))
+	require.Len(t, billingRepo.cmds, 1)
+
+	second := &OpenAIForwardResult{
+		RequestID: "req-turn-2",
+		Model:     "gpt-6-astra",
+		Usage: OpenAIUsage{
+			InputTokens:          156900,
+			CacheReadInputTokens: 154600,
+		},
+		Duration: time.Second,
+	}
+	secondObservationID := svc.ObserveOpenAICacheWriteTelemetry(
+		context.Background(), account, second.Model, cacheIdentity, second,
+	)
+	require.Equal(t, second.RequestID, secondObservationID)
+
+	require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result:                  second,
+		APIKey:                  apiKey,
+		User:                    user,
+		Account:                 account,
+		CacheWriteObservationID: secondObservationID,
+		RequestPayloadHash:      "payload-turn-2",
+	}))
+
+	require.Len(t, billingRepo.cmds, 3,
+		"turn 1 + turn 2 normal bills plus one post-hoc cache-write delta")
+	require.Equal(t, first.RequestID, billingRepo.cmds[0].RequestID)
+	require.Equal(t, second.RequestID, billingRepo.cmds[1].RequestID)
+	require.Contains(t, billingRepo.cmds[2].RequestID, "cwr:")
+	require.InDelta(t, 0.0011, billingRepo.cmds[2].BalanceCost, 1e-12)
+
+	firstLog := usageRepo.logs[cacheWriteBillingUsageKey(first.RequestID, apiKey.ID)]
+	require.NotNil(t, firstLog)
+	require.Equal(t, 68, firstLog.InputTokens)
+	require.Equal(t, 2200, firstLog.CacheCreationTokens)
+
+	secondLog := usageRepo.logs[cacheWriteBillingUsageKey(second.RequestID, apiKey.ID)]
+	require.NotNil(t, secondLog)
+	require.Equal(t, 2300, secondLog.InputTokens)
+	require.Zero(t, secondLog.CacheCreationTokens)
+}
