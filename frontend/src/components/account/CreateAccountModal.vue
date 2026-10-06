@@ -71,11 +71,6 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-tour="account-form-platform">
-          <button type="button" class="flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium"
-            :class="form.platform === 'muse' ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300' : 'text-gray-600 dark:text-gray-400'"
-            @click="form.platform = 'muse'">
-            <PlatformIcon platform="muse" size="sm" /> Meta Muse
-          </button>
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -165,18 +160,10 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
-          <button
-            type="button"
-            @click="selectTypeSafePlatform()"
-            :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
-              form.platform === 'typesafe'
-                ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-            ]"
-          >
-            <PlatformIcon platform="typesafe" size="sm" />
-            TypeSafe / Jev
+          <button type="button" class="flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium"
+            :class="form.platform === 'muse' ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300' : 'text-gray-600 dark:text-gray-400'"
+            @click="form.platform = 'muse'">
+            <PlatformIcon platform="muse" size="sm" /> Meta Muse
           </button>
         </div>
         <!-- 国产厂商：Kimi / Zhipu GLM / DeepSeek / MiniMax -->
