@@ -16,17 +16,27 @@ const (
 )
 
 type openAICacheWriteObservation struct {
-	AccountID        int64
-	Model            string
-	CacheIdentity    string
-	Sequence         uint64
-	InputTokens      int
-	CacheReadTokens  int
-	CacheWriteState  openAICacheWriteFieldState
-	ObservedAt       time.Time
+	CompletionID    string
+	APIKeyID        int64
+	Epoch           uint64
+	StartedAt       time.Time
+	PredecessorID   string
+	Prompt          openAICacheWritePromptEvidence
+	Output          openAICacheWriteOutputEvidence
+	admitted        bool
+	scopeKey        string
+	AccountID       int64
+	Model           string
+	CacheIdentity   string
+	Sequence        uint64
+	InputTokens     int
+	CacheReadTokens int
+	CacheWriteState openAICacheWriteFieldState
+	ObservedAt      time.Time
 }
 
 type openAICacheWriteInference struct {
+	Epoch               uint64
 	Tokens              int
 	ResidualInputTokens int
 	PreviousCacheRead   int

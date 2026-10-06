@@ -253,6 +253,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		cacheWriteUnsafeRequest := h.gatewayService.BeginOpenAICacheWriteObservation(c.Request.Context(), account, apiKey.ID, reqModel, sessionHash, nil)
+		defer h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteUnsafeRequest)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -262,6 +264,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 		}()
+		h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteUnsafeRequest)
 		var cyberBlockBodyChat []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyChat = body
@@ -294,22 +297,22 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-					Result:             res,
-					APIKey:             apiKey,
-					User:               apiKey.User,
-					Account:            account,
-					Subscription:       subscription,
-					InboundEndpoint:    inboundEndpoint,
-					UpstreamEndpoint:   upstreamEndpoint,
-					UserAgent:          userAgent,
-					IPAddress:          clientIP,
-					APIKeyService:      h.apiKeyService,
-					QuotaPlatform:      quotaPlatform,
+					Result:                  res,
+					APIKey:                  apiKey,
+					User:                    apiKey.User,
+					Account:                 account,
+					Subscription:            subscription,
+					InboundEndpoint:         inboundEndpoint,
+					UpstreamEndpoint:        upstreamEndpoint,
+					UserAgent:               userAgent,
+					IPAddress:               clientIP,
+					APIKeyService:           h.apiKeyService,
+					QuotaPlatform:           quotaPlatform,
 					SessionID:               sessionID,
 					CacheWriteObservationID: cacheWriteObservationID,
 					ChannelUsageFields:      clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
-					PricingAt:          pricingAt,
-					CyberBlocked:       cyberBlocked,
+					PricingAt:               pricingAt,
+					CyberBlocked:            cyberBlocked,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.chat_completions"),
@@ -419,7 +422,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		cacheWriteObservationID := ""
 		if result != nil {
-			cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+			// Chat Completions has no canonical Responses input receipt yet.
+			// Keep official billing and skip uncertain inferred writes.
 		}
 		submitChatUsage(result, cacheWriteObservationID)
 		reqLog.Debug("openai_chat_completions.request_completed",

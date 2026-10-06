@@ -27,21 +27,23 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage                    *OpenAIUsage
+	firstTokenMs             *int
+	responseID               string
+	imageCount               int
+	imageOutputSizes         []string
+	searchCount              int
+	cacheWriteOutputEvidence openAICacheWriteOutputEvidence
 }
 
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage                    *OpenAIUsage
+	responseID               string
+	imageCount               int
+	imageOutputSizes         []string
+	searchCount              int
+	cacheWriteOutputEvidence openAICacheWriteOutputEvidence
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -341,6 +343,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	}
 
 	needModelReplace := originalModel != mappedModel
+	outputCapture := newOpenAICacheWriteOutputCapture(resp)
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamDoneItems := newResponsesStreamOutputItems()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
@@ -351,12 +354,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamSearchSeen := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
-			searchCount:      searchCounter,
+			usage:                    usage,
+			firstTokenMs:             firstTokenMs,
+			responseID:               responseID,
+			imageCount:               imageCounter.Count(),
+			imageOutputSizes:         imageCounter.Sizes(),
+			searchCount:              searchCounter,
+			cacheWriteOutputEvidence: outputCapture.evidence,
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -501,6 +505,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if codexFailureTerminal && sawBareError && !sawResponseFailed && eventType != "response.failed" {
 				suppressCurrentEvent = true
 			}
+			outputCapture.observe(dataBytes, eventType)
 			observer.ObserveOpenAI(dataBytes, eventType)
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
 			if openAIStreamEventIsTerminalWithType(data, eventType) {
@@ -1551,13 +1556,13 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		value.Get("prompt_tokens_details.image_tokens"),
 	)
 	return OpenAIUsage{
-		InputTokens:              int(inputTokens),
-		ImageInputTokens:         imageInputTokens,
-		OutputTokens:             int(outputTokens),
+		InputTokens:                     int(inputTokens),
+		ImageInputTokens:                imageInputTokens,
+		OutputTokens:                    int(outputTokens),
 		CacheCreationInputTokens:        cacheCreationTokens,
 		CacheCreationInputTokensPresent: cacheCreationTokensPresent,
 		CacheReadInputTokens:            cacheReadTokens,
-		ImageOutputTokens:        int(imageOutputTokens),
+		ImageOutputTokens:               int(imageOutputTokens),
 	}, true
 }
 
@@ -1615,6 +1620,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
+	outputCapture := newOpenAICacheWriteOutputCapture(resp)
+	outputCapture.observeResponse(body)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -1698,12 +1705,13 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
-		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
+		OpenAIUsage:              usage,
+		usage:                    usage,
+		responseID:               extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:               countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:         collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		searchCount:              countGrokNativeSearchCallsFromJSONBytes(body),
+		cacheWriteOutputEvidence: outputCapture.evidence,
 	}, nil
 }
 
@@ -1730,6 +1738,7 @@ func bodyHasSSEFraming(body []byte) bool {
 
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	bodyText := string(body)
+	outputEvidence := captureOpenAICacheWriteSSEOutput(resp, bodyText)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
@@ -1805,12 +1814,13 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	}
 
 	return &openaiNonStreamingResult{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
-		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
+		OpenAIUsage:              usage,
+		usage:                    usage,
+		responseID:               extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:               countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:         collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		searchCount:              countGrokNativeSearchCallsFromSSEBody(bodyText),
+		cacheWriteOutputEvidence: outputEvidence,
 	}, nil
 }
 

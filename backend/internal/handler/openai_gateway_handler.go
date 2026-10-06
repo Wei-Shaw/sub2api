@@ -788,6 +788,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		cacheWriteRequest := h.gatewayService.BeginOpenAICacheWriteObservation(c.Request.Context(), account, apiKey.ID, reqModel, sessionHash, attemptBody)
+		defer h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteRequest)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -796,6 +798,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}()
 			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
 		}()
+		if err != nil || result == nil {
+			h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteRequest)
+		}
 		var cyberBlockBodyHTTP []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyHTTP = sessionHashBody
@@ -828,24 +833,25 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-					Result:             res,
-					APIKey:             apiKey,
-					User:               apiKey.User,
-					Account:            account,
-					Subscription:       subscription,
-					InboundEndpoint:    inboundEndpoint,
-					UpstreamEndpoint:   upstreamEndpoint,
-					UserAgent:          userAgent,
-					IPAddress:          clientIP,
-					RequestPayloadHash: requestPayloadHash,
-					APIKeyService:      h.apiKeyService,
-					QuotaPlatform:      quotaPlatform,
+					Result:                  res,
+					APIKey:                  apiKey,
+					User:                    apiKey.User,
+					Account:                 account,
+					Subscription:            subscription,
+					InboundEndpoint:         inboundEndpoint,
+					UpstreamEndpoint:        upstreamEndpoint,
+					UserAgent:               userAgent,
+					IPAddress:               clientIP,
+					RequestPayloadHash:      requestPayloadHash,
+					APIKeyService:           h.apiKeyService,
+					QuotaPlatform:           quotaPlatform,
 					SessionID:               sessionID,
 					CacheWriteObservationID: cacheWriteObservationID,
+					CacheWriteSettingEpoch:  cacheWriteRequestEpoch(cacheWriteRequest),
 					ChannelUsageFields:      clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
-					PricingAt:          pricingAt,
-					CyberBlocked:       cyberBlocked,
-					NativeCompactionV2: nativeV2,
+					PricingAt:               pricingAt,
+					CyberBlocked:            cyberBlocked,
+					NativeCompactionV2:      nativeV2,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.responses"),
@@ -999,7 +1005,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 但不作为下一轮缓存写入推断证据。
 		cacheWriteObservationID := ""
 		if result != nil {
-			cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+			cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result, cacheWriteRequest)
 		}
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		submitResponsesUsage(result, cacheWriteObservationID)
@@ -1387,6 +1393,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
+		cacheWriteUnsafeRequest := h.gatewayService.BeginOpenAICacheWriteObservation(c.Request.Context(), account, apiKey.ID, reqModel, sessionHash, nil)
+		defer h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteUnsafeRequest)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -1396,6 +1404,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 		}()
+		h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteUnsafeRequest)
 		var cyberBlockBodyMsg []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyMsg = body
@@ -1429,23 +1438,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-					Result:             res,
-					APIKey:             apiKey,
-					User:               apiKey.User,
-					Account:            account,
-					Subscription:       subscription,
-					InboundEndpoint:    inboundEndpoint,
-					UpstreamEndpoint:   upstreamEndpoint,
-					UserAgent:          userAgent,
-					IPAddress:          clientIP,
-					RequestPayloadHash: requestPayloadHash,
-					APIKeyService:      h.apiKeyService,
-					QuotaPlatform:      quotaPlatform,
+					Result:                  res,
+					APIKey:                  apiKey,
+					User:                    apiKey.User,
+					Account:                 account,
+					Subscription:            subscription,
+					InboundEndpoint:         inboundEndpoint,
+					UpstreamEndpoint:        upstreamEndpoint,
+					UserAgent:               userAgent,
+					IPAddress:               clientIP,
+					RequestPayloadHash:      requestPayloadHash,
+					APIKeyService:           h.apiKeyService,
+					QuotaPlatform:           quotaPlatform,
 					SessionID:               sessionID,
 					CacheWriteObservationID: cacheWriteObservationID,
 					ChannelUsageFields:      clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
-					PricingAt:          pricingAt,
-					CyberBlocked:       cyberBlocked,
+					PricingAt:               pricingAt,
+					CyberBlocked:            cyberBlocked,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.messages"),
@@ -1557,7 +1566,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		cacheWriteObservationID := ""
 		if result != nil {
-			cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+			// Messages does not yet supply the canonical Responses input evidence.
+			// Skip inferred billing instead of treating session affinity as lineage.
 		}
 		submitMessagesUsage(result, cacheWriteObservationID)
 		reqLog.Debug("openai_messages.request_completed",
@@ -2873,6 +2883,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 			return
 		}
+		var cacheWriteRequests sync.Map // turn -> *service.OpenAICacheWriteRequest
+		defer func() {
+			cacheWriteRequests.Range(func(_, value any) bool {
+				h.gatewayService.CancelOpenAICacheWriteObservation(value.(*service.OpenAICacheWriteRequest))
+				return true
+			})
+		}()
 		hooks := &service.OpenAIWSIngressHooks{
 			ClientLifecycleContext:      clientLifecycleCtx,
 			InitialRequestModel:         reqModel,
@@ -2885,6 +2902,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
+				if old, ok := cacheWriteRequests.LoadAndDelete(turn); ok {
+					h.gatewayService.CancelOpenAICacheWriteObservation(old.(*service.OpenAICacheWriteRequest))
+				}
+				cacheWriteModel := strings.TrimSpace(originalModel)
+				if cacheWriteModel == "" {
+					cacheWriteModel = reqModel
+				}
+				if receipt := h.gatewayService.BeginOpenAICacheWriteObservation(ctx, account, apiKey.ID, cacheWriteModel, sessionHash, payload); receipt != nil {
+					cacheWriteRequests.Store(turn, receipt)
+				}
+
 				// 连接级 cyber session gate 也在 BeforeRequest 先执行，使 native 与
 				// passthrough ingress 都能在 BeforeTurn 及上游写入前无副作用地拒绝。
 				// BeforeTurn 中保留同一检查作为防御式兜底。
@@ -2995,6 +3023,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				var cacheWriteRequest *service.OpenAICacheWriteRequest
+				if receipt, ok := cacheWriteRequests.LoadAndDelete(turn); ok {
+					cacheWriteRequest = receipt.(*service.OpenAICacheWriteRequest)
+				}
+				defer h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteRequest)
+
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// 每次 attempt 都清 cyber mark；failover 链结束前保留 recorded guard，
@@ -3052,7 +3086,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				cacheWriteObservationID := ""
 				if turnErr == nil {
-					cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(ctx, account, turnRequestedModel, sessionHash, result)
+					cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(ctx, account, turnRequestedModel, sessionHash, result, cacheWriteRequest)
 				}
 				result.BillingModel = openAIWSTurnBillingModel(result, turnMapping, turnRequestedModel, turnUpstreamModel)
 				reqLog.Debug("openai.websocket_turn_billing",
@@ -3078,23 +3112,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
-						Result:             result,
-						APIKey:             apiKey,
-						User:               apiKey.User,
-						Account:            account,
-						Subscription:       subscription,
-						InboundEndpoint:    inboundEndpoint,
-						UpstreamEndpoint:   upstreamEndpoint,
-						UserAgent:          userAgent,
-						IPAddress:          clientIP,
-						RequestPayloadHash: requestPayloadHash,
-						APIKeyService:      h.apiKeyService,
-						QuotaPlatform:      quotaPlatform,
+						Result:                  result,
+						APIKey:                  apiKey,
+						User:                    apiKey.User,
+						Account:                 account,
+						Subscription:            subscription,
+						InboundEndpoint:         inboundEndpoint,
+						UpstreamEndpoint:        upstreamEndpoint,
+						UserAgent:               userAgent,
+						IPAddress:               clientIP,
+						RequestPayloadHash:      requestPayloadHash,
+						APIKeyService:           h.apiKeyService,
+						QuotaPlatform:           quotaPlatform,
 						SessionID:               sessionID,
 						CacheWriteObservationID: cacheWriteObservationID,
+						CacheWriteSettingEpoch:  cacheWriteRequestEpoch(cacheWriteRequest),
 						ChannelUsageFields:      turnUsageFields,
-						PricingAt:          turnRecordPricingAt,
-						CyberBlocked:       cyberBlocked,
+						PricingAt:               turnRecordPricingAt,
+						CyberBlocked:            cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",
 							zap.Int64("account_id", account.ID),

@@ -20,23 +20,24 @@ import (
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string // 请求的 User-Agent
-	IPAddress          string // 请求的客户端 IP 地址
-	SessionID          string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	Result           *OpenAIForwardResult
+	APIKey           *APIKey
+	User             *User
+	Account          *Account
+	Subscription     *UserSubscription
+	InboundEndpoint  string
+	UpstreamEndpoint string
+	UserAgent        string // 请求的 User-Agent
+	IPAddress        string // 请求的客户端 IP 地址
+	SessionID        string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	// CacheWriteObservationID links this successful turn's cache observation to
 	// the billing snapshot recorded below. It is internal-only and never exposed
 	// to clients or persisted as prompt/session content.
 	CacheWriteObservationID string
-	RequestPayloadHash string
-	APIKeyService      APIKeyQuotaUpdater
-	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	CacheWriteSettingEpoch  uint64
+	RequestPayloadHash      string
+	APIKeyService           APIKeyQuotaUpdater
+	QuotaPlatform           string // user×platform quota platform resolved by the handler before async billing.
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
@@ -325,6 +326,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		// usage row instead of dropping it on the Standard re-evaluation.
 		if standardErr == nil && cost != nil && standardCost != nil {
 			cost.ActualCost = standardCost.ActualCost
+			if cost.cacheWritePricing != nil {
+				// Keep the exact Standard plan used for the original customer charge.
+				cost.cacheWritePricing.standard = standardCost.cacheWritePricing
+				cost.cacheWritePricing.requiresStandard = true
+			}
 		}
 	}
 
@@ -485,11 +491,16 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
-		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			tokens, cost.TotalCost, pricingAt,
-			accountStatsLongContextPricingEnabled(longContextBillingGate),
-		)
+		if cost.cacheWritePricing != nil && strings.TrimSpace(input.CacheWriteObservationID) != "" {
+			s.applyFrozenOpenAICacheWriteAccountStatsCost(ctx, usageLog, cost, tokens, result.UpstreamModel, result.Model, pricingAt,
+				accountStatsLongContextPricingEnabled(longContextBillingGate))
+		} else {
+			applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
+				account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+				tokens, cost.TotalCost, pricingAt,
+				accountStatsLongContextPricingEnabled(longContextBillingGate),
+			)
+		}
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
@@ -506,18 +517,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	cacheWriteBillingSnapshot := s.prepareOpenAICacheWriteBillingSnapshot(
 		ctx,
 		input,
-		billingAccount,
 		usageLog,
 		cost,
 		tokens,
-		billingModels,
-		multiplier,
-		imageMultiplier,
-		videoMultiplier,
-		baseMultiplier,
-		serviceTier,
-		longContextBillingGate,
-		pricingAt,
 		isSubscriptionBilling,
 		accountRateMultiplier,
 		simpleModeKeyRateLimitOnly,
@@ -534,7 +536,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return nil
 	}
 
-	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
+	billingApplied, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                       cost,
 		User:                       user,
 		APIKey:                     apiKey,
@@ -556,29 +558,29 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		s.processReadyOpenAICacheWriteReconciliations(ctx)
 		return billingErr
 	}
-	cacheWriteSnapshotReady := false
 	if cacheWriteBillingSnapshot != nil && s.usageLogRepo != nil {
-		// Opt-in cache-write billing needs the original row to exist before a
-		// later turn can atomically rewrite its token/cost buckets. RecordUsage
-		// already runs off the response hot path, so use the synchronous Create
-		// method here instead of the best-effort insert queue.
-		if _, err := s.usageLogRepo.Create(ctx, usageLog); err != nil {
+		// Only an applied original bill owns its pricing snapshot. A deduplicated
+		// replay may have been repriced and must never establish or replace it.
+		if billingApplied {
+			s.openaiCacheWriteInferenceTracker.attachBillingSnapshot(
+				input.CacheWriteObservationID, *cacheWriteBillingSnapshot)
+		}
+		if retained := s.openaiCacheWriteInferenceTracker.lookupBillingSnapshot(input.CacheWriteObservationID); retained != nil && retained.OriginalUsageLog != nil {
+			// Recover the first charged row even when a previous Create failed.
+			usageLog = cloneOpenAICacheWriteUsageLog(retained.OriginalUsageLog)
+		}
+		if _, err := s.createOpenAICacheWriteUsageLog(ctx, usageLog); err != nil {
 			logger.L().With(
 				zap.String("component", "service.openai_gateway"),
 				zap.String("request_id", usageLog.RequestID),
 				zap.Int64("api_key_id", usageLog.APIKeyID),
 			).Warn("openai.cache_write_usage_log_sync_create_failed", zap.Error(err))
-		} else {
-			cacheWriteSnapshotReady = true
+			// Preserve the retained original for a later inference/retry, but do
+			// not claim this successfully logged the already committed charge.
+			return fmt.Errorf("persist original cache write usage log: %w", err)
 		}
 	} else {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-	}
-	if cacheWriteSnapshotReady {
-		s.openaiCacheWriteInferenceTracker.attachBillingSnapshot(
-			input.CacheWriteObservationID,
-			*cacheWriteBillingSnapshot,
-		)
 	}
 	s.processReadyOpenAICacheWriteReconciliations(ctx)
 
@@ -785,15 +787,19 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, PricingAt: pricingAt,
 			ServiceTier: serviceTier, ReasoningEffort: reasoningEffort, Resolver: s.resolver,
 			LongContextBillingEnabled: longContextBillingGate,
+			captureCacheWritePricing:  true,
 		})
 	}
-	return s.billingService.calculateCostWithServiceTierPolicy(
-		billingModel,
-		tokens,
-		multiplier,
-		serviceTier,
-		longContextBillingGate == nil || *longContextBillingGate,
-	)
+	pricing, err := s.billingService.GetModelPricing(billingModel)
+	if err != nil {
+		return nil, err
+	}
+	// Preserve the legacy no-resolver policy (including its effort behavior).
+	plan := newOpenAICacheWriteTokenPricingPlan(s.billingService, pricing, multiplier,
+		serviceTier, longContextBillingGate == nil || *longContextBillingGate, 1, 1)
+	cost := plan.calculate(tokens)
+	cost.cacheWritePricing = plan
+	return cost, nil
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIImageCost(

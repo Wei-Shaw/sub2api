@@ -236,6 +236,10 @@ type OpenAIUsage struct {
 type OpenAIForwardResult struct {
 	RequestID  string
 	ResponseID string
+	// CacheWriteOutputEvidence contains only canonical hashes from complete raw upstream output.
+	CacheWriteOutputEvidence openAICacheWriteOutputEvidence
+	// CacheWritePromptEvidence hashes the exact final request sent upstream.
+	CacheWritePromptEvidence openAICacheWritePromptEvidence
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage

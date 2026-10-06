@@ -40,7 +40,7 @@ func TestOpenAICacheWriteInferenceSwitch_DefaultOffAndClearsState(t *testing.T) 
 	}
 
 	// Missing/default runtime state is fail-closed.
-	svc.ObserveOpenAICacheWriteTelemetry(context.Background(), account, "gpt-6-astra", "session-a", result)
+	observeOpenAICacheWriteSwitchFixture(svc, context.Background(), account, "gpt-6-astra", "session-a", result)
 	require.Empty(t, svc.openaiCacheWriteInferenceTracker.entries)
 
 	// An admin settings refresh makes the opt-in visible immediately.
@@ -48,7 +48,7 @@ func TestOpenAICacheWriteInferenceSwitch_DefaultOffAndClearsState(t *testing.T) 
 		OpenAICacheWriteInferenceEnabled: true,
 	})
 	require.True(t, settingService.IsOpenAICacheWriteInferenceEnabled(context.Background()))
-	svc.ObserveOpenAICacheWriteTelemetry(context.Background(), account, "gpt-6-astra", "session-a", result)
+	observeOpenAICacheWriteSwitchFixture(svc, context.Background(), account, "gpt-6-astra", "session-a", result)
 	require.Len(t, svc.openaiCacheWriteInferenceTracker.entries, 1)
 
 	// Disabling clears the lineage on the next observation.
@@ -58,7 +58,7 @@ func TestOpenAICacheWriteInferenceSwitch_DefaultOffAndClearsState(t *testing.T) 
 	result.RequestID = "req-2"
 	result.Usage.InputTokens = 11000
 	result.Usage.CacheReadInputTokens = 9000
-	svc.ObserveOpenAICacheWriteTelemetry(context.Background(), account, "gpt-6-astra", "session-a", result)
+	observeOpenAICacheWriteSwitchFixture(svc, context.Background(), account, "gpt-6-astra", "session-a", result)
 	require.Empty(t, svc.openaiCacheWriteInferenceTracker.entries)
 }
 
@@ -78,7 +78,7 @@ func TestOpenAICacheWriteInferenceSwitch_OffOnWithoutTrafficDoesNotBridgeLineage
 	}
 
 	settingService.refreshCachedSettings(&SystemSettings{OpenAICacheWriteInferenceEnabled: true})
-	svc.ObserveOpenAICacheWriteTelemetry(context.Background(), account, "gpt-6-astra", "session-b", result)
+	observeOpenAICacheWriteSwitchFixture(svc, context.Background(), account, "gpt-6-astra", "session-b", result)
 	require.Len(t, svc.openaiCacheWriteInferenceTracker.entries, 1)
 	beforeEpoch := openAICacheWriteInferenceSettingEpoch.Load()
 
@@ -91,16 +91,15 @@ func TestOpenAICacheWriteInferenceSwitch_OffOnWithoutTrafficDoesNotBridgeLineage
 	result.RequestID = "req-after-reenable"
 	result.Usage.InputTokens = 11000
 	result.Usage.CacheReadInputTokens = 9000
-	svc.ObserveOpenAICacheWriteTelemetry(context.Background(), account, "gpt-6-astra", "session-b", result)
+	observeOpenAICacheWriteSwitchFixture(svc, context.Background(), account, "gpt-6-astra", "session-b", result)
 
-	key := openAICacheWriteTrackerKey(account.ID, "gpt-6-astra", "session-b")
+	key := openAICacheWriteTrackerKey(account.ID, "", "session-b", 1)
 	entry, ok := svc.openaiCacheWriteInferenceTracker.entries[key]
 	require.True(t, ok)
 	require.Equal(t, uint64(1), entry.observation.Sequence,
 		"the first post-reenable turn must establish a fresh baseline")
 	require.WithinDuration(t, time.Now(), entry.observation.ObservedAt, time.Second)
 }
-
 
 func TestOpenAICacheWriteInferenceSwitch_LoadsFromRuntimeSettingsCache(t *testing.T) {
 	resetOpenAICacheWriteInferenceSwitchForTest(t)
@@ -123,4 +122,13 @@ func TestOpenAICacheWriteInferenceSwitch_LoadsFromRuntimeSettingsCache(t *testin
 
 	require.False(t, settingService.IsOpenAICacheWriteInferenceEnabled(context.Background()))
 	require.Greater(t, openAICacheWriteInferenceSettingEpoch.Load(), epochAfterEnable)
+}
+
+func observeOpenAICacheWriteSwitchFixture(svc *OpenAIGatewayService, ctx context.Context, account *Account, model, identity string, result *OpenAIForwardResult) string {
+	body := []byte(`{"model":"gpt-6-astra","input":[{"role":"user","content":"fixture"}]}`)
+	result.CacheWritePromptEvidence = buildOpenAICacheWritePromptEvidence(body)
+	result.CacheWriteOutputEvidence = buildOpenAICacheWriteOutputEvidence([]byte(`{"output":[]}`))
+	request := svc.BeginOpenAICacheWriteObservation(ctx, account, 1, model, identity, body)
+	defer svc.CancelOpenAICacheWriteObservation(request)
+	return svc.ObserveOpenAICacheWriteTelemetry(ctx, account, model, identity, result, request)
 }

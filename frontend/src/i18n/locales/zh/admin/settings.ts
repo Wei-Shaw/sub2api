@@ -1258,7 +1258,7 @@ export default {
       },
       openaiCacheWriteInference: {
         title: '缓存写入 Token 推断',
-        description: '默认关闭。开启后，当 OpenAI OAuth/SetupToken 上游缺失 cache-write 计数时，系统会在后续缓存命中确认写入量，并回补上一请求的 cache write token 与费用差额。会影响余额、订阅额度、API Key 用量及 usage 记录；无法被后续命中可靠确认的写入不会推断或补扣。'
+        description: '默认关闭。开启后，仅对具有非重叠顺序和可核验上下文证据的 OpenAI Responses 请求估算缓存写入，并回补上一请求的 token 分类与费用差额。估算不等于官方写入量，会影响余额、订阅额度、API Key 用量及 usage 记录；证据不足、复杂转换、重启或跨实例缺失记录时不会补扣。'
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',

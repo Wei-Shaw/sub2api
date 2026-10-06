@@ -1,0 +1,36 @@
+name: Cache write safety
+
+on:
+  push:
+    branches: [feat/cache-write-inference]
+    paths:
+      - backend/**
+      - .github/workflows/cache-write-safety.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-write-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    # Standard public-repository runner only. No secrets, publishing or deploy.
+    if: github.repository == 'reallyfeishi/sub2api' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+      - name: Cache-write unit and HTTP regression tests
+        working-directory: backend
+        run: go test -p=1 -tags=unit ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/pkg/apicompat ./internal/service/openai_ws_v2 -run 'CacheWrite|CacheCreation|Reconcile|UsageBilling' -count=1 -v
+      - name: Cache-write concurrency regression tests
+        working-directory: backend
+        run: go test -race -p=1 -tags=unit ./internal/service ./internal/handler -run 'CacheWrite' -count=1

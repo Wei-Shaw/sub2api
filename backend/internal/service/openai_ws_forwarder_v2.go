@@ -342,6 +342,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return nil, err
 	}
 
+	promptEvidence := buildOpenAICacheWritePromptEvidence(payloadAsJSONBytes(payload))
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
@@ -367,6 +368,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	var outputCapture openAICacheWriteOutputCapture
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
@@ -420,6 +422,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return &OpenAIForwardResult{
 			RequestID:                     responseID,
 			ResponseID:                    responseID,
+			CacheWriteOutputEvidence:      outputCapture.evidence,
+			CacheWritePromptEvidence:      promptEvidence,
 			Usage:                         *usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -605,6 +609,7 @@ readLoop:
 			setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(readErr.Error()), "")
 			return nil, fmt.Errorf("openai ws read event: %w", readErr)
 		}
+		outputCapture.observe(message, "")
 		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
 			message = normalized
 		}

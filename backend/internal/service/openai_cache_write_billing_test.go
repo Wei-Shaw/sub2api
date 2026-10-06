@@ -25,8 +25,12 @@ func (s *cacheWriteBillingUsageRepoStub) Create(_ context.Context, log *UsageLog
 	if s.logs == nil {
 		s.logs = make(map[string]*UsageLog)
 	}
+	key := cacheWriteBillingUsageKey(log.RequestID, log.APIKeyID)
+	if _, exists := s.logs[key]; exists {
+		return false, nil
+	}
 	cloned := *log
-	s.logs[cacheWriteBillingUsageKey(log.RequestID, log.APIKeyID)] = &cloned
+	s.logs[key] = &cloned
 	return true, nil
 }
 
@@ -120,9 +124,14 @@ func newCacheWriteBillingServiceForTest(
 }
 
 func TestOpenAICacheWriteBilling_ReconcilesPreviousTurnDelta(t *testing.T) {
+	resetOpenAICacheWriteInferenceSwitchForTest(t)
 	usageRepo := &cacheWriteBillingUsageRepoStub{}
 	billingRepo := &cacheWriteBillingRepoStub{}
 	svc := newCacheWriteBillingServiceForTest(usageRepo, billingRepo)
+	svc.settingService = &SettingService{}
+	svc.settingService.refreshCachedSettings(&SystemSettings{OpenAICacheWriteInferenceEnabled: true})
+	epoch := openAICacheWriteInferenceSettingEpoch.Load()
+	svc.openaiCacheWriteInferenceTracker.resetForSettingEpoch(epoch)
 
 	groupID := int64(91)
 	group := &Group{ID: groupID, RateMultiplier: 0.2}
@@ -148,6 +157,7 @@ func TestOpenAICacheWriteBilling_ReconcilesPreviousTurnDelta(t *testing.T) {
 		User:                    user,
 		Account:                 account,
 		CacheWriteObservationID: "obs-original",
+		CacheWriteSettingEpoch:  epoch,
 		RequestPayloadHash:      "payload-original",
 	})
 	require.NoError(t, err)
@@ -162,6 +172,7 @@ func TestOpenAICacheWriteBilling_ReconcilesPreviousTurnDelta(t *testing.T) {
 	// input tokens were actually cache creation, leaving the observed 68-token
 	// ordinary residual.
 	svc.openaiCacheWriteInferenceTracker.registerInference("obs-original", openAICacheWriteInference{
+		Epoch:               epoch,
 		Tokens:              2200,
 		ResidualInputTokens: 68,
 		PreviousCacheRead:   152400,
@@ -237,9 +248,9 @@ func TestOpenAICacheWriteTracker_PairsInferenceAndBillingSnapshotInEitherOrder(t
 
 	inference := openAICacheWriteInference{Tokens: 100, Source: "inferred_next_hit"}
 	snapshot := openAICacheWriteBillingSnapshot{
-		ObservedAt:    time.Now(),
-		ObservationID: "obs",
-		RequestID:     "req",
+		ObservedAt:          time.Now(),
+		ObservationID:       "obs",
+		RequestID:           "req",
 		OriginalInputTokens: 1000,
 	}
 
@@ -261,7 +272,6 @@ func TestOpenAICacheWriteTracker_PairsInferenceAndBillingSnapshotInEitherOrder(t
 		require.Equal(t, 100, ready.Inference.Tokens)
 	})
 }
-
 
 func TestOpenAICacheWriteBilling_TwoTurnEndToEnd(t *testing.T) {
 	resetOpenAICacheWriteInferenceSwitchForTest(t)
@@ -289,16 +299,22 @@ func TestOpenAICacheWriteBilling_TwoTurnEndToEnd(t *testing.T) {
 		},
 		Duration: time.Second,
 	}
+	firstBody := []byte(`{"model":"gpt-6-astra","input":[{"role":"user","content":"first"}]}`)
+	firstRequest := svc.BeginOpenAICacheWriteObservation(context.Background(), account, apiKey.ID, first.Model, cacheIdentity, firstBody)
+	require.NotNil(t, firstRequest)
+	first.CacheWritePromptEvidence = buildOpenAICacheWritePromptEvidence(firstBody)
+	first.CacheWriteOutputEvidence = buildOpenAICacheWriteOutputEvidence([]byte(`{"output":[{"role":"assistant","content":"answer"}]}`))
 	firstObservationID := svc.ObserveOpenAICacheWriteTelemetry(
-		context.Background(), account, first.Model, cacheIdentity, first,
+		context.Background(), account, first.Model, cacheIdentity, first, firstRequest,
 	)
-	require.Equal(t, first.RequestID, firstObservationID)
+	require.Equal(t, firstRequest.ID, firstObservationID)
 	require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result:                  first,
 		APIKey:                  apiKey,
 		User:                    user,
 		Account:                 account,
 		CacheWriteObservationID: firstObservationID,
+		CacheWriteSettingEpoch:  firstRequest.Epoch,
 		RequestPayloadHash:      "payload-turn-1",
 	}))
 	require.Len(t, billingRepo.cmds, 1)
@@ -312,10 +328,15 @@ func TestOpenAICacheWriteBilling_TwoTurnEndToEnd(t *testing.T) {
 		},
 		Duration: time.Second,
 	}
+	secondBody := []byte(`{"model":"gpt-6-astra","input":[{"role":"user","content":"first"},{"role":"assistant","content":"answer"},{"role":"user","content":"second"}]}`)
+	secondRequest := svc.BeginOpenAICacheWriteObservation(context.Background(), account, apiKey.ID, second.Model, cacheIdentity, secondBody)
+	require.NotNil(t, secondRequest)
+	second.CacheWritePromptEvidence = buildOpenAICacheWritePromptEvidence(secondBody)
+	second.CacheWriteOutputEvidence = buildOpenAICacheWriteOutputEvidence([]byte(`{"output":[]}`))
 	secondObservationID := svc.ObserveOpenAICacheWriteTelemetry(
-		context.Background(), account, second.Model, cacheIdentity, second,
+		context.Background(), account, second.Model, cacheIdentity, second, secondRequest,
 	)
-	require.Equal(t, second.RequestID, secondObservationID)
+	require.Equal(t, secondRequest.ID, secondObservationID)
 
 	require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result:                  second,
@@ -323,6 +344,7 @@ func TestOpenAICacheWriteBilling_TwoTurnEndToEnd(t *testing.T) {
 		User:                    user,
 		Account:                 account,
 		CacheWriteObservationID: secondObservationID,
+		CacheWriteSettingEpoch:  secondRequest.Epoch,
 		RequestPayloadHash:      "payload-turn-2",
 	}))
 

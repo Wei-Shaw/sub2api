@@ -1264,7 +1264,7 @@ export default {
       },
       openaiCacheWriteInference: {
         title: 'Cache-write token inference',
-        description: 'Disabled by default. When enabled, a later safe cache hit may confirm cache-write tokens omitted by OpenAI OAuth/SetupToken usage. The previous request is then reconciled and charged only for the cache-write pricing delta. This affects balances, subscription/API-key usage, and the persisted usage row; unconfirmed writes are not inferred or charged.'
+        description: 'Off by default. Estimates cache writes only for OpenAI Responses requests with non-overlapping order and verifiable context evidence, then adjusts the previous request’s token buckets and price difference. Estimates are not official write counts and affect balances, subscriptions, API-key usage and usage records. Missing evidence, unsupported conversions, restarts and missing cross-instance history are skipped.'
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
