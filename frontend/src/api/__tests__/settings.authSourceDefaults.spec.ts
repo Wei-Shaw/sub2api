@@ -9,16 +9,29 @@ import {
   type DefaultPlatformQuotasMap,
 } from "@/api/admin/settings";
 
-/** 全 null 的 5 平台 map，用于断言归一化默认值 */
+/** 全 null 的支持平台 map，用于断言归一化默认值 */
 const allNullQuotas: DefaultPlatformQuotasMap = {
   anthropic: { daily: null, weekly: null, monthly: null },
   openai:    { daily: null, weekly: null, monthly: null },
   gemini:    { daily: null, weekly: null, monthly: null },
   antigravity: { daily: null, weekly: null, monthly: null },
   grok: { daily: null, weekly: null, monthly: null },
+  typesafe: { daily: null, weekly: null, monthly: null },
+  muse: { daily: null, weekly: null, monthly: null },
 }
 
 describe("admin settings auth source defaults helpers", () => {
+  it("preserves Muse quotas when loading and saving auth source defaults", () => {
+    const limits = { daily: 10, weekly: 50, monthly: 200 };
+    const state = buildAuthSourceDefaultsState({
+      auth_source_default_email_platform_quotas: { muse: limits },
+    });
+    expect(state.email.platform_quotas.muse).toEqual(limits);
+    const payload: UpdateSettingsRequest = { site_name: "Sub2API" };
+    appendAuthSourceDefaultsToUpdateRequest(payload, state);
+    expect(payload.auth_source_default_email_platform_quotas?.muse).toEqual(limits);
+  });
+
   it("builds auth source defaults state from flat settings fields", () => {
     const state = buildAuthSourceDefaultsState({
       auth_source_default_email_balance: 9.5,
@@ -240,9 +253,9 @@ describe("normalizePlatformQuotasMap", () => {
     expect(result.grok).toEqual({ daily: null, weekly: null, monthly: null });
   });
 
-  it("无参数时返回全 5 平台全 null", () => {
+  it("无参数时返回全部支持平台全 null", () => {
     const result = normalizePlatformQuotasMap();
-    expect(Object.keys(result)).toHaveLength(5);
+    expect(Object.keys(result)).toHaveLength(7);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }
@@ -290,7 +303,7 @@ describe("sanitizePlatformQuotasMap", () => {
 
   it("缺失平台填充为全 null", () => {
     const result = sanitizePlatformQuotasMap({});
-    expect(Object.keys(result)).toHaveLength(5);
+    expect(Object.keys(result)).toHaveLength(7);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }

@@ -1,10 +1,10 @@
 -- Native provider registration. Session accounts still require verification.
 ALTER TABLE user_platform_quotas DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 ALTER TABLE user_platform_quotas ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK(platform IN ('anthropic','openai','gemini','antigravity','grok','kimi','zhipu','deepseek','minimax','opencode_go','muse'));
+    CHECK(platform IN ('anthropic','openai','gemini','antigravity','grok','kimi','zhipu','deepseek','minimax','opencode_go','typesafe','muse'));
 ALTER TABLE composite_model_routes DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
 ALTER TABLE composite_model_routes ADD CONSTRAINT composite_model_routes_target_platform_check
-    CHECK(target_platform IN ('anthropic','openai','gemini','antigravity','grok','kimi','zhipu','deepseek','minimax','opencode_go','muse'));
+    CHECK(target_platform IN ('anthropic','openai','gemini','antigravity','grok','kimi','zhipu','deepseek','minimax','opencode_go','typesafe','muse'));
 
 CREATE TABLE IF NOT EXISTS muse_account_profiles (
     account_id BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE RESTRICT,
