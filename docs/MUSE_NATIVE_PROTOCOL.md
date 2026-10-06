@@ -36,6 +36,13 @@ captures remain outside this repository.
    `session_id`, replay cursors, and capabilities. Replay for another accepted
    probe returned its completed `delta.message_done` transcript and the same
    side-chat agent's completed task status with zero active subagents.
+8. A bounded native counting probe produced 126 live text-delta records. Text
+   deltas omit `agent_id` and carry the output message ID and `parent_agent_id`;
+   the corresponding message-start record supplies the agent binding.
+9. Another bounded probe was cancelled after a live delta. `POST /chat/cancel`
+   acknowledged `cancelled: true`; the same running task then reached
+   **`interrupted`** with zero active subagents, in the same side chat/root agent.
+   A cancellation acknowledgement alone was not used as terminal proof.
 
 The native low-level implementation is in `internal/pkg/muse/gateway.go` and
 `noise_*.go`. It uses the established Noise library rather than implementing
@@ -76,12 +83,12 @@ checks are:
 
 - Authenticated principal/session binding, fresh allowance, and dynamic catalog
   observation through the native provider verification port.
-- Live deltas and authoritative transcript normalization into existing Responses,
+- Authoritative transcript/delta normalization into existing Responses,
   Chat Completions, and Messages serializers, preserving unknown usage.
 - Durable mapping from a local operation to its fresh remote side chat and server
   task, including lost-ack recovery without replay, duplicate events, proactive
   event exclusion, and accepted-work fencing.
-- Confirmed cancellation of the same task, approval-required and remote failures,
+- Integrating confirmed cancellation of the same task, approval-required and remote failures,
   session expiry/rotation during active work, and process-loss reconciliation.
 - The existing account/proxy snapshot, canonical lock, admission, settlement, and
   quota flow exercised through a real local Sub2API API request, with one result,
