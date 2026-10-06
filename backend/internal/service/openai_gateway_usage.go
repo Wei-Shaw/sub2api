@@ -556,8 +556,25 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		s.processReadyOpenAICacheWriteReconciliations(ctx)
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-	if cacheWriteBillingSnapshot != nil {
+	cacheWriteSnapshotReady := false
+	if cacheWriteBillingSnapshot != nil && s.usageLogRepo != nil {
+		// Opt-in cache-write billing needs the original row to exist before a
+		// later turn can atomically rewrite its token/cost buckets. RecordUsage
+		// already runs off the response hot path, so use the synchronous Create
+		// method here instead of the best-effort insert queue.
+		if _, err := s.usageLogRepo.Create(ctx, usageLog); err != nil {
+			logger.L().With(
+				zap.String("component", "service.openai_gateway"),
+				zap.String("request_id", usageLog.RequestID),
+				zap.Int64("api_key_id", usageLog.APIKeyID),
+			).Warn("openai.cache_write_usage_log_sync_create_failed", zap.Error(err))
+		} else {
+			cacheWriteSnapshotReady = true
+		}
+	} else {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	}
+	if cacheWriteSnapshotReady {
 		s.openaiCacheWriteInferenceTracker.attachBillingSnapshot(
 			input.CacheWriteObservationID,
 			*cacheWriteBillingSnapshot,
