@@ -32,32 +32,41 @@ func ChatCompletionsToResponsesForGemini(req *ChatCompletionsRequest) (*Response
 func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*ResponsesRequest, error) {
 	converted := *req
 	converted.Messages = append([]ChatMessage(nil), req.Messages...)
+	messageAudio := make(map[int]map[int]string)
 	for index, message := range converted.Messages {
-		var parts []ChatContentPart
-		if err := json.Unmarshal(message.Content, &parts); err != nil {
-			var rawParts []json.RawMessage
-			if json.Unmarshal(message.Content, &rawParts) == nil {
-				for _, rawPart := range rawParts {
-					var probe struct {
-						Type string `json:"type"`
-					}
-					if json.Unmarshal(rawPart, &probe) == nil && probe.Type == "input_audio" {
-						if !allowAudio || message.Role != "user" {
-							return nil, ErrUnsupportedInputAudio
-						}
-						return nil, fmt.Errorf("invalid input_audio message content: %w", err)
-					}
-				}
-			}
+		var rawParts []json.RawMessage
+		if json.Unmarshal(message.Content, &rawParts) != nil {
 			continue
 		}
+		hasAudio := false
+		for _, rawPart := range rawParts {
+			var probe struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(rawPart, &probe) == nil && probe.Type == "input_audio" {
+				hasAudio = true
+			}
+		}
+		if !hasAudio {
+			continue
+		}
+		if !allowAudio || message.Role != "user" {
+			return nil, ErrUnsupportedInputAudio
+		}
+		if err := validateChatAudioParts(rawParts); err != nil {
+			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+		}
+		var parts []ChatContentPart
+		if err := json.Unmarshal(message.Content, &parts); err != nil {
+			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+		}
 		changed := false
+		audioParts := make(map[int]string)
+		responsePartIndex := 0
 		for partIndex, part := range parts {
 			if part.Type != "input_audio" {
+				responsePartIndex += len(convertChatContentPartsToResponses(parts[partIndex : partIndex+1]))
 				continue
-			}
-			if !allowAudio || message.Role != "user" {
-				return nil, ErrUnsupportedInputAudio
 			}
 			var audio struct {
 				Data   string `json:"data"`
@@ -81,6 +90,8 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*
 				Type: "file", PromptCacheBreakpoint: part.PromptCacheBreakpoint,
 				File: &ChatFile{FileData: "data:" + mimeType + ";base64," + audio.Data},
 			}
+			audioParts[responsePartIndex] = parts[partIndex].File.FileData
+			responsePartIndex++
 			changed = true
 		}
 		if changed {
@@ -89,15 +100,27 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*
 				return nil, err
 			}
 			converted.Messages[index].Content = content
+			messageAudio[index] = audioParts
 		}
 	}
 	req = &converted
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
-	if err != nil {
-		return nil, err
+	var input []ResponsesInputItem
+	var inputAudio map[int]map[int]string
+	for messageIndex, message := range req.Messages {
+		items, err := chatMessageToResponsesItems(message)
+		if err != nil {
+			return nil, err
+		}
+		if audioParts := messageAudio[messageIndex]; len(audioParts) > 0 {
+			if inputAudio == nil {
+				inputAudio = make(map[int]map[int]string)
+			}
+			inputAudio[len(input)] = audioParts
+		}
+		input = append(input, items...)
 	}
 
 	inputJSON, err := json.Marshal(input)
@@ -106,6 +129,7 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*
 	}
 
 	out := &ResponsesRequest{
+		chatInputAudio:     inputAudio,
 		Model:              req.Model,
 		Instructions:       req.Instructions,
 		Input:              inputJSON,
@@ -177,18 +201,36 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool) (*
 	return out, nil
 }
 
-// convertChatMessagesToResponsesInput converts the Chat Completions messages
-// array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
-	var out []ResponsesInputItem
-	for _, m := range msgs {
-		items, err := chatMessageToResponsesItems(m)
-		if err != nil {
-			return nil, err
+func validateChatAudioParts(parts []json.RawMessage) error {
+	for _, raw := range parts {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+			return fmt.Errorf("expected content part object")
 		}
-		out = append(out, items...)
+		var part ChatContentPart
+		if err := json.Unmarshal(raw, &part); err != nil {
+			return err
+		}
+		switch part.Type {
+		case "input_audio":
+		case "text":
+			var text *string
+			if err := json.Unmarshal(fields["text"], &text); err != nil || text == nil {
+				return fmt.Errorf("expected text string")
+			}
+		case "image_url":
+			if part.ImageURL == nil || part.ImageURL.URL == "" || isEmptyBase64DataURI(part.ImageURL.URL) {
+				return fmt.Errorf("expected non-empty image_url")
+			}
+		case "file":
+			if part.File == nil || (part.File.FileData == "" && part.File.FileID == "") {
+				return fmt.Errorf("expected file_data or file_id")
+			}
+		default:
+			return fmt.Errorf("unsupported content part type %q", part.Type)
+		}
 	}
-	return out, nil
+	return nil
 }
 
 // chatMessageToResponsesItems converts a single ChatMessage into one or more
