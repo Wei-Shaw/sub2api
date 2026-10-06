@@ -133,7 +133,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = []) {
+function mountModal(groups: any[] = [], renderPlatformIcons = false) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
     global: {
@@ -143,7 +143,7 @@ function mountModal(groups: any[] = []) {
         ConfirmDialog: true,
         Select: true,
         Icon: true,
-        PlatformIcon: true,
+        PlatformIcon: !renderPlatformIcons,
         ProxySelector: true,
         ProxyAdBanner: true,
         GroupSelector: GroupSelectorStub,
@@ -195,12 +195,15 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
-  it('places Meta Muse in the first provider row and opens its export instructions', async () => {
-    const wrapper = mountModal()
+  it('places Meta Muse after Grok at the end of the first provider row with its app icon and export instructions', async () => {
+    const wrapper = mountModal([], true)
     const firstRow = wrapper.get('[data-tour="account-form-platform"]')
     const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
     expect(muse).toBeDefined()
-    expect(firstRow.findAll('button')[0].text()).toContain('Meta Muse')
+    expect(firstRow.findAll('button').map(button => button.text())).toEqual([
+      'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok', 'Meta Muse',
+    ])
+    expect(muse.get('img').attributes('src')).toContain('muse.png')
     await muse.trigger('click')
     expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
     expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=1')
