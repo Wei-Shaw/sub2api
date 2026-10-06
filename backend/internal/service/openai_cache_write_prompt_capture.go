@@ -16,7 +16,9 @@ func captureOpenAICacheWritePromptEvidence(req *http.Request) openAICacheWritePr
 	if err != nil || body == nil {
 		return openAICacheWritePromptEvidence{}
 	}
-	defer body.Close()
+	defer func() {
+		_ = body.Close()
+	}()
 	raw, err := io.ReadAll(io.LimitReader(body, openAICacheWriteEvidenceMaxBodyBytes+1))
 	if err != nil || len(raw) > openAICacheWriteEvidenceMaxBodyBytes {
 		return openAICacheWritePromptEvidence{}

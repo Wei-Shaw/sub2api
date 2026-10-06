@@ -322,28 +322,27 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-
 func testInferredCacheWriteCorrection() *service.OpenAICacheWriteUsageCorrection {
 	accountStats := 0.42
 	return &service.OpenAICacheWriteUsageCorrection{
-		RequestID:                       "req-cache-write",
-		APIKeyID:                        77,
-		OriginalInputTokens:             2268,
-		OriginalCacheCreationTokens:     0,
-		CorrectedInputTokens:            68,
-		CorrectedCacheCreationTokens:    2200,
-		CorrectedInputCost:              0.00068,
-		CorrectedCacheCreationCost:      0.0275,
-		CorrectedTotalCost:              0.18058,
-		CorrectedActualCost:             0.036116,
-		CorrectedAccountStatsCost:       &accountStats,
+		RequestID:                    "req-cache-write",
+		APIKeyID:                     77,
+		OriginalInputTokens:          2268,
+		OriginalCacheCreationTokens:  0,
+		CorrectedInputTokens:         68,
+		CorrectedCacheCreationTokens: 2200,
+		CorrectedInputCost:           0.00068,
+		CorrectedCacheCreationCost:   0.0275,
+		CorrectedTotalCost:           0.18058,
+		CorrectedActualCost:          0.036116,
+		CorrectedAccountStatsCost:    &accountStats,
 	}
 }
 
 func expectInferredCacheWriteUsageUpdate(
 	mock sqlmock.Sqlmock,
 	correction *service.OpenAICacheWriteUsageCorrection,
-	result sqlmock.Result,
+	result sql.Result,
 ) {
 	mock.ExpectExec(`(?s)UPDATE usage_logs\s+SET\s+input_tokens = \$3,.*cache_creation_tokens = \$4`).
 		WithArgs(

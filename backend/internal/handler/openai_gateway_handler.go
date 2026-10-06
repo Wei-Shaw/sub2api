@@ -1564,12 +1564,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
 		}
 
-		cacheWriteObservationID := ""
-		if result != nil {
-			// Messages does not yet supply the canonical Responses input evidence.
-			// Skip inferred billing instead of treating session affinity as lineage.
-		}
-		submitMessagesUsage(result, cacheWriteObservationID)
+		// Messages does not yet supply the canonical Responses input evidence.
+		// Skip inferred billing instead of treating session affinity as lineage.
+		submitMessagesUsage(result, "")
 		reqLog.Debug("openai_messages.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -2886,7 +2883,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var cacheWriteRequests sync.Map // turn -> *service.OpenAICacheWriteRequest
 		defer func() {
 			cacheWriteRequests.Range(func(_, value any) bool {
-				h.gatewayService.CancelOpenAICacheWriteObservation(value.(*service.OpenAICacheWriteRequest))
+				if receipt, ok := value.(*service.OpenAICacheWriteRequest); ok {
+					h.gatewayService.CancelOpenAICacheWriteObservation(receipt)
+				}
 				return true
 			})
 		}()
@@ -2903,7 +2902,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
 				if old, ok := cacheWriteRequests.LoadAndDelete(turn); ok {
-					h.gatewayService.CancelOpenAICacheWriteObservation(old.(*service.OpenAICacheWriteRequest))
+					if receipt, ok := old.(*service.OpenAICacheWriteRequest); ok {
+						h.gatewayService.CancelOpenAICacheWriteObservation(receipt)
+					}
 				}
 				cacheWriteModel := strings.TrimSpace(originalModel)
 				if cacheWriteModel == "" {
@@ -3025,7 +3026,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 				var cacheWriteRequest *service.OpenAICacheWriteRequest
 				if receipt, ok := cacheWriteRequests.LoadAndDelete(turn); ok {
-					cacheWriteRequest = receipt.(*service.OpenAICacheWriteRequest)
+					cacheWriteRequest, _ = receipt.(*service.OpenAICacheWriteRequest)
 				}
 				defer h.gatewayService.CancelOpenAICacheWriteObservation(cacheWriteRequest)
 
