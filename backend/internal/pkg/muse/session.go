@@ -179,7 +179,7 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 		return nil, ErrSessionResponse
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+	if response.StatusCode == http.StatusUnauthorized {
 		return nil, ErrSessionExpired
 	}
 	if response.StatusCode != http.StatusOK {
