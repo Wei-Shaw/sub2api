@@ -111,6 +111,21 @@ func TestOpenAIGatewayStrictResponsesPreservesBodyAndSafeHeaders(t *testing.T) {
 	require.Equal(t, 3, result.Usage.OutputTokens)
 }
 
+func TestOpenAIGatewayStrictResponsesPreservesNoneReasoningEffort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte("{\n  \"model\": \"custom/model\",\n  \"reasoning\": {\"effort\": \"none\"},\n  \"reasoning_effort\": \"none\",\n  \"stream\": false\n}\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"id":"resp_strict_none","output":[]}`))),
+	}}
+	c, _ := strictResponsesTestContext("/v1/responses")
+	svc := &OpenAIGatewayService{cfg: strictResponsesTestConfig(), httpUpstream: upstream}
+	_, err := svc.Forward(context.Background(), c, strictResponsesTestAccount("http://strict.example/v1", false), body)
+	require.NoError(t, err)
+	require.Equal(t, body, upstream.lastBody)
+}
+
 func TestOpenAIGatewayStrictResponsesCompactNoAuthPreservesUpstreamError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"custom/model","input":[{"type":"compaction","encrypted_content":"opaque"}],"stream":false}`)
