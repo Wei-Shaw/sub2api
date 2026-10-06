@@ -147,8 +147,12 @@ func TestInferOpenAICacheWriteFromNextHit_RejectsUnsafeLineage(t *testing.T) {
 		{"invalid previous total", func(p *openAICacheWriteObservation, _ *openAICacheWriteObservation) { p.InputTokens = 14000 }},
 		{"invalid next total", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) { n.InputTokens = 17000 }},
 		{"shrinking total input", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) { n.InputTokens = 19000 }},
-		{"stale observation", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) { n.ObservedAt = now.Add(31 * time.Minute) }},
-		{"time reversed", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) { n.ObservedAt = now.Add(-time.Second) }},
+		{"stale observation", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) {
+			n.ObservedAt = now.Add(31 * time.Minute)
+		}},
+		{"time reversed", func(_ *openAICacheWriteObservation, n *openAICacheWriteObservation) {
+			n.ObservedAt = now.Add(-time.Second)
+		}},
 	}
 
 	for _, tc := range tests {

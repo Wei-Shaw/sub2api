@@ -204,7 +204,6 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
 
-
 func TestUpdateSettingsCacheWriteInferenceIsWritableAndKeptWhenOmitted(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyOpenAICacheWriteInferenceEnabled: "false",
