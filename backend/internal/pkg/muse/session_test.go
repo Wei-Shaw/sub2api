@@ -162,3 +162,49 @@ func TestMuseSessionRefreshMaxAgeOverridesExpires(t *testing.T) {
 		t.Fatal("Max-Age did not take precedence over Expires")
 	}
 }
+
+func TestMuseSessionBootstrapObtainsMissingVmLeaseCookie(t *testing.T) {
+	doc := cookieFixture()
+	values, ok := doc["cookies"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture cookie type")
+	}
+	delete(values, "hatch_vml")
+	client := &SessionClient{Do: func(req *http.Request, _ Session) (*http.Response, error) {
+		if _, err := req.Cookie("hatch_vml"); err == nil {
+			t.Fatal("bootstrap must not send an empty VM lease")
+		}
+		headers := http.Header{"Set-Cookie": []string{"hatch_vml=lease-fixture; Path=/; Secure; HttpOnly; Max-Age=7200"}}
+		return &http.Response{StatusCode: 200, Header: headers, Body: io.NopCloser(strings.NewReader(`{"status":"assigned","vm_id":"fixture-vm","vm_state":"RUNNING"}`))}, nil
+	}}
+	refresh, err := client.Refresh(context.Background(), Session{Document: doc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseCookieSession(refresh.Document)
+	if err != nil || parsed.Cookies["hatch_vml"] != "lease-fixture" || !refresh.Check.Authenticated {
+		t.Fatal("bootstrap did not preserve the returned VM lease")
+	}
+}
+
+func TestMuseSessionCookieVariantCleanupKeepsReplacementLease(t *testing.T) {
+	for _, deletionFirst := range []bool{true, false} {
+		client := &SessionClient{Do: func(*http.Request, Session) (*http.Response, error) {
+			cleanup := "hatch_vml=; Path=/; Max-Age=0"
+			replacement := "hatch_vml=lease-fixture; Domain=.muse.ai; Path=/; HttpOnly; Secure; Max-Age=172800"
+			cookies := []string{cleanup, replacement}
+			if !deletionFirst {
+				cookies = []string{replacement, cleanup}
+			}
+			return &http.Response{StatusCode: 200, Header: http.Header{"Set-Cookie": cookies}, Body: io.NopCloser(strings.NewReader(`{"status":"assigned","vm_id":"fixture-vm","vm_state":"RUNNING"}`))}, nil
+		}}
+		refresh, err := client.Refresh(context.Background(), Session{Document: cookieFixture()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := ParseCookieSession(refresh.Document)
+		if err != nil || parsed.Cookies["hatch_vml"] != "lease-fixture" {
+			t.Fatal("host-only cookie cleanup discarded the valid domain lease")
+		}
+	}
+}

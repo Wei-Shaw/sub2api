@@ -71,6 +71,14 @@ The native Go port accepts their `{cookies, expires}` / `cookie_expires` /
 `hatch_sess`, `hatch_gw`, `hatch_vml`, and `hatch_native_auth_device`, using exact
 Muse cookie-domain checks. `tools/muse-cookie-export` provides a Chromium exporter
 that saves local JSON without sending credentials to a remote collector.
+An authenticated consumer-app bootstrap on 2026-10-06 demonstrated that a fresh
+login initially has the three persistent cookies; `GET /api/session` obtains
+`hatch_vml`. Import therefore accepts a missing VM lease without sending an empty
+cookie, while still requiring the three persistent credentials.
+The same capture showed a host-only `hatch_vml` deletion followed by a valid
+`.muse.ai` replacement in one response. Renewal evaluates all returned cookies
+before classifying a session as expired. The native Go client successfully checked
+the live session and obtained a VM lease from the three persistent credentials.
 
 `POST /admin/muse/accounts/:id/authenticate` checks/renews via the fixed
 `https://muse.ai/api/session` endpoint through the configured account proxy.
@@ -90,7 +98,10 @@ until those contracts are established.
 
 Authentication sources and copyright notices are recorded in
 `THIRD_PARTY_NOTICES_MUSE.md`, pinned to the reviewed repository revisions. The
-HTTP flow is verified with scripted transport fixtures; no real session was used.
+HTTP flow is verified with scripted transport fixtures and a live consumer-app
+session on 2026-10-06. A fresh browser side-chat probe completed, while the native
+inference adapter remains unqualified. Captures contain private session material
+and are retained outside the repository; only sanitized contracts belong in tests.
 
 ## Remaining qualification gate
 
