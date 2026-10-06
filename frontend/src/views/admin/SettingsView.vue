@@ -8977,6 +8977,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { isRuLocale, ruInline } from "@/i18n/ruInlineText";
 import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
@@ -9074,6 +9075,7 @@ const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 function localText(zh: string, en: string): string {
+  if (isRuLocale(locale.value)) return ruInline(en);
   return isZhLocale.value ? zh : en;
 }
 

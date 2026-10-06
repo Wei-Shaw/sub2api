@@ -12,7 +12,7 @@ export interface OnboardingOptions {
 }
 
 export function useOnboardingTour(options: OnboardingOptions) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const userStore = useUserStore()
   const onboardingStore = useOnboardingStore()
   const storageVersion = 'v4_interactive' // Bump version for new tour type
@@ -113,6 +113,8 @@ export function useOnboardingTour(options: OnboardingOptions) {
     // 创建新的 driver 实例并存储到 store
     driverInstance = driver({
       showProgress: true,
+      // driver.js по умолчанию пишет «1 of 21»; для русского — «1 из 21»
+      ...(locale.value === 'ru' ? { progressText: '{{current}} из {{total}}' } : {}),
       steps,
       animate: true,
       allowClose: false, // 禁止点击遮罩关闭

@@ -20,6 +20,16 @@ import zhCommon from '../locales/zh/common'
 import zhDashboard from '../locales/zh/dashboard'
 import zhLanding from '../locales/zh/landing'
 import zhMisc from '../locales/zh/misc'
+import ruAdminAccounts from '../locales/ru/admin/accounts'
+import ruAdminChannels from '../locales/ru/admin/channels'
+import ruAdminOps from '../locales/ru/admin/ops'
+import ruAdminOverview from '../locales/ru/admin/overview'
+import ruAdminResources from '../locales/ru/admin/resources'
+import ruAdminSettings from '../locales/ru/admin/settings'
+import ruCommon from '../locales/ru/common'
+import ruDashboard from '../locales/ru/dashboard'
+import ruLanding from '../locales/ru/landing'
+import ruMisc from '../locales/ru/misc'
 
 // locales/{zh,en}/index.ts 与 admin/index.ts 使用对象展开聚合各域模块，
 // 展开模块之间若出现同名顶层键会静默覆盖。本测试将该风险固化为显式失败。
@@ -43,7 +53,8 @@ function collisions(modules: Modules): string[] {
 
 const roots: Record<string, Modules> = {
   zh: { landing: zhLanding, common: zhCommon, dashboard: zhDashboard, misc: zhMisc },
-  en: { landing: enLanding, common: enCommon, dashboard: enDashboard, misc: enMisc }
+  en: { landing: enLanding, common: enCommon, dashboard: enDashboard, misc: enMisc },
+  ru: { landing: ruLanding, common: ruCommon, dashboard: ruDashboard, misc: ruMisc }
 }
 
 const admins: Record<string, Modules> = {
@@ -62,6 +73,14 @@ const admins: Record<string, Modules> = {
     resources: enAdminResources,
     ops: enAdminOps,
     settings: enAdminSettings
+  },
+  ru: {
+    overview: ruAdminOverview,
+    channels: ruAdminChannels,
+    accounts: ruAdminAccounts,
+    resources: ruAdminResources,
+    ops: ruAdminOps,
+    settings: ruAdminSettings
   }
 }
 
