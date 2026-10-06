@@ -950,6 +950,31 @@ export default {
         enabled: '启用订阅到期提醒',
         enabledHint: '开启后，系统会在订阅到期前 7 天、3 天、1 天各发送一次提醒。'
       },
+      emailProvider: {
+        title: '邮件服务商',
+        description: '选择系统发送验证码、通知和订阅提醒时使用的邮件服务。',
+        smtp: 'SMTP',
+        smtpHint: '使用自建或第三方 SMTP 服务发送邮件。',
+        cloudflare: 'Cloudflare',
+        cloudflareDescription: '使用 Cloudflare Email Service 发送邮件。'
+      },
+      cloudflareEmail: {
+        title: 'Cloudflare Email 设置',
+        description: '配置 Cloudflare Email Service 邮件发送服务。',
+        accountId: 'Account ID',
+        accountIdPlaceholder: 'Cloudflare Account ID',
+        accountIdHint: '可在 Cloudflare 控制台地址栏或账户概览中获取。',
+        apiToken: 'API Token',
+        apiTokenPlaceholder: 'Cloudflare API Token',
+        apiTokenHint: '需要具备 Email Service 发送权限。',
+        apiTokenConfiguredPlaceholder: '已配置，留空保持不变',
+        apiTokenConfiguredHint: 'API Token 已配置，留空以保留当前值。',
+        fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: "welcome{'@'}example.com",
+        fromEmailHint: '必须属于已接入 Email Sending 的域名。',
+        fromName: '发件人名称',
+        fromNamePlaceholder: 'Sub2API'
+      },
       smtp: {
         title: 'SMTP 设置',
         description: '配置用于发送验证码的邮件服务',

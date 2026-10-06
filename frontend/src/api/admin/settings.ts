@@ -499,6 +499,11 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  email_provider: 'smtp' | 'cloudflare' | string;
+  cloudflare_api_token_configured: boolean;
+  cloudflare_account_id: string;
+  cloudflare_from_email: string;
+  cloudflare_from_name: string;
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -850,6 +855,11 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  email_provider?: 'smtp' | 'cloudflare' | string;
+  cloudflare_api_token?: string;
+  cloudflare_account_id?: string;
+  cloudflare_from_email?: string;
+  cloudflare_from_name?: string;
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
@@ -1123,6 +1133,11 @@ export async function testSmtpConnection(
  */
 export interface SendTestEmailRequest {
   email: string;
+  provider?: 'smtp' | 'cloudflare' | string;
+  cloudflare_api_token?: string;
+  cloudflare_account_id?: string;
+  cloudflare_from_email?: string;
+  cloudflare_from_name?: string;
   smtp_host: string;
   smtp_port: number;
   smtp_username: string;

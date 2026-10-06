@@ -8497,8 +8497,73 @@
             </div>
           </div>
 
-          <!-- SMTP Settings - Only show when email verification is enabled -->
+          <!-- Email provider selector -->
           <div v-if="form.email_verify_enabled" class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.emailProvider.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.emailProvider.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label
+                  class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors"
+                  :class="
+                    form.email_provider === 'smtp'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800'
+                  "
+                >
+                  <input
+                    v-model="form.email_provider"
+                    type="radio"
+                    value="smtp"
+                    class="mt-1"
+                  />
+                  <span>
+                    <span class="block font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.emailProvider.smtp") }}
+                    </span>
+                    <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.emailProvider.smtpHint") }}
+                    </span>
+                  </span>
+                </label>
+                <label
+                  class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors"
+                  :class="
+                    form.email_provider === 'cloudflare'
+                      ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                      : 'border-gray-200 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800'
+                  "
+                >
+                  <input
+                    v-model="form.email_provider"
+                    type="radio"
+                    value="cloudflare"
+                    class="mt-1"
+                  />
+                  <span>
+                    <span class="block font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.emailProvider.cloudflare") }}
+                    </span>
+                    <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.emailProvider.cloudflareDescription") }}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- SMTP Settings - Only show when email verification is enabled -->
+          <div
+            v-if="form.email_verify_enabled && form.email_provider === 'smtp'"
+            class="card"
+          >
             <div
               class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -8723,6 +8788,97 @@
                       : t("admin.settings.testEmail.sendTestEmail")
                   }}
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cloudflare Email Settings - show when the Cloudflare provider is selected -->
+          <div v-if="form.email_provider === 'cloudflare'" class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.cloudflareEmail.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.cloudflareEmail.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.cloudflareEmail.apiToken") }}
+                  </label>
+                  <input
+                    v-model="form.cloudflare_api_token"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    @input="cloudflareApiTokenManuallyEdited = true"
+                    @keydown="cloudflareApiTokenManuallyEdited = true"
+                    @paste="cloudflareApiTokenManuallyEdited = true"
+                    :placeholder="
+                      form.cloudflare_api_token_configured
+                        ? t('admin.settings.cloudflareEmail.apiTokenConfiguredPlaceholder')
+                        : t('admin.settings.cloudflareEmail.apiTokenPlaceholder')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      form.cloudflare_api_token_configured
+                        ? t("admin.settings.cloudflareEmail.apiTokenConfiguredHint")
+                        : t("admin.settings.cloudflareEmail.apiTokenHint")
+                    }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.cloudflareEmail.accountId") }}
+                  </label>
+                  <input
+                    v-model="form.cloudflare_account_id"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.cloudflareEmail.accountIdPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.cloudflareEmail.accountIdHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.cloudflareEmail.fromEmail") }}
+                  </label>
+                  <input
+                    v-model="form.cloudflare_from_email"
+                    type="email"
+                    class="input"
+                    :placeholder="t('admin.settings.cloudflareEmail.fromEmailPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.cloudflareEmail.fromEmailHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.cloudflareEmail.fromName") }}
+                  </label>
+                  <input
+                    v-model="form.cloudflare_from_name"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.cloudflareEmail.fromNamePlaceholder')"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -9170,6 +9326,7 @@ const saving = ref(false);
 const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
+const cloudflareApiTokenManuallyEdited = ref(false);
 const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
@@ -9721,6 +9878,7 @@ type SettingsForm = Omit<
   channel_monitor_show_quota: boolean;
   channel_monitor_hide_user_ranking: boolean;
   smtp_password: string;
+  cloudflare_api_token: string;
   turnstile_secret_key: string;
   tencent_captcha_app_secret_key: string;
   tencent_captcha_cloud_secret_id: string;
@@ -9864,6 +10022,12 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  email_provider: 'smtp' as 'smtp' | 'cloudflare' | string,
+  cloudflare_api_token: "",
+  cloudflare_api_token_configured: false,
+  cloudflare_account_id: "",
+  cloudflare_from_email: "",
+  cloudflare_from_name: "",
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -11048,6 +11212,10 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+
+    // 邮件发送渠道只认后端已知的两种，避免历史脏值把单选框变成无选中态。
+    form.email_provider =
+      settings.email_provider === "cloudflare" ? "cloudflare" : "smtp";
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11127,6 +11295,8 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    form.cloudflare_api_token = "";
+    cloudflareApiTokenManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.tencent_captcha_app_secret_key = "";
     form.tencent_captcha_cloud_secret_id = "";
@@ -11528,6 +11698,11 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      email_provider: form.email_provider,
+      cloudflare_api_token: form.cloudflare_api_token || undefined,
+      cloudflare_account_id: form.cloudflare_account_id,
+      cloudflare_from_email: form.cloudflare_from_email,
+      cloudflare_from_name: form.cloudflare_from_name,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
@@ -11844,6 +12019,10 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+
+    // 邮件发送渠道只认后端已知的两种，避免历史脏值把单选框变成无选中态。
+    form.email_provider =
+      updated.email_provider === "cloudflare" ? "cloudflare" : "smtp";
     if (updated.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }
@@ -11868,6 +12047,8 @@ async function saveSettings() {
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    form.cloudflare_api_token = "";
+    cloudflareApiTokenManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.aliyun_captcha_access_key_secret = "";
     form.linuxdo_connect_client_secret = "";
@@ -11988,6 +12169,13 @@ async function sendTestEmail() {
       : "";
     const result = await adminAPI.settings.sendTestEmail({
       email: testEmailAddress.value,
+      provider: form.email_provider,
+      cloudflare_api_token: cloudflareApiTokenManuallyEdited.value
+        ? form.cloudflare_api_token
+        : undefined,
+      cloudflare_account_id: form.cloudflare_account_id,
+      cloudflare_from_email: form.cloudflare_from_email,
+      cloudflare_from_name: form.cloudflare_from_name,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

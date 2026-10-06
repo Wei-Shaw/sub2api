@@ -20,6 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudflare/cloudflare-go/v6"
+	"github.com/cloudflare/cloudflare-go/v6/email_sending"
+	"github.com/cloudflare/cloudflare-go/v6/option"
+	"github.com/cloudflare/cloudflare-go/v6/shared"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -28,6 +33,7 @@ var (
 	ErrInvalidVerifyCode     = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
 	ErrVerifyCodeTooFrequent = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
 	ErrVerifyCodeMaxAttempts = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
+	ErrInvalidEmailProvider  = infraerrors.BadRequest("INVALID_EMAIL_PROVIDER", "email provider must be smtp or cloudflare")
 
 	// Password reset errors
 	ErrInvalidResetToken = infraerrors.BadRequest("INVALID_RESET_TOKEN", "invalid or expired password reset token")
@@ -82,6 +88,11 @@ type PasswordResetTokenData struct {
 }
 
 const (
+	EmailProviderSMTP       = "smtp"
+	EmailProviderCloudflare = "cloudflare"
+
+	cloudflareSendTimeout = 20 * time.Second
+
 	verifyCodeTTL         = 15 * time.Minute
 	verifyCodeCooldown    = 1 * time.Minute
 	maxVerifyCodeAttempts = 5
@@ -104,6 +115,14 @@ type SMTPConfig struct {
 	UseTLS   bool
 }
 
+// CloudflareConfig 保存 Cloudflare Email Sending API 配置。
+type CloudflareConfig struct {
+	APIToken  string
+	AccountID string
+	FromEmail string
+	FromName  string
+}
+
 // EmailService 邮件服务
 type EmailService struct {
 	settingRepo              SettingRepository
@@ -116,6 +135,20 @@ func NewEmailService(settingRepo SettingRepository, cache EmailCache) *EmailServ
 	return &EmailService{
 		settingRepo: settingRepo,
 		cache:       cache,
+	}
+}
+
+// NormalizeEmailProvider 归一化邮件发送提供商配置，空值回退到 SMTP。
+func NormalizeEmailProvider(provider string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "":
+		return EmailProviderSMTP, nil
+	case EmailProviderSMTP:
+		return EmailProviderSMTP, nil
+	case EmailProviderCloudflare:
+		return EmailProviderCloudflare, nil
+	default:
+		return "", ErrInvalidEmailProvider
 	}
 }
 
@@ -183,13 +216,60 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 	}, nil
 }
 
-// SendEmail 发送邮件（使用数据库中保存的配置）
+// GetEmailProvider 返回当前配置的邮件发送提供商，未配置时回退到 SMTP。
+func (s *EmailService) GetEmailProvider(ctx context.Context) (string, error) {
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyEmailProvider})
+	if err != nil {
+		return "", fmt.Errorf("get email provider: %w", err)
+	}
+	return NormalizeEmailProvider(settings[SettingKeyEmailProvider])
+}
+
+// GetCloudflareConfig 从数据库获取 Cloudflare Email Sending 配置
+func (s *EmailService) GetCloudflareConfig(ctx context.Context) (*CloudflareConfig, error) {
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyCloudflareAPIToken,
+		SettingKeyCloudflareAccountID,
+		SettingKeyCloudflareFromEmail,
+		SettingKeyCloudflareFromName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get cloudflare settings: %w", err)
+	}
+	config := &CloudflareConfig{
+		APIToken:  strings.TrimSpace(settings[SettingKeyCloudflareAPIToken]),
+		AccountID: strings.TrimSpace(settings[SettingKeyCloudflareAccountID]),
+		FromEmail: strings.TrimSpace(settings[SettingKeyCloudflareFromEmail]),
+		FromName:  strings.TrimSpace(settings[SettingKeyCloudflareFromName]),
+	}
+	if config.APIToken == "" || config.AccountID == "" || config.FromEmail == "" {
+		return nil, ErrEmailNotConfigured
+	}
+	return config, nil
+}
+
+// SendEmail 发送邮件（按数据库配置选择发送通道）
 func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) error {
-	config, err := s.GetSMTPConfig(ctx)
+	provider, err := s.GetEmailProvider(ctx)
 	if err != nil {
 		return err
 	}
-	return s.SendEmailWithConfig(config, to, subject, body)
+	switch provider {
+	case EmailProviderSMTP:
+		config, err := s.GetSMTPConfig(ctx)
+		if err != nil {
+			return err
+		}
+		return s.SendEmailWithConfig(config, to, subject, body)
+	case EmailProviderCloudflare:
+		config, err := s.GetCloudflareConfig(ctx)
+		if err != nil {
+			return err
+		}
+		return s.SendEmailWithCloudflareConfig(ctx, config, to, subject, body)
+	default:
+		return ErrInvalidEmailProvider
+	}
 }
 
 const smtpDialTimeout = 10 * time.Second
@@ -232,6 +312,116 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	// Some SMTP servers return non-standard responses on QUIT
 	_ = client.Quit()
 	return nil
+}
+
+// hasEmailHeaderNewline 防止邮件头注入（CR/LF）
+func hasEmailHeaderNewline(s string) bool {
+	return strings.ContainsAny(s, "\r\n")
+}
+
+// SendEmailWithCloudflareConfig 通过 Cloudflare Email Sending API 发送邮件。
+// opts 用于测试注入 base URL，生产调用留空。
+func (s *EmailService) SendEmailWithCloudflareConfig(ctx context.Context, config *CloudflareConfig, to, subject, body string, opts ...option.RequestOption) error {
+	if config == nil {
+		return ErrEmailNotConfigured
+	}
+	apiToken := strings.TrimSpace(config.APIToken)
+	accountID := strings.TrimSpace(config.AccountID)
+	fromEmail := strings.TrimSpace(config.FromEmail)
+	fromName := strings.TrimSpace(config.FromName)
+	to = strings.TrimSpace(to)
+	subject = strings.TrimSpace(subject)
+	if apiToken == "" || accountID == "" || fromEmail == "" {
+		return ErrEmailNotConfigured
+	}
+	if to == "" || subject == "" {
+		return fmt.Errorf("email recipient and subject are required")
+	}
+	if hasEmailHeaderNewline(to) || hasEmailHeaderNewline(subject) || hasEmailHeaderNewline(fromEmail) || hasEmailHeaderNewline(fromName) {
+		return fmt.Errorf("email fields must not contain line breaks")
+	}
+
+	clientOptions := []option.RequestOption{
+		option.WithAPIToken(apiToken),
+		option.WithRequestTimeout(cloudflareSendTimeout),
+	}
+	clientOptions = append(clientOptions, opts...)
+	client := cloudflare.NewClient(clientOptions...)
+
+	from := email_sending.EmailSendingSendParamsFromUnion(shared.UnionString(fromEmail))
+	if fromName != "" {
+		from = email_sending.EmailSendingSendParamsFromEmailSendingEmailAddressObject{
+			Address: cloudflare.F(fromEmail),
+			Name:    cloudflare.F(fromName),
+		}
+	}
+
+	_, err := client.EmailSending.Send(ctx, email_sending.EmailSendingSendParams{
+		AccountID: cloudflare.F(accountID),
+		From:      cloudflare.F(from),
+		To:        cloudflare.F[email_sending.EmailSendingSendParamsToUnion](shared.UnionString(to)),
+		Subject:   cloudflare.F(subject),
+		HTML:      cloudflare.F(body),
+		Text:      cloudflare.F(htmlToPlainText(body)),
+	})
+	if err != nil {
+		return fmt.Errorf("cloudflare send email: %w", err)
+	}
+	return nil
+}
+
+// htmlToPlainText 从 HTML 邮件正文生成纯文本兜底版本
+func htmlToPlainText(raw string) string {
+	text := raw
+	replacements := []struct {
+		old string
+		new string
+	}{
+		{"<br>", "\n"},
+		{"<br/>", "\n"},
+		{"<br />", "\n"},
+		{"</p>", "\n"},
+		{"</div>", "\n"},
+		{"</h1>", "\n"},
+		{"</h2>", "\n"},
+		{"</h3>", "\n"},
+		{"&nbsp;", " "},
+		{"&amp;", "&"},
+		{"&lt;", "<"},
+		{"&gt;", ">"},
+		{"&quot;", `"`},
+		{"&#39;", "'"},
+	}
+	for _, replacement := range replacements {
+		text = strings.ReplaceAll(text, replacement.old, replacement.new)
+		text = strings.ReplaceAll(text, strings.ToUpper(replacement.old), replacement.new)
+	}
+
+	var builder strings.Builder
+	inTag := false
+	lastSpace := false
+	for _, r := range text {
+		switch r {
+		case '<':
+			inTag = true
+		case '>':
+			inTag = false
+		default:
+			if inTag {
+				continue
+			}
+			if r == '\t' || r == '\r' || r == ' ' {
+				if !lastSpace {
+					_ = builder.WriteByte(' ')
+					lastSpace = true
+				}
+				continue
+			}
+			_, _ = builder.WriteRune(r)
+			lastSpace = r == '\n'
+		}
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 // smtpTestRootCAs 仅供单元测试注入自签 CA，生产环境始终为 nil（走系统信任链）。
