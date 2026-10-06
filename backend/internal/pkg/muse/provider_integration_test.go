@@ -49,9 +49,10 @@ func TestMuseProviderPostgres(t *testing.T) {
 		"231_add_usage_log_requested_reasoning_effort.sql",
 		"231_add_usage_log_native_compaction_v2.sql",
 		"232_add_usage_log_upstream_request_id.sql",
-		"241_muse_runtime.sql",
-		"242_muse_provider.sql",
-		"243_muse_submission_snapshot.sql",
+		"241_add_typesafe_platform.sql",
+		"242_muse_runtime.sql",
+		"243_muse_provider.sql",
+		"244_muse_submission_snapshot.sql",
 	} {
 		ddl, e := migrations.FS.ReadFile(name)
 		require.NoError(t, e)
@@ -63,13 +64,21 @@ func TestMuseProviderPostgres(t *testing.T) {
 		_, e = db.ExecContext(ctx, string(ddl))
 		require.NoError(t, e, name)
 	}
-	ddl, err := migrations.FS.ReadFile("242_muse_provider.sql")
+	ddl, err := migrations.FS.ReadFile("243_muse_provider.sql")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, string(ddl))
 	require.NoError(t, err, "provider migration is rerunnable")
 	owner, e := client.User.Create().SetEmail("muse-fixture@example.invalid").SetPasswordHash("synthetic").SetBalance(10).Save(ctx)
 	require.NoError(t, e)
 	require.EqualValues(t, 1, owner.ID)
+	t.Run("ProviderMigrationPreservesTypeSafeQuotas", func(t *testing.T) {
+		quota, err := client.UserPlatformQuota.Create().SetUserID(owner.ID).SetPlatform(service.PlatformTypeSafe).SetDailyLimitUsd(1).Save(ctx)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, string(ddl))
+		require.NoError(t, err, "Muse registration must preserve existing TypeSafe quota rows")
+		err = client.UserPlatformQuota.DeleteOneID(quota.ID).Exec(ctx)
+		require.NoError(t, err)
+	})
 	_, e = client.User.Create().SetEmail("foreign-fixture@example.invalid").SetPasswordHash("synthetic").SetBalance(10).Save(ctx)
 	require.NoError(t, e)
 	group, e := client.Group.Create().SetName("muse-fixture").SetPlatform(service.PlatformMuse).Save(ctx)

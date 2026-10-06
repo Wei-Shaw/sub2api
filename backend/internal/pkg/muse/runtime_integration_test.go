@@ -324,7 +324,7 @@ func museTestDatabase(t *testing.T) *sql.DB {
 		INSERT INTO api_keys(id,user_id) VALUES (10,1),(11,1),(20,2);
 		INSERT INTO accounts(id,platform) VALUES (100,'muse'),(101,'muse'),(200,'openai');`)
 	require.NoError(t, err)
-	ddl, err := migrations.FS.ReadFile("241_muse_runtime.sql")
+	ddl, err := migrations.FS.ReadFile("242_muse_runtime.sql")
 	require.NoError(t, err)
 	for range 2 {
 		_, err = db.ExecContext(ctx, string(ddl))
@@ -333,7 +333,7 @@ func museTestDatabase(t *testing.T) *sql.DB {
 	// The registered provider migration adds the two settlement admission fields.
 	_, err = db.ExecContext(ctx, `ALTER TABLE muse_turns ADD COLUMN billing_command JSONB;ALTER TABLE muse_turns ADD COLUMN settled_at TIMESTAMPTZ`)
 	require.NoError(t, err)
-	snapshotDDL, err := migrations.FS.ReadFile("243_muse_submission_snapshot.sql")
+	snapshotDDL, err := migrations.FS.ReadFile("244_muse_submission_snapshot.sql")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, string(snapshotDDL))
 	require.NoError(t, err)
