@@ -210,7 +210,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(muse.get('img').attributes('src')).toContain('muse.png')
     await muse.trigger('click')
     expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
-    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=1')
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
   })
   beforeEach(() => {
     authIsSimpleMode.value = true

@@ -121,7 +121,7 @@ describe('Muse session setup', () => {
   it('keeps session data under an advanced option and provides the exporter setup guide', () => {
     const wrapper = mountFields()
     expect(wrapper.get('[data-testid="muse-manual-session"]').attributes('open')).toBeUndefined()
-    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=1')
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
     expect(wrapper.findAll('ol li')).toHaveLength(5)
     expect(wrapper.text()).toContain('chrome://extensions')
     expect(wrapper.text()).toContain('edge://extensions')
