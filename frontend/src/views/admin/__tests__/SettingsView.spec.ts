@@ -197,7 +197,7 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiCacheWriteInference.title": "缓存写入 Token 推断",
-    "admin.settings.openaiCacheWriteInference.description": "默认关闭。开启后，仅对 OpenAI OAuth/SetupToken 的成功请求维护缓存谱系；当上游缺失 cache-write 计数且下一轮缓存读取增长满足严格条件时，输出推断诊断。推断结果仅用于 telemetry，不参与计费、余额或用量落库。",
+    "admin.settings.openaiCacheWriteInference.description": "默认关闭。开启后，当 OpenAI OAuth/SetupToken 上游缺失 cache-write 计数时，系统会在后续缓存命中确认写入量，并回补上一请求的 cache write token 与费用差额。会影响余额、订阅额度、API Key 用量及 usage 记录；无法被后续命中可靠确认的写入不会推断或补扣。",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle": "低倍率优先",
@@ -1395,7 +1395,8 @@ describe("admin SettingsView payment visible method controls", () => {
     );
     expect((toggle.element as HTMLInputElement).checked).toBe(false);
     expect(wrapper.text()).toContain("缓存写入 Token 推断");
-    expect(wrapper.text()).toContain("不参与计费");
+    expect(wrapper.text()).toContain("费用差额");
+    expect(wrapper.text()).toContain("会影响余额");
 
     await toggle.setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
