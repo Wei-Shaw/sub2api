@@ -110,7 +110,7 @@ func TestMuseSessionRefreshRejectsLoginRedirectAndMalformedResponses(t *testing.
 		status int
 		body   string
 		want   error
-	}{{401, `{}`, ErrSessionExpired}, {403, `{}`, ErrSessionExpired}, {302, `{}`, ErrSessionResponse}, {500, `{}`, ErrSessionResponse}, {200, `<html>login</html>`, ErrSessionResponse}, {200, `{"status":"signed_out"}`, ErrSessionResponse}, {200, `{"status":"assigned"}`, ErrSessionResponse}} {
+	}{{401, `{}`, ErrSessionExpired}, {403, `{}`, ErrSessionResponse}, {302, `{}`, ErrSessionResponse}, {500, `{}`, ErrSessionResponse}, {200, `<html>login</html>`, ErrSessionResponse}, {200, `{"status":"signed_out"}`, ErrSessionResponse}, {200, `{"status":"assigned"}`, ErrSessionResponse}} {
 		client := &SessionClient{Do: func(*http.Request, Session) (*http.Response, error) {
 			return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body)), Header: http.Header{}}, nil
 		}}
