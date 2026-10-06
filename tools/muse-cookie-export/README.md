@@ -1,6 +1,6 @@
 # Muse session exporter
 
-This Chromium extension exports the four Muse app HttpOnly cookies used by the
+This Chromium extension exports the Muse app HttpOnly session cookies used by the
 reference muse2api projects. It saves a local JSON credential file and sends
 nothing to another server. Its source and MIT attribution are in
 `THIRD_PARTY_NOTICES_MUSE.md`.
@@ -17,5 +17,7 @@ nothing to another server. Its source and MIT attribution are in
    or send a prompt during this check.
 
 Session authentication does not qualify inference, models, or subscription quota.
+Fresh logins can export the three persistent cookies; `/api/session` obtains the
+VM lease cookie during Sub2API's session check.
 Those remain separate verification requirements. The native inference provider
 continues to be disabled until its app transport is qualified.

@@ -114,6 +114,13 @@ func ParseCookieSession(document map[string]any) (*CookieSession, error) {
 	}
 	for _, name := range SessionCookieNames {
 		value, ok := result.Cookies[name]
+		// /api/session mints the VM lease after a fresh authenticated login.
+		// The three persistent cookies are sufficient to bootstrap that lease.
+		if name == "hatch_vml" && (!ok || value == "") {
+			delete(result.Cookies, name)
+			delete(result.Expires, name)
+			continue
+		}
 		if !ok || value == "" || (&http.Cookie{Name: name, Value: value}).Valid() != nil || strings.ContainsAny(value, ";\r\n\x00") {
 			return nil, ErrSessionCredentials
 		}
@@ -169,7 +176,9 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 	names := append([]string(nil), SessionCookieNames...)
 	sort.Strings(names)
 	for _, name := range names {
-		req.AddCookie(&http.Cookie{Name: name, Value: cookies.Cookies[name]})
+		if value := cookies.Cookies[name]; value != "" {
+			req.AddCookie(&http.Cookie{Name: name, Value: value})
+		}
 	}
 	response, err := c.Do(req, session)
 	if err != nil {
@@ -198,6 +207,8 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 		return nil, ErrSessionResponse
 	}
 	now := time.Now()
+	deleted := map[string]bool{}
+	replaced := map[string]bool{}
 	for _, cookie := range response.Cookies() {
 		if !isSessionCookie(cookie.Name) || (cookie.Domain != "" && !sessionCookieDomain(cookie.Domain)) || (cookie.Path != "" && cookie.Path != "/") {
 			continue
@@ -206,8 +217,10 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 			return nil, ErrSessionResponse
 		}
 		if cookie.MaxAge < 0 || cookie.Value == "" || (cookie.MaxAge == 0 && !cookie.Expires.IsZero() && !cookie.Expires.After(now)) {
-			return nil, ErrSessionExpired
+			deleted[cookie.Name] = true
+			continue
 		}
+		replaced[cookie.Name] = true
 		cookies.Cookies[cookie.Name] = cookie.Value
 		switch {
 		case cookie.MaxAge > 0:
@@ -219,6 +232,13 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 			cookies.Expires[cookie.Name] = cookie.Expires.Unix()
 		default:
 			delete(cookies.Expires, cookie.Name) // A session cookie has unknown expiry.
+		}
+	}
+	for name := range deleted {
+		// The app clears legacy host-only cookies while issuing a replacement
+		// for .muse.ai. Evaluate the complete response before declaring expiry.
+		if !replaced[name] {
+			return nil, ErrSessionExpired
 		}
 	}
 	check := SessionCheck{Authenticated: true, Status: metadata.Status, VMID: metadata.VMID, VMState: metadata.VMState, CheckedAt: now}
