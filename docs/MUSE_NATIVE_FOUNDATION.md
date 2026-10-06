@@ -4,8 +4,10 @@ Tracking: [#7625](https://github.com/Wei-Shaw/sub2api/issues/7625).
 
 This targets the consumer Muse app and its account-owned workspace. It implements
 Sub2API's native account, gateway, runtime, billing, recovery, and operator surfaces.
-Production wiring uses `muse.DisabledProvider`: **there is no working Meta inference
-transport yet**. Synthetic conformance tests are not evidence of Meta compatibility.
+Production wiring uses `muse.DisabledProvider`: **public Sub2API inference is not
+qualified yet**. A native low-level encrypted transport now exists and has live
+model/probe evidence; see [protocol qualification](MUSE_NATIVE_PROTOCOL.md).
+Synthetic conformance tests are not evidence of Meta compatibility.
 
 ## Implemented contracts
 
@@ -100,12 +102,14 @@ Authentication sources and copyright notices are recorded in
 `THIRD_PARTY_NOTICES_MUSE.md`, pinned to the reviewed repository revisions. The
 HTTP flow is verified with scripted transport fixtures and a live consumer-app
 session on 2026-10-06. A fresh browser side-chat probe completed, while the native
-inference adapter remains unqualified. Captures contain private session material
+inference adapter remains unqualified. Native Go also completed the encrypted
+handshake, read the actual model catalog, submitted fresh synthetic side chats,
+and reconciled completed output/task state without resubmitting. Captures contain private session material
 and are retained outside the repository; only sanitized contracts belong in tests.
 
 ## Remaining qualification gate
 
-Implement `muse.Provider` only from a dedicated authenticated consumer-app session
+Implement `muse.Provider` only from an authorized authenticated consumer-app session
 and sanitized captures. Do not derive a chat endpoint from a warmed WebSocket/tab,
 DOM output, Muse Code, Meta Model API, or another product's protocol. Qualification
 must establish the following before replacing production `DisabledProvider`:
@@ -119,7 +123,7 @@ must establish the following before replacing production `DisabledProvider`:
 | Cancellation/recovery | Confirmed cancellation, lost acceptance acknowledgement, process loss, and reconciliation of the same task without replay |
 | Renewal | Real renewal contract, stale credential rejection, concurrent alias/replica behavior and proxy/session affinity |
 | App safeguards | Observed approval/Sentinel and any VM trust mode; never auto-approve actions or assume confidential VM is universal |
-| Live acceptance | One subscribed account, correct public JSON/SSE, observable completion, one usage row and one charge after fault injection |
+| Live acceptance | Current authorized Free account, correct public JSON/SSE, observable completion, one usage row and one charge after fault injection; paid access requires separate evidence |
 
 Enabling an account in the UI cannot bypass this code-level qualification gate.
 Successful local tests or CI do not establish live app compatibility.
