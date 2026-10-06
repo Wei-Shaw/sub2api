@@ -26,7 +26,7 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <MuseSessionFields v-if="account.platform === 'muse'" v-model:owner-id="museOwnerId" v-model:session-json="museSessionJson" replacement />
+      <MuseSessionFields v-if="account.platform === 'muse'" :account-id="account.id" v-model:owner-id="museOwnerId" v-model:session-json="museSessionJson" replacement />
       <MuseStatusPanel v-if="account.platform === 'muse'" :account-id="account.id" />
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
