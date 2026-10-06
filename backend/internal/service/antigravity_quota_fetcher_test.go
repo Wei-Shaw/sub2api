@@ -647,7 +647,7 @@ func TestFetchQuota_Fails_WhenBothEndpointsFail(t *testing.T) {
 	}, "")
 	require.Error(t, err)
 	require.Nil(t, res)
-	require.Contains(t, err.Error(), "fetch available models failed")
+	require.Contains(t, err.Error(), "antigravity quota fetch failed")
 }
 
 // ---------------------------------------------------------------------------
@@ -843,4 +843,29 @@ func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
 	// FiveHour fallback should pick gemini-3.8-flash (15% utilization) over claude-sonnet-4-6 (20% utilization)
 	require.NotNil(t, info.FiveHour)
 	require.InDelta(t, 15.0, info.FiveHour.Utilization, 0.01)
+}
+
+func TestHasUsableQuotaSummary(t *testing.T) {
+	require.False(t, hasUsableQuotaSummary(nil))
+	require.False(t, hasUsableQuotaSummary(&antigravity.RetrieveUserQuotaSummaryResponse{}))
+	require.True(t, hasUsableQuotaSummary(&antigravity.RetrieveUserQuotaSummaryResponse{
+		Groups: []antigravity.QuotaSummaryGroup{{Buckets: []antigravity.QuotaSummaryBucket{{BucketID: "gemini-3.8-flash"}}}},
+	}))
+}
+
+func TestNewSafeAntigravityFetchErrorRedactsResponseBodies(t *testing.T) {
+	err := newSafeAntigravityFetchError(
+		errors.New(`fetchAvailableModels 失败 (HTTP 500): {"error":{"message":"access_token=secret-token"}}`),
+		errors.New(`retrieveUserQuotaSummary 失败 (HTTP 502): bearer ya29.secret-token`),
+	)
+	require.NotContains(t, err.Error(), "secret-token")
+	require.NotContains(t, err.Error(), "ya29.secret-token")
+	require.Contains(t, err.Error(), "HTTP 500")
+	require.Contains(t, err.Error(), "HTTP 502")
+}
+
+func TestQuotaUtilizationClamps(t *testing.T) {
+	require.Equal(t, 0, quotaUtilization(1.5))
+	require.Equal(t, 100, quotaUtilization(-0.5))
+	require.Equal(t, 25, quotaUtilization(0.75))
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -1290,8 +1291,9 @@ func antigravityCacheTTL(info *UsageInfo) time.Duration {
 // buildAntigravityDegradedUsage 从 FetchQuota 错误构建降级 UsageInfo
 func buildAntigravityDegradedUsage(err error) *UsageInfo {
 	now := time.Now()
-	errMsg := fmt.Sprintf("usage API error: %v", err)
-	slog.Warn("antigravity usage fetch failed, returning degraded response", "error", err)
+	safeError := logredact.RedactText(err.Error())
+	errMsg := fmt.Sprintf("usage API error: %s", safeError)
+	slog.Warn("antigravity usage fetch failed, returning degraded response", "error", safeError)
 
 	info := &UsageInfo{
 		UpdatedAt: &now,
@@ -1300,7 +1302,7 @@ func buildAntigravityDegradedUsage(err error) *UsageInfo {
 
 	// 从错误信息推断 error_code 和状态标记
 	// 错误格式来自 antigravity/client.go: "fetchAvailableModels 失败 (HTTP %d): ..."
-	errStr := err.Error()
+	errStr := safeError
 	switch {
 	case strings.Contains(errStr, "HTTP 401") ||
 		strings.Contains(errStr, "UNAUTHENTICATED") ||

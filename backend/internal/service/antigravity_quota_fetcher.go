@@ -66,20 +66,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		// 403 Forbidden: 明确禁止访问，立即返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
 		if errors.As(modelsErr, &forbiddenErr) {
-			now := time.Now()
-			fbType := classifyForbiddenType(forbiddenErr.Body)
-			return &QuotaResult{
-				UsageInfo: &UsageInfo{
-					UpdatedAt:       &now,
-					IsForbidden:     true,
-					ForbiddenReason: forbiddenErr.Body,
-					ForbiddenType:   fbType,
-					ValidationURL:   extractValidationURL(forbiddenErr.Body),
-					NeedsVerify:     fbType == forbiddenTypeValidation,
-					IsBanned:        fbType == forbiddenTypeViolation,
-					ErrorCode:       errorCodeForbidden,
-				},
-			}, nil
+			return buildAntigravityForbiddenResult(forbiddenErr.Body), nil
 		}
 	}
 
@@ -95,14 +82,19 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		)
 	}
 
+	if summaryErr != nil {
+		var forbiddenErr *antigravity.ForbiddenError
+		if errors.As(summaryErr, &forbiddenErr) {
+			return buildAntigravityForbiddenResult(forbiddenErr.Body), nil
+		}
+	}
 	// 降级与容错策略：
 	// 1. 若两者均失败：返回错误（优先返回 modelsErr，附带脱敏后的 summaryErr）
-	if modelsErr != nil && quotaSummaryResp == nil {
+	if modelsErr != nil && !hasUsableQuotaSummary(quotaSummaryResp) {
 		if summaryErr != nil {
-			return nil, fmt.Errorf("fetch available models failed: %w (quota summary also failed: %s)",
-				modelsErr, logredact.RedactText(summaryErr.Error()))
+			return nil, newSafeAntigravityFetchError(modelsErr, summaryErr)
 		}
-		return nil, modelsErr
+		return nil, newSafeAntigravityFetchError(modelsErr)
 	}
 
 	// 2. 若 modelsErr != nil 但 quotaSummaryResp != nil：记录警告并使用 quotaSummary 进行软降级
@@ -120,6 +112,9 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	}
 
 	// 转换为 UsageInfo
+	if quotaSummaryResp != nil && !hasUsableQuotaSummary(quotaSummaryResp) {
+		quotaSummaryResp = nil
+	}
 	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp, quotaSummaryResp)
 
 	return &QuotaResult{
@@ -145,7 +140,38 @@ func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, cli
 	return raw, normalized, loadResp
 }
 
+// quota summary 必须包含至少一个 bucket 才能作为可用的降级数据。
 // normalizeTier 将原始 tier 字符串归一化为 FREE/PRO/ULTRA/UNKNOWN
+func hasUsableQuotaSummary(summary *antigravity.RetrieveUserQuotaSummaryResponse) bool {
+	if summary == nil {
+		return false
+	}
+	if len(summary.Buckets) > 0 {
+		return true
+	}
+	for _, group := range summary.Groups {
+		if len(group.Buckets) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func newSafeAntigravityFetchError(primary error, secondary ...error) error {
+	parts := []string{"antigravity quota fetch failed"}
+	for _, err := range append([]error{primary}, secondary...) {
+		if err == nil {
+			continue
+		}
+		message := logredact.RedactText(err.Error())
+		if match := antigravityHTTPStatusPattern.FindStringSubmatch(message); len(match) == 2 {
+			parts = append(parts, "HTTP "+match[1])
+		} else {
+			parts = append(parts, message)
+		}
+	}
+	return errors.New(strings.Join(parts, "; "))
+}
 func normalizeTier(raw string) string {
 	if raw == "" {
 		return ""
@@ -193,7 +219,7 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 			}
 
 			// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比
-			utilization := int(math.Round((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100))
+			utilization := quotaUtilization(modelInfo.QuotaInfo.RemainingFraction)
 
 			info.AntigravityQuota[modelName] = &AntigravityModelQuota{
 				Utilization: utilization,
@@ -227,12 +253,8 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 			if _, exists := info.AntigravityQuota[b.BucketID]; exists {
 				return
 			}
-			utilization := int(math.Round((1.0 - b.RemainingFraction) * 100))
-			if utilization < 0 {
-				utilization = 0
-			} else if utilization > 100 {
-				utilization = 100
-			}
+			utilization := quotaUtilization(b.RemainingFraction)
+
 			info.AntigravityQuota[b.BucketID] = &AntigravityModelQuota{
 				Utilization: utilization,
 				ResetTime:   b.ResetTime,
@@ -313,6 +335,17 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 	return info
 }
 
+func quotaUtilization(remainingFraction float64) int {
+	utilization := int(math.Round((1.0 - remainingFraction) * 100))
+	if utilization < 0 {
+		return 0
+	}
+	if utilization > 100 {
+		return 100
+	}
+	return utilization
+}
+
 // antigravityModelBucketPrefixes 为 Antigravity 模型 ID 的已知前缀，用于区分模型桶与汇总桶
 var antigravityModelBucketPrefixes = []string{"gemini-", "claude-", "gpt-"}
 
@@ -360,6 +393,25 @@ func classifyForbiddenType(body string) string {
 
 // urlPattern 用于从 403 响应体中提取 URL（降级方案）
 var urlPattern = regexp.MustCompile(`https://[^\s"'\\]+`)
+
+var antigravityHTTPStatusPattern = regexp.MustCompile(`(?i)HTTP (\d{3})`)
+
+func buildAntigravityForbiddenResult(body string) *QuotaResult {
+	now := time.Now()
+	fbType := classifyForbiddenType(body)
+	return &QuotaResult{
+		UsageInfo: &UsageInfo{
+			UpdatedAt:       &now,
+			IsForbidden:     true,
+			ForbiddenReason: body,
+			ForbiddenType:   fbType,
+			ValidationURL:   extractValidationURL(body),
+			NeedsVerify:     fbType == forbiddenTypeValidation,
+			IsBanned:        fbType == forbiddenTypeViolation,
+			ErrorCode:       errorCodeForbidden,
+		},
+	}
+}
 
 // extractValidationURL 从 403 响应 JSON 中提取验证/申诉链接
 func extractValidationURL(body string) string {
