@@ -1197,19 +1197,30 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			return
 		}
 	}
+	// 积分额度可用的 OpenAI 账号：套餐窗口耗尽后上游允许继续消耗 Codex credits
+	// 提供服务（响应头 x-codex-credits-*，或本地 codex_credits_snapshot 快照）。
+	// 此类账号的 429 只代表本次请求被瞬时限流，若按"窗口耗尽"冻结到窗口重置
+	// （数天），积分可用期内账号将完全不可调度，与上游实际能力矛盾。跳过窗口级
+	// 冻结，落回可配置的秒级 429 兜底冷却，等上游真实状态决定。
+	codexCreditsAvailable := account.Platform == PlatformOpenAI && openAICodexCreditsAvailable(account, headers, time.Now())
+
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		notifyOpenAIAutoReset(account.ID)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
-			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
-			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
-				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+			if codexCreditsAvailable {
+				slog.Info("openai_429_credits_available_skip_window_freeze", "account_id", account.ID, "window_reset_at", *resetAt)
+			} else {
+				s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
+				if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+					return
+				}
+				slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
 				return
 			}
-			slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
-			return
 		}
 	}
 
@@ -1242,8 +1253,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	if resetTimestamp == "" {
 		switch account.Platform {
 		case PlatformOpenAI:
-			// 尝试解析 OpenAI 的 usage_limit_reached 错误
-			if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
+			// 尝试解析 OpenAI 的 usage_limit_reached 错误。
+			// 积分可用时不按窗口级重置冻结（见 codexCreditsAvailable 注释）。
+			if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil && !codexCreditsAvailable {
 				resetTime := time.Unix(*resetAt, 0)
 				s.notifyAccountSchedulingBlocked(account, resetTime, "429")
 				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
