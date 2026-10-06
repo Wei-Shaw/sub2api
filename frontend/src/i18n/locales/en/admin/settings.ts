@@ -1264,7 +1264,7 @@ export default {
       },
       openaiCacheWriteInference: {
         title: 'Cache-write token inference',
-        description: 'Disabled by default. When enabled, successful OpenAI OAuth/SetupToken turns are tracked and a missing cache-write count may be inferred from a safe subsequent cache-read increase. Inferred values are telemetry only and never affect billing, balances, or persisted usage.'
+        description: 'Disabled by default. When enabled, a later safe cache hit may confirm cache-write tokens omitted by OpenAI OAuth/SetupToken usage. The previous request is then reconciled and charged only for the cache-write pricing delta. This affects balances, subscription/API-key usage, and the persisted usage row; unconfirmed writes are not inferred or charged.'
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
