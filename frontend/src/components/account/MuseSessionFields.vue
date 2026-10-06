@@ -4,7 +4,8 @@
     <div class="space-y-3 rounded-lg bg-gray-50 p-4 text-sm dark:bg-dark-700" data-testid="muse-export-guide">
       <p class="font-medium">{{ t('admin.accounts.muse.exportTitle') }}</p>
       <p class="input-hint">{{ t('admin.accounts.muse.exportDesktop') }}</p>
-      <a href="/muse-session-exporter.zip" download class="btn btn-secondary btn-sm inline-flex">
+      <!-- Increment the download version when rebuilding the exporter ZIP. -->
+      <a href="/muse-session-exporter.zip?v=1" download class="btn btn-secondary btn-sm inline-flex">
         {{ t('admin.accounts.muse.downloadExporter') }}
       </a>
       <ol class="list-decimal space-y-2 pl-5 text-gray-600 dark:text-gray-300">
