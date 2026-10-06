@@ -140,12 +140,41 @@ func newCacheWriteCorrectionFixture(t *testing.T) *cacheWriteCorrectionFixture {
 		Email:   "cache-write-correction-" + uuid.NewString() + "@example.com",
 		Balance: 100,
 	})
-	key := mustCreateApiKey(t, client, &service.APIKey{
+	var key *service.APIKey
+	var account *service.Account
+	t.Cleanup(func() {
+		// Apply owns its transaction, so testEntClient cannot roll these rows
+		// back. Remove them before subsequent suites read global dashboard totals.
+		cleanup := func(query string, args ...any) {
+			if _, err := integrationDB.ExecContext(context.Background(), query, args...); err != nil {
+				t.Errorf("clean up cache write correction fixture: %s: %v", query, err)
+			}
+		}
+		if key != nil {
+			// Delete usage before its FK parents. These rows have no group, so
+			// the group-rollup invalidation triggers leave shared watermarks alone.
+			cleanup("DELETE FROM usage_logs WHERE api_key_id = $1", key.ID)
+			cleanup("DELETE FROM usage_billing_dedup WHERE api_key_id = $1", key.ID)
+			cleanup("DELETE FROM usage_billing_dedup_archive WHERE api_key_id = $1", key.ID)
+			cleanup("DELETE FROM api_keys WHERE id = $1", key.ID)
+		}
+		if account != nil {
+			cleanup("DELETE FROM accounts WHERE id = $1", account.ID)
+			cleanup("DELETE FROM scheduler_outbox WHERE account_id = $1", account.ID)
+		}
+		cleanup("DELETE FROM users WHERE id = $1", user.ID)
+		if key != nil {
+			// Key status changes and hard deletion both enqueue invalidations;
+			// clear them only after all trigger-producing deletes have finished.
+			cleanup("DELETE FROM auth_cache_invalidation_outbox WHERE cache_key = encode(sha256(convert_to($1, 'UTF8')), 'hex')", key.Key)
+		}
+	})
+	key = mustCreateApiKey(t, client, &service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-cache-write-correction-" + uuid.NewString(),
 		Quota:  3.1,
 	})
-	account := mustCreateAccount(t, client, &service.Account{
+	account = mustCreateAccount(t, client, &service.Account{
 		Name:     "cache-write-correction-" + uuid.NewString(),
 		Platform: service.PlatformOpenAI,
 		Type:     service.AccountTypeAPIKey,

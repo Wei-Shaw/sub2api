@@ -5105,6 +5105,12 @@
                   <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.openaiCacheWriteInference.description") }}
                   </p>
+                  <p
+                    class="mt-2 text-xs text-amber-700 dark:text-amber-400"
+                    data-testid="openai-cache-write-inference-warning"
+                  >
+                    {{ t("admin.settings.openaiCacheWriteInference.warning") }}
+                  </p>
                 </div>
                 <Toggle
                   v-model="form.openai_cache_write_inference_enabled"

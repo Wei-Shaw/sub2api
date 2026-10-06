@@ -1264,7 +1264,8 @@ export default {
       },
       openaiCacheWriteInference: {
         title: 'Cache-write token inference',
-        description: 'Off by default. Estimates cache writes only for OpenAI Responses requests with non-overlapping order and verifiable context evidence, then adjusts the previous request’s token buckets and price difference. Estimates are not official write counts and affect balances, subscriptions, API-key usage and usage records. Missing evidence, unsupported conversions, restarts and missing cross-instance history are skipped.'
+        description: 'Off by default. Estimates cache writes for OpenAI Responses requests meeting local ordering and context-evidence requirements, then adjusts the previous request’s token buckets and price difference. Estimates are not official write counts and affect balances, subscriptions, API-key usage and usage records.',
+        warning: 'Experimental estimates, not validated production-safe billing. Local evidence cannot prove who wrote the cache: other replicas or external shared-cache writers can cause incorrect charges, not just missed charges. A single instance cannot rule out external writers; evaluate only in a controlled single-instance setup. Disable synchronization is process-local. Other replicas use a 60-second settings cache, so disabling may be delayed and brief off/on changes may be missed.'
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',

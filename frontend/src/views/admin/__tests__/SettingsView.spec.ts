@@ -197,7 +197,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiCacheWriteInference.title": "缓存写入 Token 推断",
-    "admin.settings.openaiCacheWriteInference.description": "默认关闭。开启后，仅对具有非重叠顺序和可核验上下文证据的 OpenAI Responses 请求估算缓存写入，并回补上一请求的 token 分类与费用差额。估算不等于官方写入量，会影响余额、订阅额度、API Key 用量及 usage 记录；证据不足、复杂转换、重启或跨实例缺失记录时不会补扣。",
+    "admin.settings.openaiCacheWriteInference.description": "默认关闭。开启后，对符合本地顺序和上下文证据要求的 OpenAI Responses 请求估算缓存写入，并回补上一请求的 token 分类与费用差额。估算不等于官方写入量，会影响余额、订阅额度、API Key 用量及 usage 记录。",
+    "admin.settings.openaiCacheWriteInference.warning": "实验性估算，不能视为已验证的生产安全计费。本地证据无法证明实际缓存写入者：多实例或共享缓存的外部写入可能导致错扣，不只是漏算；单实例也无法排除外部写入。仅建议在受控单实例场景评估。关闭的同步保证仅限当前进程；其他副本设置使用 60 秒缓存，关闭可能延迟生效，也可能漏掉短暂关开。",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle": "低倍率优先",
@@ -1397,6 +1398,11 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).toContain("缓存写入 Token 推断");
     expect(wrapper.text()).toContain("费用差额");
     expect(wrapper.text()).toContain("会影响余额");
+    const warning = wrapper.get('[data-testid="openai-cache-write-inference-warning"]');
+    expect(warning.text()).toContain("可能导致错扣，不只是漏算");
+    expect(warning.text()).toContain("单实例也无法排除外部写入");
+    expect(warning.text()).toContain("60 秒缓存");
+    expect(warning.text()).toContain("不能视为已验证的生产安全计费");
 
     await toggle.setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
