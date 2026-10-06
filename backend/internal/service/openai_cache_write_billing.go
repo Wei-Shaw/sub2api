@@ -36,13 +36,6 @@ type OpenAICacheWriteUsageCorrection struct {
 	CorrectedAccountStatsCost  *float64
 }
 
-// openAICacheWriteUsageReconciler is optional so the broad UsageLogRepository
-// interface and its many test doubles do not need a new method. Production's
-// concrete usage-log repository implements it.
-type openAICacheWriteUsageReconciler interface {
-	ReconcileInferredCacheWrite(ctx context.Context, correction *OpenAICacheWriteUsageCorrection) (ready bool, err error)
-}
-
 type openAICacheWriteBillingSnapshot struct {
 	ObservedAt    time.Time
 	ObservationID string
@@ -200,7 +193,7 @@ func (s *OpenAIGatewayService) prepareOpenAICacheWriteBillingSnapshot(
 		)
 		if standardErr != nil || standardProbeCost == nil {
 			return nil
-		}
+	}
 		probeCost.ActualCost = standardProbeCost.ActualCost
 	}
 
@@ -225,7 +218,7 @@ func (s *OpenAIGatewayService) prepareOpenAICacheWriteBillingSnapshot(
 		if probeLog.AccountStatsCost != nil {
 			delta := *probeLog.AccountStatsCost - *usageLog.AccountStatsCost
 			deltaAccountStatsCost = &delta
-		}
+	}
 	}
 
 	return &openAICacheWriteBillingSnapshot{
@@ -312,63 +305,7 @@ func (s *OpenAIGatewayService) reconcileInferredCacheWrite(
 		correctedAccountStatsCost = &value
 	}
 
-	reconciler, ok := s.usageLogRepo.(openAICacheWriteUsageReconciler)
-	if !ok || reconciler == nil {
-		return errors.New("usage log repository does not support cache write reconciliation")
-	}
-
-	// Apply the money delta first using a separate deterministic request ID. It
-	// is therefore idempotent and never conflicts with the original request's
-	// billing fingerprint.
-	if deltaTotal > 0 || quantizedDeltaActual > 0 {
-		if s.usageBillingRepo == nil {
-			return errors.New("usage billing repository is required for inferred cache write billing")
-		}
-		adjustmentLog := &UsageLog{
-			Model:               snapshot.Model,
-			BillingType:         snapshot.BillingType,
-			CacheCreationTokens: writeTokens,
-			ServiceTier:         cloneOptionalString(snapshot.ServiceTier),
-			ReasoningEffort:     cloneOptionalString(snapshot.ReasoningEffort),
-		}
-		if snapshot.Subscription != nil {
-			adjustmentLog.SubscriptionID = &snapshot.Subscription.ID
-		}
-		deltaCost := &CostBreakdown{
-			InputCost:         snapshot.DeltaInputCostPerToken * float64(writeTokens),
-			CacheCreationCost: snapshot.DeltaCacheCreationCostPerToken * float64(writeTokens),
-			TotalCost:         deltaTotal,
-			ActualCost:        quantizedDeltaActual,
-			BillingMode:       string(BillingModeToken),
-		}
-		adjustmentID := openAICacheWriteAdjustmentRequestID(snapshot.RequestID, snapshot.APIKey.ID)
-		applied, err := applyUsageBilling(ctx, adjustmentID, adjustmentLog, &postUsageBillingParams{
-			Cost:                       deltaCost,
-			User:                       snapshot.User,
-			APIKey:                     snapshot.APIKey,
-			Account:                    snapshot.Account,
-			Subscription:               snapshot.Subscription,
-			RequestPayloadHash:         "cache-write-reconcile:" + strings.TrimSpace(snapshot.RequestPayloadHash),
-			IsSubscriptionBill:         snapshot.IsSubscriptionBill,
-			AccountRateMultiplier:      snapshot.AccountRateMultiplier,
-			APIKeyService:              snapshot.APIKeyService,
-			Platform:                   snapshot.Platform,
-			SimpleModeKeyRateLimitOnly: snapshot.SimpleModeKeyRateLimitOnly,
-		}, s.billingDeps(), s.usageBillingRepo)
-		if err != nil {
-			return err
-		}
-		logger.L().With(
-			zap.String("component", "service.openai_gateway"),
-			zap.String("adjustment_request_id", adjustmentID),
-			zap.Bool("billing_applied", applied),
-			zap.Int("inferred_cache_write_tokens", writeTokens),
-			zap.Float64("delta_total_cost", deltaTotal),
-			zap.Float64("delta_actual_cost", quantizedDeltaActual),
-		).Debug("openai.cache_write_billing_adjusted")
-	}
-
-	readyLog, err := reconciler.ReconcileInferredCacheWrite(ctx, &OpenAICacheWriteUsageCorrection{
+	correction := &OpenAICacheWriteUsageCorrection{
 		RequestID:                       snapshot.RequestID,
 		APIKeyID:                        snapshot.APIKey.ID,
 		OriginalInputTokens:             snapshot.OriginalInputTokens,
@@ -380,13 +317,57 @@ func (s *OpenAIGatewayService) reconcileInferredCacheWrite(
 		CorrectedTotalCost:              correctedTotalCost,
 		CorrectedActualCost:             correctedActualCost,
 		CorrectedAccountStatsCost:       correctedAccountStatsCost,
-	})
+	}
+
+	// The delta bill and the absolute usage-row rewrite are committed in the
+	// same UsageBillingRepository transaction. A process crash can therefore
+	// never leave money and usage buckets on opposite sides of the correction.
+	if s.usageBillingRepo == nil {
+		return errors.New("usage billing repository is required for inferred cache write billing")
+	}
+	adjustmentLog := &UsageLog{
+			Model:               snapshot.Model,
+			BillingType:         snapshot.BillingType,
+			CacheCreationTokens: writeTokens,
+			ServiceTier:         cloneOptionalString(snapshot.ServiceTier),
+			ReasoningEffort:     cloneOptionalString(snapshot.ReasoningEffort),
+	}
+	if snapshot.Subscription != nil {
+		adjustmentLog.SubscriptionID = &snapshot.Subscription.ID
+	}
+	deltaCost := &CostBreakdown{
+			InputCost:         snapshot.DeltaInputCostPerToken * float64(writeTokens),
+			CacheCreationCost: snapshot.DeltaCacheCreationCostPerToken * float64(writeTokens),
+			TotalCost:         deltaTotal,
+			ActualCost:        quantizedDeltaActual,
+			BillingMode:       string(BillingModeToken),
+	}
+	adjustmentID := openAICacheWriteAdjustmentRequestID(snapshot.RequestID, snapshot.APIKey.ID)
+	applied, err := applyUsageBilling(ctx, adjustmentID, adjustmentLog, &postUsageBillingParams{
+		Cost:                       deltaCost,
+		CacheWriteCorrection:       correction,
+		User:                       snapshot.User,
+		APIKey:                     snapshot.APIKey,
+		Account:                    snapshot.Account,
+		Subscription:               snapshot.Subscription,
+		RequestPayloadHash:         "cache-write-reconcile:" + strings.TrimSpace(snapshot.RequestPayloadHash),
+		IsSubscriptionBill:         snapshot.IsSubscriptionBill,
+		AccountRateMultiplier:      snapshot.AccountRateMultiplier,
+		APIKeyService:              snapshot.APIKeyService,
+		Platform:                   snapshot.Platform,
+		SimpleModeKeyRateLimitOnly: snapshot.SimpleModeKeyRateLimitOnly,
+	}, s.billingDeps(), s.usageBillingRepo)
 	if err != nil {
 		return err
 	}
-	if !readyLog {
-		return errors.New("original usage log is not available for cache write reconciliation yet")
-	}
+	logger.L().With(
+		zap.String("component", "service.openai_gateway"),
+		zap.String("adjustment_request_id", adjustmentID),
+		zap.Bool("billing_applied", applied),
+		zap.Int("inferred_cache_write_tokens", writeTokens),
+		zap.Float64("delta_total_cost", deltaTotal),
+		zap.Float64("delta_actual_cost", quantizedDeltaActual),
+	).Debug("openai.cache_write_billing_adjusted")
 	return nil
 }
 
@@ -400,7 +381,7 @@ func (s *OpenAIGatewayService) processReadyOpenAICacheWriteReconciliations(ctx c
 		key, ready := s.openaiCacheWriteInferenceTracker.claimReadyReconciliation()
 		if ready == nil {
 			return
-		}
+	}
 		err := s.reconcileInferredCacheWrite(ctx, ready)
 		s.openaiCacheWriteInferenceTracker.finishReadyReconciliation(key, err == nil)
 		if err != nil {
@@ -410,6 +391,6 @@ func (s *OpenAIGatewayService) processReadyOpenAICacheWriteReconciliations(ctx c
 				zap.Error(err),
 			).Warn("openai.cache_write_billing_reconcile_failed")
 			return
-		}
+	}
 	}
 }
