@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -37,7 +38,7 @@ func (w *openAIChatFailingWriter) Write(p []byte) (int, error) {
 func TestForwardAsChatCompletions_ResponsesSupportedFallsBackWhenStructuredInputRequiresString(t *testing.T) {
 	for name, rejection := range map[string]string{
 		"OpenAI invalid type": `{"error":{"type":"invalid_request_error","code":"invalid_type","param":"input","message":"Invalid type for 'input': expected a string, but got an array instead."}}`,
-		"vLLM validation":     `{"error":{"message":"240 validation errors: ... 'loc':('body','input','str'), 'msg':'Input should be a valid string', 'input':[{'role':'user','content':'hi'}, {'role':'assistant','content':[{'type':'output_text'}]}, ResponseFunctionToolCall(type='function_call'), {'type':'function_call_output'}]"}}`,
+		"vLLM validation":     `{"error":{"message":"1 validation error: [{'type':'string_type', 'loc':('body','input','str'), 'msg':'Input should be a valid string', 'input':[{'role':'user','content':'hi'}, {'role':'assistant','content':[{'type':'output_text'}]}, ResponseFunctionToolCall(type='function_call'), {'type':'function_call_output'}]}]"}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
@@ -100,6 +101,7 @@ func TestForwardAsChatCompletions_ResponsesSupportedFallsBackWhenStructuredInput
 func TestConvertedResponsesInputStringRejectionIsNarrow(t *testing.T) {
 	matching := []byte(`{"error":{"code":"invalid_type","param":"input","message":"Expected a string for input, but got an object instead."}}`)
 	require.True(t, isConvertedResponsesInputStringRejection(http.StatusBadRequest, matching))
+	require.True(t, isConvertedResponsesInputStringRejection(http.StatusBadRequest, []byte(`{"error":{"type":"invalid_type","param":"input","message":"Invalid type for 'input': expected a string, but got an array instead."}}`)))
 
 	for _, tc := range []struct {
 		name   string
@@ -121,6 +123,159 @@ func TestConvertedResponsesInputStringRejectionIsNarrow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.False(t, isConvertedResponsesInputStringRejection(tc.status, []byte(tc.body)))
 		})
+	}
+}
+
+func TestConvertedResponsesInputStringRejectionValidationBoundaries(t *testing.T) {
+	validation := `{'type': 'string_type', 'loc': ('body', 'input', 'str'), 'msg': 'Input should be a valid string', 'input': [{'role': 'user', 'content': 'hello'}]}`
+	for _, test := range []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		{name: "complete Pydantic error", message: "1 validation error: [" + validation + "]", want: true},
+		{name: "multiple Pydantic errors", message: "2 validation errors for Request: [" + strings.Replace(validation, "'input', 'str'", "'model', 'str'", 1) + ", " + validation + "]", want: true},
+		{name: "double quoted keys", message: "1 validation error: [" + strings.ReplaceAll(validation, "'", `"`) + "]", want: true},
+		{name: "surrounding whitespace", message: " \n1 validation error: [" + validation + "]\n ", want: true},
+		{name: "escaped quote in history", message: `1 validation error: [{'type':'string_type','loc':('body','input','str'),'msg':'Input should be a valid string','input':[{'content':'can\'t [close] this }'}]}]`, want: true},
+		{name: "bare loc and msg", message: `'loc':('body','input','str'), 'msg':'Input should be a valid string'`},
+		{name: "echoed dictionary in unrelated error", message: "Invalid history: " + validation},
+		{name: "echoed fake loc and msg in input", message: `1 validation error: [{'type':'string_type','loc':('body','model','str'),'msg':'Input should be a valid string','input':{'loc':('body','input','str'),'msg':'Input should be a valid string'}}]`},
+		{name: "echoed fake loc and msg in quoted history", message: `1 validation error: [{'type':'string_type','loc':('body','input',0,'content','str'),'msg':'Input should be a valid string','input':"'loc':('body','input','str'), 'msg':'Input should be a valid string'"}]`},
+		{name: "echoed complete error in quoted history", message: `1 validation error: [{'type':'string_type','loc':('body','model','str'),'msg':'Input should be a valid string','input':"1 validation error: [{'type':'string_type','loc':('body','input','str'),'msg':'Input should be a valid string'}]"}]`},
+		{name: "truncated error list", message: "1 validation error: [" + validation},
+		{name: "truncated quoted input", message: `1 validation error: [{'type':'string_type','loc':('body','input','str'),'msg':'Input should be a valid string','input':'history}]`},
+		{name: "mismatched closing bracket", message: "1 validation error: [" + strings.TrimSuffix(validation, "}") + ")]"},
+		{name: "elided validation list", message: "240 validation errors: ... " + validation},
+		{name: "incorrect error count", message: "2 validation errors: [" + validation + "]"},
+		{name: "overflowed error count", message: "999999999999999999999999 validation errors: [" + validation + "]"},
+		{name: "duplicate location", message: "1 validation error: [" + strings.Replace(validation, "'input':", "'loc': ('body', 'model', 'str'), 'input':", 1) + "]"},
+		{name: "wrong validation type", message: "1 validation error: [" + strings.Replace(validation, "string_type", "value_error", 1) + "]"},
+		{name: "missing validation type", message: "1 validation error: [" + strings.Replace(validation, "'type': 'string_type', ", "", 1) + "]"},
+		{name: "location and message in different errors", message: "2 validation errors: [" + strings.Replace(validation, "Input should be a valid string", "Invalid history", 1) + ", " + strings.Replace(validation, "'input', 'str'", "'model', 'str'", 1) + "]"},
+		{name: "trailing echoed text", message: "1 validation error: [" + validation + "] echoed history"},
+		{name: "structured string array", message: "Expected a string, but got an array instead.", want: true},
+		{name: "structured object", message: "Invalid type for 'input': expected a string, but got an object instead.", want: true},
+		{name: "structured echoed history", message: "Invalid history containing 'expected a string' and 'got an array'"},
+		{name: "structured truncated message", message: "Expected a string, but got an array"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"error": map[string]string{"message": test.message, "code": "invalid_type", "param": "input"}})
+			require.NoError(t, err)
+			require.Equal(t, test.want, isConvertedResponsesInputStringRejection(http.StatusBadRequest, body))
+			if test.want {
+				require.False(t, isConvertedResponsesInputStringRejection(http.StatusBadRequest, body[:len(body)-1]))
+				require.False(t, isConvertedResponsesInputStringRejection(http.StatusBadRequest, append(body, []byte(" trailing")...)))
+			}
+		})
+	}
+}
+
+func TestForwardAsChatCompletions_StructuredInputRetryRequiresCompleteErrorBody(t *testing.T) {
+	rejection := `{"error":{"code":"invalid_type","param":"input","message":"Expected a string, but got an array instead."}}`
+	limit := int(openAIUpstreamErrorBodyReadLimitForConfig(structuredInputRetryTestConfig()))
+	for _, test := range []struct {
+		name    string
+		payload string
+		readErr error
+		unknown bool
+		want    bool
+	}{
+		{name: "complete JSON followed by read failure", payload: rejection, readErr: io.ErrUnexpectedEOF},
+		{name: "truncated JSON", payload: rejection[:len(rejection)-1]},
+		{name: "exact read limit", payload: rejection + strings.Repeat(" ", limit-len(rejection)), want: true},
+		{name: "one byte beyond read limit", payload: rejection + strings.Repeat(" ", limit-len(rejection)+1)},
+		{name: "valid JSON prefix before discarded suffix", payload: rejection + strings.Repeat(" ", limit-len(rejection)) + "trailing"},
+		{name: "unknown capability still retries after read failure", payload: rejection, readErr: io.ErrUnexpectedEOF, unknown: true, want: true},
+		{name: "unknown capability still retries beyond read limit", payload: rejection + strings.Repeat(" ", limit-len(rejection)+1), unknown: true, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}]}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			errorBody := io.NopCloser(strings.NewReader(test.payload))
+			if test.readErr != nil {
+				errorBody = &openAIChatStreamReadErrorCloser{payload: []byte(test.payload), err: test.readErr}
+			}
+			account := structuredInputRetryTestAccount()
+			status := http.StatusBadRequest
+			if test.unknown {
+				delete(account.Extra, openai_compat.ExtraKeyResponsesSupported)
+				status = http.StatusNotFound
+			}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: errorBody},
+				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_retry","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))},
+			}}
+			svc := &OpenAIGatewayService{cfg: structuredInputRetryTestConfig(), httpUpstream: upstream}
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+			if test.want {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Len(t, upstream.requests, 2)
+			} else {
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.Len(t, upstream.requests, 1)
+			}
+		})
+	}
+}
+
+type openAIChatFallbackDelayReader struct {
+	io.Reader
+	elapsed time.Duration
+}
+
+func (reader *openAIChatFallbackDelayReader) Read(buffer []byte) (int, error) {
+	if reader.elapsed == 0 {
+		started := time.Now()
+		time.Sleep(30 * time.Millisecond)
+		reader.elapsed = time.Since(started)
+	}
+	return reader.Reader.Read(buffer)
+}
+
+func TestForwardAsChatCompletions_RawFallbackPreservesResponsesTiming(t *testing.T) {
+	for _, unknown := range []bool{false, true} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("unknown=%t/stream=%t", unknown, stream), func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":%t}`, stream))
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+				account := structuredInputRetryTestAccount()
+				status := http.StatusBadRequest
+				if unknown {
+					delete(account.Extra, openai_compat.ExtraKeyResponsesSupported)
+					status = http.StatusNotFound
+				}
+				initialBody := &openAIChatFallbackDelayReader{Reader: strings.NewReader(`{"error":{"code":"invalid_type","param":"input","message":"Expected a string, but got an array instead."}}`)}
+				responseBody := `{"id":"chatcmpl_retry","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+				contentType := "application/json"
+				if stream {
+					responseBody = "data: {\"id\":\"chatcmpl_retry\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\ndata: [DONE]\n\n"
+					contentType = "text/event-stream"
+				}
+				upstream := &httpUpstreamRecorder{responses: []*http.Response{
+					{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(initialBody)},
+					{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{contentType}}, Body: io.NopCloser(strings.NewReader(responseBody))},
+				}}
+				svc := &OpenAIGatewayService{cfg: structuredInputRetryTestConfig(), httpUpstream: upstream}
+				result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Len(t, upstream.requests, 2)
+				require.Equal(t, "/v1/responses", upstream.requests[0].URL.Path)
+				require.Equal(t, "/v1/chat/completions", upstream.requests[1].URL.Path)
+				require.GreaterOrEqual(t, result.Duration, initialBody.elapsed)
+				if stream {
+					require.NotNil(t, result.FirstTokenMs)
+					require.GreaterOrEqual(t, *result.FirstTokenMs, int(initialBody.elapsed.Milliseconds()))
+				}
+			})
+		}
 	}
 }
 
@@ -149,6 +304,8 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 		{name: "rate limit", status: http.StatusTooManyRequests},
 		{name: "unrelated validation", rejection: `{"error":{"code":"invalid_type","param":"tools","message":"Expected a string, but got an array instead."}}`},
 		{name: "nested validation", rejection: `{"error":{"message":"'loc':('body','input',0,'content','str'), 'msg':'Input should be a valid string'"}}`},
+		{name: "echoed validation", rejection: `{"error":{"message":"1 validation error: [{'type':'string_type','loc':('body','model','str'),'msg':'Input should be a valid string','input':{'loc':('body','input','str'),'msg':'Input should be a valid string'}}]"}}`},
+		{name: "echoed structured error", rejection: `{"error":{"code":"invalid_type","param":"input","message":"Invalid history containing expected a string but got an array"}}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
@@ -1608,7 +1765,7 @@ func TestGPT61SolOnlyChatFallbackRejectsToolsAndDisabledReasoning(t *testing.T) 
 			svc := &OpenAIGatewayService{cfg: &config.Config{}}
 			var err error
 			if responses {
-				_, err = svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body))
+				_, err = svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body), time.Now())
 			} else {
 				_, err = svc.forwardAnthropicViaRawChatCompletions(context.Background(), c, account, []byte(body), "")
 			}
