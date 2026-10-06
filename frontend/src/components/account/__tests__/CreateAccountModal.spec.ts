@@ -38,6 +38,10 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    users: {
+      list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getById: vi.fn().mockResolvedValue({ id: 10, email: 'owner@example.com', status: 'active' }),
+    },
     accounts: {
       create: createAccountMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
