@@ -231,6 +231,7 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
+	chatInputAudio     map[int]map[int]string
 	PromptCacheOptions json.RawMessage     `json:"prompt_cache_options,omitempty"`
 	Model              string              `json:"model"`
 	Instructions       string              `json:"instructions,omitempty"`
