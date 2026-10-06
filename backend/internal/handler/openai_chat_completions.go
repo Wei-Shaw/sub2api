@@ -280,7 +280,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		// #5148 对齐：错误返回携带的部分 result（流中断前上游已计量的 usage）照常
 		// 入账；failover 错误恒定 result=nil，不会重复计费。
-		submitChatUsage := func(res *service.OpenAIForwardResult) {
+		submitChatUsage := func(res *service.OpenAIForwardResult, cacheWriteObservationID string) {
 			if res == nil {
 				return
 			}
@@ -305,8 +305,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					IPAddress:          clientIP,
 					APIKeyService:      h.apiKeyService,
 					QuotaPlatform:      quotaPlatform,
-					SessionID:          sessionID,
-					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
+					SessionID:               sessionID,
+					CacheWriteObservationID: cacheWriteObservationID,
+					ChannelUsageFields:      clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
 					CyberBlocked:       cyberBlocked,
 				}); err != nil {
@@ -406,7 +407,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 				)
-				submitChatUsage(result)
+				submitChatUsage(result, "")
 				return
 			}
 		}
@@ -416,10 +417,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, result), true, nil)
 		}
 
+		cacheWriteObservationID := ""
 		if result != nil {
-			h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
+			cacheWriteObservationID = h.gatewayService.ObserveOpenAICacheWriteTelemetry(c.Request.Context(), account, reqModel, sessionHash, result)
 		}
-		submitChatUsage(result)
+		submitChatUsage(result, cacheWriteObservationID)
 		reqLog.Debug("openai_chat_completions.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
