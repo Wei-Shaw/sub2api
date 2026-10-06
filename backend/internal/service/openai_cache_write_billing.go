@@ -300,10 +300,11 @@ func (s *OpenAIGatewayService) reconcileInferredCacheWrite(
 	correctedInputCost := snapshot.OriginalInputCost + snapshot.DeltaInputCostPerToken*float64(writeTokens)
 	correctedCacheCreationCost := snapshot.OriginalCacheCreationCost + snapshot.DeltaCacheCreationCostPerToken*float64(writeTokens)
 	correctedTotalCost := snapshot.OriginalTotalCost + deltaTotal
-	// Monetary application is quantized to NUMERIC(20,8); keep the usage row's
-	// customer charge aligned with the amount actually applied by the billing repo.
+	// Monetary application is quantized to NUMERIC(20,8), matching the existing
+	// billing command. usage_logs keeps the unquantized pricing calculation, just
+	// like the original RecordUsage path, so its component math remains exact.
 	quantizedDeltaActual := QuantizeUsageBillingAmount(deltaActual)
-	correctedActualCost := snapshot.OriginalActualCost + quantizedDeltaActual
+	correctedActualCost := snapshot.OriginalActualCost + deltaActual
 
 	var correctedAccountStatsCost *float64
 	if snapshot.OriginalAccountStatsCost != nil && snapshot.DeltaAccountStatsCostPerToken != nil {
