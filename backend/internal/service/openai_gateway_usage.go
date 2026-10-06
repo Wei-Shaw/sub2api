@@ -493,18 +493,45 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
-	}
 
 	// Async usage billing runs outside the original request context, so it
-	// cannot recover ForcePlatform there. Fall back for internal/test callers.
+	// cannot recover ForcePlatform there. Resolve it before snapshotting so a
+	// later cache-write adjustment applies the same platform-quota dimension.
 	quotaPlatform := input.QuotaPlatform
 	if quotaPlatform == "" {
 		quotaPlatform = PlatformFromAPIKey(apiKey)
+	}
+	input.QuotaPlatform = quotaPlatform
+
+	cacheWriteBillingSnapshot := s.prepareOpenAICacheWriteBillingSnapshot(
+		ctx,
+		input,
+		billingAccount,
+		usageLog,
+		cost,
+		tokens,
+		billingModels,
+		multiplier,
+		imageMultiplier,
+		videoMultiplier,
+		baseMultiplier,
+		serviceTier,
+		longContextBillingGate,
+		pricingAt,
+		isSubscriptionBilling,
+		accountRateMultiplier,
+		simpleModeKeyRateLimitOnly,
+	)
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		if s.deferredService != nil {
+			s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		}
+		// No billing snapshot is attached in non-billing simple mode.
+		s.processReadyOpenAICacheWriteReconciliations(ctx)
+		return nil
 	}
 
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
@@ -524,9 +551,19 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		// A failed original bill must never become eligible for a later inferred
+		// surcharge, but previous ready reconciliations may still be retried.
+		s.processReadyOpenAICacheWriteReconciliations(ctx)
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	if cacheWriteBillingSnapshot != nil {
+		s.openaiCacheWriteInferenceTracker.attachBillingSnapshot(
+			input.CacheWriteObservationID,
+			*cacheWriteBillingSnapshot,
+		)
+	}
+	s.processReadyOpenAICacheWriteReconciliations(ctx)
 
 	return nil
 }
