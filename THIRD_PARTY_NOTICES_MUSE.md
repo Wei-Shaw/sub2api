@@ -3,6 +3,9 @@ The native Go cookie import and `/api/session` renewal mechanics are adapted fro
 - https://github.com/www222fff/muse2api/blob/f61736889da959bc7ffac117e27ae08e6749d459/src/muse2api/upstream/muse.py
 - https://github.com/czg86389-hub/muse2api/blob/bc061658568b91c686c2452b8d2e10378f9f4dce/engine.py
 - The cookie exporter adapts `czg86389-hub/muse2api/extension/popup.js` at that revision.
+- HTTP 403 remains an unverified access failure, following the updated session
+  classification in `czg86389-hub/muse2api/engine.py` at
+  `23740617ddeec39089298685dab6502cc1de922c`.
 
 Both are MIT licensed. Their notices are preserved below.
 
