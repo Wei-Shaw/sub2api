@@ -23,7 +23,7 @@ button.addEventListener('click', async () => {
     }
     const downloadUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify({ cookies, expires }, null, 2))
     await chrome.downloads.download({ url: downloadUrl, filename: 'muse-session.json', saveAs: true })
-    status.textContent = 'Exported your session credential file. Import it into your Sub2API Muse account.'
+    status.textContent = 'Muse session file saved. Import muse-session.json in your Sub2API Muse account form.'
   } catch {
     status.textContent = 'Session export failed. Check that you are signed in to Muse.'
   } finally {
