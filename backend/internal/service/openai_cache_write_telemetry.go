@@ -161,6 +161,10 @@ func (t *openAICacheWriteInferenceTracker) registerInference(
 		return
 	}
 	if snapshot, ok := t.billingSnapshots[observationID]; ok {
+		if _, exists := t.ready[observationID]; !exists &&
+			len(t.ready) >= maxOpenAICacheWriteInferenceEntries {
+			return
+		}
 		delete(t.billingSnapshots, observationID)
 		delete(t.pendingInferences, observationID)
 		t.ready[observationID] = &openAICacheWriteReadyReconciliation{
@@ -173,6 +177,10 @@ func (t *openAICacheWriteInferenceTracker) registerInference(
 	}
 	if t.pendingInferences == nil {
 		t.pendingInferences = make(map[string]openAICacheWritePendingInference)
+	}
+	if _, exists := t.pendingInferences[observationID]; !exists &&
+		len(t.pendingInferences) >= maxOpenAICacheWriteInferenceEntries {
+		return
 	}
 	t.pendingInferences[observationID] = openAICacheWritePendingInference{
 		Inference:  inference,
@@ -202,6 +210,10 @@ func (t *openAICacheWriteInferenceTracker) attachBillingSnapshot(
 	if pending, ok := t.pendingInferences[observationID]; ok {
 		if t.ready == nil {
 			t.ready = make(map[string]*openAICacheWriteReadyReconciliation)
+		}
+		if _, exists := t.ready[observationID]; !exists &&
+			len(t.ready) >= maxOpenAICacheWriteInferenceEntries {
+			return
 		}
 		delete(t.pendingInferences, observationID)
 		delete(t.billingSnapshots, observationID)
@@ -264,7 +276,9 @@ func (t *openAICacheWriteInferenceTracker) pruneLocked(now time.Time) {
 	}
 	pruneInterval := 5 * time.Minute
 	if len(t.entries) >= maxOpenAICacheWriteInferenceEntries ||
-		len(t.billingSnapshots) >= maxOpenAICacheWriteInferenceEntries {
+		len(t.billingSnapshots) >= maxOpenAICacheWriteInferenceEntries ||
+		len(t.pendingInferences) >= maxOpenAICacheWriteInferenceEntries ||
+		len(t.ready) >= maxOpenAICacheWriteInferenceEntries {
 		pruneInterval = time.Minute
 	}
 	if !t.lastPrune.IsZero() && now.Sub(t.lastPrune) < pruneInterval {
