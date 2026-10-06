@@ -205,9 +205,26 @@ func TestNormalizeOpenCodeGoProtocolRulesCredentials(t *testing.T) {
 
 func TestOpenCodeGoQuotaURL(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "https://opencode.ai/zen/go/v1/usage", openCodeGoQuotaURL(""))
-	require.Equal(t, "https://opencode.ai/zen/go/v1/usage", openCodeGoQuotaURL(DefaultOpenCodeGoBaseURL+"/"))
-	require.Equal(t, "https://custom.example/v1/usage", openCodeGoQuotaURL("https://custom.example/v1"))
+	const want = "https://opencode.ai/zen/go/v1/usage"
+	cases := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{"empty falls back to default", "", want},
+		{"chat base (/v1)", DefaultOpenCodeGoBaseURL, want},
+		{"chat base trailing slash", DefaultOpenCodeGoBaseURL + "/", want},
+		{"anthropic base (no /v1)", DefaultOpenCodeGoAnthropicBaseURL, want},
+		{"anthropic base trailing slash", DefaultOpenCodeGoAnthropicBaseURL + "/", want},
+		{"zen base stays idempotent", DefaultOpenCodeZenBaseURL, "https://opencode.ai/zen/v1/usage"},
+		{"custom base with /v1", "https://custom.example/v1", "https://custom.example/v1/usage"},
+		{"custom base with /v1 trailing slash", "https://custom.example/v1/", "https://custom.example/v1/usage"},
+		// 与 kimiQuotaURL 同语义：无条件补 /v1，非官方域名同样归一。
+		{"custom base without /v1", "https://custom.example", "https://custom.example/v1/usage"},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, openCodeGoQuotaURL(tc.baseURL), "case=%s", tc.name)
+	}
 }
 
 func TestDefaultOpenCodeGoModelIDsCoverDocumentedCatalog(t *testing.T) {

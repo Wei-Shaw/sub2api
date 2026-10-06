@@ -89,7 +89,7 @@ func TestOfferPluginHostServices_BrokerRoundtrip(t *testing.T) {
 	tc := dispenseTransportClient(t, probe)
 
 	store := newFakePluginKVStore()
-	hostServer := newPluginHostServiceServer("test.plugin", store, nil)
+	hostServer := newPluginHostServiceServer("test.plugin", store, nil, PluginAccountScope{})
 	offerPluginHostServices(context.Background(), &PluginInstallation{PluginKey: "test.plugin"}, tc.TransportPluginClient, tc.Broker, hostServer, 5*time.Second)
 
 	probe.mu.Lock()
@@ -111,7 +111,7 @@ func TestOfferPluginHostServices_UnimplementedIsGraceful(t *testing.T) {
 	tc := dispenseTransportClient(t, &noHostServicesPlugin{})
 
 	store := newFakePluginKVStore()
-	hostServer := newPluginHostServiceServer("test.plugin", store, nil)
+	hostServer := newPluginHostServiceServer("test.plugin", store, nil, PluginAccountScope{})
 	require.NotPanics(t, func() {
 		offerPluginHostServices(context.Background(), &PluginInstallation{PluginKey: "test.plugin"}, tc.TransportPluginClient, tc.Broker, hostServer, 5*time.Second)
 	})

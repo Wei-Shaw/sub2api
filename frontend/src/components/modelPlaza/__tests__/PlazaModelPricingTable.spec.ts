@@ -46,6 +46,8 @@ function mountTable(
   extraProps?: {
     imageRateIndependent?: boolean
     imageRateMultiplier?: number | null
+    videoRateIndependent?: boolean
+    videoRateMultiplier?: number | null
     peakWindow?: string
     peakRateMultiplier?: number | null
   }
@@ -56,6 +58,49 @@ function mountTable(
 }
 
 describe('PlazaModelPricingTable', () => {
+  it.each([
+    { enabled: true, multiplier: 1, userRate: 0.05, expected: 1 },
+    { enabled: true, multiplier: 0.5, userRate: null, expected: 0.5 },
+    { enabled: true, multiplier: 0, userRate: 0.05, expected: 0 },
+    { enabled: true, multiplier: -1, userRate: null, expected: 0 },
+    { enabled: false, multiplier: 1, userRate: 0.05, expected: 0.05 },
+    { enabled: false, multiplier: 1, userRate: null, expected: 0.15 }
+  ])('uses the video billing multiplier $expected when independent=$enabled', (tc) => {
+    const model = tokenModel({ name: 'video-test', official_pricing: null })
+    model.pricing!.billing_mode = 'video'
+    model.pricing!.per_request_price = 2
+    const wrapper = mountTable([model], 0.15, tc.userRate, {
+      imageRateIndependent: true,
+      imageRateMultiplier: 9,
+      videoRateIndependent: tc.enabled,
+      videoRateMultiplier: tc.multiplier
+    })
+    try {
+      expect(wrapper.text()).toContain(`$${(2 * tc.expected).toFixed(2)}`)
+      const rateCell = wrapper.findAll('tbody tr td').at(-1)!
+      if (tc.enabled) expect(rateCell.text()).toBe(`${tc.expected}x`)
+      else expect(rateCell.text()).toContain(`${tc.expected}x`)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('applies video independent rates to resolution tiers', () => {
+    const model = tokenModel({ name: 'video-tier-test', official_pricing: null })
+    model.pricing!.billing_mode = 'video'
+    model.pricing!.intervals = [{
+      min_tokens: 0, max_tokens: null, tier_label: '720p',
+      input_price: null, output_price: null, cache_write_price: null,
+      cache_read_price: null, per_request_price: 2
+    }]
+    const wrapper = mountTable([model], 0.15, 0.05, {
+      videoRateIndependent: true, videoRateMultiplier: 0.5
+    })
+    expect(wrapper.text()).toContain('720p')
+    expect(wrapper.text()).toContain('$1.00')
+    wrapper.unmount()
+  })
+
   it('倍率为 1 时展示渠道单价原值($/1M),价格保底 2 位小数', () => {
     const wrapper = mountTable([tokenModel()], 1)
     const text = wrapper.text()
@@ -68,13 +113,27 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('1x')
   })
 
-  it('shows the Max reasoning billing multiplier', () => {
+  it('shows all configured reasoning multipliers in level order', () => {
     const model = tokenModel()
-    model.pricing!.max_reasoning_effort_multiplier = 3
+    model.pricing!.reasoning_effort_multipliers = { max: 3, none: 0.5, high: 1.5 }
     const wrapper = mountTable([model], 1)
 
-    expect(wrapper.text()).toContain('modelPlaza.table.maxReasoningMultiplierBadge')
-    expect(wrapper.find('[title="modelPlaza.table.maxReasoningMultiplierHint"]').exists()).toBe(true)
+    const badges = wrapper.findAll('[data-reasoning-effort]')
+    expect(badges.map(badge => badge.attributes('data-reasoning-effort'))).toEqual(['none', 'high', 'max'])
+    expect(badges.every(badge => badge.attributes('title') === 'modelPlaza.table.reasoningMultiplierHint')).toBe(true)
+    expect(wrapper.text()).toContain('modelPlaza.table.reasoningMultiplierBadge')
+  })
+
+  it('does not show automatic reasoning charges for an unconfigured Fable model', () => {
+    const wrapper = mountTable([tokenModel({ name: 'claude-fable-5-1' })], 1)
+    expect(wrapper.find('[data-reasoning-effort]').exists()).toBe(false)
+  })
+
+  it('omits invalid or unsupported multipliers from display', () => {
+    const model = tokenModel()
+    model.pricing!.reasoning_effort_multipliers = { max: 0, high: Infinity, unknown: 2, low: 1 }
+    const wrapper = mountTable([model], 1)
+    expect(wrapper.findAll('[data-reasoning-effort]').map(badge => badge.attributes('data-reasoning-effort'))).toEqual(['low'])
   })
 
   it('倍率 ≠ 1 时价格列为折后实付价,官方价列保持原价', () => {

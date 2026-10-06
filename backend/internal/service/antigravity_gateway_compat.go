@@ -212,7 +212,11 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
-	mappedModel := s.getMappedModel(account, request.originalModel)
+	mappedModel := s.getMappedModelForThinkingLevel(
+		account,
+		request.originalModel,
+		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
+	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
@@ -370,7 +374,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin
 		}
 	}
 	if c.Request.Context().Err() != nil {
-		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "client_disconnected", "Client disconnected before upstream response")
+		return s.writeAntigravityCompatError(c, antigravityStatusClientClosed, "client_disconnected", "Client disconnected before upstream response")
 	}
 	return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 }

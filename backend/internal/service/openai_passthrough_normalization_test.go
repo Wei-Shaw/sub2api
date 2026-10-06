@@ -129,7 +129,7 @@ func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
@@ -153,7 +153,7 @@ func TestNormalizeOpenAIResponsesReasoningMode_AstraPreservesBody(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.False(t, changed)
 			require.JSONEq(t, tt.body, string(normalized))
@@ -173,7 +173,7 @@ func TestNormalizeOpenAIResponsesReasoningMode_NonAstraKeepsLegacyBehavior(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())

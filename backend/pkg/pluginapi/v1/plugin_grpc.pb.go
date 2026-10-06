@@ -373,10 +373,13 @@ type HostServiceClient interface {
 	KVSet(ctx context.Context, in *KVSetRequest, opts ...grpc.CallOption) (*KVSetResponse, error)
 	KVDelete(ctx context.Context, in *KVDeleteRequest, opts ...grpc.CallOption) (*KVDeleteResponse, error)
 	KVList(ctx context.Context, in *KVListRequest, opts ...grpc.CallOption) (*KVListResponse, error)
-	// Account directory: enumerate the accounts the plugin is bound to act on and
-	// resolve the outbound identity (credentials/headers/proxy) the host would
-	// attach to a live request. The host restricts both calls to accounts the
-	// requesting plugin's capability already covers.
+	// Account directory: enumerate the accounts the plugin is bound to act on
+	// (with full readable metadata) and resolve the outbound identity
+	// (credentials/headers/proxy) the host would attach to a live request. The
+	// host restricts both calls to the account scope the requesting plugin's
+	// declared capabilities cover; a plugin can never widen that scope. Metadata
+	// never carries raw credentials — those are only handed out by
+	// ResolveOutboundIdentity, the dedicated (equally sensitive) credential channel.
 	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (*ListAccountsResponse, error)
 	ResolveOutboundIdentity(ctx context.Context, in *ResolveOutboundIdentityRequest, opts ...grpc.CallOption) (*ResolveOutboundIdentityResponse, error)
 }
@@ -462,10 +465,13 @@ type HostServiceServer interface {
 	KVSet(context.Context, *KVSetRequest) (*KVSetResponse, error)
 	KVDelete(context.Context, *KVDeleteRequest) (*KVDeleteResponse, error)
 	KVList(context.Context, *KVListRequest) (*KVListResponse, error)
-	// Account directory: enumerate the accounts the plugin is bound to act on and
-	// resolve the outbound identity (credentials/headers/proxy) the host would
-	// attach to a live request. The host restricts both calls to accounts the
-	// requesting plugin's capability already covers.
+	// Account directory: enumerate the accounts the plugin is bound to act on
+	// (with full readable metadata) and resolve the outbound identity
+	// (credentials/headers/proxy) the host would attach to a live request. The
+	// host restricts both calls to the account scope the requesting plugin's
+	// declared capabilities cover; a plugin can never widen that scope. Metadata
+	// never carries raw credentials — those are only handed out by
+	// ResolveOutboundIdentity, the dedicated (equally sensitive) credential channel.
 	ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error)
 	ResolveOutboundIdentity(context.Context, *ResolveOutboundIdentityRequest) (*ResolveOutboundIdentityResponse, error)
 	mustEmbedUnimplementedHostServiceServer()
