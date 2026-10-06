@@ -16,7 +16,7 @@ button.addEventListener('click', async () => {
       cookies[cookie.name] = cookie.value
       if (cookie.expirationDate) expires[cookie.name] = Math.floor(cookie.expirationDate)
     }
-    const missing = names.filter(name => !cookies[name])
+    const missing = names.filter(name => name !== 'hatch_vml' && !cookies[name])
     if (missing.length) {
       status.textContent = `Sign in to Muse first. Missing: ${missing.join(', ')}`
       return
