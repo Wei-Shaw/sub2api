@@ -195,6 +195,16 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it('places Meta Muse in the first provider row and opens its export instructions', async () => {
+    const wrapper = mountModal()
+    const firstRow = wrapper.get('[data-tour="account-form-platform"]')
+    const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
+    expect(muse).toBeDefined()
+    expect(firstRow.findAll('button')[0].text()).toContain('Meta Muse')
+    await muse.trigger('click')
+    expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip')
+  })
   beforeEach(() => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })

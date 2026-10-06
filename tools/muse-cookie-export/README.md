@@ -21,3 +21,11 @@ Fresh logins can export the three persistent cookies; `/api/session` obtains the
 VM lease cookie during Sub2API's session check.
 Those remain separate verification requirements. The native inference provider
 continues to be disabled until its app transport is qualified.
+
+The Meta Muse account form includes a downloadable ZIP and numbered setup
+instructions. Unzip it before choosing **Load unpacked**, and select the
+`muse-cookie-export` folder inside. The form's **Import JSON file** button reads
+`muse-session.json` locally into the credential field.
+
+After changing exporter files, rebuild the committed download with
+`python3 tools/muse-cookie-export/package.py` from the repository root.
