@@ -6,7 +6,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 describe('Muse session setup', () => {
   it('provides the local exporter download and actionable setup steps', () => {
     const wrapper = mount(MuseSessionFields, { props: { ownerId: 1, sessionJson: '' } })
-    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip')
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=1')
     expect(wrapper.findAll('ol li')).toHaveLength(5)
     expect(wrapper.text()).toContain('chrome://extensions')
     expect(wrapper.text()).toContain('edge://extensions')
