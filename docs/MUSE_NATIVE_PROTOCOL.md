@@ -75,26 +75,40 @@ implementation rejects owner-RV challenges and delegated notary credentials
 until their owner-bound key, endorsement, and attestation flows are qualified.
 It does not enroll a key, replace a VM, disable checks, or approve Sentinel actions.
 
-## Remaining provider work
+## Native provider scope and current acceptance
 
-Production wiring still uses `muse.DisabledProvider`. These transport observations
-do not yet qualify public Sub2API inference. The remaining implementation and live
-checks are:
+`internal/pkg/muse/native_provider.go` connects the native transport to the provider
+port for standard `hatch_vm` accounts. Verification obtains the authenticated
+`viewer_id` and `session_binding_id` from `/api/auth/check`, checks the assigned VM,
+and reads its current model catalog. Gateway cookie rotation is returned to the
+atomic renewal caller with actual expiry; the non-renewing token port still refuses
+to discard rotated credentials.
 
-- Authenticated principal/session binding, fresh allowance, and dynamic catalog
-  observation through the native provider verification port.
-- Authoritative transcript/delta normalization into existing Responses,
-  Chat Completions, and Messages serializers, preserving unknown usage.
-- Durable mapping from a local operation to its fresh remote side chat and server
-  task, including lost-ack recovery without replay, duplicate events, proactive
-  event exclusion, and accepted-work fencing.
-- Integrating confirmed cancellation of the same task, approval-required and remote failures,
-  session expiry/rotation during active work, and process-loss reconciliation.
-- The existing account/proxy snapshot, canonical lock, admission, settlement, and
-  quota flow exercised through a real local Sub2API API request, with one result,
-  one usage row, and one frozen flat charge after fault injection.
-- Separate paid-account and confidential-VM qualification when those modes are
-  supported. The present Free account must not be advertised as paid verification.
+Each request sends one user text message to a fresh side chat. A reference bound
+to the principal, VM, and server-generated local operation is committed before
+submission. Recovery subscribes to that same side chat without submitting text.
+It validates the side-chat/root task, the sole accepted user message, the adjacent
+canonical output sequence, and the actual output entry in the authoritative
+transcript. The transcript container ID can differ from the output entry ID.
+A terminal task event can precede delivery of the transcript; both are required
+for returning an inference result. Cancellation checks terminal interruption and
+zero active subagents; an acknowledgement alone cannot release occupancy.
+
+Live native-provider checks on 2026-10-07 returned the exact synthetic test marker,
+streamed normalized events, and recovered identical output from the same reference.
+A separate live counting turn was interrupted and its terminal state confirmed
+without a replacement submission. Private credentials and traces are outside the
+repository. These are provider-port results; public gateway acceptance and billing
+for the new build must be recorded separately.
+
+The current capabilities deliberately exclude instructions, multi-message history,
+continuations, caller tools, vision, reasoning options, and output-token/sampling
+controls. Unsupported semantics are rejected before reserving a turn. Responses
+and Chat Completions support this single-message text scope in JSON and SSE.
+Anthropic Messages requires `max_tokens`, whose semantics remain unqualified.
+Plan/allowance and token usage remain unknown; billing requires an explicit flat
+request price. Paid accounts and confidential/delegated VM modes require separate
+qualification. Approval/Sentinel actions are never automatically approved.
 
 ## Evidence sources and validation
 

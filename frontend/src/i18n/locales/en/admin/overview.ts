@@ -1046,6 +1046,7 @@ export default {
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
         typesafe: 'TypeSafe / Jev',
+        muse: 'Meta Muse',
         composite: 'Composite',
       },
       deleteConfirm:

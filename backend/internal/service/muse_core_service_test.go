@@ -48,12 +48,40 @@ func (f *museRuntimeFixture) Reserve(_ context.Context, r muse.Reservation) (*mu
 	f.state = muse.Reserved
 	return f.turn, muse.Lease{WorkspaceID: 1, TurnID: r.TurnID, Owner: r.LeaseOwner, Fence: 1}, nil
 }
-func (f *museRuntimeFixture) Advance(_ context.Context, _ muse.Lease, from, to muse.State, _ string) error {
+func (f *museRuntimeFixture) Advance(_ context.Context, _ muse.Lease, from, to muse.State, providerID string) error {
 	if f.state != from || !muse.CanTransition(from, to) {
 		return muse.ErrTransition
 	}
 	f.state = to
+	if providerID != "" {
+		f.turn.ProviderTurnID = providerID
+	}
 	return nil
+}
+
+type museSubmissionFixture struct {
+	*museProviderFixture
+	reference string
+}
+
+func (f *museSubmissionFixture) SubmissionID(muse.Request) (string, error) {
+	return f.reference, nil
+}
+
+func TestMuseProbeReferenceIsDurableBeforeLostAcknowledgement(t *testing.T) {
+	_, core, provider, store, runtime, account, key := newMuseCoreFixture()
+	provider.execute = func(_ context.Context, request muse.Request, _ func(muse.Event) error) (*muse.Result, error) {
+		require.Equal(t, muse.Submitting, runtime.state)
+		require.Equal(t, "durable-native-probe", runtime.turn.ProviderTurnID)
+		return nil, muse.ErrNoiseProtocol
+	}
+	core.SetProvider(&museSubmissionFixture{museProviderFixture: provider, reference: "durable-native-probe"})
+	_, turn, err := core.Execute(context.Background(), key, account, &apicompat.ResponsesRequest{Model: "muse/assistant", Input: json.RawMessage(`"hello"`)}, nil, nil)
+	require.ErrorIs(t, err, muse.ErrNoiseProtocol)
+	require.Equal(t, muse.Ambiguous, turn.State)
+	require.Equal(t, "durable-native-probe", turn.ProviderTurnID)
+	require.Equal(t, 1, provider.calls)
+	require.Zero(t, store.settlements, "uncertain accepted work must not settle or be replayed")
 }
 func (f *museRuntimeFixture) Renew(context.Context, muse.Lease, time.Duration) error { return nil }
 

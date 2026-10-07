@@ -39,6 +39,8 @@ type SessionCheck struct {
 }
 
 type SessionRefresh struct {
+	Gateway  *GatewayTarget
+	VMType   string
 	Document map[string]any
 	Check    SessionCheck
 }
@@ -206,65 +208,26 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 	if json.Unmarshal(body, &metadata) != nil || metadata.Status != "assigned" || !validID(metadata.VMID, 256) {
 		return nil, ErrSessionResponse
 	}
-	now := time.Now()
-	deleted := map[string]bool{}
-	replaced := map[string]bool{}
-	for _, cookie := range response.Cookies() {
-		if !isSessionCookie(cookie.Name) || (cookie.Domain != "" && !sessionCookieDomain(cookie.Domain)) || (cookie.Path != "" && cookie.Path != "/") {
-			continue
-		}
-		if cookie.Valid() != nil {
-			return nil, ErrSessionResponse
-		}
-		if cookie.MaxAge < 0 || cookie.Value == "" || (cookie.MaxAge == 0 && !cookie.Expires.IsZero() && !cookie.Expires.After(now)) {
-			deleted[cookie.Name] = true
-			continue
-		}
-		replaced[cookie.Name] = true
-		cookies.Cookies[cookie.Name] = cookie.Value
-		switch {
-		case cookie.MaxAge > 0:
-			if cookie.MaxAge > 10*365*24*60*60 {
-				return nil, ErrSessionResponse
-			}
-			cookies.Expires[cookie.Name] = now.Add(time.Duration(cookie.MaxAge) * time.Second).Unix()
-		case !cookie.Expires.IsZero():
-			cookies.Expires[cookie.Name] = cookie.Expires.Unix()
-		default:
-			delete(cookies.Expires, cookie.Name) // A session cookie has unknown expiry.
-		}
+	document, expiresAt, err := applySessionCookies(session, response, cookies)
+	if err != nil {
+		return nil, err
 	}
-	for name := range deleted {
-		// The app clears legacy host-only cookies while issuing a replacement
-		// for .muse.ai. Evaluate the complete response before declaring expiry.
-		if !replaced[name] {
-			return nil, ErrSessionExpired
-		}
+	check := SessionCheck{Authenticated: true, Status: metadata.Status, VMID: metadata.VMID, VMState: metadata.VMState, CheckedAt: time.Now(), ExpiresAt: expiresAt}
+	target, _ := ParseGatewayTarget(body)
+	vmType := ""
+	var details struct {
+		VMs []struct {
+			ID   string `json:"vm_id"`
+			Type string `json:"vm_type"`
+		} `json:"vms"`
 	}
-	check := SessionCheck{Authenticated: true, Status: metadata.Status, VMID: metadata.VMID, VMState: metadata.VMState, CheckedAt: now}
-	for _, name := range SessionCookieNames {
-		if expiry, ok := cookies.Expires[name]; ok {
-			at := time.Unix(expiry, 0)
-			if !at.After(now) {
-				return nil, ErrSessionExpired
-			}
-			if check.ExpiresAt == nil || at.Before(*check.ExpiresAt) {
-				check.ExpiresAt = &at
+	if json.Unmarshal(body, &details) == nil && target != nil {
+		for _, vm := range details.VMs {
+			if vm.ID == target.VMID {
+				vmType = vm.Type
+				break
 			}
 		}
 	}
-	// Preserve opaque app session extensions without sharing mutable input maps.
-	encoded, _ := json.Marshal(session.Document)
-	document := map[string]any{}
-	if json.Unmarshal(encoded, &document) != nil {
-		return nil, ErrSessionCredentials
-	}
-	for _, name := range SessionCookieNames {
-		delete(document, name)
-	}
-	document["cookies"] = cookies.Cookies
-	document["expires"] = cookies.Expires
-	delete(document, "cookies_exp")
-	delete(document, "cookie_expires")
-	return &SessionRefresh{Document: document, Check: check}, nil
+	return &SessionRefresh{Document: document, Check: check, Gateway: target, VMType: vmType}, nil
 }

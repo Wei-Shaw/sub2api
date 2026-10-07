@@ -4,9 +4,10 @@ Tracking: [#7625](https://github.com/Wei-Shaw/sub2api/issues/7625).
 
 This targets the consumer Muse app and its account-owned workspace. It implements
 Sub2API's native account, gateway, runtime, billing, recovery, and operator surfaces.
-Production wiring uses `muse.DisabledProvider`: **public Sub2API inference is not
-qualified yet**. A native low-level encrypted transport now exists and has live
-model/probe evidence; see [protocol qualification](MUSE_NATIVE_PROTOCOL.md).
+Production wiring uses the native provider for standard VM single-message text
+requests through the configured account proxy. Each account still requires live
+verification before becoming schedulable. Public acceptance is recorded separately
+from provider-port probes; see [protocol qualification](MUSE_NATIVE_PROTOCOL.md).
 Synthetic conformance tests are not evidence of Meta compatibility.
 
 ## Implemented contracts
@@ -95,24 +96,24 @@ Credential rotation uses the existing canonical workspace lock and account/proxy
 snapshot checks. It preserves opaque session extensions and model mapping. The
 admin panel can check app cookies and renew sessions before inference is qualified.
 A successful session check proves neither paid entitlement nor a canonical subject,
-model catalog, chat-wire support, or live inference. `DisabledProvider` stays in place
-until those contracts are established.
+model catalog, chat-wire support, or live inference. The native provider performs those additional identity and catalog checks through
+its verification port. An authentication-only check leaves the account unverified.
 
 Authentication sources and copyright notices are recorded in
 `THIRD_PARTY_NOTICES_MUSE.md`, pinned to the reviewed repository revisions. The
 HTTP flow is verified with scripted transport fixtures and a live consumer-app
-session on 2026-10-06. A fresh browser side-chat probe completed, while the native
-inference adapter remains unqualified. Native Go also completed the encrypted
+session on 2026-10-06. A fresh browser side-chat probe completed, and the native
+provider now supports the restricted text scope described in protocol qualification. Native Go also completed the encrypted
 handshake, read the actual model catalog, submitted fresh synthetic side chats,
 and reconciled completed output/task state without resubmitting. Captures contain private session material
 and are retained outside the repository; only sanitized contracts belong in tests.
 
 ## Remaining qualification gate
 
-Implement `muse.Provider` only from an authorized authenticated consumer-app session
-and sanitized captures. Do not derive a chat endpoint from a warmed WebSocket/tab,
-DOM output, Muse Code, Meta Model API, or another product's protocol. Qualification
-must establish the following before replacing production `DisabledProvider`:
+The native provider is based on the authorized consumer-app session and sanitized
+captures. It does not derive endpoints from DOM output, Muse Code, Meta Model API,
+or another product. The following evidence boundaries remain relevant, including
+separate public gateway, billing, paid-account, and confidential-VM acceptance:
 
 | Evidence | Required proof |
 | --- | --- |
