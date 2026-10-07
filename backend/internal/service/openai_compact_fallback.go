@@ -320,7 +320,9 @@ func (s *OpenAIGatewayService) openAICompactFallbackCandidates(account *Account,
 
 	if account != nil {
 		if mapped, matched := account.ResolveCompactMappedModel(requestedModel); matched {
-			add(resolveOpenAIAccountUpstreamModelForRequest(account, mapped, false))
+			// Compact-only mappings already produce the final upstream model. Do
+			// not apply ordinary model_mapping on top of them.
+			add(mapped)
 		}
 	}
 	if s != nil && s.cfg != nil {
@@ -340,7 +342,7 @@ func (s *OpenAIGatewayService) openAICompactFallbackCandidates(account *Account,
 			}
 			sort.Strings(modelIDs)
 			for _, modelID := range modelIDs {
-				add(resolveOpenAIAccountUpstreamModelForRequest(account, modelID, false))
+				add(modelID)
 			}
 		}
 	}
@@ -367,18 +369,14 @@ func openAICompactCandidateMayUseResponsesLite(account *Account, model string) b
 		return true
 	}
 	model = strings.TrimSpace(model)
-	target := account.GetMappedModel(model)
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
-		if _, excluded := apiKeyCodexModelsWithoutResponsesLite[target]; excluded {
+		if _, excluded := apiKeyCodexModelsWithoutResponsesLite[model]; excluded {
 			return false
 		}
 	}
-	for _, modelID := range []string{model, target} {
-		if metadata, ok := account.GetUpstreamModelMetadata(modelID); ok {
-			value, exists := metadata.CodexToolCapabilities["use_responses_lite"]
-			if !exists {
-				continue
-			}
+	if metadata, ok := account.GetUpstreamModelMetadata(model); ok {
+		value, exists := metadata.CodexToolCapabilities["use_responses_lite"]
+		if exists {
 			var enabled bool
 			if json.Unmarshal(value, &enabled) == nil {
 				return enabled
