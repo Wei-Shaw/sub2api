@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -241,7 +243,14 @@ func (r *museProviderRepository) Settle(ctx context.Context, id string) (*servic
 		frozen.Log.UpstreamResponseModel = &observed.String
 	}
 	if providerID != "" {
-		frozen.Log.UpstreamRequestID = &providerID
+		loggedID := providerID
+		if len(loggedID) > 128 {
+			// Keep the full recovery reference on muse_turns; the shared usage
+			// identifier column is bounded to 128 characters.
+			hash := sha256.Sum256([]byte(providerID))
+			loggedID = "muse_ref_" + hex.EncodeToString(hash[:])
+		}
+		frozen.Log.UpstreamRequestID = &loggedID
 	}
 	if len(reported) > 0 && string(reported) != "null" {
 		var usage apicompat.ResponsesUsage
