@@ -381,6 +381,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -388,44 +389,48 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	drain := newGatewayForwardStreamDrain(scanner, resp.Body, s.forwardStreamInterval())
+	defer drain.stop()
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:       requestID,
-			UpstreamHeaders: resp.Header,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 	}
 
-	writeChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
+	writeChunk := func(chunk apicompat.ChatCompletionsChunk) {
+		if clientDisconnected {
+			return
+		}
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
-			return false
+			return
 		}
 		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
-			return true // client disconnected
+			clientDisconnected = true
 		}
-		return false
 	}
 
-	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if event == nil {
-			return false
+			return
 		}
 		// Drop Anthropic keepalive pings before OpenAI conversion:
 		// leaking `event: ping` frames crashes OpenAI-stream clients.
-		// Error events must still forward — they carry upstream failures.
 		if event.Type == "ping" {
-			return false
+			return
 		}
 		if firstChunk {
 			firstChunk = false
@@ -433,46 +438,64 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			firstTokenMs = &ms
 		}
 
-		// Extract usage from message_delta
-		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
-		}
-		// Also capture usage from message_start (carries cache fields)
+		// 下游写失败后 usage 仍需计费，也保留兼容上游在 terminal 自身携带的 usage。
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+		if event.Usage != nil {
+			mergeAnthropicUsage(&usage, *event.Usage)
 		}
 
 		// Keep the outward Responses/Chat usage on the same normalized buckets used
 		// for billing, including converter handlers that consume event usage.
 		syncAnthropicResponsesUsage(anthState, usage)
 		normalizeAnthropicEventUsageForResponses(event, usage)
+		if clientDisconnected {
+			return
+		}
+		// 固定 terminal usage 尾窗口排水结束后，才发出 completion。
+		if drain.terminalSeen() && event.Type != "message_delta" {
+			return
+		}
 
 		// Chain: Anthropic event → Responses events → CC chunks
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {
 			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 			for _, chunk := range ccChunks {
-				if disconnected := writeChunk(chunk); disconnected {
-					return true
-				}
+				writeChunk(chunk)
 			}
 		}
-		c.Writer.Flush()
-		return false
+		if !clientDisconnected {
+			c.Writer.Flush()
+		}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	var readErr error
+	explicitStreamError := false
+	for {
+		line, err := drain.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventType, ok := extractOpenAISSEEventLine(line)
+		if !ok {
 			continue
 		}
 
-		if !scanner.Scan() {
+		dataLine, err := drain.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
+			continue
+		}
+		if strings.TrimSpace(payload) == "[DONE]" {
+			drain.startTerminalTail()
 			continue
 		}
 
@@ -480,41 +503,61 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
+		if event.Type == "" {
+			event.Type = eventType
+		}
 
 		// Forward received usage regardless of the client stream_options.
 		// The intermediate Responses converter synthesizes usage even when absent.
-		ccState.IncludeUsage = ccState.IncludeUsage || anthropicChatStreamHasUsage(&event, payload)
-
-		if processAnthropicEvent(&event) {
-			return resultWithUsage(), nil
+		ccState.IncludeUsage = ccState.IncludeUsage || anthropicChatStreamHasUsage(&event, payload) || event.Usage != nil
+		if anthropicStreamEventIsTerminal(eventType, payload) {
+			drain.startTerminalTail()
+		}
+		processAnthropicEvent(&event)
+		if event.Type == "error" {
+			explicitStreamError = true
+			readErr = errors.New("upstream stream error event")
+			break
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	// 成功终态后的传输收尾可忽略，尾窗口内显式上游错误仍须返回。
+	if !explicitStreamError && (drain.terminalSeen() || errors.Is(readErr, io.EOF)) {
+		readErr = nil
+	}
+	if readErr != nil {
+		if !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_cc stream: read error",
-				zap.Error(err),
+				zap.Error(readErr),
 				zap.String("request_id", requestID),
 			)
 		}
+		// 保留已采集 usage，不补发成功 completion，也不重放请求。
+		return resultWithUsage(), readErr
 	}
 
-	// Finalize both state machines
-	finalResEvents := apicompat.FinalizeAnthropicResponsesStream(anthState)
-	for _, resEvt := range finalResEvents {
-		ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
-		for _, chunk := range ccChunks {
-			writeChunk(chunk) //nolint:errcheck
+	if !clientDisconnected {
+		// 只有下游仍可写时才 finalize 两个状态机，写失败后禁止任何补发。
+		finalResEvents := apicompat.FinalizeAnthropicResponsesStream(anthState)
+		for _, resEvt := range finalResEvents {
+			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
+			for _, chunk := range ccChunks {
+				writeChunk(chunk)
+			}
+		}
+		finalCCChunks := apicompat.FinalizeResponsesChatStream(ccState)
+		for _, chunk := range finalCCChunks {
+			writeChunk(chunk)
 		}
 	}
-	finalCCChunks := apicompat.FinalizeResponsesChatStream(ccState)
-	for _, chunk := range finalCCChunks {
-		writeChunk(chunk) //nolint:errcheck
-	}
 
-	// Write [DONE] marker
-	fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
-	c.Writer.Flush()
+	if !clientDisconnected {
+		if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
+			clientDisconnected = true
+		} else {
+			c.Writer.Flush()
+		}
+	}
 
 	return resultWithUsage(), nil
 }

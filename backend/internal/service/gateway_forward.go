@@ -826,7 +826,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				// 上游 HTTP 200 + SSE 流体内出现 event:error 帧。
 				body := []byte(sseErr.RawData)
 				semanticStatus := http.StatusForbidden
-				if c.Writer.Size() == writerSizeBeforeStream && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
+				if (c.Writer.Size() == writerSizeBeforeStream || sseErr.SafeToFailoverAfterWrite) && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
 					semanticStatus = 529
 					syntheticResp := &http.Response{
 						StatusCode: semanticStatus,
@@ -869,8 +869,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				)
 
 				return nil, &UpstreamFailoverError{
-					StatusCode:   semanticStatus,
-					ResponseBody: body,
+					StatusCode:               semanticStatus,
+					ResponseBody:             body,
+					SafeToFailoverAfterWrite: sseErr.SafeToFailoverAfterWrite,
 				}
 			}
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的

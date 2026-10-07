@@ -545,6 +545,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -552,46 +553,29 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	drain := newGatewayForwardStreamDrain(scanner, resp.Body, s.forwardStreamInterval())
+	defer drain.stop()
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:       requestID,
-			UpstreamHeaders: resp.Header,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 	}
 
-	// processEvent handles a single parsed Anthropic SSE event.
-	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
+	// 所有输出（包括补发的最终事件）共用此写失败保护。
+	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
+		if clientDisconnected {
+			return
 		}
-
-		// Extract usage from message_delta
-		if event.Type == "message_delta" && event.Usage != nil {
-			mergeAnthropicUsage(&usage, *event.Usage)
-		}
-		// Also capture usage from message_start
-		if event.Type == "message_start" && event.Message != nil {
-			mergeAnthropicUsage(&usage, event.Message.Usage)
-		}
-
-		// Keep the terminal Responses usage aligned with the normalized billing
-		// buckets. Normalize the converter input too, so message handlers cannot
-		// restore the provider's overlapping raw input total.
-		syncAnthropicResponsesUsage(state, usage)
-		normalizeAnthropicEventUsageForResponses(event, usage)
-
-		// Convert to Responses events
-		events := apicompat.AnthropicEventToResponsesEvents(event, state)
 		for _, evt := range events {
 			payload, err := json.Marshal(evt)
 			if err != nil {
@@ -613,49 +597,74 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			for _, restored := range payloads {
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
+					clientDisconnected = true
 					logger.L().Info("forward_as_responses stream: client disconnected",
 						zap.String("request_id", requestID),
 					)
-					return true // client disconnected
+					return
 				}
 			}
 		}
-		if len(events) > 0 {
+		if len(events) > 0 && !clientDisconnected {
 			c.Writer.Flush()
 		}
-		return false
 	}
 
-	finalizeStream := func() (*ForwardResult, error) {
-		if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
-			for _, evt := range finalEvents {
-				sse, err := apicompat.ResponsesEventToSSE(evt)
-				if err != nil {
-					continue
-				}
-				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
-				fmt.Fprint(c.Writer, out) //nolint:errcheck
-			}
-			c.Writer.Flush()
+	// 下游写失败后和 terminal 尾窗口内仍继续累计 usage。
+	processEvent := func(event *apicompat.AnthropicStreamEvent) {
+		if firstChunk {
+			firstChunk = false
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
 		}
-		return resultWithUsage(), nil
+		if event.Type == "message_start" && event.Message != nil {
+			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+		if event.Usage != nil {
+			mergeAnthropicUsage(&usage, *event.Usage)
+		}
+
+		// Keep the terminal Responses usage aligned with the normalized billing
+		// buckets. Normalize the converter input too, so message handlers cannot
+		// restore the provider's overlapping raw input total.
+		syncAnthropicResponsesUsage(state, usage)
+		normalizeAnthropicEventUsageForResponses(event, usage)
+		if clientDisconnected {
+			return
+		}
+		// 等固定 usage 尾窗口排水结束后，再转换最终事件。
+		if drain.terminalSeen() && event.Type != "message_delta" {
+			return
+		}
+		writeEvents(apicompat.AnthropicEventToResponsesEvents(event, state))
 	}
 
-	// Read Anthropic SSE events
-	for scanner.Scan() {
-		line := scanner.Text()
+	// 读取不受下游请求取消影响：上游请求已有 WithoutCancel，脱离取消后的读取
+	// 由闲置超时和 terminal 尾窗口限制。
+	var readErr error
+	explicitStreamError := false
+	for {
+		line, err := drain.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		eventType, ok := parseAnthropicSSEField(line, "event")
 		if !ok {
 			continue
 		}
 
-		// Read data line
-		if !scanner.Scan() {
+		dataLine, err := drain.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		dataLine := scanner.Text()
 		payload, ok := parseAnthropicSSEField(dataLine, "data")
 		if !ok {
+			continue
+		}
+		if strings.TrimSpace(payload) == "[DONE]" {
+			drain.startTerminalTail()
 			continue
 		}
 
@@ -668,22 +677,40 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			)
 			continue
 		}
-
-		if processEvent(&event) {
-			return resultWithUsage(), nil
+		if event.Type == "" {
+			event.Type = eventType
+		}
+		if anthropicStreamEventIsTerminal(eventType, payload) {
+			drain.startTerminalTail()
+		}
+		processEvent(&event)
+		if event.Type == "error" {
+			explicitStreamError = true
+			readErr = errors.New("upstream stream error event")
+			break
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	// 成功终态后的传输收尾可忽略，尾窗口内显式上游错误仍须返回。
+	if !explicitStreamError && (drain.terminalSeen() || errors.Is(readErr, io.EOF)) {
+		readErr = nil
+	}
+	if readErr != nil {
+		if !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_responses stream: read error",
-				zap.Error(err),
+				zap.Error(readErr),
 				zap.String("request_id", requestID),
 			)
 		}
+		// 上游失败时不补发成功 completion，下游写失败后也不触发 failover 重放；
+		// 已采集 usage 与错误一同返回。
+		return resultWithUsage(), readErr
 	}
 
-	return finalizeStream()
+	if !clientDisconnected {
+		writeEvents(apicompat.FinalizeAnthropicResponsesStream(state))
+	}
+	return resultWithUsage(), nil
 }
 
 // appendRawJSON appends a JSON fragment string to existing raw JSON.

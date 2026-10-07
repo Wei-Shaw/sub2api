@@ -735,7 +735,8 @@ func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
 // Error() 保持原字符串以兼容现有日志/检索；调用方应通过 errors.As
 // 提取 RawData 并构造 UpstreamFailoverError.ResponseBody。
 type sseStreamErrorEventError struct {
-	RawData string
+	RawData                  string
+	SafeToFailoverAfterWrite bool // 仅首可见输出前写过传输注释时可安全重试。
 }
 
 func (e *sseStreamErrorEventError) Error() string { return "have error in stream" }
