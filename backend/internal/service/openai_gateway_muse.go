@@ -294,6 +294,7 @@ func writeMuseError(c *gin.Context, endpoint string, err error, stream bool) err
 	if c.Request.Context().Err() != nil {
 		return err
 	}
+	MarkResponseCommitted(c)
 	body := gin.H{"error": gin.H{"type": "api_error", "code": code, "message": message}}
 	if endpoint == "messages" {
 		body["type"] = "error"
