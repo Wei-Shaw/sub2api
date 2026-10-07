@@ -398,6 +398,8 @@ export default {
     firstToken: '首 Token',
     duration: '耗时',
     latency: '延迟',
+    reasoningTokens: '推理 Token',
+    reasoningTokensHint: '上游报告的推理用量明细，不额外累加到 Token 总数或费用。— 表示未提供。',
     latencyFirstToken: '首字',
     latencyDuration: '总耗时',
     time: '时间',

@@ -479,6 +479,46 @@ describe('admin UsageView request ID column visibility', () => {
     vi.useRealTimers()
   })
 
+
+  it.each([null, '[]'])('defaults reasoning tokens to hidden for stored preferences %s and preserves opt-in', async (saved) => {
+    const storage = new Map<string, string>()
+    if (saved) storage.set('usage-hidden-columns', saved)
+    vi.mocked(localStorage.getItem).mockImplementation(key => storage.get(key) ?? null)
+    vi.mocked(localStorage.setItem).mockImplementation((key, value) => { storage.set(key, value) })
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          AuditLogModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+          UserTokenRanking: true,
+        },
+      },
+    })
+
+    await wrapper.vm.$nextTick()
+    const setup = (wrapper.vm as any).$?.setupState
+    expect(setup.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(false)
+    setup.toggleColumn('reasoning_tokens')
+    await wrapper.vm.$nextTick()
+    expect(setup.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(true)
+    setup.loadSavedColumns()
+    expect(setup.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(true)
+    wrapper.unmount()
+  })
   it('keeps request ID hidden by default and allows enabling it from column settings', async () => {
     const wrapper = mount(UsageView, {
       global: {

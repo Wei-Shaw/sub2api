@@ -1047,6 +1047,7 @@ func TestResponsesToChatCompletions_CachedTokens(t *testing.T) {
 }
 
 func TestResponsesToChatCompletions_ReasoningTokens(t *testing.T) {
+	reasoningTokens := 32
 	resp := &ResponsesResponse{
 		ID:     "resp_reasoning",
 		Status: "completed",
@@ -1061,7 +1062,7 @@ func TestResponsesToChatCompletions_ReasoningTokens(t *testing.T) {
 			OutputTokens: 33,
 			TotalTokens:  57,
 			OutputTokensDetails: &ResponsesOutputTokensDetails{
-				ReasoningTokens: 32,
+				ReasoningTokens: &reasoningTokens,
 			},
 		},
 	}
@@ -1074,6 +1075,7 @@ func TestResponsesToChatCompletions_ReasoningTokens(t *testing.T) {
 }
 
 func TestResponsesToChatCompletions_AllTokenDetailsPassThrough(t *testing.T) {
+	reasoningTokens := 30
 	// Covers the full OpenAI CompletionUsage detail field set so future audio
 	// and prediction-outputs responses propagate without further changes.
 	resp := &ResponsesResponse{
@@ -1094,7 +1096,7 @@ func TestResponsesToChatCompletions_AllTokenDetailsPassThrough(t *testing.T) {
 				AudioTokens:  4,
 			},
 			OutputTokensDetails: &ResponsesOutputTokensDetails{
-				ReasoningTokens:          30,
+				ReasoningTokens:          &reasoningTokens,
 				AudioTokens:              2,
 				AcceptedPredictionTokens: 10,
 				RejectedPredictionTokens: 3,
@@ -1123,6 +1125,7 @@ func TestResponsesToChatCompletions_AllTokenDetailsPassThrough(t *testing.T) {
 }
 
 func TestResponsesToChatCompletions_NoReasoningTokensWhenZero(t *testing.T) {
+	reasoningTokens := 0
 	// Non-reasoning models do not return reasoning_tokens. The mapping must
 	// omit completion_tokens_details entirely rather than emitting a zero-valued
 	// field, so non-reasoning responses stay clean.
@@ -1140,7 +1143,7 @@ func TestResponsesToChatCompletions_NoReasoningTokensWhenZero(t *testing.T) {
 			OutputTokens: 5,
 			TotalTokens:  15,
 			OutputTokensDetails: &ResponsesOutputTokensDetails{
-				ReasoningTokens: 0,
+				ReasoningTokens: &reasoningTokens,
 			},
 		},
 	}
@@ -1318,6 +1321,7 @@ func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 }
 
 func TestResponsesEventToChatChunks_CompletedWithReasoningTokens(t *testing.T) {
+	reasoningTokens := 32
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-5.5"
 	state.IncludeUsage = true
@@ -1331,7 +1335,7 @@ func TestResponsesEventToChatChunks_CompletedWithReasoningTokens(t *testing.T) {
 				OutputTokens: 33,
 				TotalTokens:  57,
 				OutputTokensDetails: &ResponsesOutputTokensDetails{
-					ReasoningTokens: 32,
+					ReasoningTokens: &reasoningTokens,
 				},
 			},
 		},

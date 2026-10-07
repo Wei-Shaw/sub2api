@@ -1304,6 +1304,9 @@ func mergeOpenAIUsage(dst *OpenAIUsage, body []byte) {
 		if parsed.InputTokens > 0 {
 			dst.InputTokens = parsed.InputTokens
 		}
+		if parsed.ReasoningTokens != nil {
+			dst.ReasoningTokens = parsed.ReasoningTokens
+		}
 		if parsed.OutputTokens > 0 {
 			dst.OutputTokens = parsed.OutputTokens
 		}

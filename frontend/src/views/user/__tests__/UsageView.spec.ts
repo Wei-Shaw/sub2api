@@ -216,6 +216,24 @@ describe('user UsageView', () => {
     getAvailable.mockResolvedValue([{ id: 1, name: 'default' }])
   })
 
+
+  it.each([false, true])('keeps reasoning tokens opt-in for existing preferences: %s', async (existing) => {
+    localStorage.clear()
+    if (existing) localStorage.setItem('user-usage-hidden-columns', '[]')
+    const wrapper = mountUsageView()
+    await flushPromises()
+    const setup = (wrapper.vm as any).$?.setupState
+    expect(setup.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(false)
+    setup.toggleColumn('reasoning_tokens')
+    await wrapper.vm.$nextTick()
+    expect(setup.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(true)
+    wrapper.unmount()
+    const reopened = mountUsageView()
+    await flushPromises()
+    expect((reopened.vm as any).$?.setupState.visibleColumns.some((col: { key: string }) => col.key === 'reasoning_tokens')).toBe(true)
+    reopened.unmount()
+    localStorage.clear()
+  })
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
     mountUsageView()
     await flushPromises()

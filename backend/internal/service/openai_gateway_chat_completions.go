@@ -571,12 +571,13 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		// 标记供 handler 事后写风控/邮件/tokens=0 用量行。
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
 			MarkOpsCyberPolicy(c, CyberPolicyMark{
-				Code:           code,
-				Message:        msg,
-				Body:           truncateString(string(payload), 4096),
-				UpstreamStatus: http.StatusOK,
-				UpstreamInTok:  usage.InputTokens,
-				UpstreamOutTok: usage.OutputTokens,
+				Code:                    code,
+				Message:                 msg,
+				Body:                    truncateString(string(payload), 4096),
+				UpstreamStatus:          http.StatusOK,
+				UpstreamInTok:           usage.InputTokens,
+				UpstreamOutTok:          usage.OutputTokens,
+				UpstreamReasoningTokens: usage.ReasoningTokens,
 			})
 			clientMsg := msg
 			if clientMsg == "" {
@@ -799,10 +800,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if isTerminalEvent {
 			terminalEventType = strings.TrimSpace(event.Type)
 			if event.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+				usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage.ReasoningTokens)
 			}
 			if event.Response != nil && event.Response.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage, usage.ReasoningTokens)
 			}
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
@@ -813,12 +814,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				// [DONE]，让程序化客户端可感知并停止重试（F4）；标记供 handler 事后
 				// 写风控/邮件。
 				MarkOpsCyberPolicy(c, CyberPolicyMark{
-					Code:           code,
-					Message:        msg,
-					Body:           truncateString(string(payloadBytes), 4096),
-					UpstreamStatus: http.StatusOK,
-					UpstreamInTok:  usage.InputTokens,
-					UpstreamOutTok: usage.OutputTokens,
+					Code:                    code,
+					Message:                 msg,
+					Body:                    truncateString(string(payloadBytes), 4096),
+					UpstreamStatus:          http.StatusOK,
+					UpstreamInTok:           usage.InputTokens,
+					UpstreamOutTok:          usage.OutputTokens,
+					UpstreamReasoningTokens: usage.ReasoningTokens,
 				})
 				if !clientDisconnected {
 					// 被 refusal 检测扣留的 pendingSSE 有意丢弃——cyber 拦截优先于部分内容下发。

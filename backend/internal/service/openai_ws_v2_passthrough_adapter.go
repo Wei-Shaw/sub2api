@@ -1208,6 +1208,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					Usage: OpenAIUsage{
 						InputTokens:              turn.Usage.InputTokens,
 						OutputTokens:             turn.Usage.OutputTokens,
+						ReasoningTokens:          turn.Usage.ReasoningTokens,
 						CacheCreationInputTokens: turn.Usage.CacheCreationInputTokens,
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
@@ -1349,6 +1350,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		Usage: OpenAIUsage{
 			InputTokens:              relayResult.Usage.InputTokens,
 			OutputTokens:             relayResult.Usage.OutputTokens,
+			ReasoningTokens:          relayResult.Usage.ReasoningTokens,
 			CacheCreationInputTokens: relayResult.Usage.CacheCreationInputTokens,
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,

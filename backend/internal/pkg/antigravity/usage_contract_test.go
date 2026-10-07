@@ -38,3 +38,22 @@ func TestGeminiUsageMapping_NoCacheCreationTokens(t *testing.T) {
 		require.Zero(t, usage.CacheCreationInputTokens)
 	})
 }
+
+func TestGeminiReasoningTokenPresence(t *testing.T) {
+	for _, suffix := range []string{"", `,"thoughtsTokenCount":0`, `,"thoughtsTokenCount":5`} {
+		raw := `{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20` + suffix + `}}`
+		body, usage, err := TransformGeminiToClaude([]byte(raw), "gemini")
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "reasoning_tokens", "internal observation must not change Anthropic wire usage")
+		stream := NewStreamingProcessor("gemini")
+		stream.ProcessLine(`data: {"response":` + raw + `}`)
+		_, streamUsage := stream.Finish()
+		require.Equal(t, usage.ReasoningTokens, streamUsage.ReasoningTokens)
+		if suffix == "" {
+			require.Nil(t, usage.ReasoningTokens)
+		} else {
+			require.NotNil(t, usage.ReasoningTokens)
+			require.Equal(t, 20+*usage.ReasoningTokens, usage.OutputTokens)
+		}
+	}
+}

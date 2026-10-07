@@ -429,12 +429,16 @@ func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatToke
 	if src == nil {
 		return nil
 	}
-	if src.ReasoningTokens == 0 && src.AudioTokens == 0 &&
+	reasoningTokens := 0
+	if src.ReasoningTokens != nil {
+		reasoningTokens = *src.ReasoningTokens
+	}
+	if reasoningTokens == 0 && src.AudioTokens == 0 &&
 		src.AcceptedPredictionTokens == 0 && src.RejectedPredictionTokens == 0 {
 		return nil
 	}
 	return &ChatTokenDetails{
-		ReasoningTokens:          src.ReasoningTokens,
+		ReasoningTokens:          reasoningTokens,
 		AudioTokens:              src.AudioTokens,
 		AcceptedPredictionTokens: src.AcceptedPredictionTokens,
 		RejectedPredictionTokens: src.RejectedPredictionTokens,

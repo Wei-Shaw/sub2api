@@ -1,5 +1,7 @@
 package antigravity
 
+import "math"
+
 // Gemini v1internal 请求/响应类型定义
 
 // V1InternalRequest v1internal 请求包装
@@ -166,7 +168,7 @@ type GeminiUsageMetadata struct {
 	CandidatesTokenCount    int                 `json:"candidatesTokenCount,omitempty"`
 	CachedContentTokenCount int                 `json:"cachedContentTokenCount,omitempty"`
 	TotalTokenCount         int                 `json:"totalTokenCount,omitempty"`
-	ThoughtsTokenCount      int                 `json:"thoughtsTokenCount,omitempty"` // thinking tokens（按输出价格计费）
+	ThoughtsTokenCount      *int                `json:"thoughtsTokenCount,omitempty"` // thinking tokens（按输出价格计费）
 	CandidatesTokensDetails []GeminiTokenDetail `json:"candidatesTokensDetails,omitempty"`
 	PromptTokensDetails     []GeminiTokenDetail `json:"promptTokensDetails,omitempty"`
 }
@@ -213,4 +215,21 @@ var DefaultStopSequences = []string{
 	"<|endoftext|>",
 	"<|end_of_turn|>",
 	"\n\nHuman:",
+}
+
+// OutputTokens keeps the existing billed candidate + thinking total.
+func (m *GeminiUsageMetadata) OutputTokens() int {
+	tokens := m.CandidatesTokenCount
+	if m.ThoughtsTokenCount != nil {
+		tokens += *m.ThoughtsTokenCount
+	}
+	return tokens
+}
+
+// ReasoningTokens is an observation, not an extra billable token count.
+func (m *GeminiUsageMetadata) ReasoningTokens() *int {
+	if m.ThoughtsTokenCount == nil || *m.ThoughtsTokenCount < 0 || *m.ThoughtsTokenCount > math.MaxInt32 {
+		return nil
+	}
+	return m.ThoughtsTokenCount
 }

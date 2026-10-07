@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 
@@ -2340,6 +2341,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		}
 
 		if u := extractGeminiUsage(unwrappedBytes); u != nil {
+			if u.ReasoningTokens == nil {
+				u.ReasoningTokens = usage.ReasoningTokens
+			}
 			usage = *u
 		}
 
@@ -2508,6 +2512,9 @@ func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawByte
 					if parsed != nil {
 						last = parsed
 						if u := extractGeminiUsage(rawBytes); u != nil {
+							if u.ReasoningTokens == nil && usage != nil {
+								u.ReasoningTokens = usage.ReasoningTokens
+							}
 							usage = u
 						}
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
@@ -2813,6 +2820,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						best = sig
 					}
 					if u := extractGeminiUsage(rawBytes); u != nil {
+						if u.ReasoningTokens == nil && usage != nil {
+							u.ReasoningTokens = usage.ReasoningTokens
+						}
 						usage = u
 					}
 					observer.ObserveGemini(rawBytes)
@@ -3056,6 +3066,7 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	return &ClaudeUsage{
 		InputTokens:          prompt - cached,
 		OutputTokens:         cand + thoughts,
+		ReasoningTokens:      usagestats.OptionalTokenCount(usage, "thoughtsTokenCount"),
 		CacheReadInputTokens: cached,
 		ImageOutputTokens:    imageTokens,
 	}

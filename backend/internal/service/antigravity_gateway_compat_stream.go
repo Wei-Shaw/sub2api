@@ -269,6 +269,7 @@ func mergeAntigravityCompatUsage(dst *ClaudeUsage, src *antigravity.ClaudeUsage)
 	}
 	dst.InputTokens = src.InputTokens
 	dst.OutputTokens = src.OutputTokens
+	dst.ReasoningTokens = src.ReasoningTokens
 	dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	dst.CacheReadInputTokens = src.CacheReadInputTokens
 	dst.ImageOutputTokens = src.ImageOutputTokens

@@ -154,6 +154,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		Usage: ClaudeUsage{
 			InputTokens:              usage.InputTokens,
 			OutputTokens:             usage.OutputTokens,
+			ReasoningTokens:          usage.ReasoningTokens,
 			CacheReadInputTokens:     usage.CacheReadInputTokens,
 			CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		},

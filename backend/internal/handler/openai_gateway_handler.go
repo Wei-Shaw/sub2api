@@ -4354,6 +4354,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 				Stream:             stream,
 				InputTokens:        mark.UpstreamInTok,
 				OutputTokens:       mark.UpstreamOutTok,
+				ReasoningTokens:    mark.UpstreamReasoningTokens,
 				InboundEndpoint:    inboundEndpoint,
 				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,

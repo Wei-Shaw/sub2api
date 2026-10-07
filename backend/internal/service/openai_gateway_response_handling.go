@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -541,12 +542,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
 					cyberHit = true
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
-						Code:           code,
-						Message:        msg,
-						Body:           truncateString(string(dataBytes), 4096),
-						UpstreamStatus: http.StatusOK,
-						UpstreamInTok:  usage.InputTokens,
-						UpstreamOutTok: usage.OutputTokens,
+						Code:                    code,
+						Message:                 msg,
+						Body:                    truncateString(string(dataBytes), 4096),
+						UpstreamStatus:          http.StatusOK,
+						UpstreamInTok:           usage.InputTokens,
+						UpstreamOutTok:          usage.OutputTokens,
+						UpstreamReasoningTokens: usage.ReasoningTokens,
 					})
 				}
 				outputStarted := openAIStreamClientOutputStarted(c, clientOutputStarted)
@@ -1233,6 +1235,9 @@ func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, eventType
 		if !openAIUsageHasTokens(&parsedUsage) && openAIUsageHasTokens(usage) {
 			return
 		}
+		if parsedUsage.ReasoningTokens == nil {
+			parsedUsage.ReasoningTokens = usage.ReasoningTokens
+		}
 		*usage = parsedUsage
 		return
 	}
@@ -1255,6 +1260,9 @@ func mergeOpenAIUsageNonZero(dst *OpenAIUsage, src OpenAIUsage) {
 	}
 	if src.ImageCacheReadTokens > 0 {
 		dst.ImageCacheReadTokens = src.ImageCacheReadTokens
+	}
+	if src.ReasoningTokens != nil {
+		dst.ReasoningTokens = src.ReasoningTokens
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
@@ -1549,6 +1557,7 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		InputTokens:              int(inputTokens),
 		ImageInputTokens:         imageInputTokens,
 		OutputTokens:             int(outputTokens),
+		ReasoningTokens:          usagestats.OptionalTokenCount(value, "output_tokens_details.reasoning_tokens", "completion_tokens_details.reasoning_tokens"),
 		CacheCreationInputTokens: cacheCreationTokens,
 		CacheReadInputTokens:     cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),

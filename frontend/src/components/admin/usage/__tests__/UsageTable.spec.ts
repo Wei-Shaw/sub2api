@@ -92,6 +92,7 @@ const DataTableStub = {
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
+        <slot name="cell-reasoning_tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
@@ -129,6 +130,14 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('distinguishes unavailable, zero and observed reasoning tokens', () => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [null, 0, 1234].map((reasoning_tokens, id) => ({ ...baseImageRow, request_id: String(id), reasoning_tokens })), loading: false, columns: [{ key: 'reasoning_tokens', label: 'Reasoning tokens' }] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.findAll('[data-testid="reasoning-tokens"]').map(cell => cell.text())).toEqual(['—', '0', (1234).toLocaleString()])
+  })
+
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

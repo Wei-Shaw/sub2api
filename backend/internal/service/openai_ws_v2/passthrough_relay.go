@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	coderws "github.com/coder/websocket"
 	"github.com/tidwall/gjson"
 
@@ -27,6 +28,7 @@ type FrameConn interface {
 type Usage struct {
 	InputTokens              int
 	OutputTokens             int
+	ReasoningTokens          *int
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
 	ImageOutputTokens        int
@@ -1142,6 +1144,7 @@ func parseUsageAndAccumulate(
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,
 		OutputTokens:             outputTokens,
+		ReasoningTokens:          usagestats.OptionalTokenCount(usageResult, "output_tokens_details.reasoning_tokens", "completion_tokens_details.reasoning_tokens"),
 		CacheCreationInputTokens: openAICacheCreationTokensFromUsage(usageResult),
 		CacheReadInputTokens:     cachedTokens,
 		ImageOutputTokens:        int(imageTokens),
@@ -1149,6 +1152,9 @@ func parseUsageAndAccumulate(
 
 	if isTerminalEvent(strings.TrimSpace(eventType)) {
 		if relayUsageHasTokens(parsedUsage) || !relayUsageHasTokens(state.turnUsage) {
+			if parsedUsage.ReasoningTokens == nil {
+				parsedUsage.ReasoningTokens = state.turnUsage.ReasoningTokens
+			}
 			state.turnUsage = parsedUsage
 		}
 	} else {
@@ -1171,6 +1177,9 @@ func mergeRelayUsageNonZero(dst *Usage, src Usage) {
 	if src.InputTokens > 0 {
 		dst.InputTokens = src.InputTokens
 	}
+	if src.ReasoningTokens != nil {
+		dst.ReasoningTokens = src.ReasoningTokens
+	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
 	}
@@ -1190,6 +1199,14 @@ func finalizeRelayTurnUsage(state *relayState) Usage {
 		return Usage{}
 	}
 	turnUsage := state.turnUsage
+	if state.usage.OutputTokens == 0 && state.usage.ReasoningTokens == nil {
+		state.usage.ReasoningTokens = turnUsage.ReasoningTokens
+	} else if state.usage.ReasoningTokens != nil && turnUsage.ReasoningTokens != nil {
+		count := *state.usage.ReasoningTokens + *turnUsage.ReasoningTokens
+		state.usage.ReasoningTokens = &count
+	} else if turnUsage.OutputTokens > 0 {
+		state.usage.ReasoningTokens = nil
+	}
 	state.usage.InputTokens += turnUsage.InputTokens
 	state.usage.OutputTokens += turnUsage.OutputTokens
 	state.usage.CacheCreationInputTokens += turnUsage.CacheCreationInputTokens

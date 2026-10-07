@@ -795,3 +795,19 @@ func TestObserveUpstreamMessage_ResponseServiceTierOnlyFromTerminalEvents(t *tes
 	)
 	require.Equal(t, "", second.responseServiceTier)
 }
+
+func TestRelayReasoningTokenSnapshotsAndTurns(t *testing.T) {
+	state := &relayState{}
+	raw := []byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":10,"output_tokens":20,"output_tokens_details":{"reasoning_tokens":7}}}}`)
+	parseUsageAndAccumulate(state, raw, "response.in_progress", nil)
+	parseUsageAndAccumulate(state, raw, "response.in_progress", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":30}}}`), "response.completed", nil)
+	require.NotNil(t, state.turnUsage.ReasoningTokens)
+	require.Equal(t, 7, *state.turnUsage.ReasoningTokens)
+	turn := finalizeRelayTurnUsage(state)
+	require.Equal(t, 7, *turn.ReasoningTokens)
+	require.Equal(t, 7, *state.usage.ReasoningTokens)
+	require.Nil(t, state.turnUsage.ReasoningTokens)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":30,"output_tokens_details":{"reasoning_tokens":0}}}}`), "response.completed", nil)
+	require.Equal(t, 0, *state.turnUsage.ReasoningTokens)
+}
