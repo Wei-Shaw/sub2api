@@ -458,20 +458,6 @@ func (s *OpenAIGatewayService) prepareOpenAICompactFallbackRetryWithState(
 	return currentBody, "", false
 }
 
-func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignal(
-	c *gin.Context,
-	account *Account,
-	requestedModel string,
-	body []byte,
-	err error,
-	alreadyRetried bool,
-	resp *http.Response,
-) ([]byte, string, bool) {
-	return s.applyOpenAIPassthroughCompactFallbackFromSignalWithState(
-		c, context.Background(), account, requestedModel, body, err, alreadyRetried, resp, nil,
-	)
-}
-
 func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignalWithState(
 	c *gin.Context,
 	ctx context.Context,
