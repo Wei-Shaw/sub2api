@@ -124,9 +124,9 @@ func TestMuseProviderPostgres(t *testing.T) {
 	}
 	complete := func(t *testing.T, turn *muse.Turn, lease muse.Lease, outcome muse.State) {
 		require.NoError(t, runtime.BeginSubmission(ctx, lease))
-		require.NoError(t, runtime.Advance(ctx, lease, muse.Submitting, muse.Accepted, "fixture-provider-turn"))
-		require.NoError(t, store.RecordResult(ctx, turn.ID, &muse.Result{ProviderTurnID: "fixture-provider-turn", Response: &apicompat.ResponsesResponse{Status: "completed", Model: "observed-fixture-model"}}))
-		require.NoError(t, runtime.Advance(ctx, lease, muse.Accepted, outcome, "fixture-provider-turn"))
+		require.NoError(t, runtime.Advance(ctx, lease, muse.Submitting, muse.Accepted, ("muse_noise_v1:11111111-2222-4333-8444-555555555555:"+strings.Repeat("a", 64)+":aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")))
+		require.NoError(t, store.RecordResult(ctx, turn.ID, &muse.Result{ProviderTurnID: ("muse_noise_v1:11111111-2222-4333-8444-555555555555:" + strings.Repeat("a", 64) + ":aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), Response: &apicompat.ResponsesResponse{Status: "completed", Model: "observed-fixture-model"}}))
+		require.NoError(t, runtime.Advance(ctx, lease, muse.Accepted, outcome, ("muse_noise_v1:11111111-2222-4333-8444-555555555555:"+strings.Repeat("a", 64)+":aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")))
 	}
 	balance := func() string {
 		var s string
@@ -163,6 +163,12 @@ func TestMuseProviderPostgres(t *testing.T) {
 		var count int
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_logs WHERE request_id=$1`, turn.ID).Scan(&count))
 		require.Equal(t, 1, count)
+		var loggedRef, preservedRef string
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT upstream_request_id FROM usage_logs WHERE request_id=$1`, turn.ID).Scan(&loggedRef))
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT provider_turn_id FROM muse_turns WHERE id=$1`, turn.ID).Scan(&preservedRef))
+		require.LessOrEqual(t, len(loggedRef), 128)
+		require.True(t, strings.HasPrefix(loggedRef, "muse_ref_"))
+		require.Greater(t, len(preservedRef), 128, "recovery must retain its complete canonical reference")
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id=$1`, turn.ID).Scan(&count))
 		require.Equal(t, 1, count)
 		var quota, daily string
