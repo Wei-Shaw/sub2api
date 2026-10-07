@@ -352,7 +352,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	agentTaskRecoveryTried := false
-	compactModelFallbackRetried := false
+	compactModelFallbackState := newOpenAICompactFallbackState()
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	var resp *http.Response
 	var usage *OpenAIUsage
@@ -403,18 +403,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				continue
 			}
 			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(probeBody)))
-			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-				c, account, requestedModel, body, resp.StatusCode, upstreamMsg, probeBody, compactModelFallbackRetried,
+			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetryWithState(
+				c, ctx, account, requestedModel, body, resp.StatusCode, upstreamMsg, probeBody, compactModelFallbackState,
 			); retry {
 				s.appendOpenAICompactFallbackRetryOps(c, account, resp, probeBody, upstreamMsg, true)
 				fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 				body = retryBody
 				upstreamPassthroughModel = fallbackModel
-				compactModelFallbackRetried = true
 				SetOpsUpstreamModel(c, fallbackModel)
 				logger.LegacyPrintf(
 					"service.openai_gateway",
-					"[OpenAI passthrough] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+					"[OpenAI passthrough] Retrying explicit compact request with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
 					account.Name, fromModel, fallbackModel, extractUpstreamErrorCode(probeBody),
 				)
 				continue
@@ -447,12 +446,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if reqStream {
 			result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
-				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
-					c, account, requestedModel, body, handleErr, compactModelFallbackRetried, resp,
+				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignalWithState(
+					c, ctx, account, requestedModel, body, handleErr, false, resp, compactModelFallbackState,
 				); retry {
 					body = retryBody
 					upstreamPassthroughModel = fallbackModel
-					compactModelFallbackRetried = true
 					continue
 				}
 				if signal, ok := asOpenAICompactFallbackSignal(handleErr); ok {
@@ -474,12 +472,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
-				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
-					c, account, requestedModel, body, handleErr, compactModelFallbackRetried, resp,
+				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignalWithState(
+					c, ctx, account, requestedModel, body, handleErr, false, resp, compactModelFallbackState,
 				); retry {
 					body = retryBody
 					upstreamPassthroughModel = fallbackModel
-					compactModelFallbackRetried = true
 					continue
 				}
 				if signal, ok := asOpenAICompactFallbackSignal(handleErr); ok {

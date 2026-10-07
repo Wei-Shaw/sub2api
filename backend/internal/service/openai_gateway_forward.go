@@ -1034,7 +1034,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
-	compactModelFallbackRetried := false
+	compactModelFallbackState := newOpenAICompactFallbackState()
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
@@ -1146,8 +1146,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request after %s (account: %s)", reason, account.Name)
 				continue
 			}
-			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-				c, account, requestedModel, body, resp.StatusCode, upstreamMsg, respBody, compactModelFallbackRetried,
+			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetryWithState(
+				c, ctx, account, requestedModel, body, resp.StatusCode, upstreamMsg, respBody, compactModelFallbackState,
 			); retry {
 				s.appendOpenAICompactFallbackRetryOps(c, account, resp, respBody, upstreamMsg, false)
 				fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
@@ -1155,11 +1155,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				requestView = newOpenAIRequestView(body)
 				reqBody = nil
 				upstreamModel = fallbackModel
-				compactModelFallbackRetried = true
 				SetOpsUpstreamModel(c, fallbackModel)
 				logger.LegacyPrintf(
 					"service.openai_gateway",
-					"[OpenAI] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+					"[OpenAI] Retrying explicit compact request with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
 					account.Name, fromModel, fallbackModel, upstreamCode,
 				)
 				continue
@@ -1224,14 +1223,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
-					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
+					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetryWithState(
+						c, ctx, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackState,
 					); retry {
 						s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, false)
 						body = retryBody
 						requestView = newOpenAIRequestView(body)
 						upstreamModel = fallbackModel
-						compactModelFallbackRetried = true
 						SetOpsUpstreamModel(c, fallbackModel)
 						continue
 					}
@@ -1271,14 +1269,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
-					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
+					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetryWithState(
+						c, ctx, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackState,
 					); retry {
 						s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, false)
 						body = retryBody
 						requestView = newOpenAIRequestView(body)
 						upstreamModel = fallbackModel
-						compactModelFallbackRetried = true
 						SetOpsUpstreamModel(c, fallbackModel)
 						continue
 					}

@@ -2,10 +2,12 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -16,6 +18,55 @@ import (
 type openAICompactFallbackSignal struct {
 	payload []byte
 	message string
+}
+
+const (
+	// The initial model counts as one attempt. Every retry must select a new
+	// candidate, and the chain remains bounded even when upstream keeps
+	// rejecting models.
+	openAICompactFallbackMaxAttempts = 4
+	// This was the previous default and is retained as a bounded probe only; it
+	// is not treated as a universal Lite capability assertion.
+	legacyOpenAICompactFallbackModel = "gpt-5.4"
+)
+
+type openAICompactFallbackState struct {
+	tried    map[string]struct{}
+	attempts int
+}
+
+func newOpenAICompactFallbackState() *openAICompactFallbackState {
+	return &openAICompactFallbackState{tried: make(map[string]struct{})}
+}
+
+func (s *openAICompactFallbackState) mark(model string) {
+	if s == nil {
+		return
+	}
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return
+	}
+	if s.tried == nil {
+		s.tried = make(map[string]struct{})
+	}
+	if _, exists := s.tried[model]; exists {
+		return
+	}
+	s.tried[model] = struct{}{}
+	s.attempts++
+}
+
+func (s *openAICompactFallbackState) hasTried(model string) bool {
+	if s == nil {
+		return false
+	}
+	_, exists := s.tried[strings.ToLower(strings.TrimSpace(model))]
+	return exists
+}
+
+func (s *openAICompactFallbackState) canTry(ctx context.Context) bool {
+	return s != nil && (ctx == nil || ctx.Err() == nil) && s.attempts < openAICompactFallbackMaxAttempts
 }
 
 func (e *openAICompactFallbackSignal) Error() string {
@@ -72,6 +123,9 @@ func (s *OpenAIGatewayService) resolveOpenAICompactFallbackModel(account *Accoun
 }
 
 func isOpenAICompactModelFailure(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if isOpenAIResponsesLiteModelCompatibilityFailure(statusCode, upstreamMsg, upstreamBody) {
+		return true
+	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return true
 	}
@@ -112,6 +166,23 @@ func isOpenAICompactModelFailure(statusCode int, upstreamMsg string, upstreamBod
 		return strings.TrimSpace(upstreamMsg) == ""
 	}
 	return false
+}
+
+func isOpenAIResponsesLiteModelCompatibilityFailure(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
+		return false
+	}
+	values := []string{
+		upstreamMsg,
+		extractUpstreamErrorCode(upstreamBody),
+		gjson.GetBytes(upstreamBody, "error.message").String(),
+		gjson.GetBytes(upstreamBody, "error.param").String(),
+		gjson.GetBytes(upstreamBody, "response.error.message").String(),
+	}
+	joined := strings.ToLower(strings.Join(values, " "))
+	return strings.Contains(joined, "x-openai-internal-codex-responses-lite") &&
+		strings.Contains(joined, "model") &&
+		(strings.Contains(joined, "not supported") || strings.Contains(joined, "unsupported"))
 }
 
 func isExplicitOpenAIModelAvailabilityMessage(value string) bool {
@@ -231,6 +302,92 @@ func (s *OpenAIGatewayService) appendOpenAICompactFallbackRetryOps(
 	})
 }
 
+func (s *OpenAIGatewayService) openAICompactFallbackCandidates(account *Account, requestedModel, currentModel string, allowLegacyProbe bool) []string {
+	candidates := make([]string, 0, openAICompactFallbackMaxAttempts)
+	seen := make(map[string]struct{})
+	add := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.EqualFold(model, currentModel) {
+			return
+		}
+		key := strings.ToLower(model)
+		if _, exists := seen[key]; exists || !openAICompactCandidateMayUseResponsesLite(account, model) {
+			return
+		}
+		seen[key] = struct{}{}
+		candidates = append(candidates, model)
+	}
+
+	if account != nil {
+		if mapped, matched := account.ResolveCompactMappedModel(requestedModel); matched {
+			add(resolveOpenAIAccountUpstreamModelForRequest(account, mapped, false))
+		}
+	}
+	if s != nil && s.cfg != nil {
+		add(resolveOpenAIAccountUpstreamModelForRequest(account, s.cfg.Gateway.OpenAICompactModel, false))
+	}
+
+	// A synced Codex manifest is the strongest local capability evidence. Keep
+	// its order deterministic because Models is a map and cap the resulting
+	// chain in the caller.
+	if account != nil {
+		if snapshot := account.GetUpstreamModelMetadataSnapshot(); snapshot != nil {
+			modelIDs := make([]string, 0, len(snapshot.Models))
+			for modelID := range snapshot.Models {
+				if openAIModelUsesResponsesLite(snapshot.Models[modelID]) {
+					modelIDs = append(modelIDs, modelID)
+				}
+			}
+			sort.Strings(modelIDs)
+			for _, modelID := range modelIDs {
+				add(resolveOpenAIAccountUpstreamModelForRequest(account, modelID, false))
+			}
+		}
+	}
+
+	// Keep the pre-gpt-5.5 default as a bounded live probe. This is not an
+	// allowlist: an upstream that rejects it simply consumes one attempt.
+	if allowLegacyProbe && strings.EqualFold(strings.TrimSpace(currentModel), "gpt-5.5") {
+		add(legacyOpenAICompactFallbackModel)
+	}
+	return candidates
+}
+
+func openAIModelUsesResponsesLite(metadata UpstreamModelMetadata) bool {
+	value, ok := metadata.CodexToolCapabilities["use_responses_lite"]
+	if !ok {
+		return false
+	}
+	var enabled bool
+	return json.Unmarshal(value, &enabled) == nil && enabled
+}
+
+func openAICompactCandidateMayUseResponsesLite(account *Account, model string) bool {
+	if account == nil {
+		return true
+	}
+	model = strings.TrimSpace(model)
+	target := account.GetMappedModel(model)
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		if _, excluded := apiKeyCodexModelsWithoutResponsesLite[target]; excluded {
+			return false
+		}
+	}
+	for _, modelID := range []string{model, target} {
+		if metadata, ok := account.GetUpstreamModelMetadata(modelID); ok {
+			value, exists := metadata.CodexToolCapabilities["use_responses_lite"]
+			if !exists {
+				continue
+			}
+			var enabled bool
+			if json.Unmarshal(value, &enabled) == nil {
+				return enabled
+			}
+		}
+	}
+	return true
+}
+
 // prepareOpenAICompactFallbackRetry returns a body for one safe, same-account
 // retry. Callers invoke it only before any downstream response has been
 // written; it changes the model and deliberately leaves path, trigger, and
@@ -245,20 +402,55 @@ func (s *OpenAIGatewayService) prepareOpenAICompactFallbackRetry(
 	upstreamBody []byte,
 	alreadyRetried bool,
 ) ([]byte, string, bool) {
-	if alreadyRetried || !isExplicitOpenAICompactRequest(c, currentBody) ||
-		!isOpenAICompactModelFailure(statusCode, upstreamMsg, upstreamBody) {
+	if alreadyRetried {
 		return currentBody, "", false
 	}
-	fallbackModel := s.resolveOpenAICompactFallbackModel(account, requestedModel)
+	state := newOpenAICompactFallbackState()
+	return s.prepareOpenAICompactFallbackRetryWithState(
+		c, context.Background(), account, requestedModel, currentBody, statusCode, upstreamMsg, upstreamBody, state,
+	)
+}
+
+func (s *OpenAIGatewayService) prepareOpenAICompactFallbackRetryWithState(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	requestedModel string,
+	currentBody []byte,
+	statusCode int,
+	upstreamMsg string,
+	upstreamBody []byte,
+	state *openAICompactFallbackState,
+) ([]byte, string, bool) {
+	if !isExplicitOpenAICompactRequest(c, currentBody) ||
+		!isOpenAIResponsesLiteModelCompatibilityFailure(statusCode, upstreamMsg, upstreamBody) {
+		return currentBody, "", false
+	}
 	currentModel := strings.TrimSpace(gjson.GetBytes(currentBody, "model").String())
-	if fallbackModel == "" || strings.EqualFold(fallbackModel, currentModel) {
+	if state == nil {
+		state = newOpenAICompactFallbackState()
+	}
+	state.mark(currentModel)
+	if !state.canTry(ctx) {
 		return currentBody, "", false
 	}
-	retryBody := ReplaceModelInBody(currentBody, fallbackModel)
-	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(retryBody, "model").String()), currentModel) {
-		return currentBody, "", false
+	for _, fallbackModel := range s.openAICompactFallbackCandidates(
+		account,
+		requestedModel,
+		currentModel,
+		isOpenAIResponsesLiteModelCompatibilityFailure(statusCode, upstreamMsg, upstreamBody),
+	) {
+		if state.hasTried(fallbackModel) {
+			continue
+		}
+		retryBody := ReplaceModelInBody(currentBody, fallbackModel)
+		if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(retryBody, "model").String()), currentModel) {
+			continue
+		}
+		state.mark(fallbackModel)
+		return retryBody, fallbackModel, true
 	}
-	return retryBody, fallbackModel, true
+	return currentBody, "", false
 }
 
 func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignal(
@@ -270,12 +462,35 @@ func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignal(
 	alreadyRetried bool,
 	resp *http.Response,
 ) ([]byte, string, bool) {
+	return s.applyOpenAIPassthroughCompactFallbackFromSignalWithState(
+		c, context.Background(), account, requestedModel, body, err, alreadyRetried, resp, nil,
+	)
+}
+
+func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignalWithState(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	requestedModel string,
+	body []byte,
+	err error,
+	alreadyRetried bool,
+	resp *http.Response,
+	state *openAICompactFallbackState,
+) ([]byte, string, bool) {
 	signal, ok := asOpenAICompactFallbackSignal(err)
 	if !ok {
 		return body, "", false
 	}
-	retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
-		c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, alreadyRetried,
+	if state == nil {
+		state = newOpenAICompactFallbackState()
+		if alreadyRetried {
+			state.mark(gjson.GetBytes(body, "model").String())
+			state.attempts = openAICompactFallbackMaxAttempts
+		}
+	}
+	retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetryWithState(
+		c, ctx, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, state,
 	)
 	if !retry {
 		return body, "", false
@@ -292,7 +507,7 @@ func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignal(
 	SetOpsUpstreamModel(c, fallbackModel)
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI passthrough] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+		"[OpenAI passthrough] Retrying explicit compact request with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
 		accountName, fromModel, fallbackModel, extractUpstreamErrorCode(signal.payload),
 	)
 	return retryBody, fallbackModel, true
