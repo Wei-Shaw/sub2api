@@ -31,8 +31,15 @@ func (s *MuseRuntimeService) Reserve(ctx context.Context, input muse.Reservation
 }
 
 // BeginSubmission must commit before invoking any provider-side effect.
-func (s *MuseRuntimeService) BeginSubmission(ctx context.Context, lease muse.Lease) error {
-	return s.store.Advance(ctx, lease, muse.Reserved, muse.Submitting, "")
+func (s *MuseRuntimeService) BeginSubmission(ctx context.Context, lease muse.Lease, probeReference ...string) error {
+	if len(probeReference) > 1 {
+		return muse.ErrInvalid
+	}
+	reference := ""
+	if len(probeReference) == 1 {
+		reference = probeReference[0]
+	}
+	return s.store.Advance(ctx, lease, muse.Reserved, muse.Submitting, reference)
 }
 
 func (s *MuseRuntimeService) Advance(ctx context.Context, lease muse.Lease, from, to muse.State, providerTurnID string) error {

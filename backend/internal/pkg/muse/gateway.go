@@ -63,19 +63,30 @@ type GatewayToken struct {
 type GatewayClient struct{ Do SessionDo }
 
 func (c *GatewayClient) Token(ctx context.Context, session Session, target GatewayTarget) (*GatewayToken, error) {
+	token, _, err := c.token(ctx, session, target, false)
+	return token, err
+}
+
+// TokenAndRefresh returns rotated credentials for the caller's atomic renewal
+// transaction. Token intentionally rejects rotation when it cannot be persisted.
+func (c *GatewayClient) TokenAndRefresh(ctx context.Context, session Session, target GatewayTarget) (*GatewayToken, map[string]any, error) {
+	return c.token(ctx, session, target, true)
+}
+
+func (c *GatewayClient) token(ctx context.Context, session Session, target GatewayTarget, allowRotation bool) (*GatewayToken, map[string]any, error) {
 	if c == nil || c.Do == nil {
-		return nil, ErrTransportUnqualified
+		return nil, nil, ErrTransportUnqualified
 	}
 	if !target.valid() {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	cookies, err := ParseCookieSession(session.Document)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, expiry := range cookies.Expires {
 		if expiry <= time.Now().Unix() {
-			return nil, ErrSessionExpired
+			return nil, nil, ErrSessionExpired
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -83,7 +94,7 @@ func (c *GatewayClient) Token(ctx context.Context, session Session, target Gatew
 	body, _ := json.Marshal(map[string]string{"vmAddress": target.URL, "vmName": target.Name})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, GatewayTokenEndpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
@@ -102,40 +113,44 @@ func (c *GatewayClient) Token(ctx context.Context, session Session, target Gatew
 	}
 	response, err := c.Do(req, session)
 	if err != nil {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	if response == nil || response.Body == nil {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusUnauthorized {
-		return nil, ErrSessionExpired
+		return nil, nil, ErrSessionExpired
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	// A token request must not discard authentication rotation. Let the normal
 	// atomic session-renewal path handle any changed session credential first.
 	for _, cookie := range response.Cookies() {
-		if isSessionCookie(cookie.Name) {
-			return nil, ErrSessionResponse
+		if isSessionCookie(cookie.Name) && !allowRotation {
+			return nil, nil, ErrSessionResponse
 		}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 64<<10+1))
 	if err != nil || len(data) > 64<<10 {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	var result struct {
 		Token  string `json:"token"`
 		Notary string `json:"notary_token"`
 	}
 	if json.Unmarshal(data, &result) != nil || !gatewayCredentialValid(result.Token) || (result.Notary != "" && !gatewayCredentialValid(result.Notary)) {
-		return nil, ErrSessionResponse
+		return nil, nil, ErrSessionResponse
 	}
 	if strings.HasPrefix(result.Notary, "delegation.") {
-		return nil, ErrNoiseTrust
+		return nil, nil, ErrNoiseTrust
 	}
-	return &GatewayToken{Token: result.Token, NotaryToken: result.Notary}, nil
+	document, _, err := applySessionCookies(session, response, cookies)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &GatewayToken{Token: result.Token, NotaryToken: result.Notary}, document, nil
 }
 
 func gatewayCredentialValid(value string) bool {
