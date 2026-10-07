@@ -5,8 +5,7 @@ on:
     branches: [feat/cache-write-inference]
     paths:
       - backend/**
-      - frontend/package.json
-      - frontend/pnpm-lock.yaml
+      - frontend/**
       - .github/workflows/cache-write-safety.yml
 
 permissions:
