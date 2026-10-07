@@ -2,7 +2,7 @@ export default {
     accounts: {
       muse: {
         authenticate: "測試 Muse 登入",
-        authenticated: "Muse 登入正常，目前尚未開放聊天請求。",
+        authenticated: "Muse 登入正常。請驗證工作階段以啟用文字聊天。",
         cookieImport: "导入 Muse Cookie 导出工具、CDP 或 Playwright 的 JSON；网页 JavaScript 无法读取 HttpOnly Cookie。",
         exportTitle: "如何取得 Muse 登入檔案",
         exportDesktop: "請使用桌面版 Chrome 或 Edge。匯出一次後，即可在任何裝置於此匯入檔案。",
@@ -23,7 +23,7 @@ export default {
         pasteInstead: "貼上登入資料（進階）",
         pasteLabel: "登入 JSON",
         importFileError: "無法匯入此檔案。請選擇一個 Muse 登入 JSON 檔案，大小不得超過 64 KB。",
-        afterSave: "儲存帳號後，重新開啟並點選「測試 Muse 登入」。",
+        afterSave: "儲存帳號後，重新開啟並點選「驗證工作階段」。「測試 Muse 登入」僅檢查登入。",
         retrySettlement: "重试本地结算",
         expired: "会话已过期，请重新连接或续期。",
         usageUnknown: "Muse 尚未报告订阅用量。",
@@ -37,7 +37,7 @@ export default {
         completedCharge: "已完成将按任务启动时保存的价格计费。",
         resolve: "记录结果并释放工作区",
         sessionType: "会话",
-        setupNote: "Muse 聊天目前尚未開放。你可以儲存此帳號並測試登入。",
+        setupNote: "儲存帳號後，請驗證 Muse 工作階段與模型存取，再傳送文字請求。",
         owner: "Sub2API 使用者",
         ownerNote: "此 Muse 工作區只供這位使用者使用。",
         chooseUser: "選擇使用者",
