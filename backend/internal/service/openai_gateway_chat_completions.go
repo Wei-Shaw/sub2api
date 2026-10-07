@@ -438,6 +438,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			openai_compat.NormalizeResponsesSupportMode(responsesMode) == openai_compat.ResponsesSupportModeAuto &&
 			openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportYes &&
 			!isResponsesShape &&
+			(ctx == nil || ctx.Err() == nil) &&
+			(c.Request == nil || c.Request.Context().Err() == nil) &&
+			!IsResponseCommitted(c) &&
+			!c.Writer.Written() &&
 			completeErrorBody &&
 			isConvertedResponsesInputStringRejection(resp.StatusCode, respBody) {
 			logger.L().Info("openai chat_completions: structured Responses input rejected, falling back to raw chat completions",
@@ -596,6 +600,39 @@ func splitResponsesValidationFields(value string) ([]string, bool) {
 func isConvertedResponsesInputStringRejection(status int, responseBody []byte) bool {
 	if status != http.StatusBadRequest || !json.Valid(responseBody) {
 		return false
+	}
+	envelope := gjson.ParseBytes(responseBody)
+	for _, object := range []gjson.Result{envelope, envelope.Get("error")} {
+		if !object.IsObject() {
+			return false
+		}
+		keys := make(map[string]bool)
+		unambiguous := true
+		object.ForEach(func(key, value gjson.Result) bool {
+			name := key.String()
+			if keys[name] {
+				unambiguous = false
+				return false
+			}
+			keys[name] = true
+			switch name {
+			case "usage", "output", "output_text", "choices", "tool_calls", "response", "status", "incomplete_details":
+				unambiguous = false
+			case "code":
+				code := strings.ToLower(strings.TrimSpace(value.String()))
+				unambiguous = code == "" || code == "invalid_type" || code == "invalid_request_error"
+			case "param":
+				param := strings.ToLower(strings.TrimSpace(value.String()))
+				unambiguous = param == "" || param == "input"
+			case "type":
+				errorType := strings.ToLower(strings.TrimSpace(value.String()))
+				unambiguous = errorType == "" || errorType == "invalid_type" || errorType == "invalid_request_error"
+			}
+			return unambiguous
+		})
+		if !unambiguous {
+			return false
+		}
 	}
 	message := gjson.GetBytes(responseBody, "error.message").String()
 	if isResponsesInputStringValidationMessage(message) {

@@ -98,6 +98,93 @@ func TestForwardAsChatCompletions_ResponsesSupportedFallsBackWhenStructuredInput
 	}
 }
 
+type openAIChatFallbackBoundaryReader struct {
+	io.Reader
+	beforeRead func()
+}
+
+func (reader *openAIChatFallbackBoundaryReader) Read(buffer []byte) (int, error) {
+	if reader.beforeRead != nil {
+		reader.beforeRead()
+		reader.beforeRead = nil
+	}
+	return reader.Reader.Read(buffer)
+}
+
+func TestForwardAsChatCompletions_StructuredInputRetrySafetyBoundaries(t *testing.T) {
+	rejection := `{"error":{"code":"invalid_type","param":"input","message":"Expected a string, but got an array instead."}}`
+	validation := `"message":"1 validation error: [{'type':'string_type','loc':('body','input','str'),'msg':'Input should be a valid string'}]"`
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "duplicate error", body: strings.TrimSuffix(rejection, "}") + `,"error":{"code":"rate_limit_exceeded"}}`},
+		{name: "duplicate code", body: strings.Replace(rejection, `"code":"invalid_type"`, `"code":"invalid_type","code":"rate_limit_exceeded"`, 1)},
+		{name: "duplicate escaped param", body: strings.Replace(rejection, `"param":"input"`, `"param":"input","p\u0061ram":"tools"`, 1)},
+		{name: "duplicate message", body: strings.Replace(rejection, `"message":"Expected a string, but got an array instead."`, `"message":"Expected a string, but got an array instead.","message":"Input is too long."`, 1)},
+		{name: "contradictory error type", body: strings.Replace(rejection, `"error":{`, `"error":{"type":"authentication_error",`, 1)},
+		{name: "contradictory envelope type", body: strings.TrimSuffix(rejection, "}") + `,"type":"rate_limit_error"}`},
+		{name: "validation contradictory type", body: `{"error":{"type":"rate_limit_error",` + validation + `}}`},
+		{name: "validation contradictory envelope type", body: `{"type":"authentication_error","error":{` + validation + `}}`},
+		{name: "validation contradictory code", body: `{"error":{"code":"rate_limit_exceeded",` + validation + `}}`},
+		{name: "validation contradictory param", body: `{"error":{"param":"tools",` + validation + `}}`},
+		{name: "contradictory envelope code", body: strings.TrimSuffix(rejection, "}") + `,"code":"rate_limit_exceeded"}`},
+		{name: "contradictory envelope param", body: strings.TrimSuffix(rejection, "}") + `,"param":"tools"}`},
+		{name: "type cannot override code", body: strings.Replace(rejection, `"code":"invalid_type"`, `"code":"rate_limit_exceeded","type":"invalid_type"`, 1)},
+		{name: "usage", body: strings.TrimSuffix(rejection, "}") + `,"usage":{"input_tokens":12,"output_tokens":3}}`},
+		{name: "error usage", body: strings.Replace(rejection, `"error":{`, `"error":{"usage":{"input_tokens":12},`, 1)},
+		{name: "output", body: strings.TrimSuffix(rejection, "}") + `,"output":[{"type":"message","content":[{"type":"output_text","text":"partial"}]}]}`},
+		{name: "output text", body: strings.TrimSuffix(rejection, "}") + `,"output_text":"partial"}`},
+		{name: "tool calls", body: strings.TrimSuffix(rejection, "}") + `,"tool_calls":[{"id":"call_partial","type":"function","function":{"name":"lookup","arguments":"{}"}}]}`},
+		{name: "choices", body: strings.TrimSuffix(rejection, "}") + `,"choices":[{"delta":{"content":"partial"}}]}`},
+		{name: "nested response", body: strings.TrimSuffix(rejection, "}") + `,"response":{"status":"incomplete","usage":{"input_tokens":12},"output":[]}}`},
+		{name: "partial status", body: strings.TrimSuffix(rejection, "}") + `,"status":"in_progress"}`},
+		{name: "incomplete details", body: strings.TrimSuffix(rejection, "}") + `,"incomplete_details":{"reason":"max_output_tokens"}}`},
+		{name: "partial event", body: strings.TrimSuffix(rejection, "}") + `,"type":"response.output_text.delta","delta":"partial"}`},
+		{name: "caller canceled"},
+		{name: "request canceled"},
+		{name: "response committed"},
+		{name: "writer committed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			requestCtx, cancelRequest := context.WithCancel(context.Background())
+			defer cancelRequest()
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body)).WithContext(requestCtx)
+			errorBody := test.body
+			if errorBody == "" {
+				errorBody = rejection
+			}
+			reader := &openAIChatFallbackBoundaryReader{Reader: strings.NewReader(errorBody), beforeRead: func() {
+				switch test.name {
+				case "caller canceled":
+					cancel()
+				case "request canceled":
+					cancelRequest()
+				case "response committed":
+					MarkResponseCommitted(c)
+				case "writer committed":
+					c.Writer.WriteHeaderNow()
+				}
+			}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(reader),
+			}}
+			svc := &OpenAIGatewayService{cfg: structuredInputRetryTestConfig(), httpUpstream: upstream}
+			result, err := svc.ForwardAsChatCompletions(ctx, c, structuredInputRetryTestAccount(), body, "", "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Len(t, upstream.requests, 1)
+			require.Equal(t, "/v1/responses", upstream.requests[0].URL.Path)
+		})
+	}
+}
+
 func TestConvertedResponsesInputStringRejectionIsNarrow(t *testing.T) {
 	matching := []byte(`{"error":{"code":"invalid_type","param":"input","message":"Expected a string for input, but got an object instead."}}`)
 	require.True(t, isConvertedResponsesInputStringRejection(http.StatusBadRequest, matching))
