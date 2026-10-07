@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,21 @@ func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	require.Error(t, svc.RecordUsage(context.Background(), nil))
 	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{}))
+}
+
+func TestOpenAIGatewayServiceRecordUsage_MuseSettlementOwnsBilling(t *testing.T) {
+	for _, result := range []*OpenAIForwardResult{nil, {}, {MuseTurnID: "native-turn"}} {
+		t.Run(fmt.Sprintf("result_%v", result), func(t *testing.T) {
+			logs := &openAIRecordUsageLogRepoStub{}
+			billing := &openAIRecordUsageBillingRepoStub{}
+			svc := &OpenAIGatewayService{usageLogRepo: logs, usageBillingRepo: billing}
+			require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Account: &Account{ID: 1, Platform: PlatformMuse}, Result: result,
+			}))
+			require.Zero(t, logs.calls, "rejected or completed Muse requests cannot create a generic log")
+			require.Zero(t, billing.calls, "only durable native settlement can charge Muse")
+		})
+	}
 }
 
 func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {

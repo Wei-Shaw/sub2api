@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/shopspring/decimal"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -306,6 +307,18 @@ func (r *museProviderRepository) Settle(ctx context.Context, id string) (*servic
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE muse_turns SET usage_log_id=$2,settled_at=NOW() WHERE id=$1`, id, frozen.Log.ID)
 	if err != nil {
+		return nil, err
+	}
+	// Activity must not change the credential/proxy snapshot that was verified.
+	// Persist it and its scheduler notification atomically with native settlement.
+	now := time.Now()
+	accountID := frozen.Command.AccountID
+	_, err = tx.ExecContext(ctx, `UPDATE accounts SET last_used_at=$2 WHERE id=$1 AND deleted_at IS NULL`, accountID, now)
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]any{"last_used": map[string]int64{strconv.FormatInt(accountID, 10): now.Unix()}}
+	if err = enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountLastUsed, &accountID, nil, payload); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
