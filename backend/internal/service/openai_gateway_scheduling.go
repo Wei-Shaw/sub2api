@@ -1809,6 +1809,15 @@ func (s *OpenAIGatewayService) filterMuseAccounts(ctx context.Context, accounts 
 	userID, _ := ctx.Value(ctxkey.UserID).(int64)
 	for _, a := range accounts {
 		if a.IsMuse() {
+			// Candidate snapshots intentionally omit credentials, ownership, and
+			// timestamps. Native verification must use the full account snapshot.
+			if s.accountRepo != nil && (a.UpdatedAt.IsZero() || MuseOwnerUserID(a.Extra) <= 0) {
+				fresh, err := s.accountRepo.GetByID(ctx, a.ID)
+				if err != nil || fresh == nil || !fresh.IsMuse() {
+					continue
+				}
+				a = *fresh
+			}
 			if s.muse == nil || !s.muse.Qualified() || MuseOwnerUserID(a.Extra) != userID {
 				continue
 			}
