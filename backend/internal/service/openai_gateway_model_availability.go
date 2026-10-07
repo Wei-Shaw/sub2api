@@ -53,6 +53,8 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
+	accounts = s.filterMuseAccounts(ctx, accounts)
+
 	diag := ModelAvailabilityDiagnosis{}
 	for i := range accounts {
 		diag.HasAccountsInPool = true

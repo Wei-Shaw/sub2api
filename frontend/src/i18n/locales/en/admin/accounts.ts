@@ -2,7 +2,7 @@ export default {
     accounts: {
       muse: {
         authenticate: "Test Muse sign-in",
-        authenticated: "Muse sign-in is working. Chat requests are not available yet.",
+        authenticated: "Muse sign-in is working. Verify the session to enable text chat.",
         cookieImport: "Import the JSON export from the Muse cookie exporter, CDP, or Playwright; page JavaScript cannot read HttpOnly cookies.",
         exportTitle: "How to get a Muse session file",
         exportDesktop: "Use desktop Chrome or Edge. Export once, then you can import the file here on any device.",
@@ -23,7 +23,7 @@ export default {
         pasteInstead: "Paste session data (advanced)",
         pasteLabel: "Session JSON",
         importFileError: "Couldn't import that file. Choose one Muse session file in JSON format, up to 64 KB.",
-        afterSave: "Save this account, then reopen it and choose Test Muse sign-in.",
+        afterSave: "Save this account, then reopen it and choose Verify session. Test Muse sign-in checks authentication only.",
         retrySettlement: "Retry local settlement",
         expired: "Session expired. Reconnect or renew it.",
         usageUnknown: "Muse has not reported subscription usage.",
@@ -37,7 +37,7 @@ export default {
         completedCharge: "Completed applies the price saved when this turn started.",
         resolve: "Record outcome and release workspace",
         sessionType: "Session",
-        setupNote: "Muse chat is not available yet. You can save this account and test its sign-in.",
+        setupNote: "Save this account, then verify its Muse session and model access before sending text requests.",
         owner: "Sub2API user",
         ownerNote: "Only this user can use this Muse workspace.",
         chooseUser: "Choose a user",

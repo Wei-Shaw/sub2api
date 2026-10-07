@@ -489,3 +489,27 @@ func TestMuseCookieAuthenticationWorksWithoutQualifyingInference(t *testing.T) {
 	require.ErrorIs(t, err, muse.ErrBusy)
 	require.Equal(t, 2, httpPort.calls)
 }
+
+func TestMuseSnapshotRegistryAndAvailabilityUseVerifiedModels(t *testing.T) {
+	require.Contains(t, schedulerSnapshotPlatforms(), PlatformMuse)
+	found := false
+	for _, bucket := range schedulerBucketsForGroup(77) {
+		if bucket.Platform == PlatformMuse {
+			found = true
+		}
+	}
+	require.True(t, found, "group warming must include the Muse bucket")
+	g, _, _, store, _, a, key := newMuseCoreFixture()
+	a.Schedulable = true
+	store.observation.Capabilities.Models = []string{"auto/auto"}
+	g.accountRepo = &mockAccountRepoForPlatform{accounts: []Account{*a}, accountsByID: map[int64]*Account{a.ID: a}}
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, key.UserID)
+	known := g.DiagnoseModelAvailabilityForPlatform(ctx, nil, "auto/auto", PlatformMuse)
+	require.True(t, known.HasAccountsInPool)
+	require.True(t, known.HasModelSupport, "diagnosis must hydrate the observed catalog")
+	unknown := g.DiagnoseModelAvailabilityForPlatform(ctx, nil, "unobserved", PlatformMuse)
+	require.True(t, unknown.HasAccountsInPool)
+	require.False(t, unknown.HasModelSupport)
+	foreign := g.DiagnoseModelAvailabilityForPlatform(context.Background(), nil, "auto/auto", PlatformMuse)
+	require.False(t, foreign.HasModelSupport, "model diagnosis must preserve the owner boundary")
+}
