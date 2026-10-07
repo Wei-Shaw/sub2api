@@ -149,6 +149,7 @@ type UsageLog struct {
 
 	InputTokens         int
 	OutputTokens        int
+	ReasoningTokens     *int
 	CacheCreationTokens int
 	CacheReadTokens     int
 

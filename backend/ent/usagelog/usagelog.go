@@ -48,6 +48,8 @@ const (
 	FieldInputTokens = "input_tokens"
 	// FieldOutputTokens holds the string denoting the output_tokens field in the database.
 	FieldOutputTokens = "output_tokens"
+	// FieldReasoningTokens holds the string denoting the reasoning_tokens field in the database.
+	FieldReasoningTokens = "reasoning_tokens"
 	// FieldCacheCreationTokens holds the string denoting the cache_creation_tokens field in the database.
 	FieldCacheCreationTokens = "cache_creation_tokens"
 	// FieldCacheReadTokens holds the string denoting the cache_read_tokens field in the database.
@@ -177,6 +179,7 @@ var Columns = []string{
 	FieldSubscriptionID,
 	FieldInputTokens,
 	FieldOutputTokens,
+	FieldReasoningTokens,
 	FieldCacheCreationTokens,
 	FieldCacheReadTokens,
 	FieldCacheCreation5mTokens,
@@ -240,6 +243,8 @@ var (
 	DefaultInputTokens int
 	// DefaultOutputTokens holds the default value on creation for the "output_tokens" field.
 	DefaultOutputTokens int
+	// ReasoningTokensValidator is a validator for the "reasoning_tokens" field. It is called by the builders before save.
+	ReasoningTokensValidator func(int) error
 	// DefaultCacheCreationTokens holds the default value on creation for the "cache_creation_tokens" field.
 	DefaultCacheCreationTokens int
 	// DefaultCacheReadTokens holds the default value on creation for the "cache_read_tokens" field.
@@ -383,6 +388,11 @@ func ByInputTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByOutputTokens orders the results by the output_tokens field.
 func ByOutputTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOutputTokens, opts...).ToFunc()
+}
+
+// ByReasoningTokens orders the results by the reasoning_tokens field.
+func ByReasoningTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReasoningTokens, opts...).ToFunc()
 }
 
 // ByCacheCreationTokens orders the results by the cache_creation_tokens field.

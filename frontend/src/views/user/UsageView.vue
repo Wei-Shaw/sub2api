@@ -711,7 +711,7 @@ const exportToCSV = async () => {
 }
 
 const ALWAYS_VISIBLE = ['created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['user_agent']
+const DEFAULT_HIDDEN_COLUMNS = ['reasoning_tokens', 'user_agent']
 const HIDDEN_COLUMNS_KEY = 'user-usage-hidden-columns'
 
 const allColumns = computed<Column[]>(() => [
@@ -724,6 +724,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'reasoning_tokens', label: t('usage.reasoningTokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
@@ -746,6 +747,13 @@ const loadSavedColumns = () => {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
     const values = saved ? JSON.parse(saved) as string[] : DEFAULT_HIDDEN_COLUMNS
     values.forEach((key) => hiddenColumns.add(key))
+    // 新增列对已有偏好同样默认隐藏；用户主动开启后保持其选择。
+    const reasoningColumnVersionKey = `${HIDDEN_COLUMNS_KEY}-reasoning-tokens-v1`
+    if (localStorage.getItem(reasoningColumnVersionKey) !== 'true') {
+      hiddenColumns.add('reasoning_tokens')
+      localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+      localStorage.setItem(reasoningColumnVersionKey, 'true')
+    }
   } catch {
     DEFAULT_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key))
   }

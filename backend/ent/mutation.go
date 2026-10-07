@@ -44632,6 +44632,8 @@ type UsageLogMutation struct {
 	addinput_tokens              *int
 	output_tokens                *int
 	addoutput_tokens             *int
+	reasoning_tokens             *int
+	addreasoning_tokens          *int
 	cache_creation_tokens        *int
 	addcache_creation_tokens     *int
 	cache_read_tokens            *int
@@ -45595,6 +45597,76 @@ func (m *UsageLogMutation) AddedOutputTokens() (r int, exists bool) {
 func (m *UsageLogMutation) ResetOutputTokens() {
 	m.output_tokens = nil
 	m.addoutput_tokens = nil
+}
+
+// SetReasoningTokens sets the "reasoning_tokens" field.
+func (m *UsageLogMutation) SetReasoningTokens(i int) {
+	m.reasoning_tokens = &i
+	m.addreasoning_tokens = nil
+}
+
+// ReasoningTokens returns the value of the "reasoning_tokens" field in the mutation.
+func (m *UsageLogMutation) ReasoningTokens() (r int, exists bool) {
+	v := m.reasoning_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReasoningTokens returns the old "reasoning_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldReasoningTokens(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReasoningTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReasoningTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReasoningTokens: %w", err)
+	}
+	return oldValue.ReasoningTokens, nil
+}
+
+// AddReasoningTokens adds i to the "reasoning_tokens" field.
+func (m *UsageLogMutation) AddReasoningTokens(i int) {
+	if m.addreasoning_tokens != nil {
+		*m.addreasoning_tokens += i
+	} else {
+		m.addreasoning_tokens = &i
+	}
+}
+
+// AddedReasoningTokens returns the value that was added to the "reasoning_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedReasoningTokens() (r int, exists bool) {
+	v := m.addreasoning_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearReasoningTokens clears the value of the "reasoning_tokens" field.
+func (m *UsageLogMutation) ClearReasoningTokens() {
+	m.reasoning_tokens = nil
+	m.addreasoning_tokens = nil
+	m.clearedFields[usagelog.FieldReasoningTokens] = struct{}{}
+}
+
+// ReasoningTokensCleared returns if the "reasoning_tokens" field was cleared in this mutation.
+func (m *UsageLogMutation) ReasoningTokensCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldReasoningTokens]
+	return ok
+}
+
+// ResetReasoningTokens resets all changes to the "reasoning_tokens" field.
+func (m *UsageLogMutation) ResetReasoningTokens() {
+	m.reasoning_tokens = nil
+	m.addreasoning_tokens = nil
+	delete(m.clearedFields, usagelog.FieldReasoningTokens)
 }
 
 // SetCacheCreationTokens sets the "cache_creation_tokens" field.
@@ -47366,7 +47438,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47417,6 +47489,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.output_tokens != nil {
 		fields = append(fields, usagelog.FieldOutputTokens)
+	}
+	if m.reasoning_tokens != nil {
+		fields = append(fields, usagelog.FieldReasoningTokens)
 	}
 	if m.cache_creation_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreationTokens)
@@ -47550,6 +47625,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.InputTokens()
 	case usagelog.FieldOutputTokens:
 		return m.OutputTokens()
+	case usagelog.FieldReasoningTokens:
+		return m.ReasoningTokens()
 	case usagelog.FieldCacheCreationTokens:
 		return m.CacheCreationTokens()
 	case usagelog.FieldCacheReadTokens:
@@ -47653,6 +47730,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldInputTokens(ctx)
 	case usagelog.FieldOutputTokens:
 		return m.OldOutputTokens(ctx)
+	case usagelog.FieldReasoningTokens:
+		return m.OldReasoningTokens(ctx)
 	case usagelog.FieldCacheCreationTokens:
 		return m.OldCacheCreationTokens(ctx)
 	case usagelog.FieldCacheReadTokens:
@@ -47840,6 +47919,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOutputTokens(v)
+		return nil
+	case usagelog.FieldReasoningTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReasoningTokens(v)
 		return nil
 	case usagelog.FieldCacheCreationTokens:
 		v, ok := value.(int)
@@ -48068,6 +48154,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addoutput_tokens != nil {
 		fields = append(fields, usagelog.FieldOutputTokens)
 	}
+	if m.addreasoning_tokens != nil {
+		fields = append(fields, usagelog.FieldReasoningTokens)
+	}
 	if m.addcache_creation_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreationTokens)
 	}
@@ -48136,6 +48225,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedInputTokens()
 	case usagelog.FieldOutputTokens:
 		return m.AddedOutputTokens()
+	case usagelog.FieldReasoningTokens:
+		return m.AddedReasoningTokens()
 	case usagelog.FieldCacheCreationTokens:
 		return m.AddedCacheCreationTokens()
 	case usagelog.FieldCacheReadTokens:
@@ -48201,6 +48292,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddOutputTokens(v)
+		return nil
+	case usagelog.FieldReasoningTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddReasoningTokens(v)
 		return nil
 	case usagelog.FieldCacheCreationTokens:
 		v, ok := value.(int)
@@ -48366,6 +48464,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
+	if m.FieldCleared(usagelog.FieldReasoningTokens) {
+		fields = append(fields, usagelog.FieldReasoningTokens)
+	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -48445,6 +48546,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldReasoningTokens:
+		m.ClearReasoningTokens()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -48540,6 +48644,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldOutputTokens:
 		m.ResetOutputTokens()
+		return nil
+	case usagelog.FieldReasoningTokens:
+		m.ResetReasoningTokens()
 		return nil
 	case usagelog.FieldCacheCreationTokens:
 		m.ResetCacheCreationTokens()

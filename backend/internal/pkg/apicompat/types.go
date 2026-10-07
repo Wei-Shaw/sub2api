@@ -595,10 +595,10 @@ type ResponsesInputTokensDetails struct {
 
 // ResponsesOutputTokensDetails breaks down output token usage.
 type ResponsesOutputTokensDetails struct {
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
-	AudioTokens              int `json:"audio_tokens,omitempty"`
-	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
-	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
+	ReasoningTokens          *int `json:"reasoning_tokens,omitempty"`
+	AudioTokens              int  `json:"audio_tokens,omitempty"`
+	AcceptedPredictionTokens int  `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int  `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

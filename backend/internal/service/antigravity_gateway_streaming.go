@@ -265,6 +265,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 
 				// 解析 usage
 				if u := extractGeminiUsage(inner); u != nil {
+					if u.ReasoningTokens == nil && usage != nil {
+						u.ReasoningTokens = usage.ReasoningTokens
+					}
 					usage = u
 				}
 				var parsed map[string]any
@@ -450,6 +453,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 
 			// 提取 usage
 			if u := extractGeminiUsage(inner); u != nil {
+				if u.ReasoningTokens == nil && usage != nil {
+					u.ReasoningTokens = usage.ReasoningTokens
+				}
 				usage = u
 			}
 
@@ -982,6 +988,7 @@ returnResponse:
 	usage := &ClaudeUsage{
 		InputTokens:              agUsage.InputTokens,
 		OutputTokens:             agUsage.OutputTokens,
+		ReasoningTokens:          agUsage.ReasoningTokens,
 		CacheCreationInputTokens: agUsage.CacheCreationInputTokens,
 		CacheReadInputTokens:     agUsage.CacheReadInputTokens,
 		ImageOutputTokens:        agUsage.ImageOutputTokens,
@@ -1052,6 +1059,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 		return &ClaudeUsage{
 			InputTokens:              agUsage.InputTokens,
 			OutputTokens:             agUsage.OutputTokens,
+			ReasoningTokens:          agUsage.ReasoningTokens,
 			CacheCreationInputTokens: agUsage.CacheCreationInputTokens,
 			CacheReadInputTokens:     agUsage.CacheReadInputTokens,
 		}

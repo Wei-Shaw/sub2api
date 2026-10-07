@@ -332,3 +332,24 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 func f64Ptr(value float64) *float64 {
 	return &value
 }
+
+func TestUsageLogReasoningTokensPreservesNullAndZero(t *testing.T) {
+	zero, positive := 0, 17
+	for _, value := range []*int{nil, &zero, &positive} {
+		log := &service.UsageLog{InputTokens: 10, OutputTokens: 20, ReasoningTokens: value}
+		require.Equal(t, 30, log.TotalTokens())
+		for _, view := range []any{UsageLogFromService(log), UsageLogFromServiceAdmin(log)} {
+			raw, err := json.Marshal(view)
+			require.NoError(t, err)
+			var decoded map[string]any
+			require.NoError(t, json.Unmarshal(raw, &decoded))
+			count, exists := decoded["reasoning_tokens"]
+			require.True(t, exists)
+			if value == nil {
+				require.Nil(t, count)
+			} else {
+				require.EqualValues(t, *value, count)
+			}
+		}
+	}
+}

@@ -1462,9 +1462,9 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 	}
 	description := strings.TrimSpace(grokResponsesOutputText(&parsed))
 	if description == "" {
-		return "", copyOpenAIUsageFromResponsesUsage(parsed.Usage), fmt.Errorf("grok composer image bridge returned empty description")
+		return "", copyOpenAIUsageFromResponsesUsage(parsed.Usage, nil), fmt.Errorf("grok composer image bridge returned empty description")
 	}
-	return description, copyOpenAIUsageFromResponsesUsage(parsed.Usage), nil
+	return description, copyOpenAIUsageFromResponsesUsage(parsed.Usage, nil), nil
 }
 
 func buildGrokComposerImageDescriptionBody(imageURL string, index int) ([]byte, error) {
@@ -1563,6 +1563,14 @@ func grokComposerTextFromPart(part any) string {
 func addOpenAIUsage(dst *OpenAIUsage, usage OpenAIUsage) {
 	if dst == nil {
 		return
+	}
+	if dst.OutputTokens == 0 && dst.ReasoningTokens == nil {
+		dst.ReasoningTokens = usage.ReasoningTokens
+	} else if dst.ReasoningTokens != nil && usage.ReasoningTokens != nil {
+		count := *dst.ReasoningTokens + *usage.ReasoningTokens
+		dst.ReasoningTokens = &count
+	} else if usage.OutputTokens > 0 {
+		dst.ReasoningTokens = nil
 	}
 	dst.InputTokens += usage.InputTokens
 	dst.ImageInputTokens += usage.ImageInputTokens

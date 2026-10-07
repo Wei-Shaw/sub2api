@@ -50,14 +50,15 @@ type OpenAIRecordUsageInput struct {
 // 用量按上游真实 token 计费，与 WS cyber 及正常请求口径一致（InputTokens/OutputTokens
 // 取自上游 response.failed 报告的 usage，即 mark.UpstreamInTok/OutTok）。
 type CyberPolicyUsageInput struct {
-	APIKey       *APIKey
-	Account      *Account
-	Subscription *UserSubscription
-	RequestID    string
-	Model        string
-	Stream       bool
-	InputTokens  int
-	OutputTokens int
+	ReasoningTokens *int
+	APIKey          *APIKey
+	Account         *Account
+	Subscription    *UserSubscription
+	RequestID       string
+	Model           string
+	Stream          bool
+	InputTokens     int
+	OutputTokens    int
 	// 渠道归因与请求级 meta，使 cyber 计费行与正常 RecordUsage 行口径一致
 	// （否则 cyber 行 channel_id 等为空，渠道维度统计会遗漏 cyber 命中）。
 	InboundEndpoint    string
@@ -86,8 +87,9 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		Model:     in.Model,
 		Stream:    in.Stream,
 		Usage: OpenAIUsage{
-			InputTokens:  in.InputTokens,
-			OutputTokens: in.OutputTokens,
+			InputTokens:     in.InputTokens,
+			OutputTokens:    in.OutputTokens,
+			ReasoningTokens: in.ReasoningTokens,
 		},
 	}
 	if err := s.RecordUsage(ctx, &OpenAIRecordUsageInput{
@@ -395,6 +397,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		UpstreamEndpoint:         optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:              actualInputTokens,
 		OutputTokens:             result.Usage.OutputTokens,
+		ReasoningTokens:          result.Usage.ReasoningTokens,
 		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:          result.Usage.CacheReadInputTokens,
 		ImageInputTokens:         result.Usage.ImageInputTokens,

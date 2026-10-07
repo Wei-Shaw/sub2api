@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -626,12 +627,13 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
 			MarkOpsCyberPolicy(c, CyberPolicyMark{
-				Code:           code,
-				Message:        msg,
-				Body:           truncateString(string(payload), 4096),
-				UpstreamStatus: http.StatusOK,
-				UpstreamInTok:  usage.InputTokens,
-				UpstreamOutTok: usage.OutputTokens,
+				Code:                    code,
+				Message:                 msg,
+				Body:                    truncateString(string(payload), 4096),
+				UpstreamStatus:          http.StatusOK,
+				UpstreamInTok:           usage.InputTokens,
+				UpstreamOutTok:          usage.OutputTokens,
+				UpstreamReasoningTokens: usage.ReasoningTokens,
 			})
 			clientMsg := msg
 			if clientMsg == "" {
@@ -858,13 +860,13 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						acc.ProcessEvent(&event)
 						if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 							if event.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+								usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage.ReasoningTokens)
 								if response.Usage == nil {
 									response.Usage = event.Usage
 								}
 							}
 							if response.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
+								usage = copyOpenAIUsageFromResponsesUsage(response.Usage, usage.ReasoningTokens)
 							}
 							return response, usage, acc, nil
 						}
@@ -907,13 +909,13 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 
 			if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 				if event.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+					usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage.ReasoningTokens)
 					if response.Usage == nil {
 						response.Usage = event.Usage
 					}
 				}
 				if response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
+					usage = copyOpenAIUsageFromResponsesUsage(response.Usage, usage.ReasoningTokens)
 				}
 				return response, usage, acc, nil
 			}
@@ -1038,11 +1040,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					responseID = id
 				}
 				if event.Response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage, usage.ReasoningTokens)
 				}
 			}
 			if event.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+				usage = copyOpenAIUsageFromResponsesUsage(event.Usage, usage.ReasoningTokens)
 			}
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
@@ -1050,12 +1052,13 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				payloadBytes := []byte(payload)
 				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
-						Code:           code,
-						Message:        msg,
-						Body:           truncateString(payload, 4096),
-						UpstreamStatus: http.StatusOK,
-						UpstreamInTok:  usage.InputTokens,
-						UpstreamOutTok: usage.OutputTokens,
+						Code:                    code,
+						Message:                 msg,
+						Body:                    truncateString(payload, 4096),
+						UpstreamStatus:          http.StatusOK,
+						UpstreamInTok:           usage.InputTokens,
+						UpstreamOutTok:          usage.OutputTokens,
+						UpstreamReasoningTokens: usage.ReasoningTokens,
 					})
 					if !clientDisconnected {
 						writeStreamHeaders()
@@ -1377,17 +1380,21 @@ func buildAnthropicStreamErrorSSE(errType, message string) string {
 	return "event: error\ndata: " + string(payload) + "\n\n"
 }
 
-func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUsage {
+func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage, observedReasoningTokens *int) OpenAIUsage {
 	if usage == nil {
 		return OpenAIUsage{}
 	}
 	result := OpenAIUsage{
 		InputTokens:              usage.InputTokens,
 		OutputTokens:             usage.OutputTokens,
+		ReasoningTokens:          observedReasoningTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 	}
 	if usage.InputTokensDetails != nil {
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens
+	}
+	if details := usage.OutputTokensDetails; details != nil && details.ReasoningTokens != nil && *details.ReasoningTokens >= 0 && *details.ReasoningTokens <= math.MaxInt32 {
+		result.ReasoningTokens = details.ReasoningTokens
 	}
 	return result
 }

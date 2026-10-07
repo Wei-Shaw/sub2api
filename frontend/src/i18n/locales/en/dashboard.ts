@@ -393,6 +393,8 @@ export default {
     firstToken: 'First Token',
     duration: 'Duration',
     latency: 'Latency',
+    reasoningTokens: 'Reasoning tokens',
+    reasoningTokensHint: 'Upstream-reported reasoning usage, not added again to token totals or costs. — means unavailable.',
     latencyFirstToken: 'First',
     latencyDuration: 'Total',
     time: 'Time',

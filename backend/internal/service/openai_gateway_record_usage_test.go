@@ -3298,3 +3298,23 @@ func TestOpenAIGatewayServiceRecordUsage_ServiceTierNeverRaisedByUpstreamRespons
 	require.NoError(t, calcErr)
 	require.InDelta(t, baseCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
 }
+
+func TestRecordUsageReasoningTokensDoesNotDoubleCharge(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	input := &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{RequestID: "reasoning-baseline", Model: "gpt-5.1", Usage: OpenAIUsage{InputTokens: 1200, OutputTokens: 300}, Duration: time.Second},
+		APIKey: &APIKey{ID: 100, Group: &Group{RateMultiplier: 1}}, User: &User{ID: 200}, Account: &Account{ID: 300, Type: AccountTypeAPIKey},
+	}
+	require.NoError(t, svc.RecordUsage(context.Background(), input))
+	baseline := usageRepo.lastLog.ActualCost
+	reasoning := 200
+	input.Result.RequestID = "reasoning-observed"
+	input.Result.Usage.ReasoningTokens = &reasoning
+	require.NoError(t, svc.RecordUsage(context.Background(), input))
+	require.Equal(t, &reasoning, usageRepo.lastLog.ReasoningTokens)
+	require.Equal(t, 300, usageRepo.lastLog.OutputTokens)
+	require.Equal(t, baseline, usageRepo.lastLog.ActualCost)
+}

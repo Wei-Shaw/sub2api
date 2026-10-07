@@ -205,6 +205,12 @@
           </div>
         </template>
 
+        <template #cell-reasoning_tokens="{ row }">
+          <span class="text-sm tabular-nums" :title="t('usage.reasoningTokensHint')" data-testid="reasoning-tokens">
+            {{ row.reasoning_tokens == null ? '—' : row.reasoning_tokens.toLocaleString() }}
+          </span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">

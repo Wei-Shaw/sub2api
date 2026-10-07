@@ -1698,3 +1698,37 @@ func (s *UsageLogRepoSuite) TestListWithFilters_CombinedFilters() {
 	s.Require().Len(logs, 2)
 	s.Require().Equal(int64(2), page.Total)
 }
+
+func TestUsageLogReasoningTokensRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newUsageLogRepositoryWithSQL(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{Email: "reasoning-" + uuid.NewString() + "@example.com"})
+	key := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-" + uuid.NewString(), Name: "reasoning"})
+	account := mustCreateAccount(t, client, &service.Account{Name: "reasoning-" + uuid.NewString()})
+	zero, positive := 0, 17
+	for _, mode := range []string{"single", "batch", "best-effort"} {
+		for _, value := range []*int{nil, &zero, &positive} {
+			log := &service.UsageLog{UserID: user.ID, APIKeyID: key.ID, AccountID: account.ID, RequestID: uuid.NewString(), Model: "gpt-5", InputTokens: 10, OutputTokens: 20, ReasoningTokens: value, TotalCost: 0.1, ActualCost: 0.1}
+			switch mode {
+			case "single":
+				_, err := repo.createSingle(ctx, integrationDB, log)
+				require.NoError(t, err)
+			case "batch":
+				_, err := repo.Create(ctx, log)
+				require.NoError(t, err)
+			case "best-effort":
+				require.NoError(t, repo.CreateBestEffort(ctx, log))
+			}
+			require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT id FROM usage_logs WHERE request_id=$1 AND api_key_id=$2", log.RequestID, key.ID).Scan(&log.ID))
+			loaded, err := repo.GetByID(ctx, log.ID)
+			require.NoError(t, err)
+			require.Equal(t, value, loaded.ReasoningTokens, mode)
+			require.Equal(t, 30, loaded.TotalTokens())
+			require.Equal(t, 0.1, loaded.ActualCost)
+			entity, err := client.UsageLog.Get(ctx, log.ID)
+			require.NoError(t, err)
+			require.Equal(t, value, entity.ReasoningTokens)
+		}
+	}
+}

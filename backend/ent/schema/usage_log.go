@@ -80,6 +80,8 @@ func (UsageLog) Fields() []ent.Field {
 			Default(0),
 		field.Int("output_tokens").
 			Default(0),
+		// NULL 表示上游未提供；0 表示明确报告没有推理 Token。
+		field.Int("reasoning_tokens").Optional().Nillable().NonNegative(),
 		field.Int("cache_creation_tokens").
 			Default(0),
 		field.Int("cache_read_tokens").

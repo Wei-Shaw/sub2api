@@ -630,7 +630,7 @@ const exportToExcel = async () => {
 
 // Column visibility
 const ALWAYS_VISIBLE = ['user', 'created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'request_id', 'upstream_request_id', 'user_agent']
+const DEFAULT_HIDDEN_COLUMNS = ['reasoning_tokens', 'reasoning_effort', 'request_id', 'upstream_request_id', 'user_agent']
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
 const HIDDEN_COLUMNS_VERSION_KEY = 'usage-hidden-columns-version'
 // 隐藏列版本链：每级只把当级新增列加入隐藏集，不重置用户已显式打开的列。
@@ -648,6 +648,7 @@ const allColumns = computed(() => [
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'reasoning_tokens', label: t('usage.reasoningTokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
@@ -774,6 +775,13 @@ const loadSavedColumns = () => {
         hiddenColumns.add(key)
       })
       localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
+    }
+    // 新增列对已有偏好同样默认隐藏；用户主动开启后保持其选择。
+    const reasoningColumnVersionKey = `${HIDDEN_COLUMNS_KEY}-reasoning-tokens-v1`
+    if (localStorage.getItem(reasoningColumnVersionKey) !== 'true') {
+      hiddenColumns.add('reasoning_tokens')
+      localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+      localStorage.setItem(reasoningColumnVersionKey, 'true')
     }
   } catch {
     DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
