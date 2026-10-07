@@ -34,6 +34,12 @@ type MuseCoreService struct {
 
 func NewMuseCoreService(accounts AccountRepository, runtimeStore muse.RuntimeStore, store MuseProviderStore, gateway *OpenAIGatewayService) *MuseCoreService {
 	s := &MuseCoreService{accounts: accounts, runtime: NewMuseRuntimeService(runtimeStore), store: store, gateway: gateway, provider: muse.DisabledProvider{}}
+	if gateway.httpUpstream != nil {
+		s.provider = muse.NewNativeProvider(func(req *http.Request, session muse.Session) (*http.Response, error) {
+			req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(req.Context()))
+			return gateway.httpUpstream.Do(req, session.ProxyURL, session.AccountID, 1)
+		})
+	}
 	gateway.muse = s
 	return s
 }
@@ -263,6 +269,11 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if err = profile.Capabilities.Validate(&canonical); err != nil {
 		return nil, nil, err
 	}
+	if native, ok := provider.(muse.RequestValidator); ok {
+		if err = native.ValidateRequest(&canonical); err != nil {
+			return nil, nil, err
+		}
+	}
 	session, err := s.session(a)
 	if err != nil {
 		return nil, nil, err
@@ -321,7 +332,17 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 		_ = s.runtime.Advance(ctx, lease, muse.Reserved, muse.Rejected, "")
 		return nil, turn, err
 	}
-	if err = s.runtime.BeginSubmission(ctx, lease); err != nil {
+	providerRequest := muse.Request{OperationID: turn.ID, ProviderParentID: parent, Workspace: w, Session: session, Input: &canonical}
+	probeReference := ""
+	if native, ok := provider.(muse.SubmissionProvider); ok {
+		probeReference, err = native.SubmissionID(providerRequest)
+		if err != nil {
+			_ = s.runtime.Advance(ctx, lease, muse.Reserved, muse.Rejected, "")
+			_, _ = s.settle(ctx, turn.ID)
+			return nil, turn, err
+		}
+	}
+	if err = s.runtime.BeginSubmission(ctx, lease, probeReference); err != nil {
 		_ = s.runtime.Advance(ctx, lease, muse.Reserved, muse.Rejected, "")
 		_, _ = s.settle(ctx, turn.ID)
 		return nil, turn, err
@@ -359,7 +380,7 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 			}
 		}
 	}()
-	result, executeErr := provider.Execute(operation, muse.Request{OperationID: turn.ID, ProviderParentID: parent, Workspace: w, Session: session, Input: &canonical}, func(event muse.Event) (eventErr error) {
+	result, executeErr := provider.Execute(operation, providerRequest, func(event muse.Event) (eventErr error) {
 		eventMu.Lock()
 		defer eventMu.Unlock()
 		defer func() {
@@ -370,7 +391,7 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 		if callbacksClosed {
 			return muse.ErrTransition
 		}
-		if event.OperationID != turn.ID || event.ProviderTurnID == "" || (providerID != "" && event.ProviderTurnID != providerID) {
+		if event.OperationID != turn.ID || event.ProviderTurnID == "" || (probeReference != "" && event.ProviderTurnID != probeReference) || (providerID != "" && event.ProviderTurnID != providerID) {
 			return muse.ErrGeneration
 		}
 		encoded, e := json.Marshal(event)
@@ -425,7 +446,7 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	cleanup, done := context.WithTimeout(context.Background(), 15*time.Second)
 	defer done()
 	terminal := muse.State("")
-	if !causalFailure && result != nil && result.ProviderTurnID != "" && result.Response != nil && (providerID == "" || providerID == result.ProviderTurnID) {
+	if !causalFailure && result != nil && result.ProviderTurnID != "" && result.Response != nil && (probeReference == "" || probeReference == result.ProviderTurnID) && (providerID == "" || providerID == result.ProviderTurnID) {
 		switch result.Response.Status {
 		case "completed":
 			terminal = muse.Completed
@@ -495,6 +516,9 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if err = s.runtime.Advance(cleanup, lease, state, muse.Ambiguous, providerID); err == nil {
 		turn.State = muse.Ambiguous
 		turn.ProviderTurnID = providerID
+		if turn.ProviderTurnID == "" {
+			turn.ProviderTurnID = probeReference
+		}
 	}
 	return nil, turn, executeErr
 }
