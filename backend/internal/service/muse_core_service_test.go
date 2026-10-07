@@ -513,3 +513,19 @@ func TestMuseSnapshotRegistryAndAvailabilityUseVerifiedModels(t *testing.T) {
 	foreign := g.DiagnoseModelAvailabilityForPlatform(context.Background(), nil, "auto/auto", PlatformMuse)
 	require.False(t, foreign.HasModelSupport, "model diagnosis must preserve the owner boundary")
 }
+
+func TestMuseSchedulerHydratesMetadataProjectionBeforeOwnerAndProfileCheck(t *testing.T) {
+	g, _, _, _, _, account, key := newMuseCoreFixture()
+	g.accountRepo = &museAccountsFixture{account: account}
+	projection := *account
+	projection.Extra = nil
+	projection.Credentials = nil
+	projection.UpdatedAt = time.Time{}
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, key.UserID)
+	candidates := g.filterMuseAccounts(ctx, []Account{projection})
+	require.Len(t, candidates, 1)
+	require.Equal(t, account.UpdatedAt, candidates[0].UpdatedAt)
+	require.True(t, candidates[0].IsModelSupported("muse/assistant"))
+	foreign := context.WithValue(context.Background(), ctxkey.UserID, key.UserID+1)
+	require.Empty(t, g.filterMuseAccounts(foreign, []Account{projection}))
+}
