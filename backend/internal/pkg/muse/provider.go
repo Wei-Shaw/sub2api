@@ -74,7 +74,8 @@ type Result struct {
 }
 
 // Provider's implementation is the only component needing the live app wire
-// contract. Production wiring uses DisabledProvider until qualification.
+// contract. NativeProvider supports the qualified standard-VM text scope;
+// DisabledProvider remains the fallback when the transport port is unavailable.
 type Provider interface {
 	Qualified() bool
 	Verify(context.Context, Session) (*Observation, error)
