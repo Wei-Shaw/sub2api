@@ -415,8 +415,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('image_generation')
     expect(configToml).not.toContain('supports_websockets')
     expect(configToml).not.toContain('responses_websockets_v2')
-    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
-    expect(features).toContain('goals = true')
+    expect(configToml).toContain('[features]\napi_key_model_discovery = true\ngoals = true')
     expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
@@ -558,9 +557,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
-    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
-    expect(features).toContain('responses_websockets_v2 = true')
-    expect(features).toContain('goals = true')
+    expect(configToml).toContain('[features]\napi_key_model_discovery = true\nresponses_websockets_v2 = true\ngoals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
   })
@@ -608,9 +605,7 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
-    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
-    expect(features).toContain('responses_websockets_v2 = true')
-    expect(features).toContain('goals = true')
+    expect(configToml).toContain('[features]\napi_key_model_discovery = true\nresponses_websockets_v2 = true\ngoals = true')
     expect(codeBlocks).not.toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).not.toContain('auth.json')
   })
