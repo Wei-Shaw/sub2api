@@ -4,7 +4,6 @@ package setup
 import (
 	"bufio"
 	"fmt"
-	"net/mail"
 	"os"
 	"regexp"
 	"strconv"
@@ -27,11 +26,6 @@ func cliValidateDBName(name string) bool {
 func cliValidateUsername(name string) bool {
 	validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 	return validName.MatchString(name) && len(name) <= 63
-}
-
-func cliValidateEmail(email string) bool {
-	_, err := mail.ParseAddress(email)
-	return err == nil && len(email) <= 254
 }
 
 func cliValidatePort(port int) bool {
@@ -163,9 +157,14 @@ func RunCLI() error {
 	fmt.Println()
 	fmt.Println("── Admin Account ──")
 
+	// 默认值使用随机邮箱，避免直接回车得到可被猜中的固定管理员用户名（issue #7850）。
+	defaultAdminEmail, err := generateAdminEmail()
+	if err != nil {
+		return err
+	}
 	for {
-		cfg.Admin.Email = promptString(reader, "Admin Email", "admin@example.com")
-		if cliValidateEmail(cfg.Admin.Email) {
+		cfg.Admin.Email = promptString(reader, "Admin Email (login username)", defaultAdminEmail)
+		if validateEmail(cfg.Admin.Email) {
 			break
 		}
 		fmt.Println("  Invalid email format.")
@@ -173,13 +172,9 @@ func RunCLI() error {
 
 	for {
 		cfg.Admin.Password = promptPassword("Admin Password")
-		// SECURITY: Match Web API requirement of 8 characters minimum
-		if len(cfg.Admin.Password) < 8 {
-			fmt.Println("  Password must be at least 8 characters")
-			continue
-		}
-		if len(cfg.Admin.Password) > 128 {
-			fmt.Println("  Password must be at most 128 characters")
+		// SECURITY: Match Web API password requirements
+		if err := validatePassword(cfg.Admin.Password); err != nil {
+			fmt.Printf("  Invalid password: %v\n", err)
 			continue
 		}
 		confirm := promptPassword("Confirm Password")
