@@ -201,7 +201,8 @@ func TestOpenAICompactFallbackCandidatesUseCapabilityEvidenceAndDeduplicate(t *t
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
-			"compact_model_mapping": map[string]string{"gpt-5.5": "mapped-model"},
+			"model_mapping":         map[string]any{"mapped-*": "ordinary-model"},
+			"compact_model_mapping": map[string]any{"gpt-5.5": "mapped-model"},
 		},
 	}
 	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
@@ -602,6 +603,49 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 		require.Nil(t, ev.ProxyID)
 		require.Equal(t, opsProxyNameDirect, ev.ProxyName)
 	}
+}
+
+func TestOpenAIPassthroughCompactFallbackRetriesMultipleCandidates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.5","stream":true,"instructions":"compact-test","input":[{"type":"compaction_trigger"}]}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("Content-Type", "application/json")
+	MarkOpenAINativeCompactionV2(c)
+
+	failed := "event: response.failed\n" +
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n"
+	completed := "event: response.completed\n" +
+		`data: {"type":"response.completed","response":{"id":"resp_compact","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.5"}},
+		httpUpstream: upstream,
+	}
+	account, _ := compactFallbackManagedProxyAccount()
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"gpt-5.3-codex": {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+		"gpt-5.4":       {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+	}})
+
+	result, err := svc.forwardOpenAIPassthrough(
+		context.Background(), c, account, body, body, "gpt-5.5", false, nil, true, time.Now(),
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 3)
+	require.Equal(t, []string{"gpt-5.5", "gpt-5.3-codex", "gpt-5.4"}, []string{
+		gjson.GetBytes(upstream.bodies[0], "model").String(),
+		gjson.GetBytes(upstream.bodies[1], "model").String(),
+		gjson.GetBytes(upstream.bodies[2], "model").String(),
+	})
+	require.Contains(t, recorder.Body.String(), "response.completed")
 }
 
 func TestOpenAIPassthroughCompactFallbackSecondStreamFailureUsesStandardErrorPath(t *testing.T) {
