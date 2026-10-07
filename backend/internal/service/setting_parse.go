@@ -825,8 +825,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Operators can set false to disable silent cross-client rewrite.
 	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
 	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
-
-	// Custom model metadata provider (default: https://models.dev, ttl: 6 hours)
 	result.ModelsDevRegistryURL = strings.TrimSpace(settings[SettingKeyModelsDevRegistryURL])
 	result.ModelsDevRegistryTTL = modelsDevRegistryTTLSeconds
 	if ttl, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyModelsDevRegistryTTL])); err == nil {

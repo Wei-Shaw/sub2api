@@ -428,8 +428,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyGrokCrossClientModelMapEnabled] = strconv.FormatBool(settings.GrokCrossClientModelMapEnabled)
 	updates[SettingKeyGrokDefaultBaseURLMode] = normalizeGrokDefaultBaseURLMode(settings.GrokDefaultBaseURLMode)
-
-	// Custom model metadata provider
 	updates[SettingKeyModelsDevRegistryURL] = strings.TrimSpace(settings.ModelsDevRegistryURL)
 	updates[SettingKeyModelsDevRegistryTTL] = strconv.Itoa(settings.ModelsDevRegistryTTL)
 
