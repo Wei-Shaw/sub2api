@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -48,11 +49,11 @@ func TestPrepareOpenAICompactFallbackRetryPreservesNativeTriggerAndContext(t *te
 	c := newOpenAICompactFallbackTestContext(t, "/v1/responses")
 	MarkOpenAINativeCompactionV2(c)
 	body := []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"message","role":"user","content":"hello"},{"type":"compaction_trigger"}]}`)
-	errorBody := []byte(`{"error":{"code":"context_length_exceeded","message":"context window exceeded"}}`)
+	errorBody := []byte(`{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`)
 	pathBefore := openAIResponsesRequestPathSuffix(c)
 
 	retryBody, fallbackModel, retry := svc.prepareOpenAICompactFallbackRetry(
-		c, nil, "gpt-5.5", body, http.StatusBadRequest, "context window exceeded", errorBody, false,
+		c, nil, "gpt-5.5", body, http.StatusBadRequest, string(errorBody), errorBody, false,
 	)
 
 	require.True(t, retry)
@@ -90,7 +91,7 @@ func TestOpenAIGatewayForwardUsesGlobalCompactModelOnInitialLegacyRequest(t *tes
 	}
 	account := &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 	}
 
@@ -108,10 +109,10 @@ func TestPrepareOpenAICompactFallbackRetryLegacyPathAndSingleAttemptGuard(t *tes
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.4"}}}
 	c := newOpenAICompactFallbackTestContext(t, "/v1/responses/compact")
 	body := []byte(`{"model":"gpt-5.5","input":[]}`)
-	errorBody := []byte(`{"response":{"status":"failed","error":null}}`)
+	errorBody := []byte(`{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`)
 
 	retryBody, fallbackModel, retry := svc.prepareOpenAICompactFallbackRetry(
-		c, nil, "gpt-5.5", body, http.StatusBadRequest, "", errorBody, false,
+		c, nil, "gpt-5.5", body, http.StatusBadRequest, string(errorBody), errorBody, false,
 	)
 	require.True(t, retry)
 	require.Equal(t, "gpt-5.4", fallbackModel)
@@ -177,6 +178,134 @@ func TestPrepareOpenAICompactFallbackRetrySkipsSameModel(t *testing.T) {
 	require.False(t, retry)
 }
 
+func TestPrepareOpenAICompactFallbackRetryDoesNotRetryNonLiteModelFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.4"}}}
+	c := newOpenAICompactFallbackTestContext(t, "/v1/responses/compact")
+	body := []byte(`{"model":"gpt-5.5","input":[]}`)
+	errorBody := []byte(`{"error":{"code":"model_not_found","param":"model","message":"The model gpt-5.5 does not exist"}}`)
+
+	retryBody, fallbackModel, retry := svc.prepareOpenAICompactFallbackRetry(
+		c, nil, "gpt-5.5", body, http.StatusNotFound, "The model gpt-5.5 does not exist", errorBody, false,
+	)
+
+	require.False(t, retry)
+	require.Empty(t, fallbackModel)
+	require.Equal(t, body, retryBody)
+}
+
+func TestOpenAICompactFallbackCandidatesUseCapabilityEvidenceAndDeduplicate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.5"}}}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"compact_model_mapping": map[string]string{"gpt-5.5": "mapped-model"},
+		},
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"mapped-model": {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+		"gpt-5.4":      {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+		"gpt-5.5":      {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+	}})
+
+	got := svc.openAICompactFallbackCandidates(account, "gpt-5.5", "gpt-5.5", true)
+	require.Equal(t, []string{"mapped-model", "gpt-5.4"}, got)
+
+	got = svc.openAICompactFallbackCandidates(account, "gpt-5.5", "gpt-5.4", false)
+	require.Equal(t, []string{"mapped-model"}, got, "API-key gpt-5.5 override must win over cached capability metadata")
+}
+
+func TestPrepareOpenAICompactFallbackRetryUsesNextCandidateAfterLiteRejection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.5"}}}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"gpt-5.4":       {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+		"gpt-5.3-codex": {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+	}})
+	c := newOpenAICompactFallbackTestContext(t, "/v1/responses/compact")
+	body := []byte(`{"model":"gpt-5.5","input":[]}`)
+	errorBody := []byte(`{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`)
+	state := newOpenAICompactFallbackState()
+
+	first, firstModel, retry := svc.prepareOpenAICompactFallbackRetryWithState(c, context.Background(), account, "gpt-5.5", body, http.StatusBadRequest, string(errorBody), errorBody, state)
+	require.True(t, retry)
+	require.Equal(t, "gpt-5.3-codex", firstModel)
+	require.Equal(t, firstModel, gjson.GetBytes(first, "model").String())
+
+	second, secondModel, retry := svc.prepareOpenAICompactFallbackRetryWithState(c, context.Background(), account, "gpt-5.5", first, http.StatusBadRequest, string(errorBody), errorBody, state)
+	require.True(t, retry)
+	require.Equal(t, "gpt-5.4", secondModel)
+	require.Equal(t, secondModel, gjson.GetBytes(second, "model").String())
+
+	_, _, retry = svc.prepareOpenAICompactFallbackRetryWithState(c, context.Background(), account, "gpt-5.5", second, http.StatusBadRequest, string(errorBody), errorBody, state)
+	require.False(t, retry)
+}
+
+func TestOpenAIGatewayForwardRetriesLiteRejectedModelsThroughCandidateChain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"compact-test","input":[{"type":"message","role":"user","content":"hello"},{"type":"compaction_trigger"}]}`)
+	c := newOpenAICompactFallbackTestContext(t, "/v1/responses")
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set(responsesLiteHeader, "true")
+	MarkOpenAINativeCompactionV2(c)
+
+	const liteRejected = `{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(liteRejected))},
+		{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(liteRejected))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_compact","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`))},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "gpt-5.5"}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
+		Status:      StatusActive, Schedulable: true,
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"gpt-5.3-codex": {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+		"gpt-5.4":       {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
+	}})
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 3)
+	require.Equal(t, []string{"gpt-5.5", "gpt-5.3-codex", "gpt-5.4"}, []string{
+		gjson.GetBytes(upstream.bodies[0], "model").String(),
+		gjson.GetBytes(upstream.bodies[1], "model").String(),
+		gjson.GetBytes(upstream.bodies[2], "model").String(),
+	})
+}
+
+func TestOpenAIResponsesLiteModelCompatibilityFailureIsNarrow(t *testing.T) {
+	body := []byte(`{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`)
+	require.True(t, isOpenAIResponsesLiteModelCompatibilityFailure(http.StatusBadRequest, "", body))
+	require.False(t, isOpenAIResponsesLiteModelCompatibilityFailure(http.StatusBadRequest, "This model output format is not supported", []byte(`{"error":{"param":"model"}}`)))
+}
+
+func TestOpenAICompactFallbackStateStopsAtAttemptLimitAndCancellation(t *testing.T) {
+	state := newOpenAICompactFallbackState()
+	ctx, cancel := context.WithCancel(context.Background())
+	require.True(t, state.canTry(ctx))
+
+	for _, model := range []string{"initial", "candidate-1", "candidate-2", "candidate-3"} {
+		state.mark(model)
+	}
+	require.False(t, state.canTry(ctx))
+
+	state = newOpenAICompactFallbackState()
+	cancel()
+	require.False(t, state.canTry(ctx))
+}
+
 func TestOpenAIGatewayForwardRetriesExplicitNativeCompactHTTPFailureOnce(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"compact-test","input":[{"type":"message","role":"user","content":"hello"},{"type":"compaction_trigger"}]}`)
@@ -189,7 +318,7 @@ func TestOpenAIGatewayForwardRetriesExplicitNativeCompactHTTPFailureOnce(t *test
 		{
 			StatusCode: http.StatusBadRequest,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"context_length_exceeded","message":"context window exceeded"}}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}`)),
 		},
 		{
 			StatusCode: http.StatusOK,
@@ -203,7 +332,7 @@ func TestOpenAIGatewayForwardRetriesExplicitNativeCompactHTTPFailureOnce(t *test
 	}
 	account := &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 	}
 
@@ -233,7 +362,7 @@ func compactFallbackManagedProxyAccount() (*Account, *Proxy) {
 	proxy := &Proxy{ID: 10060, Name: "wldsg82-ipv6-10060", Protocol: "http", Host: "proxy.example", Port: 8080}
 	return &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 		ProxyID: &proxy.ID, Proxy: proxy,
 	}, proxy
@@ -264,7 +393,7 @@ func TestOpenAIGatewayForwardNonStreamCompactRetryRecordsAttemptWithManagedProxy
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "X-Request-Id": []string{"rid_compact_1"}},
 			Body: io.NopCloser(strings.NewReader("event: response.failed\n" +
-				`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"context window exceeded"}}}` + "\n\n")),
+				`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n")),
 		},
 		{
 			StatusCode: http.StatusOK,
@@ -308,7 +437,7 @@ func TestOpenAIGatewayForwardCompactFailoverEventCarriesManagedProxy(t *testing.
 	MarkOpenAINativeCompactionV2(c)
 
 	contextFailed := "event: response.failed\n" +
-		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"context window exceeded"}}}` + "\n\n"
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n"
 	// The fallback model's failure is an account-state error, which
 	// shouldFailoverOpenAIUpstreamResponse classifies as failover-worthy.
 	workspaceFailed := "event: response.failed\n" +
@@ -354,7 +483,7 @@ func TestOpenAIGatewayForwardRetriesExplicitNativeCompactSSEFailureBeforeOutput(
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 			Body: io.NopCloser(strings.NewReader("event: response.failed\n" +
-				`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"context window exceeded"}}}` + "\n\n")),
+				`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n")),
 		},
 		{
 			StatusCode: http.StatusOK,
@@ -368,7 +497,7 @@ func TestOpenAIGatewayForwardRetriesExplicitNativeCompactSSEFailureBeforeOutput(
 	}
 	account := &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 	}
 
@@ -394,7 +523,7 @@ func TestOpenAIGatewayForwardRetriesStreamingCompactFailureBeforeOutput(t *testi
 	MarkOpenAINativeCompactionV2(c)
 
 	failed := "event: response.failed\n" +
-		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"context window exceeded"}}}` + "\n\n"
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n"
 	completed := "event: response.completed\n" +
 		`data: {"type":"response.completed","response":{"id":"resp_compact","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
@@ -407,7 +536,7 @@ func TestOpenAIGatewayForwardRetriesStreamingCompactFailureBeforeOutput(t *testi
 	}
 	account := &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 	}
 
@@ -432,7 +561,7 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 	MarkOpenAINativeCompactionV2(c)
 
 	failed := "event: response.failed\n" +
-		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"model_not_found","message":"model not found"}}}` + "\n\n"
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n"
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
@@ -446,7 +575,7 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 	}
 	account := &Account{
 		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"},
+		Credentials: map[string]any{"access_token": "[REDACTED]", "chatgpt_account_id": "[REDACTED]"},
 		Status:      StatusActive, Schedulable: true,
 	}
 
@@ -460,7 +589,7 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 	var compactSignal *openAICompactFallbackSignal
 	require.False(t, errors.As(err, &compactSignal))
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "model not found")
+	require.Contains(t, recorder.Body.String(), "X-OpenAI-Internal-Codex-Responses-Lite")
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)
 	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
@@ -485,7 +614,7 @@ func TestOpenAIPassthroughCompactFallbackSecondStreamFailureUsesStandardErrorPat
 	MarkOpenAINativeCompactionV2(c)
 
 	failed := "event: response.failed\n" +
-		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"context window exceeded"}}}` + "\n\n"
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"unsupported_value","param":"model","message":"This model is not supported when using X-OpenAI-Internal-Codex-Responses-Lite."}}}` + "\n\n"
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(failed))},
@@ -506,7 +635,7 @@ func TestOpenAIPassthroughCompactFallbackSecondStreamFailureUsesStandardErrorPat
 	var compactSignal *openAICompactFallbackSignal
 	require.False(t, errors.As(err, &compactSignal))
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "context window exceeded")
+	require.Contains(t, recorder.Body.String(), "Upstream request failed")
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)
 	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
