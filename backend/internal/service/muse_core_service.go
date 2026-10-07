@@ -704,9 +704,6 @@ func (s *MuseCoreService) settle(ctx context.Context, id string) (*MuseSettlemen
 		}
 		_ = cache.InvalidateAPIKeyRateLimit(ctx, cmd.APIKeyID)
 	}
-	if s.gateway.deferredService != nil {
-		s.gateway.deferredService.ScheduleLastUsedUpdate(cmd.AccountID)
-	}
 	if s.keys != nil {
 		key, e := s.keys.GetByID(ctx, cmd.APIKeyID)
 		if e == nil && key != nil {

@@ -183,6 +183,18 @@ func TestMuseProviderPostgres(t *testing.T) {
 		require.Equal(t, "observed-fixture-model", observed)
 		require.Equal(t, "null", usage.String)
 		require.True(t, link.Valid)
+		var updatedAt time.Time
+		var lastUsedAt sql.NullTime
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT updated_at,last_used_at FROM accounts WHERE id=$1`, a.ID).Scan(&updatedAt, &lastUsedAt))
+		require.True(t, updatedAt.Equal(a.UpdatedAt), "activity must retain the verified credential snapshot")
+		require.True(t, lastUsedAt.Valid)
+		_, e = store.Profile(ctx, a)
+		require.NoError(t, e, "settlement must leave the verified session usable")
+		var events int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_outbox WHERE account_id=$1 AND event_type=$2`, a.ID, service.SchedulerOutboxEventAccountLastUsed).Scan(&events))
+		require.Equal(t, 1, events, "retrying settlement must not repeat its activity event")
+		_, _, e = runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: turn.Actor, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, LeaseOwner: "next-turn", LeaseDuration: time.Minute, Pricing: turn.Pricing})
+		require.NoError(t, e, "another request must be admissible after settlement")
 	})
 	t.Run("LogFailureRollsBackLedgerAndBalance", func(t *testing.T) {
 		a := newAccount(t)
