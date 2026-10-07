@@ -1007,3 +1007,19 @@ func TestGeminiMessagesCompatService_isModelSupportedByAccount(t *testing.T) {
 		})
 	}
 }
+
+func (*mockAccountRepoForGemini) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*mockAccountRepoForGemini) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*mockAccountRepoForGemini) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (ModelDowngradeBlockApplyResult, error) {
+	return ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*mockAccountRepoForGemini) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
+}

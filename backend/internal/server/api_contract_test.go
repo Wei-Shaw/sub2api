@@ -2968,3 +2968,19 @@ var (
 	_ service.UsageLogRepository         = (*stubUsageLogRepo)(nil)
 	_ service.SettingRepository          = (*stubSettingRepo)(nil)
 )
+
+func (*stubAccountRepo) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*stubAccountRepo) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]service.ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*stubAccountRepo) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (service.ModelDowngradeBlockApplyResult, error) {
+	return service.ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*stubAccountRepo) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
+}

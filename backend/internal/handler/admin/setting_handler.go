@@ -62,6 +62,8 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	// modelDowngradeGuard 为模型降级守卫管理页提供列表、提前恢复和立即处理（可选依赖）
+	modelDowngradeGuard ModelDowngradeGuardManager
 }
 
 // NewSettingHandler 创建系统设置处理器

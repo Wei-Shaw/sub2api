@@ -469,12 +469,23 @@ func (s *OpenAIGatewayService) isOpenAIAccountModelRuntimeBlocked(account *Accou
 	if s == nil || account == nil {
 		return false
 	}
+	canonicalModel := canonicalOpenAIAccountSchedulingModel(account, requestedModel)
+	return s.isOpenAIAccountModelRuntimeBlockedForFinalModel(account, canonicalModel)
+}
+
+// isOpenAIAccountModelRuntimeBlockedForFinalModel 按「已经是最终上游模型名」的键查
+// 模型级 runtime blocker，不再做 canonicalOpenAIAccountSchedulingModel 映射。
+// 调用方已经自己算出最终键时必须走这条路：再映射一次会被账号的 `*` 通配 / 链式
+// model_mapping 改写成别的键，查到的就不是记录时用的那个模型了。
+func (s *OpenAIGatewayService) isOpenAIAccountModelRuntimeBlockedForFinalModel(account *Account, finalModel string) bool {
+	if s == nil || account == nil {
+		return false
+	}
 	state := s.getOpenAIAccountModelTransientState()
 	if state == nil {
 		return false
 	}
-	canonicalModel := canonicalOpenAIAccountSchedulingModel(account, requestedModel)
-	return state.isBlocked(account.ID, openAIAccountModelTransientModel(canonicalModel), time.Now())
+	return state.isBlocked(account.ID, openAIAccountModelTransientModel(finalModel), time.Now())
 }
 
 func accountPersistedSchedulingCooldownActive(account *Account) bool {
@@ -557,14 +568,37 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s == nil {
 		return false
 	}
-	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
-	if snapshot.blocked {
-		if accountPersistedSchedulingCooldownActive(account) {
-			return true
-		}
-		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+	if s.openAIAccountLevelRuntimeBlocked(account) {
+		return true
 	}
 	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
+}
+
+// isOpenAIAccountRequestRuntimeBlockedForFinalModel 与
+// isOpenAIAccountRequestRuntimeBlocked 同口径，但模型级判定直接用调用方给的最终
+// 上游模型名，不再二次映射。
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlockedForFinalModel(account *Account, finalModel string) bool {
+	if s == nil {
+		return false
+	}
+	if s.openAIAccountLevelRuntimeBlocked(account) {
+		return true
+	}
+	return s.isOpenAIAccountModelRuntimeBlockedForFinalModel(account, finalModel)
+}
+
+// openAIAccountLevelRuntimeBlocked 只判账号级 runtime block（与模型无关），
+// 并在持久化冷却字段全部失效时顺带清掉过期的进程内块。
+func (s *OpenAIGatewayService) openAIAccountLevelRuntimeBlocked(account *Account) bool {
+	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
+	if !snapshot.blocked {
+		return false
+	}
+	if accountPersistedSchedulingCooldownActive(account) {
+		return true
+	}
+	s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+	return false
 }
 
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {

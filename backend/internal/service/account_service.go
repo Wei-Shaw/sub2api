@@ -104,6 +104,34 @@ type AccountRepository interface {
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error
+	// CountOpenAIModelDowngradeBlocked 返回模型降级守卫的安全阀分子/分母：
+	// blocked = OpenAI 平台 active 且未删除、当前仍被守卫限制（整账号或任一模型）的账号数；
+	// total = OpenAI 平台 active 且未删除的账号总数。
+	CountOpenAIModelDowngradeBlocked(ctx context.Context, now time.Time) (blocked int64, total int64, err error)
+	// ListOpenAIModelDowngradeBlocked 返回当前仍被守卫限制的 OpenAI 账号明细，
+	// 同时覆盖整账号临时不可调度和仅屏蔽单个模型两种范围。一个账号两种范围都命中时
+	// 会返回两条记录。
+	ListOpenAIModelDowngradeBlocked(ctx context.Context, now time.Time) ([]ModelDowngradeBlockedAccount, error)
+	// ApplyOpenAIModelDowngradeBlock 在一个数据库事务里原子完成「幂等判定 + 统计 +
+	// 比例判定 + 条件写入」，避免多实例/多请求同时触发阈值时各自读到同一个 blocked 数、
+	// 一起击穿比例上限。
+	//
+	// scope 取 ModelDowngradeBlockedScopeAccount（写 temp_unschedulable_*）或
+	// ModelDowngradeBlockedScopeModel（写 extra.model_rate_limits[model]）。
+	// 比例判定会先看该账号是否已经计入 blocked：已计入时按 blocked 判断，未计入才按
+	// blocked+1，避免同一个账号多屏蔽一个模型就被当成新增受限账号重复计数。
+	//
+	// 已被守卫覆盖时返回 AlreadyBlocked=true 且不写任何行（幂等）：整账号下线覆盖该账号
+	// 的所有模型，同一个模型的屏蔽覆盖同模型的再次 model 范围请求；account 范围请求遇到
+	// 已有的模型屏蔽时照常写整账号，那是升级而不是重复。
+	// Applied=false 且 AlreadyBlocked=false 表示因比例上限或分母为 0 没有写入，
+	// 此时 Blocked/Total 仍会返回供日志使用。
+	ApplyOpenAIModelDowngradeBlock(ctx context.Context, id int64, scope string, model string, until time.Time, reason string, maxRatio float64, now time.Time) (ModelDowngradeBlockApplyResult, error)
+	// ReleaseOpenAIModelDowngradeBlock 提前解除一条降级守卫写的限制，只动降级来源的那一条：
+	// scope=account 清 temp_unschedulable_*（reason 不是降级来源就不动），
+	// scope=model 只删 extra.model_rate_limits 里的这一个模型，其他模型的冷却保留。
+	// released=false 表示没有匹配到降级来源的记录。
+	ReleaseOpenAIModelDowngradeBlock(ctx context.Context, id int64, scope string, model string) (released bool, err error)
 	ClearTempUnschedulable(ctx context.Context, id int64) error
 	ClearRateLimit(ctx context.Context, id int64) error
 	ClearAntigravityQuotaScopes(ctx context.Context, id int64) error

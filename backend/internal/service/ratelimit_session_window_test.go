@@ -441,3 +441,19 @@ func TestUpdateSessionWindow_NoStatusHeader(t *testing.T) {
 		t.Errorf("expected no calls when status header absent, got %d", len(repo.sessionWindowCalls))
 	}
 }
+
+func (*sessionWindowMockRepo) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*sessionWindowMockRepo) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*sessionWindowMockRepo) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (ModelDowngradeBlockApplyResult, error) {
+	return ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*sessionWindowMockRepo) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
+}

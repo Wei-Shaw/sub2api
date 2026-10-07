@@ -492,6 +492,80 @@ type StreamTimeoutSettings struct {
 	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 }
 
+// ModelDowngradePair 模型降级对 DTO
+type ModelDowngradePair struct {
+	SentModel     string `json:"sent_model"`
+	ResponseModel string `json:"response_model"`
+}
+
+// ModelDowngradeGuardSettings 模型降级守卫配置 DTO
+type ModelDowngradeGuardSettings struct {
+	Enabled                bool                 `json:"enabled"`
+	Action                 string               `json:"action"`
+	Pairs                  []ModelDowngradePair `json:"pairs"`
+	ThresholdCount         int                  `json:"threshold_count"`
+	ThresholdWindowMinutes int                  `json:"threshold_window_minutes"`
+	BlockHours             int                  `json:"block_hours"`
+	MaxBlockedRatio        float64              `json:"max_blocked_ratio"`
+}
+
+// ModelDowngradeBlockedAccount 当前因降级受限（或本应处理）的账号 DTO。
+// 时间字段统一用 RFC3339（UTC），前端按浏览器本地时区渲染。
+type ModelDowngradeBlockedAccount struct {
+	AccountID   int64  `json:"account_id"`
+	AccountName string `json:"account_name"`
+	// Scope: account / model / observed（observed 是观察记录的伪范围）
+	Scope string `json:"scope"`
+	// Status: blocked（真实受限）/ observed（观察模式命中）/ ratio_capped（比例上限拦下）
+	Status string `json:"status"`
+	// Cause: dry_run / ratio_cap，仅观察行有值
+	Cause                string `json:"cause,omitempty"`
+	Model                string `json:"model,omitempty"`
+	SentModel            string `json:"sent_model"`
+	ResponseModel        string `json:"response_model"`
+	TriggerCount         int64  `json:"trigger_count"`
+	TriggerThreshold     int    `json:"trigger_threshold"`
+	TriggerWindowMinutes int    `json:"trigger_window_minutes"`
+	TriggeredAt          string `json:"triggered_at,omitempty"`
+	Until                string `json:"until"`
+	// 以下三个字段仅在 status == ratio_capped 时有值，解释当时为什么没处理。
+	Blocked         int64   `json:"blocked,omitempty"`
+	Total           int64   `json:"total,omitempty"`
+	MaxBlockedRatio float64 `json:"max_blocked_ratio,omitempty"`
+}
+
+// ModelDowngradeBlockedSummary 表格上方的汇总 DTO。
+// observed 是观察记录条数，不计入 blocked，页面占比仍只按真实受限算。
+type ModelDowngradeBlockedSummary struct {
+	Blocked         int64   `json:"blocked"`
+	Observed        int64   `json:"observed"`
+	TotalActive     int64   `json:"total_active"`
+	MaxBlockedRatio float64 `json:"max_blocked_ratio"`
+}
+
+// ModelDowngradeBlockedResponse GET /admin/settings/model-downgrade-guard/blocked 的返回体
+type ModelDowngradeBlockedResponse struct {
+	Items   []ModelDowngradeBlockedAccount `json:"items"`
+	Summary ModelDowngradeBlockedSummary   `json:"summary"`
+}
+
+// ModelDowngradeBlockedReleaseResponse DELETE /admin/settings/model-downgrade-guard/blocked/:id
+// 的返回体：回显真正被解除的那一条，便于前端确认命中的范围。
+type ModelDowngradeBlockedReleaseResponse struct {
+	AccountID int64  `json:"account_id"`
+	Scope     string `json:"scope"`
+	Model     string `json:"model,omitempty"`
+}
+
+// ModelDowngradeBlockedApplyResponse POST /admin/settings/model-downgrade-guard/blocked/:id/apply
+// 的返回体：回显实际落到的范围和预计恢复时间。
+type ModelDowngradeBlockedApplyResponse struct {
+	AccountID int64  `json:"account_id"`
+	Scope     string `json:"scope"`
+	Model     string `json:"model,omitempty"`
+	Until     string `json:"until"`
+}
+
 // RectifierSettings 请求整流器配置 DTO
 type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`

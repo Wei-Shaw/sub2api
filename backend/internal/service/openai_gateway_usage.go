@@ -369,6 +369,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		)
 	}
 
+	// 模型降级守卫：上游成功响应自报的模型命中显式配置的降级对时累计计数，
+	// 达到阈值后按配置处理该账号。守卫内部所有失败都只打日志，不影响用量落库。
+	if s.rateLimitService != nil && account.Platform == PlatformOpenAI {
+		s.rateLimitService.HandleModelDowngrade(ctx, account, sentModel, result.UpstreamResponseModel)
+	}
+
 	imageSizeBreakdown := cloneImageSizeBreakdown(result.ImageSizeBreakdown)
 	if result.Usage.ImageCacheReadTokens > 0 {
 		if imageSizeBreakdown == nil {
