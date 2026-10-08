@@ -88,7 +88,7 @@ func TestOpenAICacheWriteHTTPPostgres(t *testing.T) {
 			logs := NewUsageLogRepository(integrationEntClient, integrationDB)
 			// This observer delegates every command to the real repository. It
 			// does not calculate, suppress or simulate any monetary operation.
-			billingRepo := &cacheWriteHTTPPGBillingObserver{repo: NewUsageBillingRepository(integrationEntClient, integrationDB)}
+			billingRepo := &cacheWriteHTTPPGBillingObserver{UsageBillingRepository: NewUsageBillingRepository(integrationEntClient, integrationDB)}
 			apiKeys := service.NewAPIKeyService(keyRepo, userRepo, NewGroupRepository(integrationEntClient, integrationDB), nil, nil, nil, cfg)
 			billingCache := service.NewBillingCacheService(nil, userRepo, nil, keyRepo, nil, nil, cfg, nil)
 			t.Cleanup(billingCache.Stop)
@@ -312,7 +312,7 @@ func TestOpenAICacheWriteHTTPPostgres(t *testing.T) {
 					continue
 				}
 				cmd := call.command
-				result, err := billingRepo.repo.Apply(ctx, &cmd)
+				result, err := billingRepo.UsageBillingRepository.Apply(ctx, &cmd)
 				require.NoError(t, err)
 				require.False(t, result.Applied)
 			}
@@ -509,14 +509,20 @@ type cacheWriteHTTPPGCall struct {
 	result  *service.UsageBillingApplyResult
 	err     error
 }
+
+// Embed the complete production interface so unobserved operations (including
+// batch-image balance holds/captures/releases) also delegate to the real SQL
+// repository, rather than becoming test stubs.
 type cacheWriteHTTPPGBillingObserver struct {
-	repo  service.UsageBillingRepository
+	service.UsageBillingRepository
 	mu    sync.Mutex
 	calls []cacheWriteHTTPPGCall
 }
 
+var _ service.UsageBillingRepository = (*cacheWriteHTTPPGBillingObserver)(nil)
+
 func (r *cacheWriteHTTPPGBillingObserver) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (*service.UsageBillingApplyResult, error) {
-	result, err := r.repo.Apply(ctx, cmd)
+	result, err := r.UsageBillingRepository.Apply(ctx, cmd)
 	copy := *cmd
 	if cmd.CacheWriteCorrection != nil {
 		correction := *cmd.CacheWriteCorrection
