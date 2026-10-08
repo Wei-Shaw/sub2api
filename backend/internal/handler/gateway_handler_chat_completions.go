@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -71,7 +72,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// Extract model and stream
 	// 重复的 model 键会被不同解析器绑定到不同值（gjson 首键 vs encoding/json 末键），在边界直接拒绝。
-	if service.HasDuplicateTopLevelKey(body, "model") {
+	if requestmodel.HasDuplicateTopLevelKey(body, "model") {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is specified more than once")
 		return
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
@@ -637,43 +638,47 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	return true
 }
 
-// HasDuplicateTopLevelKey 判断 JSON 对象顶层是否存在重复的指定键。
-// RFC 8259 不强制拒绝重复键，而不同解析器对重复键的绑定值不一致
-// （gjson 取首键，encoding/json 及常见上游运行时取末键），重复的 model 键
-// 会让「计费/准入校验」与「实际转发执行」指向不同模型。网关边界应拒绝。
-// Reason: 只检查顶层——嵌套对象里的同名键（如 messages 内部结构）是合法内容。
-func HasDuplicateTopLevelKey(body []byte, key string) bool {
-	count := 0
-	gjson.ParseBytes(body).ForEach(func(k, _ gjson.Result) bool {
-		if k.String() == key {
-			count++
-			return count < 2
-		}
-		return true
-	})
-	return count > 1
-}
-
 // ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
-// 若请求体携带重复 model 键，sjson 只改写第一个键，剩余键会被末键优先的
-// 上游解析器执行，因此先把重复键收敛为单一键（保留最后一个键的原位，
-// 其余键的相对顺序不变），再写入新值。
 func ReplaceModelInBody(body []byte, newModel string) []byte {
 	if len(body) == 0 {
 		return body
 	}
-	stripped := body
-	for HasDuplicateTopLevelKey(stripped, "model") {
-		next, err := sjson.DeleteBytes(stripped, "model")
-		if err != nil {
-			return body
-		}
-		stripped = next
+	if requestmodel.HasDuplicateTopLevelKey(body, "model") && gjson.ValidBytes(body) {
+		// Rebuild once, keeping the final model position and every other raw
+		// value. Repeated sjson.Delete would be quadratic on hostile input.
+		object := gjson.ParseBytes(body)
+		lastModel := 0
+		object.ForEach(func(key, _ gjson.Result) bool {
+			if strings.EqualFold(key.String(), "model") {
+				lastModel = key.Index
+			}
+			return true
+		})
+		normalized := make([]byte, 0, len(body))
+		normalized = append(normalized, '{')
+		object.ForEach(func(key, value gjson.Result) bool {
+			isModel := strings.EqualFold(key.String(), "model")
+			if isModel && key.Index != lastModel {
+				return true
+			}
+			if len(normalized) > 1 {
+				normalized = append(normalized, ',')
+			}
+			if isModel {
+				normalized = append(normalized, `"model"`...)
+			} else {
+				normalized = append(normalized, key.Raw...)
+			}
+			normalized = append(normalized, ':')
+			normalized = append(normalized, value.Raw...)
+			return true
+		})
+		body = append(normalized, '}')
 	}
-	if current := gjson.GetBytes(stripped, "model"); current.Exists() && current.String() == newModel {
-		return stripped
+	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
+		return body
 	}
-	newBody, err := sjson.SetBytes(stripped, "model", newModel)
+	newBody, err := sjson.SetBytes(body, "model", newModel)
 	if err != nil {
 		return body
 	}

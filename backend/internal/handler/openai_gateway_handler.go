@@ -463,7 +463,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	// 重复的 model 键会被不同解析器绑定到不同值（gjson 首键 vs encoding/json 末键），在边界直接拒绝。
-	if service.HasDuplicateTopLevelKey(body, "model") {
+	if requestmodel.HasDuplicateTopLevelKey(body, "model") {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is specified more than once")
 		return
 	}
@@ -1211,7 +1211,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 重复的 model 键会被不同解析器绑定到不同值（gjson 首键 vs encoding/json 末键），在边界直接拒绝。
-	if service.HasDuplicateTopLevelKey(body, "model") {
+	if requestmodel.HasDuplicateTopLevelKey(body, "model") {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is specified more than once")
 		return
 	}

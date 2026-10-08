@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -42,7 +43,7 @@ func TestHasDuplicateTopLevelKey(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, HasDuplicateTopLevelKey([]byte(tc.body), tc.key))
+			require.Equal(t, tc.want, requestmodel.HasDuplicateTopLevelKey([]byte(tc.body), tc.key))
 		})
 	}
 }
@@ -80,7 +81,7 @@ func TestReplaceModelInBodySingleKey(t *testing.T) {
 		body := []byte(`{"alpha":1,"model":"a","messages":[],"omega":2}`)
 		out := ReplaceModelInBody(body, "b")
 		require.Equal(t, "b", gjson.GetBytes(out, "model").String())
-		require.False(t, HasDuplicateTopLevelKey(out, "model"))
+		require.False(t, requestmodel.HasDuplicateTopLevelKey(out, "model"))
 		assertTopLevelOrder(t, out, `"alpha"`, `"model"`, `"messages"`, `"omega"`)
 	})
 	t.Run("empty body returned as is", func(t *testing.T) {
@@ -109,4 +110,17 @@ func assertTopLevelOrder(t *testing.T, body []byte, tokens ...string) {
 		require.Greaterf(t, pos, last, "token %s should appear after previous tokens in body %s", token, body)
 		last = pos
 	}
+}
+
+func TestReplaceModelInBodyCollapsesAmbiguousKeys(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"a","messages":[{"model":"nested"}],"model":"b","n":900719925474099312345}`,
+		`{"Model":"b","messages":[{"model":"nested"}],"\u006dodel":"a","n":900719925474099312345}`,
+		`{"model":"a","messages":[{"model":"nested"}],"MODEL":null,"n":900719925474099312345}`,
+	} {
+		out := ReplaceModelInBody([]byte(body), "a")
+		require.Equal(t, `{"messages":[{"model":"nested"}],"model":"a","n":900719925474099312345}`, string(out))
+	}
+	many := `{` + strings.Repeat(`"model":"b",`, 10000) + `"model":"a","n":900719925474099312345}`
+	require.Equal(t, `{"model":"mapped","n":900719925474099312345}`, string(ReplaceModelInBody([]byte(many), "mapped")))
 }
