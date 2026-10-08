@@ -94,6 +94,12 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	// OpenAIEndpointCapabilityDecisions serves the OpenAI Decisions contract.
+	// It is available only to API-key/upstream credentials; ChatGPT OAuth/Codex
+	// accounts use a different upstream protocol and must not be selected here.
+	OpenAIEndpointCapabilityDecisions OpenAIEndpointCapability = "decisions"
+	// DecisionsMultiImage is an internal scheduling requirement, not a stored capability.
+	OpenAIEndpointCapabilityDecisionsMultiImage OpenAIEndpointCapability = "decisions_multi_image"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1887,6 +1893,17 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
+	case OpenAIEndpointCapabilityDecisions, OpenAIEndpointCapabilityDecisionsMultiImage:
+		if a.Platform != PlatformOpenAI || (a.Type != AccountTypeAPIKey && a.Type != AccountTypeUpstream) {
+			return false
+		}
+		if capability == OpenAIEndpointCapabilityDecisionsMultiImage && a.GetOpenAIDecisionsProtocol() != "openai" {
+			return false
+		}
+		if a.GetOpenAIDecisionsProtocol() != "openai" && a.GetOpenAIDecisionsProtocol() != "openrouter" {
+			return false
+		}
+		capability = OpenAIEndpointCapabilityDecisions
 	case OpenAIEndpointCapabilityLive:
 		return a.Platform == PlatformOpenAI &&
 			a.Type == AccountTypeOAuth &&

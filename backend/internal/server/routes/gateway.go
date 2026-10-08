@@ -203,7 +203,13 @@ func RegisterGatewayRoutes(
 			h.Gateway.Messages(c)
 		})
 		// System One carries only JSON text, so it uses the text body limit.
-		gateway.POST("/systemone", textBodyLimit, h.Gateway.SystemOne)
+		gateway.POST("/systemone", textBodyLimit, func(c *gin.Context) {
+			dispatchGatewayByTargetPlatform(c, service.PlatformOpenAI, h.OpenAIGateway.SystemOneViaDecisions, h.Gateway.SystemOne)
+		})
+		// Decisions accepts inline images and uses the gateway body limit.
+		gateway.POST("/decisions", func(c *gin.Context) {
+			dispatchGatewayByTargetPlatform(c, service.PlatformTypeSafe, h.Gateway.DecisionsViaSystemOne, h.OpenAIGateway.Decisions)
+		})
 		// /v1/messages/count_tokens: OpenAI bridges upstream, Grok estimates
 		// locally, and Anthropic-compatible platforms retain their existing path.
 		gateway.POST("/messages/count_tokens", countTokensHandler)
@@ -532,6 +538,14 @@ func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler 
 	generatedHandler(c)
 }
 
+func dispatchGatewayByTargetPlatform(c *gin.Context, targetPlatform string, targetHandler, fallbackHandler gin.HandlerFunc) {
+	if getGroupPlatform(c) == targetPlatform {
+		targetHandler(c)
+		return
+	}
+	fallbackHandler(c)
+}
+
 // getGroupPlatform extracts the group platform from the API Key stored in context.
 func getGroupPlatform(c *gin.Context) string {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
@@ -669,6 +683,7 @@ func compositeRouteEndpointForPath(path string) string {
 	case strings.Contains(path, "/messages"):
 		return service.CompositeRouteEndpointMessages
 	case strings.Contains(path, "/responses"),
+		strings.Contains(path, "/decisions"),
 		strings.Contains(path, "/alpha/search"),
 		strings.Contains(path, "/realtime/calls"),
 		strings.HasSuffix(strings.TrimRight(path, "/"), "/live"):

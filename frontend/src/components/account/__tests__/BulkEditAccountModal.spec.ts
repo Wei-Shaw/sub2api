@@ -81,6 +81,15 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
 }
 
 describe('BulkEditAccountModal', () => {
+  it('saves an explicitly selected OpenRouter protocol for API-key and upstream targets', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey', 'upstream'] })
+    await wrapper.get('[data-testid="enable-openai-decisions-protocol"]').setValue(true)
+    await wrapper.get('[data-testid="openai-decisions-protocol"]').setValue('openrouter')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { credentials: { openai_decisions_protocol: 'openrouter' } })
+  })
+
   beforeEach(() => {
     vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
@@ -541,6 +550,7 @@ describe('BulkEditAccountModal', () => {
     })
 
     await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-decisions"]').setValue(false)
     await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').setValue('force_chat_completions')
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
@@ -560,6 +570,7 @@ describe('BulkEditAccountModal', () => {
   it('persists Seedance in a two-capability bulk update', async () => {
     const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
     await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-decisions"]').setValue(false)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-seedance"]').setValue(true)
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
@@ -616,6 +627,7 @@ describe('BulkEditAccountModal', () => {
       selectedTypes: ['apikey']
     })
     await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-decisions"]').setValue(false)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
 

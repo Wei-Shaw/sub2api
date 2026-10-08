@@ -583,6 +583,7 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:         2,
 		LongContextOutputMultiplier:        1.5,
 	}
+	s.fallbackPrices["openai/gpt-6-luna-decisions"] = &ModelPricing{InputPricePerToken: 0.1e-6, CacheCreationPriceExplicit: true}
 	s.fallbackPrices["gpt-6-luna"] = &ModelPricing{
 		InputPricePerToken:                 0.1e-6,
 		InputPricePerTokenPriority:         0.2e-6,
@@ -1193,6 +1194,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["doubao-embedding-vision"]
 	}
 
+	if modelLower == "openai/gpt-6-luna-decisions" {
+		return s.fallbackPrices[modelLower]
+	}
 	// OpenAI（GPT-5 / Codex 族）：仅匹配已知型号，避免未知 OpenAI 型号误计价。
 	if normalized := normalizeKnownOpenAICodexModel(modelLower); normalized != "" {
 		switch normalized {
@@ -1334,7 +1338,12 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
-		litellmPricing := s.pricingService.GetModelPricing(model)
+		var litellmPricing *LiteLLMModelPricing
+		if model == "openai/gpt-6-luna-decisions" {
+			litellmPricing = s.pricingService.GetIdentifiedModelPricing(model)
+		} else {
+			litellmPricing = s.pricingService.GetModelPricing(model)
+		}
 		// 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
 		// token 计费：直接返回会把 token 流量按 $0 计费。跳过后走 fallback，
 		// 无 fallback 则 fail-closed（ErrModelPricingUnavailable）。

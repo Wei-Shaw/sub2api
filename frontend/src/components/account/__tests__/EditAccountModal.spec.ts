@@ -325,6 +325,26 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('preserves the protocol when editing an OpenAI upstream account', async () => {
+    const account = { ...buildAccount(), type: 'upstream', credentials: { base_url: 'https://openrouter.ai/api/v1', openai_decisions_protocol: 'openrouter' } } as any
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="openai-decisions-protocol"]').element.value).toBe('openrouter')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.credentials?.openai_decisions_protocol).toBe('openrouter')
+  })
+  it('loads and saves the explicit OpenRouter Decisions protocol', async () => {
+    const account = buildAccount()
+    account.credentials.openai_decisions_protocol = 'openrouter'
+    updateAccountMock.mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="openai-decisions-protocol"]').element.value).toBe('openrouter')
+    await wrapper.get('[data-testid="openai-decisions-protocol"]').setValue('openai')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.credentials?.openai_decisions_protocol).toBe('openai')
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })
@@ -1362,6 +1382,7 @@ describe('EditAccountModal', () => {
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(true)
 
+    await wrapper.get('[data-testid="openai-endpoint-capability-decisions"]').setValue(false)
     await embeddingsCheckbox.setValue(false)
 
     expect(chatCheckbox.element.checked).toBe(true)

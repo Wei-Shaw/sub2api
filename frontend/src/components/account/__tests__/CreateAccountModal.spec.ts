@@ -195,6 +195,19 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it('saves OpenRouter Decisions without changing the client model mapping', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="openai-decisions-protocol"]').setValue('openrouter')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Decisions')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls.at(-1)?.[0]?.credentials?.openai_decisions_protocol).toBe('openrouter')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
