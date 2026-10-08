@@ -220,4 +220,79 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it('鹈鹕测智会发送独立模式并沙箱预览生成的 HTML', async () => {
+    const nonceScript = document.createElement('script')
+    nonceScript.nonce = 'pelican-test-nonce'
+    document.head.appendChild(nonceScript)
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-6-astra', display_name: 'GPT-6 Astra' },
+      { id: 'gpt-image-2.5-flare', display_name: 'GPT Image 2.5 Flare' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-6-astra"}\n',
+        `data: ${JSON.stringify({
+          type: 'pelican_result',
+          data: {
+            has_html: true,
+            html: `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="script-src 'none'"></head><body>pelican<button onclick="window.pelicanPaused = true">pause</button><input oninput="window.pelicanSpeed = this.value"><script>window.pelicanReady = true</script></body></html>`,
+            response_model: 'gpt-6-astra'
+          }
+        })}\n`,
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 66,
+      name: 'ChatGPT OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).testMode = 'pelican'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gpt-6-astra',
+      prompt: '',
+      mode: 'pelican'
+    })
+    expect(wrapper.text()).toContain('admin.accounts.openai.pelicanHTMLReady')
+    expect(wrapper.text()).toContain('gpt-6-astra')
+    expect(wrapper.find('iframe').attributes('sandbox')).toBe('allow-scripts')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain("default-src 'none'")
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('nonce="pelican-test-nonce"')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain('data-pelican-nonce')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain("script-src 'none'")
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' onclick=')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' oninput=')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('addEventListener("click"')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('addEventListener("input"')
+    nonceScript.remove()
+  })
+
+  it('OpenAI API Key 账号不提供鹈鹕测智模式', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-5.4', display_name: 'GPT-5.4' }])
+    const wrapper = mountModal({
+      id: 67,
+      name: 'OpenAI API Key',
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect((wrapper.vm as any).openAITestModeOptions).toEqual([
+      { value: 'default', label: 'admin.accounts.openai.testModeDefault' },
+      { value: 'compact', label: 'admin.accounts.openai.testModeCompact' }
+    ])
+  })
 })
