@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, syncUpstreamModelsMock, showWarningMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
+  syncUpstreamModelsMock: vi.fn(),
+  showWarningMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -12,7 +14,8 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
-    showInfo: vi.fn()
+    showInfo: vi.fn(),
+    showWarning: showWarningMock
   })
 }))
 
@@ -28,6 +31,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
+      syncUpstreamModels: syncUpstreamModelsMock,
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
@@ -71,12 +75,13 @@ const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
     modelMappings: { type: Array, default: () => [] },
+    syncCredentials: { type: Object, default: undefined },
     modelValue: {
       type: Array,
       default: () => []
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'upstream-synced'],
   template: `
     <div>
       <button
@@ -1728,6 +1733,104 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     await wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').setValue('0')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})
+
+
+describe('EditAccountModal upstream preview', () => {
+  beforeEach(() => {
+    updateAccountMock.mockReset().mockResolvedValue(buildAccount())
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: ['draft-model'] })
+    showWarningMock.mockReset()
+  })
+
+  it('passes live form values and a blank redacted key without saving', async () => {
+    const account = buildAccount()
+    delete account.credentials.api_key
+    account.credentials_status = { has_api_key: true }
+    const wrapper = mountModal(account)
+    const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+    expect(selector.props('syncCredentials')).toMatchObject({ account_id: 1, api_key: '', proxy_id: 0 })
+    await wrapper.get('input[placeholder="https://api.openai.com"]').setValue(' https://draft.example/v1 ')
+    await wrapper.get('input[placeholder="sk-proj-..."]').setValue(' draft-key ')
+    expect(selector.props('syncCredentials')).toMatchObject({
+      account_id: 1, platform: 'openai', type: 'apikey',
+      base_url: 'https://draft.example/v1', api_key: 'draft-key',
+    })
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('previews the edited adaptive endpoint instead of the stored protocol URL', async () => {
+    const account = buildAccount()
+    account.platform = 'kimi'
+    account.credentials = {
+      api_key: 'saved-key', account_mode: 'payg', api_protocol: 'adaptive',
+      base_url: 'https://old.example/v1',
+      api_base_urls: { chat_completions: 'https://old.example/v1', anthropic: 'https://old.example/anthropic' },
+      model_mapping: { 'model-a': 'model-a' },
+    }
+    const wrapper = mountModal(account)
+    const input = wrapper.findAll('input').find(input => input.element.value === 'https://old.example/v1')!
+    await input.setValue('https://draft.example/v1')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
+      platform: 'kimi', api_protocol: 'adaptive', account_mode: 'payg',
+      base_url: 'https://draft.example/v1',
+      api_base_urls: { chat_completions: 'https://draft.example/v1' },
+    })
+    wrapper.unmount()
+  })
+
+  it('persists capability metadata only after saving a successfully previewed edit', async () => {
+    const wrapper = mountModal()
+    wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('upstream-synced')
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(1)
+    expect(updateAccountMock.mock.invocationCallOrder[0]).toBeLessThan(syncUpstreamModelsMock.mock.invocationCallOrder[0])
+    expect(wrapper.emitted('updated')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('does not sync canceled previews or carry them into the next edit session', async () => {
+    const wrapper = mountModal()
+    wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('upstream-synced')
+    wrapper.getComponent(BaseDialogStub).vm.$emit('close')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledOnce()
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps save successful if the subsequent metadata sync fails', async () => {
+    syncUpstreamModelsMock.mockRejectedValueOnce(new Error('Upstream unavailable'))
+    const wrapper = mountModal()
+    wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('upstream-synced')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(showWarningMock).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsFailed')
+    expect(wrapper.emitted('updated')).toHaveLength(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('does not sync metadata when saving the account fails', async () => {
+    updateAccountMock.mockRejectedValueOnce(new Error('Save failed'))
+    const wrapper = mountModal()
+    wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('upstream-synced')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('updated')).toBeUndefined()
     wrapper.unmount()
   })
 })

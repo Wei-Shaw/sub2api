@@ -163,12 +163,7 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
-  syncCredentials?: {
-    platform: string
-    type: string
-    base_url?: string
-    api_key: string
-  }
+  syncCredentials?: SyncUpstreamPreviewParams
 }>()
 
 const emit = defineEmits<{
@@ -307,10 +302,10 @@ const syncUpstreamModels = async () => {
   isSyncingUpstream.value = true
   try {
     let result
-    if (props.accountId) {
+    if (props.syncCredentials) {
+      result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials)
+    } else if (props.accountId) {
       result = await accountsAPI.syncUpstreamModels(props.accountId)
-    } else if (props.syncCredentials) {
-      result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
     } else {
       return
     }
@@ -321,7 +316,7 @@ const syncUpstreamModels = async () => {
       return
     }
 
-    if (!props.accountId) {
+    if (props.syncCredentials) {
       emit('upstream-synced')
     }
 

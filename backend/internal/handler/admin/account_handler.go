@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -3083,33 +3084,88 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 	response.Success(c, catalog)
 }
 
-// SyncUpstreamModelsPreview handles syncing live supported models using provided credentials (no account ID needed).
+// SyncUpstreamModelsPreview fetches models with draft credentials without saving them.
+// An optional account ID supplies the saved secret and connection settings for edits.
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req struct {
+		AccountID    int64             `json:"account_id" binding:"omitempty,gt=0"`
 		Platform     string            `json:"platform" binding:"required"`
 		Type         string            `json:"type" binding:"required"`
-		BaseURL      string            `json:"base_url"`
-		APIKey       string            `json:"api_key" binding:"required"`
+		BaseURL      *string           `json:"base_url"`
+		APIKey       string            `json:"api_key"`
+		ProxyID      *int64            `json:"proxy_id" binding:"omitempty,gte=0"`
 		ModelMapping map[string]string `json:"model_mapping"`
+		APIProtocol  *string           `json:"api_protocol"`
+		AccountMode  *string           `json:"account_mode"`
+		APIBaseURLs  map[string]string `json:"api_base_urls"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	modelMapping := make(map[string]any, len(req.ModelMapping))
-	for sourceModel, upstreamModel := range req.ModelMapping {
-		modelMapping[sourceModel] = upstreamModel
-	}
 
-	tempAccount := &service.Account{
-		Platform: req.Platform,
-		Type:     req.Type,
-		Credentials: map[string]any{
-			"api_key":       req.APIKey,
-			"base_url":      req.BaseURL,
-			"model_mapping": modelMapping,
-		},
+	// Keep ID zero so SyncUpstreamModelCatalog cannot persist draft metadata.
+	tempAccount := &service.Account{Platform: req.Platform, Type: req.Type}
+	if req.AccountID > 0 {
+		account, err := h.adminService.GetAccount(c.Request.Context(), req.AccountID)
+		if err != nil {
+			response.NotFound(c, "Account not found")
+			return
+		}
+		if account.Type != service.AccountTypeAPIKey || req.Type != account.Type || req.Platform != account.Platform {
+			response.BadRequest(c, "Preview must match the saved API key account platform and type")
+			return
+		}
+		tempAccount.Credentials = maps.Clone(account.Credentials)
+		tempAccount.Extra = maps.Clone(account.Extra)
+		tempAccount.ProxyID = account.ProxyID
+		tempAccount.Proxy = account.Proxy
+		tempAccount.Concurrency = account.Concurrency
+	}
+	if tempAccount.Credentials == nil {
+		tempAccount.Credentials = make(map[string]any)
+	}
+	if apiKey := strings.TrimSpace(req.APIKey); apiKey != "" {
+		tempAccount.Credentials["api_key"] = apiKey
+	}
+	if strings.TrimSpace(tempAccount.GetCredential("api_key")) == "" {
+		response.BadRequest(c, "API key is required")
+		return
+	}
+	if req.BaseURL != nil {
+		tempAccount.Credentials["base_url"] = strings.TrimSpace(*req.BaseURL)
+	}
+	if req.APIProtocol != nil {
+		tempAccount.Credentials["api_protocol"] = *req.APIProtocol
+	}
+	if req.AccountMode != nil {
+		tempAccount.Credentials["account_mode"] = *req.AccountMode
+	}
+	if req.APIBaseURLs != nil {
+		baseURLs := make(map[string]any, len(req.APIBaseURLs))
+		for protocol, baseURL := range req.APIBaseURLs {
+			baseURLs[protocol] = strings.TrimSpace(baseURL)
+		}
+		tempAccount.Credentials["api_base_urls"] = baseURLs
+	}
+	if req.ModelMapping != nil {
+		modelMapping := make(map[string]any, len(req.ModelMapping))
+		for sourceModel, upstreamModel := range req.ModelMapping {
+			modelMapping[sourceModel] = upstreamModel
+		}
+		tempAccount.Credentials["model_mapping"] = modelMapping
+	}
+	if req.ProxyID != nil {
+		tempAccount.ProxyID, tempAccount.Proxy = nil, nil
+		if *req.ProxyID > 0 {
+			proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+			if err != nil {
+				response.BadRequest(c, "Proxy not found")
+				return
+			}
+			tempAccount.ProxyID, tempAccount.Proxy = req.ProxyID, proxy
+		}
 	}
 
 	if h.accountTestService == nil {
