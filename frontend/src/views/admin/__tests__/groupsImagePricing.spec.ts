@@ -23,6 +23,11 @@ describe("groups image pricing platform support", () => {
     expect(supportsVideoPricingPlatform("openai")).toBe(false);
   });
 
+  it("includes composite groups so their image generation stays configurable", () => {
+    expect(supportsImagePricingPlatform("composite")).toBe(true);
+    expect(imagePricingPlatforms.has("composite")).toBe(true);
+  });
+
   it("keeps non-media group platforms out of the image pricing controls", () => {
     expect(supportsImagePricingPlatform("anthropic")).toBe(false);
   });
