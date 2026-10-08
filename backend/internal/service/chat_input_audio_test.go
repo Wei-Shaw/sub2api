@@ -221,6 +221,31 @@ func TestChatAudioFileDataURIKeepsDocumentBehavior(t *testing.T) {
 	}
 }
 
+func TestGeminiNativeMessagesNonAudioDocumentUnchanged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			document := `{"type":"document","title":"Existing PDF","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}`
+			body := []byte(fmt.Sprintf(`{"model":"gemini-3.1-pro-high","max_tokens":100,"stream":%t,"messages":[{"role":"user","content":[{"type":"text","text":"read this"},%s]}]}`, stream, document))
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/messages", body)
+			upstream := &geminiCompatHTTPUpstreamStub{response: antigravityCompatSuccessResponse()}
+			svc := &GeminiMessagesCompatService{tokenProvider: &GeminiTokenProvider{}, httpUpstream: upstream, cfg: &config.Config{}}
+			account := &Account{ID: 101, Platform: PlatformGemini, Type: AccountTypeOAuth, Concurrency: 1, Credentials: map[string]any{"access_token": "test-token", "project_id": "test-project"}}
+			_, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Equal(t, 1, upstream.calls)
+			sent, err := io.ReadAll(upstream.lastReq.Body)
+			require.NoError(t, err)
+			parts := gjson.GetBytes(sent, "request.contents.0.parts").Array()
+			require.Len(t, parts, 2)
+			require.Equal(t, "read this", parts[0].Get("text").String())
+			require.False(t, parts[1].Get("inlineData").Exists())
+			require.JSONEq(t, document, parts[1].Get("text").String())
+		})
+	}
+}
+
 func TestGeminiNativeMessagesAudioDocumentUnchanged(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, stream := range []bool{false, true} {
@@ -270,6 +295,152 @@ func TestChatInputAudioMalformedSiblingReturns400(t *testing.T) {
 					require.Contains(t, recorder.Body.String(), "input_audio")
 				})
 			}
+		}
+	}
+}
+
+func TestChatInputAudioDuplicateFieldsReturns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	audio := `[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]`
+	for _, messages := range []string{
+		`"messages":[{"role":"user","content":[{"type":"input_audio","type":"text","text":"hidden"}]}]`,
+		`"messages":[{"role":"user","content":[{"TYPE":"input_audio","type":"text","text":"hidden"}]}]`,
+		`"messages":[{"role":"user","content":[{"type":"input_audio","TYPE":"text","text":"hidden"}]}]`,
+		`"messages":[{"role":"user","content":` + audio + `,"CONTENT":"hidden"}]`,
+		`"messages":[{"role":"user","content":` + audio + `}],"MESSAGES":[]`,
+		`"messages":[{"role":"assistant","ROLE":"user","content":` + audio + `}]`,
+		`"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":null,"INPUT_AUDIO":{"data":"YXVkaW8=","format":"wav"}}]}]`,
+		`"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"","DATA":"YXVkaW8=","format":"wav"}}]}]`,
+		`"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"pcm16","FORMAT":"wav"}}]}]`,
+		`"messages":[{"role":"user","content":[{"type":"text","text":"first","TEXT":"last"},{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]}]`,
+	} {
+		for _, route := range []string{"gemini", "antigravity", "anthropic", "openai-responses", "anthropic-native"} {
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/stream=%t/%s", route, stream, messages), func(t *testing.T) {
+					body := []byte(fmt.Sprintf(`{"model":"gemini-3.1-pro-high","stream":%t,%s}`, stream, messages))
+					c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+					var err error
+					switch route {
+					case "gemini":
+						upstream := &geminiCompatHTTPUpstreamStub{}
+						_, err = (&GeminiMessagesCompatService{httpUpstream: upstream}).ForwardAsChatCompletions(context.Background(), c, &Account{}, body)
+						require.Zero(t, upstream.calls)
+					case "antigravity":
+						upstream := &queuedHTTPUpstreamStub{}
+						svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+						_, err = svc.ForwardAsChatCompletions(context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+						require.Empty(t, upstream.requestBodies)
+					case "anthropic":
+						upstream := &geminiCompatHTTPUpstreamStub{}
+						_, err = (&GatewayService{httpUpstream: upstream}).ForwardAsChatCompletions(context.Background(), c, &Account{}, body, nil)
+						require.Zero(t, upstream.calls)
+					default:
+						upstream := &geminiCompatHTTPUpstreamStub{}
+						svc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+						if route == "anthropic-native" {
+							_, err = svc.forwardChatCompletionsViaNativeAnthropic(context.Background(), c, &Account{}, body, "")
+						} else {
+							_, err = svc.ForwardAsChatCompletions(context.Background(), c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, body, "", "")
+						}
+						require.Zero(t, upstream.calls)
+					}
+					require.Error(t, err)
+					require.Equal(t, http.StatusBadRequest, recorder.Code)
+					require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
+				})
+			}
+		}
+	}
+}
+
+func TestChatInputAudioDuplicateNegativeControlsForwarded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, content := range []string{
+		`[{"type":"unknown","type":"text","text":"input_audio"}]`,
+		`[{"type":"text","text":"{\"type\":\"input_audio\"}"}]`,
+		`[{"TYPE":"input_audio","INPUT_AUDIO":{"DATA":"YXVkaW8=","FORMAT":"wav"}},{"type":"text","text":"tail","metadata":1,"metadata":2}]`,
+	} {
+		for _, route := range []string{"gemini", "antigravity"} {
+			t.Run(route+"/"+content, func(t *testing.T) {
+				body := []byte(`{"model":"gemini-3.1-pro-high","metadata":{"type":"input_audio","type":"text"},"messages":[{"role":"user","content":` + content + `}]}`)
+				c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+				var sent []byte
+				if route == "gemini" {
+					upstream := &geminiCompatHTTPUpstreamStub{response: antigravityCompatSuccessResponse()}
+					svc := &GeminiMessagesCompatService{tokenProvider: &GeminiTokenProvider{}, httpUpstream: upstream, cfg: &config.Config{}}
+					account := &Account{ID: 101, Platform: PlatformGemini, Type: AccountTypeOAuth, Concurrency: 1, Credentials: map[string]any{"access_token": "test-token", "project_id": "test-project"}}
+					_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+					require.NoError(t, err)
+					require.Equal(t, 1, upstream.calls)
+					sent, err = io.ReadAll(upstream.lastReq.Body)
+					require.NoError(t, err)
+				} else {
+					upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+					svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+					_, err := svc.ForwardAsChatCompletions(context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+					require.NoError(t, err)
+					require.Len(t, upstream.requestBodies, 1)
+					sent = upstream.requestBodies[0]
+				}
+				require.Equal(t, http.StatusOK, recorder.Code)
+				parts := gjson.GetBytes(sent, "request.contents.0.parts").Array()
+				if strings.Contains(content, `"TYPE":"input_audio"`) {
+					require.Len(t, parts, 2)
+					require.Equal(t, "audio/wav", parts[0].Get("inlineData.mimeType").String())
+					require.Equal(t, "YXVkaW8=", parts[0].Get("inlineData.data").String())
+					require.Equal(t, "tail", parts[1].Get("text").String())
+				} else {
+					require.Len(t, parts, 1)
+					require.Contains(t, parts[0].Get("text").String(), "input_audio")
+				}
+			})
+		}
+	}
+}
+
+func TestChatInputAudioDuplicateRawPassthroughPreserved(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	content := `[{"type":"input_audio","type":"text","text":"native","input_audio":{"data":"YXVkaW8=","format":"pcm16"}}]`
+	body := []byte(`{"model":"audio-model","messages":[{"role":"user","content":` + content + `}]}`)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_audio","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{"openai_responses_supported": false}
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, content, gjson.GetBytes(upstream.lastBody, "messages.0.content").Raw)
+}
+
+func TestChatInputAudioGrokReachableMaskingReturns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	audio := `[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]`
+	for _, messages := range []string{
+		`"messages":[{"role":"user","content":[{"type":"input_audio","type":"text","text":"hidden"}]}]`,
+		`"messages":[{"role":"user","content":` + audio + `,"content":"hidden"}]`,
+		`"messages":[{"role":"user","content":` + audio + `}],"messages":[{"role":"user","content":"hidden"}]`,
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("stream=%t/%s", stream, messages), func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":"grok","prompt_cache_key":"stable-session","stream":%t,%s}`, stream, messages))
+				eligible, reason := grokChatResponsesBridgeEligibility(body)
+				require.True(t, eligible, reason)
+				c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+				c.Set("api_key", &APIKey{ID: 7101})
+				upstream := &httpUpstreamRecorder{}
+				svc := &OpenAIGatewayService{httpUpstream: upstream}
+				_, err := svc.ForwardAsChatCompletions(context.Background(), c, grokChatBridgeTestAccount(71), body, "", "")
+				require.Error(t, err)
+				require.Nil(t, upstream.lastReq)
+				require.Equal(t, http.StatusBadRequest, recorder.Code)
+				require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
+				require.Contains(t, recorder.Body.String(), "input_audio")
+			})
 		}
 	}
 }

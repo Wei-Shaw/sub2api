@@ -40,6 +40,12 @@ func ChatCompletionsToResponsesForGeminiWithMinOutputTokens(req *ChatCompletions
 }
 
 func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, minOutputTokens int) (*ResponsesRequest, error) {
+	if req.ambiguousInputAudio {
+		if !allowAudio {
+			return nil, fmt.Errorf("duplicate input_audio message or content fields: %w", ErrUnsupportedInputAudio)
+		}
+		return nil, fmt.Errorf("invalid input_audio: duplicate message or content fields")
+	}
 	converted := *req
 	converted.Messages = append([]ChatMessage(nil), req.Messages...)
 	messageAudio := make(map[int]map[int]string)
@@ -48,20 +54,15 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 		if json.Unmarshal(message.Content, &rawParts) != nil {
 			continue
 		}
-		hasAudio := false
-		for _, rawPart := range rawParts {
-			var probe struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(rawPart, &probe) == nil && probe.Type == "input_audio" {
-				hasAudio = true
-			}
-		}
+		hasAudio, ambiguous := chatContentAudioStatus(message.Content)
 		if !hasAudio {
 			continue
 		}
 		if !allowAudio || message.Role != "user" {
 			return nil, ErrUnsupportedInputAudio
+		}
+		if ambiguous {
+			return nil, fmt.Errorf("invalid input_audio: duplicate content fields")
 		}
 		if err := validateChatAudioParts(rawParts); err != nil {
 			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
@@ -231,7 +232,7 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 		items, err := chatMessageToResponsesItems(m)
 		if err != nil {
 			return nil, err
- 		}
+		}
 		out = append(out, items...)
 	}
 	return out, nil
@@ -250,8 +251,15 @@ func validateChatAudioParts(parts []json.RawMessage) error {
 		switch part.Type {
 		case "input_audio":
 		case "text":
+			var rawText json.RawMessage
+			for name, value := range fields {
+				if strings.EqualFold(name, "text") {
+					rawText = value
+					break
+				}
+			}
 			var text *string
-			if err := json.Unmarshal(fields["text"], &text); err != nil || text == nil {
+			if err := json.Unmarshal(rawText, &text); err != nil || text == nil {
 				return fmt.Errorf("expected text string")
 			}
 		case "image_url":
