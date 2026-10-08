@@ -659,6 +659,7 @@ type ResponsesStreamEvent struct {
 
 // ChatCompletionsRequest is the request body for POST /v1/chat/completions.
 type ChatCompletionsRequest struct {
+	ambiguousInputAudio bool
 	PromptCacheOptions  json.RawMessage    `json:"prompt_cache_options,omitempty"`
 	Model               string             `json:"model"`
 	Messages            []ChatMessage      `json:"messages"`
