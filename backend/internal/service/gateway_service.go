@@ -1566,6 +1566,14 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	return ownership, nil
 }
 
+func explicitModelMappingClaims(account Account, model string) bool {
+	if account.Credentials == nil || model == "" {
+		return false
+	}
+	mapped, ok := stringMappingFromRaw(account.Credentials["model_mapping"])[model]
+	return ok && strings.TrimSpace(mapped) != ""
+}
+
 // GetCompositeRouteModels returns public IDs from enabled exact composite routes.
 func (s *GatewayService) GetCompositeRouteModels(ctx context.Context, groupID *int64, endpoint string, includeSystemOne bool) ([]string, error) {
 	if s == nil || s.compositeResolver == nil || groupID == nil {

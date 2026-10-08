@@ -51,6 +51,13 @@ func CompositeAccountClaimStrength(account *Account, model string) CompositeClai
 // 归一化通配；命中即终止。映射目标为空的条目沿用既有 strict claim 语义：不构
 // 成声明，也不回落通配（显式条目对通配具有遮蔽性，转发阶段同样走不到通配）。
 func compositeMappingClaimStrength(account *Account, mapping map[string]string, model string) CompositeClaimStrength {
+	// 快路径：原始 mapping 精确键命中即返回显式声明。等价性前提是 stringMappingFromRaw
+	// 的原始 mapping 是 GetModelMapping 结果的子集（非空原始 mapping 逐键保留 string 值，
+	// 平台默认映射只向并集追加条目且不产生空目标），故此处命中必然等价于下方首个精确
+	// 分支返回的 Explicit，其余键走原有匹配顺序。
+	if explicitModelMappingClaims(*account, model) {
+		return CompositeClaimExplicit
+	}
 	if mapped, exists := mapping[model]; exists {
 		return compositeClaimStrengthForTarget(mapped, true)
 	}
