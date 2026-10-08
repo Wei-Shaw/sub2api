@@ -55,7 +55,7 @@
 
       <!-- Reset time -->
       <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
-        {{ formatResetTime }}
+        {{ resetsAt ? formatResetTime : resetText || formatResetTime }}
       </span>
     </div>
   </div>
@@ -195,7 +195,7 @@ const formatResetTime = computed(() => {
     return t('usage.resetNow')
   }
 
-  if (!props.resetsAt) return props.resetText || '-'
+  if (!props.resetsAt) return '-'
 
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()
