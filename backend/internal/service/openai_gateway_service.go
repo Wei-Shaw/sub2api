@@ -233,8 +233,13 @@ type OpenAIUsage struct {
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
-	RequestID  string
-	ResponseID string
+	// FirstServeActive snapshots actual combination reuse for this request.
+	FirstServeActive bool
+	// FirstServeSnapshot captures the route state at request time. It must travel
+	// with the result because the shared route may rotate before usage is saved.
+	FirstServeSnapshot *OpenAIFirstServeUsageSnapshot
+	RequestID          string
+	ResponseID         string
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
@@ -483,6 +488,7 @@ type OpenAIGatewayService struct {
 	openaiScheduler                OpenAIAccountScheduler
 	openaiWSPassthroughDialer      openAIWSClientDialer
 	openaiWSSessionPreemptions     openAIWSSessionPreemptRegistry
+	openaiFirstServeHTTP           openAIFirstServeHTTPRegistry
 	openaiAccountStats             *openAIAccountRuntimeStats
 	openaiModelTransient           *openAIAccountModelTransientState
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit

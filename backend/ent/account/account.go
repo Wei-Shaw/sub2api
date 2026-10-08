@@ -36,6 +36,8 @@ const (
 	FieldExtra = "extra"
 	// FieldProxyID holds the string denoting the proxy_id field in the database.
 	FieldProxyID = "proxy_id"
+	// FieldProxyGroupID holds the string denoting the proxy_group_id field in the database.
+	FieldProxyGroupID = "proxy_group_id"
 	// FieldProxyFallbackOriginID holds the string denoting the proxy_fallback_origin_id field in the database.
 	FieldProxyFallbackOriginID = "proxy_fallback_origin_id"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
@@ -82,6 +84,8 @@ const (
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
 	EdgeProxy = "proxy"
+	// EdgeProxyGroup holds the string denoting the proxy_group edge name in mutations.
+	EdgeProxyGroup = "proxy_group"
 	// EdgeParent holds the string denoting the parent edge name in mutations.
 	EdgeParent = "parent"
 	// EdgeChildren holds the string denoting the children edge name in mutations.
@@ -104,6 +108,13 @@ const (
 	ProxyInverseTable = "proxies"
 	// ProxyColumn is the table column denoting the proxy relation/edge.
 	ProxyColumn = "proxy_id"
+	// ProxyGroupTable is the table that holds the proxy_group relation/edge.
+	ProxyGroupTable = "accounts"
+	// ProxyGroupInverseTable is the table name for the ProxyGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "proxygroup" package.
+	ProxyGroupInverseTable = "proxy_groups"
+	// ProxyGroupColumn is the table column denoting the proxy_group relation/edge.
+	ProxyGroupColumn = "proxy_group_id"
 	// ParentTable is the table that holds the parent relation/edge.
 	ParentTable = "accounts"
 	// ParentColumn is the table column denoting the parent relation/edge.
@@ -141,6 +152,7 @@ var Columns = []string{
 	FieldCredentials,
 	FieldExtra,
 	FieldProxyID,
+	FieldProxyGroupID,
 	FieldProxyFallbackOriginID,
 	FieldConcurrency,
 	FieldLoadFactor,
@@ -296,6 +308,11 @@ func ByProxyID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProxyID, opts...).ToFunc()
 }
 
+// ByProxyGroupID orders the results by the proxy_group_id field.
+func ByProxyGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProxyGroupID, opts...).ToFunc()
+}
+
 // ByProxyFallbackOriginID orders the results by the proxy_fallback_origin_id field.
 func ByProxyFallbackOriginID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProxyFallbackOriginID, opts...).ToFunc()
@@ -422,6 +439,13 @@ func ByProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 	}
 }
 
+// ByProxyGroupField orders the results by proxy_group field.
+func ByProxyGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProxyGroupStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByParentField orders the results by parent field.
 func ByParentField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -482,6 +506,13 @@ func newProxyStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProxyInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ProxyTable, ProxyColumn),
+	)
+}
+func newProxyGroupStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProxyGroupInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, ProxyGroupTable, ProxyGroupColumn),
 	)
 }
 func newParentStep() *sqlgraph.Step {

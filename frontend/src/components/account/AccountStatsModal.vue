@@ -172,9 +172,9 @@
           <!-- Today Overview -->
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
-              <div class="rounded-lg bg-cyan-100 p-1.5 dark:bg-cyan-900/30">
+              <div class="rounded-lg bg-gray-100 p-1.5 dark:bg-gray-900/30">
                 <svg
-                  class="h-4 w-4 text-cyan-600 dark:text-cyan-400"
+                  class="h-4 w-4 text-gray-600 dark:text-gray-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -323,8 +323,8 @@
           <!-- Accumulated Tokens -->
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
-              <div class="rounded-lg bg-teal-100 p-1.5 dark:bg-teal-900/30">
-                <Icon name="cube" size="sm" class="text-teal-600 dark:text-teal-400" :stroke-width="2" />
+              <div class="rounded-lg bg-gray-100 p-1.5 dark:bg-gray-900/30">
+                <Icon name="cube" size="sm" class="text-gray-600 dark:text-gray-400" :stroke-width="2" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.accumulatedTokens')

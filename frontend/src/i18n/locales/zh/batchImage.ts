@@ -182,7 +182,7 @@ export default {
       billingHoldFailed: '费用冻结失败，批量任务没有成功提交。请联系管理员检查余额冻结或计费服务。',
       groupDisabled: '当前密钥所属分组没有开启批量生图。你可以换一个已开启批量生图的密钥，或联系管理员开启。',
       pricingMissing: '所选模型还没有配置批量生图价格。请联系管理员补充价格配置。',
-      insufficientBalance: '余额不足，无法冻结本次批量生图费用。',
+      insufficientBalance: '余额不足，无法冻结本次批量生图费用。请前往商店购买卡密兑换充值额度后重试。',
       invalidModel: '请选择一个可用于当前密钥的批量生图模型。',
       invalidItems: 'Prompt 列表格式不正确，请检查是否为空、是否超过数量限制，或图片尺寸是否仍为 1K。',
       duplicateCustomId: 'Prompt 列表里的 custom_id 不能重复。',

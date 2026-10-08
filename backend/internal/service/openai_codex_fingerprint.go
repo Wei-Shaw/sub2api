@@ -156,6 +156,13 @@ func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]an
 	if account == nil || !account.IsOpenAIOAuthLike() {
 		return prepared
 	}
+	next := *account
+	next.Extra = prepared
+	if !account.IsOpenAIFirstServe() && next.IsOpenAIFirstServe() {
+		if _, explicit := prepared[codexFingerprintModeExtraKey]; !explicit {
+			prepared[codexFingerprintModeExtraKey] = string(codexFingerprintFull)
+		}
+	}
 	if seed, ok := codexFingerprintSeed(account.Extra); ok {
 		if prepared == nil {
 			prepared = make(map[string]any, 1)

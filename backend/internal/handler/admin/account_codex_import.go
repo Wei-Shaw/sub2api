@@ -27,6 +27,7 @@ type CodexSessionImportRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
 	GroupIDs                []int64        `json:"group_ids"`
+	ProxyGroupID            *int64         `json:"proxy_group_id"`
 	ProxyID                 *int64         `json:"proxy_id"`
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
@@ -226,7 +227,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			item.Credentials["expires_at"] = credentialExpiresAt.Format(time.RFC3339)
 		}
 		credentials := mergeCodexImportMap(item.Credentials, credentialExtras)
-		extra := mergeCodexImportMap(req.Extra, item.Extra)
+		extra := service.DefaultOpenAIFirstServeExtra(service.PlatformOpenAI, service.AccountTypeOAuth, mergeCodexImportMap(req.Extra, item.Extra))
 		for _, warning := range item.WarningTexts {
 			result.Warnings = append(result.Warnings, CodexSessionImportMessage{
 				Index:   entry.Index,
@@ -289,6 +290,9 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			if req.ProxyID != nil {
 				updateInput.ProxyID = req.ProxyID
 			}
+			if req.ProxyGroupID != nil {
+				updateInput.ProxyGroupID = req.ProxyGroupID
+			}
 			if len(req.GroupIDs) > 0 {
 				groupIDs := append([]int64(nil), req.GroupIDs...)
 				updateInput.GroupIDs = &groupIDs
@@ -313,6 +317,9 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			if h.tokenCacheInvalidator != nil && updated != nil {
 				_ = h.tokenCacheInvalidator.InvalidateToken(ctx, updated)
 			}
+			if updated != nil && updated.IsOpenAIFirstServe() && updated.ProxyGroupID == nil {
+				result.Warnings = append(result.Warnings, CodexSessionImportMessage{Index: entry.Index, Name: accountName, Message: "首服已开启，请在账号编辑中绑定至少两个不同出口的代理组后再使用。"})
+			}
 			result.Updated++
 			accountID := existing.ID
 			if updated != nil {
@@ -336,6 +343,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			Credentials:           credentials,
 			Extra:                 extra,
 			ProxyID:               req.ProxyID,
+			ProxyGroupID:          req.ProxyGroupID,
 			Concurrency:           concurrency,
 			Priority:              priority,
 			RateMultiplier:        req.RateMultiplier,
@@ -363,6 +371,9 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 		if account != nil {
 			index.Add(*account)
+		}
+		if account != nil && account.IsOpenAIFirstServe() && account.ProxyGroupID == nil {
+			result.Warnings = append(result.Warnings, CodexSessionImportMessage{Index: entry.Index, Name: accountName, Message: "首服已开启，请在账号编辑中绑定至少两个不同出口的代理组后再使用。"})
 		}
 		result.Created++
 		accountID := int64(0)

@@ -106,16 +106,17 @@ func TestUsageLogRepositoryCreate_BatchPathConcurrent(t *testing.T) {
 	for i := 0; i < total; i++ {
 		i := i
 		logs[i] = &service.UsageLog{
-			UserID:       user.ID,
-			APIKeyID:     apiKey.ID,
-			AccountID:    account.ID,
-			RequestID:    uuid.NewString(),
-			Model:        "claude-3",
-			InputTokens:  10 + i,
-			OutputTokens: 20 + i,
-			TotalCost:    0.5,
-			ActualCost:   0.5,
-			CreatedAt:    time.Now().UTC(),
+			UserID:           user.ID,
+			APIKeyID:         apiKey.ID,
+			AccountID:        account.ID,
+			RequestID:        uuid.NewString(),
+			Model:            "claude-3",
+			InputTokens:      10 + i,
+			OutputTokens:     20 + i,
+			TotalCost:        0.5,
+			ActualCost:       0.5,
+			CreatedAt:        time.Now().UTC(),
+			FirstServeActive: i%2 == 0,
 		}
 		go func() {
 			defer wg.Done()
@@ -128,6 +129,9 @@ func TestUsageLogRepositoryCreate_BatchPathConcurrent(t *testing.T) {
 		require.NoError(t, errs[i])
 		require.True(t, results[i])
 		require.NotZero(t, logs[i].ID)
+		stored, err := repo.GetByID(ctx, logs[i].ID)
+		require.NoError(t, err)
+		require.Equal(t, i%2 == 0, stored.FirstServeActive)
 	}
 
 	var count int
@@ -539,17 +543,18 @@ func (s *UsageLogRepoSuite) TestGetByID_ReturnsOpenAIWSMode() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-ws"})
 
 	log := &service.UsageLog{
-		UserID:       user.ID,
-		APIKeyID:     apiKey.ID,
-		AccountID:    account.ID,
-		RequestID:    uuid.New().String(),
-		Model:        "gpt-5.3-codex",
-		InputTokens:  10,
-		OutputTokens: 20,
-		TotalCost:    1.0,
-		ActualCost:   1.0,
-		OpenAIWSMode: true,
-		CreatedAt:    timezone.Today().Add(3 * time.Hour),
+		UserID:           user.ID,
+		APIKeyID:         apiKey.ID,
+		AccountID:        account.ID,
+		RequestID:        uuid.New().String(),
+		Model:            "gpt-5.3-codex",
+		InputTokens:      10,
+		OutputTokens:     20,
+		TotalCost:        1.0,
+		ActualCost:       1.0,
+		OpenAIWSMode:     true,
+		FirstServeActive: true,
+		CreatedAt:        timezone.Today().Add(3 * time.Hour),
 	}
 	_, err := s.repo.Create(s.ctx, log)
 	s.Require().NoError(err)
@@ -557,6 +562,7 @@ func (s *UsageLogRepoSuite) TestGetByID_ReturnsOpenAIWSMode() {
 	got, err := s.repo.GetByID(s.ctx, log.ID)
 	s.Require().NoError(err)
 	s.Require().True(got.OpenAIWSMode)
+	s.Require().True(got.FirstServeActive)
 }
 
 func (s *UsageLogRepoSuite) TestGetByID_ReturnsRequestTypeAndLegacyFallback() {

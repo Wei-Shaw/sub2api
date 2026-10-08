@@ -8,6 +8,7 @@ import usersAPI from './users'
 import groupsAPI from './groups'
 import accountsAPI from './accounts'
 import proxiesAPI from './proxies'
+import proxyGroupsAPI from './proxyGroups'
 import redeemAPI from './redeem'
 import promoAPI from './promo'
 import announcementsAPI from './announcements'
@@ -35,6 +36,7 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
+import checkInAPI from './checkin'
 import pluginsAPI from './plugins'
 
 /**
@@ -46,6 +48,7 @@ export const adminAPI = {
   groups: groupsAPI,
   accounts: accountsAPI,
   proxies: proxiesAPI,
+  proxyGroups: proxyGroupsAPI,
   redeem: redeemAPI,
   promo: promoAPI,
   announcements: announcementsAPI,
@@ -73,6 +76,7 @@ export const adminAPI = {
   riskControl: riskControlAPI,
   compliance: adminComplianceAPI,
   audit: auditAPI,
+  checkIn: checkInAPI,
   plugins: pluginsAPI
 }
 
@@ -82,6 +86,7 @@ export {
   groupsAPI,
   accountsAPI,
   proxiesAPI,
+  proxyGroupsAPI,
   redeemAPI,
   promoAPI,
   announcementsAPI,
@@ -109,6 +114,7 @@ export {
   riskControlAPI,
   adminComplianceAPI,
   auditAPI,
+  checkInAPI,
   pluginsAPI
 }
 

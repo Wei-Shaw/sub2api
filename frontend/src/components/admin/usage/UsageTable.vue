@@ -130,6 +130,14 @@
               {{ getRequestTypeLabel(row) }}
             </span>
             <span
+              v-if="row.first_serve_active"
+              data-testid="first-serve-badge"
+              :title="firstServeBadgeHint(row)"
+              class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+            >
+              {{ firstServeBadgeLabel(row) }}
+            </span>
+            <span
               v-if="row.native_compaction_v2"
               data-testid="native-compaction-badge"
               class="inline-flex items-center rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200"
@@ -493,7 +501,7 @@
           <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.serviceTier') }}</span>
-            <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
+            <span class="font-semibold text-gray-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
@@ -608,6 +616,32 @@ const props = withDefaults(defineProps<Props>(), {
   showUpstreamEndpoint: true,
   flat: false
 })
+
+const firstServeSeconds = (row: AdminUsageLog): number | string => {
+  const seconds = row.first_serve_duration_seconds
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : '—'
+}
+
+const firstServeProxy = (row: AdminUsageLog): string => {
+  const name = row.first_serve_proxy_name?.trim() || ''
+  const address = row.first_serve_proxy_address?.trim() || ''
+  if (name && address) return `${name} · ${address}`
+  return name || address || t('usage.firstServeUnknownProxy')
+}
+
+const hasFirstServeSnapshot = (row: AdminUsageLog): boolean =>
+  typeof row.first_serve_duration_seconds === 'number' || Boolean(row.first_serve_proxy_name?.trim() || row.first_serve_proxy_address?.trim())
+
+const firstServeBadgeLabel = (row: AdminUsageLog): string => {
+  if (!hasFirstServeSnapshot(row)) return t('usage.firstServeActiveLegacy')
+  return t('usage.firstServeActive', { proxy: row.first_serve_proxy_name?.trim() || t('usage.firstServeUnknownProxy') })
+}
+
+const firstServeBadgeHint = (row: AdminUsageLog): string => {
+  if (!hasFirstServeSnapshot(row)) return t('usage.firstServeActiveHintLegacy')
+  return t('usage.firstServeActiveHint', { seconds: firstServeSeconds(row), proxy: firstServeProxy(row) })
+}
+
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,57 @@ const (
 	// to prevent decompression bomb attacks.
 	maxDecompressedBodySize = 64 << 20
 )
+
+// RequestBodyErrorKind is a stable, non-sensitive classification for failures
+// that happen before a JSON request body can be parsed.
+type RequestBodyErrorKind string
+
+const (
+	RequestBodyErrorReadCanceled         RequestBodyErrorKind = "read_canceled"
+	RequestBodyErrorUnexpectedEOF        RequestBodyErrorKind = "unexpected_eof"
+	RequestBodyErrorReadFailed           RequestBodyErrorKind = "read_failed"
+	RequestBodyErrorTooLarge             RequestBodyErrorKind = "request_body_too_large"
+	RequestBodyErrorUnsupportedEncoding  RequestBodyErrorKind = "unsupported_content_encoding"
+	RequestBodyErrorInvalidCompression   RequestBodyErrorKind = "invalid_compressed_body"
+	RequestBodyErrorDecompressedTooLarge RequestBodyErrorKind = "decompressed_body_too_large"
+)
+
+// RequestBodyError carries diagnostics that are safe to log and persist. It
+// deliberately never contains request body bytes.
+type RequestBodyError struct {
+	Kind          RequestBodyErrorKind
+	Encoding      string
+	BytesRead     int64
+	ContentLength int64
+	Err           error
+}
+
+func (e *RequestBodyError) Error() string {
+	if e == nil {
+		return "request body read failed"
+	}
+	if e.Err == nil {
+		return fmt.Sprintf("request body read failed: %s", e.Kind)
+	}
+	return fmt.Sprintf("request body read failed: %s: %v", e.Kind, e.Err)
+}
+
+func (e *RequestBodyError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// RequestBodyDiagnostics extracts the stable diagnostics from err. Unknown
+// errors are classified conservatively as read_failed.
+func RequestBodyDiagnostics(err error) RequestBodyError {
+	var bodyErr *RequestBodyError
+	if errors.As(err, &bodyErr) && bodyErr != nil {
+		return *bodyErr
+	}
+	return RequestBodyError{Kind: classifyRequestBodyReadError(err), Err: err}
+}
 
 // PrereadBody 回填已读取完成的请求体：作为 io.ReadCloser 可被再次顺序消费
 // （multipart 流式解析），同时暴露 Bytes() 让 ReadRequestBodyWithPrealloc
@@ -83,19 +135,37 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		}
 	}
 
-	raw, err := readRequestBodyChunks(req.Body, capHint, req.ContentLength)
+	originalContentLength := req.ContentLength
+	encoding := normalizeContentEncoding(req.Header.Get("Content-Encoding"))
+	raw, bytesRead, err := readRequestBodyChunks(req.Body, capHint, originalContentLength)
 	if err != nil {
-		return nil, err
+		return nil, &RequestBodyError{Kind: classifyRequestBodyReadError(err), Encoding: encoding, BytesRead: bytesRead, ContentLength: originalContentLength, Err: err}
+	}
+	if bytesRead > 0 && originalContentLength > bytesRead && originalContentLength <= int64(requestBodyReadMaxInitCap) {
+		return nil, &RequestBodyError{Kind: RequestBodyErrorUnexpectedEOF, Encoding: encoding, BytesRead: bytesRead, ContentLength: originalContentLength, Err: io.ErrUnexpectedEOF}
 	}
 
-	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
-	if enc == "" || enc == "identity" {
+	if encoding == "" || encoding == "identity" {
 		return raw, nil
 	}
 
-	decoded, err := decompressRequestBody(enc, raw)
+	decoded, err := decompressRequestBody(encoding, raw)
 	if err != nil {
-		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
+		kind := RequestBodyErrorInvalidCompression
+		var nestedBodyErr *RequestBodyError
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &nestedBodyErr) && nestedBodyErr != nil {
+			kind = nestedBodyErr.Kind
+		} else if errors.As(err, &maxErr) {
+			kind = RequestBodyErrorDecompressedTooLarge
+		}
+		return nil, &RequestBodyError{
+			Kind:          kind,
+			Encoding:      encoding,
+			BytesRead:     bytesRead,
+			ContentLength: originalContentLength,
+			Err:           fmt.Errorf("decode Content-Encoding %q: %w", encoding, err),
+		}
 	}
 
 	req.Header.Del("Content-Encoding")
@@ -108,7 +178,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 // Read bounded chunks as bytes arrive, then assemble the exact-size result.
 // This avoids doubling large buffers or eagerly allocating an untrusted
 // Content-Length before the corresponding bytes have arrived.
-func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength int64) ([]byte, error) {
+func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength int64) ([]byte, int64, error) {
 	capacity := initialCapacity
 	var chunks [][]byte
 	total := 0
@@ -126,7 +196,7 @@ func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength 
 			n += read
 		}
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, int64(total + n), err
 		}
 		if n > 0 {
 			chunks = append(chunks, chunk[:n])
@@ -134,17 +204,17 @@ func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength 
 		}
 		if err != nil {
 			if len(chunks) == 0 {
-				return chunk[:0], nil
+				return chunk[:0], 0, nil
 			}
 			if len(chunks) == 1 {
-				return chunks[0], nil
+				return chunks[0], int64(total), nil
 			}
 			body := make([]byte, total)
 			offset := 0
 			for _, part := range chunks {
 				offset += copy(body[offset:], part)
 			}
-			return body, nil
+			return body, int64(total), nil
 		}
 		if capacity < requestBodyReadMaxInitCap {
 			capacity *= 2
@@ -173,23 +243,56 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 			return nil, err
 		}
 		defer dec.Close()
-		return io.ReadAll(io.LimitReader(dec, maxDecompressedBodySize))
+		return readDecompressedBody(dec, maxDecompressedBodySize)
 	case "gzip", "x-gzip":
 		gr, err := gzip.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = gr.Close() }()
-		return io.ReadAll(io.LimitReader(gr, maxDecompressedBodySize))
+		return readDecompressedBody(gr, maxDecompressedBodySize)
 	case "deflate":
 		zr, err := zlib.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = zr.Close() }()
-		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
+		return readDecompressedBody(zr, maxDecompressedBodySize)
 	default:
-		return nil, errors.New("unsupported Content-Encoding")
+		return nil, &RequestBodyError{
+			Kind:     RequestBodyErrorUnsupportedEncoding,
+			Encoding: encoding,
+			Err:      errors.New("unsupported Content-Encoding"),
+		}
+	}
+}
+
+func readDecompressedBody(reader io.Reader, limit int64) ([]byte, error) {
+	decoded, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(decoded)) > limit {
+		return nil, &http.MaxBytesError{Limit: limit}
+	}
+	return decoded, nil
+}
+
+func normalizeContentEncoding(encoding string) string {
+	return strings.ToLower(strings.TrimSpace(encoding))
+}
+
+func classifyRequestBodyReadError(err error) RequestBodyErrorKind {
+	var maxErr *http.MaxBytesError
+	switch {
+	case errors.Is(err, context.Canceled):
+		return RequestBodyErrorReadCanceled
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return RequestBodyErrorUnexpectedEOF
+	case errors.As(err, &maxErr):
+		return RequestBodyErrorTooLarge
+	default:
+		return RequestBodyErrorReadFailed
 	}
 }
 

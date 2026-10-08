@@ -214,6 +214,44 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('creates an account with custom first serve settings and resets them when reopened', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ proxyGroups: [{ id: 10, name: 'Group A', status: 'active', proxy_ids: [1, 2], member_count: 2, available_member_count: 2, account_count: 0, created_at: '', updated_at: '' }] })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('first serve account')
+    expect(wrapper.get('[data-testid="first-serve-settings"]').element.previousElementSibling?.getAttribute('data-testid')).toBe('temp-unschedulable-settings')
+    expect(wrapper.get('[data-testid="first-serve-toggle"]').attributes('aria-checked')).toBe('true')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await flushPromises()
+    expect((wrapper.get('[data-testid="first-serve-group"]').element as HTMLSelectElement).value).toBe('10')
+    expect((wrapper.get('[data-testid="first-serve-scope"]').element as HTMLSelectElement).value).toBe('account')
+    await wrapper.get('[data-testid="first-serve-rotate_seconds"]').setValue('600')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_first_serve).toEqual({ reuse_scope: 'account', rotate_seconds: 600, proxy_mode: 'all', proxy_ids: [] })
+    expect(createAccountMock.mock.calls[0]?.[0]?.proxy_group_id).toBe(10)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_apikey_responses_websockets_v2_mode).toBe('first_serve')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
+    expect((wrapper.get('[data-testid="first-serve-rotate_seconds"]').element as HTMLInputElement).value).toBe('240')
+    wrapper.unmount()
+  })
+
+  it('defaults OAuth fingerprint to full after switching from another platform API key', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'admin.accounts.types.chatgptOauth')
+    expect(wrapper.get('[data-testid="first-serve-toggle"]').attributes('aria-checked')).toBe('true')
+    const fingerprint = wrapper.findComponent('[data-testid="create-codex-fingerprint-mode-select"]')
+    expect(fingerprint.props('modelValue')).toBe('full')
+    wrapper.unmount()
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))
@@ -267,7 +305,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(false)
   })
 
   it('keeps the account toggle when any selected group disables tier pricing', async () => {
@@ -281,7 +319,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(false)
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
@@ -669,6 +707,8 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.codex_fingerprint_mode).toBe('full')
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_passthrough).toBeUndefined()
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {

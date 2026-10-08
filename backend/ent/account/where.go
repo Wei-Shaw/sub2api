@@ -95,6 +95,11 @@ func ProxyID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProxyID, v))
 }
 
+// ProxyGroupID applies equality check predicate on the "proxy_group_id" field. It's identical to ProxyGroupIDEQ.
+func ProxyGroupID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldProxyGroupID, v))
+}
+
 // ProxyFallbackOriginID applies equality check predicate on the "proxy_fallback_origin_id" field. It's identical to ProxyFallbackOriginIDEQ.
 func ProxyFallbackOriginID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProxyFallbackOriginID, v))
@@ -623,6 +628,36 @@ func ProxyIDIsNil() predicate.Account {
 // ProxyIDNotNil applies the NotNil predicate on the "proxy_id" field.
 func ProxyIDNotNil() predicate.Account {
 	return predicate.Account(sql.FieldNotNull(FieldProxyID))
+}
+
+// ProxyGroupIDEQ applies the EQ predicate on the "proxy_group_id" field.
+func ProxyGroupIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldProxyGroupID, v))
+}
+
+// ProxyGroupIDNEQ applies the NEQ predicate on the "proxy_group_id" field.
+func ProxyGroupIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldProxyGroupID, v))
+}
+
+// ProxyGroupIDIn applies the In predicate on the "proxy_group_id" field.
+func ProxyGroupIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldProxyGroupID, vs...))
+}
+
+// ProxyGroupIDNotIn applies the NotIn predicate on the "proxy_group_id" field.
+func ProxyGroupIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldProxyGroupID, vs...))
+}
+
+// ProxyGroupIDIsNil applies the IsNil predicate on the "proxy_group_id" field.
+func ProxyGroupIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldProxyGroupID))
+}
+
+// ProxyGroupIDNotNil applies the NotNil predicate on the "proxy_group_id" field.
+func ProxyGroupIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldProxyGroupID))
 }
 
 // ProxyFallbackOriginIDEQ applies the EQ predicate on the "proxy_fallback_origin_id" field.
@@ -1643,6 +1678,29 @@ func HasProxy() predicate.Account {
 func HasProxyWith(preds ...predicate.Proxy) predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {
 		step := newProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProxyGroup applies the HasEdge predicate on the "proxy_group" edge.
+func HasProxyGroup() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, ProxyGroupTable, ProxyGroupColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProxyGroupWith applies the HasEdge predicate on the "proxy_group" edge with a given conditions (other predicates).
+func HasProxyGroupWith(preds ...predicate.ProxyGroup) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newProxyGroupStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

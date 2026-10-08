@@ -130,6 +130,10 @@ code-reviews/
 AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
+deploy/docker-compose.prod.yml
+deploy/docker-compose.prod.yml.pre-*
+deploy/release-backups/
+deploy/.docker-compose.target-*.yml
 .gocache/
 vite.config.js
 docs/*
@@ -137,8 +141,11 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/CLOUDFLARE_CN.md
+!docs/服务器维护手册.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
+!docs/FIRST_SERVE_MODE.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md

@@ -71,3 +71,24 @@ func TestLiveLeaseExpiresWithoutRefresh(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, refreshed)
 }
+
+func TestAutoRouteGroupPendingSlotLimitAndRelease(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	regular := NewConcurrencyCache(client, 15, 900)
+	autoRoute, ok := regular.(service.AutoRouteGroupSlotCache)
+	require.True(t, ok)
+	ctx := context.Background()
+
+	acquired, err := autoRoute.AcquireAutoRouteGroupSlot(ctx, 10, 1, "first")
+	require.NoError(t, err)
+	require.True(t, acquired)
+	acquired, err = autoRoute.AcquireAutoRouteGroupSlot(ctx, 10, 1, "second")
+	require.NoError(t, err)
+	require.False(t, acquired)
+
+	require.NoError(t, autoRoute.ReleaseAutoRouteGroupSlot(ctx, 10, "first"))
+	acquired, err = autoRoute.AcquireAutoRouteGroupSlot(ctx, 10, 1, "second")
+	require.NoError(t, err)
+	require.True(t, acquired)
+}

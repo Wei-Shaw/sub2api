@@ -456,6 +456,44 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	return out, nil
 }
 
+// ListRecentForMonitorIDs 批量取每个 monitor/model 最近的历史，供状态迟滞判定使用。
+func (r *channelMonitorRepository) ListRecentForMonitorIDs(ctx context.Context, ids []int64, perModelLimit int) (map[int64][]*service.ChannelMonitorHistoryEntry, error) {
+	out := make(map[int64][]*service.ChannelMonitorHistoryEntry, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	perModelLimit = clampTimelineLimit(perModelLimit)
+	const q = `
+		WITH ranked AS (
+			SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at,
+			       ROW_NUMBER() OVER (PARTITION BY monitor_id, model ORDER BY checked_at DESC) AS rn
+			FROM channel_monitor_histories
+			WHERE monitor_id = ANY($1)
+		)
+		SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
+		FROM ranked
+		WHERE rn <= $2
+		ORDER BY monitor_id, model, checked_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), perModelLimit)
+	if err != nil {
+		return nil, fmt.Errorf("query recent status batch: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var monitorID int64
+		entry := &service.ChannelMonitorHistoryEntry{}
+		var latency, ping sql.NullInt64
+		if err := rows.Scan(&monitorID, &entry.Model, &entry.Status, &latency, &ping, &entry.CheckedAt); err != nil {
+			return nil, fmt.Errorf("scan recent status row: %w", err)
+		}
+		assignNullInt(&entry.LatencyMs, latency)
+		assignNullInt(&entry.PingLatencyMs, ping)
+		out[monitorID] = append(out[monitorID], entry)
+	}
+	return out, rows.Err()
+}
+
 // ListRecentHistoryForMonitors 为多个 monitor 批量取各自"指定模型"最近 N 条历史（按 checked_at DESC，最新在前）。
 // primaryModels[monitorID] 指定该监控要过滤的模型名；monitor 不在 primaryModels 中的记录不返回。
 // 通过 CTE + unnest(两个 int8/text 数组) 构造 (monitor_id, model) 白名单，

@@ -25,6 +25,7 @@ func ProvideAdminHandlers(
 	grokOAuthHandler *admin.GrokOAuthHandler,
 	cnProviderHandler *admin.CNProviderHandler,
 	proxyHandler *admin.ProxyHandler,
+	proxyGroupHandler *admin.ProxyGroupHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
 	settingHandler *admin.SettingHandler,
@@ -36,6 +37,7 @@ func ProvideAdminHandlers(
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
 	pluginHandler *admin.PluginHandler,
+	modelEvaluationHandler *admin.ModelEvaluationHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	channelHandler *admin.ChannelHandler,
@@ -45,6 +47,7 @@ func ProvideAdminHandlers(
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	checkInHandler *admin.CheckInHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
@@ -71,6 +74,7 @@ func ProvideAdminHandlers(
 		GrokOAuth:              grokOAuthHandler,
 		CNProvider:             cnProviderHandler,
 		Proxy:                  proxyHandler,
+		ProxyGroup:             proxyGroupHandler,
 		Redeem:                 redeemHandler,
 		Promo:                  promoHandler,
 		Setting:                settingHandler,
@@ -82,6 +86,7 @@ func ProvideAdminHandlers(
 		ErrorPassthrough:       errorPassthroughHandler,
 		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
 		Plugin:                 pluginHandler,
+		ModelEvaluation:        modelEvaluationHandler,
 		APIKey:                 apiKeyHandler,
 		ScheduledTest:          scheduledTestHandler,
 		Channel:                channelHandler,
@@ -91,6 +96,7 @@ func ProvideAdminHandlers(
 		PromptAudit:            promptAuditHandler,
 		Payment:                paymentHandler,
 		Affiliate:              affiliateHandler,
+		CheckIn:                checkInHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
 	}
@@ -200,6 +206,7 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	checkInHandler *CheckInHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -226,6 +233,7 @@ func ProvideHandlers(
 		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		CheckIn:          checkInHandler,
 	}
 }
 
@@ -252,6 +260,7 @@ var ProviderSet = wire.NewSet(
 	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	NewCheckInHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -268,6 +277,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewGrokOAuthHandler,
 	admin.NewCNProviderHandler,
 	admin.NewProxyHandler,
+	admin.NewProxyGroupHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	ProvideAdminSettingHandler,
@@ -279,6 +289,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewErrorPassthroughHandler,
 	admin.NewTLSFingerprintProfileHandler,
 	admin.NewPluginHandler,
+	admin.NewModelEvaluationHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
@@ -287,6 +298,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
+	admin.NewCheckInHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
 

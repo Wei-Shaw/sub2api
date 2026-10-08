@@ -21,16 +21,6 @@ const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-function updateDocumentTitle() {
-  const customMenuItems = [
-    ...(appStore.cachedPublicSettings?.custom_menu_items ?? []),
-    ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
-  ]
-  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems, {
-    billingMode: resolveSiteBillingMode(appStore.cachedPublicSettings),
-  })
-}
-
 // Watch for site settings changes and update favicon/title
 watch(
   () => appStore.siteLogo,
@@ -41,6 +31,16 @@ watch(
   },
   { immediate: true }
 )
+
+function updateDocumentTitle() {
+  const customMenuItems = [
+    ...(appStore.cachedPublicSettings?.custom_menu_items ?? []),
+    ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
+  ]
+  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems, {
+    billingMode: resolveSiteBillingMode(appStore.cachedPublicSettings),
+  })
+}
 
 watch(
   [
@@ -57,7 +57,6 @@ watch(
   updateDocumentTitle,
   { deep: true }
 )
-
 // Watch for authentication state and manage subscription data + announcements
 function onVisibilityChange() {
   if (document.visibilityState === 'visible' && authStore.isAuthenticated) {

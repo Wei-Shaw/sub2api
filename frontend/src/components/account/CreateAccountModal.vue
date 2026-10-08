@@ -2455,7 +2455,7 @@
       </div>
 
       <!-- Temp Unschedulable Rules -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <div data-testid="temp-unschedulable-settings" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.tempUnschedulable.title') }}</label>
@@ -2601,6 +2601,19 @@
           </button>
         </div>
       </div>
+
+      <FirstServeSettings
+        v-if="show && form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        ref="firstServeSettings"
+        v-model="firstServeConfig"
+        :enabled="firstServeEnabled"
+        @update:enabled="setFirstServe"
+        :proxy-group-id="form.proxy_group_id"
+        :account-name="form.name"
+        :proxies="proxies"
+        :proxy-groups="proxyGroups"
+        @update:proxy-group-id="form.proxy_group_id = $event; form.proxy_id = null"
+      />
 
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
@@ -3014,12 +3027,19 @@
         </div>
       </div>
 
-      <div>
+      <div v-if="form.platform !== 'openai' || !firstServeEnabled">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxyBindingSelector
+          :proxy-id="form.proxy_id"
+          :proxy-group-id="form.proxy_group_id"
+          :proxies="proxies"
+          :proxy-groups="props.proxyGroups"
+          @update:proxy-id="form.proxy_id = $event"
+          @update:proxy-group-id="form.proxy_group_id = $event"
+        />
       </div>
 
       <UpstreamRequestIdHeaderField
@@ -3138,7 +3158,7 @@
 
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="!firstServeEnabled && form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         data-testid="create-openai-ws-mode"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
@@ -3936,7 +3956,8 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  ProxyGroup
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3945,7 +3966,9 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import ProxySelector from '@/components/common/ProxySelector.vue'
+import ProxyBindingSelector from '@/components/common/ProxyBindingSelector.vue'
+import FirstServeSettings from '@/components/account/FirstServeSettings.vue'
+import { readFirstServeConfig } from '@/utils/firstServe'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -3986,6 +4009,7 @@ import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
+  OPENAI_WS_MODE_FIRST_SERVE,
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
@@ -4094,9 +4118,12 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  proxyGroups?: ProxyGroup[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxyGroups: () => []
+})
 const emit = defineEmits<{
   close: []
   created: []
@@ -4658,6 +4685,15 @@ const geminiSelectedTier = computed(() => {
   }
 })
 
+const firstServeEnabled = ref(false)
+const firstServeConfig = ref(readFirstServeConfig())
+const firstServeSettings = ref<InstanceType<typeof FirstServeSettings>>()
+function setFirstServe(enabled: boolean) {
+  firstServeEnabled.value = enabled
+  if (enabled) codexFingerprintMode.value = 'full'
+}
+
+
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
@@ -4750,6 +4786,7 @@ const form = reactive({
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
+  proxy_group_id: null as number | null,
   concurrency: 10,
   load_factor: null as number | null,
   priority: 1,
@@ -4938,6 +4975,9 @@ watch(
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
+    } else if (accountCategory.value === 'oauth-based' || accountCategory.value === 'apikey') {
+      // New OpenAI accounts use fixed-interval first serve by default.
+      setFirstServe(true)
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -5328,6 +5368,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  firstServeEnabled.value = false
+  firstServeConfig.value = readFirstServeConfig()
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5335,6 +5377,7 @@ const resetForm = () => {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
+  form.proxy_group_id = null
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
@@ -5456,12 +5499,20 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
+  if (firstServeEnabled.value) {
+    const config = { ...firstServeConfig.value }
+    delete config.ttl_minutes
+    delete config.ttft_seconds
+    delete config.max_switches
+    delete config.cooldown_seconds
+    extra.openai_first_serve = { ...config, proxy_ids: [...firstServeConfig.value.proxy_ids] }
+  }
   if (accountCategory.value === 'oauth-based') {
-    extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
-    extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+    extra.openai_oauth_responses_websockets_v2_mode = firstServeEnabled.value ? OPENAI_WS_MODE_FIRST_SERVE : openaiOAuthResponsesWebSocketV2Mode.value
+    extra.openai_oauth_responses_websockets_v2_enabled = firstServeEnabled.value || isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
   } else if (accountCategory.value === 'apikey') {
-    extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
-    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+    extra.openai_apikey_responses_websockets_v2_mode = firstServeEnabled.value ? OPENAI_WS_MODE_FIRST_SERVE : openaiAPIKeyResponsesWebSocketV2Mode.value
+    extra.openai_apikey_responses_websockets_v2_enabled = firstServeEnabled.value || isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
   }
   // 清理兼容旧键，统一改用分类型开关。
   delete extra.responses_websockets_v2_enabled
@@ -5495,9 +5546,9 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_cli_only_allow_app_server
   }
-  // 收敛是显式 opt-in：off 即默认值，不落键；device/session/full 必须显式写入，
-  // 否则管理员的选择会被当成默认而丢失（#5610）。
-  if (codexFingerprintMode.value !== 'off') {
+  // OpenAI OAuth defaults to full Codex fingerprint convergence. The
+  // passthrough switch above remains independent and is never enabled here.
+  if (form.type === 'oauth') {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
@@ -5654,6 +5705,7 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (form.platform === 'openai' && firstServeEnabled.value && firstServeSettings.value && !firstServeSettings.value.validate()) return
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {
@@ -5960,6 +6012,11 @@ const handleValidateSessionToken = (_sessionToken: string) => {
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
+const getProxyBindingPayload = () => ({
+  proxy_id: form.proxy_id,
+  proxy_group_id: form.proxy_group_id
+})
+
 // Create account and handle success/failure
 const createAccountAndFinish = async (
   platform: AccountPlatform,
@@ -6031,7 +6088,7 @@ const createAccountAndFinish = async (
     type,
     credentials,
     extra: finalExtra,
-    proxy_id: form.proxy_id,
+    ...getProxyBindingPayload(),
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
@@ -6098,7 +6155,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          ...getProxyBindingPayload(),
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6164,7 +6221,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       sso_tokens: ssoTokens,
       name: form.name || undefined,
       notes: form.notes || undefined,
-      proxy_id: form.proxy_id,
+      ...getProxyBindingPayload(),
       group_ids: form.group_ids,
       credentials,
       concurrency: form.concurrency,
@@ -6275,7 +6332,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          ...getProxyBindingPayload(),
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6374,7 +6431,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         type: 'oauth',
         credentials,
         extra: withUpstreamRequestIdHeader(extra),
-        proxy_id: form.proxy_id,
+        ...getProxyBindingPayload(),
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
@@ -6479,7 +6536,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      ...getProxyBindingPayload(),
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6500,7 +6557,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       failed: result.failed
     }
 
-    if (successCount > 0 && result.failed === 0) {
+    if (successCount > 0 && result.failed === 0 && !result.warnings?.length) {
       appStore.showSuccess(t('admin.accounts.oauth.openai.codexSessionImportSuccess', params))
       emit('created')
       handleClose()
@@ -6512,6 +6569,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
     oauthClient.error.value = [errorText, warningText].filter(Boolean).join('\n')
 
     if (result.failed === 0) {
+      if (successCount > 0) emit('created')
       appStore.showWarning(t('admin.accounts.oauth.openai.codexSessionImportSuccess', params))
       return
     }
@@ -6557,7 +6615,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       access_token: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      ...getProxyBindingPayload(),
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6655,7 +6713,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             type: 'oauth',
             credentials,
             extra: withUpstreamRequestIdHeader(extra),
-            proxy_id: form.proxy_id,
+            ...getProxyBindingPayload(),
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
             priority: form.priority,
@@ -6754,7 +6812,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader({}),
-          proxy_id: form.proxy_id,
+          ...getProxyBindingPayload(),
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -7135,7 +7193,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          ...getProxyBindingPayload(),
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,

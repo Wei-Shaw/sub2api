@@ -72,7 +72,7 @@ func (r *defaultOpenAIWSProtocolResolver) Resolve(account *Account) OpenAIWSProt
 		switch mode {
 		case OpenAIWSIngressModeOff:
 			return openAIWSHTTPDecision("account_mode_off")
-		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough:
+		case OpenAIWSIngressModeFirstServe, OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough:
 			// continue
 		case OpenAIWSIngressModeHTTPBridge:
 			return openAIWSHTTPDecision("ws_v2_mode_http_bridge")

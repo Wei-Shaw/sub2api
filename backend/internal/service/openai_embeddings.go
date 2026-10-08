@@ -23,8 +23,16 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (firstServeResult *OpenAIForwardResult, firstServeErr error) {
 	startTime := time.Now()
+	ctx, account, firstServe, prepareErr := s.prepareFirstServeHTTP(ctx, c, account, body)
+	if prepareErr != nil {
+		return nil, prepareErr
+	}
+	defer func() { firstServe.finish(firstServeResult, firstServeErr) }()
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if originalModel == "" {
