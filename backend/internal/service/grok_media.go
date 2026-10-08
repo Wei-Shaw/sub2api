@@ -286,7 +286,10 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 }
 
 func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) string {
-	requestID = strings.TrimSpace(requestID)
+	// Seedance create responses use the internal "seedance:" billing key,
+	// while status/delete requests carry the raw upstream task ID. Normalize
+	// both forms before deriving the ownership binding key.
+	requestID = strings.TrimPrefix(strings.TrimSpace(requestID), "seedance:")
 	if requestID == "" || userID <= 0 || apiKeyID <= 0 {
 		return ""
 	}
