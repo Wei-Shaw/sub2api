@@ -1224,6 +1224,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var outputEvidence openAICacheWriteOutputEvidence
 		responseID := ""
 		imageCount := 0
 		searchCount := 0
@@ -1269,6 +1270,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				return nil, err
 			}
+			outputEvidence = streamResult.cacheWriteOutputEvidence
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 			responseID = strings.TrimSpace(streamResult.responseID)
@@ -1293,6 +1295,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				return nil, err
 			}
+			outputEvidence = nonStreamResult.cacheWriteOutputEvidence
 			usage = nonStreamResult.usage
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
@@ -1319,6 +1322,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			RequestID:                     resp.Header.Get("x-request-id"),
 			UpstreamHeaders:               resp.Header,
 			ResponseID:                    responseID,
+			CacheWriteOutputEvidence:      outputEvidence,
+			CacheWritePromptEvidence:      captureOpenAICacheWritePromptEvidence(upstreamReq),
 			Usage:                         *usage,
 			Model:                         originalModel,
 			BillingModel:                  billingModel,

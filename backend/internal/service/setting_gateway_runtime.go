@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -64,11 +65,62 @@ type cachedGatewayForwardingSettings struct {
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
 	clientDatelineNormalization      bool
+	openAICacheWriteInference        bool
 	expiresAt                        int64 // unix nano
 }
 
 var gatewayForwardingCache atomic.Value // *cachedGatewayForwardingSettings
 var gatewayForwardingSF singleflight.Group
+var gatewayForwardingCacheGeneration atomic.Uint64
+var openAICacheWriteInferenceSettingEpoch atomic.Uint64
+
+// Cache publication and inferred-billing commits share this gate. A disable
+// refresh cannot acknowledge completion while an earlier adjustment is still
+// committing, and a new adjustment must recheck the published flag under RLock.
+// Never perform a settings refresh or database settings read under the read gate.
+var gatewayForwardingPublicationMu sync.RWMutex
+
+func storeGatewayForwardingCache(entry *cachedGatewayForwardingSettings) {
+	if entry == nil {
+		return
+	}
+	gatewayForwardingPublicationMu.Lock()
+	defer gatewayForwardingPublicationMu.Unlock()
+	storeGatewayForwardingCacheLocked(entry)
+}
+
+func storeGatewayForwardingCacheIfGeneration(entry *cachedGatewayForwardingSettings, generation uint64) bool {
+	if entry == nil {
+		return false
+	}
+	gatewayForwardingPublicationMu.Lock()
+	defer gatewayForwardingPublicationMu.Unlock()
+	if gatewayForwardingCacheGeneration.Load() != generation {
+		return false
+	}
+	storeGatewayForwardingCacheLocked(entry)
+	return true
+}
+
+// Caller holds the publication write gate. Advancing on every accepted publish
+// also prevents an older overlapping database refresh from replacing a newer one.
+func storeGatewayForwardingCacheLocked(entry *cachedGatewayForwardingSettings) {
+	gatewayForwardingCacheGeneration.Add(1)
+	if previous, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && previous != nil {
+		if previous.openAICacheWriteInference != entry.openAICacheWriteInference {
+			openAICacheWriteInferenceSettingEpoch.Add(1)
+		}
+	}
+	gatewayForwardingCache.Store(entry)
+}
+
+// Pure cache read for the final inference gate: it must never refresh settings
+// because its caller holds gatewayForwardingPublicationMu.RLock.
+func openAICacheWriteInferenceEnabledAtEpochLocked(epoch uint64) bool {
+	cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings)
+	return ok && cached != nil && cached.openAICacheWriteInference &&
+		time.Now().UnixNano() < cached.expiresAt && openAICacheWriteInferenceSettingEpoch.Load() == epoch
+}
 
 const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
@@ -860,7 +912,24 @@ type gatewayForwardingSettingsResult struct {
 	openAITTFTMode                                                                        string
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
 	clientDatelineNormalization                                                           bool
+	openAICacheWriteInference                                                             bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
+}
+
+func gatewayForwardingSettingsFromCache(cached *cachedGatewayForwardingSettings) gatewayForwardingSettingsResult {
+	return gatewayForwardingSettingsResult{
+		openAITTFTMode:                   cached.openAITTFTMode,
+		fp:                               cached.fingerprintUnification,
+		mp:                               cached.metadataPassthrough,
+		cch:                              cached.cchSigning,
+		claudeOAuthSystemPromptInjection: cached.claudeOAuthSystemPromptInjection,
+		claudeOAuthSystemPrompt:          cached.claudeOAuthSystemPrompt,
+		claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
+		cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
+		rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+		clientDatelineNormalization:      cached.clientDatelineNormalization,
+		openAICacheWriteInference:        cached.openAICacheWriteInference,
+	}
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
@@ -877,10 +946,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 				clientDatelineNormalization:      cached.clientDatelineNormalization,
+				openAICacheWriteInference:        cached.openAICacheWriteInference,
 			}
 		}
 	}
 	val, _, _ := gatewayForwardingSF.Do("gateway_forwarding", func() (any, error) {
+		generation := gatewayForwardingCacheGeneration.Load()
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
@@ -894,6 +965,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 					clientDatelineNormalization:      cached.clientDatelineNormalization,
+					openAICacheWriteInference:        cached.openAICacheWriteInference,
 				}, nil
 			}
 		}
@@ -910,10 +982,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
 			SettingKeyEnableClientDatelineNormalization,
+			SettingKeyOpenAICacheWriteInferenceEnabled,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
-			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			storeGatewayForwardingCacheIfGeneration(&cachedGatewayForwardingSettings{
 				openAITTFTMode:                   OpenAITTFTModeSemantic,
 				fingerprintUnification:           true,
 				metadataPassthrough:              false,
@@ -922,9 +995,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				clientDatelineNormalization:      true,
+				openAICacheWriteInference:        false,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
-			})
-			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+			}, generation)
+			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true, openAICacheWriteInference: false}, nil
 		}
 		ttftMode := normalizeOpenAITTFTMode(values[SettingKeyOpenAITTFTMode])
 		fp := true
@@ -948,7 +1022,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
 			clientDatelineNormalization = v == "true"
 		}
-		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+		openAICacheWriteInference := values[SettingKeyOpenAICacheWriteInferenceEnabled] == "true"
+		storeGatewayForwardingCacheIfGeneration(&cachedGatewayForwardingSettings{
 			openAITTFTMode:                   ttftMode,
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -959,8 +1034,9 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			openAICacheWriteInference:        openAICacheWriteInference,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
-		})
+		}, generation)
 		return gatewayForwardingSettingsResult{
 			openAITTFTMode:                   ttftMode,
 			fp:                               fp,
@@ -972,8 +1048,14 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			openAICacheWriteInference:        openAICacheWriteInference,
 		}, nil
 	})
+	// Forget does not cancel an in-flight singleflight. If a refresh won the
+	// generation race, return its published values, not the old closure result.
+	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
+		return gatewayForwardingSettingsFromCache(cached)
+	}
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
@@ -1007,6 +1089,28 @@ func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context
 // 的客户端 dateline 归一化。默认开启。
 func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).clientDatelineNormalization
+}
+
+// IsOpenAICacheWriteInferenceEnabled returns the opt-in cache-write inference switch.
+// It shares the gateway forwarding runtime cache so the request hot path does not
+// perform a database lookup for every successful turn.
+func (s *SettingService) IsOpenAICacheWriteInferenceEnabled(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingRepo == nil {
+		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cached.openAICacheWriteInference
+		}
+		return false
+	}
+	// A DB load may lose its publication generation to an admin refresh.
+	// Read the current cache again even if the loader returned an older value.
+	_ = s.getGatewayForwardingSettingsCached(ctx)
+	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cached.openAICacheWriteInference
+	}
+	return false
 }
 
 // GetClaudeOAuthSystemPromptInjectionSettings returns the Claude OAuth mimic

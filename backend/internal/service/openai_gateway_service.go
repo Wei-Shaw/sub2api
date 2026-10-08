@@ -222,19 +222,24 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	ImageCacheReadTokens     int `json:"image_cache_read_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens                     int  `json:"input_tokens"`
+	ImageInputTokens                int  `json:"image_input_tokens,omitempty"`
+	ImageCacheReadTokens            int  `json:"image_cache_read_tokens,omitempty"`
+	OutputTokens                    int  `json:"output_tokens"`
+	CacheCreationInputTokens        int  `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreationInputTokensPresent bool `json:"-"`
+	CacheReadInputTokens            int  `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens               int  `json:"image_output_tokens,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
 	RequestID  string
 	ResponseID string
+	// CacheWriteOutputEvidence contains only canonical hashes from complete raw upstream output.
+	CacheWriteOutputEvidence openAICacheWriteOutputEvidence
+	// CacheWritePromptEvidence hashes the exact final request sent upstream.
+	CacheWritePromptEvidence openAICacheWritePromptEvidence
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
@@ -506,8 +511,9 @@ type OpenAIGatewayService struct {
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
-	openaiCodexTurnStateOrigins sync.Map
-	openaiCodexTurnStateWrites  atomic.Uint64
+	openaiCodexTurnStateOrigins      sync.Map
+	openaiCodexTurnStateWrites       atomic.Uint64
+	openaiCacheWriteInferenceTracker openAICacheWriteInferenceTracker
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

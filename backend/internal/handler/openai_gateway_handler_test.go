@@ -1264,10 +1264,13 @@ func TestOpenAIResponsesWebSocket_PreviousResponseIDKindLoggedBeforeAcquireFailu
 }
 
 type contentModerationHandlerSettingRepo struct {
+	mu     sync.RWMutex
 	values map[string]string
 }
 
 func (r *contentModerationHandlerSettingRepo) Get(ctx context.Context, key string) (*service.Setting, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if value, ok := r.values[key]; ok {
 		return &service.Setting{Key: key, Value: value}, nil
 	}
@@ -1275,6 +1278,8 @@ func (r *contentModerationHandlerSettingRepo) Get(ctx context.Context, key strin
 }
 
 func (r *contentModerationHandlerSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if value, ok := r.values[key]; ok {
 		return value, nil
 	}
@@ -1282,6 +1287,8 @@ func (r *contentModerationHandlerSettingRepo) GetValue(ctx context.Context, key 
 }
 
 func (r *contentModerationHandlerSettingRepo) Set(ctx context.Context, key, value string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.values == nil {
 		r.values = map[string]string{}
 	}
@@ -1290,6 +1297,8 @@ func (r *contentModerationHandlerSettingRepo) Set(ctx context.Context, key, valu
 }
 
 func (r *contentModerationHandlerSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := map[string]string{}
 	for _, key := range keys {
 		if value, ok := r.values[key]; ok {
@@ -1300,6 +1309,8 @@ func (r *contentModerationHandlerSettingRepo) GetMultiple(ctx context.Context, k
 }
 
 func (r *contentModerationHandlerSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.values == nil {
 		r.values = map[string]string{}
 	}
@@ -1310,6 +1321,8 @@ func (r *contentModerationHandlerSettingRepo) SetMultiple(ctx context.Context, s
 }
 
 func (r *contentModerationHandlerSettingRepo) GetAll(ctx context.Context) (map[string]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make(map[string]string, len(r.values))
 	for key, value := range r.values {
 		out[key] = value
@@ -1318,6 +1331,8 @@ func (r *contentModerationHandlerSettingRepo) GetAll(ctx context.Context) (map[s
 }
 
 func (r *contentModerationHandlerSettingRepo) Delete(ctx context.Context, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	delete(r.values, key)
 	return nil
 }

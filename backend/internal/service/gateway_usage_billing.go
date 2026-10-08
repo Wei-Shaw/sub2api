@@ -73,7 +73,10 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
-	Cost                  *CostBreakdown
+	Cost *CostBreakdown
+	// CacheWriteCorrection, when present, is committed by the billing repository
+	// in the same transaction as the monetary delta.
+	CacheWriteCorrection  *OpenAICacheWriteUsageCorrection
 	User                  *User
 	APIKey                *APIKey
 	Account               *Account
@@ -291,12 +294,13 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	}
 
 	cmd := &UsageBillingCommand{
-		RequestID:          requestID,
-		APIKeyID:           p.APIKey.ID,
-		UserID:             p.User.ID,
-		AccountID:          p.Account.ID,
-		AccountType:        p.Account.Type,
-		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+		RequestID:            requestID,
+		APIKeyID:             p.APIKey.ID,
+		CacheWriteCorrection: p.CacheWriteCorrection,
+		UserID:               p.User.ID,
+		AccountID:            p.Account.ID,
+		AccountType:          p.Account.Type,
+		RequestPayloadHash:   strings.TrimSpace(p.RequestPayloadHash),
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model

@@ -203,3 +203,22 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
+
+func TestUpdateSettingsCacheWriteInferenceIsWritableAndKeptWhenOmitted(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyOpenAICacheWriteInferenceEnabled: "false",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"openai_cache_write_inference_enabled": true,
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICacheWriteInferenceEnabled])
+
+	rec = doUpdateSettings(t, h, map[string]any{
+		"site_name": "Example Gateway",
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICacheWriteInferenceEnabled],
+		"an older/partial settings client must not disable cache-write inference when the field is omitted")
+}

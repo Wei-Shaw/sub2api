@@ -511,10 +511,11 @@ type ResponsesSummary struct {
 
 // ResponsesUsage holds token counts in Responses API format.
 type ResponsesUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	TotalTokens              int `json:"total_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	InputTokens                     int  `json:"input_tokens"`
+	OutputTokens                    int  `json:"output_tokens"`
+	TotalTokens                     int  `json:"total_tokens"`
+	CacheCreationInputTokens        int  `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreationInputTokensPresent bool `json:"-"`
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
@@ -584,10 +585,44 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 	if canonicalCacheCreationTokens != nil {
 		u.CacheCreationInputTokens = max(*canonicalCacheCreationTokens, 0)
 	}
+	u.CacheCreationInputTokensPresent = openAICacheWriteFieldPresentJSON(data)
 	if u.TotalTokens == 0 && (u.InputTokens != 0 || u.OutputTokens != 0) {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
 	}
 	return nil
+}
+
+func openAICacheWriteFieldPresentJSON(data []byte) bool {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return false
+	}
+	for _, field := range []string{
+		"cache_write_tokens",
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+	} {
+		if _, ok := root[field]; ok {
+			return true
+		}
+	}
+	for _, detailsField := range []string{"input_tokens_details", "prompt_tokens_details"} {
+		raw, ok := root[detailsField]
+		if !ok {
+			continue
+		}
+		var details map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &details); err != nil {
+			continue
+		}
+		for _, field := range []string{"cache_write_tokens", "cache_creation_tokens"} {
+			if _, ok := details[field]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ResponsesInputTokensDetails breaks down input token usage.

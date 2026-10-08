@@ -357,6 +357,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var resp *http.Response
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var outputEvidence openAICacheWriteOutputEvidence
+	var promptEvidence openAICacheWritePromptEvidence
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
@@ -373,6 +375,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, buildErr
 		}
 
+		promptEvidence = captureOpenAICacheWritePromptEvidence(upstreamReq)
 		upstreamStart := time.Now()
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -466,6 +469,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				_ = resp.Body.Close()
 				return nil, handleErr
 			}
+			outputEvidence = result.cacheWriteOutputEvidence
 			usage = result.usage
 			firstTokenMs = result.firstTokenMs
 			responseID = strings.TrimSpace(result.responseID)
@@ -493,6 +497,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				_ = resp.Body.Close()
 				return nil, handleErr
 			}
+			outputEvidence = result.cacheWriteOutputEvidence
 			usage = result.usage
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
@@ -521,6 +526,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
 		ResponseID:                    responseID,
+		CacheWriteOutputEvidence:      outputEvidence,
+		CacheWritePromptEvidence:      promptEvidence,
 		Usage:                         *usage,
 		Model:                         reqModel,
 		UpstreamModel:                 upstreamPassthroughModel,
@@ -1039,19 +1046,21 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage                    *OpenAIUsage
+	firstTokenMs             *int
+	responseID               string
+	imageCount               int
+	imageOutputSizes         []string
+	cacheWriteOutputEvidence openAICacheWriteOutputEvidence
 }
 
 type openaiNonStreamingResultPassthrough struct {
 	*OpenAIUsage
-	usage            *OpenAIUsage
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage                    *OpenAIUsage
+	responseID               string
+	imageCount               int
+	imageOutputSizes         []string
+	cacheWriteOutputEvidence openAICacheWriteOutputEvidence
 }
 
 const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
@@ -1992,13 +2001,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
+	outputCapture := newOpenAICacheWriteOutputCapture(resp)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:                    usage,
+			firstTokenMs:             firstTokenMs,
+			responseID:               responseID,
+			imageCount:               imageCounter.Count(),
+			imageOutputSizes:         imageCounter.Sizes(),
+			cacheWriteOutputEvidence: outputCapture.evidence,
 		}
 	}
 
@@ -2015,6 +2026,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			outputCapture.observe(dataBytes, rawEventType)
 			observer.ObserveOpenAI(dataBytes, rawEventType)
 			if needModelReplace {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
@@ -2301,6 +2313,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, err
 	}
+	outputCapture := newOpenAICacheWriteOutputCapture(resp)
+	outputCapture.observeResponse(body)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -2355,11 +2369,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
-		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		OpenAIUsage:              usage,
+		usage:                    usage,
+		responseID:               extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:               countOpenAIResponseImageOutputsFromJSONBytes(body),
+		imageOutputSizes:         collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		cacheWriteOutputEvidence: outputCapture.evidence,
 	}, nil
 }
 
@@ -2369,6 +2384,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 // rewrite model fields back to the original requested model.
 func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
 	bodyText := string(body)
+	outputEvidence := captureOpenAICacheWriteSSEOutput(resp, bodyText)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
@@ -2434,11 +2450,12 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	}
 
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage:      usage,
-		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
-		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
-		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		OpenAIUsage:              usage,
+		usage:                    usage,
+		responseID:               extractOpenAIResponseIDFromJSONBytes(body),
+		imageCount:               countOpenAIImageOutputsFromSSEBody(bodyText),
+		imageOutputSizes:         collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		cacheWriteOutputEvidence: outputEvidence,
 	}, nil
 }
 

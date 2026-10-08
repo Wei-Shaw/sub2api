@@ -312,6 +312,7 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	require.Equal(t, 1, state.usage.OutputTokens)
 	require.Equal(t, 1, state.usage.CacheReadInputTokens)
 	require.Equal(t, 4, state.usage.CacheCreationInputTokens)
+	require.True(t, state.usage.CacheCreationInputTokensPresent)
 	require.Equal(t, 3, state.usage.ImageOutputTokens)
 
 	result := &RelayResult{}
@@ -506,6 +507,46 @@ func TestOpenAICacheCreationTokensFromUsageNestedZeroWins(t *testing.T) {
 
 	usage := gjson.Parse(`{"input_tokens_details":{"cache_write_tokens":0},"cache_creation_input_tokens":19}`)
 	require.Zero(t, openAICacheCreationTokensFromUsage(usage))
+	tokens, present := openAICacheCreationTokensFromUsageWithPresence(usage)
+	require.Zero(t, tokens)
+	require.True(t, present)
+}
+
+func TestOpenAICacheCreationTokensFromUsagePresence(t *testing.T) {
+	t.Parallel()
+
+	missing := gjson.Parse(`{"input_tokens_details":{"cached_tokens":64}}`)
+	tokens, present := openAICacheCreationTokensFromUsageWithPresence(missing)
+	require.Zero(t, tokens)
+	require.False(t, present)
+
+	explicitZero := gjson.Parse(`{"cache_creation_input_tokens":0}`)
+	tokens, present = openAICacheCreationTokensFromUsageWithPresence(explicitZero)
+	require.Zero(t, tokens)
+	require.True(t, present)
+
+	mixedTopLevel := gjson.Parse(`{"cache_write_tokens":0,"cache_creation_input_tokens":19}`)
+	tokens, present = openAICacheCreationTokensFromUsageWithPresence(mixedTopLevel)
+	require.Equal(t, 19, tokens)
+	require.True(t, present)
+}
+
+func TestParseUsageAndAccumulatePreservesExplicitZeroCacheWrite(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	got := parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":100,"output_tokens":1,"input_tokens_details":{"cached_tokens":64,"cache_write_tokens":0}}}}`),
+		"response.completed",
+		nil,
+	)
+	require.Zero(t, got.CacheCreationInputTokens)
+	require.True(t, got.CacheCreationInputTokensPresent)
+
+	turnUsage := finalizeRelayTurnUsage(state)
+	require.True(t, turnUsage.CacheCreationInputTokensPresent)
+	require.True(t, state.usage.CacheCreationInputTokensPresent)
 }
 
 func TestEmitTurnCompleteCoverage(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -210,7 +211,97 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.QuotaState = quotaState
 	}
 
+	if cmd.CacheWriteCorrection != nil {
+		if err := reconcileInferredCacheWriteUsageLogTx(ctx, tx, cmd.CacheWriteCorrection); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func reconcileInferredCacheWriteUsageLogTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	correction *service.OpenAICacheWriteUsageCorrection,
+) error {
+	if correction == nil {
+		return nil
+	}
+	if strings.TrimSpace(correction.RequestID) == "" || correction.APIKeyID <= 0 {
+		return errors.New("cache write correction requires request_id and api_key_id")
+	}
+	if correction.CorrectedInputTokens < 0 || correction.CorrectedCacheCreationTokens < 0 {
+		return errors.New("cache write correction contains negative token counts")
+	}
+
+	hasAccountStatsCost := correction.CorrectedAccountStatsCost != nil
+	var accountStatsCost any
+	if hasAccountStatsCost {
+		accountStatsCost = *correction.CorrectedAccountStatsCost
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE usage_logs
+		SET
+			input_tokens = $3,
+			cache_creation_tokens = $4,
+			input_cost = $5,
+			cache_creation_cost = $6,
+			total_cost = $7,
+			actual_cost = $8,
+			account_stats_cost = CASE WHEN $9 THEN $10 ELSE account_stats_cost END
+		WHERE request_id = $1
+			AND api_key_id = $2
+			AND (
+				(input_tokens = $11 AND cache_creation_tokens = $12)
+				OR
+				(input_tokens = $3 AND cache_creation_tokens = $4)
+			)
+	`,
+		correction.RequestID,
+		correction.APIKeyID,
+		correction.CorrectedInputTokens,
+		correction.CorrectedCacheCreationTokens,
+		correction.CorrectedInputCost,
+		correction.CorrectedCacheCreationCost,
+		correction.CorrectedTotalCost,
+		correction.CorrectedActualCost,
+		hasAccountStatsCost,
+		accountStatsCost,
+		correction.OriginalInputTokens,
+		correction.OriginalCacheCreationTokens,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+
+	var existingInput, existingCacheCreation int
+	err = tx.QueryRowContext(ctx, `
+		SELECT input_tokens, cache_creation_tokens
+		FROM usage_logs
+		WHERE request_id = $1 AND api_key_id = $2
+	`, correction.RequestID, correction.APIKeyID).Scan(&existingInput, &existingCacheCreation)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("cache write correction target usage log is missing")
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf(
+		"cache write usage reconciliation conflict: request_id=%s api_key_id=%d input=%d cache_write=%d",
+		correction.RequestID,
+		correction.APIKeyID,
+		existingInput,
+		existingCacheCreation,
+	)
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {

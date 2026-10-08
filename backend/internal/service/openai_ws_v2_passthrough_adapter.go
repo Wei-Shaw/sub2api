@@ -791,6 +791,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	var promptCapture openAIWSCacheWritePromptCapture
+	promptCapture.observeOutbound(firstClientMessage)
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter 命中时 service_tier 已经从 firstClientMessage 中删除，
@@ -1110,6 +1112,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     extractOpenAIServiceTierFromBody 返回 nil；这里有意
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
+			if policyErr == nil && blocked == nil {
+				promptCapture.observeOutbound(out)
+			}
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
@@ -1167,6 +1172,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
 	failureAccountSideEffectsApplied := false
+	// Accessed only by the upstream reader callbacks; each completed turn resets it.
+	var outputCapture openAICacheWriteOutputCapture
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1203,15 +1210,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					hooks.TurnStarted(turnNo, turn.StartedAt)
 				}
 				turnRequestModel, turnUpstreamModel := usageMeta.turnModels(turn.RequestModel)
+				turnPromptEvidence := promptCapture.snapshot()
+				turnOutputEvidence := outputCapture.evidence
+				outputCapture = openAICacheWriteOutputCapture{}
 				turnResult := &OpenAIForwardResult{
-					RequestID: turn.RequestID,
+					CacheWriteOutputEvidence: turnOutputEvidence,
+					CacheWritePromptEvidence: turnPromptEvidence,
+					RequestID:                turn.RequestID,
 					Usage: OpenAIUsage{
-						InputTokens:              turn.Usage.InputTokens,
-						ImageInputTokens:         turn.Usage.ImageInputTokens,
-						OutputTokens:             turn.Usage.OutputTokens,
-						CacheCreationInputTokens: turn.Usage.CacheCreationInputTokens,
-						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
-						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
+						InputTokens:                     turn.Usage.InputTokens,
+						ImageInputTokens:                turn.Usage.ImageInputTokens,
+						OutputTokens:                    turn.Usage.OutputTokens,
+						CacheCreationInputTokens:        turn.Usage.CacheCreationInputTokens,
+						CacheCreationInputTokensPresent: turn.Usage.CacheCreationInputTokensPresent,
+						CacheReadInputTokens:            turn.Usage.CacheReadInputTokens,
+						ImageOutputTokens:               turn.Usage.ImageOutputTokens,
 					},
 					Model:                         turnRequestModel,
 					UpstreamModel:                 openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),
@@ -1279,6 +1292,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if msgType != coderws.MessageText {
 					return nil
 				}
+				outputCapture.observe(payload, "")
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
@@ -1348,12 +1362,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	result := &OpenAIForwardResult{
 		RequestID: relayResult.RequestID,
 		Usage: OpenAIUsage{
-			InputTokens:              relayResult.Usage.InputTokens,
-			ImageInputTokens:         relayResult.Usage.ImageInputTokens,
-			OutputTokens:             relayResult.Usage.OutputTokens,
-			CacheCreationInputTokens: relayResult.Usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
-			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
+			InputTokens:                     relayResult.Usage.InputTokens,
+			ImageInputTokens:                relayResult.Usage.ImageInputTokens,
+			OutputTokens:                    relayResult.Usage.OutputTokens,
+			CacheCreationInputTokens:        relayResult.Usage.CacheCreationInputTokens,
+			CacheCreationInputTokensPresent: relayResult.Usage.CacheCreationInputTokensPresent,
+			CacheReadInputTokens:            relayResult.Usage.CacheReadInputTokens,
+			ImageOutputTokens:               relayResult.Usage.ImageOutputTokens,
 		},
 		Model:                         resultRequestModel,
 		UpstreamModel:                 openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),

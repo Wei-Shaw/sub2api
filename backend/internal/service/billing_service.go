@@ -199,6 +199,9 @@ type UsageTokens struct {
 
 // CostBreakdown 费用明细
 type CostBreakdown struct {
+	// Internal immutable plan used only for opt-in OpenAI cache-write reconciliation.
+	cacheWritePricing *openAICacheWritePricingPlan
+
 	InputCost                 float64 // 文本输入费用（不含图片输入，图片输入单独记入 ImageInputCost）
 	ImageInputCost            float64 // 图片输入 token 费用（如 gpt-image-2 图片编辑）
 	OutputCost                float64
@@ -1461,6 +1464,8 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 
 // CostInput 统一计费输入
 type CostInput struct {
+	captureCacheWritePricing bool
+
 	Ctx                       context.Context
 	Model                     string
 	GroupID                   *int64 // 用于渠道定价查找
@@ -1580,6 +1585,14 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// 官方长上下文阶梯仅在无区间定价时应用（区间定价已包含上下文分层）。
 	applyLongCtx := len(resolved.Intervals) == 0 && contextTierPricingEnabled
 
+	if input.captureCacheWritePricing {
+		plan := newOpenAICacheWriteTokenPricingPlan(s, pricing, input.RateMultiplier,
+			input.ServiceTier, applyLongCtx, resolvedChannelTimeMultiplier(resolved, input.PricingAt),
+			reasoningEffortBillingMultiplier(input.ReasoningEffort, pricing.ReasoningEffortMultipliers))
+		breakdown := plan.calculate(input.Tokens)
+		breakdown.cacheWritePricing = plan
+		return breakdown, nil
+	}
 	breakdown := s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx)
 	applyCostBreakdownMultiplier(breakdown, resolvedChannelTimeMultiplier(resolved, input.PricingAt))
 	applyCostBreakdownMultiplier(breakdown, reasoningEffortBillingMultiplier(input.ReasoningEffort, pricing.ReasoningEffortMultipliers))
@@ -1787,16 +1800,6 @@ func (s *BillingService) CalculateCost(model string, tokens UsageTokens, rateMul
 
 func (s *BillingService) CalculateCostWithServiceTier(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string) (*CostBreakdown, error) {
 	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier, nil)
-}
-
-func (s *BillingService) calculateCostWithServiceTierPolicy(
-	model string,
-	tokens UsageTokens,
-	rateMultiplier float64,
-	serviceTier string,
-	longContextBillingEnabled bool,
-) (*CostBreakdown, error) {
-	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, nil, longContextBillingEnabled)
 }
 
 func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {

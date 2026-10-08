@@ -42,6 +42,12 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+
+	// CacheWriteCorrection is an optional absolute rewrite of an already
+	// persisted usage row. Repositories apply it in the same transaction as this
+	// billing command so the monetary delta and token/cost buckets cannot diverge
+	// across crashes.
+	CacheWriteCorrection *OpenAICacheWriteUsageCorrection
 }
 
 func (c *UsageBillingCommand) Normalize() {
@@ -131,6 +137,24 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
+	}
+	if correction := c.CacheWriteCorrection; correction != nil {
+		raw += fmt.Sprintf(
+			"|cwr|%s|%d|%d|%d|%d|%d|%.12g|%.12g|%.12g|%.12g",
+			strings.TrimSpace(correction.RequestID),
+			correction.APIKeyID,
+			correction.OriginalInputTokens,
+			correction.OriginalCacheCreationTokens,
+			correction.CorrectedInputTokens,
+			correction.CorrectedCacheCreationTokens,
+			correction.CorrectedInputCost,
+			correction.CorrectedCacheCreationCost,
+			correction.CorrectedTotalCost,
+			correction.CorrectedActualCost,
+		)
+		if correction.CorrectedAccountStatsCost != nil {
+			raw += fmt.Sprintf("|%.12g", *correction.CorrectedAccountStatsCost)
+		}
 	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

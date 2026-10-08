@@ -321,3 +321,139 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func testInferredCacheWriteCorrection() *service.OpenAICacheWriteUsageCorrection {
+	accountStats := 0.42
+	return &service.OpenAICacheWriteUsageCorrection{
+		RequestID:                    "req-cache-write",
+		APIKeyID:                     77,
+		OriginalInputTokens:          2268,
+		OriginalCacheCreationTokens:  0,
+		CorrectedInputTokens:         68,
+		CorrectedCacheCreationTokens: 2200,
+		CorrectedInputCost:           0.00068,
+		CorrectedCacheCreationCost:   0.0275,
+		CorrectedTotalCost:           0.18058,
+		CorrectedActualCost:          0.036116,
+		CorrectedAccountStatsCost:    &accountStats,
+	}
+}
+
+func expectInferredCacheWriteUsageUpdate(
+	mock sqlmock.Sqlmock,
+	correction *service.OpenAICacheWriteUsageCorrection,
+	result sql.Result,
+) {
+	mock.ExpectExec(`(?s)UPDATE usage_logs\s+SET\s+input_tokens = \$3,.*cache_creation_tokens = \$4`).
+		WithArgs(
+			correction.RequestID,
+			correction.APIKeyID,
+			correction.CorrectedInputTokens,
+			correction.CorrectedCacheCreationTokens,
+			correction.CorrectedInputCost,
+			correction.CorrectedCacheCreationCost,
+			correction.CorrectedTotalCost,
+			correction.CorrectedActualCost,
+			true,
+			*correction.CorrectedAccountStatsCost,
+			correction.OriginalInputTokens,
+			correction.OriginalCacheCreationTokens,
+		).
+		WillReturnResult(result)
+}
+
+func TestApplyUsageBillingEffects_CacheWriteCorrectionCommitsWithBalanceDelta(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	correction := testInferredCacheWriteCorrection()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(0.0011, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9.9989))
+	expectInferredCacheWriteUsageUpdate(mock, correction, sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:               42,
+		BalanceCost:          0.0011,
+		CacheWriteCorrection: correction,
+	}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, 9.9989, *result.NewBalance, 1e-12)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_CacheWriteCorrectionFailureRollsBackBalanceDelta(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	correction := testInferredCacheWriteCorrection()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(0.0011, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9.9989))
+	mock.ExpectExec(`(?s)UPDATE usage_logs\s+SET\s+input_tokens = \$3,.*cache_creation_tokens = \$4`).
+		WithArgs(
+			correction.RequestID,
+			correction.APIKeyID,
+			correction.CorrectedInputTokens,
+			correction.CorrectedCacheCreationTokens,
+			correction.CorrectedInputCost,
+			correction.CorrectedCacheCreationCost,
+			correction.CorrectedTotalCost,
+			correction.CorrectedActualCost,
+			true,
+			*correction.CorrectedAccountStatsCost,
+			correction.OriginalInputTokens,
+			correction.OriginalCacheCreationTokens,
+		).
+		WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:               42,
+		BalanceCost:          0.0011,
+		CacheWriteCorrection: correction,
+	}, &service.UsageBillingApplyResult{Applied: true})
+	require.ErrorIs(t, err, sql.ErrConnDone)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestReconcileInferredCacheWriteUsageLogTx_RejectsConflictingSplit(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	correction := testInferredCacheWriteCorrection()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	expectInferredCacheWriteUsageUpdate(mock, correction, sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`(?s)SELECT input_tokens, cache_creation_tokens\s+FROM usage_logs`).
+		WithArgs(correction.RequestID, correction.APIKeyID).
+		WillReturnRows(sqlmock.NewRows([]string{"input_tokens", "cache_creation_tokens"}).AddRow(999, 123))
+	mock.ExpectRollback()
+
+	err = reconcileInferredCacheWriteUsageLogTx(ctx, tx, correction)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reconciliation conflict")
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}

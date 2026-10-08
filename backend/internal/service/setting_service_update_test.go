@@ -411,6 +411,7 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 		PaymentVisibleMethodWxpayEnabled:                   false,
 		OpenAILowUpstreamRatePriorityEnabled:               true,
 		OpenAIOAuthSchedulingRateMultiplier:                testPtrFloat64(0.05),
+		OpenAICacheWriteInferenceEnabled:                   true,
 		OpenAIAdvancedSchedulerEnabled:                     true,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:       true,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled: true,
@@ -433,6 +434,7 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "false", repo.updates[SettingPaymentVisibleMethodWxpayEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAILowUpstreamRatePriorityEnabled])
 	require.Equal(t, "0.05", repo.updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier])
+	require.Equal(t, "true", repo.updates[SettingKeyOpenAICacheWriteInferenceEnabled])
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled])

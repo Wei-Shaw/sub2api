@@ -25,12 +25,13 @@ type FrameConn interface {
 }
 
 type Usage struct {
-	InputTokens              int
-	ImageInputTokens         int
-	OutputTokens             int
-	CacheCreationInputTokens int
-	CacheReadInputTokens     int
-	ImageOutputTokens        int
+	InputTokens                     int
+	ImageInputTokens                int
+	OutputTokens                    int
+	CacheCreationInputTokens        int
+	CacheCreationInputTokensPresent bool
+	CacheReadInputTokens            int
+	ImageOutputTokens               int
 }
 
 type RelayResult struct {
@@ -1155,13 +1156,15 @@ func parseUsageAndAccumulate(
 			int64(inputTokens), int64(outputTokens), usageResult.Get("total_tokens").Int(), reasoningTokens,
 		))
 	}
+	cacheCreationTokens, cacheCreationTokensPresent := openAICacheCreationTokensFromUsageWithPresence(usageResult)
 	parsedUsage := Usage{
-		InputTokens:              inputTokens,
-		ImageInputTokens:         int(imageInputTokens),
-		OutputTokens:             outputTokens,
-		CacheCreationInputTokens: openAICacheCreationTokensFromUsage(usageResult),
-		CacheReadInputTokens:     cachedTokens,
-		ImageOutputTokens:        int(imageTokens),
+		InputTokens:                     inputTokens,
+		ImageInputTokens:                int(imageInputTokens),
+		OutputTokens:                    outputTokens,
+		CacheCreationInputTokens:        cacheCreationTokens,
+		CacheCreationInputTokensPresent: cacheCreationTokensPresent,
+		CacheReadInputTokens:            cachedTokens,
+		ImageOutputTokens:               int(imageTokens),
 	}
 
 	if isTerminalEvent(strings.TrimSpace(eventType)) {
@@ -1191,7 +1194,12 @@ func mergeRelayUsageNonZero(dst *Usage, src Usage) {
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
 	}
-	if src.CacheCreationInputTokens > 0 {
+	if src.CacheCreationInputTokensPresent {
+		dst.CacheCreationInputTokensPresent = true
+		if src.CacheCreationInputTokens > 0 || dst.CacheCreationInputTokens == 0 {
+			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		}
+	} else if src.CacheCreationInputTokens > 0 {
 		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	}
 	if src.CacheReadInputTokens > 0 {
@@ -1214,6 +1222,7 @@ func finalizeRelayTurnUsage(state *relayState) Usage {
 	state.usage.ImageInputTokens += turnUsage.ImageInputTokens
 	state.usage.OutputTokens += turnUsage.OutputTokens
 	state.usage.CacheCreationInputTokens += turnUsage.CacheCreationInputTokens
+	state.usage.CacheCreationInputTokensPresent = state.usage.CacheCreationInputTokensPresent || turnUsage.CacheCreationInputTokensPresent
 	state.usage.CacheReadInputTokens += turnUsage.CacheReadInputTokens
 	state.usage.ImageOutputTokens += turnUsage.ImageOutputTokens
 	state.turnUsage = Usage{}
@@ -1231,6 +1240,11 @@ func parseUsageIntField(value gjson.Result, required bool) (int, bool) {
 }
 
 func openAICacheCreationTokensFromUsage(value gjson.Result) int {
+	tokens, _ := openAICacheCreationTokensFromUsageWithPresence(value)
+	return tokens
+}
+
+func openAICacheCreationTokensFromUsageWithPresence(value gjson.Result) (int, bool) {
 	for _, field := range []string{
 		"input_tokens_details.cache_write_tokens",
 		"prompt_tokens_details.cache_write_tokens",
@@ -1239,20 +1253,24 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 	} {
 		result := value.Get(field)
 		if result.Exists() {
-			return max(int(result.Int()), 0)
+			return max(int(result.Int()), 0), true
 		}
 	}
+
+	present := false
 	for _, field := range []string{
 		"cache_write_tokens",
 		"cache_creation_input_tokens",
 		"cache_write_input_tokens",
 		"cache_creation_tokens",
 	} {
-		if tokens := int(value.Get(field).Int()); tokens > 0 {
-			return tokens
+		result := value.Get(field)
+		present = present || result.Exists()
+		if tokens := int(result.Int()); tokens > 0 {
+			return tokens, true
 		}
 	}
-	return 0
+	return 0, present
 }
 
 func enrichResult(result *RelayResult, state *relayState, duration time.Duration) {

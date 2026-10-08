@@ -469,6 +469,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
         { pattern: 'gpt-*', protocol: 'responses' },
         { pattern: 'muse-spark-*', protocol: 'responses' },
         { pattern: 'claude-*', protocol: 'anthropic' },
+        { pattern: 'qwen3.8-max', protocol: 'chat_completions' },
         { pattern: 'qwen*', protocol: 'anthropic' }
       ]
     })

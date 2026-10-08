@@ -464,6 +464,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// fast policy filter/force 之后）里的 tier，policy filter 删掉字段后不再
 	// 按原请求 Fast 计费。
 	if handleErr == nil && result != nil {
+		result.CacheWritePromptEvidence = captureOpenAICacheWritePromptEvidence(upstreamReq)
 		if tier := resolvedOpenAIUpstreamServiceTier(c, extractOpenAIServiceTierFromBody(responsesBody)); tier != nil {
 			result.ServiceTier = tier
 		}
@@ -553,7 +554,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai chat_completions buffered", requestID)
+	finalResponse, usage, acc, outputEvidence, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai chat_completions buffered", requestID)
 	if err != nil {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
 	}
@@ -636,6 +637,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	result := &OpenAIForwardResult{
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
+		CacheWriteOutputEvidence:      outputEvidence,
 		Usage:                         usage,
 		Model:                         originalModel,
 		BillingModel:                  billingModel,
@@ -754,10 +756,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		intervalCh = intervalTicker.C
 	}
 
+	outputCapture := newOpenAICacheWriteOutputCapture(resp)
 	resultWithUsage := func() *OpenAIForwardResult {
 		out := &OpenAIForwardResult{
 			RequestID:                     requestID,
 			UpstreamHeaders:               resp.Header,
+			CacheWriteOutputEvidence:      outputCapture.evidence,
 			Usage:                         usage,
 			Model:                         originalModel,
 			BillingModel:                  billingModel,
@@ -776,6 +780,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	processDataLine := func(payload string) bool {
+		outputCapture.observe([]byte(payload), "")
 		payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
 		if firstChunk {
 			firstChunk = false

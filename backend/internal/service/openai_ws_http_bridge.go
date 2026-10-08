@@ -544,11 +544,13 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	turnStart := time.Now()
 	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(body)
 	var resp *http.Response
+	var promptEvidence openAICacheWritePromptEvidence
 	for {
 		upstreamReq, buildErr := buildUpstreamRequest(body)
 		if buildErr != nil {
 			return nil, buildErr
 		}
+		promptEvidence = captureOpenAICacheWritePromptEvidence(upstreamReq)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
 			if turn == 1 {
@@ -620,6 +622,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.Header, resp.StatusCode)
 	}
 
+	var outputCapture openAICacheWriteOutputCapture
 	responseID := ""
 	usage := OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
@@ -657,6 +660,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
 			RequestID:                     responseID,
+			CacheWriteOutputEvidence:      outputCapture.evidence,
+			CacheWritePromptEvidence:      promptEvidence,
 			Usage:                         usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -695,6 +700,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if hasResponsesClientToolMapping(clientToolMapping) {
 		resp.Body = newResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
 	}
+	outputCapture = newOpenAICacheWriteOutputCapture(resp)
 	scanner := bufio.NewScanner(resp.Body)
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
@@ -756,6 +762,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 
 		upstreamMessage := []byte(openAICompatPayloadWithEventType(trimmedData, pendingSSEEventType))
+		outputCapture.observe(upstreamMessage, pendingSSEEventType)
 		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
 			upstreamMessage = normalized
 		}
