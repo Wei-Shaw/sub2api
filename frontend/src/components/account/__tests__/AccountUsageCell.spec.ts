@@ -543,6 +543,41 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|36|900')
   })
 
+  it.each([
+    { platform: 'anthropic', type: 'oauth', id: 7400 },
+    { platform: 'anthropic', type: 'setup-token', id: 7500 },
+    { platform: 'openai', type: 'oauth', id: 7600 }
+  ] as const)('$platform $type uses the same GPT weekly estimate at every positive utilization', async ({ platform, type, id }) => {
+    for (const [index, utilization] of [0.01, 0.5, 40, 120].entries()) {
+      const stats = { requests: 0, tokens: 300, cost: 12, standard_cost: 24, user_cost: 48 }
+      const weekly = { utilization, resets_at: null, remaining_seconds: 0, window_stats: stats }
+      getUsage.mockResolvedValue({
+        five_hour: { ...weekly, utilization: 25 }, seven_day: weekly,
+        seven_day_sonnet: weekly, seven_day_fable: weekly, source: 'passive'
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: id + index, platform, type }) },
+        global: {
+          stubs: {
+            UsageProgressBar: {
+              props: ['label', 'utilization', 'windowStats', 'estimatedTotalCost'],
+              template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ estimatedTotalCost ?? "none" }}|{{ windowStats?.cost }}</div>'
+            },
+            ClaudeResetCreditsCell: true, OpenAIQuotaResetCell: true, AccountQuotaInfo: true
+          }
+        }
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain(`7d|${utilization}|${1200 / utilization}|12`)
+      expect(wrapper.text()).toContain('5h|25|none')
+      if (platform === 'anthropic') {
+        expect(wrapper.text()).toContain(`7d S|${utilization}|none`)
+        expect(wrapper.text()).toContain(`7d F|${utilization}|none`)
+      }
+      wrapper.unmount()
+    }
+  })
+
   it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
