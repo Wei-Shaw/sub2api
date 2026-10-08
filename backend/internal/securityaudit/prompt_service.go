@@ -153,7 +153,7 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 		}
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
-	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) {
+	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) || !cfg.IncludesModel(req.Model) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
 	snapshot, err := ExtractBlockingPromptSnapshot(req, cfg.BlockingLatestTurnOnly)
@@ -163,7 +163,18 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
-	return s.evaluator.Evaluate(ctx, cfg, snapshot)
+	decision, err := s.evaluator.Evaluate(ctx, cfg, snapshot)
+	if err == nil || !cfg.ContinueOnGuardFailure {
+		return decision, err
+	}
+	var guardErr *GuardError
+	if !errors.As(err, &guardErr) {
+		return decision, err
+	}
+	// Preserve the Guard diagnostic while allowing configured fail-open traffic.
+	failure := unavailablePromptDecision(guardErr.Code)
+	failure.AllowNextStage = true
+	return failure, nil
 }
 
 func (s *PromptService) GetConfig() (PublicConfig, error) { return s.config.Public() }
