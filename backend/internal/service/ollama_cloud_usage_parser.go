@@ -15,6 +15,7 @@ var (
 	ollamaUsagePercentPattern  = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*%`)
 	ollamaUsageRatioPattern    = regexp.MustCompile(`(?i)(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+(?:used|spent|consumed)`)
 	ollamaCreditsRatioPattern  = regexp.MustCompile(`(?i)^monthly credits used\s*:\s*(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*$`)
+	ollamaCreditRefillPattern  = regexp.MustCompile(`(?i)^refills to\s+(?:USD\s*)?\$[0-9][0-9,]*(?:\.[0-9]+)?\s+(in\s+[0-9]+(?:\.[0-9]+)?\s+(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?))\s*\.?$`)
 	ollamaUsageWidthPattern    = regexp.MustCompile(`(?i)(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)%`)
 	ollamaBalancePattern       = regexp.MustCompile(`(?i)(?:balance|credits?)(?:\s+[[:alpha:]]+){0,4}\s*[:\n]?\s*((?:USD\s*)?\$?\s*-?[0-9][0-9,]*(?:\.[0-9]{1,4})?)`)
 	ollamaResetPattern         = regexp.MustCompile(`(?i)\breset(?:s|ting)?\s*(?:at|in|on)?\s*[:\-]?\s*([^\n|]+)`)
@@ -44,6 +45,9 @@ func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
 	data.FiveHour = parseOllamaUsageWindow(doc, ollamaFiveHourUsageAliases, true)
 	data.SevenDay = parseOllamaUsageWindow(doc, ollamaSevenDayUsageAliases, true)
 	data.Monthly = parseOllamaUsageWindow(doc, ollamaMonthlyUsageAliases, false)
+	if data.Monthly != nil && data.Monthly.ResetAt == nil && data.Monthly.ResetText == "" {
+		data.Monthly.ResetText = parseOllamaCreditRefillText(doc)
+	}
 	data.Balance = valueBesideLabel(doc, []string{"balance remaining"}, 80)
 	if data.Balance == "" {
 		data.Balance = valueBeforeLabel(doc, []string{"current balance"}, 80)
@@ -59,6 +63,31 @@ func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
 		return nil, fmt.Errorf("settings HTML does not contain recognizable usage fields")
 	}
 	return data, nil
+}
+
+// Current credit-based pages put the refill hint in the balance card, outside
+// the monthly meter. Preserve the upstream relative text; rounding "1 week"
+// into a timestamp would invent precision and drift on every refresh.
+func parseOllamaCreditRefillText(root *html.Node) string {
+	hints := make(map[string]struct{})
+	walkHTML(root, func(node *html.Node) {
+		if node.Type != html.ElementNode || !isOllamaParserContainer(node.Data) {
+			return
+		}
+		text := normalizedNodeText(node)
+		if len(text) > 160 {
+			return
+		}
+		if match := ollamaCreditRefillPattern.FindStringSubmatch(text); len(match) == 2 {
+			hints["Refills "+strings.ToLower(strings.TrimSpace(match[1]))] = struct{}{}
+		}
+	})
+	if len(hints) == 1 {
+		for hint := range hints {
+			return hint
+		}
+	}
+	return ""
 }
 
 func parseOllamaUsageWindow(root *html.Node, aliases []string, allowTrackFallback bool) *OllamaCloudUsageWindow {

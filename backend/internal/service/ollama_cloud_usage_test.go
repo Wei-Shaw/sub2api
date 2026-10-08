@@ -1222,7 +1222,8 @@ func TestParseOllamaCloudUsageHTMLMonthlyCreditsLongModelList(t *testing.T) {
 	require.Equal(t, 50.0, data.Monthly.UsedPercent)
 	require.Nil(t, data.FiveHour)
 	require.Nil(t, data.SevenDay)
-	require.Nil(t, data.Monthly.ResetAt, "do not invent a reset omitted by upstream")
+	require.Nil(t, data.Monthly.ResetAt, "do not invent a precise reset from a rounded refill hint")
+	require.Equal(t, "Refills in 1 week", data.Monthly.ResetText)
 	require.Equal(t, "$40", data.Balance)
 	require.Len(t, data.Models, 24)
 	require.Equal(t, OllamaCloudUsageModelWindowMonthly, data.Models[0].Window)
@@ -1299,4 +1300,31 @@ func TestOllamaCloudUsageIncompleteRefreshPreservesPreviousData(t *testing.T) {
 			require.Equal(t, int64(2), upstream.calls.Load())
 		})
 	}
+}
+
+func TestParseOllamaCloudUsageHTMLCreditRefillHintScope(t *testing.T) {
+	monthly := `<section><span>Monthly credits used</span><div data-usage-track aria-label="Monthly credits used: $30 of $300"></div></section>`
+	for _, tt := range []struct{ name, html, want string }{
+		{"separate balance card", `<p>Refills to $300 in 1 week.</p>` + monthly, "Refills in 1 week"},
+		{"nested text and whitespace", `<p>Refills to <span>$300</span> in <span>2 days</span>.</p>` + monthly, "Refills in 2 days"},
+		{"same hint duplicated", `<p>Refills to $300 in 1 week.</p><p>Refills to $300 in 1 week.</p>` + monthly, "Refills in 1 week"},
+		{"ambiguous balances", `<p>Refills to $300 in 1 week.</p><p>Refills to $60 in 2 weeks.</p>` + monthly, ""},
+		{"auto reload is not refill date", `<p>Automatically add $300 when credits are low.</p>` + monthly, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d, e := parseOllamaCloudUsageHTML([]byte(tt.html))
+			require.NoError(t, e)
+			require.Equal(t, tt.want, d.Monthly.ResetText)
+			require.Nil(t, d.Monthly.ResetAt)
+		})
+	}
+	d, e := parseOllamaCloudUsageHTML([]byte(`<p>Refills to $300 in 1 week.</p><section><p>Session usage 10% used</p></section>`))
+	require.NoError(t, e)
+	require.Empty(t, d.FiveHour.ResetText)
+	require.Nil(t, d.Monthly)
+	d, e = parseOllamaCloudUsageHTML([]byte(`<p>Refills to $300 in 1 week.</p><section><span>Monthly usage</span><span>10% used</span><time datetime="2026-10-18T02:05:47Z">Resets in 10 days</time></section>`))
+	require.NoError(t, e)
+	require.NotNil(t, d.Monthly.ResetAt)
+	require.Equal(t, "2026-10-18T02:05:47Z", d.Monthly.ResetAt.Format(time.RFC3339))
+	require.NotEqual(t, "Refills in 1 week", d.Monthly.ResetText)
 }

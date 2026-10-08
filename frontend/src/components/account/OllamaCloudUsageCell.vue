@@ -9,6 +9,7 @@
       label="5h"
       :utilization="snapshot.data.five_hour.used_percent"
       :resets-at="snapshot.data.five_hour.reset_at"
+      :reset-text="formatResetText(snapshot.data.five_hour.reset_text)"
       color="indigo"
       data-testid="ollama-cloud-five-hour"
     />
@@ -17,6 +18,7 @@
       label="7d"
       :utilization="snapshot.data.seven_day.used_percent"
       :resets-at="snapshot.data.seven_day.reset_at"
+      :reset-text="formatResetText(snapshot.data.seven_day.reset_text)"
       color="emerald"
       data-testid="ollama-cloud-seven-day"
     />
@@ -25,6 +27,7 @@
       label="mo"
       :utilization="snapshot.data.monthly.used_percent"
       :resets-at="snapshot.data.monthly.reset_at"
+      :reset-text="formatResetText(snapshot.data.monthly.reset_text)"
       color="purple"
       data-testid="ollama-cloud-monthly"
     />
@@ -70,10 +73,12 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, OllamaCloudUsageState } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
+import { formatOllamaResetText } from '@/utils/ollamaUsage'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const formatResetText = (text?: string) => formatOllamaResetText(text, locale?.value || 'en', t)
 const state = ref(props.account.ollama_cloud_usage)
 const refreshing = ref(false)
 const snapshot = computed(() => state.value?.snapshot)

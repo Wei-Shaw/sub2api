@@ -73,6 +73,7 @@ const props = withDefaults(
     label: string
     utilization: number // Percentage (0-100+)
     resetsAt?: string | null
+    resetText?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
     estimatedTotalCost?: number | null
@@ -183,6 +184,7 @@ const displayPercent = computed(() => {
 
 const shouldShowResetTime = computed(() => {
   if (props.resetsAt) return true
+  if (props.resetText) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })
 
@@ -193,7 +195,7 @@ const formatResetTime = computed(() => {
     return t('usage.resetNow')
   }
 
-  if (!props.resetsAt) return '-'
+  if (!props.resetsAt) return props.resetText || '-'
 
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()

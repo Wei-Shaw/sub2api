@@ -180,4 +180,14 @@ describe('OllamaCloudUsageCell', () => {
     expect(warning.text()).toContain('admin.accounts.ollamaCloud.staleData')
   })
 
+  it('passes an upstream refill hint to the monthly progress bar', () => {
+    const monthly = usageState()
+    monthly.snapshot!.data = { monthly: { used_percent: 63, reset_text: 'Refills in 1 week' } }
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(monthly) } })
+    const bar = wrapper.getComponent(UsageProgressBar)
+    expect(bar.props('resetsAt')).toBeUndefined()
+    expect(bar.props('resetText')).toBe('admin.accounts.ollamaCloud.approximateReset')
+    expect(bar.text()).toContain('admin.accounts.ollamaCloud.approximateReset')
+  })
+
 })
