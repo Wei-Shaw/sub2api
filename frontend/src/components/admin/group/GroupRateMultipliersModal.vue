@@ -279,6 +279,7 @@ const pageSize = ref(10)
 const batchFactor = ref<number | null>(null)
 
 let searchTimeout: ReturnType<typeof setTimeout>
+let loadVersion = 0
 
 const platformColorClass = computed(() => {
   switch (props.group?.platform) {
@@ -319,18 +320,23 @@ const cloneEntries = (entries: GroupRateMultiplierEntry[]): LocalEntry[] => {
 
 const loadEntries = async () => {
   if (!props.group) return
+  const version = loadVersion
   loading.value = true
+  serverEntries.value = []
+  localEntries.value = []
   try {
     const raw = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
+    if (version !== loadVersion) return
     // 仅显示已设置 rate_multiplier 的条目；rpm_override 在另一个弹窗管理，保留不动
     serverEntries.value = raw.filter(e => e.rate_multiplier != null)
     localEntries.value = cloneEntries(serverEntries.value)
     adjustPage()
   } catch (error) {
+    if (version !== loadVersion) return
     appStore.showError(t('admin.groups.failedToLoad'))
     console.error('Error loading group rate multipliers:', error)
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -341,8 +347,9 @@ const adjustPage = () => {
   }
 }
 
-watch(() => props.show, (val) => {
-  if (val && props.group) {
+watch([() => props.show, () => props.group?.id], ([show]) => {
+  loadVersion++
+  if (show && props.group) {
     currentPage.value = 1
     batchFactor.value = null
     searchQuery.value = ''
@@ -491,6 +498,7 @@ if (typeof document !== 'undefined') {
   document.addEventListener('click', handleClickOutside)
 }
 onUnmounted(() => {
+  loadVersion++
   clearTimeout(searchTimeout)
   document.removeEventListener('click', handleClickOutside)
 })

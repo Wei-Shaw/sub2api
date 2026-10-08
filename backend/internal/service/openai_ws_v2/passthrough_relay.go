@@ -26,6 +26,7 @@ type FrameConn interface {
 
 type Usage struct {
 	InputTokens                     int
+	ImageInputTokens                int
 	OutputTokens                    int
 	CacheCreationInputTokens        int
 	CacheCreationInputTokensPresent bool
@@ -1118,6 +1119,21 @@ func parseUsageAndAccumulate(
 	if imageTokens == 0 {
 		imageTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
 	}
+	imageInputTokens := usageResult.Get("input_tokens_details.image_tokens").Int()
+	if imageInputTokens <= 0 {
+		imageInputTokens = usageResult.Get("prompt_tokens_details.image_tokens").Int()
+	}
+	// 与 HTTP Responses 同口径：usage 缺图片计数时由托管工具 tool_usage.image_gen 回填。
+	imageGen := gjson.GetBytes(message, "response.tool_usage.image_gen")
+	if !imageGen.Exists() {
+		imageGen = gjson.GetBytes(message, "tool_usage.image_gen")
+	}
+	if imageTokens <= 0 {
+		imageTokens = max(imageGen.Get("output_tokens_details.image_tokens").Int(), 0)
+	}
+	if imageInputTokens <= 0 {
+		imageInputTokens = max(imageGen.Get("input_tokens_details.image_tokens").Int(), 0)
+	}
 
 	requireTotals := isTerminalEvent(strings.TrimSpace(eventType))
 	inputTokens, inputOK := parseUsageIntField(inputResult, requireTotals)
@@ -1143,6 +1159,7 @@ func parseUsageAndAccumulate(
 	cacheCreationTokens, cacheCreationTokensPresent := openAICacheCreationTokensFromUsageWithPresence(usageResult)
 	parsedUsage := Usage{
 		InputTokens:                     inputTokens,
+		ImageInputTokens:                int(imageInputTokens),
 		OutputTokens:                    outputTokens,
 		CacheCreationInputTokens:        cacheCreationTokens,
 		CacheCreationInputTokensPresent: cacheCreationTokensPresent,
@@ -1164,7 +1181,7 @@ func parseUsageAndAccumulate(
 func relayUsageHasTokens(usage Usage) bool {
 	return usage.InputTokens > 0 || usage.OutputTokens > 0 ||
 		usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 ||
-		usage.ImageOutputTokens > 0
+		usage.ImageInputTokens > 0 || usage.ImageOutputTokens > 0
 }
 
 func mergeRelayUsageNonZero(dst *Usage, src Usage) {
@@ -1188,6 +1205,9 @@ func mergeRelayUsageNonZero(dst *Usage, src Usage) {
 	if src.CacheReadInputTokens > 0 {
 		dst.CacheReadInputTokens = src.CacheReadInputTokens
 	}
+	if src.ImageInputTokens > 0 {
+		dst.ImageInputTokens = src.ImageInputTokens
+	}
 	if src.ImageOutputTokens > 0 {
 		dst.ImageOutputTokens = src.ImageOutputTokens
 	}
@@ -1199,6 +1219,7 @@ func finalizeRelayTurnUsage(state *relayState) Usage {
 	}
 	turnUsage := state.turnUsage
 	state.usage.InputTokens += turnUsage.InputTokens
+	state.usage.ImageInputTokens += turnUsage.ImageInputTokens
 	state.usage.OutputTokens += turnUsage.OutputTokens
 	state.usage.CacheCreationInputTokens += turnUsage.CacheCreationInputTokens
 	state.usage.CacheCreationInputTokensPresent = state.usage.CacheCreationInputTokensPresent || turnUsage.CacheCreationInputTokensPresent

@@ -1219,6 +1219,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					RequestID:                turn.RequestID,
 					Usage: OpenAIUsage{
 						InputTokens:                     turn.Usage.InputTokens,
+						ImageInputTokens:                turn.Usage.ImageInputTokens,
 						OutputTokens:                    turn.Usage.OutputTokens,
 						CacheCreationInputTokens:        turn.Usage.CacheCreationInputTokens,
 						CacheCreationInputTokensPresent: turn.Usage.CacheCreationInputTokensPresent,
@@ -1361,11 +1362,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	result := &OpenAIForwardResult{
 		RequestID: relayResult.RequestID,
 		Usage: OpenAIUsage{
-			InputTokens:              relayResult.Usage.InputTokens,
-			OutputTokens:             relayResult.Usage.OutputTokens,
-			CacheCreationInputTokens: relayResult.Usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
-			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
+			InputTokens:                     relayResult.Usage.InputTokens,
+			ImageInputTokens:                relayResult.Usage.ImageInputTokens,
+			OutputTokens:                    relayResult.Usage.OutputTokens,
+			CacheCreationInputTokens:        relayResult.Usage.CacheCreationInputTokens,
+			CacheCreationInputTokensPresent: relayResult.Usage.CacheCreationInputTokensPresent,
+			CacheReadInputTokens:            relayResult.Usage.CacheReadInputTokens,
+			ImageOutputTokens:               relayResult.Usage.ImageOutputTokens,
 		},
 		Model:                         resultRequestModel,
 		UpstreamModel:                 openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),

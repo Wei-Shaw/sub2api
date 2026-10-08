@@ -35,3 +35,8 @@ jobs:
       - name: Cache-write concurrency regression tests
         working-directory: backend
         run: go test -race -p=1 -tags=unit ./internal/service ./internal/handler -run 'CacheWrite' -count=1
+      - name: Cache-write PostgreSQL correction receipts
+        working-directory: backend
+        env:
+          CI: 'true'
+        run: go test -p=1 -tags=integration ./internal/repository -run '^TestUsageBillingRepositoryApply_CacheWriteCorrection' -count=1 -v

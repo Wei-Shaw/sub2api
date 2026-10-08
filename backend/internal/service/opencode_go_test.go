@@ -50,7 +50,13 @@ func TestResolveOpenCodeGoUpstreamProtocol(t *testing.T) {
 	zen := &Account{Platform: PlatformOpenCodeGo, Credentials: map[string]any{"account_mode": AccountModeZen, "api_protocol": APIProtocolAdaptive}}
 	require.Equal(t, APIProtocolChatCompletions, zen.ResolveOpenCodeGoUpstreamProtocol("minimax-m3"))
 	require.Equal(t, APIProtocolAnthropic, zen.ResolveOpenCodeGoUpstreamProtocol("claude-opus-4-6"))
+	require.Equal(t, APIProtocolChatCompletions, zen.ResolveOpenCodeGoUpstreamProtocol("qwen3.8-max"))
+	require.Equal(t, APIProtocolAnthropic, zen.ResolveOpenCodeGoUpstreamProtocol("qwen3.8-flash"))
+	require.Equal(t, APIProtocolAnthropic, zen.ResolveOpenCodeGoUpstreamProtocol("qwen3.7-max"))
 	require.Equal(t, DefaultOpenCodeZenBaseURL, zen.GetOpenAIBaseURL())
+
+	goAccount := &Account{Platform: PlatformOpenCodeGo, Credentials: map[string]any{"account_mode": AccountModeGo, "api_protocol": APIProtocolAdaptive}}
+	require.Equal(t, APIProtocolAnthropic, goAccount.ResolveOpenCodeGoUpstreamProtocol("qwen3.8-max"))
 
 	require.Equal(t, "", (&Account{Platform: PlatformKimi}).ResolveOpenCodeGoUpstreamProtocol("glm-5.3"))
 }
@@ -234,4 +240,30 @@ func TestDefaultOpenCodeGoModelIDsCoverDocumentedCatalog(t *testing.T) {
 	require.Contains(t, ids, "minimax-m3")
 	require.Contains(t, ids, "glm-5.3")
 	require.NotEmpty(t, ids)
+}
+
+func TestIsOpenCodeUnsupportedModel(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"gemini-3.8-flash", true},
+		{"gemini-3.7-flash", true},
+		{"opencode/gemini-3.8-flash", true},
+		{"opencode-go/gemini-3.1-pro", true},
+		{"jev-1.13", true},
+		{"jev-1.13-free", true},
+		{"opencode/jev-1.13", true},
+		{"qwen3.8-max", false},
+		{"qwen3.8-flash", false},
+		{"gpt-5.6-luna", false},
+		{"grok-4.6", false},
+		{"minimax-m3", false},
+		{"glm-5.3", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, IsOpenCodeUnsupportedModel(tc.model), "model=%s", tc.model)
+	}
 }
