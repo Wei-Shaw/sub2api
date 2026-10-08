@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
@@ -1023,8 +1024,56 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // (only meaningful when the legacy /responses/compact requireCompact flag is
 // true); the third contains deterministic
 // exclusion diagnostics for the evaluated snapshot.
+// preferRoutedAccounts applies a group's per-model account routing
+// (groups.model_routing) to OpenAI-protocol requests. The Anthropic/Gemini
+// gateway honors this routing, but the OpenAI gateway ignored it, so a
+// configured per-model candidate order had no effect on GPT requests.
+//
+// When a matching route exists, only routed accounts are considered; if none of
+// them are in the current candidate pool, the full pool is kept as a fallback
+// (routing is a preference, not a hard restriction). The public alias from
+// context is used when present, because a composite group rewrites the request
+// body to the upstream model name before scheduling.
+func (s *OpenAIGatewayService) preferRoutedAccounts(ctx context.Context, requestedModel string, accounts []Account) []Account {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	group, ok := ctx.Value(ctxkey.Group).(*Group)
+	if !ok || !IsGroupContextValid(group) || !group.ModelRoutingEnabled || len(group.ModelRouting) == 0 {
+		return accounts
+	}
+	routeModel := strings.TrimSpace(requestedModel)
+	if publicModel, ok := RequestedPublicModelFromContext(ctx); ok && publicModel != "" {
+		routeModel = publicModel
+	}
+	if routeModel == "" {
+		return accounts
+	}
+	routeIDs := group.GetRoutingAccountIDs(routeModel)
+	if len(routeIDs) == 0 {
+		return accounts
+	}
+	allowed := make(map[int64]struct{}, len(routeIDs))
+	for _, id := range routeIDs {
+		if id > 0 {
+			allowed[id] = struct{}{}
+		}
+	}
+	routed := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if _, ok := allowed[acc.ID]; ok {
+			routed = append(routed, acc)
+		}
+	}
+	if len(routed) == 0 {
+		return accounts
+	}
+	return routed
+}
+
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, platform string, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, openAISelectionFilterStats) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	accounts = s.preferRoutedAccounts(ctx, requestedModel, accounts)
 	compactBlocked := false
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
@@ -1192,6 +1241,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if len(accounts) == 0 {
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, openAISelectionFilterStats{}.summary(""))
 	}
+	// Honor the group's per-model routing on the load-aware path as well (see
+	// preferRoutedAccounts).
+	accounts = s.preferRoutedAccounts(ctx, requestedModel, accounts)
 
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
