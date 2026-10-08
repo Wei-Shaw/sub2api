@@ -188,8 +188,14 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// passed back to the API"。在共用出站点补空格占位，真实明文不覆盖。
 	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	linkedUpstream := false
+	if openAINativeChatLinked(ctx) {
+		upstreamCtx, releaseUpstreamCtx, linkedUpstream = openAIHTTPUpstreamContext(ctx, account)
+	}
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
-	releaseUpstreamCtx()
+	if !linkedUpstream || err != nil {
+		releaseUpstreamCtx()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
@@ -240,9 +246,39 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	}
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		if linkedUpstream {
+			releaseUpstreamCtx()
+			if openAIDownstreamGone(ctx, account) {
+				return nil, newOpenAIDeliveryError(ctx, OpenAIDeliveryPhaseBeforeHeaders, err)
+			}
+		}
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
+	if linkedUpstream {
+		bindOpenAIUpstreamBodyCancel(resp, releaseUpstreamCtx)
+	}
 	return resp, nil
+}
+
+type openAINativeChatLinkedKey struct{}
+
+// withOpenAINativeChatLinked scopes linked upstream cancellation to the covered
+// GPT CC forwarders (native Chat and the Responses->raw Chat fallback); the
+// /v1/messages CC fallback keeps the detached context. Only OpenAI accounts
+// are linked (see openAIHTTPUpstreamContext).
+func withOpenAINativeChatLinked(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAINativeChatLinkedKey{}, true)
+}
+
+func openAINativeChatLinked(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	linked, _ := ctx.Value(openAINativeChatLinkedKey{}).(bool)
+	return linked
 }
 
 // ccStreamScanState 是 scanCCStream 返回的读取状态快照。
@@ -343,7 +379,8 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 ) (*apicompat.ChatCompletionsResponse, OpenAIUsage, error) {
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+		// A client that already left gets no extra error write.
+		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) && (c.Request == nil || c.Request.Context().Err() == nil) {
 			writeError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
 		}
 		return nil, OpenAIUsage{}, fmt.Errorf("read upstream body: %w", err)

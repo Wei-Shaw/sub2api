@@ -28,11 +28,13 @@ import (
 func f64p(v float64) *float64 { return &v }
 
 type httpUpstreamRecorder struct {
-	lastReq      *http.Request
-	lastBody     []byte
-	lastProxyURL string
-	requests     []*http.Request
-	bodies       [][]byte
+	contextErrAtCall error
+	respectContext   bool
+	lastReq          *http.Request
+	lastBody         []byte
+	lastProxyURL     string
+	requests         []*http.Request
+	bodies           [][]byte
 
 	resp      *http.Response
 	responses []*http.Response
@@ -66,6 +68,10 @@ func (r passthroughErrReadCloser) Close() error {
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.lastReq = req
+	u.contextErrAtCall = req.Context().Err()
+	if u.respectContext && u.contextErrAtCall != nil {
+		return nil, u.contextErrAtCall
+	}
 	u.lastProxyURL = proxyURL
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
@@ -841,7 +847,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
 }
 
-func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCancel(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestPropagatesClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -852,7 +858,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCance
 	cancel()
 
 	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"}]}`)
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
+	upstream := &httpUpstreamRecorder{respectContext: true, resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_passthrough_ctx"}},
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
@@ -881,10 +887,16 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCance
 	}
 
 	result, err := svc.Forward(reqCtx, c, account, originalBody)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeClientCancelled, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Nil(t, result, "cancelled before headers: no confirmed consumption")
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.ErrorIs(t, upstream.contextErrAtCall, context.Canceled)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsGetsDefault(t *testing.T) {
@@ -1086,7 +1098,7 @@ func TestOpenAIGatewayService_OAuthLegacy_GroupForceStillHonorsGlobalFilter(t *t
 	require.Nil(t, result.ServiceTier)
 }
 
-func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *testing.T) {
+func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestPropagatesClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -1097,7 +1109,7 @@ func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *
 	cancel()
 
 	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"store":true,"input":[{"type":"text","text":"hi"}]}`)
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
+	upstream := &httpUpstreamRecorder{respectContext: true, resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_legacy_ctx"}},
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
@@ -1126,10 +1138,16 @@ func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *
 	}
 
 	result, err := svc.Forward(reqCtx, c, account, originalBody)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeClientCancelled, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Nil(t, result, "cancelled before headers: no confirmed consumption")
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.ErrorIs(t, upstream.contextErrAtCall, context.Canceled)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAIGatewayService_OAuthLegacy_CompositeCodexUAUsesCodexOriginator(t *testing.T) {
@@ -2478,7 +2496,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamingSetsFirstTokenMs(t *test
 	require.Equal(t, "priority", *result.ServiceTier)
 }
 
-func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectStillCollectsUsage(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectBeforeUsageDoesNotInventTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -2524,13 +2542,18 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectStillCollec
 	}
 
 	result, err := svc.Forward(context.Background(), c, account, originalBody)
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 	require.NotNil(t, result.FirstTokenMs)
-	require.Equal(t, 11, result.Usage.InputTokens)
-	require.Equal(t, 7, result.Usage.OutputTokens)
-	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
+	require.Zero(t, result.Usage.InputTokens, "terminal usage was not observed before cancellation")
+	require.Zero(t, result.Usage.OutputTokens, "terminal usage was not observed before cancellation")
+	require.Zero(t, result.Usage.CacheReadInputTokens, "terminal usage was not observed before cancellation")
 }
 
 func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEndpoint(t *testing.T) {

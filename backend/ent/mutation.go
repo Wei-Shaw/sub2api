@@ -44679,6 +44679,7 @@ type UsageLogMutation struct {
 	video_duration_seconds       *int
 	addvideo_duration_seconds    *int
 	cache_ttl_overridden         *bool
+	response_outcome             *string
 	created_at                   *time.Time
 	clearedFields                map[string]struct{}
 	user                         *int64
@@ -47161,6 +47162,55 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetResponseOutcome sets the "response_outcome" field.
+func (m *UsageLogMutation) SetResponseOutcome(s string) {
+	m.response_outcome = &s
+}
+
+// ResponseOutcome returns the value of the "response_outcome" field in the mutation.
+func (m *UsageLogMutation) ResponseOutcome() (r string, exists bool) {
+	v := m.response_outcome
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseOutcome returns the old "response_outcome" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldResponseOutcome(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseOutcome is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseOutcome requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseOutcome: %w", err)
+	}
+	return oldValue.ResponseOutcome, nil
+}
+
+// ClearResponseOutcome clears the value of the "response_outcome" field.
+func (m *UsageLogMutation) ClearResponseOutcome() {
+	m.response_outcome = nil
+	m.clearedFields[usagelog.FieldResponseOutcome] = struct{}{}
+}
+
+// ResponseOutcomeCleared returns if the "response_outcome" field was cleared in this mutation.
+func (m *UsageLogMutation) ResponseOutcomeCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldResponseOutcome]
+	return ok
+}
+
+// ResetResponseOutcome resets all changes to the "response_outcome" field.
+func (m *UsageLogMutation) ResetResponseOutcome() {
+	m.response_outcome = nil
+	delete(m.clearedFields, usagelog.FieldResponseOutcome)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -47366,7 +47416,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47505,6 +47555,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.response_outcome != nil {
+		fields = append(fields, usagelog.FieldResponseOutcome)
+	}
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
@@ -47608,6 +47661,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoDurationSeconds()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldResponseOutcome:
+		return m.ResponseOutcome()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -47711,6 +47766,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldVideoDurationSeconds(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldResponseOutcome:
+		return m.OldResponseOutcome(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -48043,6 +48100,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLOverridden(v)
+		return nil
+	case usagelog.FieldResponseOutcome:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseOutcome(v)
 		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -48402,6 +48466,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
+	if m.FieldCleared(usagelog.FieldResponseOutcome) {
+		fields = append(fields, usagelog.FieldResponseOutcome)
+	}
 	return fields
 }
 
@@ -48481,6 +48548,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldVideoDurationSeconds:
 		m.ClearVideoDurationSeconds()
+		return nil
+	case usagelog.FieldResponseOutcome:
+		m.ClearResponseOutcome()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -48627,6 +48697,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldResponseOutcome:
+		m.ResetResponseOutcome()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

@@ -275,6 +275,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+		logOpenAIAttemptTiming(c, reqLog, account, result, forwardDurationMs, err)
 		if err == nil && result != nil && result.FirstTokenMs != nil {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
@@ -322,6 +323,24 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if handleOpenAIDeliveryFailure(c, reqLog, account, result, err, submitChatUsage) {
+				return
+			}
+			if h.handleOpenAIUpstreamFailedWithUsage(c, reqLog, account, result, err, streamStarted, func(reportErr error) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, nil), false, nil, reportErr)
+			}, submitChatUsage) {
+				return
+			}
+			// Match /v1/responses: a client that left never reaches failover or
+			// the account schedule failure report below.
+			if (result != nil && result.ClientDisconnect) || failoverClientGone(c) {
+				reqLog.Info("openai_chat_completions.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				submitChatUsage(result)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
