@@ -1,0 +1,18 @@
+# Default owner for everything
+* @Wei-Shaw
+
+# Backend
+/backend/ @Wei-Shaw
+
+# Frontend
+/frontend/ @Wei-Shaw
+
+# CI/CD and deployment
+/.github/ @Wei-Shaw
+/deploy/ @Wei-Shaw
+/Dockerfile @Wei-Shaw
+/Makefile @Wei-Shaw
+
+# Documentation
+/docs/ @Wei-Shaw
+*.md @Wei-Shaw
