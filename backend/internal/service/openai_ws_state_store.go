@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -69,6 +70,8 @@ type OpenAIWSStateStore interface {
 	BindResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error
 	GetResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error)
 	DeleteResponseAccount(ctx context.Context, groupID int64, responseID string) error
+	BindStrictHTTPResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error
+	GetStrictHTTPResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error)
 	BindHTTPResponseOwner(ctx context.Context, groupID int64, responseID string, userID, apiKeyID int64, ttl time.Duration) error
 	GetHTTPResponseOwner(ctx context.Context, groupID int64, responseID string) (userID, apiKeyID int64, found bool, err error)
 
@@ -235,7 +238,28 @@ func cleanupExpiredHTTPResponseOwnerBindings(bindings map[string]openAIHTTPRespo
 	}
 }
 
+// Strict protocol bindings survive normal scheduler binding invalidation. This
+// prevents a disabled/reconfigured strict owner from falling through to a
+// transforming account on the next HTTP continuation.
+func (s *defaultOpenAIWSStateStore) BindStrictHTTPResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error {
+	if strings.TrimSpace(responseID) == "" {
+		return nil
+	}
+	return s.BindResponseAccount(ctx, groupID, "strict-http:"+responseID, accountID, ttl)
+}
+
+func (s *defaultOpenAIWSStateStore) GetStrictHTTPResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error) {
+	if strings.TrimSpace(responseID) == "" {
+		return 0, nil
+	}
+	return s.getResponseAccount(ctx, groupID, "strict-http:"+responseID, false)
+}
+
 func (s *defaultOpenAIWSStateStore) GetResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error) {
+	return s.getResponseAccount(ctx, groupID, responseID, true)
+}
+
+func (s *defaultOpenAIWSStateStore) getResponseAccount(ctx context.Context, groupID int64, responseID string, ignoreCacheError bool) (int64, error) {
 	id := normalizeOpenAIWSResponseID(responseID)
 	if id == "" {
 		return 0, nil
@@ -262,6 +286,9 @@ func (s *defaultOpenAIWSStateStore) GetResponseAccount(ctx context.Context, grou
 	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
 	defer cancel()
 	accountID, err := s.cache.GetSessionAccountID(cacheCtx, groupID, cacheKey)
+	if err != nil && !ignoreCacheError && !errors.Is(err, ErrStickySessionNotFound) {
+		return 0, err
+	}
 	if err != nil || accountID <= 0 {
 		// 缓存读取失败不阻断主流程，按未命中降级。
 		return 0, nil
