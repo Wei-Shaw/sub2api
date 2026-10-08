@@ -418,6 +418,22 @@ func (h *PaymentHandler) ListProviders(c *gin.Context) {
 	response.Success(c, providers)
 }
 
+// ListSepayBankAccounts returns safe bank-account options for the admin picker.
+// POST /api/v1/admin/payment/providers/sepay/bank-accounts
+func (h *PaymentHandler) ListSepayBankAccounts(c *gin.Context) {
+	var req service.ListSepayBankAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	accounts, err := h.configService.ListSepayBankAccounts(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, accounts)
+}
+
 // CreateProvider creates a new payment provider instance.
 // POST /api/v1/admin/payment/providers
 func (h *PaymentHandler) CreateProvider(c *gin.Context) {

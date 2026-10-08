@@ -14,6 +14,12 @@ func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) st
 		if err == nil {
 			return currency
 		}
+	case payment.TypeSepay:
+		currency, err := payment.NormalizePaymentCurrency(cfg["currency"])
+		if err == nil && strings.TrimSpace(cfg["currency"]) != "" {
+			return currency
+		}
+		return "VND"
 	}
 	return payment.DefaultPaymentCurrency
 }

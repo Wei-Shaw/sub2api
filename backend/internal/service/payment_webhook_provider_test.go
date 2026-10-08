@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -361,6 +362,149 @@ func TestGetWebhookProvidersRejectAmbiguousFallbackForNonWxpay(t *testing.T) {
 	_, err = svc.GetWebhookProviders(ctx, payment.TypeAlipay, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "ambiguous")
+}
+
+func TestGetWebhookProvidersAllowsMultipleSepayInstancesForPatternMatching(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	for i, name := range []string{"sepay-a", "sepay-b"} {
+		_, err := client.PaymentProviderInstance.Create().
+			SetProviderKey(payment.TypeSepay).
+			SetName(name).
+			SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+				"bankCode":      "MBBank",
+				"accountNo":     "1900123456789",
+				"webhookApiKey": fmt.Sprintf("fixture-webhook-key-%d", i),
+			})).
+			SetSupportedTypes("sepay").
+			SetEnabled(true).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		registry:        payment.NewRegistry(),
+		providersLoaded: true,
+	}
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSepay, "")
+	require.NoError(t, err)
+	require.Len(t, providers, 2)
+}
+
+func TestGetWebhookProvidersRejectsUnpinnedLegacySepayOrderWithMultipleInstances(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	for i, name := range []string{"sepay-a", "sepay-b"} {
+		_, err := client.PaymentProviderInstance.Create().
+			SetProviderKey(payment.TypeSepay).
+			SetName(name).
+			SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+				"bankCode":      "MBBank",
+				"accountNo":     "1900123456789",
+				"webhookApiKey": fmt.Sprintf("fixture-webhook-key-%d", i),
+			})).
+			SetSupportedTypes("sepay").
+			SetEnabled(true).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+	user, err := client.User.Create().
+		SetEmail("legacy-sepay@example.com").
+		SetPasswordHash("hash").
+		SetUsername("legacy-sepay").
+		Save(ctx)
+	require.NoError(t, err)
+	const orderID = "sub2_20250409aB3kX9mQ"
+	_, err = client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(200000).
+		SetPayAmount(200000).
+		SetFeeRate(0).
+		SetRechargeCode("LEGACY-SEPAY-ORDER").
+		SetOutTradeNo(orderID).
+		SetPaymentType(payment.TypeSepay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		registry:        payment.NewRegistry(),
+		providersLoaded: true,
+	}
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSepay, orderID)
+	require.Error(t, err)
+	require.Nil(t, providers)
+	require.Contains(t, err.Error(), "order without a pinned provider instance")
+}
+
+func TestGetWebhookProvidersRejectsSharedSepayWebhookCredentials(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	for _, name := range []string{"sepay-a", "sepay-b"} {
+		_, err := client.PaymentProviderInstance.Create().
+			SetProviderKey(payment.TypeSepay).
+			SetName(name).
+			SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+				"bankCode":      "MBBank",
+				"accountNo":     "1900123456789",
+				"webhookApiKey": "fixture-shared-webhook-key",
+			})).
+			SetSupportedTypes("sepay").
+			SetEnabled(true).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		registry:        payment.NewRegistry(),
+		providersLoaded: true,
+	}
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSepay, "")
+	require.Error(t, err)
+	require.Nil(t, providers)
+	require.Contains(t, err.Error(), "ambiguous SePay webhook credentials")
+}
+
+func TestGetWebhookProvidersSkipsSepayInstanceWithoutWebhookCredentials(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	for i, webhookKey := range []string{"", "fixture-webhook-key-valid"} {
+		_, err := client.PaymentProviderInstance.Create().
+			SetProviderKey(payment.TypeSepay).
+			SetName(fmt.Sprintf("sepay-%d", i)).
+			SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+				"bankCode":      "MBBank",
+				"accountNo":     "1900123456789",
+				"webhookApiKey": webhookKey,
+			})).
+			SetSupportedTypes("sepay").
+			SetEnabled(true).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		registry:        payment.NewRegistry(),
+		providersLoaded: true,
+	}
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeSepay, "")
+	require.NoError(t, err)
+	require.Len(t, providers, 1)
 }
 
 func TestGetWebhookProviderAllowsSingleInstanceRegistryFallback(t *testing.T) {

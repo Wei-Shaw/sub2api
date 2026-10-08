@@ -152,6 +152,23 @@
         <p v-if="paymentGuide" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
           {{ paymentGuide.summary }}
         </p>
+        <div v-if="form.provider_key === 'sepay'" class="mb-4 space-y-2 rounded-lg border border-primary-200 bg-primary-50/50 p-3 dark:border-primary-800/50 dark:bg-primary-900/10">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.sepayBankAccountPicker') }}</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.sepayBankAccountHint') }}</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm whitespace-nowrap" :disabled="sepayBankAccountsLoading" @click="loadSepayBankAccounts">
+              {{ sepayBankAccountsLoading ? t('common.loading') : t('admin.settings.payment.sepayLoadBankAccounts') }}
+            </button>
+          </div>
+          <Select
+            v-model="selectedSepayBankAccountId"
+            :options="sepayBankAccountSelectOptions"
+            :disabled="sepayBankAccountsLoading || !sepayBankAccountOptions.length"
+            @change="selectSepayBankAccount"
+          />
+        </div>
         <div class="space-y-3">
           <div v-for="field in resolvedFields" :key="field.key">
             <label class="input-label">
@@ -204,6 +221,7 @@
               v-model="config[field.key]"
               class="input"
               :placeholder="field.defaultValue || ''"
+              :readonly="isSepayBankFieldLocked(field.key)"
             />
             <p v-if="field.hintKey" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
               {{ t(field.hintKey) }}
@@ -307,6 +325,9 @@
 <script setup lang="ts">
 import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { adminPaymentAPI, type SepayBankAccountOption } from '@/api/admin/payment'
+import { useAppStore } from '@/stores/app'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select from '@/components/common/Select.vue'
@@ -380,6 +401,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 interface PaymentGuideItem {
   title: string
@@ -418,6 +440,7 @@ const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : 
 const providerWebhookHintMap: Record<string, string> = {
   stripe: 'admin.settings.payment.stripeWebhookHint',
   airwallex: 'admin.settings.payment.airwallexWebhookHint',
+  sepay: 'admin.settings.payment.sepayWebhookHint',
 }
 
 const providerWebhookUrl = computed(() => {
@@ -475,6 +498,14 @@ const resolvedFields = computed(() => {
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
   }))
 })
+
+const sepayBankAccountOptions = ref<SepayBankAccountOption[]>([])
+const selectedSepayBankAccountId = ref('')
+const sepayBankAccountsLoading = ref(false)
+const sepayBankAccountSelectOptions = computed<SelectOption[]>(() => [
+  { value: '', label: t('admin.settings.payment.sepayBankAccountPlaceholder') },
+  ...sepayBankAccountOptions.value.map(account => ({ value: account.id, label: account.label })),
+])
 
 const paymentGuide = computed<PaymentGuide | null>(() => {
   if (form.provider_key === 'alipay') {
@@ -534,6 +565,14 @@ const paymentGuide = computed<PaymentGuide | null>(() => {
     return {
       summary: t('admin.settings.payment.airwallexGuideSummary'),
       note: t('admin.settings.payment.airwallexGuideNote'),
+      items: [],
+    }
+  }
+
+  if (form.provider_key === 'sepay') {
+    return {
+      summary: t('admin.settings.payment.sepayGuideSummary'),
+      note: t('admin.settings.payment.sepayGuideNote'),
       items: [],
     }
   }
@@ -603,12 +642,53 @@ function clearConfig() {
   returnBaseUrl.value = ''
   limitsExpanded.value = false
   easyPayCustomMethods.splice(0, easyPayCustomMethods.length)
+  sepayBankAccountOptions.value = []
+  selectedSepayBankAccountId.value = ''
 }
 
 function applyDefaults() {
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.defaultValue && !config[f.key]) config[f.key] = f.defaultValue
   }
+}
+
+function isSepayBankFieldLocked(key: string): boolean {
+  return form.provider_key === 'sepay' && (key === 'bankCode' || key === 'accountNo')
+}
+
+async function loadSepayBankAccounts() {
+  if (form.provider_key !== 'sepay') return
+  sepayBankAccountsLoading.value = true
+  try {
+    const response = await adminPaymentAPI.listSepayBankAccounts({
+      apiToken: config.apiToken || undefined,
+      apiBase: config.apiBase || undefined,
+      providerId: props.editing?.id,
+    })
+    sepayBankAccountOptions.value = response.data
+    if (config.bankAccountId) {
+      selectedSepayBankAccountId.value = config.bankAccountId
+      selectSepayBankAccount()
+    }
+    if (!response.data.length) {
+      appStore.showError(t('admin.settings.payment.sepayNoBankAccounts'))
+    }
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.settings.payment', t('admin.settings.payment.sepayLoadBankAccountsFailed')))
+  } finally {
+    sepayBankAccountsLoading.value = false
+  }
+}
+
+function selectSepayBankAccount() {
+  const selected = sepayBankAccountOptions.value.find(account => account.id === selectedSepayBankAccountId.value)
+  if (!selected) {
+    delete config.bankAccountId
+    return
+  }
+  config.bankAccountId = selected.id
+  config.bankCode = selected.bank_short_name
+  config.accountNo = selected.account_number
 }
 
 function getLimitVal(paymentType: string, field: string): string {
@@ -667,6 +747,10 @@ function handleSave() {
       return
     }
     syncEasyPayCustomMethods()
+  }
+  if (form.provider_key === 'sepay' && !config.bankAccountId?.trim()) {
+    emitValidationError(t('admin.settings.payment.sepayBankAccountRequired'))
+    return
   }
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored
@@ -822,6 +906,7 @@ function loadProvider(provider: ProviderInstance) {
         continue
       }
       config[k] = v
+      if (k === 'bankAccountId' && v) selectedSepayBankAccountId.value = v
     }
     // Extract base URLs from existing callback URLs
     const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key]

@@ -42,13 +42,14 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
   airwallex: ['airwallex'],
+  sepay: ['sepay'],
 }
 
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
-export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
+export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex', 'sepay'] as const
 
 export function isBuiltInAlipayMethod(type: string): boolean {
   return type === 'alipay' || type === 'alipay_direct'
@@ -69,6 +70,7 @@ export const PAYMENT_MODE_REDIRECT = 'redirect'
 
 export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'CNY', label: 'CNY' },
+  { value: 'VND', label: 'VND' },
   { value: 'HKD', label: 'HKD' },
   { value: 'USD', label: 'USD' },
   { value: 'EUR', label: 'EUR' },
@@ -110,6 +112,12 @@ export const WEBHOOK_PATHS: Record<string, string> = {
   wxpay: '/api/v1/payment/webhook/wxpay',
   stripe: '/api/v1/payment/webhook/stripe',
   airwallex: '/api/v1/payment/webhook/airwallex',
+  sepay: '/api/v1/payment/webhook/sepay',
+}
+
+/** Provider-specific currencies exposed by the admin/user payment contract. */
+export const PROVIDER_DEFAULT_PAYMENT_CURRENCIES: Record<string, string[]> = {
+  sepay: ['VND'],
 }
 
 export const RETURN_PATH = '/payment/result'
@@ -160,6 +168,19 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'countryCode', label: '', sensitive: false, defaultValue: 'CN' },
     { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
     { key: 'accountId', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_accountIdHint' },
+  ],
+  sepay: [
+    { key: 'apiToken', label: '', sensitive: true, hintKey: 'admin.settings.payment.sepayApiTokenRequired' },
+    { key: 'apiBase', label: '', sensitive: false, optional: true, defaultValue: 'https://my.sepay.vn/userapi' },
+    { key: 'bankCode', label: '', sensitive: false, hintKey: 'admin.settings.payment.sepayBankAccountHint' },
+    { key: 'accountNo', label: '', sensitive: false, hintKey: 'admin.settings.payment.sepayBankAccountHint' },
+    { key: 'webhookApiKey', label: '', sensitive: true, hintKey: 'admin.settings.payment.sepayWebhookApiKeyHint' },
+    { key: 'qrBase', label: '', sensitive: false, optional: true, defaultValue: 'https://qr.sepay.vn/img' },
+    { key: 'paymentContentPrefix', label: '', sensitive: false, optional: true, hintKey: 'admin.settings.payment.sepayPaymentContentPrefixHint' },
+    { key: 'paymentContentAliases', label: '', sensitive: false, optional: true, hintKey: 'admin.settings.payment.sepayPaymentContentAliasesHint' },
+    { key: 'paymentContentTemplates', label: '', sensitive: false, optional: true, hintKey: 'admin.settings.payment.sepayPaymentContentTemplatesHint' },
+    { key: 'paymentContentRecognitionPatterns', label: '', sensitive: false, optional: true, hintKey: 'admin.settings.payment.sepayPaymentContentRecognitionPatternsHint' },
+    { key: 'currency', label: '', sensitive: false, defaultValue: 'VND', hintKey: 'admin.settings.payment.sepayProviderCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
   ],
 }
 

@@ -25,6 +25,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 | **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
 | **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
 | **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
+| **SePay** | VND bank-transfer QR | Offline VietQR generation with webhook-only settlement |
 
 > Alipay/WeChat Pay direct and EasyPay can both exist as backend provider instances, but the frontend always exposes only two visible buttons: `Alipay` and `WeChat Pay`. Admins choose exactly one source for each visible method: direct or EasyPay. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
 
@@ -154,6 +155,30 @@ International payment platform supporting multiple payment methods and currencie
 | **Publishable Key** | Stripe publishable key (`pk_live_...` or `pk_test_...`) | Yes |
 | **Webhook Secret** | Stripe Webhook signing secret (`whsec_...`) | Yes |
 
+### SePay
+
+SePay supports Vietnamese bank-transfer QR payments settled in **VND**. The provider is webhook-only: QR creation does not call the SePay REST API, and there is no payment-status polling, refund, or cancellation operation.
+
+Use the mandatory **Bank account picker** in the provider dialog. On create, enter the SePay API token temporarily and load the available accounts. On edit, the server reuses the encrypted token already stored for that provider instance. Only safe account metadata is returned to the browser; the API token and webhook key are never returned.
+
+| Parameter | Description | Required |
+|-----------|-------------|----------|
+| **API Token** | SePay token used only by the server-side admin bank-account picker; never used to create QR codes or settle orders | Yes |
+| **Bank account** | Select an account returned by SePay using the picker; do not enter an account manually | Yes |
+| **Webhook API Key** | Shared secret used to verify `Authorization: Apikey <sepay-webhook-key>` | Yes |
+| **API Base URL** | SePay account-list API base; defaults to `https://my.sepay.vn/userapi` | No |
+| **QR Base URL** | Offline QR image endpoint; defaults to `https://qr.sepay.vn/img` | No |
+| **Transfer-content aliases** | Optional `,`, semicolon, `\|`, or newline-separated aliases prepended to the generated order code; `paymentContentPrefix` remains a legacy alias for this field | No |
+| **Transfer-content templates** | Optional `,`, semicolon, `\|`, or newline-separated templates (or a JSON string array) using exactly one `{code}` placeholder; templates only control QR content | No |
+| **Webhook recognition patterns** | Optional `,`, semicolon, `\|`, or newline-separated patterns (or a JSON string array) using exactly one `{code}` or `{orderId}` placeholder; only matching content is accepted when configured | No |
+| **Currency** | Settlement currency; SePay defaults to `VND` | Yes |
+
+SePay orders must use a positive whole-number VND amount. Fractional amounts, zero, negative amounts, and non-VND currency are rejected. The QR contains the selected bank code, account number, amount, and transfer description. It does not require a SePay API call, `template`, or `accountName` parameter.
+
+Configure the SePay webhook after saving the provider. The webhook accepts incoming transfers only, extracts the exact `sub2_` order code from the transfer content, verifies the amount and API key, and then uses the existing order fulfillment and VND ledger flow. A webhook API key is required. Enabled SePay instances must use distinct webhook keys; when a legacy order has no pinned provider instance, webhook verification fails closed if more than one SePay instance is enabled. Without recognition patterns, the legacy `sub2_` matcher remains active. Once recognition patterns are configured, free-form content containing a valid order code is not enough: the content must match one configured pattern and contain exactly one order code. The structured SePay `code` field remains a safe fallback when content is absent or does not contain a match.
+
+SePay `QueryOrder`, refund, and cancellation operations are intentionally unsupported. If a transfer is completed but the webhook is delayed, inspect the SePay webhook delivery and server logs rather than enabling a polling fallback.
+
 ---
 
 ## Provider Instance Management
@@ -195,6 +220,7 @@ When adding a provider, the system auto-generates callback URLs from your site d
 | **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **SePay** | `https://your-domain.com/api/v1/payment/webhook/sepay` |
 
 > Replace `your-domain.com` with your actual domain. For EasyPay / Alipay / WeChat Pay, the callback URL is auto-filled when adding the provider — no manual configuration needed.
 
@@ -206,12 +232,21 @@ When adding a provider, the system auto-generates callback URLs from your site d
 4. Subscribe to events: `payment_intent.succeeded`, `payment_intent.payment_failed`
 5. Copy the generated Webhook Secret (`whsec_...`) to your provider configuration
 
+### SePay Webhook Setup
+
+1. Save an enabled SePay provider after selecting the receiving bank account.
+2. In SePay, configure `https://your-domain.com/api/v1/payment/webhook/sepay` as the webhook endpoint.
+3. Configure the same placeholder secret value `<sepay-webhook-key>` in SePay's API-key authorization and in the provider's **Webhook API Key** field.
+4. Ensure SePay sends `Authorization: Apikey <sepay-webhook-key>` and not a `Bearer` authorization header.
+5. Send an incoming-transfer event for a test order and confirm the order transitions through the existing fulfillment flow.
+
 ### Important Notes
 
 - Callback URLs must use **HTTPS** (required by Stripe, strongly recommended for others)
 - Ensure your firewall allows callback requests from payment platforms
 - The system automatically verifies callback signatures to prevent forgery
 - Balance top-up is processed automatically upon successful payment — no manual intervention needed
+- For SePay, webhook delivery is the source of truth; the provider does not poll the SePay API.
 
 ---
 

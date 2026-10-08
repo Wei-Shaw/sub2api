@@ -58,6 +58,14 @@ describe('PROVIDER_CONFIG_FIELDS.stripe', () => {
   })
 })
 
+describe('PROVIDER_CONFIG_FIELDS.sepay', () => {
+  it('separates QR aliases/templates from webhook recognition patterns', () => {
+    expect(findField('sepay', 'paymentContentAliases')?.optional).toBe(true)
+    expect(findField('sepay', 'paymentContentTemplates')?.optional).toBe(true)
+    expect(findField('sepay', 'paymentContentRecognitionPatterns')?.optional).toBe(true)
+  })
+})
+
 describe('EasyPay custom methods config', () => {
   it('parses customMethods from the JSON string stored in provider config', () => {
     expect(parseEasyPayCustomMethods(

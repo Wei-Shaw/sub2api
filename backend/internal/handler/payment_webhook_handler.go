@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -65,6 +66,12 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 // POST /api/v1/payment/webhook/airwallex
 func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
+}
+
+// SepayWebhook handles SePay bank-transfer notifications.
+// POST /api/v1/payment/webhook/sepay
+func (h *PaymentWebhookHandler) SepayWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeSepay)
 }
 
 // handleNotify is the shared logic for all provider webhook handlers.
@@ -172,9 +179,41 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
 		}
+	case payment.TypeSepay:
+		return extractSepayOutTradeNo(rawBody)
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
 	// typically has only one instance, so no instance lookup is needed.
+	return ""
+}
+
+func extractSepayOutTradeNo(rawBody string) string {
+	var payload struct {
+		Code               json.RawMessage `json:"code"`
+		Content            string          `json:"content"`
+		TransactionContent string          `json:"transaction_content"`
+	}
+	if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		content = strings.TrimSpace(payload.TransactionContent)
+	}
+	if orderID := provider.ExtractSepayOrderIDFromContent(content); orderID != "" {
+		return orderID
+	}
+	if len(payload.Code) == 0 || string(payload.Code) == "null" {
+		return ""
+	}
+	var code string
+	if err := json.Unmarshal(payload.Code, &code); err == nil {
+		return provider.NormalizeSepayOrderID(code)
+	}
+	var number json.Number
+	if err := json.Unmarshal(payload.Code, &number); err == nil {
+		return provider.NormalizeSepayOrderID(number.String())
+	}
 	return ""
 }
 

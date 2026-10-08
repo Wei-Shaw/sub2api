@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { createPinia } from 'pinia'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
+import { adminPaymentAPI } from '@/api/admin/payment'
 import { STRIPE_SDK_API_VERSION } from '@/components/payment/providerConfig'
 import type { ProviderInstance } from '@/types/payment'
 
@@ -24,6 +26,12 @@ const messages: Record<string, string> = {
 }
 
 vi.mock('vue-i18n', () => ({
+  createI18n: () => ({
+    global: {
+      locale: { value: 'en' },
+      setLocaleMessage: vi.fn(),
+    },
+  }),
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) => {
       const message = messages[key] ?? key
@@ -34,6 +42,12 @@ vi.mock('vue-i18n', () => ({
       )
     },
   }),
+}))
+
+vi.mock('@/api/admin/payment', () => ({
+  adminPaymentAPI: {
+    listSepayBankAccounts: vi.fn(),
+  },
 }))
 
 function providerFactory(overrides: Partial<ProviderInstance> = {}): ProviderInstance {
@@ -79,6 +93,7 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
       redirectLabel: 'Redirect',
     },
     global: {
+      plugins: [createPinia()],
       stubs: {
         BaseDialog: {
           template: '<div><slot /><slot name="footer" /></div>',
@@ -163,6 +178,59 @@ describe('PaymentProviderDialog payment guide', () => {
     expect(wrapper.text()).toContain(messages['admin.settings.payment.stripeWebhookHint'])
     expect(wrapper.text()).toContain(`Use Stripe API version ${STRIPE_SDK_API_VERSION}.`)
     expect(wrapper.text()).toContain('/api/v1/payment/webhook/stripe')
+  })
+
+  it('loads a SePay account and serializes only the selected safe bank fields', async () => {
+    vi.mocked(adminPaymentAPI.listSepayBankAccounts).mockResolvedValueOnce({
+      data: [{
+        id: 'bank-1',
+        bank_short_name: 'MBBank',
+        account_number: '1900123456789',
+        label: 'MBBank · 1900123456789 · TEST HOLDER',
+      }],
+    } as never)
+    const provider = providerFactory({
+      provider_key: 'sepay',
+      name: 'SePay',
+      config: {
+        apiBase: 'https://my.sepay.vn/userapi',
+        webhookApiKey: '',
+      },
+      supported_types: ['sepay'],
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const loadButton = wrapper.findAll('button').find(button => button.text().includes('sepayLoadBankAccounts'))
+    if (!loadButton) throw new Error('SePay bank-account load button not found')
+    await loadButton.trigger('click')
+    await nextTick()
+
+    expect(adminPaymentAPI.listSepayBankAccounts).toHaveBeenCalledWith({
+      apiToken: undefined,
+      apiBase: 'https://my.sepay.vn/userapi',
+      providerId: 1,
+    })
+
+    const vm = wrapper.vm as unknown as {
+      selectedSepayBankAccountId: string
+      selectSepayBankAccount: () => void
+      form: { name: string }
+    }
+    vm.selectedSepayBankAccountId = 'bank-1'
+    vm.selectSepayBankAccount()
+    vm.form.name = 'SePay'
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config).toMatchObject({
+      bankAccountId: 'bank-1',
+      bankCode: 'MBBank',
+      accountNo: '1900123456789',
+    })
+    expect(payload.config.apiToken).toBeUndefined()
+    wrapper.unmount()
   })
 
   it('emits an empty Airwallex accountId when the admin clears it', async () => {

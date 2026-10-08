@@ -13,6 +13,15 @@ import type {
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
+export interface SepayBankAccountOption {
+  id: string
+  bank_short_name: string
+  bank_full_name?: string
+  account_number: string
+  account_holder_name?: string
+  label: string
+}
+
 /** Admin-facing payment config returned by GET /admin/payment/config */
 export interface AdminPaymentConfig {
   enabled: boolean
@@ -189,6 +198,11 @@ export const adminPaymentAPI = {
   /** Delete a provider instance */
   deleteProvider(id: number) {
     return apiClient.delete(`/admin/payment/providers/${id}`)
+  },
+
+  /** List bank accounts for the SePay admin picker. */
+  listSepayBankAccounts(data: { apiToken?: string; apiBase?: string; providerId?: number }) {
+    return apiClient.post<SepayBankAccountOption[]>('/admin/payment/providers/sepay/bank-accounts', data)
   }
 }
 

@@ -25,8 +25,23 @@ import (
 // Only validates enabled instances — a disabled instance may be a half-filled
 // draft the admin will complete later.
 func (s *PaymentConfigService) validateProviderConfig(providerKey string, config map[string]string) error {
+	if err := validateRequiredProviderConfig(providerKey, config); err != nil {
+		return err
+	}
 	_, err := provider.CreateProvider(providerKey, "_validate_", config)
 	return err
+}
+
+func validateRequiredProviderConfig(providerKey string, config map[string]string) error {
+	if providerKey != payment.TypeSepay {
+		return nil
+	}
+	for _, field := range []string{"apiToken", "bankAccountId", "bankCode", "accountNo", "webhookApiKey"} {
+		if strings.TrimSpace(providerConfigFieldValue(config, field)) == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("sepay config missing required key: %s", field))
+		}
+	}
+	return nil
 }
 
 // --- Provider Instance CRUD ---
@@ -116,6 +131,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
 	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
+	payment.TypeSepay:     {"apitoken": {}, "webhookapikey": {}},
 }
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -128,6 +144,7 @@ var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
 	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
+	payment.TypeSepay:     {"apitoken": {}, "bankaccountid": {}, "bankcode": {}, "accountno": {}, "webhookapikey": {}, "paymentcontentprefix": {}, "paymentcontentaliases": {}, "paymentcontenttemplates": {}, "paymentcontentrecognitionpatterns": {}},
 }
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
@@ -178,7 +195,7 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 }
 
 var validProviderKeys = map[string]bool{
-	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true, payment.TypeSepay: true,
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
