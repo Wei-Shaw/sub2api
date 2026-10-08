@@ -384,20 +384,30 @@ func removeOpenAIResponsesRejectedReasoningContentAtIndex(body []byte, index int
 	return retryBody, "indexed reasoning content maximum-length rejection", true, nil
 }
 
+// removeOpenAIResponsesRejectedNamespaceAtIndex drops the namespace the upstream
+// rejected, together with the namespace of every other input item sharing the
+// rejected item's call type.
+//
+// 逐 index 删撑不住长历史：每个带 namespace 的调用项各吃一次 400 重试，而预算只有
+// maxOpenAIResponsesRejectedFieldRetries 次。issue #4761 报的 `input[894].namespace`
+// 就是这种形状 —— 894 个调用项、6 次重试，数学上不可能收敛，最终以 502 结束。
+//
+// 另一个极端（一次清空全部调用项的 namespace）同样不对：上游对**缺少** namespace 的
+// function_call 会反过来报 400 `Missing namespace for function_call`，而反应式重试只
+// 有「删 namespace」没有「补 namespace」，等于自己造一个不可恢复的错误。
+//
+// 一次拒绝只证明这一种调用类型不带 namespace 字段，所以只清同类型，最多每种调用类型
+// 吃一次重试。与 removeOpenAIResponsesRejectedStatusAtIndex 同一范式。
 func removeOpenAIResponsesRejectedNamespaceAtIndex(body []byte, index int) ([]byte, string, bool, error) {
 	itemPath := fmt.Sprintf("input.%d", index)
-	itemType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, itemPath+".type").String()))
-	switch itemType {
-	case "function_call", "tool_call", "custom_tool_call", "mcp_tool_call":
-	default:
+	rejectedType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, itemPath+".type").String()))
+	if !isOpenAIResponsesToolCallItemType(rejectedType) {
 		return nil, "", false, nil
 	}
-
-	namespacePath := itemPath + ".namespace"
-	if !gjson.GetBytes(body, namespacePath).Exists() {
+	if !gjson.GetBytes(body, itemPath+".namespace").Exists() {
 		return nil, "", false, nil
 	}
-	retryBody, err := sjson.DeleteBytes(body, namespacePath)
+	retryBody, err := stripOpenAIResponsesInputNamespacesOfType(body, rejectedType)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("delete rejected namespace at input[%d]: %w", index, err)
 	}

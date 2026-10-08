@@ -128,28 +128,52 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyDoesNotGuessAutomationRoo
 	}
 }
 
+// 被拒索引决定「动谁」：只清理与被拒项同一调用类型的 namespace。用 input[0]=message
+// 钉住索引解析 —— 解析成 0 会走到非工具调用项分支而不产生任何改动；同时钉住类型收窄：
+// message 上的残留 namespace 不该被这条 function_call 的拒绝顺手抹掉。
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyFindsNamespacePathInMessage(t *testing.T) {
-	body := []byte(`{"input":[{"type":"function_call","namespace":"keep","arguments":"{}"},{"type":"function_call","namespace":"remove","arguments":"{}"}]}`)
+	body := []byte(`{"input":[{"type":"message","namespace":"first","content":[]},{"type":"function_call","namespace":"remove","arguments":"{}"}]}`)
 	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"input[0] was accepted; Unknown parameter: 'input[1].namespace'."}}`)
 
 	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
 
 	require.NoError(t, err)
 	require.True(t, changed)
-	require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.0.namespace").String())
+	require.Equal(t, "first", gjson.GetBytes(retryBody, "input.0.namespace").String())
 	require.False(t, gjson.GetBytes(retryBody, "input.1.namespace").Exists())
 }
 
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyBindsNamespacePathToRejectionPhrase(t *testing.T) {
-	body := []byte(`{"input":[{"type":"function_call","namespace":"keep","arguments":"{}"},{"type":"function_call","namespace":"remove","arguments":"{}"}]}`)
+	body := []byte(`{"input":[{"type":"message","namespace":"first","content":[]},{"type":"function_call","namespace":"remove","arguments":"{}"}]}`)
 	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"input[0].namespace is supported; Unknown parameter: input[1].namespace."}}`)
 
 	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
 
 	require.NoError(t, err)
 	require.True(t, changed)
-	require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.0.namespace").String())
+	require.Equal(t, "first", gjson.GetBytes(retryBody, "input.0.namespace").String())
 	require.False(t, gjson.GetBytes(retryBody, "input.1.namespace").Exists())
+}
+
+// 同类型内是批量的：一次拒绝清掉全部同类型调用项，长历史不会每项各吃一次重试
+// （issue #4761 的 input[894] 逐 index 删根本走不完 6 次预算）。跨类型仍然收窄，
+// 上游仍接受的 custom_tool_call 保住 namespace。
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsWholeRejectedCallType(t *testing.T) {
+	body := []byte(`{"input":[` +
+		`{"type":"function_call","namespace":"drop-a","arguments":"{}"},` +
+		`{"type":"custom_tool_call","namespace":"keep","input":"{}"},` +
+		`{"type":"function_call","namespace":"drop-b","arguments":"{}"},` +
+		`{"type":"function_call","namespace":"drop-c","arguments":"{}"}]}`)
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[2].namespace'.","param":"input[2].namespace"}}`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(retryBody, "input.0.namespace").Exists())
+	require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.1.namespace").String())
+	require.False(t, gjson.GetBytes(retryBody, "input.2.namespace").Exists())
+	require.False(t, gjson.GetBytes(retryBody, "input.3.namespace").Exists())
 }
 
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyDoesNotTreatMaxOutputTokensSuggestionAsRejection(t *testing.T) {

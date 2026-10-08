@@ -193,6 +193,22 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 // namespace，让 Codex 调用能按上游要求原样回传；判定见
 // shouldKeepOpenAIResponsesToolCallNamespaces。
 func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces bool) ([]byte, error) {
+	return stripOpenAIResponsesInputNamespacesWhere(body, func(item gjson.Result) bool {
+		return !keepToolCallNamespaces || !isOpenAIResponsesToolCallItemType(item.Get("type").String())
+	})
+}
+
+// stripOpenAIResponsesInputNamespacesOfType 只清理某一种调用项类型上的 namespace。
+// 上游按索引拒绝 namespace 时用它按类型批量清理，而不是逐 index 删或全量清空 ——
+// 见 removeOpenAIResponsesRejectedNamespaceAtIndex。
+func stripOpenAIResponsesInputNamespacesOfType(body []byte, itemType string) ([]byte, error) {
+	itemType = strings.ToLower(strings.TrimSpace(itemType))
+	return stripOpenAIResponsesInputNamespacesWhere(body, func(item gjson.Result) bool {
+		return strings.ToLower(strings.TrimSpace(item.Get("type").String())) == itemType
+	})
+}
+
+func stripOpenAIResponsesInputNamespacesWhere(body []byte, shouldStrip func(item gjson.Result) bool) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
 	}
@@ -215,8 +231,7 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 		itemBody := []byte(item.Raw)
 		// 先判存在再判类型：长历史里绝大多数是 message/reasoning 等不带 namespace
 		// 的项，这样它们无需再扫一次 type。
-		if item.IsObject() && item.Get("namespace").Exists() &&
-			(!keepToolCallNamespaces || !isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
+		if item.IsObject() && item.Get("namespace").Exists() && shouldStrip(item) {
 			itemBody, stripErr = sjson.DeleteBytes(itemBody, "namespace")
 			if stripErr != nil {
 				return false
