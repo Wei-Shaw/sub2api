@@ -24,9 +24,9 @@
             />
           </div>
           <EndpointPopover
-            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
+            v-if="publicSettings?.api_base_url || displayCustomEndpoints.length > 0"
             :api-base-url="publicSettings?.api_base_url || ''"
-            :custom-endpoints="publicSettings?.custom_endpoints || []"
+            :custom-endpoints="displayCustomEndpoints"
           />
           <div v-if="selectedIds.length" class="flex flex-wrap items-center gap-3 text-sm">
             <span class="text-gray-600 dark:text-gray-300">
@@ -1073,7 +1073,7 @@
     <UseKeyModal
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
-      :base-url="publicSettings?.api_base_url || ''"
+      :base-url="preferredBaseUrl"
       :platform="selectedKey?.group?.platform || null"
       :claude-code-only="selectedKey?.group?.claude_code_only || false"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
@@ -1207,7 +1207,7 @@
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
-import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { keysAPI, authAPI, usageAPI, userGroupsAPI, customDomainsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
@@ -1223,9 +1223,10 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest, CustomEndpoint } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
+import type { CustomDomain } from '@/api/customDomains'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
@@ -1409,6 +1410,7 @@ const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
+const customDomains = ref<CustomDomain[]>([])
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
@@ -1420,6 +1422,25 @@ const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
+
+const activeCustomDomains = computed(() =>
+  customDomains.value.filter((domain) => domain.status === 'active')
+)
+
+const displayCustomEndpoints = computed<CustomEndpoint[]>(() => [
+  ...(publicSettings.value?.custom_endpoints || []),
+  ...activeCustomDomains.value.map((domain) => ({
+    name: t('customDomains.title'),
+    endpoint: customDomainBaseUrl(domain),
+    description: domain.domain,
+  })),
+])
+
+const preferredBaseUrl = computed(() =>
+  activeCustomDomains.value.length > 0
+    ? customDomainBaseUrl(activeCustomDomains.value[0])
+    : publicSettings.value?.api_base_url || ''
+)
 
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
@@ -1657,8 +1678,20 @@ const loadUserGroupRates = async () => {
 const loadPublicSettings = async () => {
   try {
     publicSettings.value = await authAPI.getPublicSettings()
+    if (publicSettings.value.custom_domains_enabled) {
+      await loadCustomDomains()
+    }
   } catch (error) {
     console.error('Failed to load public settings:', error)
+  }
+}
+
+const loadCustomDomains = async () => {
+  try {
+    const result = await customDomainsAPI.listUserCustomDomains()
+    customDomains.value = result.domains
+  } catch (error) {
+    console.error('Failed to load custom domains:', error)
   }
 }
 
@@ -2024,7 +2057,7 @@ const importToCcswitch = (row: ApiKey) => {
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
-  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const baseUrl = preferredBaseUrl.value || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
   const usageScript = CC_SWITCH_USAGE_SCRIPT
@@ -2051,6 +2084,10 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   } catch (error) {
     appStore.showError(t('keys.ccSwitchNotInstalled'))
   }
+}
+
+function customDomainBaseUrl(domain: CustomDomain): string {
+  return `https://${domain.domain}`
 }
 
 const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
