@@ -6,6 +6,8 @@ export default {
   },
   "usage": {
     "upstreamRequestId": "ID upstream",
-    "upstreamRequestIdCopied": "Đã sao chép ID upstream"
+    "upstreamRequestIdCopied": "Đã sao chép ID upstream",
+    "longContext": "Ngữ cảnh dài",
+    "longContextPricingTooltip": "Đã áp dụng giá theo ngữ cảnh dài. Đơn giá đầu vào và đầu ra phụ thuộc vào bậc giá, không phải một hệ số cố định."
   }
 }

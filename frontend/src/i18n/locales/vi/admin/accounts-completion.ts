@@ -1,6 +1,8 @@
 // Generated from the EN → VI locale gap audit.
 export default {
   "accounts": {
+    "moreFilters": "Thêm bộ lọc",
+    "moreFiltersActive": "Thêm bộ lọc ({count} đang bật)",
     "priorityQuick": {
       "raise": "Tăng độ ưu tiên (giá trị -1)",
       "lower": "Giảm độ ưu tiên (giá trị +1)",
@@ -143,7 +145,8 @@ export default {
       "refreshSuccess": "Đã làm mới mức sử dụng OpenCode Go",
       "refreshFailed": "Không thể làm mới mức sử dụng OpenCode Go",
       "errors": {
-        "OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED": "Đang bị giới hạn làm mới. Hãy thử lại sau {retry_after_seconds} giây."
+        "OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED": "Đang bị giới hạn làm mới. Hãy thử lại sau {retry_after_seconds} giây.",
+        "forbidden": "Upstream trả về 403: có thể gói đăng ký OpenCode Go bị thiếu/hết hạn hoặc bị WAF/chính sách truy cập chặn; hãy kiểm tra đường truyền và mã trạng thái HTTP."
       }
     },
     "upstreamRequestIdHeader": "ID upstream",

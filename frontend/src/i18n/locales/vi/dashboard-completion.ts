@@ -56,7 +56,9 @@ export default {
     "compactionFilter": "Loại yêu cầu",
     "allCompactionTypes": "Tất cả yêu cầu",
     "compactionOnly": "Chỉ yêu cầu nén",
-    "serviceTierUltrafast": "Siêu nhanh"
+    "serviceTierUltrafast": "Siêu nhanh",
+    "outputTps": "TPS đầu ra",
+    "outputTpsHint": "Token đầu ra chia cho tổng thời gian, bao gồm thời gian chờ token đầu tiên, tính bằng tok/s. Token đầu ra có thể bao gồm token suy luận."
   },
   "monitorCommon": {
     "providers": {
