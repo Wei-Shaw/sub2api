@@ -119,3 +119,28 @@ func jsonPathString(t *testing.T, raw json.RawMessage, keys ...string) string {
 	require.True(t, ok)
 	return result
 }
+
+func TestParseLiveCallRequestRejectsAmbiguousModel(t *testing.T) {
+	for _, body := range []string{`{"sdp":"v=0","session":{"model":"a","Model":"b"}}`, `{"sdp":"v=0","session":{"model":"a"},"Session":{"model":"b"}}`} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/live", bytes.NewBufferString(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		_, err := parseLiveCallRequest(c)
+		require.ErrorContains(t, err, "specified more than once")
+	}
+}
+
+func TestParseLiveCallRequestRejectsDuplicateMultipartSession(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("sdp", "v=0"))
+	for range 2 {
+		require.NoError(t, writer.WriteField("session", `{"model":"gpt-realtime"}`))
+	}
+	require.NoError(t, writer.Close())
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/live", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	_, err := parseLiveCallRequest(c)
+	require.ErrorContains(t, err, "session is specified more than once")
+}

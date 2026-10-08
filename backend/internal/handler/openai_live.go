@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	coderws "github.com/coder/websocket"
@@ -124,6 +126,14 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 
 func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	contentType := strings.ToLower(c.GetHeader("Content-Type"))
+	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		return nil, err
+	}
+	if err := requestmodel.ValidateBody("/v1/live", contentType, body); err != nil {
+		return nil, err
+	}
+	requestmodel.ResetRequestBody(c.Request, body)
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		sdp := c.PostForm("sdp")
 		session := json.RawMessage(c.PostForm("session"))

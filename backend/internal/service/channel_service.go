@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
@@ -641,6 +642,38 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 func ReplaceModelInBody(body []byte, newModel string) []byte {
 	if len(body) == 0 {
 		return body
+	}
+	if requestmodel.HasDuplicateTopLevelKey(body, "model") && gjson.ValidBytes(body) {
+		// Rebuild once, keeping the final model position and every other raw
+		// value. Repeated sjson.Delete would be quadratic on hostile input.
+		object := gjson.ParseBytes(body)
+		lastModel := 0
+		object.ForEach(func(key, _ gjson.Result) bool {
+			if strings.EqualFold(key.String(), "model") {
+				lastModel = key.Index
+			}
+			return true
+		})
+		normalized := make([]byte, 0, len(body))
+		normalized = append(normalized, '{')
+		object.ForEach(func(key, value gjson.Result) bool {
+			isModel := strings.EqualFold(key.String(), "model")
+			if isModel && key.Index != lastModel {
+				return true
+			}
+			if len(normalized) > 1 {
+				normalized = append(normalized, ',')
+			}
+			if isModel {
+				normalized = append(normalized, `"model"`...)
+			} else {
+				normalized = append(normalized, key.Raw...)
+			}
+			normalized = append(normalized, ':')
+			normalized = append(normalized, value.Raw...)
+			return true
+		})
+		body = append(normalized, '}')
 	}
 	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
 		return body

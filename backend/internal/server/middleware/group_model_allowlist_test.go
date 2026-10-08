@@ -78,7 +78,7 @@ func (b *readTrackingBody) Read(p []byte) (int, error) {
 
 func (b *readTrackingBody) Close() error { return nil }
 
-func TestGroupModelAllowlistDisabledDoesNotReadBody(t *testing.T) {
+func TestGroupModelAllowlistDisabledStillChecksModelBody(t *testing.T) {
 	router, calls := newGroupModelAllowlistTestRouter(allowlistAPIKey(false, "claude-sonnet-4.5"), "/v1")
 
 	body := &readTrackingBody{Reader: strings.NewReader(`{"model":"claude-opus-4.6"}`)}
@@ -93,8 +93,8 @@ func TestGroupModelAllowlistDisabledDoesNotReadBody(t *testing.T) {
 	if len(*calls) != 1 {
 		t.Fatalf("expected handler to run once, got %v", *calls)
 	}
-	if body.read {
-		t.Fatal("allowlist disabled: middleware must not read the request body")
+	if !body.read {
+		t.Fatal("allowlist disabled: ambiguous model checks still require reading the body")
 	}
 }
 
@@ -445,10 +445,10 @@ func TestGroupModelAllowlistDuplicateModelKeysRejected(t *testing.T) {
 	router, _ := newGroupModelAllowlistTestRouter(allowlistAPIKey(true, "claude-sonnet-4.5"), "/v1")
 
 	w := doJSON(t, router, http.MethodPost, "/v1/responses", `{"model":"claude-sonnet-4.5","model":"claude-opus-4.6"}`)
-	if w.Code != http.StatusNotFound {
+	if w.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate model keys must all be validated, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "claude-opus-4.6") {
+	if !strings.Contains(w.Body.String(), "model is specified more than once") {
 		t.Fatalf("expected the disallowed duplicate to be reported, got %s", w.Body.String())
 	}
 }
@@ -469,16 +469,16 @@ func TestGroupModelAllowlistMultipartDuplicateModelFieldsRejected(t *testing.T) 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
+	if w.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate multipart model fields must all be validated, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "gpt-image-1.5") {
+	if !strings.Contains(w.Body.String(), "model is specified more than once") {
 		t.Fatalf("expected the disallowed field value to be reported, got %s", w.Body.String())
 	}
 }
 
-// 全部候选都在白名单内时放行（重复但同值的字段不误伤）。
-func TestGroupModelAllowlistDuplicateIdenticalModelsAllowed(t *testing.T) {
+// 同值重复也拒绝：重复载体与白名单内容无关。
+func TestGroupModelAllowlistDuplicateIdenticalModelsRejected(t *testing.T) {
 	router, calls := newGroupModelAllowlistTestRouter(allowlistAPIKey(true, "gpt-image-1"), "/v1")
 
 	var body bytes.Buffer
@@ -492,10 +492,10 @@ func TestGroupModelAllowlistDuplicateIdenticalModelsAllowed(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("identical duplicate fields should pass, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("identical duplicate fields must be rejected, got %d: %s", w.Code, w.Body.String())
 	}
-	if len(*calls) != 1 {
-		t.Fatalf("expected handler to run once, got %v", *calls)
+	if len(*calls) != 0 {
+		t.Fatalf("expected handler not to run, got %v", *calls)
 	}
 }
