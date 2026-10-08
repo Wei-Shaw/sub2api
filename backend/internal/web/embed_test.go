@@ -5,6 +5,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -687,6 +691,83 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}
+}
+
+func TestEmbeddedFrontendBypassesRegisteredBrandingRoute(t *testing.T) {
+	// A real branded logo URL: the middleware must not swallow it, so the
+	// handler still runs and serves immutable caching headers.
+	const path = "/api/v1/settings/public/logo-" + "0f6c3a09018d44c79811cb205e1e03f0f214fdd8728f82e6e92aaaf95da5ee49" + ".png"
+	raw := "data:image/png;base64," + base64.StdEncoding.EncodeToString(
+		[]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03})
+	repo := &embedBrandingRepoStub{values: map[string]string{"site_logo": raw}}
+	h := handler.NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test")
+
+	for _, tc := range []struct {
+		name       string
+		middleware func(t *testing.T) gin.HandlerFunc
+	}{
+		{name: "settings_middleware", middleware: func(t *testing.T) gin.HandlerFunc {
+			server, err := NewFrontendServer(&mockSettingsProvider{settings: map[string]string{}})
+			require.NoError(t, err)
+			return server.Middleware()
+		}},
+		{name: "legacy_middleware", middleware: func(_ *testing.T) gin.HandlerFunc {
+			return ServeEmbeddedFrontend()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(tc.middleware(t))
+			router.GET("/api/v1/settings/public/:asset", h.GetPublicBrandingAsset)
+			router.HEAD("/api/v1/settings/public/:asset", h.GetPublicBrandingAsset)
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusOK, w.Code, "branding route must run instead of SPA fallback")
+			assert.Equal(t, "image/png", w.Header().Get("Content-Type"))
+			assert.Equal(t, "public, max-age=31536000, immutable", w.Header().Get("Cache-Control"))
+			assert.Equal(t, 12, w.Body.Len())
+		})
+	}
+}
+
+// embedBrandingRepoStub serves only the site_logo key used by branding tests.
+type embedBrandingRepoStub struct {
+	values map[string]string
+}
+
+func (r *embedBrandingRepoStub) Get(context.Context, string) (*service.Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (r *embedBrandingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	return r.values[key], nil
+}
+
+func (r *embedBrandingRepoStub) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+}
+
+func (r *embedBrandingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (r *embedBrandingRepoStub) SetMultiple(context.Context, map[string]string) error {
+	panic("unexpected SetMultiple call")
+}
+
+func (r *embedBrandingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (r *embedBrandingRepoStub) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
 }
 
 func TestNewFrontendServer(t *testing.T) {
