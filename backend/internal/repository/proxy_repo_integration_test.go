@@ -215,16 +215,50 @@ func (s *ProxyRepoSuite) TestGetAccountCountsForProxies() {
 	s.mustInsertAccount("a2", &p1.ID)
 	s.mustInsertAccount("a3", &p2.ID)
 
-	counts, err := s.repo.GetAccountCountsForProxies(s.ctx)
+	stats, err := s.repo.GetAccountCountsForProxies(s.ctx)
 	s.Require().NoError(err, "GetAccountCountsForProxies")
-	s.Require().Equal(int64(2), counts[p1.ID])
-	s.Require().Equal(int64(1), counts[p2.ID])
+	s.Require().Equal(int64(2), stats[p1.ID].Total)
+	s.Require().Equal(int64(1), stats[p2.ID].Total)
+}
+
+func (s *ProxyRepoSuite) TestGetAccountCountsForProxies_PlatformAndErrorBreakdown() {
+	p1 := s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActive})
+
+	// anthropic: 2 个正常 + 1 个错误；openai: 1 个停用（不算异常）
+	s.mustInsertAccountFull("a1", service.PlatformAnthropic, service.StatusActive, &p1.ID)
+	s.mustInsertAccountFull("a2", service.PlatformAnthropic, service.StatusActive, &p1.ID)
+	s.mustInsertAccountFull("a3", service.PlatformAnthropic, service.StatusError, &p1.ID)
+	s.mustInsertAccountFull("a4", service.PlatformOpenAI, "inactive", &p1.ID)
+
+	stats, err := s.repo.GetAccountCountsForProxies(s.ctx)
+	s.Require().NoError(err, "GetAccountCountsForProxies")
+
+	got := stats[p1.ID]
+	s.Require().Equal(int64(4), got.Total)
+	// 异常口径只认 status = error，inactive 不算
+	s.Require().Equal(int64(1), got.ErrorCount)
+
+	// 平台明细按 platform 升序：anthropic < openai
+	s.Require().Len(got.Platforms, 2)
+	s.Require().Equal(service.PlatformAnthropic, got.Platforms[0].Platform)
+	s.Require().Equal(int64(3), got.Platforms[0].Count)
+	s.Require().Equal(int64(1), got.Platforms[0].ErrorCount)
+	s.Require().Equal(service.PlatformOpenAI, got.Platforms[1].Platform)
+	s.Require().Equal(int64(1), got.Platforms[1].Count)
+	s.Require().Equal(int64(0), got.Platforms[1].ErrorCount)
+
+	// Total 必须等于各平台之和
+	var sum int64
+	for _, p := range got.Platforms {
+		sum += p.Count
+	}
+	s.Require().Equal(got.Total, sum)
 }
 
 func (s *ProxyRepoSuite) TestGetAccountCountsForProxies_Empty() {
-	counts, err := s.repo.GetAccountCountsForProxies(s.ctx)
+	stats, err := s.repo.GetAccountCountsForProxies(s.ctx)
 	s.Require().NoError(err)
-	s.Require().Empty(counts)
+	s.Require().Empty(stats)
 }
 
 // --- ListActiveWithAccountCount ---
@@ -271,8 +305,8 @@ func (s *ProxyRepoSuite) TestExistsByHostPortAuth_And_AccountCountAggregates() {
 
 	counts, err := s.repo.GetAccountCountsForProxies(s.ctx)
 	s.Require().NoError(err, "GetAccountCountsForProxies")
-	s.Require().Equal(int64(2), counts[p1.ID])
-	s.Require().Equal(int64(1), counts[p2.ID])
+	s.Require().Equal(int64(2), counts[p1.ID].Total)
+	s.Require().Equal(int64(1), counts[p2.ID].Total)
 
 	withCounts, err := s.repo.ListActiveWithAccountCount(s.ctx)
 	s.Require().NoError(err, "ListActiveWithAccountCount")
@@ -313,16 +347,22 @@ func (s *ProxyRepoSuite) mustCreateProxyWithTimes(name, status string, createdAt
 
 func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
 	s.T().Helper()
+	s.mustInsertAccountFull(name, service.PlatformAnthropic, service.StatusActive, proxyID)
+}
+
+func (s *ProxyRepoSuite) mustInsertAccountFull(name, platform, status string, proxyID *int64) {
+	s.T().Helper()
 	var pid any
 	if proxyID != nil {
 		pid = *proxyID
 	}
 	_, err := s.tx.ExecContext(
 		s.ctx,
-		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)",
+		"INSERT INTO accounts (name, platform, type, status, proxy_id) VALUES ($1, $2, $3, $4, $5)",
 		name,
-		service.PlatformAnthropic,
+		platform,
 		service.AccountTypeOAuth,
+		status,
 		pid,
 	)
 	s.Require().NoError(err, "insert account")
