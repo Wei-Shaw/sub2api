@@ -944,6 +944,11 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 	if parseErr != nil {
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_html", 0, false)
 	}
+	// A balance or plan alone does not prove a successful usage refresh. Keep
+	// the previous data and fetched_at when upstream markup becomes incompatible.
+	if data.FiveHour == nil && data.SevenDay == nil && data.Monthly == nil {
+		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "incomplete_usage", 0, false)
+	}
 	data.Email = s.fetchOllamaCloudAccountEmail(ctx, account, proxyURL)
 	snapshot := &OllamaCloudUsageSnapshot{
 		Status:        OllamaCloudUsageStatusOK,

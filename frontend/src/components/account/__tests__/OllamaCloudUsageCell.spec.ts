@@ -104,7 +104,7 @@ describe('OllamaCloudUsageCell', () => {
     expect(query.classes()).toEqual(expect.arrayContaining(['text-blue-600', 'hover:bg-blue-50']))
     expect(query.text()).toContain('admin.accounts.usageWindow.activeQuery')
     expect(wrapper.text()).not.toContain('max')
-    expect(wrapper.text()).not.toContain('$0')
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text()).toContain('$0')
     expect(wrapper.text()).not.toContain('gpt-oss:120b-cloud')
   })
 
@@ -157,4 +157,27 @@ describe('OllamaCloudUsageCell', () => {
 
     expect(wrapper.find('[data-testid="ollama-cloud-usage-query"]').exists()).toBe(false)
   })
+  it('warns about legacy balance-only snapshots and keeps the balance visible', () => {
+    const incomplete = usageState()
+    incomplete.snapshot!.data = { balance: '$40' }
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(incomplete) } })
+    expect(wrapper.findAllComponents(UsageProgressBar)).toHaveLength(0)
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text()).toContain('$40')
+    expect(wrapper.get('[data-testid="ollama-cloud-usage-warning"]').text()).toContain('admin.accounts.ollamaCloud.errors.incomplete_usage')
+  })
+
+  it('keeps previous bars and marks them stale after an incomplete refresh', async () => {
+    const incomplete = usageState()
+    incomplete.snapshot!.status = 'failed'
+    incomplete.snapshot!.last_error = 'incomplete_usage'
+    refreshOllamaCloudUsage.mockResolvedValueOnce(incomplete)
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account() } })
+    await wrapper.get('[data-testid="ollama-cloud-usage-query"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAllComponents(UsageProgressBar)).toHaveLength(2)
+    const warning = wrapper.get('[data-testid="ollama-cloud-usage-warning"]')
+    expect(warning.text()).toContain('admin.accounts.ollamaCloud.errors.incomplete_usage')
+    expect(warning.text()).toContain('admin.accounts.ollamaCloud.staleData')
+  })
+
 })

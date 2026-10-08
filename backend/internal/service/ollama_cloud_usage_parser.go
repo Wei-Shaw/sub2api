@@ -14,6 +14,7 @@ import (
 var (
 	ollamaUsagePercentPattern  = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*%`)
 	ollamaUsageRatioPattern    = regexp.MustCompile(`(?i)(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+(?:used|spent|consumed)`)
+	ollamaCreditsRatioPattern  = regexp.MustCompile(`(?i)^monthly credits used\s*:\s*(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*$`)
 	ollamaUsageWidthPattern    = regexp.MustCompile(`(?i)(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)%`)
 	ollamaBalancePattern       = regexp.MustCompile(`(?i)(?:balance|credits?)(?:\s+[[:alpha:]]+){0,4}\s*[:\n]?\s*((?:USD\s*)?\$?\s*-?[0-9][0-9,]*(?:\.[0-9]{1,4})?)`)
 	ollamaResetPattern         = regexp.MustCompile(`(?i)\breset(?:s|ting)?\s*(?:at|in|on)?\s*[:\-]?\s*([^\n|]+)`)
@@ -21,7 +22,7 @@ var (
 
 	ollamaFiveHourUsageAliases = []string{"session usage", "5 hour usage", "5-hour usage", "5h usage", "5 hour limit", "5-hour limit"}
 	ollamaSevenDayUsageAliases = []string{"weekly usage", "7 day usage", "7-day usage", "7d usage", "weekly limit", "7 day limit"}
-	ollamaMonthlyUsageAliases  = []string{"monthly usage", "month usage", "monthly limit"}
+	ollamaMonthlyUsageAliases  = []string{"monthly usage", "month usage", "monthly limit", "monthly credits used"}
 )
 
 func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
@@ -61,11 +62,41 @@ func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
 }
 
 func parseOllamaUsageWindow(root *html.Node, aliases []string, allowTrackFallback bool) *OllamaCloudUsageWindow {
+	// Read only the track's own, window-labelled ARIA value. Its model segments
+	// describe distribution, not quota utilization, and a long model list can
+	// exceed the text-walk limit before that walk reaches the track.
+	var candidate *OllamaCloudUsageWindow
+	walkHTML(root, func(node *html.Node) {
+		if candidate != nil || node.Type != html.ElementNode {
+			return
+		}
+		if _, ok := htmlAttribute(node, "data-usage-track"); !ok {
+			return
+		}
+		label, _ := htmlAttribute(node, "aria-label")
+		label = strings.TrimSpace(label)
+		lower := strings.ToLower(label)
+		for _, alias := range aliases {
+			if !strings.HasPrefix(lower, alias+" ") && !strings.HasPrefix(lower, alias+":") {
+				continue
+			}
+			percent, ok := ollamaUsagePercentFromRatio(label)
+			if !ok {
+				percent, ok = ollamaUsagePercentFromText(label)
+			}
+			if ok {
+				if strings.Contains(lower, "remaining") && !strings.Contains(lower, "used") {
+					percent = 100 - percent
+				}
+				candidate = &OllamaCloudUsageWindow{UsedPercent: percent}
+			}
+			return
+		}
+	})
 	label := findLabelElement(root, aliases)
 	if label == nil {
-		return nil
+		return candidate
 	}
-	var candidate *OllamaCloudUsageWindow
 	block := label
 	for depth := 0; block != nil && depth < 6; depth, block = depth+1, block.Parent {
 		text := normalizedNodeText(block)
@@ -350,6 +381,9 @@ func ollamaUsagePercentFromText(value string) (float64, bool) {
 
 func ollamaUsagePercentFromRatio(value string) (float64, bool) {
 	match := ollamaUsageRatioPattern.FindStringSubmatch(value)
+	if len(match) != 3 {
+		match = ollamaCreditsRatioPattern.FindStringSubmatch(strings.TrimSpace(value))
+	}
 	if len(match) != 3 {
 		return 0, false
 	}

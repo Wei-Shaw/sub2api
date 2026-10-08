@@ -191,4 +191,17 @@ describe('OllamaCloudUsageSettings', () => {
 
     expect(notifications.showError).toHaveBeenCalledWith('retry in 18 seconds')
   })
+  it('reports an incomplete HTTP-success refresh as a failure and preserves details', async () => {
+    const incomplete = detailedState()
+    incomplete.snapshot!.status = 'failed'
+    incomplete.snapshot!.last_error = 'incomplete_usage'
+    api.refreshOllamaCloudUsage.mockResolvedValueOnce(incomplete)
+    const wrapper = mount(OllamaCloudUsageSettings, { props: { account: account(detailedState()) } })
+    await wrapper.get('[data-testid="ollama-cloud-refresh"]').trigger('click')
+    await flushPromises()
+    expect(notifications.showSuccess).not.toHaveBeenCalled()
+    expect(notifications.showError).toHaveBeenCalledWith('admin.accounts.ollamaCloud.errors.incomplete_usage')
+    expect(wrapper.get('[data-testid="ollama-cloud-usage-details"]').text()).toContain('5h')
+  })
+
 })

@@ -254,8 +254,15 @@ const setAutoRefresh = async (enabled: boolean) => {
 const refreshUsage = async () => {
   refreshing.value = true
   try {
-    applyState(await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id))
-    appStore.showSuccess(t('admin.accounts.ollamaCloud.refreshSuccess'))
+    const next = await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id)
+    applyState(next)
+    if (next.snapshot?.status === 'ok') {
+      appStore.showSuccess(t('admin.accounts.ollamaCloud.refreshSuccess'))
+    } else {
+      appStore.showError(next.snapshot?.last_error === 'incomplete_usage'
+        ? t('admin.accounts.ollamaCloud.errors.incomplete_usage')
+        : t('admin.accounts.ollamaCloud.refreshFailed'))
+    }
   } catch (error) {
     appStore.showError(extractI18nErrorMessage(
       error,
