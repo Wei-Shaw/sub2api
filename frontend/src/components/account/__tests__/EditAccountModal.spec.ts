@@ -1684,6 +1684,8 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(parent.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(true)
     expect((parent.get('[data-testid="auto-reset-credit-5h-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect((parent.get('[data-testid="auto-reset-credit-7d-threshold"]').element as HTMLInputElement).value).toBe('100')
+    expect((parent.get('[data-testid="auto-reset-credit-5h-condition"]').element as HTMLInputElement).checked).toBe(true)
+    expect((parent.get('[data-testid="auto-reset-credit-7d-condition"]').element as HTMLInputElement).checked).toBe(true)
     expect(parent.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
     parent.unmount()
 
@@ -1715,10 +1717,40 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
     expect(extra).toMatchObject({
       auto_reset_credit_enabled: true,
+      auto_reset_credit_5h_disabled: false,
+      auto_reset_credit_7d_disabled: false,
       auto_reset_credit_5h_threshold: 0.755,
       auto_reset_credit_7d_threshold: 0.92
     })
     expect(extra).not.toHaveProperty('codex_auto_reset_credit_state')
+    wrapper.unmount()
+  })
+
+  it('只选择 7d 时保存触发条件并禁用 5h 阈值', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-5h-condition"]').setValue(false)
+    expect(wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_5h_disabled: true,
+      auto_reset_credit_7d_disabled: false,
+      auto_reset_credit_7d_threshold: 1
+    })
+    wrapper.unmount()
+  })
+
+  it('开启后不能取消所有触发条件', async () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-5h-condition"]').setValue(false)
+    await wrapper.get('[data-testid="auto-reset-credit-7d-condition"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

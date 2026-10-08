@@ -2567,6 +2567,10 @@
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
+            <label class="mb-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="autoResetCredit5hSelected" type="checkbox" :disabled="!autoResetCreditEnabled" data-testid="auto-reset-credit-5h-condition" />
+              {{ t('admin.accounts.autoResetCredit.condition5h') }}
+            </label>
             <label class="input-label">{{ t('admin.accounts.autoResetCredit.threshold5h') }}</label>
             <input
               v-model.number="autoResetCredit5hThreshold"
@@ -2575,11 +2579,15 @@
               max="100"
               step="0.1"
               class="input"
-              :disabled="!autoResetCreditEnabled"
+              :disabled="!autoResetCreditEnabled || !autoResetCredit5hSelected"
               data-testid="auto-reset-credit-5h-threshold"
             />
           </div>
           <div>
+            <label class="mb-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="autoResetCredit7dSelected" type="checkbox" :disabled="!autoResetCreditEnabled" data-testid="auto-reset-credit-7d-condition" />
+              {{ t('admin.accounts.autoResetCredit.condition7d') }}
+            </label>
             <label class="input-label">{{ t('admin.accounts.autoResetCredit.threshold7d') }}</label>
             <input
               v-model.number="autoResetCredit7dThreshold"
@@ -2588,7 +2596,7 @@
               max="100"
               step="0.1"
               class="input"
-              :disabled="!autoResetCreditEnabled"
+              :disabled="!autoResetCreditEnabled || !autoResetCredit7dSelected"
               data-testid="auto-reset-credit-7d-threshold"
             />
           </div>
@@ -3616,6 +3624,8 @@ const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
 const autoResetCreditEnabled = ref(false)
+const autoResetCredit5hSelected = ref(true)
+const autoResetCredit7dSelected = ref(true)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
@@ -4161,6 +4171,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 	autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
+	autoResetCredit5hSelected.value = extra?.auto_reset_credit_5h_disabled !== true
+	autoResetCredit7dSelected.value = extra?.auto_reset_credit_7d_disabled !== true
 	autoResetCredit5hThreshold.value =
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
@@ -5136,6 +5148,10 @@ const handleSubmit = async () => {
     return
   }
 	if (autoResetCreditEnabled.value) {
+		if (!autoResetCredit5hSelected.value && !autoResetCredit7dSelected.value) {
+			appStore.showError(t('admin.accounts.autoResetCredit.conditionRequired'))
+			return
+		}
 		const thresholds = [autoResetCredit5hThreshold.value, autoResetCredit7dThreshold.value]
 		if (thresholds.some((value) => !Number.isFinite(value) || value < 0.1 || value > 100)) {
 			appStore.showError(t('admin.accounts.autoResetCredit.thresholdInvalid'))
@@ -5730,6 +5746,8 @@ const handleSubmit = async () => {
 		}
 		if (props.account.type === 'oauth' && !isSparkShadow.value) {
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
+			newExtra.auto_reset_credit_5h_disabled = !autoResetCredit5hSelected.value
+			newExtra.auto_reset_credit_7d_disabled = !autoResetCredit7dSelected.value
 			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
 			newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
 		}
