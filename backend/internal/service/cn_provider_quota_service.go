@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"golang.org/x/sync/singleflight"
 )
@@ -31,13 +33,15 @@ const (
 	cnQuotaMaxBodyBytes    = 256 * 1024
 
 	// Extra 快照键后缀（加 provider 前缀，如 kimi_5h_used_percent）。
-	cnExtraSuffix5hUsed       = "5h_used_percent"
-	cnExtraSuffix5hReset      = "5h_reset_at"
-	cnExtraSuffixWeeklyUsed   = "weekly_used_percent"
-	cnExtraSuffixWeeklyReset  = "weekly_reset_at"
-	cnExtraSuffixMonthlyUsed  = "monthly_used_percent"
-	cnExtraSuffixMonthlyReset = "monthly_reset_at"
-	cnExtraSuffixUsageUpdated = "usage_updated_at"
+	cnExtraSuffix5hUsed        = "5h_used_percent"
+	cnExtraSuffix5hReset       = "5h_reset_at"
+	cnExtraSuffixWeeklyUsed    = "weekly_used_percent"
+	cnExtraSuffixWeeklyReset   = "weekly_reset_at"
+	cnExtraSuffixMonthlyUsed   = "monthly_used_percent"
+	cnExtraSuffixMonthlyReset  = "monthly_reset_at"
+	cnExtraSuffixUsageUpdated  = "usage_updated_at"
+	cnExtraSuffixWeekResetAvbl = "week_reset_available"
+	cnExtraSuffixWeekResetExp  = "week_reset_expire_at"
 )
 
 // cnExtraKey 拼接 provider 维度的 extra 键。
@@ -58,10 +62,14 @@ type CNProviderQuotaProbeResult struct {
 	CredentialValid bool          `json:"credential_valid"` // false = 401/403 鉴权失败
 	Tiers           []CNQuotaTier `json:"tiers,omitempty"`
 	PlanLevel       string        `json:"plan_level,omitempty"` // 智谱套餐等级
-	StatusCode      int           `json:"status_code,omitempty"`
-	FetchedAt       int64         `json:"fetched_at"`
-	Persisted       bool          `json:"persisted"`
-	Error           string        `json:"error,omitempty"`
+	// 智谱专用：是否存在可用的周额度重置次数（官网「用量重置额度」卡片显隐同源：
+	// list 响应 weekResets 含 available=true 记录才展示重置按钮）。
+	ResetAvailable    bool   `json:"reset_available,omitempty"`
+	WeekResetExpireAt string `json:"week_reset_expire_at,omitempty"` // 可用次数有效期（上游原样字符串）
+	StatusCode        int    `json:"status_code,omitempty"`
+	FetchedAt         int64  `json:"fetched_at"`
+	Persisted         bool   `json:"persisted"`
+	Error             string `json:"error,omitempty"`
 }
 
 // CNProviderQuotaService 探测 Kimi / Zhipu Coding Plan 的滚动窗口用量。
@@ -71,6 +79,18 @@ type CNProviderQuotaService struct {
 	httpUpstream HTTPUpstream
 	cfg          *config.Config
 	flight       singleflight.Group
+}
+
+// CNProviderQuotaResetResult 智谱 Coding Plan 周额度重置结果（管理端 + UI 消费）。
+type CNProviderQuotaResetResult struct {
+	Provider       string                      `json:"provider"`
+	Success        bool                        `json:"success"`
+	Window         string                      `json:"window"`           // 固定 "weekly"：周重置会同步重置 5h
+	RecordID       int64                       `json:"record_id"`        // 消耗的重置次数记录 ID
+	WeekResetsLeft int                         `json:"week_resets_left"` // 使用后剩余可用周重置次数
+	Error          string                      `json:"error,omitempty"`
+	FetchedAt      int64                       `json:"fetched_at"`
+	Probe          *CNProviderQuotaProbeResult `json:"probe,omitempty"` // 重置成功后立即刷新的用量快照
 }
 
 // NewCNProviderQuotaService 构造 Coding Plan 额度探测服务。
@@ -261,7 +281,29 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	result.Success = true
 	result.CredentialValid = true
 
+	// 智谱：顺带拉一次额度重置次数列表，暴露周重置可用性（官网重置按钮显隐同源）。
+	// 列表失败不阻断主探测，且不覆盖已有快照键。
+	resetListFetched := false
+	if provider == PlatformZhipu {
+		records, err := s.queryZhipuResetList(ctx, account)
+		if err != nil {
+			slog.Debug("zhipu_reset_list_failed", "account_id", account.ID, "error", err)
+		} else {
+			resetListFetched = true
+			if len(records) > 0 {
+				result.ResetAvailable = true
+				result.WeekResetExpireAt = records[0].ExpireTime
+			}
+		}
+	}
+
 	updates := cnQuotaExtraUpdates(provider, tiers, now)
+	if resetListFetched {
+		updates[cnExtraKey(provider, cnExtraSuffixWeekResetAvbl)] = result.ResetAvailable
+		if result.WeekResetExpireAt != "" {
+			updates[cnExtraKey(provider, cnExtraSuffixWeekResetExp)] = result.WeekResetExpireAt
+		}
+	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
 	} else {
@@ -302,6 +344,182 @@ func validateCodingPlanAccount(account *Account) error {
 	return nil
 }
 
+// ResetUsage 使用智谱 Coding Plan 的周额度重置次数（周重置会同步重置 5h 额度且
+// 不额外消耗 5h 次数，官网同款语义），成功后立即重新探测用量刷新 Extra 快照。
+// 仅智谱支持（kimi/minimax 上游无此能力）。
+func (s *CNProviderQuotaService) ResetUsage(ctx context.Context, accountID int64) (*CNProviderQuotaResetResult, error) {
+	account, err := s.loadCodingPlanAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return s.ResetUsageForAccount(ctx, account)
+}
+
+// ResetUsageForAccount 对已加载账号执行周额度重置。
+func (s *CNProviderQuotaService) ResetUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaResetResult, error) {
+	if s == nil || s.accountRepo == nil || s.httpUpstream == nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "CN_QUOTA_NOT_CONFIGURED", "cn provider quota service is not configured")
+	}
+	if err := validateCodingPlanAccount(account); err != nil {
+		return nil, err
+	}
+	provider := account.GetCodingPlanProvider()
+	if provider != PlatformZhipu {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_RESET_UNSUPPORTED", "quota reset is only supported for zhipu")
+	}
+	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	if apiKey == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
+	}
+
+	// list → use → 再 list/探测，预算按三段上游调用给足。
+	probeCtx, cancel := context.WithTimeout(context.Background(), 3*cnQuotaUpstreamTimeout+5*time.Second)
+	defer cancel()
+
+	result := &CNProviderQuotaResetResult{
+		Provider:  provider,
+		Window:    "weekly",
+		FetchedAt: time.Now().UTC().Unix(),
+	}
+
+	records, err := s.queryZhipuResetList(probeCtx, account)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "CN_QUOTA_RESET_LIST_FAILED", "query reset list: %v", err)
+	}
+	if len(records) == 0 {
+		result.Error = "no available weekly reset quota"
+		return result, nil
+	}
+	record := records[0]
+	result.RecordID = record.RecordID
+
+	payload, _ := json.Marshal(map[string]any{
+		"targetType": zhipuResetTargetType(account),
+		"resetType":  "WEEK",
+		"recordId":   record.RecordID,
+		"requestId":  uuid.NewString(), // 官网同款幂等请求号，逐次生成
+	})
+	status, body, err := s.doZhipuResetRequest(probeCtx, account, http.MethodPost,
+		zhipuResetUseURL(account.GetOpenAIBaseURL()), payload)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "CN_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		result.Error = fmt.Sprintf("Authentication failed (HTTP %d)", status)
+		return result, nil
+	}
+	if status < 200 || status >= 300 {
+		result.Error = fmt.Sprintf("API error (HTTP %d): %s", status, truncate(strings.TrimSpace(string(body)), 240))
+		return result, nil
+	}
+	if success := gjson.GetBytes(body, "success"); success.Exists() && !success.Bool() {
+		msg := strings.TrimSpace(gjson.GetBytes(body, "msg").String())
+		if msg == "" {
+			msg = "unknown zhipu reset error"
+		}
+		result.Error = "API error: " + msg
+		return result, nil
+	}
+	result.Success = true
+
+	// 重置成功后刷新：剩余可用次数 + 用量快照（探测内部走 singleflight，语义不变）。
+	if remaining, err := s.queryZhipuResetList(probeCtx, account); err == nil {
+		result.WeekResetsLeft = len(remaining)
+	} else {
+		slog.Warn("cn_quota_reset_remaining_failed", "account_id", account.ID, "error", err)
+	}
+	if probe, err := s.QueryUsageForAccount(ctx, account); err == nil {
+		result.Probe = probe
+	} else {
+		slog.Warn("cn_quota_reset_refresh_failed", "account_id", account.ID, "error", err)
+	}
+	return result, nil
+}
+
+// zhipuResetRecord 一条可用的周额度重置次数记录。
+type zhipuResetRecord struct {
+	RecordID   int64
+	ExpireTime string
+}
+
+// queryZhipuResetList 拉取智谱额度重置次数列表，返回 available=true 的周重置记录。
+func (s *CNProviderQuotaService) queryZhipuResetList(ctx context.Context, account *Account) ([]zhipuResetRecord, error) {
+	targetType := zhipuResetTargetType(account)
+	listURL := zhipuResetListURL(account.GetOpenAIBaseURL()) + "?targetType=" + targetType
+	status, body, err := s.doZhipuResetRequest(ctx, account, http.MethodGet, listURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", status, truncate(strings.TrimSpace(string(body)), 240))
+	}
+	if success := gjson.GetBytes(body, "success"); success.Exists() && !success.Bool() {
+		msg := strings.TrimSpace(gjson.GetBytes(body, "msg").String())
+		if msg == "" {
+			msg = "unknown zhipu reset list error"
+		}
+		return nil, fmt.Errorf("%s", msg)
+	}
+	var records []zhipuResetRecord
+	gjson.GetBytes(body, "data.weekResets").ForEach(func(_, item gjson.Result) bool {
+		if item.Get("available").Bool() {
+			records = append(records, zhipuResetRecord{
+				RecordID:   item.Get("recordId").Int(),
+				ExpireTime: strings.TrimSpace(item.Get("expireTime").String()),
+			})
+		}
+		return true
+	})
+	return records, nil
+}
+
+// doZhipuResetRequest 发起智谱额度重置域请求（list/use 共用），
+// 鉴权/头/出站校验与额度探测保持同一套约束。
+func (s *CNProviderQuotaService) doZhipuResetRequest(ctx context.Context, account *Account, method, targetURL string, body []byte) (int, []byte, error) {
+	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
+	if err != nil {
+		return 0, nil, err
+	}
+	proxyURL := s.resolveProxyURL(ctx, account)
+	callCtx, cancel := context.WithTimeout(ctx, cnQuotaUpstreamTimeout)
+	defer cancel()
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(callCtx, method, validatedURL, reader)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", strings.TrimSpace(account.GetCNAPIKey())) // 智谱额度域端点鉴权不加 Bearer 前缀
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en")
+	if org := strings.TrimSpace(account.GetCredential("zhipu_organization")); org != "" {
+		req.Header.Set("bigmodel-organization", org)
+		if project := strings.TrimSpace(account.GetCredential("zhipu_project")); project != "" {
+			req.Header.Set("bigmodel-project", project)
+		}
+	}
+	account.ApplyHeaderOverrides(req.Header)
+
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, cnQuotaMaxBodyBytes))
+	return resp.StatusCode, bodyBytes, nil
+}
+
+// zhipuResetTargetType 团队版（有组织凭据）TEAM，个人版 PERSONAL。
+func zhipuResetTargetType(account *Account) string {
+	if strings.TrimSpace(account.GetCredential("zhipu_organization")) != "" {
+		return "TEAM"
+	}
+	return "PERSONAL"
+}
+
 func (s *CNProviderQuotaService) resolveProxyURL(ctx context.Context, account *Account) string {
 	if account == nil || account.ProxyID == nil {
 		return ""
@@ -321,6 +539,16 @@ func (s *CNProviderQuotaService) resolveProxyURL(ctx context.Context, account *A
 // zhipuQuotaURL 根据 base_url 解析智谱额度端点（与数据面推理域名同主机）。
 func zhipuQuotaURL(baseURL string) string {
 	return zhipuQuotaHost(baseURL) + "/api/monitor/usage/quota/limit"
+}
+
+// zhipuResetListURL / zhipuResetUseURL 智谱「用量重置额度」端点（官网
+// bigmodel.cn 控制台同路径，open.bigmodel.cn 数据面域名同样可达且接受 API Key 鉴权）。
+func zhipuResetListURL(baseURL string) string {
+	return zhipuQuotaHost(baseURL) + "/api/biz/customer-package-reset/list"
+}
+
+func zhipuResetUseURL(baseURL string) string {
+	return zhipuQuotaHost(baseURL) + "/api/biz/customer-package-reset/use"
 }
 
 // kimiQuotaURL 根据 base_url 解析 Kimi For Coding 额度端点。
@@ -508,6 +736,8 @@ func classifyZhipuWindowUnit(unit int64) cnZhipuWindow {
 // CREDIT_LIMIT（信用额度）与 TOKENS_LIMIT（token 窗口）度量不同：两者同时返回时
 // 只让 TOKENS_LIMIT 参与 5h/weekly 槽位竞争，避免信用额度百分比污染阈值停调
 // 快照；仅当无任何 TOKENS_LIMIT 条目时才降级用 CREDIT_LIMIT 展示。
+// 降级时显式 unit 同样优先（团队版 type=2 响应为纯 CREDIT_LIMIT + unit=3/6 形态，
+// 且周期末尾周窗口 reset 早于 5h，reset 排序必然标反），unit 缺失才走启发式。
 // 老套餐只回 1 条 TOKENS_LIMIT，自然降级为仅 5h；新套餐回 2 条。
 func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 	type entry struct {
@@ -542,6 +772,14 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 			unclassified = append(unclassified, e)
 		}
 	}
+	// CREDIT_LIMIT 按 unit 分类的候选槽位：仅当响应无任何 TOKENS_LIMIT 条目时降级启用，
+	// 不与 TOKENS_LIMIT 竞争正位（团队版 type=2 响应即纯 CREDIT_LIMIT + 显式 unit 形态）。
+	var (
+		credit5h        entry
+		credit5hSet     bool
+		creditWeekly    entry
+		creditWeeklySet bool
+	)
 	var creditFallback []entry
 	hasTokensLimit := false
 
@@ -575,13 +813,33 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 			hasTokensLimit = true
 			classify(item, e)
 		} else {
-			creditFallback = append(creditFallback, e)
+			// CREDIT_LIMIT：有显式 unit 的按 unit 记入候选槽位（首条优先），
+			// unit 缺失的留给 reset 启发式兜底。
+			switch classifyZhipuWindowUnit(item.Get("unit").Int()) {
+			case cnZhipuWindow5h:
+				if !credit5hSet {
+					credit5h, credit5hSet = e, true
+				}
+			case cnZhipuWindowWeekly:
+				if !creditWeeklySet {
+					creditWeekly, creditWeeklySet = e, true
+				}
+			default:
+				creditFallback = append(creditFallback, e)
+			}
 		}
 		return true
 	})
 
-	// 无任何 TOKENS_LIMIT 条目（部分套餐只报信用额度）：降级用 CREDIT_LIMIT 展示。
+	// 无任何 TOKENS_LIMIT 条目（团队版套餐只报信用额度）：降级用 CREDIT_LIMIT 展示，
+	// 显式 unit 分类优先，unit 缺失的条目再走 reset 启发式。
 	if !hasTokensLimit {
+		if !fiveHourSet && credit5hSet {
+			fiveHour, fiveHourSet = credit5h, true
+		}
+		if !weeklySet && creditWeeklySet {
+			weekly, weeklySet = creditWeekly, true
+		}
 		unclassified = append(unclassified, creditFallback...)
 	}
 
