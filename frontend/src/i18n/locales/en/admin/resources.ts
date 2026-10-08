@@ -532,6 +532,8 @@ export default {
       outputCost: 'Output Cost',
       cacheCreationCost: 'Cache Creation Cost',
       cacheReadCost: 'Cache Read Cost',
+      longContextBadge: 'Long context',
+      longContextBadgeHint: 'This request exceeded the long-context threshold and was billed with tiered multipliers. Input/output multipliers vary by model (e.g. ×2/×1.5) — see the cost breakdown for actual rates.',
       inputTokens: 'Input Tokens',
       outputTokens: 'Output Tokens',
       cacheCreationTokens: 'Cache Creation Tokens',

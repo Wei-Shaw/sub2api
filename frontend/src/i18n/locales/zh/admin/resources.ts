@@ -529,6 +529,8 @@ export default {
       outputCost: '输出费用',
       cacheCreationCost: '缓存创建费用',
       cacheReadCost: '缓存读取费用',
+      longContextBadge: '长上下文',
+      longContextBadgeHint: '该请求超过长上下文阈值，已按模型的阶梯倍率计费；不同模型的输入/输出倍率不同（如 ×2/×1.5），实际费用以费用明细为准',
       inputTokens: '输入 Token',
       outputTokens: '输出 Token',
       cacheCreationTokens: '缓存创建 Token',
