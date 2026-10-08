@@ -119,6 +119,7 @@ const (
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	claudeWeeklyStats sync.Map           // accountID -> *claudeWeeklyStatsEntry (separate from 5h)
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
@@ -1344,17 +1345,35 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // addWindowStats 为 usage 数据添加窗口期统计
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
-	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet/SevenDayFable 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayFable == nil {
+	if account == nil || usage == nil || s.usageLogRepo == nil {
+		return
+	}
+	// Only the general Claude 7d bucket can use all-account costs. Sonnet and
+	// Fable have separate quotas; attaching unfiltered costs would mislead users.
+	if supportsAnthropicPassiveUsage(account) && usage.SevenDay != nil {
+		var cache *sync.Map
+		if s.cache != nil {
+			cache = &s.cache.claudeWeeklyStats
+		}
+		stats, err := loadClaudeWeeklyStats(ctx, s.usageLogRepo, cache, account.ID, usage.SevenDay.ResetsAt, usage.SevenDay.Utilization, time.Now())
+		if err != nil {
+			log.Printf("Failed to get Claude weekly stats for account %d: %v", account.ID, err)
+		} else if stats != nil {
+			usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
+		}
+	}
+	// Keep 5h and 7d queries independent, including their failure paths.
+	if usage.FiveHour == nil {
 		return
 	}
 
 	// 检查窗口统计缓存（1 分钟）
 	var windowStats *WindowStats
-	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
-		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
-			windowStats = cache.stats
+	if s.cache != nil {
+		if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
+			if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
+				windowStats = cache.stats
+			}
 		}
 	}
 
@@ -1369,19 +1388,15 @@ func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Accou
 			return
 		}
 
-		windowStats = &WindowStats{
-			Requests:     stats.Requests,
-			Tokens:       stats.Tokens,
-			Cost:         stats.Cost,
-			StandardCost: stats.StandardCost,
-			UserCost:     stats.UserCost,
-		}
+		windowStats = windowStatsFromAccountStats(stats)
 
 		// 缓存窗口统计（1 分钟）
-		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
-			stats:     windowStats,
-			timestamp: time.Now(),
-		})
+		if s.cache != nil {
+			s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
+				stats:     windowStats,
+				timestamp: time.Now(),
+			})
+		}
 	}
 
 	// 为 FiveHour 添加 WindowStats（5h 窗口统计）
