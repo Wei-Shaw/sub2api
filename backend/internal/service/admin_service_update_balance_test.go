@@ -52,6 +52,8 @@ func (s *balanceRedeemRepoStub) Create(ctx context.Context, code *RedeemCode) er
 		return nil
 	}
 	clone := *code
+	clone.ID = int64(len(s.created) + 1)
+	code.ID = clone.ID
 	s.created = append(s.created, &clone)
 	return nil
 }
@@ -69,12 +71,23 @@ type adminRechargeAffiliateAccruerStub struct {
 }
 
 type adminRechargeAffiliateAccrual struct {
-	userID int64
-	amount float64
+	userID       int64
+	amount       float64
+	sourceType   AffiliateRebateSourceType
+	redeemCodeID int64
 }
 
-func (s *adminRechargeAffiliateAccruerStub) AccrueInviteRebate(_ context.Context, userID int64, amount float64) (float64, error) {
-	s.calls = append(s.calls, adminRechargeAffiliateAccrual{userID: userID, amount: amount})
+func (s *adminRechargeAffiliateAccruerStub) AccrueInviteRebate(_ context.Context, userID int64, source AffiliateRebateSource) (float64, error) {
+	var redeemCodeID int64
+	if source.RedeemCodeID != nil {
+		redeemCodeID = *source.RedeemCodeID
+	}
+	s.calls = append(s.calls, adminRechargeAffiliateAccrual{
+		userID:       userID,
+		amount:       source.BaseAmount,
+		sourceType:   source.Type,
+		redeemCodeID: redeemCodeID,
+	})
 	return s.rebate, s.err
 }
 
@@ -119,6 +132,7 @@ func TestAdminService_UpdateUserBalance_UsesAtomicPrimitives(t *testing.T) {
 			svc := &adminServiceImpl{
 				userRepo:       repo,
 				redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{}},
+				entClient:      newPaymentConfigServiceTestClient(t),
 			}
 
 			user, err := svc.UpdateUserBalance(context.Background(), 7, tt.amount, tt.operation, "")
@@ -134,6 +148,7 @@ func TestAdminService_UpdateUserBalance_RejectsNegativeResult(t *testing.T) {
 	svc := &adminServiceImpl{
 		userRepo:       repo,
 		redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{}},
+		entClient:      newPaymentConfigServiceTestClient(t),
 	}
 
 	_, err := svc.UpdateUserBalance(context.Background(), 7, 4, "subtract", "")
@@ -164,6 +179,7 @@ func TestAdminService_UpdateUserBalance_InvalidatesAuthCache(t *testing.T) {
 		userRepo:             repo,
 		redeemCodeRepo:       redeemRepo,
 		authCacheInvalidator: invalidator,
+		entClient:            newPaymentConfigServiceTestClient(t),
 	}
 
 	_, err := svc.UpdateUserBalance(context.Background(), 7, 5, "add", "")
@@ -181,6 +197,7 @@ func TestAdminService_UpdateUserBalance_NoChangeNoInvalidate(t *testing.T) {
 		userRepo:             repo,
 		redeemCodeRepo:       redeemRepo,
 		authCacheInvalidator: invalidator,
+		entClient:            newPaymentConfigServiceTestClient(t),
 	}
 
 	_, err := svc.UpdateUserBalance(context.Background(), 7, 10, "set", "")
@@ -207,7 +224,7 @@ func TestAdminService_UpdateUserBalance_AdminRechargeAffiliateRebate(t *testing.
 			enabled:   true,
 			operation: "add",
 			amount:    0.1,
-			wantCalls: []adminRechargeAffiliateAccrual{{userID: 7, amount: 0.1}},
+			wantCalls: []adminRechargeAffiliateAccrual{{userID: 7, amount: 0.1, sourceType: AffiliateRebateSourceAdminRecharge, redeemCodeID: 1}},
 		},
 		{
 			name:      "enabled set increase",
@@ -234,6 +251,7 @@ func TestAdminService_UpdateUserBalance_AdminRechargeAffiliateRebate(t *testing.
 				redeemCodeRepo:   redeemRepo,
 				settingService:   adminRechargeSettingService(tt.enabled),
 				affiliateService: affiliate,
+				entClient:        newPaymentConfigServiceTestClient(t),
 			}
 
 			_, err := svc.UpdateUserBalance(context.Background(), 7, tt.amount, tt.operation, "")
@@ -243,7 +261,7 @@ func TestAdminService_UpdateUserBalance_AdminRechargeAffiliateRebate(t *testing.
 	}
 }
 
-func TestAdminService_UpdateUserBalance_AffiliateFailureDoesNotRollbackRecharge(t *testing.T) {
+func TestAdminService_UpdateUserBalance_AffiliateFailureReturnsError(t *testing.T) {
 	baseRepo := &userRepoStub{user: &User{ID: 7, Balance: 10}}
 	repo := &balanceUserRepoStub{userRepoStub: baseRepo}
 	redeemRepo := &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{}}
@@ -253,11 +271,12 @@ func TestAdminService_UpdateUserBalance_AffiliateFailureDoesNotRollbackRecharge(
 		redeemCodeRepo:   redeemRepo,
 		settingService:   adminRechargeSettingService(true),
 		affiliateService: affiliate,
+		entClient:        newPaymentConfigServiceTestClient(t),
 	}
 
 	user, err := svc.UpdateUserBalance(context.Background(), 7, 5, "add", "")
-	require.NoError(t, err)
-	require.Equal(t, 15.0, user.Balance)
-	require.Equal(t, []adminRechargeAffiliateAccrual{{userID: 7, amount: 5}}, affiliate.calls)
+	require.Nil(t, user)
+	require.ErrorContains(t, err, "accrue affiliate rebate for admin recharge")
+	require.Equal(t, []adminRechargeAffiliateAccrual{{userID: 7, amount: 5, sourceType: AffiliateRebateSourceAdminRecharge, redeemCodeID: 1}}, affiliate.calls)
 	require.Len(t, redeemRepo.created, 1)
 }
