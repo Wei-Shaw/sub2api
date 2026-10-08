@@ -844,7 +844,7 @@ func TestStreamingReasoning(t *testing.T) {
 
 	sse, err := ResponsesAnthropicEventToSSE(events[0])
 	require.NoError(t, err)
-	assert.Contains(t, sse, `"content_block":{"thinking":"","type":"thinking"}`)
+	assert.Contains(t, sse, `"content_block":{"thinking":"","signature":"","type":"thinking"}`)
 
 	// reasoning text delta
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
