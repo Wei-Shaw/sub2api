@@ -398,13 +398,40 @@ func batchUsageErrorMessage(err error) string {
 	return err.Error()
 }
 
+// resolveUsageOwnerAccount returns the account whose quota and usage state own
+// the requested account's core usage data. Normal linked accounts always share
+// their parent's usage state, regardless of platform. Spark shadows keep their
+// own independent quota dimension and therefore resolve to themselves.
+func (s *AccountUsageService) resolveUsageOwnerAccount(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil {
+		return nil, fmt.Errorf("account is required")
+	}
+	if !account.IsLinkedAccount() {
+		return account, nil
+	}
+
+	parent, err := s.accountRepo.GetByID(ctx, *account.ParentAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve linked account parent %d: %w", *account.ParentAccountID, err)
+	}
+	if parent == nil {
+		return nil, fmt.Errorf("linked account parent %d not found", *account.ParentAccountID)
+	}
+	if parent.IsShadow() {
+		return nil, fmt.Errorf("linked account parent %d is itself a shadow account", parent.ID)
+	}
+	return parent, nil
+}
+
 func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *Account, forceProbe bool) (*UsageInfo, error) {
 	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", true); err != nil {
 		return nil, err
 	}
-	if account == nil {
-		return nil, fmt.Errorf("account is required")
+	usageAccount, err := s.resolveUsageOwnerAccount(ctx, account)
+	if err != nil {
+		return nil, err
 	}
+	account = usageAccount
 	accountID := account.ID
 
 	// Dedicated UI load-test accounts must remain fully interactive without ever
@@ -635,10 +662,13 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 		g.Go(func() error {
 			var usage *UsageInfo
 			var usageErr error
-			if supportsAnthropicPassiveUsage(account) {
-				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
+			usageAccount, resolveErr := s.resolveUsageOwnerAccount(gctx, account)
+			if resolveErr != nil {
+				usageErr = resolveErr
+			} else if supportsAnthropicPassiveUsage(usageAccount) {
+				usage, usageErr = s.getPassiveUsageForAccount(gctx, usageAccount)
 			} else {
-				usage, usageErr = s.getUsageForAccount(gctx, account, force)
+				usage, usageErr = s.getUsageForAccount(gctx, usageAccount, force)
 			}
 
 			mu.Lock()
@@ -667,7 +697,14 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
-	return s.getPassiveUsageForAccount(ctx, account)
+	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", false); err != nil {
+		return nil, err
+	}
+	usageAccount, err := s.resolveUsageOwnerAccount(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	return s.getPassiveUsageForAccount(ctx, usageAccount)
 }
 
 func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -813,7 +850,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 			if s.openAIQuotaService != nil {
 				if quotaUsage, err := s.openAIQuotaService.QueryUsage(WithScopedAdminAccountOperation(ctx, "accounts.usage.read"), account.ID); err == nil {
 					updates := buildOpenAIAutoResetUsageUpdates(quotaUsage, now)
-					if account.IsShadow() {
+					if account.IsSparkShadow() {
 						updates = buildCodexSparkWindowExtraUpdates(quotaUsage, now)
 					}
 					if hasOpenAIQuotaObservation(updates) {
@@ -824,7 +861,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 					}
 				}
 			}
-		} else if account.IsShadow() {
+		} else if account.IsSparkShadow() {
 			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
 			// via the shared OpenAIQuotaService, which resolves credentials from the
 			// parent account.  The result is written to the shadow row's own codex_*

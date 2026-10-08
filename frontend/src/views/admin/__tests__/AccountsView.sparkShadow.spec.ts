@@ -275,7 +275,7 @@ describe('admin AccountsView — 账号行展示', () => {
     vi.unstubAllGlobals()
   })
 
-  it('影子行 email 单元格显示 parent_email，PlatformTypeBadge 接收 parent_plan_type/parent_privacy_mode', async () => {
+  it('影子行 email 单元格隐藏关联账号，PlatformTypeBadge 接收 parent_plan_type/parent_privacy_mode', async () => {
     const shadowAccount = {
       id: 100,
       name: '影子账号',
@@ -294,10 +294,10 @@ describe('admin AccountsView — 账号行展示', () => {
     const wrapper = mountViewWithRow()
     await flushPromises()
 
-    // 1. email 单元格通过 OR 兜底渲染 parent_email
-    expect(wrapper.text()).toContain('parent@example.com')
+    // 1. 影子行不展示关联账号邮箱（底层数据仍返回 parent_email，仅界面隐藏）
+    expect(wrapper.text()).not.toContain('parent@example.com')
 
-    // 2. PlatformTypeBadge 收到 parent_plan_type 和 parent_privacy_mode
+    // 2. PlatformTypeBadge 仍收到 parent_plan_type 和 parent_privacy_mode
     const badge = wrapper.findComponent(PlatformTypeBadge)
     expect(badge.exists()).toBe(true)
     expect(badge.props('planType')).toBe('plus')
