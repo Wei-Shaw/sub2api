@@ -1801,6 +1801,11 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		// 订阅信息可能不在 context 中（/v1/usage 路径跳过了中间件的计费检查）
 		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if ok {
+			// Report what billing would enforce right now: windows that expired with
+			// no charge since are still stale in storage (the reset is lazy), so
+			// advance them in memory before reading usage and reset times.
+			subscription = subscription.WithUsageWindowsAdvancedAt(time.Now())
+			dailyResetAt, weeklyResetAt, monthlyResetAt := subscription.UsageWindowResetTimes()
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
 			resp["subscription"] = gin.H{
@@ -1810,6 +1815,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 				"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
 				"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
 				"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
+				"daily_reset_at":      subscriptionResetAtIfLimited(apiKey.Group.HasDailyLimit(), dailyResetAt),
+				"weekly_reset_at":     subscriptionResetAtIfLimited(apiKey.Group.HasWeeklyLimit(), weeklyResetAt),
+				"monthly_reset_at":    subscriptionResetAtIfLimited(apiKey.Group.HasMonthlyLimit(), monthlyResetAt),
 				"weekly_window_start": subscription.WeeklyWindowStart,
 				"expires_at":          subscription.ExpiresAt,
 			}
@@ -1853,6 +1861,15 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		resp["model_stats"] = modelStats
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// subscriptionResetAtIfLimited reports a window's reset time only when that
+// window has a configured limit; an unlimited window has nothing to reset.
+func subscriptionResetAtIfLimited(limited bool, resetAt *time.Time) *time.Time {
+	if !limited {
+		return nil
+	}
+	return resetAt
 }
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度
