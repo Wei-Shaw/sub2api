@@ -17,7 +17,8 @@ import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
 
-  const sidebarCollapsed = ref<boolean>(false)
+  const SIDEBAR_COLLAPSED_KEY = 'sidebar_collapsed'
+  const sidebarCollapsed = ref<boolean>(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true')
   const mobileOpen = ref<boolean>(false)
   const sidebarScrollTop = ref<number>(0)
   const loading = ref<boolean>(false)
@@ -61,6 +62,7 @@ export const useAppStore = defineStore('app', () => {
    */
   function toggleSidebar(): void {
     sidebarCollapsed.value = !sidebarCollapsed.value
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed.value))
   }
 
   /**
@@ -69,6 +71,7 @@ export const useAppStore = defineStore('app', () => {
    */
   function setSidebarCollapsed(collapsed: boolean): void {
     sidebarCollapsed.value = collapsed
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed))
   }
 
   /**
@@ -232,6 +235,7 @@ export const useAppStore = defineStore('app', () => {
     loading.value = false
     loadingCount.value = 0
     toasts.value = []
+    localStorage.removeItem(SIDEBAR_COLLAPSED_KEY)
   }
 
   // ==================== Version Management ====================
