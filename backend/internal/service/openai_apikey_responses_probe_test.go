@@ -62,7 +62,8 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 		{name: "deepseek chat clears forced responses", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
 		{name: "kimi adaptive supports responses", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
 		{name: "kimi responses protocol supports responses", id: 205, platform: PlatformKimi, protocol: APIProtocolResponses, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
-		{name: "zhipu adaptive falls back to chat", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
+		{name: "zhipu coding responses supports responses", id: 206, platform: PlatformZhipu, protocol: APIProtocolResponses, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
+		{name: "zhipu coding adaptive supports responses", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
 	}
 
 	for _, tc := range tests {
@@ -70,7 +71,7 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 			updateCalls := make(chan map[string]any, 1)
 			account := Account{
 				ID: tc.id, Platform: tc.platform, Type: AccountTypeAPIKey,
-				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": tc.protocol},
+				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": tc.protocol, "account_mode": AccountModeCoding},
 				Extra: map[string]any{
 					openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceResponses),
 				},

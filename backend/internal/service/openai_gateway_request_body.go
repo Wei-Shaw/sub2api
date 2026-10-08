@@ -135,12 +135,13 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 // DeepSeek 另需把 Codex/OpenAI 的 input_image.image_url 写成线上 serde
 // 要求的 url 字段；openai 平台但 base_url 指向 api.deepseek.com 的映射
 // 账号同样走这条出站改写（Codex 贴图会 422 missing field url）。
+// 智谱原生 Responses 保留请求的状态字段，不套用其他供应商的无状态限制。
 // 非 CN / 非 DeepSeek 上游原样返回。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
 	if account == nil {
 		return body
 	}
-	applyStateless := account.UsesNativeCNResponses()
+	applyStateless := account.UsesNativeCNResponses() && !account.IsZhipu()
 	applyImages := shouldAliasDeepSeekResponsesInputImages(account)
 	if !applyStateless && !applyImages {
 		return body
