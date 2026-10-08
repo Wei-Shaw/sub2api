@@ -107,6 +107,90 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
 }
 
+// TestParseKimiUsageTiers_MonthlyPlan 月付套餐形态：无顶层 usage，改由
+// usages.limit_5h / limit_7d / limit_month_total / limit_month_code 以
+// used_ratio（0-1）上报。monthly 取两条月度键的较大用量 + 较早重置时间。
+func TestParseKimiUsageTiers_MonthlyPlan(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"limits": [
+			{
+				"window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+				"detail": {"limit": "100", "remaining": "100", "resetTime": "2026-10-04T09:22:25.101480Z"}
+			}
+		],
+		"usages": {
+			"limit_5h": {"used_ratio": 0, "reset_time": "2026-10-04T09:22:24Z"},
+			"limit_month_total": {"used_ratio": 1, "reset_time": "2026-10-17T07:23:05Z"},
+			"limit_month_code": {"used_ratio": 1, "reset_time": "2026-10-17T07:23:05Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-04T09:22:25Z", tiers[0].ResetAt)
+	require.Equal(t, "monthly", tiers[1].Window)
+	require.InDelta(t, 100.0, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-17T07:23:05Z", tiers[1].ResetAt)
+
+	// 月度快照落入 Extra（供阈值停调与 429 冷却消费）。
+	updates := cnQuotaExtraUpdates(PlatformKimi, tiers, time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC))
+	require.Equal(t, 100.0, updates["kimi_monthly_used_percent"])
+	require.Equal(t, "2026-10-17T07:23:05Z", updates["kimi_monthly_reset_at"])
+}
+
+// TestParseKimiUsageTiers_LegacyWithUsedRatio 老套餐（顶层 usage）同时携带
+// usages.limit_7d 时，weekly 以 used_ratio 为准、不重复产出 weekly 档。
+func TestParseKimiUsageTiers_LegacyWithUsedRatio(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usage": {"limit": "100", "used": "20", "remaining": "80", "resetTime": "2026-10-07T05:04:39.713183Z"},
+		"limits": [
+			{
+				"window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+				"detail": {"limit": "100", "remaining": "100", "resetTime": "2026-10-04T11:04:39.713183Z"}
+			}
+		],
+		"usages": {
+			"limit_5h": {"used_ratio": 0, "reset_time": "2026-10-04T11:04:38Z"},
+			"limit_7d": {"used_ratio": 0.203912, "reset_time": "2026-10-07T05:04:38Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-04T11:04:39Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 20.3912, tiers[1].UsedPercent, 1e-9) // 0.203912 * 100
+	require.Equal(t, "2026-10-07T05:04:38Z", tiers[1].ResetAt)
+}
+
+// TestParseKimiUsageTiers_MonthlyPicksMaxUsage 月度 total/code 任一耗尽即限流：
+// monthly 档取较大用量；重置时间不一致时取较早者。
+func TestParseKimiUsageTiers_MonthlyPicksMaxUsage(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usages": {
+			"limit_month_total": {"used_ratio": 0.4, "reset_time": "2026-10-17T07:23:05Z"},
+			"limit_month_code": {"used_ratio": 0.9, "reset_time": "2026-10-20T07:23:05Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 1)
+	require.Equal(t, "monthly", tiers[0].Window)
+	require.InDelta(t, 90.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-17T07:23:05Z", tiers[0].ResetAt)
+
+	// 仅 code 键存在时也产出 monthly 档。
+	onlyCode := []byte(`{"usages":{"limit_month_code":{"used_ratio":0.5,"reset_time":"2026-10-17T07:23:05Z"}}}`)
+	codeTiers := parseKimiUsageTiers(onlyCode)
+	require.Len(t, codeTiers, 1)
+	require.Equal(t, "monthly", codeTiers[0].Window)
+	require.InDelta(t, 50.0, codeTiers[0].UsedPercent, 1e-9)
+}
+
 // TestParseZhipuTokenTiers_UnitClassification 显式 unit（3=5h / 6=weekly）优先分类，
 // 不能被 reset 时间排序覆盖（周期末尾周窗口会更早重置）。
 func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
@@ -352,27 +436,29 @@ func TestCNBalanceURL(t *testing.T) {
 	require.Equal(t, "https://api.deepseek.com/user/balance", cnBalanceURL(deepseek))
 }
 
-// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly 候选。
+// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly / monthly 候选。
 func TestCNProviderThresholdCandidates(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformKimi,
 		Extra: map[string]any{
-			"kimi_5h_used_percent":     90.0,
-			"kimi_5h_reset_at":         "2026-08-14T15:00:00Z",
-			"kimi_weekly_used_percent": 50.0,
-			"kimi_weekly_reset_at":     "2026-08-18T00:00:00Z",
+			"kimi_5h_used_percent":      90.0,
+			"kimi_5h_reset_at":          "2026-08-14T15:00:00Z",
+			"kimi_weekly_used_percent":  50.0,
+			"kimi_weekly_reset_at":      "2026-08-18T00:00:00Z",
+			"kimi_monthly_used_percent": 70.0,
+			"kimi_monthly_reset_at":     "2026-09-01T00:00:00Z",
 		},
 	}
 	cands := cnProviderThresholdCandidates(account, PlatformKimi)
-	// 仅返回非 nil 候选（两窗口均存在 → 2 条）。
+	// 仅返回非 nil 候选（三窗口均存在 → 3 条）。
 	var present []*accountSchedulingThresholdCandidate
 	for _, c := range cands {
 		if c != nil {
 			present = append(present, c)
 		}
 	}
-	require.Len(t, present, 2)
+	require.Len(t, present, 3)
 
 	// 缺少 used 键的窗口不产生候选。
 	partial := &Account{
@@ -417,6 +503,39 @@ func TestEvaluateAccountSchedulingThreshold_KimiCodingPlan(t *testing.T) {
 	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
 	require.NotNil(t, decision.Until)
 	require.True(t, reset.Equal(*decision.Until))
+}
+
+// TestEvaluateAccountSchedulingThreshold_KimiMonthlyPlan 月付套餐：仅 monthly 快照
+// 存在且用量超阈值 → 主动停调至 monthly 重置点（limit_month_total/code 已映射为
+// kimi_monthly_used_percent / kimi_monthly_reset_at）。
+func TestEvaluateAccountSchedulingThreshold_KimiMonthlyPlan(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC)
+	monthlyReset := time.Date(2026, 10, 17, 7, 23, 5, 0, time.UTC)
+	account := &Account{
+		Platform: PlatformKimi,
+		Extra: map[string]any{
+			"kimi_monthly_used_percent": 100.0,
+			"kimi_monthly_reset_at":     monthlyReset.Format(time.RFC3339),
+		},
+	}
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformKimi: 80}, now)
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "monthly", decision.Window)
+	require.Equal(t, PlatformKimi, decision.Scope)
+	require.InDelta(t, 100.0, decision.UsedPercent, 1e-9)
+	require.NotNil(t, decision.Until)
+	require.True(t, monthlyReset.Equal(*decision.Until))
+
+	// 用量未超阈值 → 不停调。
+	low := &Account{
+		Platform: PlatformKimi,
+		Extra: map[string]any{
+			"kimi_monthly_used_percent": 40.0,
+			"kimi_monthly_reset_at":     monthlyReset.Format(time.RFC3339),
+		},
+	}
+	require.False(t, EvaluateAccountSchedulingThreshold(low, map[string]int{PlatformKimi: 80}, now).ShouldPause)
 }
 
 func TestEvaluateAccountSchedulingThreshold_MiniMaxCodingPlan(t *testing.T) {
@@ -474,6 +593,7 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	future5h := now.Add(2 * time.Hour)
 	futureWeekly := now.Add(3 * 24 * time.Hour)
 	pastWeekly := now.Add(-24 * time.Hour)
+	futureMonthly := now.Add(20 * 24 * time.Hour)
 
 	// 5h 在未来、weekly 已过期 → 返回 5h。
 	account := &Account{
@@ -500,6 +620,32 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	gotBoth := cnProviderQuotaSnapshotReset(both, now)
 	require.NotNil(t, gotBoth)
 	require.True(t, future5h.Equal(*gotBoth))
+
+	// Kimi 月付套餐：5h/weekly 快照缺失、仅 monthly 在未来 → 冷却到 monthly 重置点。
+	monthlyOnly := &Account{
+		Platform:    PlatformKimi,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"kimi_monthly_reset_at": futureMonthly.Format(time.RFC3339),
+		},
+	}
+	gotMonthly := cnProviderQuotaSnapshotReset(monthlyOnly, now)
+	require.NotNil(t, gotMonthly)
+	require.True(t, futureMonthly.Equal(*gotMonthly))
+
+	// 三窗口均在未来 → 仍取最早者，避免月度套餐被过度冷却到 monthly 重置。
+	allFuture := &Account{
+		Platform:    PlatformKimi,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":      future5h.Format(time.RFC3339),
+			"kimi_weekly_reset_at":  futureWeekly.Format(time.RFC3339),
+			"kimi_monthly_reset_at": futureMonthly.Format(time.RFC3339),
+		},
+	}
+	gotAll := cnProviderQuotaSnapshotReset(allFuture, now)
+	require.NotNil(t, gotAll)
+	require.True(t, future5h.Equal(*gotAll))
 
 	// 两窗口均过期 → nil。
 	expired := &Account{
