@@ -187,6 +187,10 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Composite Groups** - Admin routing layer that resolves requested models to concrete providers for multi-provider groups ([Operator Guide](docs/COMPOSITE_GROUPS.md))
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
 
+## Magpie Integration
+
+Connect Magpie to the existing gateway APIs using the [Magpie setup guide](docs/MAGPIE.md). It covers endpoint configuration, supported protocols, model discovery, and one-click import.
+
 ## Ecosystem
 
 Community projects that extend or integrate with Sub2API:
