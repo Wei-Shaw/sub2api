@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 type snapshotHydrationCache struct {
@@ -148,7 +149,7 @@ func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *test
 
 	selection, err := svc.newAcquiredSelectionResult(context.Background(), &Account{ID: 1001}, func() {
 		releaseCalls++
-	})
+	}, "")
 
 	if err == nil {
 		t.Fatalf("expected hydration error")
@@ -159,6 +160,45 @@ func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *test
 	if releaseCalls != 1 {
 		t.Fatalf("expected release to be called once, got %d", releaseCalls)
 	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_PreservesAccountRequestID(t *testing.T) {
+	liveAccount := func() *Account {
+		return &Account{
+			ID:          1,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 3,
+			Priority:    1,
+			Credentials: map[string]any{
+				"api_key":       "sk-live",
+				"model_mapping": map[string]any{"gpt-4": "gpt-4"},
+			},
+		}
+	}
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{liveAccount()},
+		accounts: map[int64]*Account{1: liveAccount()},
+	}
+	concurrencyCache := &mockConcurrencyCache{}
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot:  NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		cache:              &stubGatewayCache{},
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	groupID := int64(2)
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	require.Equal(t, int64(1), selection.Account.ID)
+	require.NotEmpty(t, selection.AccountRequestID,
+		"default (non-advanced) selection must carry the exact acquired member ID for the Live transfer")
+	require.Equal(t, 1, concurrencyCache.acquireAccountCalls)
+	selection.ReleaseFunc()
 }
 
 func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedulerSnapshot(t *testing.T) {

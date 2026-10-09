@@ -184,7 +184,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			if !billingInfoRequest {
 				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			}
-			c.Next()
+			nextWithAPIKeyAdmissionOwner(c, apiKeyService, apiKeyString, ip.GetSecurityClientIP(c, cfg.TrustForwardedIPForAPIKeyACL()), apiKey, false)
 			return
 		}
 
@@ -283,7 +283,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 		}
 
-		c.Next()
+		nextWithAPIKeyAdmissionOwner(c, apiKeyService, apiKeyString, ip.GetSecurityClientIP(c, cfg.TrustForwardedIPForAPIKeyACL()), apiKey, false)
 	}
 }
 

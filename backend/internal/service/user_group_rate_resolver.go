@@ -22,7 +22,10 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 	if cacheTTL <= 0 {
 		cacheTTL = defaultUserGroupRateCacheTTL
 	}
-	if cache == nil {
+	// Without a repository there is nothing to populate a new cache. In particular,
+	// fallback resolvers on partially initialized gateways must not start a janitor
+	// goroutine on every request. An existing cache still supports cached overrides.
+	if cache == nil && repo != nil {
 		cache = gocache.New(cacheTTL, time.Minute)
 	}
 	if logComponent == "" {
