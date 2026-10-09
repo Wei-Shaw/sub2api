@@ -574,9 +574,9 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), store)
 }
 
-// Scenario: ownership 基于配置态查询即时解析——不经过 modelsListCache TTL，
-// 配置移除声明后能力立即变化；瞬态限流字段不影响能力池。
-func TestResolveCompositeModelOwnershipReflectsConfigImmediately(t *testing.T) {
+// Scenario: ownership 基于配置态查询解析并按 modelsListCache 短 TTL 缓存——热路径
+// TTL 内不重复查库；瞬态限流字段不影响能力池；配置变更在缓存过期后反映。
+func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	groupID := int64(9)
 	rateLimitedReset := time.Now().Add(30 * time.Minute)
 	repo := &modelsListAccountRepoStub{
@@ -599,7 +599,14 @@ func TestResolveCompositeModelOwnershipReflectsConfigImmediately(t *testing.T) {
 	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, first)
 	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
 
+	// TTL 内命中缓存，不再查库。
+	cached, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, first, cached)
+	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
+
 	// 瞬态限流字段（配置态查询会忽略）不改变能力。
+	svc.modelsListCache.Flush()
 	repo.byGroup[groupID] = []Account{{
 		ID:               1,
 		Platform:         PlatformDeepseek,
@@ -612,7 +619,8 @@ func TestResolveCompositeModelOwnershipReflectsConfigImmediately(t *testing.T) {
 	require.Equal(t, first, transient)
 	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
 
-	// 配置移除声明后能力立即消失（无 TTL 旧列表）。
+	// 缓存过期后，配置移除声明即反映为能力消失。
+	svc.modelsListCache.Flush()
 	repo.byGroup[groupID] = []Account{{
 		ID:       2,
 		Platform: PlatformOpenAI,
@@ -622,7 +630,8 @@ func TestResolveCompositeModelOwnershipReflectsConfigImmediately(t *testing.T) {
 	require.Equal(t, CompositeModelOwnership{}, removed)
 	require.Equal(t, int64(3), repo.listByGroupCalls.Load())
 
-	// 换平台声明后立即生效。
+	// 缓存过期后，换平台声明生效。
+	svc.modelsListCache.Flush()
 	repo.byGroup[groupID] = []Account{{
 		ID:          2,
 		Platform:    PlatformOpenAI,

@@ -240,6 +240,21 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		// Gemini 账号没有 Responses 转换链（generic 链只能发往 Anthropic 协议上游，会把
+		// Google 凭据发错主机）：池请求整平台屏蔽 gemini 后重选，候选只剩 gemini 时终止。
+		if isPoolRequest && account.Platform == service.PlatformGemini {
+			releaseCompositePoolSelection(selection)
+			h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionHash)
+			poolDenials.deny(account.Platform)
+			fs.FailedAccountIDs[account.ID] = struct{}{}
+			if _, ok := compositePoolSelectionRetryContext(requestCtx, poolDenials); !ok {
+				h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error",
+					"Model is only available on Gemini accounts in this group, which do not support /v1/responses")
+				return
+			}
+			continue
+		}
+
 		// composite 账号池 per-attempt 平台策略：对实际选中平台补做 user×platform
 		// 配额预检与渠道映射/限制（准入 CheckBillingEligibility 时池没有 resolved
 		// 平台、这两个维度被跳过；不得只后扣不预检）。检查为纯读，不写 RPM/计数，
@@ -336,6 +351,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, attemptChannelMapping.MappedModel)
 		}
 		var result *service.ForwardResult
+		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+		var delegatedResult *service.OpenAIForwardResult
 		setActualUpstreamEndpoint(c, "")
 		// 池请求的 attempt 局部 ctx 携带选中平台（不写回 requestCtx，否则下一轮
 		// 选号会被 resolved 平台截断池语义）：forward 内的渠道定价作用域与计费
@@ -361,6 +378,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			// promptCacheKey 由链内从 body 派生（与 OpenAI handler Responses 路径一致）。
 			setOpenAIClientTransportHTTP(c)
 			openAIResult, delegateErr := h.openAIGatewayService.Forward(attemptCtx, c, account, forwardBody)
+			delegatedResult = openAIResult
 			result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 			err = delegateErr
 		} else {
@@ -406,6 +424,24 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		// 6. Record usage
+		if delegatedResult != nil {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			if isPoolAttempt {
+				quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
+			}
+			h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
+				Result:             delegatedResult,
+				APIKey:             apiKey,
+				Account:            account,
+				Subscription:       subscription,
+				QuotaPlatform:      quotaPlatform,
+				PricingAt:          pricingAt,
+				RequestPayloadHash: service.HashUsageRequestPayload(body),
+				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
+				LogComponent:       "handler.gateway.responses",
+			})
+			return
+		}
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)

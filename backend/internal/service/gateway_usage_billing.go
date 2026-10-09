@@ -761,7 +761,25 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 }
 
 // recordUsageCore 是 RecordUsage 的核心实现。
+// usagePricingContext 把组合分组的定价作用域限定到本次请求实际服务的平台。后扣运行在
+// worker 池的 background ctx 上，取不到请求期的目标平台；handler 已在请求 ctx 内把它算定
+// 为 QuotaPlatform（账号池请求为选中账号的平台）。各平台渠道定价严格独立，不能按组合
+// 分组的回退顺序取到其他平台的价格。
+func usagePricingContext(ctx context.Context, apiKey *APIKey, quotaPlatform string) context.Context {
+	if ctx == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != PlatformComposite {
+		return ctx
+	}
+	if _, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+		return ctx
+	}
+	if platform := strings.TrimSpace(quotaPlatform); isConcreteRequestPlatform(platform) {
+		return WithResolvedTargetPlatform(ctx, platform)
+	}
+	return ctx
+}
+
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput) error {
+	ctx = usagePricingContext(ctx, input.APIKey, input.QuotaPlatform)
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User

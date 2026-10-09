@@ -4,9 +4,13 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // composite 账号池 per-attempt 平台策略（审查修复增量4）。
@@ -273,9 +277,10 @@ func compositePoolAccountDelegatesChatCompletionsToOpenAI(account *service.Accou
 }
 
 // adaptOpenAIForwardResultToForwardResult 把委派链（OpenAIGatewayService 转发方法）
-// 的转发结果适配进 generic 计费链的 ForwardResult：usage token 计数、模型、请求
-// 元数据与图片/搜索计费字段逐字段映射，经既有 usage 提交流入账，计费不丢。
-// nil 安全；错误路径携带的部分结果（流中断排水 usage）同样适配。
+// 的结果转成 generic handler 的 ForwardResult，仅供 failover / ops 指标等非计费用途。
+// 两者的 usage 口径不同（OpenAI input_tokens 含缓存读取，Anthropic 口径不含），且
+// ForwardResult 不携带 BillingModel 等 OpenAI 计费字段：委派结果必须经
+// submitDelegatedOpenAIUsage 走 OpenAI 计费链，不得用本函数的结果入账。
 func adaptOpenAIForwardResultToForwardResult(src *service.OpenAIForwardResult) *service.ForwardResult {
 	if src == nil {
 		return nil
@@ -314,4 +319,62 @@ func adaptOpenAIForwardResultToForwardResult(src *service.OpenAIForwardResult) *
 		ImageSizeSource:    src.ImageSizeSource,
 		ImageSizeBreakdown: src.ImageSizeBreakdown,
 	}
+}
+
+// delegatedOpenAIUsage 是池委派结果入账所需的请求级信息（handler 在请求 ctx 内算定）。
+type delegatedOpenAIUsage struct {
+	Result             *service.OpenAIForwardResult
+	APIKey             *service.APIKey
+	Account            *service.Account
+	Subscription       *service.UserSubscription
+	QuotaPlatform      string
+	PricingAt          time.Time
+	RequestPayloadHash string
+	ChannelUsageFields service.ChannelUsageFields
+	LogComponent       string
+}
+
+// submitDelegatedOpenAIUsage 用 OpenAI 网关计费链记录池委派结果：委派链产出的是
+// OpenAI 口径 usage（input_tokens 含缓存读取、BillingModel、生图/搜索附加计费等），
+// 必须与该账号在 OpenAI 网关上被直接服务时同一口径入账。转成 ForwardResult 走
+// generic 计费会把缓存 token 重复计费并按公开别名计价。
+func (h *GatewayHandler) submitDelegatedOpenAIUsage(c *gin.Context, in delegatedOpenAIUsage) {
+	res := in.Result
+	if res == nil || in.APIKey == nil || in.Account == nil || h.openAIGatewayService == nil {
+		return
+	}
+	stampOpenAIRequestedReasoningEffort(res, c)
+	input := &service.OpenAIRecordUsageInput{
+		Result:             res,
+		APIKey:             in.APIKey,
+		User:               in.APIKey.User,
+		Account:            in.Account,
+		Subscription:       in.Subscription,
+		InboundEndpoint:    GetInboundEndpoint(c),
+		UpstreamEndpoint:   resolveOpenAIUpstreamEndpoint(c, in.Account, res),
+		UserAgent:          c.GetHeader("User-Agent"),
+		IPAddress:          ip.GetClientIP(c),
+		SessionID:          service.ExtractClientSessionID(c),
+		RequestPayloadHash: in.RequestPayloadHash,
+		APIKeyService:      h.apiKeyService,
+		QuotaPlatform:      in.QuotaPlatform,
+		PricingAt:          in.PricingAt,
+		ChannelUsageFields: in.ChannelUsageFields,
+	}
+	task := func(ctx context.Context) {
+		if err := h.openAIGatewayService.RecordUsage(ctx, input); err != nil {
+			logger.L().With(
+				zap.String("component", in.LogComponent),
+				zap.Int64("api_key_id", in.APIKey.ID),
+				zap.Any("group_id", in.APIKey.GroupID),
+				zap.Int64("account_id", in.Account.ID),
+			).Error("gateway.composite_pool.delegated_record_usage_failed", zap.Error(err))
+		}
+	}
+	// 与 OpenAI handler 同口径：生图、搜索附加费、语音等不可在溢出时丢弃。
+	if res.ImageCount > 0 || res.VideoCount > 0 || res.SearchCount > 0 || res.WebSearchCalls > 0 || res.AudioUsage != nil {
+		h.submitMandatoryUsageRecordTask(c.Request.Context(), task)
+		return
+	}
+	h.submitUsageRecordTask(c.Request.Context(), task)
 }

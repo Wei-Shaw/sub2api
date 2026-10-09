@@ -72,8 +72,9 @@ const (
 )
 
 const (
-	cacheTTLTarget5m = "5m"
-	cacheTTLTarget1h = "1h"
+	cacheTTLTarget5m                   = "5m"
+	cacheTTLTarget1h                   = "1h"
+	compositeModelOwnershipCachePrefix = "composite-owner|"
 )
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
@@ -527,6 +528,10 @@ func resolveModelsListCacheTTL(cfg *config.Config) time.Duration {
 
 func modelsListCacheKey(groupID *int64, platform string) string {
 	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
+}
+
+func compositeModelOwnershipCacheKey(groupID int64, model string) string {
+	return fmt.Sprintf("%s%d|%s", compositeModelOwnershipCachePrefix, groupID, strings.TrimSpace(model))
 }
 
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
@@ -1501,9 +1506,9 @@ func compositeOwnershipQueryPlatforms() []string {
 // resolveCompositeModelOwnership 基于持久化配置判断一个公开模型由组内哪些平台
 // 提供。数据源是 ListModelAvailabilityCandidates（active + schedulable，显式
 // 忽略限流/过载/临时不可调度等瞬态状态），能力谓词是统一共享的
-// CompositeAccountClaimStrength。刻意不经过 modelsListCache：旧 TTL 缓存会把
-// 「带瞬态过滤的旧健康列表」喂给池，全部候选 rate-limited 时能力会凭空消失；
-// 移除后每次解析即反映最新配置（含 mapping 移除），代价是每次一次配置态查询。
+// CompositeAccountClaimStrength。结果只取决于持久化配置（不含限流等瞬态状态），
+// 按 modelsListCache 的短 TTL 缓存：每个 composite 请求都会解析归属，不能每次查库；
+// 配置变更（含 mapping 移除）最多一个 TTL 后生效，与 /v1/models 列表缓存同口径。
 //
 // 声明强度分层：精确 mapping 命中与受控 native 空映射同为强声明；通配命中仅
 // 为弱声明（fallback）。存在强声明平台时仅强声明平台构成池/单平台，完全无强
@@ -1515,6 +1520,15 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	model = strings.TrimSpace(model)
 	if s == nil || s.accountRepo == nil || groupID <= 0 || model == "" {
 		return CompositeModelOwnership{}, nil
+	}
+
+	cacheKey := compositeModelOwnershipCacheKey(groupID, model)
+	if s.modelsListCache != nil {
+		if cached, found := s.modelsListCache.Get(cacheKey); found {
+			if ownership, ok := cached.(CompositeModelOwnership); ok {
+				return cloneCompositeModelOwnership(ownership), nil
+			}
+		}
 	}
 
 	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, compositeOwnershipQueryPlatforms(), true)
@@ -1560,7 +1574,16 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 			ownership.CandidatePlatforms = normalizeCompositeCandidatePlatforms(candidates)
 		}
 	}
+	if s.modelsListCache != nil {
+		s.modelsListCache.Set(cacheKey, cloneCompositeModelOwnership(ownership), s.modelsListCacheTTL)
+	}
 	return ownership, nil
+}
+
+// cloneCompositeModelOwnership 复制候选平台切片：缓存值与调用方互不共享底层数组。
+func cloneCompositeModelOwnership(ownership CompositeModelOwnership) CompositeModelOwnership {
+	ownership.CandidatePlatforms = cloneStringSlice(ownership.CandidatePlatforms)
+	return ownership
 }
 
 func explicitModelMappingClaims(account Account, model string) bool {

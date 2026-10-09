@@ -36,6 +36,9 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	if err := rejectGeminiAccountOnAnthropicChain(account); err != nil {
+		return nil, err
+	}
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngress(body)
 	if err != nil {

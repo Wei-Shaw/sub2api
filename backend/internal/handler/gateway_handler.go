@@ -958,6 +958,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 转发请求 - 根据账号平台分流
 			c.Set("parsed_request", attemptParsedReq)
 			var result *service.ForwardResult
+			// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+			var delegatedResult *service.OpenAIForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
@@ -974,6 +976,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
+			} else if isPoolRequest && account.Platform == service.PlatformGemini {
+				// Gemini 账号经 Gemini 兼容链转换（与非池 gemini 分支同一实现）；generic
+				// Forward 只能发往 Anthropic 协议上游，会把 Google 凭据发错主机。
+				if h.geminiCompatService == nil {
+					err = errors.New("gemini compatibility service is not configured")
+				} else {
+					result, err = h.geminiCompatService.Forward(requestCtx, c, account, attemptBody)
+				}
 			} else if isPoolRequest && compositePoolAccountDelegatesToOpenAI(account) {
 				// 纯 OpenAI 族账号（无 Anthropic 协议能力）在池激活时委派 OpenAI 网关的
 				// /v1/messages 兼容链：Anthropic → Responses/CC 协议转换、响应写回与
@@ -983,6 +993,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				openAIResult, delegateErr := h.openAIGatewayService.ForwardAsAnthropic(
 					requestCtx, c, account, attemptBody, "",
 					strings.TrimSpace(resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)))
+				delegatedResult = openAIResult
 				result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 				err = delegateErr
 			} else {
@@ -1003,6 +1014,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
 			// 错误路径共用：后者若不入账，上游已计量的请求会完全漏记漏计费（#5148）。
 			submitForwardUsage := func(result *service.ForwardResult) {
+				if delegatedResult != nil {
+					quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+					if isPoolAttempt {
+						quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, currentAPIKey)
+					}
+					h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
+						Result:             delegatedResult,
+						APIKey:             currentAPIKey,
+						Account:            account,
+						Subscription:       currentSubscription,
+						QuotaPlatform:      quotaPlatform,
+						PricingAt:          pricingAt,
+						RequestPayloadHash: service.HashUsageRequestPayload(attemptBody),
+						ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
+						LogComponent:       "handler.gateway.messages",
+					})
+					return
+				}
 				// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 				userAgent := c.GetHeader("User-Agent")
 				clientIP := ip.GetClientIP(c)

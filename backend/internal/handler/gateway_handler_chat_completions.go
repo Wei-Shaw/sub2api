@@ -350,6 +350,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, attemptChannelMapping.MappedModel)
 		}
 		var result *service.ForwardResult
+		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+		var delegatedResult *service.OpenAIForwardResult
 		setActualUpstreamEndpoint(c, "")
 		// 池请求的 attempt 局部 ctx 携带选中平台（不写回 c.Request）：forward 内的
 		// 渠道定价作用域与计费 QuotaPlatform 跟随实际平台，对齐 Messages 池 attempt 语义。
@@ -383,6 +385,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			// 包装。defaultMappedModel 传 ""，与 OpenAI handler CC 路径一致。
 			openAIResult, delegateErr := h.openAIGatewayService.ForwardAsChatCompletions(
 				attemptCtx, c, account, forwardBody, poolPromptCacheKey, "")
+			delegatedResult = openAIResult
 			result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 			err = delegateErr
 		} else {
@@ -427,6 +430,24 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		// 6. Record usage
+		if delegatedResult != nil {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			if isPoolAttempt {
+				quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
+			}
+			h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
+				Result:             delegatedResult,
+				APIKey:             apiKey,
+				Account:            account,
+				Subscription:       subscription,
+				QuotaPlatform:      quotaPlatform,
+				PricingAt:          pricingAt,
+				RequestPayloadHash: service.HashUsageRequestPayload(body),
+				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
+				LogComponent:       "handler.gateway.chat_completions",
+			})
+			return
+		}
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)

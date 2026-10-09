@@ -171,7 +171,9 @@ func newCompositePoolMessagesHarness(t *testing.T, accounts []*service.Account) 
 	)
 
 	openAIGatewayService := service.NewOpenAIGatewayService(
-		nil, nil, nil, nil, nil, nil, nil,
+		nil,
+		usageRepo, // usageLogRepo：委派链结果按 OpenAI 计费链入账
+		nil, nil, nil, nil, nil,
 		cfg,
 		nil, nil,
 		billingService,
@@ -460,4 +462,29 @@ func TestCompositePoolAccountDelegationPredicateAndAdapter(t *testing.T) {
 	require.Equal(t, "upstream", adapted.UpstreamModel)
 	require.True(t, adapted.Stream)
 	require.Equal(t, 2, adapted.SearchCount)
+}
+
+// 委派链结果必须按 OpenAI 口径入账：OpenAI usage 的 prompt_tokens 含缓存读取，
+// 入账输入 = prompt_tokens - cached_tokens。转成 ForwardResult 走 generic 计费会把
+// 缓存 token 同时记为输入与缓存读取（双计费）。
+func TestCompositePoolMessagesDelegatedUsageExcludesCachedInputTokens(t *testing.T) {
+	h := newCompositePoolMessagesHarness(t, []*service.Account{poolKimiAccount(41151, 41011, 0)})
+	h.openAIUpstream.respond = func(compositePoolUpstreamCall, int) *http.Response {
+		body := `{"id":"chatcmpl-pool-cache","object":"chat.completion","created":1,"model":"kimi-k3","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":80}}}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"req-cc-pool-cache"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	}
+
+	c, rec := h.newRequest(t, "/v1/messages", poolMessagesBody(), service.PlatformAnthropic, service.PlatformKimi)
+	h.handler.Messages(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	logs := h.usageRepo.snapshot()
+	require.Len(t, logs, 1)
+	require.Equal(t, 20, logs[0].InputTokens, "缓存读取不得再计入输入 token")
+	require.Equal(t, 80, logs[0].CacheReadTokens)
+	require.Equal(t, 7, logs[0].OutputTokens)
 }
