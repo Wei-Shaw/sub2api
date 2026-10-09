@@ -80,7 +80,15 @@ func ollamaCloudBillingGroupFromContext(ctx context.Context) *Group {
 // struct 的单测与内部调用不应被门禁拦截（与 resolveOpenAIChannelPricing 的 nil 守卫
 // 同一取舍）。
 func (s *OpenAIGatewayService) ollamaCloudModelUnpricedForBilling(ctx context.Context, model string) bool {
-	if s == nil || s.resolver == nil {
+	if s == nil {
+		return false
+	}
+	return ollamaCloudModelUnpricedForBilling(ctx, s.resolver, model)
+}
+
+// ollamaCloudModelUnpricedForBilling 是 OpenAI 网关与 generic 网关共用的无价判定。
+func ollamaCloudModelUnpricedForBilling(ctx context.Context, resolver *ModelPricingResolver, model string) bool {
+	if resolver == nil {
 		return false
 	}
 	group := ollamaCloudBillingGroupFromContext(ctx)
@@ -89,7 +97,7 @@ func (s *OpenAIGatewayService) ollamaCloudModelUnpricedForBilling(ctx context.Co
 		gid := group.ID
 		groupID = &gid
 	}
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: groupID, Group: group})
+	resolved := resolver.Resolve(ctx, PricingInput{Model: model, GroupID: groupID, Group: group})
 	if resolved == nil {
 		return true
 	}
@@ -102,7 +110,7 @@ func (s *OpenAIGatewayService) ollamaCloudModelUnpricedForBilling(ctx context.Co
 	// 定价上下文取 1 token（最低档）：GetIntervalPricing 返回 nil 与否只取决于
 	// BasePricing 是否存在，与上下文档位无关，与 calculateTokenCost 的失败条件
 	// 完全同一条链。
-	return s.resolver.GetIntervalPricing(resolved, 1) == nil
+	return resolver.GetIntervalPricing(resolved, 1) == nil
 }
 
 // enforceOllamaCloudRequestPricingPreflight 在上游 I/O 之前对 ollama_cloud 出站做
@@ -122,5 +130,32 @@ func (s *OpenAIGatewayService) enforceOllamaCloudRequestPricingPreflight(ctx con
 	}
 	err := &openAIOllamaCloudUnpricedModelError{model: model}
 	respondOpenAIOllamaCloudUnpricedModelError(c, err)
+	return err
+}
+
+// enforceOllamaCloudRequestPricingPreflight 是 generic 网关（composite 跨族账号池经
+// Anthropic 协议链服务 ollama_cloud 账号）的同一预检：在上游 I/O 之前拒绝无价出站模型，
+// 错误信封按入站协议选择（/messages 为 Anthropic 风格，其余为 OpenAI 风格）。
+func (s *GatewayService) enforceOllamaCloudRequestPricingPreflight(ctx context.Context, c *gin.Context, account *Account, body []byte, fallbackModel string) error {
+	if s == nil || account == nil || !account.IsOllamaCloud() {
+		return nil
+	}
+	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if model == "" {
+		model = strings.TrimSpace(fallbackModel)
+	}
+	if model == "" || !ollamaCloudModelUnpricedForBilling(ctx, s.resolver, model) {
+		return nil
+	}
+	err := &openAIOllamaCloudUnpricedModelError{model: model}
+	if c != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		MarkResponseCommitted(c)
+		payload := gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
+		if c.Request != nil && c.Request.URL != nil && strings.Contains(c.Request.URL.Path, "/messages") {
+			payload = gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
+		}
+		c.JSON(http.StatusBadRequest, payload)
+	}
 	return err
 }

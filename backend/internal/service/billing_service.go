@@ -1424,30 +1424,40 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 // 展示/估算路径可与历史补账同刻复算，测试也能用固定时点钉住断言。
 //
 // 两级查价：字面名完整跑一遍查找链（LiteLLM → fallback），未命中且名含
-// ":tag" 时用剥 tag 名重跑一次同一查找链（pricingAt 原样传递）。字面优先：
-// bedrock canonical key（如 us.anthropic.claude-sonnet-4-5-20250929-v1:0）
-// 本身含 ":0"，字面命中时绝不剥；剥 tag 仅是 miss 后的第二级，见
+// ":tag" 时用剥 tag 名重查一次（pricingAt 原样传递）。字面优先：bedrock
+// canonical key（如 us.anthropic.claude-sonnet-4-5-20250929-v1:0）本身含 ":0"，
+// 字面命中时绝不剥；剥 tag 仅是 miss 后的第二级，见
 // normalizePricingModelNameForLookup。
+//
+// 第二级只接受确定性命中（目录精确识别 + 回退价表精确键），不走按子串猜系列的
+// 兜底：剥掉 tag 的名字（如 gpt-oss:latest → gpt-oss）会被家族/OpenAI 末端
+// catch-all 猜成无关模型的价格，并让计费门禁误判为已定价。
 func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*ModelPricing, error) {
-	pricing, err := s.getModelPricingAtOnce(model, pricingAt)
+	pricing, err := s.getModelPricingAtOnce(model, pricingAt, false)
 	if err == nil {
 		return pricing, nil
 	}
 	if stripped, ok := normalizePricingModelNameForLookup(model); ok {
-		if retry, retryErr := s.getModelPricingAtOnce(stripped, pricingAt); retryErr == nil {
+		if retry, retryErr := s.getModelPricingAtOnce(stripped, pricingAt, true); retryErr == nil {
 			return retry, nil
 		}
 	}
 	return nil, err
 }
 
-func (s *BillingService) getModelPricingAtOnce(model string, pricingAt time.Time) (*ModelPricing, error) {
+// getModelPricingAtOnce 跑一遍查找链；identifiedOnly 时只接受确定性命中。
+func (s *BillingService) getModelPricingAtOnce(model string, pricingAt time.Time, identifiedOnly bool) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
 
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
-		litellmPricing := s.pricingService.GetModelPricing(model)
+		var litellmPricing *LiteLLMModelPricing
+		if identifiedOnly {
+			litellmPricing = s.pricingService.GetIdentifiedModelPricing(model)
+		} else {
+			litellmPricing = s.pricingService.GetModelPricing(model)
+		}
 		// 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
 		// token 计费：直接返回会把 token 流量按 $0 计费。跳过后走 fallback，
 		// 无 fallback 则 fail-closed（ErrModelPricingUnavailable）。
@@ -1489,7 +1499,12 @@ func (s *BillingService) getModelPricingAtOnce(model string, pricingAt time.Time
 	}
 
 	// 2. 使用硬编码回退价格
-	fallback := s.getFallbackPricing(model)
+	var fallback *ModelPricing
+	if identifiedOnly {
+		fallback = s.fallbackPrices[model]
+	} else {
+		fallback = s.getFallbackPricing(model)
+	}
 	if fallback != nil {
 		// 按模型名去重:每个模型每进程最多打一条 warn,避免热路径每请求刷屏（issue #3394）。
 		// model 在函数入口已 ToLower,故 GLM-5.2 / glm-5.2 视为同一条目。

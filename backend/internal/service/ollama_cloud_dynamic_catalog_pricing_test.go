@@ -150,3 +150,29 @@ func TestGetModelPricing_GptOssExclusionNarrowedToColonNamespace(t *testing.T) {
 			"antigravity hyphen-form name must resolve via the OpenAI catch-all (gpt-5.4), not fail open")
 	})
 }
+
+// 剥 tag 二级查价只接受确定性命中：gpt-oss:latest 剥成 gpt-oss 后不得被 OpenAI 末端
+// catch-all 猜成 gpt-5.4 价；gpt-oss-safeguard:20b 等带 tag 变体同样不进 OpenAI 链。
+// 无确定价时 fail-closed，计费门禁据此拒绝保存与转发，而不是按无关模型价静默计费。
+func TestGetModelPricing_TaggedNamesNeverGuessedFromStrippedName(t *testing.T) {
+	bs := newTestBillingServiceWithOpenAILadderCatalog(t)
+
+	for _, model := range []string{"gpt-oss:latest", "gpt-oss:999b", "gpt-oss-safeguard:20b"} {
+		t.Run(model, func(t *testing.T) {
+			_, err := bs.getModelPricingAt(model, ollamaPricingAt)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+		})
+	}
+
+	// 剥 tag 后精确命中目录的名字仍按基础模型定价。
+	pricing, err := bs.getModelPricingAt("gpt-5.4:latest", ollamaPricingAt)
+	require.NoError(t, err)
+	require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12)
+
+	// 带 tag 的 ollama 价卡精确键与无 tag 的 Antigravity 连字符形态不受影响。
+	pricing, err = bs.getModelPricingAt("gpt-oss:20b", ollamaPricingAt)
+	require.NoError(t, err)
+	require.InDelta(t, 0.07e-6, pricing.InputPricePerToken, 1e-12)
+	_, err = bs.getModelPricingAt("gpt-oss-120b-medium", ollamaPricingAt)
+	require.NoError(t, err)
+}
