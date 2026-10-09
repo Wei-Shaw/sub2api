@@ -63,6 +63,14 @@ export interface OpsDashboardOverview {
     avg: number
   }
 
+  output_tps?: {
+    p5: number | null
+    p10: number | null
+    p50: number | null
+    avg: number | null
+    sample_count: number
+  } | null
+
   duration: OpsPercentiles
   ttft: OpsPercentiles
 }
@@ -822,6 +830,7 @@ export interface OpsRuntimeLogConfig {
   caller: boolean
   stacktrace_level: 'none' | 'error' | 'fatal'
   retention_days: number
+  request_retention_days: number
   source?: string
   updated_at?: string
   updated_by_user_id?: number

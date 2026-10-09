@@ -22,6 +22,52 @@ func (r *CompositeRouteResolver) SetModelOwnershipResolver(resolver CompositeMod
 	}
 }
 
+// ListExactPublicModels returns enabled, concrete route IDs suitable for a model catalog.
+func (r *CompositeRouteResolver) ListExactPublicModels(ctx context.Context, groupID int64, endpoint string, includeSystemOne bool) ([]string, error) {
+	if r == nil || r.repo == nil || groupID <= 0 {
+		return nil, nil
+	}
+	routes, err := r.repo.ListByGroup(ctx, groupID, false)
+	if err != nil {
+		return nil, err
+	}
+	models := make([]string, 0, len(routes))
+	for _, route := range routes {
+		if route.Enabled && route.MatchType == CompositeRouteMatchExact &&
+			(endpoint == "" || normalizeCompositeRouteEndpoint(route.Endpoint) == CompositeRouteEndpointAny || normalizeCompositeRouteEndpoint(route.Endpoint) == endpoint) {
+			if model := strings.TrimSpace(route.PublicModel); model != "" {
+				models = append(models, model)
+			}
+		}
+	}
+	if !includeSystemOne {
+		models = filterSystemOneRouteModels(routes, models, endpoint)
+	}
+	return models, nil
+}
+
+func (r *CompositeRouteResolver) FilterCodexModels(ctx context.Context, groupID int64, models []string) ([]string, error) {
+	if r == nil || r.repo == nil || groupID <= 0 {
+		return models, nil
+	}
+	routes, err := r.repo.ListByGroup(ctx, groupID, false)
+	if err != nil {
+		return nil, err
+	}
+	return filterSystemOneRouteModels(routes, models, CompositeRouteEndpointResponses), nil
+}
+
+func filterSystemOneRouteModels(routes []CompositeModelRoute, models []string, endpoint string) []string {
+	filtered := make([]string, 0, len(models))
+	for _, model := range models {
+		route, matched := matchCompositeRoute(routes, model, normalizeCompositeRouteEndpoint(endpoint))
+		if !matched || route.TargetPlatform != PlatformTypeSafe {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
+}
+
 func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error) {
 	model = strings.TrimSpace(model)
 	endpoint = normalizeCompositeRouteEndpoint(endpoint)

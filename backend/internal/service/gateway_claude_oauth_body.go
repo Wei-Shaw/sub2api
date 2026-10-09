@@ -263,7 +263,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
 	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
 	// 策略：客户端传了什么就透传；没传则补默认 1。
-	if !gjson.GetBytes(out, "temperature").Exists() {
+	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
 			modified = true
@@ -304,7 +304,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
 	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
-		if gjson.GetBytes(out, "tool_choice").Exists() {
+		if !isClaude55SignedThinkingModel(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next
 				modified = true
@@ -767,14 +767,17 @@ func expandClaudeOAuthSystemPromptTextTemplate(body []byte, text string, expansi
 		return "", nil
 	}
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
-	billingText, err := buildBillingAttributionText(body, claude.CLIVersion())
+	// 同一次展开内只取一次版本号，billing attribution / 指纹 / 占位符三处共用，
+	// 避免运行期版本翻转瞬间取到不同值。
+	cliVersion := claude.EffectiveCLIVersion()
+	billingText, err := buildBillingAttributionText(body, cliVersion)
 	if err != nil {
 		return "", err
 	}
-	fp := computeClaudeCodeFingerprint(body, claude.CLIVersion())
+	fp := computeClaudeCodeFingerprint(body, cliVersion)
 	replacer := strings.NewReplacer(
 		"{billing_header}", billingText,
-		"{cc_version}", claude.CLIVersion(),
+		"{cc_version}", cliVersion,
 		"{fp}", fp,
 		"{claude_code_system_prompt}", claudeCodeSystemPrompt,
 		"{claude_code_expansion_prompt}", expansionPrompt,
@@ -1049,9 +1052,15 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, toolPaths, systemPaths
 }
 
-// enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
-// 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
+// enforceCacheControlLimit 让出站 cache_control 满足上游约束：
+// 先执行块数量限制，再修正 TTL 顺序。
 func enforceCacheControlLimit(body []byte) []byte {
+	return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
+}
+
+// enforceCacheControlBlockLimit 强制执行 cache_control 块数量限制（最多 4 个）
+// 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
+func enforceCacheControlBlockLimit(body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
@@ -1132,6 +1141,46 @@ func enforceCacheControlLimit(body []byte) []byte {
 		return out
 	}
 	return body
+}
+
+// normalizeCacheControlTTLOrder raises earlier ephemeral breakpoints to 1h when
+// a later breakpoint uses 1h. Anthropic processes tools, system, then messages,
+// and rejects a ttl=1h breakpoint that follows a 5m one; an omitted ttl means 5m.
+// The mimic path adds its own 5m breakpoints to tools and system, so a client
+// 1h breakpoint in messages would otherwise turn a valid request into a 400.
+//
+// Raising keeps the client's choice. Tokens before a 1h breakpoint are already
+// written at the 1h rate, so the earlier breakpoints add no cache write cost.
+// Requests with a valid order are returned unchanged.
+func normalizeCacheControlTTLOrder(body []byte) []byte {
+	_, messagePaths, toolPaths, systemPaths := collectCacheControlPaths(body)
+	paths := make([]string, 0, len(toolPaths)+len(systemPaths)+len(messagePaths)+1)
+	paths = append(paths, toolPaths...)
+	paths = append(paths, systemPaths...)
+	paths = append(paths, messagePaths...)
+	// A top-level cache_control applies to the last cacheable block.
+	if gjson.GetBytes(body, "cache_control").Exists() {
+		paths = append(paths, "cache_control")
+	}
+
+	last1h := -1
+	for i, path := range paths {
+		if gjson.GetBytes(body, path+".ttl").String() == cacheTTLTarget1h {
+			last1h = i
+		}
+	}
+
+	out := body
+	for _, path := range paths[:last1h+1] {
+		cc := gjson.GetBytes(out, path)
+		if cc.Get("type").String() != "ephemeral" || cc.Get("ttl").String() == cacheTTLTarget1h {
+			continue
+		}
+		if next, err := sjson.SetBytes(out, path+".ttl", cacheTTLTarget1h); err == nil {
+			out = next
+		}
+	}
+	return out
 }
 
 // injectAnthropicCacheControlTTL1h 将已有 ephemeral cache_control 块的 ttl 强制写为 1h。
