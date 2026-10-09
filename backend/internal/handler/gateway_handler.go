@@ -647,6 +647,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// poolDenials 恒为空、attempt 策略不生效，整条路径零变化。
 	isPoolRequest := service.GenericCompositePoolActive(c.Request.Context())
 	poolDenials := newCompositePoolPlatformDenials()
+	if isPoolRequest && !apiKey.Group.AllowMessagesDispatch {
+		// 与 OpenAI handler 的 allowOpenAICompatibleMessagesDispatch 同语义：openai 账号承接
+		// /v1/messages 受分组开关控制（grok / 多协议供应商豁免），关闭时整平台屏蔽 openai。
+		poolDenials.deny(service.PlatformOpenAI)
+		if _, ok := compositePoolSelectionRetryContext(c.Request.Context(), poolDenials); !ok {
+			h.errorResponse(c, http.StatusForbidden, "permission_error", "This group does not allow /v1/messages dispatch")
+			return
+		}
+	}
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -783,6 +792,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					continue
+				}
+			}
+			// 账号池选中 anthropic 账号：按单目标 anthropic 语义补齐分组推理强度策略（放在槽位获取前）。
+			if isPoolRequest {
+				cappedBody, changed, policyErr := applyCompositePoolAnthropicReasoningEffortPolicy(apiKey, account, attemptParsedReq.Body.Bytes())
+				if policyErr != nil {
+					releaseCompositePoolSelection(selection)
+					h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+					respondOpenAIReasoningEffortPolicyError(c, policyErr, h.errorResponse)
+					return
+				}
+				if changed {
+					if err := attemptParsedReq.ReplaceBody(cappedBody); err != nil {
+						releaseCompositePoolSelection(selection)
+						h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+						h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply reasoning effort policy")
+						return
+					}
 				}
 			}
 

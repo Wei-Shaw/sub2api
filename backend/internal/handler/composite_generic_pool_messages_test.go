@@ -137,6 +137,22 @@ type compositePoolMessagesHarness struct {
 	usageRepo      *compositePoolUsageLogRepo
 }
 
+// platformScopedSchedulerCache 按桶平台返回快照，与生产调度快照的单平台桶语义一致
+// （池按候选平台逐桶取号，被 deny 的平台整桶跳过）。
+type platformScopedSchedulerCache struct {
+	fakeSchedulerCache
+}
+
+func (f *platformScopedSchedulerCache) GetSnapshot(_ context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
+	out := make([]*service.Account, 0, len(f.accounts))
+	for _, account := range f.accounts {
+		if account != nil && account.Platform == bucket.Platform {
+			out = append(out, account)
+		}
+	}
+	return out, true, nil
+}
+
 func newCompositePoolMessagesHarness(t *testing.T, accounts []*service.Account) *compositePoolMessagesHarness {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -151,7 +167,7 @@ func newCompositePoolMessagesHarness(t *testing.T, accounts []*service.Account) 
 	openAIUpstream := &compositePoolFakeUpstream{}
 	gwUpstream := &compositePoolFakeUpstream{}
 
-	schedulerCache := &fakeSchedulerCache{accounts: accounts}
+	schedulerCache := &platformScopedSchedulerCache{fakeSchedulerCache{accounts: accounts}}
 	schedulerSnapshot := service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil)
 	billingService := service.NewBillingService(cfg, nil)
 
@@ -487,4 +503,38 @@ func TestCompositePoolMessagesDelegatedUsageExcludesCachedInputTokens(t *testing
 	require.Equal(t, 20, logs[0].InputTokens, "缓存读取不得再计入输入 token")
 	require.Equal(t, 80, logs[0].CacheReadTokens)
 	require.Equal(t, 7, logs[0].OutputTokens)
+}
+
+// 跨族 Messages 池与 OpenAI handler 同语义：分组关闭 allow_messages_dispatch 时 openai
+// 账号整平台屏蔽、由其余平台承接；开启时 openai 账号可被委派。
+func TestCompositePoolMessagesRespectsAllowMessagesDispatch(t *testing.T) {
+	t.Run("disabled masks openai", func(t *testing.T) {
+		h := newCompositePoolMessagesHarness(t, []*service.Account{
+			poolOpenAIAccount(41301, 41011, 0),
+			poolAnthropicAccount(41302, 41011, 10),
+		})
+		h.gwUpstream.respond = func(compositePoolUpstreamCall, int) *http.Response {
+			return anthropicMessagesOKResponse()
+		}
+
+		c, rec := h.newRequest(t, "/v1/messages", poolMessagesBody(), service.PlatformAnthropic, service.PlatformOpenAI)
+		h.handler.Messages(c)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Empty(t, h.openAIUpstream.snapshot(), "开关关闭时 openai 账号不得承接 /v1/messages")
+		require.Len(t, h.gwUpstream.snapshot(), 1)
+	})
+
+	t.Run("enabled delegates openai", func(t *testing.T) {
+		h := newCompositePoolMessagesHarness(t, []*service.Account{poolOpenAIAccount(41304, 41011, 0)})
+		h.group.AllowMessagesDispatch = true
+
+		c, _ := h.newRequest(t, "/v1/messages", poolMessagesBody(), service.PlatformAnthropic, service.PlatformOpenAI)
+		h.handler.Messages(c)
+
+		calls := h.openAIUpstream.snapshot()
+		require.NotEmpty(t, calls)
+		require.Contains(t, calls[0].Authorization, "openai-key")
+		require.Empty(t, h.gwUpstream.snapshot())
+	})
 }

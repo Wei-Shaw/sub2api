@@ -89,6 +89,7 @@ func TestCompositeCrossFamilyPoolAppliesReasoningEffortCap(t *testing.T) {
 func TestCompositeCrossFamilyPoolMessagesAppliesReasoningEffortCap(t *testing.T) {
 	h := newCompositePoolMessagesHarness(t, []*service.Account{poolOpenAIAccount(44201, 41011, 0)})
 	h.group.MaxReasoningEffort = "medium"
+	h.group.AllowMessagesDispatch = true
 	h.openAIUpstream.respond = func(compositePoolUpstreamCall, int) *http.Response {
 		return openAIResponsesSSEOKResponse("gpt-5.4")
 	}
@@ -102,4 +103,24 @@ func TestCompositeCrossFamilyPoolMessagesAppliesReasoningEffortCap(t *testing.T)
 	calls := h.openAIUpstream.snapshot()
 	require.Len(t, calls, 1)
 	require.Equal(t, "medium", gjson.GetBytes(calls[0].Body, "reasoning.effort").String(), "upstream body=%s", calls[0].Body)
+}
+
+// 跨族 Messages 池选中 anthropic 账号：准入期有效平台为 composite，组推理强度上限须在
+// attempt 级补齐，与单目标 anthropic 同语义。
+func TestCompositeCrossFamilyPoolMessagesAppliesReasoningEffortCapToAnthropic(t *testing.T) {
+	h := newCompositePoolMessagesHarness(t, []*service.Account{poolAnthropicAccount(44202, 41011, 0)})
+	h.group.MaxReasoningEffort = "medium"
+	h.gwUpstream.respond = func(compositePoolUpstreamCall, int) *http.Response {
+		return anthropicMessagesOKResponse()
+	}
+
+	c, rec := h.newRequest(t, "/v1/messages",
+		`{"model":"my-model","max_tokens":64,"stream":false,"messages":[{"role":"user","content":"hello"}],"output_config":{"effort":"max"}}`,
+		service.PlatformAnthropic, service.PlatformKimi)
+	h.handler.Messages(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	calls := h.gwUpstream.snapshot()
+	require.Len(t, calls, 1)
+	require.Equal(t, "medium", gjson.GetBytes(calls[0].Body, "output_config.effort").String(), "upstream body=%s", calls[0].Body)
 }

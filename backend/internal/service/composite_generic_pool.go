@@ -35,12 +35,33 @@ func genericCompositePoolAllowsAccount(ctx context.Context, account *Account) bo
 	if account == nil || !genericCompositePoolAccountServable(account) {
 		return false
 	}
+	// 本次请求被策略 deny 的平台整平台排除（与 OpenAI 族调度门同语义），覆盖
+	// 不经 listSchedulableAccountsForCompositePool 取号的 sticky / 路由 / legacy 路径。
+	if compositePoolPlatformDenied(ctx, account.Platform) {
+		return false
+	}
+	// 委派 OpenAI 网关链的 openai / grok 账号不经 OpenAI 调度资格门，沿用其配额自动暂停。
+	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return false
+	}
+	if paused, _ := shouldAutoPauseGrokAccountByQuota(account); paused {
+		return false
+	}
 	for _, platform := range CompositeCandidatePlatformsFromContext(ctx) {
 		if platform == account.Platform {
 			return true
 		}
 	}
 	return false
+}
+
+// withCompositePoolQuotaAutoPauseContext 为 generic 账号池选号注入 OpenAI 配额自动暂停
+// 的全局默认阈值（与 OpenAI 调度器同源，SettingService 内存缓存，不读库）。
+func (s *GatewayService) withCompositePoolQuotaAutoPauseContext(ctx context.Context) context.Context {
+	if s == nil || s.settingService == nil || !GenericCompositePoolActive(ctx) {
+		return ctx
+	}
+	return withOpenAIQuotaAutoPauseSettings(ctx, s.settingService.GetOpenAIQuotaAutoPauseSettings(ctx))
 }
 
 // genericCompositePoolAccountServable 报告账号能否被 generic messages 路径服务。

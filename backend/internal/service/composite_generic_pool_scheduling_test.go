@@ -379,6 +379,33 @@ func TestGenericCompositePool_LoadAwareSelectsAcrossPlatforms(t *testing.T) {
 	require.EqualValues(t, 44402, selection.Account.ID)
 }
 
+// ---- e1. 委派 OpenAI 链的账号沿用配额自动暂停 ----
+
+func TestGenericCompositePool_SkipsQuotaAutoPausedOpenAIAccount(t *testing.T) {
+	groupID := int64(41007)
+	group := newGenericPoolTestGroup(groupID)
+	model := "my-model"
+	ctx := genericPoolTestContext([]string{PlatformAnthropic, PlatformOpenAI})
+
+	build := func(usedPercent float64) *GatewayService {
+		openai := genericPoolTestAccount(44601, PlatformOpenAI, groupID, 0,
+			map[string]any{"model_mapping": map[string]any{"my-model": "gpt-5.4"}},
+			map[string]any{"codex_5h_used_percent": usedPercent, "auto_pause_5h_threshold": 0.95})
+		anthropic := genericPoolTestAccount(44602, PlatformAnthropic, groupID, 5,
+			map[string]any{"model_mapping": map[string]any{"my-model": "claude-sonnet-4-5"}}, nil)
+		svc, _ := newGenericPoolTestService([]Account{openai, anthropic}, group, &compositePoolTestCache{}, nil)
+		return svc
+	}
+
+	selected, err := build(50).SelectAccountForModelWithExclusions(ctx, &groupID, "", model, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 44601, selected.ID, "未达阈值时 openai 按 priority 获胜")
+
+	selected, err = build(95).SelectAccountForModelWithExclusions(ctx, &groupID, "", model, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 44602, selected.ID, "达到自动暂停阈值的 openai 账号不得被池选中")
+}
+
 // ---- e2. 显式 resolved 平台 pin 优先于池（单平台旧行为保持） ----
 
 func TestGenericCompositePool_ResolvedPlatformPinBeatsPool(t *testing.T) {
@@ -438,6 +465,9 @@ func TestCompositeGenericPoolPredicates(t *testing.T) {
 	require.True(t, genericCompositePoolAllowsAccount(poolCtx, &openai))
 	require.False(t, genericCompositePoolAllowsAccount(poolCtx, &gemini), "gemini 不在候选池")
 	require.False(t, genericCompositePoolAllowsAccount(context.Background(), &kimiAdaptive), "无池恒 false")
+	deniedCtx := WithCompositePoolDeniedPlatforms(poolCtx, []string{PlatformOpenAI})
+	require.False(t, genericCompositePoolAllowsAccount(deniedCtx, &openai), "被 deny 的平台整平台排除（含 sticky 复检）")
+	require.True(t, genericCompositePoolAllowsAccount(deniedCtx, &anthropicNative))
 
 	// countable：anthropic 原生 / anthropic-协议 / adaptive / gemini / antigravity
 	// 可计数；纯 OpenAI 族（chat_completions 国产 / openai）不算。

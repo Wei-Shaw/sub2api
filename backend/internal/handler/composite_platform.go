@@ -256,6 +256,18 @@ func releaseCompositePoolSelection(selection *service.AccountSelectionResult) {
 	}
 }
 
+// applyCompositePoolAnthropicReasoningEffortPolicy 为 composite 账号池 /v1/messages
+// 选中 anthropic 账号的 attempt 补齐分组推理强度策略：池请求准入期有效平台为
+// composite，applyAnthropicReasoningEffortPolicyForRequest 不生效；选中 anthropic
+// 账号时与单目标 anthropic 同语义，其余平台由各自转发链处理。
+func applyCompositePoolAnthropicReasoningEffortPolicy(apiKey *service.APIKey, account *service.Account, body []byte) ([]byte, bool, error) {
+	if apiKey == nil || apiKey.Group == nil || account == nil || account.Platform != service.PlatformAnthropic {
+		return body, false, nil
+	}
+	maxEffort, mappings := anthropicCompatibleReasoningEffortPolicy(apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings)
+	return service.ApplyReasoningEffortPolicy(body, maxEffort, mappings, apiKey.Group.MaxReasoningEffortOverLimit)
+}
+
 // applyCompositePoolReasoningEffortPolicyForSelectedAccount 在账号选定后为
 // composite 账号池请求补齐组 reasoning-effort 策略（CC/Responses 直转路径：
 // 服务侧 forward 不再应用组策略）。池请求准入期没有单一目标平台，无法预判

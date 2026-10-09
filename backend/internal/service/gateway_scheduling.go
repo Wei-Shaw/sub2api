@@ -74,6 +74,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		platform = PlatformAnthropic
 	}
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	ctx = s.withCompositePoolQuotaAutoPauseContext(ctx)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -127,6 +128,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	ctx = s.withGroupContext(ctx, group)
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	ctx = s.withCompositePoolQuotaAutoPauseContext(ctx)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -1160,6 +1162,10 @@ func (s *GatewayService) listSchedulableAccountsForCompositePool(ctx context.Con
 		}
 		for i := range bucket {
 			if _, duplicate := seen[bucket[i].ID]; duplicate {
+				continue
+			}
+			// 与 sticky / 负载感知路径同一池成员门；legacy 选号循环不逐账号复检池成员资格，在取号时统一过滤。
+			if !genericCompositePoolAllowsAccount(ctx, &bucket[i]) {
 				continue
 			}
 			seen[bucket[i].ID] = struct{}{}
