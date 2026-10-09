@@ -13,6 +13,19 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { isOIDCExclusiveMode } from '@/utils/oidcExclusive'
+
+const oidcExclusiveLocalAuthRouteNames = new Set([
+  'Register',
+  'EmailVerify',
+  'OAuthCallback',
+  'LinuxDoOAuthCallback',
+  'WeChatOAuthCallback',
+  'DingTalkOAuthCallback',
+  'dingtalk-email-completion',
+  'ForgotPassword',
+  'ResetPassword'
+])
 
 /**
  * Route definitions with lazy loading
@@ -803,6 +816,20 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+
+  if (!requiresAuth && oidcExclusiveLocalAuthRouteNames.has(String(to.name))) {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load public settings for auth-mode route guard', error)
+      }
+    }
+    if (isOIDCExclusiveMode(appStore.cachedPublicSettings)) {
+      next('/login')
+      return
+    }
+  }
 
   if (to.path === '/setup') {
     try {

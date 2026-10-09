@@ -246,6 +246,7 @@ export default {
     passwordRequired: 'Password is required',
     passwordMinLength: 'Password must be at least 6 characters',
     loginFailed: 'Login failed. Please check your credentials and try again.',
+    settingsLoadFailed: 'Unable to load sign-in settings.',
     errors: {
       USER_NOT_ACTIVE: 'Account has been disabled.',
     },

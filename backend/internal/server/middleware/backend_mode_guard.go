@@ -91,3 +91,42 @@ func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFun
 		c.Abort()
 	}
 }
+
+func oidcExclusiveBlocksAuthPath(path string) bool {
+	path = strings.ToLower(strings.TrimSpace(path))
+	for _, suffix := range []string{
+		"/auth/register",
+		"/auth/login",
+		"/auth/login/2fa",
+		"/auth/passkey/login/begin",
+		"/auth/passkey/login/finish",
+	} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+
+	if !strings.Contains(path, "/auth/oauth/") {
+		return false
+	}
+	return !strings.Contains(path, "/auth/oauth/oidc/") &&
+		!strings.Contains(path, "/auth/oauth/pending/") &&
+		!strings.Contains(path, "/auth/oauth/wechat/payment/")
+}
+
+// OIDCExclusiveAuthGuard blocks every non-OIDC authentication flow that can
+// establish a session while preserving logout, refresh, and OIDC continuation.
+func OIDCExclusiveAuthGuard(settingService *service.SettingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if settingService == nil || !settingService.IsOIDCExclusiveModeEnabled(c.Request.Context()) {
+			c.Next()
+			return
+		}
+		if !oidcExclusiveBlocksAuthPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+		response.Forbidden(c, "OIDC login is required")
+		c.Abort()
+	}
+}

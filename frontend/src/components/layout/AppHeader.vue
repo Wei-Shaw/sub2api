@@ -265,6 +265,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { resolveRouteMetaKeys } from '@/router/title'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
+import { resolveExclusiveOIDCEndSessionURL } from '@/utils/oidcExclusive'
 
 const router = useRouter()
 const route = useRoute()
@@ -365,7 +366,12 @@ async function handleLogout() {
     // Ignore logout errors - still redirect to login
     console.error('Logout error:', error)
   }
-  await router.push('/login')
+  const endSessionURL = resolveExclusiveOIDCEndSessionURL(appStore.cachedPublicSettings)
+  if (endSessionURL) {
+    window.location.href = endSessionURL
+    return
+  }
+  await router.push({ path: '/login', query: { logged_out: '1' } })
 }
 
 function handleReplayGuide() {
