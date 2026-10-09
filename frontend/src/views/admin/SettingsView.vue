@@ -8901,8 +8901,12 @@
           <BackupSettings />
         </div>
 
+        <div v-if="activeTab === 'database'">
+          <DatabaseSettings />
+        </div>
+
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-show="activeTab !== 'backup' && activeTab !== 'database'" class="flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -9031,6 +9035,7 @@ import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import DatabaseSettings from "@/views/admin/DatabaseView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
 import {
@@ -9099,7 +9104,8 @@ type SettingsTab =
   | "gateway"
   | "payment"
   | "email"
-  | "backup";
+  | "backup"
+  | "database";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
@@ -9111,6 +9117,7 @@ const settingsTabs = [
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
+  { key: "database" as SettingsTab, icon: "server" as const },
 ];
 
 const settingsTabKeyboardActions = {
