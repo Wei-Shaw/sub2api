@@ -1,7 +1,7 @@
 # Consumer Muse protocol qualification
 
 Tracking: [#7625](https://github.com/Wei-Shaw/sub2api/issues/7625),
-[draft PR #7639](https://github.com/Wei-Shaw/sub2api/pull/7639).
+[PR #7639](https://github.com/Wei-Shaw/sub2api/pull/7639).
 
 The 2026-10-06 capture used an authorized consumer `muse.ai` account. Its General
 settings showed **Free**, with additional tokens available. It does not establish
@@ -106,7 +106,7 @@ Free account through Responses and Chat Completions in JSON and SSE. Completed
 turns produced one native usage record and one configured flat charge. Rejected
 requests produced no native turn or charge, and activity preserved verification.
 
-On 2026-10-09 the actual BYOK Chat browser profile connected to the live model
+On 2026-10-09 a browser chat client connected to the live model
 catalog and completed two independent exact-marker prompts. Both native turns
 settled once. The client explicitly disabled its default assistant instructions
 and conversation memory, matching the qualified single-message request scope.
