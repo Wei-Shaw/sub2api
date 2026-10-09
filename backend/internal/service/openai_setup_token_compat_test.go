@@ -189,8 +189,8 @@ func TestOpenAISetupTokenMessagesUsesCodexBridgeAndTurnState(t *testing.T) {
 	}
 	account := openAISetupTokenCompatAccount(72)
 
-	messages := make([]string, 0, openAICompatAnthropicReplayMaxTailMessages+3)
-	for i := 0; i < openAICompatAnthropicReplayMaxTailMessages+3; i++ {
+	messages := make([]string, 0, 15)
+	for i := 0; i < 15; i++ {
 		messages = append(messages, `{"role":"user","content":"message-`+fmt.Sprintf("%02d", i)+`"}`)
 	}
 	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[` + strings.Join(messages, ",") + `],"stream":false}`)
@@ -204,7 +204,7 @@ func TestOpenAISetupTokenMessagesUsesCodexBridgeAndTurnState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
 	require.True(t, isOpenAICompatMessagesBridgeContext(firstCtx))
-	require.Equal(t, int64(openAICompatAnthropicReplayMaxTailMessages+4), gjson.GetBytes(upstream.bodies[0], "input.#").Int())
+	require.Equal(t, int64(16), gjson.GetBytes(upstream.bodies[0], "input.#").Int())
 	require.Equal(t, "developer", gjson.GetBytes(upstream.bodies[0], "input.0.role").String())
 	require.Contains(t, gjson.GetBytes(upstream.bodies[0], "input.0.content.0.text").String(), openAICompatClaudeCodeTodoGuardMarker)
 	require.Equal(t, "message-00", gjson.GetBytes(upstream.bodies[0], "input.1.content.0.text").String())
