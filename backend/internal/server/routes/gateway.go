@@ -198,6 +198,8 @@ func RegisterGatewayRoutes(
 		})
 		// System One carries only JSON text, so it uses the text body limit.
 		gateway.POST("/systemone", textBodyLimit, h.Gateway.SystemOne)
+		// Decisions accepts inline images and uses the gateway body limit.
+		gateway.POST("/decisions", h.OpenAIGateway.Decisions)
 		// /v1/messages/count_tokens: OpenAI bridges upstream, Grok estimates
 		// locally, and Anthropic-compatible platforms retain their existing path.
 		gateway.POST("/messages/count_tokens", countTokensHandler)
@@ -663,6 +665,7 @@ func compositeRouteEndpointForPath(path string) string {
 	case strings.Contains(path, "/messages"):
 		return service.CompositeRouteEndpointMessages
 	case strings.Contains(path, "/responses"),
+		strings.Contains(path, "/decisions"),
 		strings.Contains(path, "/alpha/search"),
 		strings.Contains(path, "/realtime/calls"),
 		strings.HasSuffix(strings.TrimRight(path, "/"), "/live"):

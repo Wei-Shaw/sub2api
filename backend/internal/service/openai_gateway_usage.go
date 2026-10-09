@@ -615,6 +615,11 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 			if candidate == "" {
 				continue
 			}
+			// Decisions keeps explicit channel prices; otherwise use the dedicated
+			// OpenRouter model card instead of the Luna chat card selected by requested-model billing.
+			if result.UpstreamModel == "openai/gpt-6-luna-decisions" && s.resolveOpenAIChannelPricing(ctx, candidate, apiKey) == nil {
+				candidate = result.UpstreamModel
+			}
 			cost, err := s.calculateOpenAIRecordUsageTokenCost(
 				ctx,
 				apiKey,

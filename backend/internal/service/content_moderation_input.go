@@ -39,6 +39,24 @@ func extractContentModerationInput(protocol string, body []byte, filterReminders
 		collector.collectLastAnthropicUserMessage(gjson.GetBytes(body, "messages"), &parts, &images)
 	case ContentModerationProtocolOpenAIChat:
 		collector.collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
+	case ContentModerationProtocolOpenAIDecisions:
+		input := gjson.GetBytes(body, "input")
+		literal := moderationTextCollector{}
+		if input.Type == gjson.String {
+			literal.addModerationText(&parts, input.String())
+		} else {
+			input.ForEach(func(_, message gjson.Result) bool {
+				literal.collectContentValue(message.Get("content"), &parts, &images)
+				return true
+			})
+		}
+		questions := gjson.GetBytes(body, "questions")
+		questions.ForEach(func(_, question gjson.Result) bool {
+			for _, key := range []string{"name", "instructions", "choices", "levels"} {
+				literal.collectSystemOneText(question.Get(key), &parts)
+			}
+			return true
+		})
 	case ContentModerationProtocolOpenAIResponses:
 		collector.collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 	case ContentModerationProtocolGemini:

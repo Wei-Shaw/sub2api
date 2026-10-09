@@ -3473,6 +3473,15 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'openai' && accountCategory === 'apikey'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.openai.decisionsProtocol') }}</label>
+        <select v-model="openAIDecisionsProtocol" data-testid="openai-decisions-protocol" class="input">
+          <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.openai.decisionsProtocolDesc') }}</p>
+      </div>
+
       <!-- OpenAI APIKey images: backfill b64_json from url -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'apikey'"
@@ -4544,7 +4553,8 @@ const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
-const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const openAIDecisionsProtocol = ref<'openai' | 'openrouter'>('openai')
+const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings', 'decisions'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -4636,6 +4646,7 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'decisions', label: 'Decisions' },
   { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
@@ -4643,9 +4654,9 @@ const openAITextGenerationCapabilityEnabled = computed(() =>
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'decisions', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings', 'decisions'] as OpenAIEndpointCapability[]
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -4670,8 +4681,9 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
 }
 
 const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
+  credentials.openai_decisions_protocol = openAIDecisionsProtocol.value
   const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
-  if (capabilities.length === 2 && !capabilities.includes('seedance')) {
+  if (capabilities.length === 3 && ['chat_completions', 'embeddings', 'decisions'].every(value => capabilities.includes(value as OpenAIEndpointCapability))) {
     delete credentials.openai_capabilities
     return
   }
@@ -5017,7 +5029,8 @@ watch(
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAIDecisionsProtocol.value = 'openai'
+      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings', 'decisions']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -5474,7 +5487,8 @@ const resetForm = () => {
   openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
-  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  openAIDecisionsProtocol.value = 'openai'
+  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings', 'decisions']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
