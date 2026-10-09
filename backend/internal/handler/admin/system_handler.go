@@ -18,8 +18,9 @@ import (
 
 // SystemHandler handles system-related operations
 type SystemHandler struct {
-	updateSvc systemUpdateService
-	lockSvc   *service.SystemOperationLockService
+	updateSvc   systemUpdateService
+	lockSvc     *service.SystemOperationLockService
+	databaseSvc *service.DatabaseMaintenanceService
 }
 
 // systemUpdateTimeout bounds a full in-place update or rollback: the release
