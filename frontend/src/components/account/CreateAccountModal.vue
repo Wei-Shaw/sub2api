@@ -4123,6 +4123,7 @@ import {
   isCNProviderPlatform,
   isHeaderOverrideCapable,
   isMultiProtocolApiKeyPlatform,
+  parseOllamaMonthlyCreditUsd,
   providerAccountModes,
   providerModeLabel,
   providerNativeProtocols,
@@ -6037,10 +6038,12 @@ const handleSubmit = async () => {
     credentials.account_mode = currentOpenCodeOrCNMode()
     if (form.platform === 'ollama_cloud' && ollamaAccountMode.value === 'ollama_credits') {
       // Ollama Cloud credits 模式需同时录入月度信用额度（USD）作为分母。
-      const monthlyCreditUsd = Number.parseFloat(ollamaMonthlyCreditUsdInput.value)
-      if (Number.isFinite(monthlyCreditUsd) && monthlyCreditUsd > 0) {
-        credentials.monthly_credit_usd = monthlyCreditUsd
+      const monthlyCreditUsd = parseOllamaMonthlyCreditUsd(ollamaMonthlyCreditUsdInput.value)
+      if (monthlyCreditUsd === null) {
+        appStore.showError(t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsdInvalid'))
+        return
       }
+      credentials.monthly_credit_usd = monthlyCreditUsd
     }
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {

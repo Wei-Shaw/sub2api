@@ -6,6 +6,12 @@ import {
   type ProviderProtocolRule
 } from '@/constants/platformCatalog'
 
+/** Ollama Cloud credits 模式的月度信用额度（USD）：仅接受正有限数，否则返回 null。 */
+export function parseOllamaMonthlyCreditUsd(input: string): number | null {
+  const value = Number.parseFloat(input)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
 export function applyInterceptWarmup(
   credentials: Record<string, unknown>,
   enabled: boolean,

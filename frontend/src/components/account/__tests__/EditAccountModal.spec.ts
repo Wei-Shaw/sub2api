@@ -516,6 +516,55 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('edits the Ollama Cloud monthly credit in credits mode', async () => {
+    const account = buildAccount()
+    account.platform = 'ollama_cloud'
+    account.credentials = {
+      api_key: 'sk-ollama',
+      account_mode: 'ollama_credits',
+      api_protocol: 'chat_completions',
+      base_url: 'https://ollama.com/v1',
+      monthly_credit_usd: 60
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const input = wrapper.get('[data-testid="edit-ollama-monthly-credit-usd"]')
+    expect((input.element as HTMLInputElement).value).toBe('60')
+    await input.setValue('300')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'ollama_credits',
+      monthly_credit_usd: 300
+    })
+  })
+
+  it('drops the Ollama Cloud monthly credit in legacy mode', async () => {
+    const account = buildAccount()
+    account.platform = 'ollama_cloud'
+    account.credentials = {
+      api_key: 'sk-ollama',
+      account_mode: 'ollama_legacy',
+      api_protocol: 'chat_completions',
+      base_url: 'https://ollama.com/v1',
+      monthly_credit_usd: 60
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-ollama-monthly-credit-usd"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({ account_mode: 'ollama_legacy' })
+    expect('monthly_credit_usd' in credentials).toBe(false)
+  })
+
   it('treats a legacy OpenCode account without account_mode as GO', async () => {
     const account = buildAccount()
     account.platform = 'opencode_go'

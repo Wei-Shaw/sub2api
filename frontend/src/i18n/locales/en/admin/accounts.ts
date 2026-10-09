@@ -298,7 +298,8 @@ export default {
           credits: 'Credits (monthly pool)',
           creditsDesc: 'Metered and monitored via a monthly USD credit pool',
           monthlyCreditUsd: 'Monthly credit (USD)',
-          monthlyCreditUsdPlaceholder: 'e.g. 60'
+          monthlyCreditUsdPlaceholder: 'e.g. 60',
+          monthlyCreditUsdInvalid: 'Monthly credit must be a positive number'
         },
         sessionSecurityHint: 'The browser session is encrypted at rest and sent only to the fixed official settings URL.',
         configured: 'Configured',

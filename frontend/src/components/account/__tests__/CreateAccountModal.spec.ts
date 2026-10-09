@@ -981,6 +981,19 @@ describe('CreateAccountModal Ollama Cloud protocol and quota mode', () => {
     })
   })
 
+  it('rejects ollama_credits mode without a positive monthly credit', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await selectButtonByText(wrapper, 'admin.accounts.ollamaCloud.accountMode.credits')
+    await wrapper.get('[data-testid="ollama-monthly-credit-usd"]').setValue('0')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ollama credits')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-ollama')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).not.toHaveBeenCalled()
+  })
+
   it('applies the 300 USD quick preset to the monthly credit input', async () => {
     const wrapper = mountModal()
     await selectOllamaCloudPlatform(wrapper)

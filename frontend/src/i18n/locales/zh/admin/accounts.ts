@@ -143,7 +143,8 @@ export default {
           credits: 'Credits（月度信用池）',
           creditsDesc: '按月度美元信用额度计费与监控',
           monthlyCreditUsd: '月度信用额度（USD）',
-          monthlyCreditUsdPlaceholder: '例如 60'
+          monthlyCreditUsdPlaceholder: '例如 60',
+          monthlyCreditUsdInvalid: '月度信用额度须为正数'
         },
         sessionSecurityHint: '浏览器会话会加密落库，且只发送到固定的 Ollama 官方设置页。',
         configured: '已配置',
