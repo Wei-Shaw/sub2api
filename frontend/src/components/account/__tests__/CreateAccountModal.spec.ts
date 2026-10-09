@@ -138,6 +138,16 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
+const OpenAIWSModeSelectStub = defineComponent({
+  name: 'OpenAIWSModeSelect',
+  props: {
+    modelValue: { type: String, default: '' },
+    options: { type: Array, default: () => [] },
+  },
+  emits: ['update:modelValue'],
+  template: '<button type="button" data-testid="openai-ws-mode-select"></button>',
+})
+
 function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
@@ -146,7 +156,7 @@ function mountModal(groups: any[] = []) {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: OpenAIWSModeSelectStub,
         Icon: true,
         PlatformIcon: true,
         ProxySelector: true,
@@ -244,6 +254,58 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
     expect(createAccountMock.mock.calls[0]?.[0]?.expires_at).toBe(new Date('2027-01-31T12:34:00').getTime() / 1000)
     wrapper.unmount()
+  })
+
+  it('uses the server default for new OAuth accounts until an explicit WS mode is selected', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    const selector = wrapper.get('[data-testid="create-openai-ws-mode"]').getComponent(OpenAIWSModeSelectStub)
+    expect(selector.props('options')).toContainEqual({ value: '', label: 'admin.accounts.openai.wsModeServerDefault' })
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OAuth account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('keeps explicit OAuth off and API-key WS off distinct from the server default', async () => {
+    const oauth = mountModal()
+    await selectButtonByText(oauth, 'OpenAI')
+    await oauth.get('form#create-account-form input[type="text"]').setValue('OAuth off')
+    await oauth.get('[data-testid="create-openai-ws-mode"]').getComponent(OpenAIWSModeSelectStub).vm.$emit('update:modelValue', 'off')
+    await oauth.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await oauth.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+    expect(createOpenAICodexPATMock.mock.calls.at(-1)?.[0]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('off')
+    oauth.unmount()
+
+    const reset = mountModal()
+    await selectButtonByText(reset, 'OpenAI')
+    await reset.get('form#create-account-form input[type="text"]').setValue('OAuth inherited')
+    const resetSelector = reset.get('[data-testid="create-openai-ws-mode"]').getComponent(OpenAIWSModeSelectStub)
+    await resetSelector.vm.$emit('update:modelValue', 'passthrough')
+    await resetSelector.vm.$emit('update:modelValue', '')
+    await reset.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await reset.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+    expect(createOpenAICodexPATMock.mock.calls.at(-1)?.[0]?.extra).toBeUndefined()
+    reset.unmount()
+
+    const apiKey = mountModal()
+    await selectButtonByText(apiKey, 'OpenAI')
+    await selectButtonByText(apiKey, 'API Key')
+    await apiKey.get('form#create-account-form input[type="text"]').setValue('API key')
+    await apiKey.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await apiKey.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls.at(-1)?.[0]?.extra?.openai_apikey_responses_websockets_v2_mode).toBe('off')
+    expect(createAccountMock.mock.calls.at(-1)?.[0]?.extra?.openai_apikey_responses_websockets_v2_enabled).toBe(false)
+    apiKey.unmount()
   })
 
   it('allows a manually entered expiry to override a preset before account creation', async () => {
