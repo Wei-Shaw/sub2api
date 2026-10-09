@@ -1040,3 +1040,34 @@ func TestFailoverClientGone(t *testing.T) {
 		require.False(t, failoverClientGone(nil))
 	})
 }
+
+func TestHandleFailoverError_EmptyStreamDoesNotSwitchAccount(t *testing.T) {
+	mock := &mockTempUnscheduler{}
+	fs := NewFailoverState(5, false)
+	err := &service.UpstreamFailoverError{
+		StatusCode:             502,
+		RetryableOnSameAccount: true,
+		RequestScopedTransient: true,
+		NextAccountAction:      service.NextAccountStop,
+	}
+
+	action := fs.HandleFailoverError(context.Background(), mock, 100, "antigravity", 3, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, 1, fs.SameAccountRetryCount[100])
+	require.Equal(t, 0, fs.SwitchCount)
+	require.Empty(t, mock.calls)
+
+	action = fs.HandleFailoverError(context.Background(), mock, 100, "antigravity", 3, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, 2, fs.SameAccountRetryCount[100])
+
+	action = fs.HandleFailoverError(context.Background(), mock, 100, "antigravity", 3, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, 3, fs.SameAccountRetryCount[100])
+
+	action = fs.HandleFailoverError(context.Background(), mock, 100, "antigravity", 3, err)
+	require.Equal(t, FailoverExhausted, action)
+	require.Equal(t, 0, fs.SwitchCount)
+	require.NotContains(t, fs.FailedAccountIDs, int64(100))
+	require.Empty(t, mock.calls)
+}

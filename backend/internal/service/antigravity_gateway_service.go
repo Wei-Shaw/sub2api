@@ -629,6 +629,8 @@ func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model strin
 		return nil, errAntigravityProjectIDRequired
 	}
 
+	appendAntigravityModelTurnContinuation(request)
+
 	wrapped := map[string]any{
 		"project":     projectID,
 		"requestId":   "agent-" + uuid.New().String(),
@@ -639,6 +641,32 @@ func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model strin
 	}
 
 	return json.Marshal(wrapped)
+}
+
+// appendAntigravityModelTurnContinuation 在最终请求上补一条用户续写。
+// Antigravity 拒绝以 model / assistant 结尾的请求（400: Requests ending with a model turn are not supported）。
+// 空 finishReason 被当成正常收尾后，客户端会把空助手消息写进下一轮历史，从而踩到这条限制。
+func appendAntigravityModelTurnContinuation(request any) {
+	req, ok := request.(map[string]any)
+	if !ok {
+		return
+	}
+	contents, ok := req["contents"].([]any)
+	if !ok || len(contents) == 0 {
+		return
+	}
+	last, ok := contents[len(contents)-1].(map[string]any)
+	if !ok {
+		return
+	}
+	role, _ := last["role"].(string)
+	if role != "model" && role != "assistant" {
+		return
+	}
+	req["contents"] = append(contents, map[string]any{
+		"role":  "user",
+		"parts": []any{map[string]any{"text": "[Continue]"}},
+	})
 }
 
 // unwrapV1InternalResponse 解包 v1internal 响应
