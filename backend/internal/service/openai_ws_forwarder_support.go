@@ -196,6 +196,39 @@ func payloadAsJSONBytes(payload map[string]any) []byte {
 	return body
 }
 
+// openAIWSEmptyErrorClientMessage is injected into upstream `error` events that
+// carry no code/type/message before they are forwarded to a client. The phrase
+// "You can retry your request" mirrors OpenAI's own transient-failure wording so
+// downstream retry classifiers treat the failure as retryable.
+const openAIWSEmptyErrorClientMessage = "Upstream provider returned an error without details. You can retry your request."
+
+// ensureOpenAIWSErrorEventClientDetail rewrites an upstream `error` event whose
+// error object has no code/type/message before forwarding it to a client.
+// Strict SDK clients (e.g. openai-node) stringify the empty error object into
+// the literal message "{}", which no downstream retry classifier can recognize,
+// so a transient upstream failure terminates the client session instead of
+// being retried. Like sanitizeOpenAICapacityShedErrorCodeForClient, this only
+// changes the client-facing copy: monitoring, account-state and failover
+// decisions all run on the original payload.
+func ensureOpenAIWSErrorEventClientDetail(message []byte) ([]byte, bool) {
+	code, errType, errMsg := parseOpenAIWSErrorEventFields(message)
+	if code != "" || errType != "" || errMsg != "" {
+		return message, false
+	}
+	if !gjson.ValidBytes(message) {
+		return message, false
+	}
+	updated, err := sjson.SetBytes(message, "error", map[string]any{
+		"code":    openAICapacityShedRetryableClientCode,
+		"type":    "server_error",
+		"message": openAIWSEmptyErrorClientMessage,
+	})
+	if err != nil {
+		return message, false
+	}
+	return updated, true
+}
+
 func isOpenAIWSTerminalEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
