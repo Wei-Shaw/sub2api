@@ -1560,40 +1560,12 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 }
 
 func openAICacheReadTokensFromUsage(value gjson.Result) int {
-	for _, nested := range []gjson.Result{
-		value.Get("input_tokens_details.cached_tokens"),
-		value.Get("prompt_tokens_details.cached_tokens"),
-	} {
-		if nested.Exists() {
-			return max(int(nested.Int()), 0)
-		}
-	}
-
-	return firstPositiveGJSONInt(
-		value.Get("cache_read_input_tokens"),
-		value.Get("cache_read_tokens"),
-		value.Get("cached_tokens"),
-	)
+	cached, _ := apicompat.CachedTokensFromUsage(value)
+	return cached
 }
 
 func openAICacheCreationTokensFromUsage(value gjson.Result) int {
-	for _, nested := range []gjson.Result{
-		value.Get("input_tokens_details.cache_write_tokens"),
-		value.Get("prompt_tokens_details.cache_write_tokens"),
-		value.Get("input_tokens_details.cache_creation_tokens"),
-		value.Get("prompt_tokens_details.cache_creation_tokens"),
-	} {
-		if nested.Exists() {
-			return max(int(nested.Int()), 0)
-		}
-	}
-
-	return firstPositiveGJSONInt(
-		value.Get("cache_write_tokens"),
-		value.Get("cache_creation_input_tokens"),
-		value.Get("cache_write_input_tokens"),
-		value.Get("cache_creation_tokens"),
-	)
+	return apicompat.CacheCreationTokensFromUsage(value)
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
