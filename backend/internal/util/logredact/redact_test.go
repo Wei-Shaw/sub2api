@@ -67,6 +67,68 @@ func TestRedactText_DefaultPathDoesNotUseExtraCache(t *testing.T) {
 	}
 }
 
+func TestRedactMap_DefaultSensitiveVariantKeys(t *testing.T) {
+	in := map[string]any{
+		"api_key":           "sk-test",
+		"x-api-key":         "header-secret",
+		"privateKey":        "pem-secret",
+		"apiV3Key":          "wxpay-secret",
+		"appSecret":         "wechat-secret",
+		"mchId":             "merchant-id",
+		"secret_access_key": "aws-secret",
+		"safe":              "ok",
+	}
+
+	out := RedactMap(in)
+
+	for _, key := range []string{
+		"api_key",
+		"x-api-key",
+		"privateKey",
+		"apiV3Key",
+		"appSecret",
+		"mchId",
+		"secret_access_key",
+	} {
+		if got := out[key]; got != "***" {
+			t.Fatalf("expected %s to be redacted, got %#v", key, got)
+		}
+	}
+	if got := out["safe"]; got != "ok" {
+		t.Fatalf("expected safe key preserved, got %#v", got)
+	}
+}
+
+func TestRedactText_DefaultSensitiveVariantForms(t *testing.T) {
+	in := `api-key=sk-live x-api-key=hdr-secret privateKey: pem-secret apiV3Key=wxpay-secret appSecret=wechat-secret secret_access_key=aws-secret`
+	out := RedactText(in)
+
+	for _, secret := range []string{
+		"sk-live",
+		"hdr-secret",
+		"pem-secret",
+		"wxpay-secret",
+		"wechat-secret",
+		"aws-secret",
+	} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("expected secret %q to be redacted, got %q", secret, out)
+		}
+	}
+	for _, marker := range []string{
+		"api-key=***",
+		"x-api-key=***",
+		"privateKey: ***",
+		"apiV3Key=***",
+		"appSecret=***",
+		"secret_access_key=***",
+	} {
+		if !strings.Contains(out, marker) {
+			t.Fatalf("expected marker %q in %q", marker, out)
+		}
+	}
+}
+
 func clearExtraTextPatternCache() {
 	extraTextPatternCache.Range(func(key, value any) bool {
 		extraTextPatternCache.Delete(key)
