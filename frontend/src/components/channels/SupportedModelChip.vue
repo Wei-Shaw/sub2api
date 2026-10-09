@@ -3,7 +3,7 @@
     <span
       ref="triggerEl"
       :class="[
-        'inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
+        'inline-flex max-w-full cursor-help flex-col gap-0.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
         effectivePlatform
           ? platformBadgeClass(effectivePlatform)
           : 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300',
@@ -14,18 +14,27 @@
       @focusout="onLeave"
       tabindex="0"
     >
-      <PlatformIcon
-        v-if="effectivePlatform"
-        :platform="effectivePlatform as GroupPlatform"
-        size="xs"
-      />
-      <span
-        v-if="showPlatform && model.platform"
-        class="rounded bg-gray-200/60 px-1 text-[10px] uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-400"
-      >
-        {{ model.platform }}
+      <span class="inline-flex min-w-0 items-center gap-1">
+        <PlatformIcon
+          v-if="effectivePlatform"
+          :platform="effectivePlatform as GroupPlatform"
+          size="xs"
+        />
+        <span
+          v-if="showPlatform && model.platform"
+          class="rounded bg-gray-200/60 px-1 text-[10px] uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-400"
+        >
+          {{ model.platform }}
+        </span>
+        <span class="min-w-0 truncate">{{ model.name }}</span>
       </span>
-      {{ model.name }}
+      <span
+        v-if="showPriceSummary && priceSummary"
+        class="font-mono text-[10px] font-normal leading-tight opacity-80"
+        data-testid="model-price-summary"
+      >
+        {{ priceSummary }}
+      </span>
     </span>
 
     <!-- Teleport to body so the popover is not clipped by card/overflow-hidden
@@ -176,7 +185,7 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PricingRow from './PricingRow.vue'
-import { formatScaled, resolveIntervalPrices } from '@/utils/pricing'
+import { formatScaled, resolveIntervalPrices, summarizeModelPricing } from '@/utils/pricing'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
@@ -197,6 +206,8 @@ const props = withDefaults(
     pricingKeyPrefix?: string
     noPricingLabel?: string
     showPlatform?: boolean
+    /** 芯片上直接展示紧凑单价（输入/输出等）；悬停气泡仍是完整定价。 */
+    showPriceSummary?: boolean
     /**
      * 当 model.platform 缺失（如 admin 聚合场景）时，用父行的平台作为兜底着色。
      * 仅用于视觉，不影响业务逻辑。
@@ -207,9 +218,12 @@ const props = withDefaults(
     pricingKeyPrefix: 'availableChannels.pricing',
     noPricingLabel: '',
     showPlatform: true,
+    showPriceSummary: true,
     platformHint: ''
   }
 )
+
+const priceSummary = computed(() => summarizeModelPricing(props.model.pricing))
 
 const effectivePlatform = computed<string>(() => props.model.platform || props.platformHint || '')
 

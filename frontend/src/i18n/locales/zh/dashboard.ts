@@ -628,7 +628,7 @@ export default {
       description: '描述',
       platform: '平台',
       groups: '我可访问的分组',
-      supportedModels: '支持模型'
+      supportedModels: '支持模型与价格'
     },
     pricing: {
       billingMode: '计费模式',
