@@ -100,7 +100,7 @@
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
-            <Toggle v-model="formData.redis.enable_tls" />
+            <Toggle v-model="formData.redis.enable_tls" :disabled="redisUsesUnixSocket" class="disabled:cursor-not-allowed disabled:opacity-50" />
           </div>
 
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -210,7 +210,8 @@
               <input
                 v-model.number="formData.redis.port"
                 type="number"
-                class="input"
+                :disabled="redisUsesUnixSocket"
+                class="input disabled:cursor-not-allowed disabled:opacity-50"
                 placeholder="6379"
               />
             </div>
@@ -255,7 +256,7 @@
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
-            <Toggle v-model="formData.redis.enable_tls" />
+            <Toggle v-model="formData.redis.enable_tls" :disabled="redisUsesUnixSocket" class="disabled:cursor-not-allowed disabled:opacity-50" />
           </div>
 
           <button
@@ -499,7 +500,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest } from '@/api/setup'
 import { buildGatewayUrl } from '@/api/client'
@@ -566,6 +567,17 @@ const formData = reactive<InstallRequest>({
     mode: 'release'
   }
 })
+
+const redisUsesUnixSocket = computed(() => formData.redis.host.trim().startsWith('unix:'))
+watch(redisUsesUnixSocket, (isUnix) => {
+  redisConnected.value = false
+  if (isUnix) {
+    formData.redis.port = 0
+    formData.redis.enable_tls = false
+  } else if (formData.redis.port === 0) {
+    formData.redis.port = 6379
+  }
+}, { flush: 'sync' })
 
 const canProceed = computed(() => {
   switch (currentStep.value) {
