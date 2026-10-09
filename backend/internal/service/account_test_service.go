@@ -385,7 +385,8 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
-	if account.IsCNProvider() {
+	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
+	if account.RoutesProtocolByInbound() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
@@ -414,8 +415,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
-	if account.IsOpenCodeGo() {
-		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
+	// 按模型分流的多模型聚合平台（OpenCode、Command Code 等）。
+	if account.routesByModel() {
+		return s.testModelRoutedAccountConnection(c, account, modelID, prompt)
 	}
 
 	if account.IsTypeSafe() {
@@ -425,39 +427,42 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testOpenCodeGoAccountConnection probes the native endpoint for the selected
-// model. Adaptive accounts (the default) follow OpenCodeGoModelProtocol:
+// testModelRoutedAccountConnection probes the native endpoint for the selected
+// model on providers that route by model (see ProviderRoutingByModel). Adaptive
+// accounts (the default) follow the provider's protocol rules, e.g. OpenCode Go:
 // grok/gpt/muse-spark → Responses, minimax/qwen → Anthropic, everything else
 // (including deepseek-v4-flash) → Chat Completions. A pinned api_protocol
 // overrides that catalog. Falling through to the generic Claude tester used
 // credentials.base_url + /v1/messages?beta=true, which 404s as HTML on
 // https://opencode.ai/zen/go/v1/v1/messages.
-func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
-		testModelID = DefaultOpenCodeGoTestModel
+		testModelID = account.providerDefaultTestModel()
+	}
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
 	}
 	testModelID = account.GetMappedModel(testModelID)
-	if IsOpenCodeUnsupportedModel(testModelID) {
+	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(testModelID) {
 		return fmt.Errorf("model %q is not supported on OpenCode standard gateway (gemini models require Google SDK endpoint, jev models require System One endpoint)", testModelID)
 	}
-	proto := account.GetAPIProtocol()
-	switch proto {
-	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
-	default:
-		proto = openCodeGoNativeProtocol(account, testModelID)
+	// 与网关同一判定（含上游模型目录）；测试没有入站协议，取模型的首选协议。
+	protocol := account.resolveModelRoutedProtocol(testModelID)
+	if s.openaiGatewayService != nil {
+		protocol = s.openaiGatewayService.resolveUpstreamProtocolFor(c.Request.Context(), account, "", testModelID)
 	}
-	switch proto {
+	switch protocol {
 	case APIProtocolAnthropic:
 		return s.testCNProviderAnthropicConnection(c, account, testModelID)
 	case APIProtocolResponses:
-		return s.testOpenCodeGoResponsesConnection(c, account, testModelID)
+		return s.testModelRoutedResponsesConnection(c, account, testModelID)
 	default:
 		return s.testCNProviderChatCompletionsConnection(c, account, testModelID, prompt)
 	}
 }
 
-func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
+func (s *AccountTestService) testModelRoutedResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
@@ -473,6 +478,9 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = account.providerDefaultTestModel()
+	}
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
 	}

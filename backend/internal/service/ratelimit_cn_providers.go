@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/tidwall/gjson"
 )
 
@@ -153,9 +154,17 @@ func (s *RateLimitService) handleCNProviderInsufficientBalance(
 // 默认 20 分钟）。周期任务会在余额恢复后提前清除，故此处只需保证冷却覆盖到下一次
 // 周期检测即可。
 func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
+	if s == nil {
+		return cnBalanceCheckCooldown(nil)
+	}
+	return cnBalanceCheckCooldown(s.cfg)
+}
+
+// cnBalanceCheckCooldown 返回余额类冷却时长（= 2× 余额检测周期，默认周期 10 分钟）。
+func cnBalanceCheckCooldown(cfg *config.Config) time.Duration {
 	minutes := 10
-	if s != nil && s.cfg != nil {
-		if cfgMin := s.cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes; cfgMin > 0 {
+	if cfg != nil {
+		if cfgMin := cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes; cfgMin > 0 {
 			minutes = cfgMin
 		}
 	}
@@ -175,12 +184,20 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
 	}
-	if !account.IsOpenCodeGo() && (!account.IsCNProvider() || !account.IsCodingPlan()) {
+	switch {
+	case account.IsOpenCodeGo():
+	case account.IsCommandCode():
+		// 有充值积分时上游跳过窗口检查，429 与窗口无关。
+		if !commandCodeWindowsBinding(account.Extra) {
+			return nil
+		}
+	case account.IsCNProvider() && account.IsCodingPlan():
+	default:
 		return nil
 	}
 	provider := account.Platform
 	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
-	if account.IsOpenCodeGo() {
+	if cnQuotaHasMonthlyWindow(provider) {
 		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
 	}
 	var earliest *time.Time

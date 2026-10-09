@@ -123,6 +123,15 @@ linters:
 
   exclusions:
     rules:
+      # x/net v0.60 deprecated the HTTP/2 compatibility adapters. Keep their
+      # existing per-protocol idle timeout and PING configuration in this CI fix.
+      - path: 'internal/(repository/http_upstream(_http2_keepalive_test)?|server/http)\.go$'
+        linters: [ staticcheck ]
+        text: 'SA1019: (\(golang\.org/x/net/http2\.(Server|Transport)\)\.|golang\.org/x/net/http2\.(ConfigureServer|ConfigureTransports|Server|Transport)\b)'
+      # Upstream libraries can still return the legacy typed GOAWAY error.
+      - path: 'internal/service/openai_codex_models_service(_test)?\.go$'
+        linters: [ staticcheck ]
+        text: 'SA1019: golang\.org/x/net/http2\.GoAwayError\b'
       # G703/G704 污点分析在测试文件中只会命中 httptest mock 与测试者自设的
       # 环境变量路径，不构成攻击面；且该分析跨环境结果不稳定（本地/CI 报告的
       # 位置集合不同），逐点 nolint 无法收敛，故按路径豁免。生产代码不豁免，
