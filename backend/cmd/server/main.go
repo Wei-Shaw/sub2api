@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed IANA timezone database for platforms without system tzdata (e.g. Windows)
 
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
