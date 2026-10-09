@@ -118,6 +118,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 规则未命中一律兜底 Chat Completions，只有显式 Responses 才走下方转换链。
 	if account.IsOpenCodeGo() {
 		mapped := resolveOpenCodeGoMappedModel(account, body, defaultMappedModel)
+		if IsOpenCodeUnsupportedModel(mapped) {
+			return nil, writeOpenCodeUnsupportedModelError(c, false, mapped)
+		}
 		proto := openCodeGoNativeProtocol(account, mapped)
 		if proto != APIProtocolResponses {
 			if isResponsesShape {

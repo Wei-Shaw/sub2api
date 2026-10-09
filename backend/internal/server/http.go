@@ -136,13 +136,14 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 	// 根据配置决定是否启用 H2C
 	if cfg.Server.H2C.Enabled {
 		h2cConfig := cfg.Server.H2C
-		if err := http2.ConfigureServer(server, &http2.Server{
-			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
-			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
-			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),
-			MaxUploadBufferPerConnection: int32(h2cConfig.MaxUploadBufferPerConnection),
-			MaxUploadBufferPerStream:     int32(h2cConfig.MaxUploadBufferPerStream),
-		}); err != nil {
+		h2Server := &http2.Server{ //nolint:staticcheck // SA1019: Go 1.27 HTTP2Config cannot preserve an H2C idle timeout separate from HTTP/1.
+			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,                     //nolint:staticcheck // SA1019: Keep limits on the legacy server required for independent H2C idle timeout.
+			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second, //nolint:staticcheck // SA1019: Preserve H2C idle timeout without changing HTTP/1 IdleTimeout.
+			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),                 //nolint:staticcheck // SA1019: Keep limits on the legacy server required for independent H2C idle timeout.
+			MaxUploadBufferPerConnection: int32(h2cConfig.MaxUploadBufferPerConnection),      //nolint:staticcheck // SA1019: Keep limits on the legacy server required for independent H2C idle timeout.
+			MaxUploadBufferPerStream:     int32(h2cConfig.MaxUploadBufferPerStream),          //nolint:staticcheck // SA1019: Keep limits on the legacy server required for independent H2C idle timeout.
+		}
+		if err := http2.ConfigureServer(server, h2Server); err != nil { //nolint:staticcheck // SA1019: Required to apply the separate H2C idle timeout without changing HTTP/1 IdleTimeout.
 			log.Printf("Failed to configure HTTP/2 Cleartext (h2c): %v", err)
 		} else {
 			protocols := new(http.Protocols)

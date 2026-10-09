@@ -8,6 +8,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestChatInputAudioWithLegacyFunctionHistory(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gemini-3.1-pro-high",
+		Messages: []ChatMessage{
+			{Role: "assistant", Content: json.RawMessage(`"looking up"`), FunctionCall: &ChatFunctionCall{Name: "lookup", Arguments: `{}`}},
+			{Role: "function", Name: "lookup", Content: json.RawMessage(`"done"`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"transcribe"},{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]`)},
+		},
+	}
+	converted, err := ChatCompletionsToResponsesForGemini(req)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(converted.Input, &items))
+	require.Len(t, items, 4)
+	require.Equal(t, "function_call", items[1].Type)
+	require.Equal(t, "call_legacy_1", items[1].CallID)
+	require.Equal(t, "function_call_output", items[2].Type)
+	require.Equal(t, items[1].CallID, items[2].CallID)
+	require.Equal(t, map[int]map[int]string{3: {1: "data:audio/wav;base64,YXVkaW8="}}, converted.chatInputAudio)
+	anthropic, err := ResponsesToAnthropicRequest(converted)
+	require.NoError(t, err)
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(anthropic.Messages[len(anthropic.Messages)-1].Content, &blocks))
+	require.Len(t, blocks, 3)
+	require.Equal(t, "tool_result", blocks[0].Type)
+	require.Equal(t, items[1].CallID, blocks[0].ToolUseID)
+	require.Equal(t, "text", blocks[1].Type)
+	require.Equal(t, "image", blocks[2].Type)
+	require.Equal(t, &AnthropicImageSource{Type: "base64", MediaType: "audio/wav", Data: "YXVkaW8="}, blocks[2].Source)
+	require.Empty(t, req.Messages[0].ToolCalls)
+	require.Empty(t, req.Messages[1].ToolCallID)
+	require.Contains(t, string(req.Messages[2].Content), `"type":"input_audio"`)
+	replayed, err := ChatCompletionsToResponsesForGemini(req)
+	require.NoError(t, err)
+	require.Equal(t, converted.Input, replayed.Input)
+	require.Equal(t, converted.chatInputAudio, replayed.chatInputAudio)
+}
+
 func TestChatInputAudioProviderScope(t *testing.T) {
 	for _, role := range []string{"user", "assistant", "system", "developer", "tool"} {
 		t.Run(role, func(t *testing.T) {
