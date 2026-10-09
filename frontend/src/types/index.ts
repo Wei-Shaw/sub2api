@@ -1058,7 +1058,7 @@ export interface TempUnschedulableStatus {
   state?: TempUnschedulableState
 }
 
-export interface UpstreamBillingData {
+export interface Sub2APIUpstreamBillingData {
   object: 'sub2api.key_billing'
   schema_version: 1
   billing_scope: 'token'
@@ -1074,6 +1074,23 @@ export interface UpstreamBillingData {
   timezone?: string
   observed_at: string
 }
+
+export interface DeepSeekBalanceInfo {
+  currency: string
+  total_balance: string
+  granted_balance: string
+  topped_up_balance: string
+}
+
+export interface DeepSeekUpstreamBillingData {
+  object: 'deepseek.user_balance'
+  schema_version: 1
+  provider: 'deepseek'
+  is_available: boolean
+  balance_infos: DeepSeekBalanceInfo[]
+}
+
+export type UpstreamBillingData = Sub2APIUpstreamBillingData | DeepSeekUpstreamBillingData
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
 
