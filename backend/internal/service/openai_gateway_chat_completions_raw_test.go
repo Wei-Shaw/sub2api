@@ -117,7 +117,7 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.contextErrAtCall, "request was live when dispatched; Close releases it afterwards")
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.Contains(t, rec.Body.String(), `"usage"`)
@@ -927,9 +927,8 @@ func (w *openAIRawStreamDisconnectedWriter) WriteString(string) (int, error) {
 	return 0, errors.New("write failed: client disconnected")
 }
 
-// 客户端已断开时上游随后截断：两者不可区分，沿用既有语义按已收用量正常收尾计费，
-// 不得把客户端离场记成上游故障。
-func TestForwardAsRawChatCompletions_ClientDisconnectTruncationStillBills(t *testing.T) {
+// 客户端断开且上游未报告用量时，记录送达失败，不得触发备用重试或推估收费。
+func TestForwardAsRawChatCompletions_ClientDisconnectWithoutUsageIsNotSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":true}`)
@@ -955,11 +954,18 @@ func TestForwardAsRawChatCompletions_ClientDisconnectTruncationStillBills(t *tes
 	}
 
 	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
-	require.NoError(t, err)
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
+	require.Zero(t, result.Usage.InputTokens)
+	require.Zero(t, result.Usage.OutputTokens)
 }
 
 // 客户端取消会连带取消上游请求，上游读因此报 context.Canceled：同样不判为上游截断。
+
 func TestForwardAsRawChatCompletions_ClientCancelTruncationStillBills(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1094,7 +1100,7 @@ func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 }
 
-func TestForwardAsRawChatCompletions_UpstreamRequestIgnoresClientCancel(t *testing.T) {
+func TestForwardAsRawChatCompletions_UpstreamRequestPropagatesClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	reqCtx, cancel := context.WithCancel(context.Background())
@@ -1111,7 +1117,7 @@ func TestForwardAsRawChatCompletions_UpstreamRequestIgnoresClientCancel(t *testi
 		"data: [DONE]",
 		"",
 	}, "\n")
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
+	upstream := &httpUpstreamRecorder{respectContext: true, resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_raw_ctx"}},
 		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
@@ -1124,10 +1130,16 @@ func TestForwardAsRawChatCompletions_UpstreamRequestIgnoresClientCancel(t *testi
 	account := rawChatCompletionsTestAccount()
 
 	result, err := svc.forwardAsRawChatCompletions(reqCtx, c, account, body, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeClientCancelled, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Nil(t, result, "cancelled before headers: no confirmed consumption")
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.ErrorIs(t, upstream.contextErrAtCall, context.Canceled)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedChatURL(t *testing.T) {

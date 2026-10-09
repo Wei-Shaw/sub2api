@@ -180,6 +180,11 @@ func (UsageLog) Fields() []ent.Field {
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
+		// Downstream delivery outcome (migration 242); NULL = legacy/noncovered.
+		field.String("response_outcome").
+			MaxLen(32).
+			Optional().
+			Nillable(),
 
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").

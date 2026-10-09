@@ -623,6 +623,20 @@ func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate
 	return _c
 }
 
+// SetResponseOutcome sets the "response_outcome" field.
+func (_c *UsageLogCreate) SetResponseOutcome(v string) *UsageLogCreate {
+	_c.mutation.SetResponseOutcome(v)
+	return _c
+}
+
+// SetNillableResponseOutcome sets the "response_outcome" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableResponseOutcome(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetResponseOutcome(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -928,6 +942,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)}
 	}
+	if v, ok := _c.mutation.ResponseOutcome(); ok {
+		if err := usagelog.ResponseOutcomeValidator(v); err != nil {
+			return &ValidationError{Name: "response_outcome", err: fmt.Errorf(`ent: validator failed for field "UsageLog.response_outcome": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)}
 	}
@@ -1130,6 +1149,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 		_node.CacheTTLOverridden = value
+	}
+	if value, ok := _c.mutation.ResponseOutcome(); ok {
+		_spec.SetField(usagelog.FieldResponseOutcome, field.TypeString, value)
+		_node.ResponseOutcome = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -2079,6 +2102,24 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetResponseOutcome sets the "response_outcome" field.
+func (u *UsageLogUpsert) SetResponseOutcome(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldResponseOutcome, v)
+	return u
+}
+
+// UpdateResponseOutcome sets the "response_outcome" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateResponseOutcome() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldResponseOutcome)
+	return u
+}
+
+// ClearResponseOutcome clears the value of the "response_outcome" field.
+func (u *UsageLogUpsert) ClearResponseOutcome() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldResponseOutcome)
 	return u
 }
 
@@ -3069,6 +3110,27 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetResponseOutcome sets the "response_outcome" field.
+func (u *UsageLogUpsertOne) SetResponseOutcome(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetResponseOutcome(v)
+	})
+}
+
+// UpdateResponseOutcome sets the "response_outcome" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateResponseOutcome() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateResponseOutcome()
+	})
+}
+
+// ClearResponseOutcome clears the value of the "response_outcome" field.
+func (u *UsageLogUpsertOne) ClearResponseOutcome() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearResponseOutcome()
 	})
 }
 
@@ -4225,6 +4287,27 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetResponseOutcome sets the "response_outcome" field.
+func (u *UsageLogUpsertBulk) SetResponseOutcome(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetResponseOutcome(v)
+	})
+}
+
+// UpdateResponseOutcome sets the "response_outcome" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateResponseOutcome() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateResponseOutcome()
+	})
+}
+
+// ClearResponseOutcome clears the value of the "response_outcome" field.
+func (u *UsageLogUpsertBulk) ClearResponseOutcome() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearResponseOutcome()
 	})
 }
 

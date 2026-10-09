@@ -443,10 +443,15 @@ type opsCollectedPercentiles struct {
 	max *int
 }
 
+// opsUsageDeliveredPredicate keeps legacy NULL and response_written rows as
+// request successes/latency samples. Failed outcomes (client_cancelled,
+// write_failed, upstream_failed) still contribute their confirmed tokens.
+const opsUsageDeliveredPredicate = "(response_outcome IS NULL OR response_outcome = 'response_written')"
+
 func (c *OpsMetricsCollector) queryUsageCounts(ctx context.Context, start, end time.Time) (successCount int64, tokenConsumed int64, err error) {
 	q := `
 SELECT
-  COALESCE(COUNT(*), 0) AS success_count,
+  COALESCE(COUNT(*) FILTER (WHERE ` + opsUsageDeliveredPredicate + `), 0) AS success_count,
   COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2`
@@ -473,7 +478,8 @@ SELECT
   MAX(duration_ms) AS max_ms
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
-  AND duration_ms IS NOT NULL`
+  AND duration_ms IS NOT NULL
+  AND ` + opsUsageDeliveredPredicate
 
 		var p50, p90, p95, p99 sql.NullFloat64
 		var avg sql.NullFloat64
@@ -506,7 +512,8 @@ SELECT
   MAX(first_token_ms) AS max_ms
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
-  AND first_token_ms IS NOT NULL`
+  AND first_token_ms IS NOT NULL
+  AND ` + opsUsageDeliveredPredicate
 
 		var p50, p90, p95, p99 sql.NullFloat64
 		var avg sql.NullFloat64

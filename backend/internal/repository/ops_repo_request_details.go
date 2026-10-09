@@ -87,7 +87,7 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 	cte := `
 WITH combined AS (
   SELECT
-    'success'::TEXT AS kind,
+    CASE WHEN ` + usageLogResponseDeliveredUL + ` THEN 'success' ELSE 'error' END::TEXT AS kind,
     ul.created_at AS created_at,
     ul.request_id AS request_id,
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
@@ -98,7 +98,7 @@ WITH combined AS (
     NULL::BIGINT AS error_id,
     NULL::TEXT AS phase,
     NULL::TEXT AS severity,
-    NULL::TEXT AS message,
+    CASE WHEN ` + usageLogResponseDeliveredUL + ` THEN NULL ELSE 'response_outcome=' || ul.response_outcome END::TEXT AS message,
     ul.user_id AS user_id,
     ul.api_key_id AS api_key_id,
     ul.account_id AS account_id,
@@ -108,6 +108,20 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
   WHERE ul.created_at >= $1 AND ul.created_at < $2
+    -- A failed-outcome usage row (kept for its confirmed consumption) is listed
+    -- only when no ops error row in the window already represents the request.
+    -- Correlation is exact: same API key and the internal billing identity
+    -- (client:<ClientRequestID> or local:<RequestID>), never cross-key.
+    AND (` + usageLogResponseDeliveredUL + ` OR NOT EXISTS (
+      SELECT 1 FROM ops_error_logs oe
+      WHERE oe.api_key_id = ul.api_key_id
+        AND oe.created_at >= $1 AND oe.created_at < $2
+        AND COALESCE(oe.status_code, 0) >= 400
+        AND (
+          (NULLIF(oe.client_request_id, '') IS NOT NULL AND ul.request_id = 'client:' || oe.client_request_id)
+          OR (NULLIF(oe.client_request_id, '') IS NULL AND NULLIF(oe.request_id, '') IS NOT NULL AND ul.request_id = 'local:' || oe.request_id)
+        )
+    ))
 
   UNION ALL
 

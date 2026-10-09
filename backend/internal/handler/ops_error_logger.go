@@ -1183,6 +1183,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 		}
 
+		if strings.TrimSpace(parsed.Message) == "" {
+			// A client that left gets no body; keep the delivery/consumption audit.
+			parsed.Message = c.GetString(service.OpsDeliveryAuditKey)
+		}
 		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
 
 		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, status)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -122,7 +123,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
+	// GPT Responses served through raw CC: link cancellation like native Chat
+	// (only OpenAI accounts are linked; other platforms keep the detach).
+	resp, err := s.sendCCUpstreamRequest(withOpenAINativeChatLinked(ctx), c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
 		return nil, err
 	}
@@ -136,15 +139,20 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return s.handleErrorResponse(ctx, resp, c, account, chatBody, billingModel)
 	}
 
+	var result *OpenAIForwardResult
+	var forwardErr error
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		result, forwardErr = s.streamChatCompletionsAsResponses(c, resp, account, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	} else {
+		result, forwardErr = s.bufferChatCompletionsAsResponses(c, resp, account, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return classifyOpenAIHTTPPartialFailure(c, account, result, forwardErr)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	customTools map[string]bool,
 	functionTools map[string]bool,
@@ -159,6 +167,9 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	requestID := resp.Header.Get("x-request-id")
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
 	if err != nil {
+		if openAIDownstreamGone(c.Request.Context(), account) {
+			return nil, newOpenAIDeliveryError(c.Request.Context(), OpenAIDeliveryPhaseBuffering, err)
+		}
 		return nil, err
 	}
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
@@ -167,9 +178,21 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, responsesResp)
+	outcome := ResponseOutcome("")
+	var deliveryErr error
+	if account != nil && account.IsOpenAI() {
+		payload, marshalErr := json.Marshal(responsesResp)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("marshal responses fallback response: %w", marshalErr)
+		}
+		outcome, deliveryErr = deliverOpenAIBufferedResponse(c.Request.Context(), c, http.StatusOK, "application/json; charset=utf-8", payload)
+	} else {
+		c.JSON(http.StatusOK, responsesResp)
+	}
 
 	return &OpenAIForwardResult{
+		ResponseOutcome:             outcome,
+		ClientDisconnect:            deliveryErr != nil,
 		RequestID:                   requestID,
 		UpstreamHeaders:             resp.Header,
 		Usage:                       usage,
@@ -181,12 +204,13 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      false,
 		Duration:                    time.Since(startTime),
-	}, nil
+	}, deliveryErr
 }
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	customTools map[string]bool,
 	functionTools map[string]bool,
@@ -207,6 +231,41 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.ToolSearchDeclared = toolSearch
 	state.NamespaceTools = namespaceTools
 	clientDisconnected := false
+	clientOutputStarted := false
+	// GPT accounts stop generation on the first downstream failure (write
+	// error, short write, flush error, cancellation); others keep the drain.
+	abortOnDelivery := account != nil && account.IsOpenAI()
+	var deliveryErr *OpenAIDeliveryError
+	markClientGone := func(cause error) {
+		clientDisconnected = true
+		logger.L().Debug("openai responses chat fallback: client disconnected, continuing to drain upstream for billing",
+			zap.Error(cause),
+			zap.String("request_id", requestID),
+		)
+		if !abortOnDelivery || deliveryErr != nil {
+			return
+		}
+		phase := OpenAIDeliveryPhaseBuffering
+		if clientOutputStarted {
+			phase = OpenAIDeliveryPhaseStreaming
+		}
+		deliveryErr = newOpenAIDeliveryError(c.Request.Context(), phase, cause)
+		_ = resp.Body.Close()
+	}
+	writeSSE := func(value string) error {
+		n, err := fmt.Fprint(c.Writer, value)
+		if err == nil && abortOnDelivery && n < len(value) {
+			err = io.ErrShortWrite
+		}
+		return err
+	}
+	flushSSE := func() error {
+		if abortOnDelivery {
+			return FlushOpenAIDownstream(c)
+		}
+		c.Writer.Flush()
+		return nil
+	}
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
@@ -222,16 +281,37 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 				)
 				continue
 			}
-			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-				clientDisconnected = true
-				logger.L().Debug("openai responses chat fallback: client disconnected, continuing to drain upstream for billing",
-					zap.Error(err),
-					zap.String("request_id", requestID),
-				)
+			if err := writeSSE(sse); err != nil {
+				markClientGone(err)
 				return
 			}
+			clientOutputStarted = true
 		}
-		c.Writer.Flush()
+		if err := flushSSE(); err != nil {
+			markClientGone(err)
+		}
+	}
+	streamResult := func() *OpenAIForwardResult {
+		return &OpenAIForwardResult{
+			RequestID:                   requestID,
+			UpstreamHeaders:             resp.Header,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			ReasoningEffort:             reasoningEffort,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+		}
+	}
+	deliveryFailure := func(scan ccStreamScanState) (*OpenAIForwardResult, error) {
+		result := streamResult()
+		result.Usage = scan.Usage
+		result.FirstTokenMs = scan.FirstTokenMs
+		result.ResponseOutcome = deliveryErr.Outcome
+		result.ClientDisconnect = true
+		return result, deliveryErr
 	}
 
 	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
@@ -240,6 +320,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		writeEvents(events)
 	})
 
+	if deliveryErr == nil && openAIDownstreamGone(c.Request.Context(), account) {
+		markClientGone(c.Request.Context().Err())
+	}
+	if deliveryErr != nil {
+		return deliveryFailure(scan)
+	}
 	if scan.Err != nil {
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
@@ -278,18 +364,32 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	writeEvents(finalEvents)
 	if !clientDisconnected {
 		writeStreamHeaders()
-		if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
-			clientDisconnected = true
+		if err := writeSSE("data: [DONE]\n\n"); err != nil {
+			markClientGone(err)
 		}
 		if !clientDisconnected {
-			c.Writer.Flush()
+			if err := flushSSE(); err != nil {
+				markClientGone(err)
+			}
 		}
+	}
+	if abortOnDelivery && deliveryErr == nil && c.Request.Context().Err() != nil {
+		// A cancellation during the final native flush is not a delivered response.
+		markClientGone(c.Request.Context().Err())
+	}
+	if deliveryErr != nil {
+		return deliveryFailure(scan)
 	}
 	if !scan.SawDone {
 		logCCStreamMissingDoneSentinel("openai responses chat fallback", requestID)
 	}
 
+	outcome := ResponseOutcome("")
+	if abortOnDelivery {
+		outcome = ResponseOutcomeWritten
+	}
 	return &OpenAIForwardResult{
+		ResponseOutcome:             outcome,
 		RequestID:                   requestID,
 		UpstreamHeaders:             resp.Header,
 		Usage:                       scan.Usage,

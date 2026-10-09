@@ -481,10 +481,10 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	platformQuery := `
 		SELECT
 			` + usageLogEffectivePlatformExpr + ` as platform,
-			COUNT(*) as total_requests,
+			COUNT(*) FILTER (WHERE ` + usageLogResponseDeliveredUL + `) as total_requests,
 			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(ul.actual_cost), 0) as total_actual_cost,
-			COUNT(*) FILTER (WHERE ul.created_at >= $2) as today_requests,
+			COUNT(*) FILTER (WHERE ul.created_at >= $2 AND ` + usageLogResponseDeliveredUL + `) as today_requests,
 			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2), 0) as today_tokens,
 			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2), 0) as today_actual_cost
 		FROM usage_logs ul

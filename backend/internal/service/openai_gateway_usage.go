@@ -159,7 +159,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
-	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
+	if result.ResponseOutcome.Failed() && !result.HasObservedConsumption() {
+		// Never persist a fake zero-consumption row for an undelivered response;
+		// the caller audits the consumption as unknown instead.
+		return nil
+	}
+	// A failed response outcome is not upstream success evidence: keep account
+	// failure counters untouched.
+	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI && !result.ResponseOutcome.Failed() {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
 
@@ -406,6 +413,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeSource:          optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
+		ResponseOutcome:          ResponseOutcomePtr(result.ResponseOutcome),
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {

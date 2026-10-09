@@ -261,7 +261,12 @@ func TestOpenAIStreamingPassthroughClientDisconnectStillDrainsTerminalUsage(t *t
 		2,
 	)
 
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.Equal(t, firstOutput, recorder.Body.String())
 	require.Equal(t, []int{len(firstOutput)}, writer.flushBodyLengths)
@@ -305,7 +310,7 @@ func TestOpenAIStreamingPassthroughNamespaceRestoreErrorFlushesWrittenResidualOn
 	require.Equal(t, []int{len(writtenPrefix)}, writer.flushBodyLengths)
 }
 
-func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushAndStillDrainsUsage(t *testing.T) {
+func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushOrInventUsage(t *testing.T) {
 	writtenDataLine := `data: {"type":"response.output_text.delta","delta":"partial"}` + "\n"
 	terminalEvent := `data: {"type":"response.completed","response":{"id":"resp_blank_failure","usage":{"input_tokens":13,"output_tokens":5,"total_tokens":18}}}` + "\n\n"
 
@@ -315,12 +320,17 @@ func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushAndStillDrainsUs
 		1,
 	)
 
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.Equal(t, writtenDataLine, recorder.Body.String())
 	require.Empty(t, writer.flushBodyLengths)
 	require.Equal(t, 1, writer.successfulWrites)
 	require.Equal(t, 1, writer.failedWrites)
-	require.Equal(t, 13, result.usage.InputTokens)
-	require.Equal(t, 5, result.usage.OutputTokens)
+	require.Zero(t, result.usage.InputTokens, "terminal usage was not observed before cancellation")
+	require.Zero(t, result.usage.OutputTokens, "terminal usage was not observed before cancellation")
 }
