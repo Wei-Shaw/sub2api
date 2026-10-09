@@ -415,6 +415,11 @@ export default {
           forbidden: '上游返回 403：可能是订阅缺失/失效，也可能是 WAF 或访问策略拦截，请结合网络路径与 HTTP 状态排查。'
         }
       },
+      zhipuMcp: {
+        title: 'MCP 转发',
+        hint: '开启后 MCP 协议请求将通过该智谱账号转发。',
+        paygDisabledHint: '仅 Coding Plan 订阅模式的智谱账号可开启 MCP 转发。',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',

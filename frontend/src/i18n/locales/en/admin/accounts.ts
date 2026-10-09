@@ -212,6 +212,11 @@ export default {
           forbidden: 'Upstream returned 403: could be a missing/expired OpenCode Go subscription or a WAF/access-policy block; check the network path and HTTP status.'
         }
       },
+      zhipuMcp: {
+        title: 'MCP Passthrough',
+        hint: 'When enabled, MCP protocol requests are forwarded through this Zhipu account.',
+        paygDisabledHint: 'MCP passthrough is only available for Zhipu accounts on the Coding Plan subscription.',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
