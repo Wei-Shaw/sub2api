@@ -420,6 +420,15 @@ func TestForwardResponsesClampsOllamaCloudMaxOutputTokens(t *testing.T) {
 		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
 	})
 
+	t.Run("ollama_cloud platform keeps in-cap client limit", func(t *testing.T) {
+		account := ollamaUpstreamTestAccount(PlatformOllamaCloud, 339)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		inCap := []byte(`{"model":"gpt-oss:120b-cloud","input":"hi","max_output_tokens":4096,"stream":false}`)
+		upstream, err := run(account, inCap)
+		require.Error(t, err)
+		require.Equal(t, int64(4096), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+
 	t.Run("official deepseek with leftover usage extra is untouched", func(t *testing.T) {
 		account := officialDeepSeekTestAccount(333)
 		account.Credentials["api_protocol"] = APIProtocolResponses
