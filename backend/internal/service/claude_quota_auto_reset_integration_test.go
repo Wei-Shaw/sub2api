@@ -57,7 +57,7 @@ func newClaudeAutoIntegration(t *testing.T, enabled bool, used float64) (*claude
 	repo := &claudeAutoIntegrationRepo{account: &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"scope": "user:profile"}, Extra: map[string]any{
 		"claude_auto_reset_credit_enabled": enabled, "claude_auto_reset_credit_mode": "expiring", "claude_auto_reset_credit_expiry_horizon_seconds": 3600, "claude_auto_reset_credit_expiry_min_utilization": 0.5,
 	}}}
-	s := &ClaudeResetCreditService{accounts: repo, writer: repo, tokens: resetTokenStub{}, now: time.Now, idempotency: NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), DefaultIdempotencyConfig()), locks: &claudeAutoIntegrationLease{}}
+	s := &ClaudeResetCreditService{accounts: repo, tokens: resetTokenStub{}, now: time.Now, idempotency: NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), DefaultIdempotencyConfig()), locks: &claudeAutoIntegrationLease{}}
 	count := &atomic.Int32{}
 	ends := time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339)
 	s.do = func(r *http.Request, _ string) (*http.Response, error) {
@@ -119,4 +119,45 @@ func TestClaudeAutoIntegrationExhaustedWindowMustBeCleared(t *testing.T) {
 	// Native quota is blocked by seven_day, but offered reset only clears five_hour.
 	w.scan(context.Background())
 	require.Zero(t, count.Load())
+}
+
+func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
+	for _, change := range []string{"grant", "count", "expiry", "benefit", "disabled"} {
+		t.Run(change, func(t *testing.T) {
+			w, claims := newClaudeAutoIntegration(t, true, 75)
+			original := w.service.do
+			queries := 0
+			w.service.do = func(r *http.Request, proxy string) (*http.Response, error) {
+				response, err := original(r, proxy)
+				if err != nil || r.Method != http.MethodGet || !strings.Contains(r.URL.Path, "/usage") {
+					return response, err
+				}
+				queries++
+				if queries != 3 {
+					return response, nil
+				}
+				body, err := io.ReadAll(response.Body)
+				require.NoError(t, err)
+				require.NoError(t, response.Body.Close())
+				text := string(body)
+				switch change {
+				case "grant":
+					text = strings.ReplaceAll(text, `"grant"`, `"different"`)
+				case "count":
+					text = strings.ReplaceAll(text, `"resets_left":1`, `"resets_left":2`)
+				case "expiry":
+					text = strings.ReplaceAll(text, `"ends_at":`, `"starts_at":`)
+				case "benefit":
+					text = strings.ReplaceAll(text, `"five_hour":75`, `"five_hour":0`)
+				case "disabled":
+					w.accounts.(*claudeAutoIntegrationRepo).account.Extra["claude_auto_reset_credit_enabled"] = false
+				}
+				response.Body = io.NopCloser(strings.NewReader(text))
+				return response, nil
+			}
+			w.scan(context.Background())
+			require.Equal(t, 3, queries)
+			require.Zero(t, claims.Load())
+		})
+	}
 }

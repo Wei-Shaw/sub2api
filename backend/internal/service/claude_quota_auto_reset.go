@@ -255,7 +255,7 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 	}
 	now := time.Now()
 	for _, credit := range credits.Credits {
-		if !credit.Redeemable || credit.ResetsLeft <= 0 || credit.SelectionToken == "" {
+		if !credit.Redeemable || credit.ResetsLeft <= 0 || credit.policySelection == "" {
 			continue
 		}
 		expiring := false
@@ -307,7 +307,7 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 		}
 		valid := false
 		for _, freshCredit := range freshCredits.Credits {
-			if freshCredit.SelectionToken != credit.SelectionToken || !freshCredit.Redeemable {
+			if freshCredit.policySelection != credit.policySelection || !freshCredit.Redeemable {
 				continue
 			}
 			if expiring {
@@ -350,8 +350,30 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 			slog.Info("claude_auto_reset_decision", "account_id", a.ID, "trigger", reason, "result", "remaining_blocking_window")
 			return false
 		}
-		key := "claude-auto:" + shortOpenAIAutoResetHash(credit.SelectionToken)
-		outcome, redeemErr := w.service.Redeem(ctx, a.ID, credit.SelectionToken, key)
+		key := "claude-auto:" + shortOpenAIAutoResetHash(credit.policySelection)
+		outcome, redeemErr := w.service.redeemWithPolicy(ctx, a.ID, key, func(check context.Context, block *claudeResetBlock, grant *claudeResetGrant) error {
+			current, err := w.accounts.GetByID(check, a.ID)
+			if err != nil || current == nil || !current.IsActive() || !current.Schedulable || resolveClaudeAutoResetConfig(current) != cfg || claudeResetPolicySelection(*grant) != credit.policySelection {
+				return fmt.Errorf("automatic reset decision changed")
+			}
+			if expiring {
+				for _, fresh := range projectClaudeResetCredits(block, time.Now()).Credits {
+					if fresh.policySelection == credit.policySelection && claudeExpiringUseful(fresh, cfg, time.Now()) {
+						return nil
+					}
+				}
+				return fmt.Errorf("automatic reset benefit changed")
+			}
+			freshAccounts, err := w.accounts.ListByPlatform(check, PlatformAnthropic)
+			if err != nil || chosenScope == nil || !w.cohort(check, current, *chosenScope, freshAccounts) {
+				return fmt.Errorf("automatic reset cohort changed")
+			}
+			u, err := w.usage(check, current)
+			if err != nil || !chosenScope.expires.After(time.Now()) || !claudeGrantClearsAllBlocks(u, grant.Clears, model, time.Now()) {
+				return fmt.Errorf("automatic reset quota changed")
+			}
+			return nil
+		})
 		result := "failed"
 		if outcome != nil {
 			result = outcome.Outcome
