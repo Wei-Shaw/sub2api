@@ -606,6 +606,27 @@ export function cnBalanceCellVisible(account: CNUsageCellAccount): boolean {
 }
 
 /**
+ * 智谱 GLM Coding Plan 重置卡入口可见性：只支持国内站（open.bigmodel.cn）个人版。
+ * 团队版（凭据带组织 ID）、国际站（z.ai）与自定义中转后端都会直接拒绝，这里不渲染入口。
+ * 生效端点的取法与后端 Account.GetOpenAIBaseURL 一致：自适应协议优先取
+ * api_base_urls.chat_completions，其次 base_url，都为空时是国内站默认端点。
+ */
+export function zhipuResetCardsSupported(
+  platform: string,
+  credentials: Record<string, unknown> | undefined | null
+): boolean {
+  if (platform !== 'zhipu' || credentials?.account_mode !== 'coding') return false
+  const org = credentials.zhipu_organization
+  if (typeof org === 'string' && org.trim() !== '') return false
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+  const adaptiveURLs = credentials.api_base_urls as Record<string, unknown> | undefined
+  const baseURL =
+    (credentials.api_protocol === 'adaptive' ? text(adaptiveURLs?.chat_completions) : '') ||
+    text(credentials.base_url)
+  return baseURL === '' || baseURL.toLowerCase().includes('bigmodel.cn')
+}
+
+/**
  * 将请求头覆写写入 credentials。
  * create 模式：关闭时不写入任何字段；edit 模式：关闭时删除字段（全量替换语义）。
  */
