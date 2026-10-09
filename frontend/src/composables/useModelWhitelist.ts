@@ -588,3 +588,27 @@ export function buildModelMappingObject(
 
   return Object.keys(mapping).length > 0 ? mapping : null
 }
+
+// 删除一条重写映射，并把来源模型留在白名单里（保存后写成身份项 X -> X）。
+//
+// 白名单模型再加同名重写时，buildModelMappingObject 会用重写覆盖身份项；
+// 重新打开后 splitModelMappingObject 只把它放进 modelMappings。若删除时只 splice，
+// 来源就从 model_mapping 消失，后端不再支持该模型。
+//
+// 通配符来源不回填：身份映射不能包含 *（白名单构建会丢弃，批量白名单保存则可能原样写入）。
+// 映射模式的保存本身不读 allowedModels（空映射表示允许全部模型）；调用方仍回填白名单，
+// 这样编辑弹窗的 combined 保存、以及回到白名单页后的保存，都会保留 X -> X。
+// Antigravity / compact 映射没有白名单，不走这个函数。
+export function removeModelMappingEntry(
+  modelMappings: ModelMappingEntry[],
+  index: number,
+  allowedModels: string[]
+): void {
+  if (index < 0 || index >= modelMappings.length) return
+  const removed = modelMappings[index]
+  modelMappings.splice(index, 1)
+  const from = removed.from.trim()
+  if (!from || from.includes('*')) return
+  if (allowedModels.some((model) => model.trim() === from)) return
+  allowedModels.push(from)
+}

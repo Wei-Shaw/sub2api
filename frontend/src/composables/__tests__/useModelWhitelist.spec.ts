@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, removeModelMappingEntry, splitModelMappingObject } from '../useModelWhitelist'
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
@@ -224,6 +224,66 @@ describe('useModelWhitelist', () => {
     expect(parsed).toEqual({
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
+    })
+  })
+
+  it('deleting a collapsed rewrite keeps the source as a whitelist identity', () => {
+    const saved = buildModelMappingObject(
+      'combined',
+      ['gpt-5.6-sol'],
+      [{ from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' }]
+    )
+    expect(saved).toEqual({ 'gpt-5.6-sol': 'gpt-6.1-sol' })
+
+    const reopened = splitModelMappingObject(saved)
+    expect(reopened).toEqual({
+      allowedModels: [],
+      modelMappings: [{ from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' }]
+    })
+
+    removeModelMappingEntry(reopened.modelMappings, 0, reopened.allowedModels)
+
+    expect(reopened.modelMappings).toEqual([])
+    expect(reopened.allowedModels).toEqual(['gpt-5.6-sol'])
+    expect(buildModelMappingObject('combined', reopened.allowedModels, reopened.modelMappings)).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
+    })
+  })
+
+  it('deleting one rewrite restores only that source and keeps the other mapping', () => {
+    const allowedModels = ['gpt-5.4']
+    const modelMappings = [
+      { from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' },
+      { from: 'gpt-latest', to: 'gpt-5.4' }
+    ]
+
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+
+    expect(allowedModels).toEqual(['gpt-5.4', 'gpt-5.6-sol'])
+    expect(modelMappings).toEqual([{ from: 'gpt-latest', to: 'gpt-5.4' }])
+    expect(buildModelMappingObject('combined', allowedModels, modelMappings)).toEqual({
+      'gpt-5.4': 'gpt-5.4',
+      'gpt-5.6-sol': 'gpt-5.6-sol',
+      'gpt-latest': 'gpt-5.4'
+    })
+  })
+
+  it('does not duplicate a source that is already whitelisted, and skips blank or wildcard sources', () => {
+    const allowedModels = [' gpt-5.6-sol ']
+    const modelMappings = [
+      { from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' },
+      { from: '  ', to: 'gpt-6.1-sol' },
+      { from: 'claude-*', to: 'claude-sonnet-4-6' }
+    ]
+
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+
+    expect(allowedModels).toEqual([' gpt-5.6-sol '])
+    expect(modelMappings).toEqual([])
+    expect(buildModelMappingObject('combined', ['gpt-5.6-sol'], [])).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
     })
   })
 })

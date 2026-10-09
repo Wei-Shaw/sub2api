@@ -1247,7 +1247,7 @@
               <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
               <span class="text-gray-400">→</span>
               <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+              <button type="button" @click="removeModelMapping(index)" class="text-red-500 hover:text-red-700">
                 <Icon name="trash" size="sm" />
               </button>
             </div>
@@ -3226,6 +3226,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
+  removeModelMappingEntry,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 
@@ -4608,7 +4609,9 @@ const addModelMapping = () => {
 }
 
 const removeModelMapping = (index: number) => {
-  modelMappings.value.splice(index, 1)
+  // 编辑保存始终用 combined，映射页签只决定显示哪一块。
+  // 删除重写后把来源放回白名单，避免重新打开后模型不再受支持。
+  removeModelMappingEntry(modelMappings.value, index, allowedModels.value)
 }
 
 const addPresetMapping = (from: string, to: string) => {

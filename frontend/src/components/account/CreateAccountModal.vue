@@ -2088,7 +2088,7 @@
               <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
               <span class="text-gray-400">→</span>
               <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+              <button type="button" @click="removeModelMapping(index)" class="text-red-500 hover:text-red-700">
                 <Icon name="trash" size="sm" />
               </button>
             </div>
@@ -3965,6 +3965,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
+  removeModelMappingEntry,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
@@ -5118,7 +5119,10 @@ const removeOpenAICompactModelMapping = (index: number) => {
 }
 
 const removeModelMapping = (index: number) => {
-  modelMappings.value.splice(index, 1)
+  // 与编辑弹窗相同：删除重写只去掉改写，来源回到白名单。
+  // 映射模式下保存不写白名单（空映射=允许全部）；切回白名单后再保存才会写成 X -> X。
+  // 创建弹窗切回白名单时会按平台重新填充列表，这是原有行为。
+  removeModelMappingEntry(modelMappings.value, index, allowedModels.value)
 }
 
 const addPresetMapping = (from: string, to: string) => {
