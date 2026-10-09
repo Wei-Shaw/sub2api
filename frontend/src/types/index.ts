@@ -1236,6 +1236,8 @@ export interface Account {
     }
     codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
     auto_reset_credit_enabled?: boolean
+    auto_reset_credit_5h_disabled?: boolean
+    auto_reset_credit_7d_disabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
     codex_auto_reset_credit_state?: {
