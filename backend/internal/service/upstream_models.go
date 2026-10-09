@@ -522,6 +522,17 @@ func (s *AccountTestService) fetchModelsDevMetadata(
 			continue
 		}
 		entry := upstreamMetadataFromModelsDevModel(modelID, model)
+		if (provider.ID == "minimax-cn" || provider.ID == "minimax") &&
+			entry.Reasoning != nil && *entry.Reasoning && len(entry.SupportedReasoningLevels) == 0 {
+			for _, option := range model.ReasoningOptions {
+				if strings.EqualFold(strings.TrimSpace(option.Type), "toggle") {
+					// MiniMax exposes an on/off thinking switch, not adjustable effort.
+					entry.SupportedReasoningLevels = []string{"none", "high"}
+					entry.DefaultReasoningLevel = "high"
+					break
+				}
+			}
+		}
 		if upstreamModelMetadataIsUseful(entry) {
 			metadata[modelID] = entry
 		}
@@ -687,6 +698,10 @@ func matchModelsDevProviderByKnownHost(registry map[string]modelsDevProvider, ac
 		providerID = "openai"
 	case "opencode.ai":
 		providerID = "opencode-go"
+	case "api.minimax.cn", "api.minimaxi.com", "api.minimax.com":
+		providerID = "minimax-cn"
+	case "api.minimax.io":
+		providerID = "minimax"
 	default:
 		return modelsDevProvider{}, false
 	}

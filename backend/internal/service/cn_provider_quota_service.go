@@ -255,6 +255,10 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			return result, nil
 		}
 		tiers = parseMiniMaxUsageTiers(bodyBytes)
+		if len(tiers) == 0 {
+			result.Error = "Invalid MiniMax quota response: no supported usage windows"
+			return result, nil
+		}
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "current_subscribe_title").String())
 	}
 	result.Tiers = tiers
@@ -333,11 +337,12 @@ func kimiQuotaURL(baseURL string) string {
 	return base + "/v1/usages"
 }
 
-// minimaxQuotaURL 根据推理域名选择 Token Plan / Coding Plan 额度主机。
-// 官方 FAQ 写 www.minimax.io / www.minimaxi.com，实际以 Bearer Key 打 api.*。
-// 国际站 api.minimax.io；国内站 api.minimaxi.com（含 api.minimax.com 与自定义回落）。
+// minimaxQuotaURL selects the regional Token Plan endpoint, preserving legacy APIs.
 func minimaxQuotaURL(baseURL string) string {
-	if strings.Contains(strings.ToLower(baseURL), "minimax.io") {
+	if miniMaxAPIHost(baseURL) == "api.minimax.cn" {
+		return "https://www.minimax.cn/v1/token_plan/remains"
+	}
+	if miniMaxAPIHost(baseURL) == "api.minimax.io" {
 		return "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
 	}
 	return "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
