@@ -530,6 +530,8 @@ export default {
       allTypes: 'All Types',
       inputCost: 'Input Cost',
       outputCost: 'Output Cost',
+      longContext: 'Long context',
+      longContextPricingTooltip: 'Long-context pricing was applied. Input and output rates depend on the pricing tier, not a uniform multiplier.',
       cacheCreationCost: 'Cache Creation Cost',
       cacheReadCost: 'Cache Read Cost',
       inputTokens: 'Input Tokens',

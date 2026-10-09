@@ -1428,6 +1428,28 @@ function handleToolbarRefresh() {
             </div>
           </div>
         </div>
+
+        <!-- Per-request output speed, separate from system throughput. -->
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" data-testid="output-tps-card" style="order: 7;">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.outputTps') }}</span>
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.outputTps')" />
+          </div>
+          <div class="mt-2 flex flex-wrap items-baseline gap-2">
+            <div class="text-3xl font-black text-gray-900 dark:text-white" data-testid="output-tps-p50">{{ overview.output_tps?.p50?.toFixed(1) ?? '—' }}</div>
+            <span class="text-xs font-bold text-gray-400">tok/s (P50)</span>
+          </div>
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div v-for="metric in ['p5', 'p10', 'avg'] as const" :key="metric" class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">{{ metric === 'avg' ? 'Avg' : metric.toUpperCase() }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white" :data-testid="`output-tps-${metric}`">{{ overview.output_tps?.[metric]?.toFixed(1) ?? '—' }}</span>
+              <span class="text-gray-400">tok/s</span>
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-gray-500" data-testid="output-tps-samples">
+            {{ t('admin.ops.outputTpsSamples', { count: overview.output_tps == null ? '—' : formatNumber(overview.output_tps.sample_count) }) }}
+          </div>
+        </div>
       </div>
     </div>
 

@@ -375,6 +375,10 @@ const toggle = () => {
   isOpen.value = !isOpen.value
 }
 
+watch(() => props.disabled, (disabled) => {
+  if (disabled) isOpen.value = false
+})
+
 watch(isOpen, (open) => {
   if (open) {
     calculateDropdownPosition()

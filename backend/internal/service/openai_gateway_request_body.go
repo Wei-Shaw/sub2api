@@ -53,11 +53,11 @@ func buildOpenAIResponsesURL(base string) string {
 }
 
 // buildOpenAIResponsesURLForPlatform 组装 Responses 端点（平台感知）。
-// DeepSeek 官方 Responses 端点为 /responses（无 /v1 前缀，适配 Codex）；
-// 其余平台维持 /v1/responses。
+// 供应商 profile 声明了 ResponsesPath 时按其拼接（如 DeepSeek 为无 /v1 前缀的
+// /responses）；其余平台维持 /v1/responses。
 func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
-	if platform == PlatformDeepseek {
-		return buildOpenAIEndpointURL(base, "/responses")
+	if profile := LookupProviderProfile(platform); profile != nil && profile.ResponsesPath != "" {
+		return buildOpenAIEndpointURL(base, profile.ResponsesPath)
 	}
 	return buildOpenAIResponsesURL(base)
 }
@@ -1430,6 +1430,18 @@ func normalizeOpenAIResponseFormatSchemasBody(body []byte) ([]byte, bool, error)
 }
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
+	return normalizeOpenAIResponsesCompatibilityBodyWithOptions(body, account, openAIResponsesCompatibilityOptions{ResponsesLite: responsesLite})
+}
+
+type openAIResponsesCompatibilityOptions struct {
+	ResponsesLite bool
+	// Compact marks the /responses/compact wire shape, which is left as-is
+	// by request-shape compatibility rewrites such as web_search history.
+	Compact bool
+}
+
+func normalizeOpenAIResponsesCompatibilityBodyWithOptions(body []byte, account *Account, opts openAIResponsesCompatibilityOptions) ([]byte, bool, error) {
+	responsesLite := opts.ResponsesLite
 	if account == nil || !account.IsOpenAI() {
 		return body, false, nil
 	}
@@ -1493,6 +1505,14 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 			}
 			normalized = next
 			changed = true
+		}
+		if !opts.Compact {
+			webSearchBody, webSearchChanged, err := ensureOpenAIOAuthWebSearchToolForHistoryBody(normalized, responsesLite)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize websocket body: %w", err)
+			}
+			normalized = webSearchBody
+			changed = changed || webSearchChanged
 		}
 	}
 	needsOrphanCleanup := account != nil && account.IsOpenAIOAuthLike() &&
