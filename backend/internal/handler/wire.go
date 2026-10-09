@@ -97,6 +97,7 @@ func ProvideAdminHandlers(
 }
 
 func ProvideGatewayHandler(
+	dingTalkOrganization *DingTalkOrganizationHandler,
 	gatewayService *service.GatewayService,
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
@@ -118,6 +119,7 @@ func ProvideGatewayHandler(
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
+	h.dingTalkOrganization = dingTalkOrganization
 	return h
 }
 
@@ -179,6 +181,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	dingTalkOrganization *DingTalkOrganizationHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
@@ -205,33 +208,35 @@ func ProvideHandlers(
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
-		Auth:             authHandler,
-		User:             userHandler,
-		APIKey:           apiKeyHandler,
-		Usage:            usageHandler,
-		Redeem:           redeemHandler,
-		Subscription:     subscriptionHandler,
-		Announcement:     announcementHandler,
-		ChannelMonitor:   channelMonitorUserHandler,
-		ChannelMonitorV2: channelMonitorV2Handler,
-		Admin:            adminHandlers,
-		Gateway:          gatewayHandler,
-		OpenAIGateway:    openaiGatewayHandler,
-		Setting:          settingHandler,
-		Totp:             totpHandler,
-		Passkey:          passkeyHandler,
-		Payment:          paymentHandler,
-		PaymentWebhook:   paymentWebhookHandler,
-		AvailableChannel: availableChannelHandler,
-		ModelPlaza:       modelPlazaHandler,
-		AsyncImage:       asyncImageHandler,
-		BatchImage:       batchImageHandler,
+		DingTalkOrganization: dingTalkOrganization,
+		Auth:                 authHandler,
+		User:                 userHandler,
+		APIKey:               apiKeyHandler,
+		Usage:                usageHandler,
+		Redeem:               redeemHandler,
+		Subscription:         subscriptionHandler,
+		Announcement:         announcementHandler,
+		ChannelMonitor:       channelMonitorUserHandler,
+		ChannelMonitorV2:     channelMonitorV2Handler,
+		Admin:                adminHandlers,
+		Gateway:              gatewayHandler,
+		OpenAIGateway:        openaiGatewayHandler,
+		Setting:              settingHandler,
+		Totp:                 totpHandler,
+		Passkey:              passkeyHandler,
+		Payment:              paymentHandler,
+		PaymentWebhook:       paymentWebhookHandler,
+		AvailableChannel:     availableChannelHandler,
+		ModelPlaza:           modelPlazaHandler,
+		AsyncImage:           asyncImageHandler,
+		BatchImage:           batchImageHandler,
 	}
 }
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
+	ProvideDingTalkOrganizationHandler,
 	NewAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,

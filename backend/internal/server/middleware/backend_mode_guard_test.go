@@ -283,10 +283,10 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "enabled_blocks_dingtalk_oauth_start",
+			name:       "enabled_allows_dingtalk_oauth_start",
 			enabled:    "true",
 			path:       "/api/v1/auth/oauth/dingtalk/start",
-			wantStatus: http.StatusForbidden,
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "enabled_allows_dingtalk_oauth_callback",

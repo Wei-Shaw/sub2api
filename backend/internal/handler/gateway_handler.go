@@ -40,6 +40,7 @@ var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
+	dingTalkOrganization      *DingTalkOrganizationHandler
 	gatewayService            *service.GatewayService
 	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
@@ -1598,6 +1599,12 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	if h.dingTalkOrganization != nil {
+		if err := h.dingTalkOrganization.validateUsageMembership(ctx, apiKey.UserID); err != nil {
+			h.errorResponse(c, pkgerrors.Code(err), pkgerrors.Reason(err), pkgerrors.Message(err))
+			return
+		}
+	}
 
 	// 解析可选的日期范围参数（用于 model_stats 查询）
 	startTime, endTime := h.parseUsageDateRange(c)

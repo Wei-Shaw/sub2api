@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -140,4 +141,31 @@ func TestDingTalkClient_GetDeptInfo_ErrCode60003(t *testing.T) {
 	apiErr, ok := err.(*DingTalkAPIError)
 	require.True(t, ok)
 	require.Equal(t, "60003", apiErr.Code)
+}
+
+func TestDingTalkCurrentStaffRejectsInvalidDirectoryMembership(t *testing.T) {
+	for _, staffResponse := range []string{
+		`{"errcode":60111,"errmsg":"user not found"}`,
+		`{"errcode":88,"errmsg":"rate limited"}`,
+		`{"errcode":0,"result":{"userid":"staff","dept_id_list":[]}}`,
+		`{"errcode":0,"result":{"userid":"different","dept_id_list":[1]}}`,
+		`{"errcode":0,"result":{}}`,
+	} {
+		t.Run(staffResponse, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]string
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				if body["unionid"] != "" {
+					_, _ = w.Write([]byte(`{"errcode":0,"result":{"userid":"staff"}}`))
+					return
+				}
+				_, _ = w.Write([]byte(staffResponse))
+			}))
+			defer upstream.Close()
+			client := &DingTalkClient{cfg: dingTalkClientConfig{UserInfoURL: upstream.URL}, appToken: "token", appTokenExp: time.Now().Add(time.Hour), httpClient: upstream.Client()}
+			staff, err := client.GetCurrentStaff(context.Background(), "union")
+			require.Error(t, err)
+			require.Nil(t, staff)
+		})
+	}
 }

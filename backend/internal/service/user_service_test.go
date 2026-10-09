@@ -398,7 +398,7 @@ func TestUpdateBalance_Success(t *testing.T) {
 	require.Equal(t, []int64{42}, cache.invalidatedUserIDs, "应对 userID=42 失效缓存")
 }
 
-func TestGetProfileIdentitySummaries_AllowsUnbindWhenAnotherLoginMethodRemains(t *testing.T) {
+func TestGetProfileIdentitySummaries_RejectsUnbindWhenOnlyEmailRemains(t *testing.T) {
 	repo := &mockUserRepo{
 		getByIDUser: &User{
 			ID:    7,
@@ -426,7 +426,7 @@ func TestGetProfileIdentitySummaries_AllowsUnbindWhenAnotherLoginMethodRemains(t
 
 	require.NoError(t, err)
 	require.True(t, summaries.LinuxDo.Bound)
-	require.True(t, summaries.LinuxDo.CanUnbind)
+	require.False(t, summaries.LinuxDo.CanUnbind)
 	require.Equal(t, "linuxdo-handle", summaries.LinuxDo.DisplayName)
 	require.NotEmpty(t, summaries.LinuxDo.SubjectHint)
 }
@@ -525,8 +525,8 @@ func TestUnbindUserAuthProviderRemovesProviderAndReturnsUpdatedProfile(t *testin
 		},
 		identities: []UserAuthIdentityRecord{
 			{
-				ProviderType:    "email",
-				ProviderKey:     "email",
+				ProviderType:    "dingtalk",
+				ProviderKey:     "dingtalk",
 				ProviderSubject: "alice@example.com",
 			},
 			{
@@ -913,4 +913,19 @@ func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://cdn.example.com/profile.png", user.AvatarURL)
 	require.Equal(t, "remote_url", user.AvatarSource)
+}
+
+func TestDingTalkIdentityCannotBeSelfUnbound(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{ID: 15, Email: "employee@example.com"},
+		identities:  []UserAuthIdentityRecord{{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "staff"}, {ProviderType: "oidc", ProviderKey: "oidc", ProviderSubject: "external"}},
+	}
+	svc := NewUserService(repo, nil, nil, nil)
+	summary, err := svc.GetProfileIdentitySummaries(context.Background(), 15, repo.getByIDUser)
+	require.NoError(t, err)
+	require.False(t, summary.DingTalk.CanUnbind)
+	require.Equal(t, userIdentityNoteOrganizationManaged, summary.DingTalk.NoteKey)
+	_, err = svc.UnbindUserAuthProvider(context.Background(), 15, "dingtalk")
+	require.Error(t, err)
+	require.Empty(t, repo.unboundProviders)
 }

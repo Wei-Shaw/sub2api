@@ -2513,6 +2513,7 @@ func newOAuthPendingFlowTestHandlerWithOptions(
 }
 
 type oauthPendingFlowTestHandlerOptions struct {
+	refreshTokenCache  service.RefreshTokenCache
 	invitationEnabled  bool
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
@@ -2622,11 +2623,15 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 			},
 		}, options.emailCache)
 	}
+	refreshCache := options.refreshTokenCache
+	if refreshCache == nil {
+		refreshCache = &oauthPendingFlowRefreshTokenCacheStub{}
+	}
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
 		redeemRepo,
-		&oauthPendingFlowRefreshTokenCacheStub{},
+		refreshCache,
 		cfg,
 		settingSvc,
 		emailService,

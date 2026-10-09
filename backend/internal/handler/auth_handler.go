@@ -34,7 +34,7 @@ type AuthHandler struct {
 
 // NewAuthHandler creates a new AuthHandler
 func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService) *AuthHandler {
-	return &AuthHandler{
+	h := &AuthHandler{
 		cfg:                  cfg,
 		authService:          authService,
 		userService:          userService,
@@ -44,6 +44,10 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 		totpService:          totpService,
 		userAttributeService: userAttributeService,
 	}
+	if authService != nil {
+		authService.SetDingTalkLoginValidator(h.validateDingTalkUserMembership)
+	}
+	return h
 }
 
 // RegisterRequest represents the registration request payload

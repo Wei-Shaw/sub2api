@@ -129,44 +129,11 @@ describe('Tencent captcha action gate', () => {
     })
   })
 
-  it('clicking login opens Tencent captcha before calling login', async () => {
+  it('does not expose the retired email login form', async () => {
     const wrapper = mountLogin()
     await flushPromises()
-    await wrapper.get('#email').setValue('user@example.com')
-    await wrapper.get('#password').setValue('secret-123')
-
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
-
-    expect(verifyActionMock).toHaveBeenCalledOnce()
-    expect(loginMock).toHaveBeenCalledWith(expect.objectContaining({
-      tencent_captcha_ticket: 'ticket-1',
-      tencent_captcha_randstr: '@rand-1'
-    }))
-  })
-
-  it('does not call login when Tencent captcha is closed', async () => {
-    verifyActionMock.mockResolvedValue(null)
-    const wrapper = mountLogin()
-    await flushPromises()
-    await wrapper.get('#email').setValue('user@example.com')
-    await wrapper.get('#password').setValue('secret-123')
-
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
-
-    expect(verifyActionMock).toHaveBeenCalledOnce()
-    expect(loginMock).not.toHaveBeenCalled()
-  })
-
-  it('does not open Tencent captcha when login form validation fails', async () => {
-    const wrapper = mountLogin()
-    await flushPromises()
-
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
-
-    expect(verifyActionMock).not.toHaveBeenCalled()
+    expect(wrapper.find('#email').exists()).toBe(false)
+    expect(wrapper.find('#password').exists()).toBe(false)
     expect(loginMock).not.toHaveBeenCalled()
   })
 

@@ -578,6 +578,7 @@ func TestUserHandlerUnbindIdentityReturnsUpdatedProfile(t *testing.T) {
 			Status:   service.StatusActive,
 		},
 		identities: []service.UserAuthIdentityRecord{
+			{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "staff"},
 			{
 				ProviderType:    "email",
 				ProviderKey:     "email",
@@ -633,6 +634,7 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 			TokenVersion: 4,
 		},
 		identities: []service.UserAuthIdentityRecord{
+			{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "staff"},
 			{
 				ProviderType:    "email",
 				ProviderKey:     "email",

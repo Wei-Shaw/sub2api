@@ -71,21 +71,22 @@ type JWTClaims struct {
 
 // AuthService 认证服务
 type AuthService struct {
-	entClient             *dbent.Client
-	userRepo              UserRepository
-	redeemRepo            RedeemCodeRepository
-	refreshTokenCache     RefreshTokenCache
-	cfg                   *config.Config
-	settingService        *SettingService
-	emailService          *EmailService
-	turnstileService      *TurnstileService
-	tencentCaptchaService *TencentCaptchaService
-	aliyunCaptchaService  *AliyunCaptchaService
-	emailQueueService     *EmailQueueService
-	promoService          *PromoService
-	affiliateService      *AffiliateService
-	defaultSubAssigner    DefaultSubscriptionAssigner
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	dingTalkLoginValidator func(context.Context, int64) error
+	entClient              *dbent.Client
+	userRepo               UserRepository
+	redeemRepo             RedeemCodeRepository
+	refreshTokenCache      RefreshTokenCache
+	cfg                    *config.Config
+	settingService         *SettingService
+	emailService           *EmailService
+	turnstileService       *TurnstileService
+	tencentCaptchaService  *TencentCaptchaService
+	aliyunCaptchaService   *AliyunCaptchaService
+	emailQueueService      *EmailQueueService
+	promoService           *PromoService
+	affiliateService       *AffiliateService
+	defaultSubAssigner     DefaultSubscriptionAssigner
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
 }
 
 type CaptchaProof struct {
@@ -669,7 +670,8 @@ func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context,
 	if signupSource != "dingtalk" {
 		return false
 	}
-	cfg, err := s.settingService.GetDingTalkConnectOAuthConfig(ctx)
+	app, _ := ctx.Value(dingTalkApplicationContextKey{}).(string)
+	cfg, err := s.settingService.GetDingTalkOAuthConfigForApp(ctx, app)
 	if err != nil || !cfg.Enabled || !cfg.BypassRegistration {
 		return false
 	}
@@ -693,17 +695,36 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPairAndPromoCode(ctx context.
 }
 
 func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, promoCode, signupSource string) (*TokenPair, *User, error) {
-	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, nil, errors.New("refresh token cache not configured")
 	}
+	user, err := s.resolveOAuthUser(ctx, email, username, invitationCode, affiliateCode, promoCode, signupSource, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	return tokenPair, user, nil
+}
 
+// ProvisionDingTalkUser is called only after live corporate membership verification.
+// The reserved email is an internal identity key, never an email ownership claim.
+func (s *AuthService) ProvisionDingTalkUser(ctx context.Context, email, username string) (*User, error) {
+	if !strings.HasSuffix(email, DingTalkConnectSyntheticEmailDomain) {
+		return nil, ErrEmailReserved
+	}
+	return s.resolveOAuthUser(ctx, email, username, "", "", "", "dingtalk", true)
+}
+
+func (s *AuthService) resolveOAuthUser(ctx context.Context, email, username, invitationCode, affiliateCode, promoCode, signupSource string, autoProvision bool) (*User, error) {
 	email = strings.TrimSpace(email)
 	if email == "" || len(email) > 255 {
-		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+		return nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
 	if _, err := mail.ParseAddress(email); err != nil {
-		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+		return nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
 
 	username = strings.TrimSpace(username)
@@ -716,22 +737,22 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// OAuth 首次登录视为注册
-			if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
-				return nil, nil, ErrRegDisabled
+			if !autoProvision && (s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource))) {
+				return nil, ErrRegDisabled
 			}
 
 			// 检查是否需要邀请码
 			var invitationRedeemCode *RedeemCode
-			if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
+			if !autoProvision && s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
 				if invitationCode == "" {
-					return nil, nil, ErrOAuthInvitationRequired
+					return nil, ErrOAuthInvitationRequired
 				}
 				redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
 				if err != nil {
-					return nil, nil, ErrInvitationCodeInvalid
+					return nil, ErrInvitationCodeInvalid
 				}
 				if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-					return nil, nil, ErrInvitationCodeInvalid
+					return nil, ErrInvitationCodeInvalid
 				}
 				invitationRedeemCode = redeemCode
 			}
@@ -739,11 +760,11 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			randomPassword, err := randomHexString(32)
 			if err != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
-				return nil, nil, ErrServiceUnavailable
+				return nil, ErrServiceUnavailable
 			}
 			hashedPassword, err := s.HashPassword(randomPassword)
 			if err != nil {
-				return nil, nil, fmt.Errorf("hash password: %w", err)
+				return nil, fmt.Errorf("hash password: %w", err)
 			}
 
 			// 优先用 caller 显式传入的 signupSource（如 "dingtalk" / "linuxdo" / "oidc" / "wechat"），
@@ -773,7 +794,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				tx, err := s.entClient.Tx(ctx)
 				if err != nil {
 					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
-					return nil, nil, ErrServiceUnavailable
+					return nil, ErrServiceUnavailable
 				}
 				defer func() { _ = tx.Rollback() }()
 				txCtx := dbent.NewTxContext(ctx, tx)
@@ -783,19 +804,19 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {
 							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
-							return nil, nil, ErrServiceUnavailable
+							return nil, ErrServiceUnavailable
 						}
 					} else {
 						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-						return nil, nil, ErrServiceUnavailable
+						return nil, ErrServiceUnavailable
 					}
 				} else {
 					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
-						return nil, nil, ErrInvitationCodeInvalid
+						return nil, ErrInvitationCodeInvalid
 					}
 					if err := tx.Commit(); err != nil {
 						logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction: %v", err)
-						return nil, nil, ErrServiceUnavailable
+						return nil, ErrServiceUnavailable
 					}
 					user = newUser
 					created = true
@@ -811,11 +832,11 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						user, err = s.userRepo.GetByEmail(ctx, email)
 						if err != nil {
 							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
-							return nil, nil, ErrServiceUnavailable
+							return nil, ErrServiceUnavailable
 						}
 					} else {
 						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-						return nil, nil, ErrServiceUnavailable
+						return nil, ErrServiceUnavailable
 					}
 				} else {
 					user = newUser
@@ -827,19 +848,19 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 					if invitationRedeemCode != nil {
 						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
-							return nil, nil, ErrInvitationCodeInvalid
+							return nil, ErrInvitationCodeInvalid
 						}
 					}
 				}
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
-			return nil, nil, ErrServiceUnavailable
+			return nil, ErrServiceUnavailable
 		}
 	}
 
 	if !user.IsActive() {
-		return nil, nil, ErrUserNotActive
+		return nil, ErrUserNotActive
 	}
 
 	if user.Username == "" && username != "" {
@@ -851,11 +872,13 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 	if created {
 		user = s.applyOAuthSignupPromoCode(ctx, user, promoCode)
 	}
-	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
-	if err != nil {
-		return nil, nil, fmt.Errorf("generate token pair: %w", err)
-	}
-	return tokenPair, user, nil
+	return user, nil
+}
+
+// SetDingTalkLoginValidator installs the live membership check at application startup.
+// Both full token pairs and access-token fallback paths must enforce it.
+func (s *AuthService) SetDingTalkLoginValidator(validator func(context.Context, int64) error) {
+	s.dingTalkLoginValidator = validator
 }
 
 func (s *AuthService) ApplyOAuthSignupPromoCode(ctx context.Context, userID int64, promoCode string) {
@@ -1409,6 +1432,11 @@ func isReservedEmail(email string) bool {
 // 使用新的access_token_expire_minutes配置项（如果配置了），否则回退到expire_hour。
 // 会话指纹（IP/UA）从 ctx 中提取（由 HTTP 入口中间件注入），缺失时生成不带绑定的 token。
 func (s *AuthService) GenerateToken(ctx context.Context, user *User) (string, error) {
+	if s.dingTalkLoginValidator != nil {
+		if err := s.dingTalkLoginValidator(ctx, user.ID); err != nil {
+			return "", err
+		}
+	}
 	sessionID, err := randomHexString(8)
 	if err != nil {
 		return "", fmt.Errorf("generate session id: %w", err)
@@ -1687,6 +1715,11 @@ type TokenPairWithUser struct {
 // GenerateTokenPair 生成Access Token和Refresh Token对
 // familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
 func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
+	if s.dingTalkLoginValidator != nil {
+		if err := s.dingTalkLoginValidator(ctx, user.ID); err != nil {
+			return nil, err
+		}
+	}
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, errors.New("refresh token cache not configured")

@@ -31,6 +31,8 @@ func backendModeAllowsAuthPath(path string) bool {
 	path = strings.ToLower(strings.TrimSpace(path))
 	for _, suffix := range []string{
 		"/auth/login",
+		"/auth/oauth/dingtalk/start",
+		"/auth/oauth/dingtalk/apps",
 		"/auth/login/2fa",
 		"/auth/passkey/login/begin",
 		"/auth/passkey/login/finish",

@@ -991,6 +991,7 @@ export default {
       },
       notes: {
         emailManagedFromProfile: '主邮箱在资料表单中管理',
+        organizationManaged: '企业钉钉身份由组织管理，不可自行解绑，请联系管理员。',
         canUnbind: '你可以解绑这个登录方式。',
         bindAnotherBeforeUnbind: '请先绑定其他登录方式，再解除当前绑定。',
       },

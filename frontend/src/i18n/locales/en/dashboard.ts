@@ -987,6 +987,7 @@ export default {
       },
       notes: {
         emailManagedFromProfile: 'Primary email is managed in the profile form',
+        organizationManaged: 'Your organization manages this DingTalk identity. Contact your administrator to change it.',
         canUnbind: 'You can unbind this sign-in method',
         bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding',
       },

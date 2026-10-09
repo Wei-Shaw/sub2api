@@ -309,3 +309,13 @@ func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *te
 		})
 	}
 }
+
+func TestPublicSettingsRetireEmailAuthentication(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyRegistrationEnabled: "true", SettingKeyEmailVerifyEnabled: "true", SettingKeyPasswordResetEnabled: "true",
+	}}, &config.Config{})
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.RegistrationEnabled)
+	require.False(t, settings.PasswordResetEnabled)
+}
