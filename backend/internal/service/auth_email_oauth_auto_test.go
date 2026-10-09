@@ -87,3 +87,13 @@ func TestEmailOAuthAuto_SnapshotsPlatformQuotaDefaults(t *testing.T) {
 	require.NotNil(t, geminiRecord.MonthlyLimitUSD)
 	require.InDelta(t, 100.0, *geminiRecord.MonthlyLimitUSD, 0.0001)
 }
+
+func TestEmailOAuthCanAutoLinkExistingUser(t *testing.T) {
+	require.False(t, emailOAuthCanAutoLinkExistingUser(nil))
+	require.False(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: "email"}))
+	require.False(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: ""}))
+	require.False(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: "oidc"}))
+	require.False(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: "linuxdo"}))
+	require.True(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: "google"}))
+	require.True(t, emailOAuthCanAutoLinkExistingUser(&User{SignupSource: "GitHub"}))
+}
