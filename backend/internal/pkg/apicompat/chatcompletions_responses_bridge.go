@@ -185,6 +185,12 @@ func CustomToolNames(tools []ResponsesTool) map[string]bool {
 			}
 			out[tool.Name] = true
 		}
+		if tool.Type == "apply_patch" {
+			if out == nil {
+				out = make(map[string]bool)
+			}
+			out[applyPatchToolName] = true
+		}
 	}
 	return out
 }
@@ -1130,7 +1136,24 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				Function: &ChatFunction{
 					Name:        tool.Name,
 					Description: tool.Description,
-					Parameters:  json.RawMessage(customToolInputSchema),
+					Parameters:  customToolFunctionParameters(tool.Name),
+				},
+			})
+		case "apply_patch":
+			if topLevel[applyPatchToolName] {
+				continue
+			}
+			topLevel[applyPatchToolName] = true
+			description := tool.Description
+			if description == "" {
+				description = applyPatchToolDescription
+			}
+			out = append(out, ChatTool{
+				Type: "function",
+				Function: &ChatFunction{
+					Name:        applyPatchToolName,
+					Description: description,
+					Parameters:  applyPatchFunctionParameters(),
 				},
 			})
 		case "tool_search":
@@ -1304,28 +1327,11 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage, declared map[strin
 }
 
 // extractCustomToolCallInput 从降级 function 调用的 arguments 中还原 custom 工具的
-// 自由文本输入：优先取 {"input": "..."} 的 input 字段；模型未按 schema 输出时原样
-// 回传，交由客户端校验、模型重试。
+// 自由文本输入：优先取 {"input": "..."} 的 input 字段，其次取含 Begin Patch 的
+// patch/command/content。Grok 常把 apply_patch 信封写成 "*** Begin Patch ***"；
+// Codex 要求首行精确等于 "*** Begin Patch"，因此对补丁文档做信封规范化。
 func extractCustomToolCallInput(arguments string) string {
-	trimmed := strings.TrimSpace(arguments)
-	if trimmed == "" {
-		return ""
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
-		return trimmed
-	}
-	if raw, ok := obj["input"]; ok {
-		var s string
-		if err := json.Unmarshal(raw, &s); err == nil {
-			return s
-		}
-		return trimmed
-	}
-	if len(obj) == 0 {
-		return ""
-	}
-	return trimmed
+	return maybeNormalizeApplyPatchDocument(unwrapCustomToolInput(arguments))
 }
 
 // ChatCompletionsResponseToResponses converts a non-streaming Chat Completions
