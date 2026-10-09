@@ -373,6 +373,13 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 			if err != nil || !chosenScope.expires.After(time.Now()) || !claudeGrantClearsAllBlocks(u, grant.Clears, model, time.Now()) {
 				return fmt.Errorf("automatic reset quota changed")
 			}
+
+			// Cohort and quota probes above perform network I/O. Recheck the
+			// identity and policy after them, not only on entry to the guard.
+			latest, err := w.accounts.GetByID(check, a.ID)
+			if err != nil || latest == nil || latest.Platform != PlatformAnthropic || latest.Type != AccountTypeOAuth || !latest.IsActive() || !latest.Schedulable || latest.IsShadow() || !reflect.DeepEqual(latest.Credentials, a.Credentials) || resolveClaudeAutoResetConfig(latest) != cfg {
+				return fmt.Errorf("automatic reset account changed during quota check")
+			}
 			return nil
 		})
 		result := "failed"

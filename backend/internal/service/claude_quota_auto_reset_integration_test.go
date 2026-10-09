@@ -165,3 +165,40 @@ func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
 		})
 	}
 }
+
+func TestClaudeAutoIntegrationFinalQuotaProbeReplacement(t *testing.T) {
+	for _, change := range []string{"unchanged", "credentials", "disabled"} {
+		t.Run(change, func(t *testing.T) {
+			w, claims := newClaudeAutoIntegration(t, true, 100)
+			repo := w.accounts.(*claudeAutoIntegrationRepo)
+			repo.account.Extra["claude_auto_reset_credit_mode"] = "exhausted"
+			w.scopes.Store("scope", claudeResetScope{model: "claude-opus-4", gateway: &GatewayService{}, expires: time.Now().Add(time.Minute)})
+			u := &ClaudeUsageResponse{}
+			u.FiveHour.Utilization = 100
+			u.FiveHour.ResetsAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+			u.SevenDay.ResetsAt = u.FiveHour.ResetsAt
+			calls := 0
+			w.fetcher = claudeRecoveryUsage{usage: u, onFetch: func() {
+				calls++
+				if calls != 5 {
+					return
+				}
+				replacement := *repo.account
+				switch change {
+				case "credentials":
+					replacement.Credentials = map[string]any{"scope": "user:profile", "access_token": "replacement"}
+				case "disabled":
+					replacement.Extra = map[string]any{"claude_auto_reset_credit_enabled": false}
+				}
+				repo.account = &replacement
+			}}
+			w.scan(context.Background())
+			require.Equal(t, 5, calls)
+			if change == "unchanged" {
+				require.Equal(t, int32(1), claims.Load())
+			} else {
+				require.Zero(t, claims.Load())
+			}
+		})
+	}
+}
