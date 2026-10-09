@@ -1626,6 +1626,12 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
 	case PlatformMiniMax:
+		if baseURL := a.GetCredential("base_url"); miniMaxAPIHost(baseURL) != "" {
+			u, _ := url.Parse(strings.TrimSpace(baseURL))
+			u.Path = "/v1"
+			u.RawPath = ""
+			return u.String()
+		}
 		return DefaultMiniMaxBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultChatBaseURL()
@@ -1662,10 +1668,23 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
-	case strings.Contains(baseURL, "minimax.io"),
-		strings.Contains(baseURL, "minimaxi.com"),
-		strings.Contains(baseURL, "minimax.com"):
+	case miniMaxAPIHost(baseURL) != "":
 		return PlatformMiniMax
+	default:
+		return ""
+	}
+}
+
+// Only official API hosts may send subscription keys to MiniMax quota endpoints.
+func miniMaxAPIHost(baseURL string) string {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	switch host {
+	case "api.minimax.cn", "api.minimaxi.com", "api.minimax.com", "api.minimax.io":
+		return host
 	default:
 		return ""
 	}

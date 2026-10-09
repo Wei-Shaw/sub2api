@@ -2094,6 +2094,8 @@ func setDefaults() {
 		"api.moonshot.cn",
 		"open.bigmodel.cn",
 		"api.minimaxi.com", // MiniMax CN quota + inference
+		"api.minimax.cn",   // MiniMax current CN inference
+		"www.minimax.cn",   // MiniMax current CN Token Plan quota
 		"api.minimax.io",   // MiniMax intl; frozen allowlists must add this host to use the intl site
 		"opencode.ai",
 		"generativelanguage.googleapis.com",

@@ -155,6 +155,8 @@ security:
       - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
+      - "api.minimax.cn"
+      - "www.minimax.cn"
       - "opencode.ai"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
