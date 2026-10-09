@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func TestOllamaCloudPlatform_SchedulerSnapshotPlatforms(t *testing.T) {
 	t.Parallel()
 
 	platforms := schedulerSnapshotPlatforms()
-	require.Len(t, platforms, 12)
+	require.ElementsMatch(t, domain.ConcretePlatformIDs(), platforms)
 	require.Contains(t, platforms[:], PlatformOllamaCloud)
 	require.Contains(t, platforms[:], PlatformTypeSafe)
 
@@ -46,7 +47,7 @@ func TestOllamaCloudPlatform_SchedulerSnapshotPlatforms(t *testing.T) {
 	// 桶数必须与平台数组长度一致：每平台 single+forced，anthropic/gemini 各多一个 mixed。
 	const groupID int64 = 7701
 	require.Equal(t, len(platforms)*2+2, schedulerCanonicalBucketCount())
-	require.Equal(t, 26, schedulerCanonicalBucketCount())
+	require.Equal(t, 30, schedulerCanonicalBucketCount()) // 14 个具体平台
 
 	buckets := schedulerCanonicalBuckets(groupID)
 	require.Len(t, buckets, schedulerCanonicalBucketCount())

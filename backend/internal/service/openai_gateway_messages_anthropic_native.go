@@ -139,13 +139,22 @@ func (s *OpenAIGatewayService) nativeAnthropicTargetURL(account *Account) (strin
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
-	// 版本感知拼接：base 已带 /v1 时不再追加，避免拼出 /v1/v1/messages
-	//（OpenCode Go 的 Chat Completions base 带 /v1，Ollama Cloud 的 anthropic
-	// 默认 base 不带）。
-	return buildOpenAIEndpointURL(validatedURL, "/v1/messages"), nil
+	return nativeAnthropicMessagesURL(account, validatedURL), nil
 }
 
-func resolveOpenCodeGoMappedModel(account *Account, body []byte, defaultMappedModel string) string {
+// nativeAnthropicMessagesURL 由已校验的 Anthropic 协议基址拼出 messages 端点，转发与
+// 连接测试共用。按模型分流的聚合平台（OpenCode、Command Code 等）的基址可能沿用带 /v1
+// 的 Chat Completions 基址，用版本感知拼接避免 /v1/v1/messages；其余供应商朴素拼接。
+func nativeAnthropicMessagesURL(account *Account, validatedBaseURL string) string {
+	// 版本感知拼接：base 已带 /v1 时不再追加，避免拼出 /v1/v1/messages（按模型分流平台的
+	// Chat Completions base 带 /v1；Ollama Cloud 的 anthropic 默认 base 不带，自定义可能带）。
+	if account.routesByModel() || account.IsOllamaCloud() {
+		return buildOpenAIEndpointURL(validatedBaseURL, "/v1/messages")
+	}
+	return strings.TrimRight(validatedBaseURL, "/") + "/v1/messages"
+}
+
+func resolveMappedUpstreamModel(account *Account, body []byte, defaultMappedModel string) string {
 	original := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	billing := resolveOpenAIForwardModel(account, original, defaultMappedModel)
 	return normalizeOpenAIModelForUpstream(account, billing)

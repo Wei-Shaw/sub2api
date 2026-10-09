@@ -8,12 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ollamaCloudPlatformMigrationFile 是 Ollama Cloud 平台迁移：一次性重建
-// user_platform_quotas / composite_model_routes / channel_monitors /
-// channel_monitor_request_templates 四个 CHECK 约束。
-const ollamaCloudPlatformMigrationFile = "242_ollama_cloud_platform.sql"
+// ollamaCloudMonitorProviderMigrationFile 把 ollama_cloud 加入渠道监控 provider 白名单。
+// 平台白名单的两个 CHECK 已由 242 删除，改为应用层按平台清单校验。
+const ollamaCloudMonitorProviderMigrationFile = "243_ollama_cloud_channel_monitor_provider.sql"
 
-// dmlStatementPattern 匹配 DML 关键字；242 只允许 DDL 约束变更。
+// dmlStatementPattern 匹配 DML 关键字；243 只允许 DDL 约束变更。
 var dmlStatementPattern = regexp.MustCompile(`(?i)\b(insert|update|delete|merge|truncate|copy|upsert)\b`)
 
 // stripSQLLineComments 去掉 "--" 行注释，只对可执行语句做结构校验。
@@ -34,39 +33,27 @@ func executableSQL(content []byte) string {
 	return strings.Join(strings.Fields(stripSQLLineComments(string(content))), " ")
 }
 
-// TestOllamaCloudPlatformMigration 校验 242 一次性重建四个约束：
-// 两张平台表为 241 的 11 项 ∪ {ollama_cloud}（12 项），两张监控表为 238 的 10 项
-// ∪ {ollama_cloud}（11 项，typesafe 不是对话模型不进 provider），且只有 DDL、零 DML。
-func TestOllamaCloudPlatformMigration(t *testing.T) {
-	content, err := FS.ReadFile(ollamaCloudPlatformMigrationFile)
+// TestOllamaCloudMonitorProviderMigration 校验 243 只重建两张监控表的 provider CHECK
+// （238 的 10 项 ∪ {ollama_cloud}，不含 typesafe），不触碰 242 已删除的平台 CHECK，且零 DML。
+func TestOllamaCloudMonitorProviderMigration(t *testing.T) {
+	content, err := FS.ReadFile(ollamaCloudMonitorProviderMigrationFile)
 	require.NoError(t, err)
+	sql := executableSQL(content)
 
-	sql := strings.Join(strings.Fields(string(content)), " ")
-	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check")
-	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check")
 	require.Contains(t, sql, "channel_monitors_provider_check")
 	require.Contains(t, sql, "channel_monitor_request_templates_provider_check")
+	require.NotContains(t, sql, "user_platform_quotas")
+	require.NotContains(t, sql, "composite_model_routes")
 
-	// 四个约束各自恰好重建一次，不牵连其它约束。
-	require.Equal(t, 4, strings.Count(sql, "ADD CONSTRAINT"), "242 只应新增四个约束")
-	require.Equal(t, 4, strings.Count(sql, "CHECK ("), "242 只应包含四个 CHECK")
-
-	// 两张平台表：241 的平台集合 ∪ {ollama_cloud}，必须同时保留 typesafe 与 ollama_cloud。
-	require.Contains(t, sql,
-		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'ollama_cloud'))")
-	require.Contains(t, sql,
-		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'ollama_cloud'))")
-
-	// 两张监控表：238 的 provider 集合 ∪ {ollama_cloud}，不含 typesafe。
+	require.Equal(t, 2, strings.Count(sql, "ADD CONSTRAINT"), "243 只应重建两个监控表约束")
 	require.Equal(t, 2, strings.Count(sql,
 		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'ollama_cloud'))"),
 		"两张监控表应重建为同一个 provider 集合（不含 typesafe）")
 
-	// 监控表的两段保留幂等守卫：约束已含 ollama_cloud 时跳过重建。
+	// 幂等守卫：约束已含 ollama_cloud 时跳过重建。
 	require.Contains(t, sql, "position('ollama_cloud' IN monitor_constraint_def) = 0")
 	require.Contains(t, sql, "position('ollama_cloud' IN template_constraint_def) = 0")
 
-	// 约束必须是默认 validated（非 NOT VALID），且整个文件只有 DDL。
-	require.NotContains(t, sql, "NOT VALID", "平台 CHECK 必须是 validated 约束")
-	require.NotRegexp(t, dmlStatementPattern, executableSQL(content), "242 不得包含 DML 语句")
+	require.NotContains(t, sql, "NOT VALID", "provider CHECK 必须是 validated 约束")
+	require.NotRegexp(t, dmlStatementPattern, sql, "243 不得包含 DML 语句")
 }

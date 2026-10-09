@@ -119,7 +119,7 @@ import { ref, reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import { QUOTA_PLATFORMS } from '@/api/admin/settings'
+import { platformQuotaPlatforms } from '@/api/admin/users'
 import type { AdminUser, PlatformQuotaItem, PlatformQuotaPlatform, PlatformQuotaWindow } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 
@@ -128,10 +128,6 @@ const emit = defineEmits(['close', 'success'])
 
 const { t } = useI18n()
 const appStore = useAppStore()
-
-// 配额平台镜像，单一来源 settings.ts 的 QUOTA_PLATFORMS（对齐后端 AllowedQuotaPlatforms）。
-// PUT /admin/users/:id/platform-quotas 是整体替换语义：列表缺平台 = 保存即静默删行。
-const PLATFORMS = QUOTA_PLATFORMS
 
 interface QuotaRow {
   platform: PlatformQuotaPlatform
@@ -179,7 +175,8 @@ function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
 function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
   const byPlatform = new Map<string, PlatformQuotaItem>()
   for (const it of items) byPlatform.set(it.platform, it)
-  const rows = PLATFORMS.map((p) => {
+  const platforms = platformQuotaPlatforms()
+  const rows = platforms.map((p) => {
     const it = byPlatform.get(p)
     if (!it) return emptyRow(p)
     return {
@@ -196,7 +193,8 @@ function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
   // 这些行，管理员不做任何修改直接保存也会软删其配额（限额 fail-open）。
   // platform 在前端收录前以服务端返回值透传（服务端返回即其白名单成员）。
   for (const it of items) {
-    if (PLATFORMS.includes(it.platform)) continue
+    // PUT /admin/users/:id/platform-quotas 是整体替换语义：列表缺平台 = 保存即静默删行。
+    if (platforms.includes(it.platform)) continue
     rows.push({
       platform: it.platform as PlatformQuotaPlatform,
       daily_limit_usd: it.daily_limit_usd ?? null,
@@ -224,7 +222,7 @@ async function load() {
     savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
   } catch {
     appStore.showError(t('admin.users.platformQuota.loadFailed'))
-    quotas.value = PLATFORMS.map(emptyRow)
+    quotas.value = platformQuotaPlatforms().map(emptyRow)
     savedConfigured.value = new Set()
   } finally {
     loading.value = false

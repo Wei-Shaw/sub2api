@@ -48,9 +48,9 @@ func TestOllamaCloudDefaultProtocolAndBaseURLs(t *testing.T) {
 	require.True(t, account.IsAdaptiveAPIProtocol())
 
 	// C30/Q2-3：anthropic 默认 base 不带 /v1；cc/responses 带 /v1。
-	require.Equal(t, "https://ollama.com", account.defaultCNProtocolBaseURL(APIProtocolAnthropic))
-	require.Equal(t, "https://ollama.com/v1", account.defaultCNProtocolBaseURL(APIProtocolChatCompletions))
-	require.Equal(t, "https://ollama.com/v1", account.defaultCNProtocolBaseURL(APIProtocolResponses))
+	require.Equal(t, "https://ollama.com", account.defaultProviderBaseURL(APIProtocolAnthropic))
+	require.Equal(t, "https://ollama.com/v1", account.defaultProviderBaseURL(APIProtocolChatCompletions))
+	require.Equal(t, "https://ollama.com/v1", account.defaultProviderBaseURL(APIProtocolResponses))
 
 	// 同一结论经 adaptive 解析链（api_base_urls / base_url 均缺失）。
 	require.Equal(t, "https://ollama.com", account.GetCNProtocolBaseURL(APIProtocolAnthropic))

@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -1491,14 +1492,10 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 // compositeOwnershipQueryPlatforms 返回 ownership 候选扫描的平台全集。
 // ListModelAvailabilityCandidates 要求显式传入平台列表（空列表返回空结果），
-// 这里传入全部可承接请求的具体平台，与旧 ListSchedulableByGroupID 的扫描范围
-// 保持一致，组隔离由该查询的 groupID 维度保证。
+// 这里传入全部可承接请求的具体平台（平台清单），与旧 ListSchedulableByGroupID 的
+// 扫描范围保持一致，组隔离由该查询的 groupID 维度保证。
 func compositeOwnershipQueryPlatforms() []string {
-	return []string{
-		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
-		PlatformTypeSafe, PlatformOllamaCloud,
-	}
+	return domain.ConcretePlatformIDs()
 }
 
 // resolveCompositeModelOwnership 基于持久化配置判断一个公开模型由组内哪些平台

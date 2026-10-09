@@ -1,5 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import {
+  BUILTIN_PLATFORM_CATALOG,
+  resetPlatformCatalog,
+  setPlatformCatalog
+} from '@/constants/platformCatalog'
 
 const {
   copyToClipboard,
@@ -89,6 +94,61 @@ describe('ModelWhitelistSelector', () => {
     showWarning.mockReset()
     syncUpstreamModels.mockReset()
     syncUpstreamModelsPreview.mockReset()
+  })
+
+  afterEach(() => {
+    resetPlatformCatalog()
+  })
+
+  it.each(['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'])(
+    'supports upstream sync for %s saved accounts and creation previews',
+    (platform) => {
+      const wrappers = [
+        mountSelector({ platform, accountId: 46 }),
+        mountSelector({ platform, syncCredentials: { platform, type: 'apikey', api_key: 'test-key' } })
+      ]
+      for (const wrapper of wrappers) {
+        expect(wrapper.findAll('button').some(button => button.text() === 'admin.accounts.syncUpstreamModels')).toBe(true)
+        wrapper.unmount()
+      }
+    }
+  )
+
+  it.each(['typesafe', 'unregistered'])(
+    'hides upstream sync for unsupported %s saved accounts and creation previews',
+    (platform) => {
+      const wrappers = [
+        mountSelector({ platform, accountId: 46 }),
+        mountSelector({ platform, syncCredentials: { platform, type: 'apikey', api_key: 'test-key' } })
+      ]
+      for (const wrapper of wrappers) {
+        expect(wrapper.findAll('button').some(button => button.text() === 'admin.accounts.syncUpstreamModels')).toBe(false)
+        wrapper.unmount()
+      }
+      expect(syncUpstreamModels).not.toHaveBeenCalled()
+      expect(syncUpstreamModelsPreview).not.toHaveBeenCalled()
+    }
+  )
+
+  it('requires a supported request builder for newly registered platforms', async () => {
+    const wrapper = mountSelector({ platform: 'acme_router', accountId: 46 })
+    const platforms = [
+      ...BUILTIN_PLATFORM_CATALOG.platforms,
+      { id: 'acme_router', display_name: 'Acme Router', gateway: 'openai' as const, cn_provider: false }
+    ]
+    setPlatformCatalog({ ...BUILTIN_PLATFORM_CATALOG, platforms })
+    await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.text() === 'admin.accounts.syncUpstreamModels')).toBe(false)
+
+    setPlatformCatalog({
+      ...BUILTIN_PLATFORM_CATALOG,
+      platforms: platforms.map(spec => spec.id === 'acme_router'
+        ? { ...spec, multi_protocol: { default_mode: 'default', routing: 'by_inbound', modes: [] } }
+        : spec)
+    })
+    await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.text() === 'admin.accounts.syncUpstreamModels')).toBe(true)
+    wrapper.unmount()
   })
 
   it('rejects a custom whitelist model that is already mapped to a different target', async () => {

@@ -4,8 +4,8 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
-import type { PlatformType } from './settings'
+import { listPlatformIds } from '@/constants/platformCatalog'
+import type { AccountPlatform, AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -331,9 +331,11 @@ export async function bindUserAuthIdentity(
 /**
  * Platform quota types
  */
-// 与后端 AllowedQuotaPlatforms 对齐；单一来源为 settings.ts 的 QUOTA_PLATFORMS
-// （后端用户平台配额 PUT 是整体替换语义，前端列表缺平台 = 保存即静默删行）。
-export type PlatformQuotaPlatform = PlatformType
+// 与后端 AllowedQuotaPlatforms 同源：平台清单中的全部具体平台。
+export function platformQuotaPlatforms(): PlatformQuotaPlatform[] {
+  return listPlatformIds()
+}
+export type PlatformQuotaPlatform = AccountPlatform
 export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {

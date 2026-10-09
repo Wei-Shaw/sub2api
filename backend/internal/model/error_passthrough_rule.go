@@ -50,22 +50,9 @@ const (
 	PlatformOllamaCloud = domain.PlatformOllamaCloud
 )
 
-// AllPlatforms 返回所有支持的平台列表
+// AllPlatforms 返回所有支持的平台列表（平台清单，按展示顺序）。
 func AllPlatforms() []string {
-	return []string{
-		PlatformAnthropic,
-		PlatformOpenAI,
-		PlatformGemini,
-		PlatformAntigravity,
-		PlatformGrok,
-		PlatformKimi,
-		PlatformZhipu,
-		PlatformDeepseek,
-		PlatformMiniMax,
-		PlatformOpenCodeGo,
-		PlatformTypeSafe,
-		PlatformOllamaCloud,
-	}
+	return domain.ConcretePlatformIDs()
 }
 
 // Validate 验证规则配置的有效性

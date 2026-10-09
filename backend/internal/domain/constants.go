@@ -30,8 +30,14 @@ const (
 	PlatformMiniMax  = "minimax"  // MiniMax (M 系列)
 	PlatformTypeSafe = "typesafe" // TypeSafe AI System One (Jev)
 	// PlatformOpenCodeGo 是 OpenCode 平台（账号类型 Zen 按量 / Go 订阅）。
-	// 值保持 opencode_go 以兼容已落库的分组、配额与 Composite 路由 CHECK。
+	// 值保持 opencode_go 以兼容已落库的账号、分组、配额与 Composite 路由。
 	PlatformOpenCodeGo = "opencode_go"
+	// PlatformCommandCode 是 Command Code Provider API（多模型聚合，积分计费，
+	// 订阅套餐另有 5 小时 / 每周滚动窗口）。
+	PlatformCommandCode = "command_code"
+	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
+	// 另有 ClinePass 订阅）。
+	PlatformCline = "cline"
 	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游（多协议 API Key 网关）。
 	PlatformOllamaCloud = "ollama_cloud"
 	PlatformComposite   = "composite"

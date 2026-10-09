@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
@@ -508,17 +509,9 @@ func getGroupPlatform(c *gin.Context) string {
 }
 
 // isOpenAICompatibleGatewayFamilyPlatform 报告单个平台是否经 OpenAI 网关转发
-// （openai/grok/国产 OpenAI 兼容供应商/OpenCode Go/Ollama Cloud）。
+// （openai、grok 与多协议 API Key 供应商，见平台清单）。
 func isOpenAICompatibleGatewayFamilyPlatform(platform string) bool {
-	switch platform {
-	case service.PlatformOpenAI, service.PlatformGrok,
-		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
-		// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
-		return true
-	default:
-		return false
-	}
+	return domain.UsesOpenAIGateway(platform)
 }
 
 // compositePoolCandidatePlatforms 返回 composite 账号池请求的候选平台集合；
@@ -611,11 +604,11 @@ func dispatchOpenAICompatibleCountTokens(c *gin.Context, compatibleHandler, grok
 		genericHandler(c)
 		return
 	}
-	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
-		compatibleHandler(c)
-	case service.PlatformGrok:
+	switch platform := getGroupPlatform(c); {
+	case platform == service.PlatformGrok:
 		grokHandler(c)
+	case isOpenAICompatibleGatewayFamilyPlatform(platform):
+		compatibleHandler(c)
 	default:
 		genericHandler(c)
 	}

@@ -24,7 +24,7 @@ func (a *Account) GetAnthropicAPIKeyAuthScheme() string {
 	if a == nil || a.Type != AccountTypeAPIKey {
 		return AnthropicAPIKeyAuthSchemeXAPIKey
 	}
-	if a.Platform != PlatformAnthropic && !a.IsCNProvider() && a.Platform != PlatformOllamaCloud {
+	if a.Platform != PlatformAnthropic && !a.RoutesProtocolByInbound() {
 		return AnthropicAPIKeyAuthSchemeXAPIKey
 	}
 
