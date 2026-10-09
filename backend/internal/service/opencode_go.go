@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/gin-gonic/gin"
 )
 
 // OpenCode Go 是 OpenCode Zen 的订阅网关：同一 API Key 下按模型分流到
@@ -67,6 +68,39 @@ func normalizeOpenCodeGoModelID(model string) string {
 	return model
 }
 
+// IsOpenCodeUnsupportedModel 判断请求的模型是否属于 OpenCode 专有协议端点模型。
+// 官方 Zen 上 gemini-* 仅走 Google SDK 专属端点 /zen/v1/models/<id>，
+// jev-* 仅走 SystemOne 专属端点 /zen/v1/systemone，
+// 在通用 Chat Completions / Anthropic Messages / Responses 网关端点上不可用。
+func IsOpenCodeUnsupportedModel(model string) bool {
+	normalized := normalizeOpenCodeGoModelID(model)
+	return strings.HasPrefix(normalized, "gemini-") || strings.HasPrefix(normalized, "jev-")
+}
+
+func writeOpenCodeUnsupportedModelError(c *gin.Context, isAnthropic bool, model string) error {
+	msg := fmt.Sprintf("Model '%s' is not supported on OpenCode standard gateway (gemini models require Google SDK endpoint, jev models require System One endpoint)", model)
+	if c != nil {
+		if isAnthropic {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "invalid_request_error",
+					"message": msg,
+				},
+			})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{
+					"type":    "invalid_request_error",
+					"code":    "model_not_supported",
+					"message": msg,
+				},
+			})
+		}
+	}
+	return fmt.Errorf("opencode unsupported model: %s", model)
+}
+
 // OpenCodeGoProtocolRule is one model-pattern → native protocol mapping.
 // Pattern is an exact ID or a suffix glob (foo* / *). First match wins.
 type OpenCodeGoProtocolRule struct {
@@ -86,13 +120,15 @@ func DefaultOpenCodeGoProtocolRules() []OpenCodeGoProtocolRule {
 }
 
 // DefaultOpenCodeZenProtocolRules 对齐 https://opencode.ai/docs/zen/ 端点表：
-// GPT/Grok/Muse Spark → Responses，Claude/Qwen → Anthropic，其余 Chat Completions。
+// GPT/Grok/Muse Spark → Responses，Claude/Qwen(除 qwen3.8-max) → Anthropic，
+// qwen3.8-max 及其余模型 → Chat Completions。
 func DefaultOpenCodeZenProtocolRules() []OpenCodeGoProtocolRule {
 	return []OpenCodeGoProtocolRule{
 		{Pattern: "grok-*", Protocol: APIProtocolResponses},
 		{Pattern: "gpt-*", Protocol: APIProtocolResponses},
 		{Pattern: "muse-spark-*", Protocol: APIProtocolResponses},
 		{Pattern: "claude-*", Protocol: APIProtocolAnthropic},
+		{Pattern: "qwen3.8-max", Protocol: APIProtocolChatCompletions},
 		{Pattern: "qwen*", Protocol: APIProtocolAnthropic},
 	}
 }
