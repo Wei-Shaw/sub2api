@@ -125,6 +125,8 @@ func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
 	for _, change := range []string{"grant", "count", "expiry", "benefit", "disabled", "credentials"} {
 		t.Run(change, func(t *testing.T) {
 			w, claims := newClaudeAutoIntegration(t, true, 75)
+			repo, ok := w.accounts.(*claudeAutoIntegrationRepo)
+			require.True(t, ok)
 			original := w.service.do
 			queries := 0
 			w.service.do = func(r *http.Request, proxy string) (*http.Response, error) {
@@ -150,11 +152,11 @@ func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
 				case "benefit":
 					text = strings.ReplaceAll(text, `"five_hour":75`, `"five_hour":0`)
 				case "credentials":
-					replacement := *w.accounts.(*claudeAutoIntegrationRepo).account
+					replacement := *repo.account
 					replacement.Credentials = map[string]any{"scope": "user:profile", "access_token": "replacement"}
-					w.accounts.(*claudeAutoIntegrationRepo).account = &replacement
+					repo.account = &replacement
 				case "disabled":
-					w.accounts.(*claudeAutoIntegrationRepo).account.Extra["claude_auto_reset_credit_enabled"] = false
+					repo.account.Extra["claude_auto_reset_credit_enabled"] = false
 				}
 				response.Body = io.NopCloser(strings.NewReader(text))
 				return response, nil

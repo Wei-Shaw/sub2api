@@ -139,10 +139,6 @@ func (s *ClaudeResetCreditService) lease(ctx context.Context, key, owner string)
 	}, nil
 }
 
-func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, operation string) (*ClaudeResetOutcome, error) {
-	return s.redeemOnceWithPolicy(ctx, id, operation, nil)
-}
-
 func (s *ClaudeResetCreditService) redeemOnceWithPolicy(ctx context.Context, id int64, operation string, guard func(context.Context, *claudeResetBlock, *claudeResetGrant) error) (*ClaudeResetOutcome, error) {
 	owner := uuid.NewString()
 	release, err := s.lease(ctx, fmt.Sprintf("claude:reset-credit:account:%d", id), owner)
