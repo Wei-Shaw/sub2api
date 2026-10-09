@@ -655,10 +655,15 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 				return
 			}
 			if !decision.Matched {
-				// composite 请求的模型既无显式路由、也无账号映射/候选池可归入
-				// 具体平台：继续放行只会落到通用网关并按通用协议报错。对
-				// composite 在入口明确以请求错误拒绝（带模型名与原因），信封
-				// 按入站 endpoint 协议选择。
+				if !compositeRouteResolutionRequired(c.Request.URL.Path) {
+					// 非文本端点（Seedance 任务、媒体等）由 handler 按自身平台语义处理。
+					requestmodel.ResetRequestBody(c.Request, body)
+					c.Next()
+					return
+				}
+				// 文本端点的模型既无显式路由、也无账号映射/候选池可归入具体平台：
+				// 继续放行只会落到通用网关并按通用协议报错。对 composite 在入口明确
+				// 以请求错误拒绝（带模型名与原因），信封按入站 endpoint 协议选择。
 				writeCompositeRouteAdmissionError(c, http.StatusBadRequest, fmt.Sprintf("Model %q cannot be resolved to any platform in this composite group (%s)", model, decision.Reason))
 				return
 			}
@@ -767,6 +772,14 @@ func openAICompatibleCandidatePlatforms(candidates []string) []string {
 		}
 	}
 	return out
+}
+
+// compositeRouteResolutionRequired 报告 composite 未解析的模型是否必须在入口拒绝：
+// 文本端点放行后会被 handler 的 detector 折叠成单平台或落到通用网关错发协议。
+func compositeRouteResolutionRequired(path string) bool {
+	return strings.Contains(path, "/messages") ||
+		strings.Contains(path, "/responses") ||
+		strings.Contains(path, "/chat/completions")
 }
 
 func compositeRouteEndpointForPath(path string) string {

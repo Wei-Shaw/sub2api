@@ -39,7 +39,9 @@ func newCompositePoolTestRouter(t *testing.T, terminal gin.HandlerFunc, ownershi
 	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{})
 	resolver.SetModelOwnershipResolver(ownership.ResolveModelOwnership)
 	router.Use(compositeTargetPlatformMiddleware(resolver))
-	router.POST("/v1/chat/completions", terminal)
+	for _, path := range []string{"/v1/chat/completions", "/v1/messages", "/v1/responses", "/v1/contents/generations/tasks"} {
+		router.POST(path, terminal)
+	}
 	return router
 }
 
@@ -82,20 +84,49 @@ func TestCompositeTargetPlatformMiddlewareWritesPoolDecision(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
-// composite 请求的模型无法解析到任何平台时必须显式 400，不能再静默放行到
+// composite 文本端点的模型无法解析到任何平台时必须显式 400，不能再静默放行到
 // 通用网关按通用协议报错。
 func TestCompositeTargetPlatformMiddlewareRejectsUnresolvedModel(t *testing.T) {
+	for _, path := range []string{"/v1/chat/completions", "/v1/messages", "/v1/responses"} {
+		t.Run(path, func(t *testing.T) {
+			router := newCompositePoolTestRouter(t, func(c *gin.Context) {
+				t.Fatal("unresolvable composite model must not reach any handler")
+			}, compositePoolOwnershipStub{}, service.PlatformComposite)
+
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"totally-unknown-alias"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "totally-unknown-alias")
+		})
+	}
+}
+
+// 非文本端点（Seedance 任务等）由 handler 按自身平台语义处理：未解析的模型照常放行，
+// 不写目标平台/候选池、body 原样保留。
+func TestCompositeTargetPlatformMiddlewarePassesUnresolvedModelOnNonTextEndpoints(t *testing.T) {
+	const body = `{"model":"doubao-seedance-2-0","content":[{"type":"text","text":"cat"}]}`
+	seen := false
 	router := newCompositePoolTestRouter(t, func(c *gin.Context) {
-		t.Fatal("unresolvable composite model must not reach any handler")
+		seen = true
+		_, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+		require.False(t, resolved)
+		require.Empty(t, service.CompositeCandidatePlatformsFromContext(c.Request.Context()))
+		got, err := io.ReadAll(c.Request.Body)
+		require.NoError(t, err)
+		require.JSONEq(t, body, string(got))
+		c.Status(http.StatusNoContent)
 	}, compositePoolOwnershipStub{}, service.PlatformComposite)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"totally-unknown-alias"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/contents/generations/tasks", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), "totally-unknown-alias")
+	require.True(t, seen)
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 // 非 composite 分组保持原行为：无模型解析拦截。
