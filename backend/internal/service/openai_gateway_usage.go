@@ -1011,17 +1011,30 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 // 以避免误计价」的既有设计意图一致；运营者的修复手段是配置账号级 model_mapping
 // （映射到已定价的 CN/ollama 模型）或分组/渠道显式定价。
 func (s *OpenAIGatewayService) filterCNProviderBillingModelCandidates(ctx context.Context, account *Account, apiKey *APIKey, candidates []string) []string {
-	if account == nil || (!account.IsCNProvider() && !account.IsOpenCodeGo() && !account.IsOllamaCloud()) {
+	if !accountServesHostedModels(account) {
 		return candidates
 	}
+	return dropUnpricedClaudeBillingCandidates(candidates, func(model string) bool {
+		return s.resolveOpenAIChannelPricing(ctx, model, apiKey) != nil
+	})
+}
+
+// accountServesHostedModels 报告账号上游是否只服务自家托管模型（CN 供应商 /
+// OpenCode Go / Ollama Cloud）：请求里的 claude-* 等名字只是入站别名，计费须按
+// 实际转发的模型，不能按请求名。
+func accountServesHostedModels(account *Account) bool {
+	return account != nil && (account.IsCNProvider() || account.IsOpenCodeGo() || account.IsOllamaCloud())
+}
+
+// dropUnpricedClaudeBillingCandidates 剔除未显式配置分组/渠道定价的 claude-* 候选。
+func dropUnpricedClaudeBillingCandidates(candidates []string, channelPriced func(model string) bool) []string {
 	out := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		trimmed := strings.TrimSpace(candidate)
 		if trimmed == "" {
 			continue
 		}
-		if strings.Contains(strings.ToLower(trimmed), "claude") &&
-			s.resolveOpenAIChannelPricing(ctx, trimmed, apiKey) == nil {
+		if strings.Contains(strings.ToLower(trimmed), "claude") && !channelPriced(trimmed) {
 			continue
 		}
 		out = append(out, candidate)
