@@ -10,7 +10,7 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import { formatDateTimeLocalInput, formatNumber } from '@/utils/format'
 import { formatMemorySizeMB } from '../utils/opsFormatters'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
@@ -178,8 +178,8 @@ function handleTimeRangeChange(val: string | number | boolean | null) {
     // 初始化为最近1小时
     const now = new Date()
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-    customStartTimeInput.value = oneHourAgo.toISOString().slice(0, 16)
-    customEndTimeInput.value = now.toISOString().slice(0, 16)
+    customStartTimeInput.value = formatDateTimeLocalInput(oneHourAgo.getTime() / 1000)
+    customEndTimeInput.value = formatDateTimeLocalInput(now.getTime() / 1000)
     showCustomTimeRangeDialog.value = true
   } else {
     emit('update:timeRange', newValue)
