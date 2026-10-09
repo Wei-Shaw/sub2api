@@ -91,7 +91,7 @@ func TestCompositePoolOwnershipDeepseekNativePlusOpenCodeMapping(t *testing.T) {
 	// 仅 deepseek 空 mapping 声明时保持 single（既有语义）。
 	single, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-v4-pro")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, single)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, single)
 }
 
 // 声明强度分层：有强声明平台时通配 catch-all 平台不混池；完全无强声明才
@@ -125,7 +125,7 @@ func TestCompositePoolOwnershipClaimStrengthTiering(t *testing.T) {
 	})
 	ownership, err := grokFirst.resolveCompositeModelOwnership(context.Background(), groupID, "grok-public")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true}, ownership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, ownership)
 
 	// 无任何强声明：deepseek/zhipu 均只有通配命中 → 使用通配 fallback 平台集合。
 	wildcardOnly := svc([]Account{
@@ -145,11 +145,12 @@ func TestCompositePoolOwnershipClaimStrengthTiering(t *testing.T) {
 	require.True(t, fallback.Matched)
 	require.Empty(t, fallback.TargetPlatform)
 	require.Equal(t, []string{PlatformDeepseek, PlatformZhipu}, fallback.CandidatePlatforms)
+	require.Equal(t, CompositeClaimWildcard, fallback.RequiredClaimStrength)
 
 	// 仅单个平台通配命中 → fallback single。
 	singleWildcard, err := wildcardOnly.resolveCompositeModelOwnership(context.Background(), groupID, "zhipu-x")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformZhipu, Matched: true}, singleWildcard)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformZhipu, Matched: true, RequiredClaimStrength: CompositeClaimWildcard}, singleWildcard)
 }
 
 // e. 显式 route 优先于 pool，route 的 UpstreamModel 改写语义不变。
@@ -254,7 +255,7 @@ func TestCompositePoolOwnershipUnaffectedByTransientAccountState(t *testing.T) {
 	repo.accounts = []Account{repo.accounts[0]}
 	single, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-chat")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, single)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, single)
 
 	// 配置移除全部声明 → 能力消失（0 候选，回退 detector/unknown 原逻辑）。
 	repo.accounts = nil

@@ -596,7 +596,7 @@ func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 
 	first, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, first)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, first)
 	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
 
 	// TTL 内命中缓存，不再查库。
@@ -639,7 +639,7 @@ func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	}}
 	refreshed, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, refreshed)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, refreshed)
 	require.Equal(t, int64(4), repo.listByGroupCalls.Load())
 }
 

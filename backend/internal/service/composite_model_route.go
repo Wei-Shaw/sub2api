@@ -42,6 +42,9 @@ type CompositeModelOwnership struct {
 	Matched            bool
 	Ambiguous          bool
 	CandidatePlatforms []string
+	// RequiredClaimStrength 是构成归属时采用的声明层级：存在强声明平台时为
+	// CompositeClaimExplicit，否则为 CompositeClaimWildcard。
+	RequiredClaimStrength CompositeClaimStrength
 }
 
 type CompositeModelOwnershipResolver func(context.Context, int64, string) (CompositeModelOwnership, error)
@@ -91,6 +94,9 @@ type CompositeRouteDecision struct {
 	CandidatePlatforms []string             `json:"candidate_platforms,omitempty"`
 	Route              *CompositeModelRoute `json:"route,omitempty"`
 	Reason             string               `json:"reason,omitempty"`
+	// RequiredClaimStrength 仅账号归属决策携带：选号时账号对公开模型的声明须达到
+	// 该层级（见 CompositeAccountMeetsClaimTier）。
+	RequiredClaimStrength CompositeClaimStrength `json:"-"`
 }
 
 // isCompositePoolDecision reports whether the decision carries a multi-platform

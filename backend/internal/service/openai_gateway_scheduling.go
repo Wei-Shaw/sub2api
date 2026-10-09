@@ -358,7 +358,7 @@ func openAISchedulingModelSupported(ctx context.Context, account *Account, reque
 		return true
 	}
 	if openAICompositePoolActive(ctx) {
-		return CompositeAccountClaimsModel(account, requestedModel) || account.IsOpenAIPassthroughEnabled()
+		return CompositeAccountMeetsClaimTier(ctx, account, requestedModel) || account.IsOpenAIPassthroughEnabled()
 	}
 	return account.IsModelSupported(requestedModel)
 }
@@ -457,7 +457,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 		return "account_nil"
 	}
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
-		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !CompositeAccountClaimsModel(account, publicModel) {
+		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !CompositeAccountMeetsClaimTier(ctx, account, publicModel) {
 			return "account_model_not_owned"
 		}
 	}

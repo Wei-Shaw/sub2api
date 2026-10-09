@@ -48,11 +48,11 @@ func TestResolveCompositeModelOwnershipKeepsProviderAccountsIsolated(t *testing.
 
 	deepSeekOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "reasoning-alias")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, deepSeekOwnership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, deepSeekOwnership)
 
 	openAIOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-public")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, openAIOwnership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, openAIOwnership)
 }
 
 // Scenario: 通配映射按既有通配语义声明；映射目标为空的别名不构成声明；
@@ -80,7 +80,7 @@ func TestResolveCompositeModelOwnershipHonorsWildcardMappings(t *testing.T) {
 	for _, model := range []string{"gpt-5", "unknown-alias"} {
 		ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, model)
 		require.NoError(t, err)
-		require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, ownership, "model=%s", model)
+		require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimWildcard}, ownership, "model=%s", model)
 	}
 
 	// 映射目标为空的条目不构成声明，也无其他平台可声明。
@@ -92,7 +92,7 @@ func TestResolveCompositeModelOwnershipHonorsWildcardMappings(t *testing.T) {
 	// 否则 grok 请求会被改写成 gpt-5（回归）。
 	ownership, err = svc.resolveCompositeModelOwnership(context.Background(), groupID, "grok-public")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true}, ownership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, ownership)
 }
 
 func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatformAliases(t *testing.T) {
@@ -108,7 +108,7 @@ func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatform
 
 	samePlatform, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "shared-openai")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, samePlatform)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, samePlatform)
 
 	// 跨平台同名别名：返回稳定候选池（去重升序），不再是裸 Ambiguous。
 	ambiguous, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "ambiguous")

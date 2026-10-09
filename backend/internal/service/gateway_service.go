@@ -1553,11 +1553,16 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	}
 
 	claimedPlatforms := strongPlatforms
+	requiredStrength := CompositeClaimExplicit
 	if len(claimedPlatforms) == 0 {
 		claimedPlatforms = wildcardPlatforms
+		requiredStrength = CompositeClaimWildcard
 	}
 
 	ownership := CompositeModelOwnership{}
+	if len(claimedPlatforms) > 0 {
+		ownership.RequiredClaimStrength = requiredStrength
+	}
 	switch len(claimedPlatforms) {
 	case 1:
 		for platform := range claimedPlatforms {

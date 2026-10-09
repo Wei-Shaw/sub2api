@@ -1,6 +1,11 @@
 package service
 
-import "strings"
+import (
+	"context"
+	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+)
 
 // CompositeClaimStrength 表达账号对某模型的声明强度。ownership 据此分层：
 // 存在强声明平台时池/单平台仅由强声明平台构成，完全无强声明才回退通配命中
@@ -32,6 +37,12 @@ func CompositeAccountClaimStrength(account *Account, model string) CompositeClai
 	}
 
 	mapping := account.GetModelMapping()
+	if account.Platform == PlatformAntigravity && !account.IsMixedSchedulingEnabled() {
+		// 平台默认映射（Claude / Gemini 模型）只在开启混合调度时才让 antigravity 账号
+		// 服务这些模型，与非 composite 的混合调度开关同一语义；未开启时只有管理员在
+		// 账号上显式配置的映射构成声明。
+		mapping = stringMappingFromRaw(account.Credentials["model_mapping"])
+	}
 	if len(mapping) == 0 {
 		// 规则B：空 mapping 仅受控 native 声明。OpenAI OAuth 空 mapping 仍受
 		// isOpenAIOAuthServableModel 约束（IsModelSupported 内部处理）。
@@ -104,4 +115,20 @@ func compositeClaimStrengthForTarget(mapped string, exact bool) CompositeClaimSt
 // 声明平台入池，完全无强声明才使用通配命中平台集合。
 func CompositeAccountClaimsModel(account *Account, model string) bool {
 	return CompositeAccountClaimStrength(account, model) != CompositeClaimNone
+}
+
+// CompositeAccountMeetsClaimTier 是选号期的 composite 归属判定（account_model 否决与
+// 账号池模型门共用）：账号对公开模型的声明强度须达到构成本次归属时采用的层级。存在
+// 强声明平台时只有强声明账号可承接，通配 catch-all 账号不得冒领显式绑定的公开模型；
+// ctx 无层级信息时任意强度均可（等价 CompositeAccountClaimsModel）。
+func CompositeAccountMeetsClaimTier(ctx context.Context, account *Account, model string) bool {
+	strength := CompositeAccountClaimStrength(account, model)
+	if strength == CompositeClaimNone {
+		return false
+	}
+	if ctx == nil {
+		return true
+	}
+	required, ok := ctx.Value(ctxkey.CompositeRequiredClaimStrength).(CompositeClaimStrength)
+	return !ok || strength >= required
 }

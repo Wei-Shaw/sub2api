@@ -96,7 +96,7 @@ func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDeci
 		if source := strings.TrimSpace(decision.Source); source != "" {
 			ctx = context.WithValue(ctx, ctxkey.CompositeRouteSource, source)
 		}
-		return ctx
+		return withCompositeRequiredClaimStrength(ctx, decision.RequiredClaimStrength)
 	}
 	ctx = WithResolvedTargetPlatform(ctx, decision.TargetPlatform)
 	if model := strings.TrimSpace(decision.UpstreamModel); model != "" {
@@ -108,7 +108,14 @@ func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDeci
 	if source := strings.TrimSpace(decision.Source); source != "" {
 		ctx = context.WithValue(ctx, ctxkey.CompositeRouteSource, source)
 	}
-	return ctx
+	return withCompositeRequiredClaimStrength(ctx, decision.RequiredClaimStrength)
+}
+
+func withCompositeRequiredClaimStrength(ctx context.Context, strength CompositeClaimStrength) context.Context {
+	if strength <= CompositeClaimNone {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxkey.CompositeRequiredClaimStrength, strength)
 }
 
 func ResolvedUpstreamModelFromContext(ctx context.Context) (string, bool) {

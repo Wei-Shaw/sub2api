@@ -117,12 +117,13 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			// TargetPlatform 为空，不回退 generic/detector，也不在此猜单平台；
 			// 选择期由统一 OpenAI 兼容 selector 按既有 priority/load/sticky 决定。
 			return CompositeRouteDecision{
-				Matched:            true,
-				Source:             CompositeRouteSourceAccountPool,
-				GroupID:            groupID,
-				PublicModel:        model,
-				CandidatePlatforms: normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms),
-				Endpoint:           endpoint,
+				Matched:               true,
+				Source:                CompositeRouteSourceAccountPool,
+				GroupID:               groupID,
+				PublicModel:           model,
+				CandidatePlatforms:    normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms),
+				Endpoint:              endpoint,
+				RequiredClaimStrength: ownership.RequiredClaimStrength,
 			}, nil
 		} else if ownership.Ambiguous {
 			// 旧形态保护：Ambiguous=true 但未携带候选集合（老 mock / 异常输入）
@@ -136,13 +137,14 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				return decision, nil
 			}
 			return CompositeRouteDecision{
-				Matched:        true,
-				Source:         CompositeRouteSourceAccount,
-				GroupID:        groupID,
-				PublicModel:    model,
-				TargetPlatform: platform,
-				UpstreamModel:  model,
-				Endpoint:       endpoint,
+				Matched:               true,
+				Source:                CompositeRouteSourceAccount,
+				GroupID:               groupID,
+				PublicModel:           model,
+				TargetPlatform:        platform,
+				UpstreamModel:         model,
+				Endpoint:              endpoint,
+				RequiredClaimStrength: ownership.RequiredClaimStrength,
 			}, nil
 		}
 	}
