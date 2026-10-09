@@ -939,6 +939,10 @@ export interface ClaudeModel {
   type: string
   display_name: string
   created_at: string
+  // Set by the account model picker when the account mapping configures a model
+  // that the upstream catalog does not advertise. Such a model is still routable
+  // (the gateway rewrites by mapping), the flag only explains why it is offered.
+  unlisted?: boolean
 }
 
 export interface Proxy {
