@@ -42,7 +42,7 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	clientStream := ccReq.Stream
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
-	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
+	responsesReq, err := apicompat.ChatCompletionsToResponsesForGemini(&ccReq)
 	if err != nil {
 		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}

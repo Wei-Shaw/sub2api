@@ -71,13 +71,19 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
-	responsesRequest, err := apicompat.ChatCompletionsToResponses(&request)
+	responsesRequest, err := apicompat.ChatCompletionsToResponsesForGemini(&request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
 	claudeRequest, err := apicompat.ResponsesToAnthropicRequest(responsesRequest)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+	}
+	mappedModel := s.getAntigravityCompatMappedModel(account, request.Model, (*antigravity.ThinkingConfig)(claudeRequest.Thinking))
+	if !strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
+		if _, err := apicompat.ChatCompletionsToResponses(&request); err != nil {
+			return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
 	}
 	preserveChatCompletionTokenLimit(&request, claudeRequest)
 	claudeRequest.Stream = request.Stream
@@ -201,6 +207,12 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 	return s.consumeAntigravityCompatResponse(ctx, c, account, call, result.resp)
 }
 
+func (s *AntigravityGatewayService) getAntigravityCompatMappedModel(account *Account, originalModel string, thinking *antigravity.ThinkingConfig) string {
+	mappedModel := s.getMappedModelForThinkingLevel(account, originalModel, geminiThinkingLevelFromClaudeThinking(thinking))
+	thinkingEnabled := thinking != nil && (thinking.Type == "enabled" || thinking.Type == "adaptive")
+	return applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+}
+
 func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	ctx context.Context,
 	c *gin.Context,
@@ -212,20 +224,12 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
-	mappedModel := s.getMappedModelForThinkingLevel(
-		account,
-		request.originalModel,
-		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
-	)
+	mappedModel := s.getAntigravityCompatMappedModel(account, request.originalModel, claudeRequest.Thinking)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
 		return nil, s.writeAntigravityCompatError(c, http.StatusForbidden, "permission_error", message)
 	}
-	thinkingEnabled := claudeRequest.Thinking != nil &&
-		(claudeRequest.Thinking.Type == "enabled" || claudeRequest.Thinking.Type == "adaptive")
-	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
-
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
 	}
