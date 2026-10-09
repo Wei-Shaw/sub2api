@@ -949,6 +949,7 @@ export interface Proxy {
   port: number
   username: string | null
   password?: string | null
+  console_url?: string | null
   status: 'active' | 'inactive' | 'expired'
   account_count?: number // Number of accounts using this proxy
   latency_ms?: number
@@ -1602,6 +1603,7 @@ export interface CreateProxyRequest {
   port: number
   username?: string | null
   password?: string | null
+  console_url?: string | null
   expires_at?: number | null   // unix 秒；null/0 = 永不过期
   fallback_mode?: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null
@@ -1615,6 +1617,7 @@ export interface UpdateProxyRequest {
   port?: number
   username?: string | null
   password?: string | null
+  console_url?: string | null
   status?: 'active' | 'inactive'
   expires_at?: number | null   // unix 秒；null/0 = 永不过期
   fallback_mode?: 'none' | 'proxy' | 'direct'
@@ -1640,6 +1643,7 @@ export interface AdminDataProxy {
   port: number
   username?: string | null
   password?: string | null
+  console_url?: string | null
   status: 'active' | 'inactive'
 }
 

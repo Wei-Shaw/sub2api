@@ -33,6 +33,7 @@ type CreateProxyRequest struct {
 	Port           int    `json:"port" binding:"required,min=1,max=65535"`
 	Username       string `json:"username"`
 	Password       string `json:"password"`
+	ConsoleURL     string `json:"console_url" binding:"omitempty,max=2048"`
 	ExpiresAt      *int64 `json:"expires_at"`
 	FallbackMode   string `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
 	BackupProxyID  *int64 `json:"backup_proxy_id"`
@@ -47,6 +48,7 @@ type UpdateProxyRequest struct {
 	Port           int                    `json:"port" binding:"omitempty,min=1,max=65535"`
 	Username       *string                `json:"username"`
 	Password       *string                `json:"password"`
+	ConsoleURL     *string                `json:"console_url" binding:"omitempty,max=2048"`
 	Status         string                 `json:"status" binding:"omitempty,oneof=active inactive"`
 	ExpiresAt      dto.NullableInt64Field `json:"expires_at"`
 	FallbackMode   string                 `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
@@ -155,6 +157,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 			Port:           req.Port,
 			Username:       strings.TrimSpace(req.Username),
 			Password:       strings.TrimSpace(req.Password),
+			ConsoleURL:     strings.TrimSpace(req.ConsoleURL),
 			ExpiresAt:      expiresAt,
 			FallbackMode:   strings.TrimSpace(req.FallbackMode),
 			BackupProxyID:  req.BackupProxyID,
@@ -200,6 +203,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Port:           req.Port,
 		Username:       req.Username,
 		Password:       req.Password,
+		ConsoleURL:     trimOptionalString(req.ConsoleURL),
 		Status:         strings.TrimSpace(req.Status),
 		ExpiresAt:      expiresAt,
 		ClearExpiresAt: req.ExpiresAt.Set && expiresAt == nil,
@@ -214,6 +218,14 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, dto.ProxyFromServiceAdmin(proxy))
+}
+
+func trimOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }
 
 // Delete handles deleting a proxy
