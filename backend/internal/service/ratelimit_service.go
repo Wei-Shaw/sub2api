@@ -2587,6 +2587,23 @@ func firstRequestedModel(requestedModel []string) string {
 	return strings.TrimSpace(requestedModel[0])
 }
 
+// tempUnschedRuleUsesModelScope 决定一次命中按模型级冷却还是账号级暂停。
+// 显式 scope 完全由规则决定；scope 为空时模型已知且非 401 走模型级。
+// 模型未知时无法隔离，一律账号级。
+func tempUnschedRuleUsesModelScope(rule TempUnschedulableRule, modelKey string, statusCode int) bool {
+	if strings.TrimSpace(modelKey) == "" {
+		return false
+	}
+	switch rule.Scope {
+	case TempUnschedScopeAccount:
+		return false
+	case TempUnschedScopeModel:
+		return true
+	default:
+		return statusCode != http.StatusUnauthorized
+	}
+}
+
 type tempUnschedulableModelContextKey struct{}
 
 func withTempUnschedulableModel(ctx context.Context, requestedModel []string) context.Context {
@@ -2719,6 +2736,8 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 
 	now := time.Now()
 	until := now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+	modelKey := firstRequestedModel(requestedModel)
+	modelScoped := tempUnschedRuleUsesModelScope(rule, modelKey, statusCode)
 
 	state := &TempUnschedState{
 		UntilUnix:       until.Unix(),
@@ -2727,6 +2746,11 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		MatchedKeyword:  matchedKeyword,
 		RuleIndex:       ruleIndex,
 		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
+		Scope:           TempUnschedScopeAccount,
+	}
+	if modelScoped {
+		state.Scope = TempUnschedScopeModel
+		state.Model = modelKey
 	}
 
 	reason := ""
@@ -2737,18 +2761,16 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		reason = strings.TrimSpace(state.ErrorMessage)
 	}
 
-	// Persist known-model failures under the model key so the scheduler excludes
-	// only this (account, model) pair. Authentication and model-unknown failures
-	// retain the legacy account-wide temporary-unschedulable behavior below.
-	modelKey := firstRequestedModel(requestedModel)
-	if modelKey != "" && statusCode != http.StatusUnauthorized {
+	// Persist model-scoped hits under the model key so the scheduler excludes
+	// only this (account, model) pair; every other hit pauses the whole account below.
+	if modelScoped {
 		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, until, reason); err != nil {
 			slog.Warn("temp_unsched_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
 			// The rule matched, so fail over the current request even if persistence
 			// failed; never widen a model-scoped failure into an account-wide block.
 			return true
 		}
-		slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+		slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "rule_scope", rule.Scope, "status_code", statusCode)
 		return true
 	}
 
@@ -2764,7 +2786,7 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		}
 	}
 
-	slog.Info("account_temp_unschedulable", "account_id", account.ID, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+	slog.Info("account_temp_unschedulable", "account_id", account.ID, "until", until, "rule_index", ruleIndex, "rule_scope", rule.Scope, "status_code", statusCode)
 	return true
 }
 
