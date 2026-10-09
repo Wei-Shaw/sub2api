@@ -84,6 +84,10 @@ func (s *ClaudeResetCreditService) ConfigureRedemption(idem *IdempotencyCoordina
 // fresh query shows it redeemable. key identifies one operator confirmation: the
 // same key replays the stored outcome and never sends a second claim.
 func (s *ClaudeResetCreditService) Redeem(ctx context.Context, id int64, key string) (*ClaudeResetOutcome, error) {
+	return s.redeemWithPolicy(ctx, id, key, nil)
+}
+
+func (s *ClaudeResetCreditService) redeemWithPolicy(ctx context.Context, id int64, key string, guard func(context.Context, *claudeResetBlock, *claudeResetGrant) error) (*ClaudeResetOutcome, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, ErrIdempotencyKeyRequired
 	}
@@ -104,7 +108,7 @@ func (s *ClaudeResetCreditService) Redeem(ctx context.Context, id int64, key str
 		Scope: claudeResetOperationScope, ActorScope: fmt.Sprintf("account:%d", id), Method: http.MethodPost,
 		Route: "/admin/accounts/:id/claude/reset-credits/redeem", IdempotencyKey: operation,
 		Payload: map[string]any{"account_id": id}, TTL: claudeResetRecordTTL, RequireKey: true, ExecutionTimeout: 60 * time.Second,
-	}, func(exec context.Context) (any, error) { return s.redeemOnce(exec, id, operation) })
+	}, func(exec context.Context) (any, error) { return s.redeemOnceWithPolicy(exec, id, operation, guard) })
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +139,7 @@ func (s *ClaudeResetCreditService) lease(ctx context.Context, key, owner string)
 	}, nil
 }
 
-func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, operation string) (*ClaudeResetOutcome, error) {
+func (s *ClaudeResetCreditService) redeemOnceWithPolicy(ctx context.Context, id int64, operation string, guard func(context.Context, *claudeResetBlock, *claudeResetGrant) error) (*ClaudeResetOutcome, error) {
 	owner := uuid.NewString()
 	release, err := s.lease(ctx, fmt.Sprintf("claude:reset-credit:account:%d", id), owner)
 	if err != nil {
@@ -196,6 +200,21 @@ func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, ope
 	}
 	if grant == nil {
 		return nil, infraerrors.Conflict("CLAUDE_RESET_NOT_AVAILABLE", "no reset is redeemable right now")
+	}
+
+	if guard != nil {
+		if err := guard(ctx, block, grant); err != nil {
+			return nil, err
+		}
+	}
+
+	// Policy checks can make native calls; do not spend after their deadline
+	// or after the selected grant expires while those calls are in flight.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !claudeResetGrantRedeemable(block, *grant, s.now()) {
+		return nil, infraerrors.Conflict("CLAUDE_RESET_NOT_AVAILABLE", "reset eligibility expired")
 	}
 
 	// Persist the unknown marker before sending: a crash after this point blocks

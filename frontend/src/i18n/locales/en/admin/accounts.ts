@@ -980,8 +980,22 @@ export default {
 	    }
 	  },
       autoResetCredit: {
+      claudeHint: 'Claude OAuth only; user:profile access is required. Native eligibility, cooldown and use_requires_limit rules always apply, including for expiring credits. Off by default; credits cannot be refunded.',
+      claudeExhaustedHint: 'Requires fresh confirmed exhaustion for every eligible Claude account in a recently observed request group and model. Unknown usage or an unmeasurable candidate prevents automatic redemption.',
+
+      mode: 'Reset policy',
+      thresholdMode: 'Per-account usage threshold',
+      exhaustedMode: 'Only when the usable account pool is exhausted',
+      expiringOnlyMode: 'Only when a credit is expiring soon',
+      expiringMode: 'Credit expiring soon or usable pool exhausted',
+      exhaustedHint: 'Requires confirmed 100% usage in a live limit window for every active, schedulable OpenAI candidate sharing a group. Unknown usage prevents resetting. Background checks consider all model capabilities and can delay a reset.',
+      expiryHorizon: 'Expiring within (seconds, 60–604800)',
+      expiryUtilization: 'Minimum useful usage (%)',
+      expiryHint: 'An unexpired credit within this horizon may be used when actual usage reaches the minimum. Default: 3600 seconds and 25%. Credits are non-refundable.',
+      expiryInvalid: 'Expiry horizon must be a whole number from 60 to 604800 seconds; minimum usage must be 0.1–100%.',
+
 	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+	    hint: 'Uses the earliest-expiring available credit according to the selected policy. Off by default; the account remains paused if no credit is available or reset fails.',
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',

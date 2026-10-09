@@ -65,6 +65,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		platform = PlatformAnthropic
 	}
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	notifyClaudeResetScope(s, groupID, requestedModel)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -118,6 +119,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	ctx = s.withGroupContext(ctx, group)
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	notifyClaudeResetScope(s, groupID, requestedModel)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。

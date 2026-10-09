@@ -20,6 +20,8 @@ const claudeResetUsageURL = "https://api.anthropic.com/api/oauth/usage?cedar_emb
 
 // ClaudeResetCredit is deliberately free of upstream grant and organization IDs.
 type ClaudeResetCredit struct {
+	policySelection string // server-only identity; never exposed in JSON
+
 	Label            string             `json:"label"`
 	ResetsLeft       int                `json:"resets_left"`
 	StartsAt         *time.Time         `json:"starts_at,omitempty"`
@@ -78,6 +80,7 @@ type ClaudeResetCreditService struct {
 	now      func() time.Time
 
 	// Redemption only; both are mandatory and never fail open.
+	automatic   *claudeQuotaAutoReset
 	idempotency *IdempotencyCoordinator
 	locks       LeaderLockCache
 }
@@ -209,7 +212,7 @@ func projectClaudeResetCredits(b *claudeResetBlock, now time.Time) *ClaudeResetC
 				used[k] = v
 			}
 		}
-		r.Credits = append(r.Credits, ClaudeResetCredit{Label: g.Label, ResetsLeft: g.ResetsLeft, StartsAt: g.StartsAt, ExpiresAt: g.EndsAt, Clears: g.Clears, PercentUsed: used, Blocking: g.Blocking, UseRequiresLimit: requires, Redeemable: usable})
+		r.Credits = append(r.Credits, ClaudeResetCredit{policySelection: claudeResetPolicySelection(g), Label: g.Label, ResetsLeft: g.ResetsLeft, StartsAt: g.StartsAt, ExpiresAt: g.EndsAt, Clears: g.Clears, PercentUsed: used, Blocking: g.Blocking, UseRequiresLimit: requires, Redeemable: usable})
 		if usable {
 			r.AvailableCount += g.ResetsLeft
 		}
@@ -233,4 +236,14 @@ func claudeResetGrantRedeemable(b *claudeResetBlock, g claudeResetGrant, now tim
 	requires := g.UseRequiresLimit == nil || *g.UseRequiresLimit
 	return b.Eligible && g.UsableNow && g.ID == b.NextGrantID && (!requires || b.AtLimit) && len(g.Blocking) == 0 &&
 		(b.CooldownUntil == nil || !now.Before(*b.CooldownUntil))
+}
+
+// Bind automatic decisions to the observed grant without a client selection token.
+func claudeResetPolicySelection(g claudeResetGrant) string {
+	raw, _ := json.Marshal(struct {
+		ID         string
+		Count      int
+		Start, End *time.Time
+	}{g.ID, g.ResetsLeft, g.StartsAt, g.EndsAt})
+	return HashIdempotencyKey(string(raw))
 }
