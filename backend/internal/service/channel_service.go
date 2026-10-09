@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -367,7 +369,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo}
+		return domain.CompositePrecedencePlatformIDs()
 	}
 	return []string{groupPlatform}
 }
@@ -687,7 +689,28 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingBillingMode(pricing); err != nil {
 		return err
 	}
+	if err := validateReasoningEffortMultipliers(pricing); err != nil {
+		return err
+	}
 	return validatePricingTimePricing(pricing)
+}
+
+func validateReasoningEffortMultipliers(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		for effort, multiplier := range p.ReasoningEffortMultipliers {
+			switch effort {
+			case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+			default:
+				return infraerrors.BadRequest("INVALID_REASONING_EFFORT_MULTIPLIER",
+					fmt.Sprintf("unsupported reasoning effort %q for models %v", effort, p.Models))
+			}
+			if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier <= 0 {
+				return infraerrors.BadRequest("INVALID_REASONING_EFFORT_MULTIPLIER",
+					fmt.Sprintf("reasoning_effort_multipliers.%s must be a finite number > 0", effort))
+			}
+		}
+	}
+	return nil
 }
 
 func validatePricingTimePricing(pricing []ChannelModelPricing) error {

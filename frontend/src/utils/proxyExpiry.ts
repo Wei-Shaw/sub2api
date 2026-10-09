@@ -23,6 +23,7 @@ export function proxyExpiryLabelKey(
 ): { key: string; params?: { days: number } } {
   if (status === 'expired') return { key: 'admin.proxies.expired' }
   const d = expiresAt ? daysUntil(expiresAt) : Infinity
+  if (d === 0) return { key: 'admin.proxies.expired' }
   if (d < 0) return { key: 'admin.proxies.overdueDays', params: { days: Math.abs(d) } }
   if (d <= EXPIRY_WARN_DAYS) return { key: 'admin.proxies.expiringInDays', params: { days: d } }
   return { key: 'admin.proxies.remainingDays', params: { days: d } }

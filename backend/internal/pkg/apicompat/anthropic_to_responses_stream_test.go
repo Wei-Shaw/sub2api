@@ -394,3 +394,63 @@ func TestAnthropicEventToResponses_ItemLifecycleIsBalanced(t *testing.T) {
 		})
 	}
 }
+
+// TestAnthropicEventToResponses_ToolCallArgumentsDoneMatchesDeltas pins that
+// response.function_call_arguments.done repeats exactly the arguments the deltas
+// already streamed for that item.
+//
+// Why: clients reconcile the done event against the accumulated
+// function_call_arguments.delta payloads and reject the whole call as
+// inconsistent_tool_call when the two disagree — Qoder surfaces that as a bare
+// "something went wrong" and never runs the tool. The field used to be left
+// unset, so done carried "" while the deltas and the item carried the full JSON.
+// TestAnthropicEventToResponses_ToolCallCompletedCarriesArguments did not catch
+// it because it only looked at output_item.done and response.completed.
+func TestAnthropicEventToResponses_ToolCallArgumentsDoneMatchesDeltas(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "claude-sonnet-4-5"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	idx := 0
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx, ContentBlock: &AnthropicContentBlock{
+		Type: "tool_use", ID: "toolu_1", Name: "grep_search",
+	}})
+	// Anthropic streams arguments as JSON fragments; their sum is the contract
+	// clients diff the done event against.
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx, Delta: &AnthropicDelta{
+		Type: "input_json_delta", PartialJSON: `{"path":`,
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx, Delta: &AnthropicDelta{
+		Type: "input_json_delta", PartialJSON: `".","pattern":"TODO"}`,
+	}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx})
+
+	var streamed, done string
+	var sawDone bool
+	for _, e := range events {
+		switch e.Type {
+		case "response.function_call_arguments.delta":
+			streamed += e.Delta
+		case "response.function_call_arguments.done":
+			sawDone = true
+			done = e.Arguments
+		}
+	}
+
+	const want = `{"path":".","pattern":"TODO"}`
+	if streamed != want {
+		t.Fatalf("sum of deltas = %q, want %q", streamed, want)
+	}
+	if !sawDone {
+		t.Fatalf("response.function_call_arguments.done was not emitted; got %d events", len(events))
+	}
+	if done != streamed {
+		t.Errorf("function_call_arguments.done arguments = %q, want %q (must equal the streamed deltas)",
+			done, streamed)
+	}
+}

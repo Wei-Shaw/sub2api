@@ -108,6 +108,41 @@ func TestAstraCodexToolCapabilitiesUseAccountScopeAndSharedDeclarations(t *testi
 	require.Equal(t, "3000", model["comp_hash"])
 }
 
+func TestCodexToolCapabilitiesNeverAdvertiseNullServiceTiers(t *testing.T) {
+	newAccount := func(id int64, tiers string) Account {
+		account := Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"base_url": "https://relay.example/v1", "model_mapping": map[string]any{"gpt-6-sol": "gpt-6-sol"},
+		}}
+		if tiers != "" {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"gpt-6-sol": {CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(tiers)}},
+			}})
+		}
+		return account
+	}
+	for _, tt := range []struct {
+		name     string
+		accounts []Account
+	}{
+		{"conflicting peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, `[]`)}},
+		{"undeclared peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, "")}},
+		{"explicit null tiers", []Account{newAccount(1, "null")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"gpt-6-sol"}, tt.accounts, nil, nil, true)
+			require.NoError(t, err)
+			model := decodeCodexManifestModels(t, body)[0]
+			require.Equal(t, []any{}, model["service_tiers"])
+		})
+	}
+
+	merged := intersectUpstreamModelMetadata("gpt-6-sol", []UpstreamModelMetadata{
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[{"id":"priority"}]`)}},
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[]`)}},
+	})
+	require.JSONEq(t, `[]`, string(merged.CodexToolCapabilities["service_tiers"]))
+}
+
 func TestAstraCodexToolCapabilitiesPreserveLiveNullAndFalse(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"base_url": "https://api.openai.com/v1"}}
@@ -190,6 +225,79 @@ func TestBuildCodexModelsManifestForGroupUsesSyncedAccountMetadata(t *testing.T)
 	require.Equal(t, []string{"low", "high", "max"}, effortsFromManifestModel(t, models[0]))
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+}
+
+type openCodeGoCodexCatalogRepo struct {
+	AccountRepository
+	groupID   int64
+	accounts  []Account
+	platforms []string
+}
+
+func (r *openCodeGoCodexCatalogRepo) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
+	return nil, nil
+}
+
+func (r *openCodeGoCodexCatalogRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	r.platforms = append([]string(nil), platforms...)
+	if groupID == nil || *groupID != r.groupID {
+		return nil, nil
+	}
+	for _, platform := range platforms {
+		if platform == PlatformOpenCodeGo {
+			return append([]Account(nil), r.accounts...), nil
+		}
+	}
+	return nil, nil
+}
+
+// Scenario: OpenCode Go accounts contribute synced capabilities to a Composite
+// manifest only when they are selected by the catalog candidate query.
+func TestBuildCodexModelsManifestForGroupMergesOpenCodeGoSyncedMetadata(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 742
+	const publicModel = "oc/muse-spark-1.3-contributor"
+	const upstreamModel = "muse-spark-1.3-contributor"
+
+	reasoning := true
+	account := Account{
+		ID:       43,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      "https://opencode.ai/zen/go/v1",
+			"model_mapping": map[string]any{publicModel: upstreamModel},
+		},
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		upstreamModel: {
+			ID:                       upstreamModel,
+			Reasoning:                &reasoning,
+			DefaultReasoningLevel:    "medium",
+			SupportedReasoningLevels: []string{"minimal", "low", "medium", "high", "xhigh"},
+			InputModalities:          []string{"text", "image"},
+			ContextWindow:            1_048_576,
+		},
+	}})
+	repo := &openCodeGoCodexCatalogRepo{groupID: groupID, accounts: []Account{account}}
+	svc := &GatewayService{accountRepo: repo}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{publicModel},
+	)
+	require.NoError(t, err)
+	require.Contains(t, repo.platforms, PlatformOpenCodeGo)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, "medium", models[0]["default_reasoning_level"])
+	require.Equal(t, []string{"minimal", "low", "medium", "high", "xhigh"}, effortsFromManifestModel(t, models[0]))
+	require.EqualValues(t, 1_048_576, models[0]["context_window"])
 }
 
 // Scenario: an explicitly non-reasoning model remains directly selectable in Codex.

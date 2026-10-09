@@ -170,6 +170,12 @@ func sanitizeAnthropicToolUseInput(name string, raw string) json.RawMessage {
 // Streaming: ResponsesStreamEvent → []AnthropicStreamEvent (stateful converter)
 // ---------------------------------------------------------------------------
 
+// responsesTextPart identifies one output_text part of a streamed response.
+type responsesTextPart struct {
+	OutputIndex  int
+	ContentIndex int
+}
+
 // ResponsesEventToAnthropicState tracks state for converting a sequence of
 // Responses SSE events directly into Anthropic SSE events.
 type ResponsesEventToAnthropicState struct {
@@ -190,6 +196,13 @@ type ResponsesEventToAnthropicState struct {
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
 
+	// textByPart records the text already delivered for each output_text part
+	// so that a done payload can be reconciled against it. It outlives the
+	// content block; closeCurrentBlock must not reset it.
+	textByPart map[responsesTextPart]*strings.Builder
+	// textDelivered records whether any assistant text reached the client.
+	textDelivered bool
+
 	InputTokens              int
 	OutputTokens             int
 	CacheReadInputTokens     int
@@ -204,6 +217,7 @@ type ResponsesEventToAnthropicState struct {
 func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
 	return &ResponsesEventToAnthropicState{
 		OutputIndexToBlockIdx: make(map[int]int),
+		textByPart:            make(map[responsesTextPart]*strings.Builder),
 		Created:               time.Now().Unix(),
 	}
 }
@@ -222,7 +236,7 @@ func ResponsesEventToAnthropicEvents(
 	case "response.output_text.delta":
 		return resToAnthHandleTextDelta(evt, state)
 	case "response.output_text.done":
-		return resToAnthHandleBlockDone(state)
+		return resToAnthHandleTextDone(evt, state)
 	case "response.function_call_arguments.delta",
 		// custom/freeform 工具的输入增量与 function_call 参数增量同形。
 		"response.custom_tool_call_input.delta":
@@ -390,7 +404,18 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 }
 
 func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	if evt.Delta == "" {
+	return resToAnthEmitText(evt.Delta, resToAnthTextPartOf(evt), state)
+}
+
+func resToAnthTextPartOf(evt *ResponsesStreamEvent) responsesTextPart {
+	return responsesTextPart{OutputIndex: evt.OutputIndex, ContentIndex: evt.ContentIndex}
+}
+
+// resToAnthEmitText opens a text block when needed, emits text, and records it
+// against its part so that a later payload for the same part is reconciled
+// against what the client already received.
+func resToAnthEmitText(text string, part responsesTextPart, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if text == "" {
 		return nil
 	}
 
@@ -413,16 +438,61 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		})
 	}
 
+	delivered, ok := state.textByPart[part]
+	if !ok {
+		delivered = &strings.Builder{}
+		state.textByPart[part] = delivered
+	}
+	_, _ = delivered.WriteString(text)
+	state.textDelivered = true
+
 	idx := state.ContentBlockIndex
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_delta",
 		Index: &idx,
 		Delta: &AnthropicDelta{
 			Type: "text_delta",
-			Text: evt.Delta,
+			Text: text,
 		},
 	})
 	return events
+}
+
+// resToAnthRecoverText emits the tail of a finished text payload that never
+// reached the client. Streamed text cannot be recalled, so a payload that does
+// not extend what was already delivered is left alone.
+func resToAnthRecoverText(text string, part responsesTextPart, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	builder, known := state.textByPart[part]
+	if !known && state.textDelivered {
+		// The payload is indexed differently from every delta seen so far, so
+		// which part it finishes cannot be established. Recovering it could
+		// repeat an answer the client already has, which is worse than leaving
+		// a partially delivered one alone.
+		return nil
+	}
+
+	var delivered string
+	if known {
+		delivered = builder.String()
+	}
+	if text == delivered || !strings.HasPrefix(text, delivered) {
+		return nil
+	}
+	return resToAnthEmitText(text[len(delivered):], part, state)
+}
+
+// resToAnthHandleTextDone recovers text that upstream carried only on the done
+// event before closing the block, which some streams use instead of sending
+// output_text.delta at all.
+func resToAnthHandleTextDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.MessageStopSent {
+		// The message is already terminated; a late payload cannot be delivered
+		// without emitting a content block after message_stop.
+		return resToAnthHandleBlockDone(state)
+	}
+
+	events := resToAnthRecoverText(evt.Text, resToAnthTextPartOf(evt), state)
+	return append(events, resToAnthHandleBlockDone(state)...)
 }
 
 func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
@@ -622,6 +692,38 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	return events
 }
 
+// resToAnthRecoverTerminalText emits assistant text that only ever appeared in
+// the terminal response payload, which some streams populate without sending
+// any output_text event.
+//
+// It only runs when no text at all reached the client. Streamed events and the
+// terminal output array carry no guaranteed common identity, so reconciling
+// them part by part risks repeating an answer the client already has, which is
+// worse than leaving a partially streamed response as it is.
+func resToAnthRecoverTerminalText(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.textDelivered || evt.Response == nil {
+		return nil
+	}
+
+	var events []AnthropicStreamEvent
+	for outputIndex, item := range evt.Response.Output {
+		if item.Type != "message" {
+			continue
+		}
+		for contentIndex, content := range item.Content {
+			if content.Type != "output_text" {
+				continue
+			}
+			part := responsesTextPart{OutputIndex: outputIndex, ContentIndex: contentIndex}
+			events = append(events, resToAnthEmitText(content.Text, part, state)...)
+		}
+	}
+	if len(events) > 0 {
+		events = append(events, closeCurrentBlock(state)...)
+	}
+	return events
+}
+
 func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if state.MessageStopSent {
 		return nil
@@ -629,6 +731,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 	var events []AnthropicStreamEvent
 	events = append(events, closeCurrentBlock(state)...)
+	events = append(events, resToAnthRecoverTerminalText(evt, state)...)
 
 	stopReason := "end_turn"
 	if evt.Usage != nil {

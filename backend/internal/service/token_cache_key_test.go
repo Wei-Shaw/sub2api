@@ -87,60 +87,45 @@ func TestAntigravityTokenCacheKey(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "with_project_id",
+			name: "basic_account",
 			account: &Account{
 				ID: 200,
-				Credentials: map[string]any{
-					"project_id": "ag-project-456",
-				},
 			},
-			expected: "ag:ag-project-456",
+			expected: "ag:account:200",
 		},
 		{
-			name: "project_id_with_whitespace",
+			name: "account_with_project_id_still_uses_account_id",
 			account: &Account{
 				ID: 201,
 				Credentials: map[string]any{
-					"project_id": "  ag-project-spaces  ",
+					"project_id": "aicode-consumers",
 				},
 			},
-			expected: "ag:ag-project-spaces",
+			expected: "ag:account:201",
 		},
 		{
-			name: "empty_project_id_fallback_to_account_id",
+			name: "account_with_credentials",
 			account: &Account{
 				ID: 202,
 				Credentials: map[string]any{
-					"project_id": "",
+					"access_token": "test-token",
 				},
 			},
 			expected: "ag:account:202",
 		},
 		{
-			name: "whitespace_only_project_id_fallback_to_account_id",
+			name: "account_id_zero",
 			account: &Account{
-				ID: 203,
-				Credentials: map[string]any{
-					"project_id": "   ",
-				},
+				ID: 0,
 			},
-			expected: "ag:account:203",
+			expected: "ag:account:0",
 		},
 		{
-			name: "no_project_id_key_fallback_to_account_id",
+			name: "large_account_id",
 			account: &Account{
-				ID:          204,
-				Credentials: map[string]any{},
+				ID: 9999999999,
 			},
-			expected: "ag:account:204",
-		},
-		{
-			name: "nil_credentials_fallback_to_account_id",
-			account: &Account{
-				ID:          205,
-				Credentials: nil,
-			},
-			expected: "ag:account:205",
+			expected: "ag:account:9999999999",
 		},
 	}
 

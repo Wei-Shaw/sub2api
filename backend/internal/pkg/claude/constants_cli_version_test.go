@@ -21,7 +21,7 @@ const fable51MinCLIVersion = "2.1.251"
 func TestCLICurrentVersionMatchesDefaultUserAgent(t *testing.T) {
 	t.Parallel()
 
-	ua := DefaultHeaders["User-Agent"]
+	ua := DefaultHeaders()["User-Agent"]
 	const prefix = "claude-cli/"
 	require.True(t, strings.HasPrefix(ua, prefix), "unexpected User-Agent: %q", ua)
 

@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI, type BalanceHistoryItem } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
@@ -192,6 +192,9 @@ const total = ref(0)
 const totalRecharged = ref(0)
 const pageSize = 15
 const typeFilter = ref('')
+let requestVersion = 0
+
+onUnmounted(() => { requestVersion++ })
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
 
@@ -208,6 +211,7 @@ const typeOptions = computed(() => [
 
 // Watch modal open
 watch(() => props.show, (v) => {
+  requestVersion++
   if (v && props.user) {
     typeFilter.value = ''
     loadHistory(1)
@@ -216,6 +220,7 @@ watch(() => props.show, (v) => {
 
 const loadHistory = async (page: number) => {
   if (!props.user) return
+  const version = ++requestVersion
   loading.value = true
   currentPage.value = page
   try {
@@ -225,13 +230,15 @@ const loadHistory = async (page: number) => {
       pageSize,
       typeFilter.value || undefined
     )
+    if (version !== requestVersion) return
     history.value = res.items || []
     total.value = res.total || 0
     totalRecharged.value = res.total_recharged || 0
   } catch (error) {
+    if (version !== requestVersion) return
     console.error('Failed to load balance history:', error)
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 

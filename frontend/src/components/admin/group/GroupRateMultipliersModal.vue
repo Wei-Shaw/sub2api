@@ -5,7 +5,7 @@
       <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm dark:bg-dark-700">
         <span class="inline-flex items-center gap-1.5" :class="platformColorClass">
           <PlatformIcon :platform="group.platform" size="sm" />
-          {{ t('admin.groups.platforms.' + group.platform) }}
+          {{ t('admin.groups.platforms.' + group.platform, platformLabel(group.platform)) }}
         </span>
         <span class="text-gray-400">|</span>
         <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
@@ -63,7 +63,7 @@
           <button
             type="button"
             class="btn btn-primary shrink-0"
-            :disabled="!selectedUser || !newRate"
+            :disabled="!selectedUser || newRate == null || newRate <= 0"
             @click="handleAddLocal"
           >
             {{ t('common.add') }}
@@ -239,7 +239,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -249,6 +249,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { platformLabel } from '@/utils/platformColors'
 
 interface LocalEntry extends GroupRateMultiplierEntry {}
 
@@ -279,6 +280,7 @@ const pageSize = ref(10)
 const batchFactor = ref<number | null>(null)
 
 let searchTimeout: ReturnType<typeof setTimeout>
+let loadVersion = 0
 
 const platformColorClass = computed(() => {
   switch (props.group?.platform) {
@@ -319,18 +321,23 @@ const cloneEntries = (entries: GroupRateMultiplierEntry[]): LocalEntry[] => {
 
 const loadEntries = async () => {
   if (!props.group) return
+  const version = loadVersion
   loading.value = true
+  serverEntries.value = []
+  localEntries.value = []
   try {
     const raw = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
+    if (version !== loadVersion) return
     // 仅显示已设置 rate_multiplier 的条目；rpm_override 在另一个弹窗管理，保留不动
     serverEntries.value = raw.filter(e => e.rate_multiplier != null)
     localEntries.value = cloneEntries(serverEntries.value)
     adjustPage()
   } catch (error) {
+    if (version !== loadVersion) return
     appStore.showError(t('admin.groups.failedToLoad'))
     console.error('Error loading group rate multipliers:', error)
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -341,8 +348,9 @@ const adjustPage = () => {
   }
 }
 
-watch(() => props.show, (val) => {
-  if (val && props.group) {
+watch([() => props.show, () => props.group?.id], ([show]) => {
+  loadVersion++
+  if (show && props.group) {
     currentPage.value = 1
     batchFactor.value = null
     searchQuery.value = ''
@@ -386,7 +394,7 @@ const selectUser = (user: AdminUser) => {
 
 // 本地添加（或覆盖已有用户）
 const handleAddLocal = () => {
-  if (!selectedUser.value || !newRate.value) return
+  if (!selectedUser.value || newRate.value == null || newRate.value <= 0) return
   const user = selectedUser.value
   const idx = localEntries.value.findIndex(e => e.user_id === user.id)
   const entry: LocalEntry = {
@@ -490,6 +498,11 @@ const handleClickOutside = () => {
 if (typeof document !== 'undefined') {
   document.addEventListener('click', handleClickOutside)
 }
+onUnmounted(() => {
+  loadVersion++
+  clearTimeout(searchTimeout)
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>

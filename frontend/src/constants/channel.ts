@@ -14,6 +14,10 @@ export type BillingMode =
   | typeof BILLING_MODE_IMAGE
   | typeof BILLING_MODE_VIDEO
 
+/** Supported request reasoning effort levels, ordered from lowest to highest. */
+export const REASONING_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+export type ReasoningEffortLevel = typeof REASONING_EFFORT_LEVELS[number]
+
 /** Billing-model-source values (must match service.BillingModelSource* constants in Go). */
 export const BILLING_MODEL_SOURCE_REQUESTED = 'requested' as const
 export const BILLING_MODEL_SOURCE_UPSTREAM = 'upstream' as const

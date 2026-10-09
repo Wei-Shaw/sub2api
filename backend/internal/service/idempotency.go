@@ -87,6 +87,9 @@ type IdempotencyExecuteOptions struct {
 	Payload        any
 	TTL            time.Duration
 	RequireKey     bool
+	// ExecutionTimeout opts into bounded execution independent of client cancellation,
+	// with lease renewal and a separate short window to persist the final result.
+	ExecutionTimeout time.Duration
 }
 
 type IdempotencyExecuteResult struct {
@@ -202,6 +205,11 @@ func (c *IdempotencyCoordinator) Execute(
 	opts IdempotencyExecuteOptions,
 	execute func(context.Context) (any, error),
 ) (*IdempotencyExecuteResult, error) {
+	if opts.ExecutionTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), opts.ExecutionTimeout)
+		defer cancel()
+	}
 	if execute == nil {
 		return nil, infraerrors.InternalServer("IDEMPOTENCY_EXECUTOR_NIL", "idempotency executor is nil")
 	}
@@ -392,12 +400,26 @@ func (c *IdempotencyCoordinator) Execute(
 		return nil, ErrIdempotencyStoreUnavail
 	}
 
+	if opts.ExecutionTimeout > 0 {
+		stopRenewal := c.renewProcessingLease(ctx, record, ttl)
+		defer stopRenewal()
+	}
+
 	execStart := time.Now()
 	defer func() {
 		recordIdempotencyProcessingDuration(opts.Route, opts.Scope, time.Since(execStart), nil)
 	}()
 
 	data, execErr := execute(ctx)
+	persistCtx := ctx
+	if opts.ExecutionTimeout > 0 {
+		// The execution deadline can expire after some items have completed.
+		// Store those outcomes even then, using a fresh but bounded context.
+		var cancel context.CancelFunc
+		persistCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		expiresAt = time.Now().Add(ttl)
+	}
 	if execErr != nil {
 		backoffUntil := time.Now().Add(c.cfg.FailedRetryBackoff)
 		reason := infraerrors.Reason(execErr)
@@ -408,7 +430,7 @@ func (c *IdempotencyCoordinator) Execute(
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->failed_retryable", false, map[string]string{
 			"reason": reason,
 		})
-		if markErr := c.repo.MarkFailedRetryable(ctx, record.ID, reason, backoffUntil, expiresAt); markErr != nil {
+		if markErr := c.repo.MarkFailedRetryable(persistCtx, record.ID, reason, backoffUntil, expiresAt); markErr != nil {
 			RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_failed_retryable_error")
 			logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 				"operation": "mark_failed_retryable",
@@ -425,7 +447,7 @@ func (c *IdempotencyCoordinator) Execute(
 		})
 		return nil, ErrIdempotencyStoreUnavail.WithCause(marshalErr)
 	}
-	if markErr := c.repo.MarkSucceeded(ctx, record.ID, 200, storedBody, expiresAt); markErr != nil {
+	if markErr := c.repo.MarkSucceeded(persistCtx, record.ID, 200, storedBody, expiresAt); markErr != nil {
 		RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_succeeded_error")
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 			"operation": "mark_succeeded",
@@ -435,6 +457,48 @@ func (c *IdempotencyCoordinator) Execute(
 	logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->succeeded", false, nil)
 
 	return &IdempotencyExecuteResult{Data: data}, nil
+}
+
+// renewProcessingLease uses the same repository lease primitive as system
+// operations. Renewal continues through slow batches and stops before Execute exits.
+func (c *IdempotencyCoordinator) renewProcessingLease(ctx context.Context, record *IdempotencyRecord, ttl time.Duration) func() {
+	lease := c.cfg.ProcessingTimeout
+	if lease <= 0 {
+		lease = DefaultIdempotencyConfig().ProcessingTimeout
+	}
+	interval := min(lease/3, ttl/3)
+	if interval < time.Millisecond {
+		interval = time.Millisecond
+	}
+	renewCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				callCtx, callCancel := context.WithTimeout(renewCtx, min(2*time.Second, interval))
+				ok, err := c.repo.ExtendProcessingLock(callCtx, record.ID, record.RequestFingerprint, now.Add(lease), now.Add(ttl))
+				callCancel()
+				if err != nil {
+					RecordIdempotencyStoreUnavailable("", record.Scope, "renew_processing_lock_error")
+					continue
+				}
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func (c *IdempotencyCoordinator) conflictWithRetryAfter(base *infraerrors.ApplicationError, lockedUntil *time.Time, now time.Time) error {

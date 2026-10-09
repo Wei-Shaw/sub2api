@@ -183,6 +183,22 @@ func (h *PluginHandler) Test(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// Status returns the plugin's passive runtime status for the config UI. It is
+// read-only (no config apply, no upstream call) and therefore not step-up gated,
+// so a status UI can poll it without a 2FA prompt or a "test" side effect.
+func (h *PluginHandler) Status(c *gin.Context) {
+	id, ok := pluginIDParam(c)
+	if !ok {
+		return
+	}
+	result, err := h.manager.Status(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *PluginHandler) CreateUISession(c *gin.Context) {
 	id, ok := pluginIDParam(c)
 	if !ok {

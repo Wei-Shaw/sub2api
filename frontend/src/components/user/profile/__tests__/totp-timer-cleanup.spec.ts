@@ -79,6 +79,18 @@ describe('TOTP 弹窗定时器清理', () => {
     clearIntervalSpy.mockRestore()
   })
 
+  it.each([TotpSetupModal, TotpDisableDialog])('does not start a cooldown after unmounting during send', async (component) => {
+    let resolve!: (value: unknown) => void
+    mocks.sendVerifyCode.mockReturnValueOnce(new Promise(res => { resolve = res }))
+    const wrapper = mount(component)
+    await flushPromises()
+    await wrapper.findAll('button').find(b => b.text().includes('profile.totp.sendCode'))!.trigger('click')
+    wrapper.unmount()
+    resolve({ success: true }); await flushPromises()
+    expect(setIntervalSpy).not.toHaveBeenCalled()
+    expect(mocks.showSuccess).not.toHaveBeenCalled()
+  })
+
   it('TotpSetupModal 卸载时清理倒计时定时器', async () => {
     const wrapper = mount(TotpSetupModal)
     await flushPromises()

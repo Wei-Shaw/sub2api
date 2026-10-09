@@ -48,9 +48,12 @@ func parseResponsesFailedSSE(t *testing.T, body string) (map[string]any, map[str
 	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed), "data must be valid JSON: %s", jsonStr)
 
 	assert.Equal(t, "response.failed", parsed["type"])
-	// 故意不发 sequence_number，避免与后续真实事件的序号冲突。
-	_, hasSeq := parsed["sequence_number"]
-	assert.False(t, hasSeq, "synthetic event must not emit sequence_number")
+	// grok-build 把 sequence_number 当必填；合成终止事件未知上一帧时写 0。
+	rawSeq, hasSeq := parsed["sequence_number"]
+	assert.True(t, hasSeq, "synthetic event must emit sequence_number")
+	seq, ok := rawSeq.(float64)
+	assert.True(t, ok, "sequence_number must be a number, got %T", rawSeq)
+	assert.GreaterOrEqual(t, seq, float64(0))
 
 	resp, ok := parsed["response"].(map[string]any)
 	require.True(t, ok, "response object missing")
@@ -316,7 +319,20 @@ func TestOpenAIHandleStreamingAwareError_BareResponsesRouteEmitsResponseFailed(t
 	assert.Equal(t, "rate_limit_exceeded", errObj["code"])
 }
 
-// Synthesized response.failed id falls back to uuid when no request_id is present.
+// issue #7128：grok-build 把顶层 sequence_number 当必填，合成的 response.failed
+// 必须写出该字段，否则整轮反序列化失败。
+func TestOpenAIHandleStreamingAwareError_ResponsesStreamingCarriesSequenceNumber(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointResponses)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "boom", true)
+
+	require.True(t, strings.HasPrefix(w.Body.String(), "event: response.failed\n"))
+	_, payload, found := strings.Cut(w.Body.String(), "data: ")
+	require.True(t, found)
+	require.True(t, gjson.Get(payload, "sequence_number").Exists(), "response.failed 必须带 sequence_number")
+	require.GreaterOrEqual(t, gjson.Get(payload, "sequence_number").Int(), int64(0))
+}
+
 // issue #5601：严格的 Responses 客户端把 created_at 当必填字段，缺失即
 // `missing field 'created_at'`。合成的终止事件若解析不了，本文件存在的意义
 // （给客户端一个可识别的终止事件而不是盲重连）就落空了。
@@ -333,6 +349,7 @@ func TestOpenAIHandleStreamingAwareError_ResponsesStreamingCarriesCreatedAt(t *t
 	assert.Greater(t, int64(createdAt), int64(0), "created_at 必须是有效的 unix 时间戳")
 }
 
+// Synthesized response.failed id falls back to uuid when no request_id is present.
 func TestSynthesizeResponseID_FallbackUUID(t *testing.T) {
 	c, _ := newGinContextForEndpoint(t, EndpointResponses)
 	id := synthesizeResponseID(c)

@@ -68,25 +68,30 @@ export function useStepUp() {
   const visible = ref(false)
   const blockedReason = ref<string>('')
   let resolver: ((ok: boolean) => void) | null = null
+  let pendingPrompt: Promise<boolean> | null = null
 
   /** Open the TOTP dialog and resolve true once a grant is obtained. */
   function prompt(): Promise<boolean> {
+    if (pendingPrompt) return pendingPrompt
     visible.value = true
-    return new Promise<boolean>((resolve) => {
+    pendingPrompt = new Promise<boolean>((resolve) => {
       resolver = resolve
     })
+    return pendingPrompt
   }
 
   function onVerified() {
     visible.value = false
     resolver?.(true)
     resolver = null
+    pendingPrompt = null
   }
 
   function onCancel() {
     visible.value = false
     resolver?.(false)
     resolver = null
+    pendingPrompt = null
   }
 
   /**

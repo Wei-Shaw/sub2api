@@ -71,13 +71,8 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const readMode = (): string => {
-  const mode = props.account.credentials?.account_mode
-  return typeof mode === 'string' ? mode : ''
-}
-
 // 仅 kimi / deepseek payg 账号有公开余额端点（智谱 payg 无）。
-const visible = computed(() => cnBalanceCellVisible(props.account.platform, readMode()))
+const visible = computed(() => cnBalanceCellVisible(props.account))
 
 const loading = ref(false)
 const error = ref<string | null>(null)

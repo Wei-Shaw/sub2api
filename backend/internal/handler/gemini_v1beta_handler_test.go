@@ -39,7 +39,11 @@ func TestGeminiV1BetaListModels_ForcedAntigravityAppliesAllowlist(t *testing.T) 
 	})
 	c.Set(string(middleware.ContextKeyForcePlatform), service.PlatformAntigravity)
 
-	(&GatewayHandler{}).GeminiV1BetaListModels(c)
+	groupID := int64(42)
+	key, _ := middleware.GetAPIKeyFromContext(c)
+	key.GroupID = &groupID
+	repo := &geminiAllowlistAccountRepoStub{}
+	(&GatewayHandler{geminiCompatService: service.NewGeminiMessagesCompatService(repo, nil, nil, nil, nil, nil, nil, nil, nil)}).GeminiV1BetaListModels(c)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var got antigravity.GeminiModelsListResponse

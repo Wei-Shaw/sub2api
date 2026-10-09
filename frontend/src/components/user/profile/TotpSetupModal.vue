@@ -135,6 +135,7 @@
                   v-for="(_, index) in 6"
                   :key="index"
                   :ref="(el) => setInputRef(el, index)"
+                  :value="code[index]"
                   type="text"
                   maxlength="1"
                   inputmode="numeric"
@@ -171,6 +172,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { totpAPI } from '@/api'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { TotpSetupResponse } from '@/types'
 import QRCode from 'qrcode'
 
@@ -188,6 +190,7 @@ const methodLoading = ref(true)
 const verificationMethod = ref<'email' | 'password'>('password')
 const verifyForm = ref({ emailCode: '', password: '' })
 const sendingCode = ref(false)
+let disposed = false
 const codeCooldown = ref(0)
 const cooldownTimer = ref<ReturnType<typeof setInterval> | null>(null)
 
@@ -315,7 +318,7 @@ const loadVerificationMethod = async () => {
     const method = await totpAPI.getVerificationMethod()
     verificationMethod.value = method.method
   } catch (err: any) {
-    appStore.showError(err.response?.data?.message || t('common.error'))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
     emit('close')
   } finally {
     methodLoading.value = false
@@ -326,6 +329,7 @@ const handleSendCode = async () => {
   sendingCode.value = true
   try {
     await totpAPI.sendVerifyCode()
+    if (disposed) return
     appStore.showSuccess(t('profile.totp.codeSent'))
     // Start cooldown
     codeCooldown.value = 60
@@ -343,7 +347,7 @@ const handleSendCode = async () => {
       }
     }, 1000)
   } catch (err: any) {
-    appStore.showError(err.response?.data?.message || t('profile.totp.sendCodeFailed'))
+    appStore.showError(extractApiErrorMessage(err, t('profile.totp.sendCodeFailed')))
   } finally {
     sendingCode.value = false
   }
@@ -360,7 +364,7 @@ const handleVerifyAndSetup = async () => {
     setupData.value = await totpAPI.initiateSetup(request)
     step.value = 1
   } catch (err: any) {
-    appStore.showError(err.response?.data?.message || t('profile.totp.setupFailed'))
+    appStore.showError(extractApiErrorMessage(err, t('profile.totp.setupFailed')))
   } finally {
     setupLoading.value = false
   }
@@ -380,7 +384,7 @@ const handleVerify = async () => {
     appStore.showSuccess(t('profile.totp.enableSuccess'))
     emit('success')
   } catch (err: any) {
-    appStore.showError(err.response?.data?.message || t('profile.totp.verifyFailed'))
+    appStore.showError(extractApiErrorMessage(err, t('profile.totp.verifyFailed')))
     code.value = ['', '', '', '', '', '']
     nextTick(() => {
       inputRefs.value[0]?.focus()
@@ -395,6 +399,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  disposed = true
   if (cooldownTimer.value) {
     clearInterval(cooldownTimer.value)
     cooldownTimer.value = null

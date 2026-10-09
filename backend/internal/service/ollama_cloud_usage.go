@@ -393,6 +393,16 @@ type OllamaCloudUsageService struct {
 	lockCache    LeaderLockCache
 	db           *sql.DB
 	instanceID   string
+
+	// Event-triggered rate-limit probe coordination. A single background
+	// coordinator (started in Start, waited by Stop) fans out model-429 probe
+	// requests to one controlled refresh per api_key group, reusing the recent
+	// group snapshot for coalesced members so each account still gets its own
+	// result without a second upstream fetch. See ollama_cloud_usage_rate_limit_probe.go.
+	probeMu     sync.Mutex
+	probeQueue  []ollamaCloudUsageProbeRequest
+	probeWake   chan struct{}
+	probeGroups map[string]ollamaCloudUsageProbeGroupEntry
 }
 
 func NewOllamaCloudUsageService(
@@ -414,6 +424,8 @@ func NewOllamaCloudUsageService(
 		refreshSlots:            make(chan struct{}, ollamaCloudUsageConcurrency),
 		now:                     time.Now,
 		instanceID:              uuid.NewString(),
+		probeWake:               make(chan struct{}, 1),
+		probeGroups:             make(map[string]ollamaCloudUsageProbeGroupEntry),
 	}
 }
 
@@ -444,9 +456,10 @@ func (s *OllamaCloudUsageService) Start() {
 		return
 	}
 	s.started = true
-	s.wg.Add(1)
+	s.wg.Add(2)
 	s.mu.Unlock()
 	go s.runLoop()
+	go s.probeLoop()
 }
 
 func (s *OllamaCloudUsageService) Stop() {

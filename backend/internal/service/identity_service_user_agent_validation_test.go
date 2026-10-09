@@ -97,7 +97,7 @@ func TestGetOrCreateFingerprintRejectsMalformedUserAgentOnCreate(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, defaultFingerprint.UserAgent, fp.UserAgent,
+	require.Equal(t, defaultFingerprint().UserAgent, fp.UserAgent,
 		"畸形 UA 必须回退默认指纹，而不是被写成账号级持久身份")
 	require.NotContains(t, cache.lastSet.UserAgent, "999.0.0")
 }
@@ -160,8 +160,8 @@ func TestGetOrCreateFingerprintAcceptsValidUserAgentOnCreate(t *testing.T) {
 
 // 不变式：默认指纹自身必须能通过校验，否则自愈路径会在每次读取时反复重写。
 func TestDefaultFingerprintUserAgentIsAcceptable(t *testing.T) {
-	require.True(t, isAcceptableFingerprintUserAgent(defaultFingerprint.UserAgent),
-		"defaultFingerprint.UserAgent 必须自洽，否则自愈会陷入反复重写")
+	require.True(t, isAcceptableFingerprintUserAgent(defaultFingerprint().UserAgent),
+		"defaultFingerprint().UserAgent 必须自洽，否则自愈会陷入反复重写")
 }
 
 // 存量自愈：本次加固之前写入的畸形指纹在读取时被纠正。
@@ -203,7 +203,7 @@ func TestGetOrCreateFingerprintHealsPoisonedCacheWithoutValidClientUA(t *testing
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, defaultFingerprint.UserAgent, fp.UserAgent)
+	require.Equal(t, defaultFingerprint().UserAgent, fp.UserAgent)
 	require.Equal(t, 1, cache.setCalls)
 }
 
@@ -235,5 +235,5 @@ func TestGetOrCreateFingerprintMissingUserAgentKeepsDefault(t *testing.T) {
 	fp, err := svc.GetOrCreateFingerprint(context.Background(), 1, http.Header{})
 
 	require.NoError(t, err)
-	require.Equal(t, defaultFingerprint.UserAgent, fp.UserAgent)
+	require.Equal(t, defaultFingerprint().UserAgent, fp.UserAgent)
 }

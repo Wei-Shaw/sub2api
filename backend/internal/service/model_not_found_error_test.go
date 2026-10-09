@@ -122,6 +122,7 @@ func TestIsOpenAICompatibleModelNotFound400(t *testing.T) {
 		{name: "structured code", body: `{"error":{"code":"model_not_found","message":"No such deployment"}}`, want: true},
 		{name: "unknown provider", body: `{"error":{"message":"Unknown provider for model claude-x"}}`, want: true},
 		{name: "model not found", body: `{"error":{"message":"Model not found: claude-x"}}`, want: true},
+		{name: "unknown model", body: `{"error":{"message":"unknown model: claude-x"}}`, want: true},
 		{name: "model unsupported", body: `{"error":{"message":"The requested model is not supported"}}`, want: true},
 		{name: "plain text compatible gateway", body: `unknown provider for model claude-x`, want: true},
 		{name: "invalid parameter remains terminal", body: `{"error":{"code":"invalid_request_error","message":"Invalid value for temperature"}}`, want: false},
