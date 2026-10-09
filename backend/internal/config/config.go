@@ -1261,6 +1261,10 @@ type GatewayOpenAIWSConfig struct {
 	ModeRouterV2Enabled bool `mapstructure:"mode_router_v2_enabled"`
 	// IngressModeDefault: ingress 默认模式（off/ctx_pool/passthrough/http_bridge）
 	IngressModeDefault string `mapstructure:"ingress_mode_default"`
+	// OAuthResponsesWebsocketsV2ModeDefault: default per-account WSv2 mode for
+	// newly created OpenAI OAuth-like accounts when no account override is sent.
+	// Existing account settings always take precedence.
+	OAuthResponsesWebsocketsV2ModeDefault string `mapstructure:"oauth_responses_websockets_v2_mode_default"`
 	// ClientFirstMessageTimeoutSeconds bounds the total time to read and decompress
 	// the first client response.create message after the WebSocket upgrade.
 	ClientFirstMessageTimeoutSeconds int `mapstructure:"client_first_message_timeout_seconds"`
@@ -2438,6 +2442,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
 	viper.SetDefault("gateway.openai_ws.ingress_mode_default", "ctx_pool")
+	viper.SetDefault("gateway.openai_ws.oauth_responses_websockets_v2_mode_default", "off")
 	viper.SetDefault("gateway.openai_ws.client_first_message_timeout_seconds", DefaultOpenAIWSClientFirstMessageTimeoutSeconds)
 	viper.SetDefault("gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds", 300)
 	viper.SetDefault("gateway.openai_ws.max_ingress_connections_per_api_key", 64)
@@ -3547,6 +3552,13 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("gateway.openai_ws.ingress_mode_default must be one of off|ctx_pool|passthrough|http_bridge")
 		}
+	}
+	switch mode := strings.ToLower(strings.TrimSpace(c.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault)); mode {
+	case "off", "ctx_pool", "passthrough", "http_bridge":
+	case "shared", "dedicated":
+		return fmt.Errorf("gateway.openai_ws.oauth_responses_websockets_v2_mode_default no longer accepts %q; use ctx_pool", mode)
+	default:
+		return fmt.Errorf("gateway.openai_ws.oauth_responses_websockets_v2_mode_default must be one of off|ctx_pool|passthrough|http_bridge")
 	}
 	if mode := strings.ToLower(strings.TrimSpace(c.Gateway.OpenAIWS.StoreDisabledConnMode)); mode != "" {
 		switch mode {
