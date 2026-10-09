@@ -249,6 +249,13 @@
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
+        <AccountAPIKeyPoolEditor
+          v-if="account.platform !== 'antigravity'"
+          v-model:strategy="apiKeyStrategy"
+          v-model:primary-weight="apiKeyPrimaryWeight"
+          v-model:extras="apiKeyExtras"
+          mode="edit"
+        />
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1598,6 +1605,10 @@
         </div>
       </div>
 
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
 
       <div
         v-if="supportsAccountSchedulingThresholdOverride"
@@ -2005,6 +2016,76 @@
           :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
           @update:model-value="handleUpstreamBillingAutoProbeChange"
         />
+      </div>
+
+      <div
+        v-if="account?.type === 'apikey'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-group">
+            {{ t('admin.accounts.upstreamBilling.upstreamGroup') }}
+          </label>
+          <input
+            id="edit-upstream-group"
+            v-model="upstreamGroup"
+            type="text"
+            class="input font-mono"
+            data-testid="upstream-group"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamGroupPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamGroupHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-rate">
+            {{ t('admin.accounts.upstreamBilling.upstreamRateMultiplier') }}
+          </label>
+          <input
+            id="edit-upstream-rate"
+            v-model="upstreamRateMultiplier"
+            type="text"
+            inputmode="decimal"
+            class="input font-mono"
+            data-testid="upstream-rate-multiplier"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamRateMultiplierPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamRateMultiplierHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-access-token">
+            {{ t('admin.accounts.upstreamBilling.upstreamAccessToken') }}
+          </label>
+          <input
+            id="edit-upstream-access-token"
+            v-model="upstreamAccessToken"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            data-testid="upstream-access-token"
+            :placeholder="
+              hasUpstreamAccessToken
+                ? t('admin.accounts.upstreamBilling.upstreamAccessTokenKeep')
+                : t('admin.accounts.upstreamBilling.upstreamAccessTokenPlaceholder')
+            "
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamAccessTokenHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-balance-probe-source">
+            {{ t('admin.accounts.upstreamBalance.source') }}
+          </label>
+          <select
+            id="edit-balance-probe-source"
+            v-model="balanceProbeSource"
+            class="input"
+            data-testid="balance-probe-source"
+          >
+            <option value="">{{ t('admin.accounts.upstreamBalance.sourceNone') }}</option>
+            <option value="sub2api">{{ t('admin.accounts.upstreamBalance.sourceSub2API') }}</option>
+            <option value="newapi">{{ t('admin.accounts.upstreamBalance.sourceNewAPI') }}</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.upstreamBalance.sourceHint') }}</p>
+        </div>
       </div>
 
       <OllamaCloudUsageSettings
@@ -3163,8 +3244,19 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import AccountAPIKeyPoolEditor from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import type { APIKeyExtraDraft } from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import { applyAPIKeyPool, readAPIKeyPool } from '@/utils/apiKeyPool'
+import {
+  applyAvailabilityScheduleToExtra,
+  parseAvailabilityScheduleFromExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import {
   applyAntigravityProjectID,
+  applyBalanceProbeSource,
   applyHeaderOverride,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
@@ -3172,6 +3264,7 @@ import {
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
   defaultOpenCodeProtocolRules,
+  normalizeBalanceProbeSource,
   defaultProviderProtocolRules,
   isMultiProtocolApiKeyPlatform,
   parseOpenCodeGoProtocolRules,
@@ -3380,6 +3473,14 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const apiKeyStrategy = ref<'round_robin' | 'weighted'>('round_robin')
+const apiKeyPrimaryWeight = ref(1)
+const apiKeyExtras = ref<APIKeyExtraDraft[]>([])
+const savedAPIKeyExtraIDs = ref<Set<string>>(new Set())
+
+function hadAPIKeyExtra(id: string) {
+  return savedAPIKeyExtraIDs.value.has(id)
+}
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3663,6 +3764,11 @@ const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
+const upstreamGroup = ref('')
+const upstreamRateMultiplier = ref('')
+const upstreamAccessToken = ref('')
+const hasUpstreamAccessToken = ref(false)
+const balanceProbeSource = ref('')
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
@@ -3677,6 +3783,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -4206,6 +4314,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+  upstreamGroup.value = ''
+  upstreamRateMultiplier.value = ''
+  upstreamAccessToken.value = ''
+  hasUpstreamAccessToken.value = false
+  balanceProbeSource.value = ''
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -4367,6 +4480,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+  loadAvailabilitySchedule(newAccount.extra as Record<string, unknown> | undefined)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
@@ -4411,6 +4525,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
+    const pool = readAPIKeyPool(credentials)
+    apiKeyStrategy.value = pool.strategy
+    apiKeyPrimaryWeight.value = pool.primaryWeight
+    apiKeyExtras.value = pool.extras
+    savedAPIKeyExtraIDs.value = new Set(pool.extras.map((item) => item.id))
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
     if (isMultiProtocolApiKeyPlatform(newAccount.platform)) {
@@ -4489,6 +4608,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
+    upstreamGroup.value =
+      typeof credentials.upstream_group === 'string' ? credentials.upstream_group.trim() : ''
+    upstreamRateMultiplier.value =
+      credentials.upstream_rate_multiplier != null && String(credentials.upstream_rate_multiplier).trim() !== ''
+        ? String(credentials.upstream_rate_multiplier).trim()
+        : ''
+    upstreamAccessToken.value = ''
+    hasUpstreamAccessToken.value = Boolean(newAccount.credentials_status?.has_upstream_access_token)
+    balanceProbeSource.value = normalizeBalanceProbeSource(credentials.balance_probe_source)
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4542,6 +4670,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
+    upstreamGroup.value =
+      typeof credentials.upstream_group === 'string' ? credentials.upstream_group.trim() : ''
+    upstreamRateMultiplier.value =
+      credentials.upstream_rate_multiplier != null && String(credentials.upstream_rate_multiplier).trim() !== ''
+        ? String(credentials.upstream_rate_multiplier).trim()
+        : ''
+    upstreamAccessToken.value = ''
+    hasUpstreamAccessToken.value = Boolean(newAccount.credentials_status?.has_upstream_access_token)
+    balanceProbeSource.value = normalizeBalanceProbeSource(credentials.balance_probe_source)
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editVertexProjectId.value = (credentials.project_id as string) || ''
@@ -4577,6 +4714,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  if (newAccount.type !== 'apikey') {
+    apiKeyStrategy.value = 'round_robin'
+    apiKeyPrimaryWeight.value = 1
+    apiKeyExtras.value = []
+    savedAPIKeyExtraIDs.value = new Set()
+  }
 }
 
 async function loadTLSProfiles() {
@@ -4804,6 +4947,30 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
   return out
 }
 
+const applyUpstreamBillingCredentialEdits = (credentials: Record<string, unknown>) => {
+  const trimmedUpstreamGroup = upstreamGroup.value.trim()
+  if (trimmedUpstreamGroup) {
+    credentials.upstream_group = trimmedUpstreamGroup
+  } else {
+    delete credentials.upstream_group
+  }
+  const trimmedRate = upstreamRateMultiplier.value.trim()
+  if (trimmedRate) {
+    credentials.upstream_rate_multiplier = trimmedRate
+  } else {
+    delete credentials.upstream_rate_multiplier
+  }
+  const trimmedAccessToken = upstreamAccessToken.value.trim()
+  if (trimmedAccessToken) {
+    credentials.upstream_access_token = trimmedAccessToken
+  } else {
+    // Keep previously saved token unless the user explicitly clears via empty + no existing.
+    // Empty input means "unchanged" when a token already exists (password field pattern).
+    delete credentials.upstream_access_token
+  }
+  applyBalanceProbeSource(credentials, balanceProbeSource.value, 'edit')
+}
+
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   if (!tempUnschedEnabled.value) {
     delete credentials.temp_unschedulable_enabled
@@ -4902,6 +5069,28 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
       description: typeof entry.description === 'string' ? entry.description : ''
     }
   })
+}
+
+function loadAvailabilitySchedule(extra?: Record<string, unknown>) {
+  const parsed = parseAvailabilityScheduleFromExtra(extra)
+  availabilityScheduleEnabled.value = parsed.enabled
+  availabilityScheduleRules.value = parsed.rules
+}
+
+function availabilityScheduleValidationMessage(code: string | null): string | null {
+  if (!code) return null
+  switch (code) {
+    case 'empty':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+    case 'time':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+    case 'weekdays':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+    case 'tooMany':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    default:
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+  }
 }
 
 // Load quota control settings from account (Anthropic OAuth/SetupToken only)
@@ -5180,6 +5369,14 @@ const handleSubmit = async () => {
 		}
 	}
 
+  const scheduleError = availabilityScheduleValidationMessage(
+    validateAvailabilityScheduleRules(availabilityScheduleEnabled.value, availabilityScheduleRules.value)
+  )
+  if (scheduleError) {
+    appStore.showError(scheduleError)
+    return
+  }
+
   const updatePayload: Record<string, unknown> = { ...form }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
@@ -5214,6 +5411,7 @@ const handleSubmit = async () => {
         ...currentCredentials,
         base_url: newBaseUrl
       }
+      applyUpstreamBillingCredentialEdits(newCredentials)
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
@@ -5261,6 +5459,17 @@ const handleSubmit = async () => {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       }
+      const missingExtraKey = apiKeyExtras.value.find((item) => !item.key.trim() && !hadAPIKeyExtra(item.id))
+      if (missingExtraKey) {
+        appStore.showError(t('admin.accounts.apiKeyPool.keyRequired'))
+        return
+      }
+      applyAPIKeyPool(newCredentials, {
+        strategy: apiKeyStrategy.value,
+        primaryKey: editApiKey.value.trim(),
+        primaryWeight: apiKeyPrimaryWeight.value,
+        extras: apiKeyExtras.value
+      })
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
@@ -5337,6 +5546,7 @@ const handleSubmit = async () => {
       if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
       }
+      applyUpstreamBillingCredentialEdits(newCredentials)
 
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
@@ -5880,15 +6090,25 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
-    const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
-    if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+    {
+      const currentExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (nextUpstreamRequestIdHeader) {
-        newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
-      } else {
-        delete newExtra.upstream_request_id_header
+      applyAvailabilityScheduleToExtra(
+        newExtra,
+        availabilityScheduleEnabled.value,
+        availabilityScheduleRules.value
+      )
+      // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
+      const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
+      if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
+        if (nextUpstreamRequestIdHeader) {
+          newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
+        } else {
+          delete newExtra.upstream_request_id_header
+        }
       }
       updatePayload.extra = newExtra
     }

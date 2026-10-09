@@ -6,6 +6,7 @@ import {
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   OPENCODE_GO_PROTOCOL_RULES_KEY,
   applyAntigravityProjectID,
+  applyBalanceProbeSource,
   applyHeaderOverride,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
@@ -14,9 +15,11 @@ import {
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
   cnQuotaCellVisible,
+  accountBalanceProbeSource,
   defaultCNBaseUrl,
   defaultOpenCodeProtocolRules,
   isCustomGrokBaseUrl,
+  normalizeBalanceProbeSource,
   resolveOpenCodeAccountMode,
   isHeaderOverrideCapable,
   GROK_BASE_URL_PRESETS,
@@ -564,6 +567,29 @@ describe('plan_type helpers', () => {
       expect(out).toEqual({ email: 'a@b.c' })
       expect('plan_type' in out).toBe(false)
     })
+  })
+})
+
+describe('balance probe source', () => {
+  it('normalizes supported sources', () => {
+    expect(normalizeBalanceProbeSource(' NewAPI ')).toBe('newapi')
+    expect(normalizeBalanceProbeSource('sub2api')).toBe('sub2api')
+    expect(normalizeBalanceProbeSource('auto')).toBe('')
+  })
+
+  it('reads source from account credentials', () => {
+    expect(accountBalanceProbeSource({ credentials: { balance_probe_source: 'newapi' } })).toBe('newapi')
+    expect(accountBalanceProbeSource({ credentials: {} })).toBe('')
+  })
+
+  it('applies source on create/edit', () => {
+    const createCreds: Record<string, unknown> = {}
+    applyBalanceProbeSource(createCreds, 'sub2api', 'create')
+    expect(createCreds.balance_probe_source).toBe('sub2api')
+
+    const editCreds: Record<string, unknown> = { balance_probe_source: 'newapi' }
+    applyBalanceProbeSource(editCreds, '', 'edit')
+    expect('balance_probe_source' in editCreds).toBe(false)
   })
 })
 

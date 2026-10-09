@@ -156,6 +156,10 @@ type SystemSettings struct {
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
+	FooterIcpNumber             string           `json:"footer_icp_number"`
+	FooterIcpURL                string           `json:"footer_icp_url"`
+	FooterPsbNumber             string           `json:"footer_psb_number"`
+	FooterPsbURL                string           `json:"footer_psb_url"`
 	CompactHomeEnabled          bool             `json:"compact_home_enabled"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
@@ -308,6 +312,9 @@ type SystemSettings struct {
 	SubscriptionExpiryNotifyEnabled bool               `json:"subscription_expiry_notify_enabled"`
 	AccountQuotaNotifyEnabled       bool               `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	AccountBalanceLowNotifyEnabled  bool               `json:"account_balance_low_notify_enabled"`
+	AccountBalanceLowNotifyThreshold float64           `json:"account_balance_low_notify_threshold"`
+	AccountBalanceLowNotifyEmails   []NotifyEmailEntry `json:"account_balance_low_notify_emails"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
@@ -396,6 +403,10 @@ type PublicSettings struct {
 	ContactInfo                         string                   `json:"contact_info"`
 	DocURL                              string                   `json:"doc_url"`
 	HomeContent                         string                   `json:"home_content"`
+	FooterIcpNumber                  string                   `json:"footer_icp_number"`
+	FooterIcpURL                     string                   `json:"footer_icp_url"`
+	FooterPsbNumber                  string                   `json:"footer_psb_number"`
+	FooterPsbURL                     string                   `json:"footer_psb_url"`
 	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`

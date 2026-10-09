@@ -380,6 +380,10 @@ const (
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
+	SettingKeyFooterIcpNumber             = "footer_icp_number"             // 页脚 ICP 备案号
+	SettingKeyFooterIcpURL                = "footer_icp_url"                // 页脚 ICP 备案链接
+	SettingKeyFooterPsbNumber             = "footer_psb_number"             // 页脚公安备案号
+	SettingKeyFooterPsbURL                = "footer_psb_url"                // 页脚公安备案链接
 	SettingKeyCompactHomeEnabled          = "compact_home_enabled"          // 是否启用内置简洁首页
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
@@ -731,6 +735,11 @@ const (
 	// 账号限额通知
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
+
+	// 账号上游余额不足提醒（Sub2API / NewAPI / 国产 payg 探测余额）
+	SettingKeyAccountBalanceLowNotifyEnabled   = "account_balance_low_notify_enabled"   // 全局开关
+	SettingKeyAccountBalanceLowNotifyThreshold = "account_balance_low_notify_threshold" // 阈值（与探测币种同单位比较）
+	SettingKeyAccountBalanceLowNotifyEmails    = "account_balance_low_notify_emails"    // 管理员通知邮箱列表（JSON 数组）
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置

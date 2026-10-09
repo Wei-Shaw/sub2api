@@ -466,12 +466,13 @@
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
              余额端点、coding 探测也不适用）才回落到占位符。 -->
         <div
-          v-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
+          v-if="!cnQuotaCellVisible && !cnBalanceCellVisible && !upstreamBalanceCellVisible"
           class="text-xs text-gray-400"
           :title="t('admin.accounts.cnProviders.noBalanceEndpoint')"
         >-</div>
         <CNProviderQuotaCell :account="account" />
-        <CNProviderBalanceCell :account="account" />
+        <UpstreamBalanceCell v-if="upstreamBalanceCellVisible" :account="account" />
+        <CNProviderBalanceCell v-else-if="cnBalanceCellVisible" :account="account" />
       </div>
     </template>
 
@@ -665,9 +666,11 @@
         color="purple"
       />
 
+      <UpstreamBalanceCell v-if="upstreamBalanceCellVisible" :account="account" />
+
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible && !account.opencode_go_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible && !account.opencode_go_usage?.eligible && !upstreamBalanceCellVisible"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -690,9 +693,11 @@ import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
+import UpstreamBalanceCell from './UpstreamBalanceCell.vue'
 import {
   cnQuotaCellVisible as cnQuotaCellVisibleFn,
   cnBalanceCellVisible as cnBalanceCellVisibleFn,
+  accountBalanceProbeSource,
   isMultiProtocolApiKeyPlatform
 } from './credentialsBuilder'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
@@ -788,6 +793,10 @@ const shouldFetchUsage = computed(() => {
 // credentialsBuilder 的单一实现）：都不可见时显示 `-` 占位符。
 const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account))
 const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account))
+const upstreamBalanceCellVisible = computed(() => {
+  const source = accountBalanceProbeSource(props.account)
+  return source === 'sub2api' || source === 'newapi'
+})
 
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
