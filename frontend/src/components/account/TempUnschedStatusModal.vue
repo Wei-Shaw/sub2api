@@ -91,6 +91,14 @@
               {{ ruleIndexDisplay }}
             </p>
           </div>
+          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.tempUnschedulable.blockScope') }}
+            </p>
+            <p class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+              {{ blockScopeDisplay }}
+            </p>
+          </div>
         </div>
 
         <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
@@ -187,6 +195,15 @@ const isActive = computed(() => {
 const ruleIndexDisplay = computed(() => {
   if (!state.value || !state.value.matched_keyword || state.value.rule_index < 0) return '-'
   return state.value.rule_index + 1
+})
+
+// 模型级熔断持久化在 extra.model_rate_limits，不出现在此弹窗：这里能展示的
+// state 必为账号级块。account_wide 仅用于区分"规则声明的账号级"与 401/流超时等回退来源。
+const blockScopeDisplay = computed(() => {
+  if (!state.value) return '-'
+  return state.value.account_wide
+    ? t('admin.accounts.tempUnschedulable.blockScopeAccountRule')
+    : t('admin.accounts.tempUnschedulable.blockScopeAccount')
 })
 
 const hasThresholdEvidence = computed(() => (state.value?.trigger_count || 0) > 1)

@@ -1482,6 +1482,9 @@
               <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
               {{ t('admin.accounts.tempUnschedulable.notice') }}
             </p>
+            <p class="mt-1 text-xs text-blue-700 dark:text-blue-400">
+              {{ t('admin.accounts.tempUnschedulable.ruleOrderHint') }}
+            </p>
           </div>
 
           <div class="flex flex-wrap gap-2">
@@ -1575,6 +1578,17 @@
                     class="input"
                     :placeholder="t('admin.accounts.tempUnschedulable.descriptionPlaceholder')"
                   />
+                </div>
+                <div class="sm:col-span-2 flex items-center gap-2">
+                  <input
+                    :id="`temp-unsched-account-wide-${index}`"
+                    v-model="rule.account_wide"
+                    type="checkbox"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                  />
+                  <label :for="`temp-unsched-account-wide-${index}`" class="text-sm">
+                    {{ t('admin.accounts.tempUnschedulable.accountWide') }}
+                  </label>
                 </div>
               </div>
             </div>
@@ -3374,6 +3388,7 @@ interface TempUnschedRuleForm {
   keywords: string
   duration_minutes: number | null
   description: string
+  account_wide: boolean
 }
 
 // State
@@ -4006,7 +4021,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 529,
       keywords: 'overloaded, too many',
       duration_minutes: 60,
-      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc'),
+      account_wide: false
     }
   },
   {
@@ -4015,7 +4031,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 429,
       keywords: 'rate limit, too many requests',
       duration_minutes: 10,
-      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc'),
+      account_wide: false
     }
   },
   {
@@ -4024,7 +4041,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 503,
       keywords: 'unavailable, maintenance',
       duration_minutes: 30,
-      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc'),
+      account_wide: false
     }
   }
 ])
@@ -4755,7 +4773,8 @@ const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
     error_code: null,
     keywords: '',
     duration_minutes: 30,
-    description: ''
+    description: '',
+    account_wide: false
   })
 }
 
@@ -4778,6 +4797,7 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
     keywords: string[]
     duration_minutes: number
     description: string
+    account_wide: boolean
   }> = []
 
   for (const rule of rules) {
@@ -4797,7 +4817,8 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
       error_code: Math.trunc(errorCode),
       keywords,
       duration_minutes: Math.trunc(duration),
-      description: rule.description.trim()
+      description: rule.description.trim(),
+      account_wide: rule.account_wide === true
     })
   }
 
@@ -4899,7 +4920,8 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
       error_code: toPositiveNumber(entry.error_code),
       keywords: formatTempUnschedKeywords(entry.keywords),
       duration_minutes: toPositiveNumber(entry.duration_minutes),
-      description: typeof entry.description === 'string' ? entry.description : ''
+      description: typeof entry.description === 'string' ? entry.description : '',
+      account_wide: entry.account_wide === true
     }
   })
 }

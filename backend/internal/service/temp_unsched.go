@@ -13,6 +13,7 @@ type TempUnschedState struct {
 	MatchedKeyword       string `json:"matched_keyword"`                  // 匹配的关键词
 	RuleIndex            int    `json:"rule_index"`                       // 触发的规则索引
 	ErrorMessage         string `json:"error_message"`                    // 错误消息
+	AccountWide          bool   `json:"account_wide,omitempty"`           // 是否由 account_wide 规则触发的账号级熔断
 	TriggerCount         int64  `json:"trigger_count,omitempty"`          // 本次触发累计命中次数
 	TriggerThreshold     int    `json:"trigger_threshold,omitempty"`      // 触发阈值
 	TriggerWindowMinutes int    `json:"trigger_window_minutes,omitempty"` // 计数窗口（分钟）
