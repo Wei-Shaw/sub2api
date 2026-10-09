@@ -1716,12 +1716,18 @@ func ChatCompletionsChunkToResponsesEvents(
 		if reasoning != nil && *reasoning != "" {
 			events = append(events, ensureChatReasoningItem(state)...)
 			_, _ = state.Reasoning.WriteString(*reasoning)
-			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
-				OutputIndex:  state.ReasoningIndex,
-				SummaryIndex: 0,
-				Delta:        *reasoning,
-				ItemID:       state.ReasoningItemID,
-			}))
+			// Once another output item has started the reasoning item is sealed
+			// (see closeChatReasoningItem): late reasoning_content is kept for
+			// response.completed but must not emit summary deltas for an item
+			// that is no longer streaming.
+			if state.ReasoningOpen {
+				events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
+					OutputIndex:  state.ReasoningIndex,
+					SummaryIndex: 0,
+					Delta:        *reasoning,
+					ItemID:       state.ReasoningItemID,
+				}))
+			}
 		}
 		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			// First real content closes the reasoning item, then opens the
@@ -1910,12 +1916,17 @@ func ensureChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []Res
 
 // closeChatReasoningItem emits the reasoning item's terminal events
 // (reasoning_summary_text.done + reasoning_summary_part.done + output_item.done).
+//
+// It also seals the reasoning lifecycle even when no reasoning item was ever
+// opened: the Responses contract keeps reasoning items first, so once a message
+// or tool-call item has opened, reasoning_content that arrives later must not
+// open a new output item after it.
 func closeChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	state.ReasoningDone = true
 	if !state.ReasoningOpen {
 		return nil
 	}
 	state.ReasoningOpen = false
-	state.ReasoningDone = true
 	reasoning := state.Reasoning.String()
 	return []ResponsesStreamEvent{
 		chatToResponsesEvent(state, "response.reasoning_summary_text.done", &ResponsesStreamEvent{
