@@ -101,6 +101,18 @@ without a replacement submission. Private credentials and traces are outside the
 repository. These are provider-port results; public gateway acceptance and billing
 for the new build must be recorded separately.
 
+Public gateway qualification on 2026-10-08 separately exercised the authorized
+Free account through Responses and Chat Completions in JSON and SSE. Completed
+turns produced one native usage record and one configured flat charge. Rejected
+requests produced no native turn or charge, and activity preserved verification.
+
+On 2026-10-09 the actual BYOK Chat browser profile connected to the live model
+catalog and completed two independent exact-marker prompts. Both native turns
+settled once. The client explicitly disabled its default assistant instructions
+and conversation memory, matching the qualified single-message request scope.
+This is bounded Free-account acceptance; it does not establish paid entitlement
+or native conversation-history support. UI token counts are client estimates.
+
 The current capabilities deliberately exclude instructions, multi-message history,
 continuations, caller tools, vision, reasoning options, and output-token/sampling
 controls. Unsupported semantics are rejected before reserving a turn. Responses

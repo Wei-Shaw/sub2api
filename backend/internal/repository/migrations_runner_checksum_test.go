@@ -162,3 +162,11 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.False(t, ok)
 	})
 }
+
+func TestMusePilotMigrationChecksumCompatibility(t *testing.T) {
+	const old = "ae2ab4fbaecbece4a56b3dc33c5c1f295ba40c9a6ae3e6e1a50097a4678b9c46"
+	const current = "b7dd05c92da8a7f4d5021dc22ef14fdae8cce07b98bacd24bb9be0a387142ce7"
+	require.True(t, isMigrationChecksumCompatible("243_muse_provider.sql", old, current))
+	require.False(t, isMigrationChecksumCompatible("243_muse_provider.sql", "unknown", current))
+	require.False(t, isMigrationChecksumCompatible("243_muse_provider.sql", old, "unknown"))
+}

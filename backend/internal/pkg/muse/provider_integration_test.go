@@ -53,6 +53,7 @@ func TestMuseProviderPostgres(t *testing.T) {
 		"242_muse_runtime.sql",
 		"243_muse_provider.sql",
 		"244_muse_submission_snapshot.sql",
+		"245_muse_catalog_constraints.sql",
 	} {
 		ddl, e := migrations.FS.ReadFile(name)
 		require.NoError(t, e)
@@ -71,6 +72,13 @@ func TestMuseProviderPostgres(t *testing.T) {
 	owner, e := client.User.Create().SetEmail("muse-fixture@example.invalid").SetPasswordHash("synthetic").SetBalance(10).Save(ctx)
 	require.NoError(t, e)
 	require.EqualValues(t, 1, owner.ID)
+	t.Run("ProviderMigrationPreservesNewCatalogPlatforms", func(t *testing.T) {
+		quota, err := client.UserPlatformQuota.Create().SetUserID(owner.ID).SetPlatform(service.PlatformCline).SetDailyLimitUsd(1).Save(ctx)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, string(ddl))
+		require.NoError(t, err, "native schema registration must not reinstall obsolete platform CHECKs")
+		require.NoError(t, client.UserPlatformQuota.DeleteOneID(quota.ID).Exec(ctx))
+	})
 	t.Run("ProviderMigrationPreservesTypeSafeQuotas", func(t *testing.T) {
 		quota, err := client.UserPlatformQuota.Create().SetUserID(owner.ID).SetPlatform(service.PlatformTypeSafe).SetDailyLimitUsd(1).Save(ctx)
 		require.NoError(t, err)
