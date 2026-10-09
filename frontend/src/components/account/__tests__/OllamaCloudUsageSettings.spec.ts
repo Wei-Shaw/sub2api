@@ -25,6 +25,7 @@ vi.mock('vue-i18n', async () => {
         }
         if (key === 'admin.accounts.ollamaCloud.fiveHourShort') return '5h'
         if (key === 'admin.accounts.ollamaCloud.sevenDayShort') return '7d'
+        if (key === 'admin.accounts.ollamaCloud.monthlyShort') return 'mo'
         return key
       }
     })
@@ -157,6 +158,24 @@ describe('OllamaCloudUsageSettings', () => {
     expect(notifications.showSuccess).toHaveBeenCalled()
   })
 
+  it('renders the current monthly Ollama usage layout without legacy windows', () => {
+    const monthly = detailedState('pro')
+    monthly.snapshot!.data = {
+      plan: 'pro',
+      monthly: { used_percent: 8.4, reset_at: '2026-10-18T02:05:47Z' },
+      balance: '$0',
+      models: [{ model: 'deepseek-v4.1-flash', window: 'monthly', requests: 749 }]
+    }
+
+    const wrapper = mount(OllamaCloudUsageSettings, { props: { account: account(monthly) } })
+    const details = wrapper.get('[data-testid="ollama-cloud-usage-details"]')
+
+    expect(details.text()).toContain('admin.accounts.ollamaCloud.monthly')
+    expect(details.text()).not.toContain('admin.accounts.ollamaCloud.fiveHour')
+    expect(details.text()).not.toContain('admin.accounts.ollamaCloud.sevenDay')
+    expect(details.text()).toContain('mo deepseek-v4.1-flash: 749')
+  })
+
   it('shows the structured manual refresh limit from the edit settings', async () => {
     api.refreshOllamaCloudUsage.mockRejectedValueOnce({
       status: 429,
@@ -172,4 +191,17 @@ describe('OllamaCloudUsageSettings', () => {
 
     expect(notifications.showError).toHaveBeenCalledWith('retry in 18 seconds')
   })
+  it('reports an incomplete HTTP-success refresh as a failure and preserves details', async () => {
+    const incomplete = detailedState()
+    incomplete.snapshot!.status = 'failed'
+    incomplete.snapshot!.last_error = 'incomplete_usage'
+    api.refreshOllamaCloudUsage.mockResolvedValueOnce(incomplete)
+    const wrapper = mount(OllamaCloudUsageSettings, { props: { account: account(detailedState()) } })
+    await wrapper.get('[data-testid="ollama-cloud-refresh"]').trigger('click')
+    await flushPromises()
+    expect(notifications.showSuccess).not.toHaveBeenCalled()
+    expect(notifications.showError).toHaveBeenCalledWith('admin.accounts.ollamaCloud.errors.incomplete_usage')
+    expect(wrapper.get('[data-testid="ollama-cloud-usage-details"]').text()).toContain('5h')
+  })
+
 })

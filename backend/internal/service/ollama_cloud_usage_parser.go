@@ -13,6 +13,9 @@ import (
 
 var (
 	ollamaUsagePercentPattern  = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*%`)
+	ollamaUsageRatioPattern    = regexp.MustCompile(`(?i)(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+(?:used|spent|consumed)`)
+	ollamaCreditsRatioPattern  = regexp.MustCompile(`(?i)^monthly credits used\s*:\s*(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+(?:USD\s*)?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*$`)
+	ollamaCreditRefillPattern  = regexp.MustCompile(`(?i)^refills to\s+(?:USD\s*)?\$[0-9][0-9,]*(?:\.[0-9]+)?\s+(in\s+[0-9]+(?:\.[0-9]+)?\s+(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?))\s*\.?$`)
 	ollamaUsageWidthPattern    = regexp.MustCompile(`(?i)(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)%`)
 	ollamaBalancePattern       = regexp.MustCompile(`(?i)(?:balance|credits?)(?:\s+[[:alpha:]]+){0,4}\s*[:\n]?\s*((?:USD\s*)?\$?\s*-?[0-9][0-9,]*(?:\.[0-9]{1,4})?)`)
 	ollamaResetPattern         = regexp.MustCompile(`(?i)\breset(?:s|ting)?\s*(?:at|in|on)?\s*[:\-]?\s*([^\n|]+)`)
@@ -20,6 +23,7 @@ var (
 
 	ollamaFiveHourUsageAliases = []string{"session usage", "5 hour usage", "5-hour usage", "5h usage", "5 hour limit", "5-hour limit"}
 	ollamaSevenDayUsageAliases = []string{"weekly usage", "7 day usage", "7-day usage", "7d usage", "weekly limit", "7 day limit"}
+	ollamaMonthlyUsageAliases  = []string{"monthly usage", "month usage", "monthly limit", "monthly credits used"}
 )
 
 func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
@@ -34,13 +38,20 @@ func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
 	}
 
 	data := &OllamaCloudUsageData{}
-	data.Plan = valueBesideLabel(doc, []string{"cloud usage"}, 80)
+	data.Plan = valueBesideLabel(doc, []string{"cloud usage", "included usage"}, 80)
 	if data.Plan == "" {
 		data.Plan = valueBesideLabel(doc, []string{"plan", "subscription"}, 80)
 	}
-	data.FiveHour = parseOllamaUsageWindow(doc, ollamaFiveHourUsageAliases)
-	data.SevenDay = parseOllamaUsageWindow(doc, ollamaSevenDayUsageAliases)
+	data.FiveHour = parseOllamaUsageWindow(doc, ollamaFiveHourUsageAliases, true)
+	data.SevenDay = parseOllamaUsageWindow(doc, ollamaSevenDayUsageAliases, true)
+	data.Monthly = parseOllamaUsageWindow(doc, ollamaMonthlyUsageAliases, false)
+	if data.Monthly != nil && data.Monthly.ResetAt == nil && data.Monthly.ResetText == "" {
+		data.Monthly.ResetText = parseOllamaCreditRefillText(doc)
+	}
 	data.Balance = valueBesideLabel(doc, []string{"balance remaining"}, 80)
+	if data.Balance == "" {
+		data.Balance = valueBeforeLabel(doc, []string{"current balance"}, 80)
+	}
 	if data.Balance == "" {
 		if match := ollamaBalancePattern.FindStringSubmatch(pageText); len(match) == 2 {
 			data.Balance = strings.Join(strings.Fields(match[1]), "")
@@ -48,18 +59,73 @@ func parseOllamaCloudUsageHTML(body []byte) (*OllamaCloudUsageData, error) {
 	}
 	data.Models = parseOllamaModels(doc)
 
-	if data.Plan == "" && data.FiveHour == nil && data.SevenDay == nil && data.Balance == "" && len(data.Models) == 0 {
+	if data.Plan == "" && data.FiveHour == nil && data.SevenDay == nil && data.Monthly == nil && data.Balance == "" && len(data.Models) == 0 {
 		return nil, fmt.Errorf("settings HTML does not contain recognizable usage fields")
 	}
 	return data, nil
 }
 
-func parseOllamaUsageWindow(root *html.Node, aliases []string) *OllamaCloudUsageWindow {
+// Current credit-based pages put the refill hint in the balance card, outside
+// the monthly meter. Preserve the upstream relative text; rounding "1 week"
+// into a timestamp would invent precision and drift on every refresh.
+func parseOllamaCreditRefillText(root *html.Node) string {
+	hints := make(map[string]struct{})
+	walkHTML(root, func(node *html.Node) {
+		if node.Type != html.ElementNode || !isOllamaParserContainer(node.Data) {
+			return
+		}
+		text := normalizedNodeText(node)
+		if len(text) > 160 {
+			return
+		}
+		if match := ollamaCreditRefillPattern.FindStringSubmatch(text); len(match) == 2 {
+			hints["Refills "+strings.ToLower(strings.TrimSpace(match[1]))] = struct{}{}
+		}
+	})
+	if len(hints) == 1 {
+		for hint := range hints {
+			return hint
+		}
+	}
+	return ""
+}
+
+func parseOllamaUsageWindow(root *html.Node, aliases []string, allowTrackFallback bool) *OllamaCloudUsageWindow {
+	// Read only the track's own, window-labelled ARIA value. Its model segments
+	// describe distribution, not quota utilization, and a long model list can
+	// exceed the text-walk limit before that walk reaches the track.
+	var candidate *OllamaCloudUsageWindow
+	walkHTML(root, func(node *html.Node) {
+		if candidate != nil || node.Type != html.ElementNode {
+			return
+		}
+		if _, ok := htmlAttribute(node, "data-usage-track"); !ok {
+			return
+		}
+		label, _ := htmlAttribute(node, "aria-label")
+		label = strings.TrimSpace(label)
+		lower := strings.ToLower(label)
+		for _, alias := range aliases {
+			if !strings.HasPrefix(lower, alias+" ") && !strings.HasPrefix(lower, alias+":") {
+				continue
+			}
+			percent, ok := ollamaUsagePercentFromRatio(label)
+			if !ok {
+				percent, ok = ollamaUsagePercentFromText(label)
+			}
+			if ok {
+				if strings.Contains(lower, "remaining") && !strings.Contains(lower, "used") {
+					percent = 100 - percent
+				}
+				candidate = &OllamaCloudUsageWindow{UsedPercent: percent}
+			}
+			return
+		}
+	})
 	label := findLabelElement(root, aliases)
 	if label == nil {
-		return nil
+		return candidate
 	}
-	var candidate *OllamaCloudUsageWindow
 	block := label
 	for depth := 0; block != nil && depth < 6; depth, block = depth+1, block.Parent {
 		text := normalizedNodeText(block)
@@ -68,6 +134,12 @@ func parseOllamaUsageWindow(root *html.Node, aliases []string) *OllamaCloudUsage
 		}
 		percent, ok := ollamaUsagePercentFromText(text)
 		if !ok {
+			percent, ok = ollamaUsagePercentFromRatio(text)
+		}
+		if !ok {
+			percent, ok = ollamaUsagePercentFromARIA(block)
+		}
+		if !ok && allowTrackFallback {
 			percent, ok = ollamaUsagePercentFromTrack(block)
 		}
 		if !ok {
@@ -92,6 +164,28 @@ func parseOllamaUsageWindow(root *html.Node, aliases []string) *OllamaCloudUsage
 		}
 	}
 	return candidate
+}
+
+func valueBeforeLabel(root *html.Node, aliases []string, maxLen int) string {
+	label := findLabelElement(root, aliases)
+	if label == nil {
+		return ""
+	}
+	for candidate := label; candidate != nil; candidate = candidate.Parent {
+		for sibling := candidate.PrevSibling; sibling != nil; sibling = sibling.PrevSibling {
+			if sibling.Type != html.ElementNode {
+				continue
+			}
+			value := strings.Trim(normalizedNodeText(sibling), ":-| ")
+			if value != "" && len(value) <= maxLen {
+				return value
+			}
+		}
+		if candidate.Parent == nil || len(normalizedNodeText(candidate.Parent)) > maxLen {
+			break
+		}
+	}
+	return ""
 }
 
 func valueBesideLabel(root *html.Node, aliases []string, maxLen int) string {
@@ -174,6 +268,12 @@ func parseOllamaModels(root *html.Node) []OllamaCloudUsageModel {
 		requests, requestsOK := htmlAttributeInSubtree(node, "data-requests")
 		if modelOK && requestsOK {
 			appendModel(node, model, requests)
+			return
+		}
+		if label, ok := htmlAttribute(node, "aria-label"); ok {
+			if match := ollamaModelFallbackPattern.FindStringSubmatch(strings.TrimSpace(label)); len(match) == 3 {
+				appendModel(node, strings.TrimSuffix(strings.TrimSpace(match[1]), ":"), match[2])
+			}
 		}
 	})
 
@@ -232,15 +332,22 @@ func ollamaModelWindow(node *html.Node) OllamaCloudUsageModelWindow {
 			if containsAny(normalized, "seven day", "7 day", "7d", "weekly") {
 				return OllamaCloudUsageModelWindowSevenDay
 			}
+			if containsAny(normalized, "monthly", "month") {
+				return OllamaCloudUsageModelWindowMonthly
+			}
 		}
 		text := strings.ToLower(normalizedNodeText(block))
 		fiveHour := containsAny(text, ollamaFiveHourUsageAliases...)
 		sevenDay := containsAny(text, ollamaSevenDayUsageAliases...)
+		monthly := containsAny(text, ollamaMonthlyUsageAliases...)
 		if fiveHour && !sevenDay {
 			return OllamaCloudUsageModelWindowFiveHour
 		}
 		if sevenDay && !fiveHour {
 			return OllamaCloudUsageModelWindowSevenDay
+		}
+		if monthly && !fiveHour && !sevenDay {
+			return OllamaCloudUsageModelWindowMonthly
 		}
 	}
 	return ""
@@ -285,10 +392,8 @@ func timeElementValue(root *html.Node) *time.Time {
 				return
 			}
 		}
-		if node.Data == "local-time" || htmlClassToken(node, "local-time") {
-			if value, ok := htmlAttribute(node, "data-time"); ok {
-				parsed = parseOllamaResetTime(value)
-			}
+		if value, ok := htmlAttribute(node, "data-time"); ok {
+			parsed = parseOllamaResetTime(value)
 		}
 	})
 	return parsed
@@ -301,6 +406,42 @@ func ollamaUsagePercentFromText(value string) (float64, bool) {
 	}
 	percent, err := strconv.ParseFloat(match[1], 64)
 	return percent, err == nil && percent >= 0 && percent <= 100
+}
+
+func ollamaUsagePercentFromRatio(value string) (float64, bool) {
+	match := ollamaUsageRatioPattern.FindStringSubmatch(value)
+	if len(match) != 3 {
+		match = ollamaCreditsRatioPattern.FindStringSubmatch(strings.TrimSpace(value))
+	}
+	if len(match) != 3 {
+		return 0, false
+	}
+	used, usedErr := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", ""), 64)
+	limit, limitErr := strconv.ParseFloat(strings.ReplaceAll(match[2], ",", ""), 64)
+	if usedErr != nil || limitErr != nil || used < 0 || limit <= 0 {
+		return 0, false
+	}
+	percent := used / limit * 100
+	return percent, percent >= 0 && percent <= 100
+}
+
+func ollamaUsagePercentFromARIA(root *html.Node) (float64, bool) {
+	var percent float64
+	var found bool
+	walkHTML(root, func(node *html.Node) {
+		if found || node.Type != html.ElementNode {
+			return
+		}
+		label, ok := htmlAttribute(node, "aria-label")
+		if !ok {
+			return
+		}
+		percent, found = ollamaUsagePercentFromRatio(label)
+		if !found {
+			percent, found = ollamaUsagePercentFromText(label)
+		}
+	})
+	return percent, found
 }
 
 func ollamaUsagePercentFromTrack(root *html.Node) (float64, bool) {
@@ -378,19 +519,6 @@ func htmlAttributeInSubtree(root *html.Node, key string) (string, bool) {
 		value, found = htmlAttribute(node, key)
 	})
 	return value, found
-}
-
-func htmlClassToken(node *html.Node, token string) bool {
-	value, ok := htmlAttribute(node, "class")
-	if !ok {
-		return false
-	}
-	for _, className := range strings.Fields(value) {
-		if className == token {
-			return true
-		}
-	}
-	return false
 }
 
 func parseOllamaResetTime(value string) *time.Time {

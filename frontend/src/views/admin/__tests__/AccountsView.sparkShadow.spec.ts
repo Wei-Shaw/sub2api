@@ -307,6 +307,29 @@ describe('admin AccountsView — 账号行展示', () => {
     wrapper.unmount()
   })
 
+  it('Ollama 用量快照中的 API Key 邮箱显示在账号名称下', async () => {
+    listAccounts.mockResolvedValue({
+      items: [{
+        id: 101,
+        name: 'ollama-1',
+        platform: 'openai',
+        type: 'apikey',
+        extra: { email: 'old@example.com' },
+        ollama_cloud_usage: {
+          eligible: true,
+          snapshot: { status: 'ok', data: { email: 'key-owner@example.com' } }
+        }
+      }],
+      total: 1, page: 1, page_size: 20, pages: 1
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+    expect(wrapper.text()).toContain('key-owner@example.com')
+    expect(wrapper.text()).not.toContain('old@example.com')
+    wrapper.unmount()
+  })
+
   it('仅将具有安全 base_url 的 API Key 账号名称链接到站点主页', async () => {
     listAccounts.mockResolvedValue({
       items: [

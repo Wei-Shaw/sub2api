@@ -203,4 +203,17 @@ describe('UsageProgressBar', () => {
     expect(percent.classes()).toContain('w-[32px]')
     expect(percent.classes()).toContain('text-right')
   })
+  it('shows an upstream relative reset hint without fabricating a countdown', () => {
+    const wrapper = mount(UsageProgressBar, { props: { label: 'mo', utilization: 63, resetText: '约1周后', color: 'purple' } })
+    expect(wrapper.text()).toContain('约1周后')
+    vi.advanceTimersByTime(3600000)
+    expect(wrapper.text()).toContain('约1周后')
+  })
+
+  it('prefers a precise reset timestamp over a relative hint', () => {
+    const wrapper = mount(UsageProgressBar, { props: { label: 'mo', utilization: 63, resetsAt: '2026-03-17T02:30:00Z', resetText: '约1周后', color: 'purple' } })
+    expect(wrapper.text()).toContain('2h 30m')
+    expect(wrapper.text()).not.toContain('约1周后')
+  })
+
 })

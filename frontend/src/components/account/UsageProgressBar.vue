@@ -55,7 +55,7 @@
 
       <!-- Reset time -->
       <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
-        {{ formatResetTime }}
+        {{ resetsAt ? formatResetTime : resetText || formatResetTime }}
       </span>
     </div>
   </div>
@@ -73,6 +73,7 @@ const props = withDefaults(
     label: string
     utilization: number // Percentage (0-100+)
     resetsAt?: string | null
+    resetText?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
     estimatedTotalCost?: number | null
@@ -183,6 +184,7 @@ const displayPercent = computed(() => {
 
 const shouldShowResetTime = computed(() => {
   if (props.resetsAt) return true
+  if (props.resetText) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })
 

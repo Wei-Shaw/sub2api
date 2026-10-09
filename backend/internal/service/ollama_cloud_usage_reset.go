@@ -15,7 +15,10 @@ import "time"
 // old snapshots out of the decision without reading any configuration here.
 //
 // Window handling:
-//   - Only windows with UsedPercent >= 100 count as exhausted.
+//   - Only the legacy five-hour and seven-day hard limits are considered.
+//     Monthly included credits can be exhausted while purchased credits still
+//     allow requests, so monthly usage alone cannot establish a block horizon.
+//   - Only hard-limit windows with UsedPercent >= 100 count as exhausted.
 //   - A window that is not exhausted (or absent from Data) never affects the
 //     result and is ignored even when its ResetAt is missing or in the past.
 //   - The reset of every exhausted window must be known (non-nil, non-zero) and

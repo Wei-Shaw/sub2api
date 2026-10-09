@@ -251,6 +251,10 @@ type ollamaUsageHTTPStub struct {
 	status         int
 	body           []byte
 	header         http.Header
+	profileStatus  int
+	profileBody    []byte
+	profileCalls   atomic.Int64
+	profileRequest *http.Request
 	calls          atomic.Int64
 	active         atomic.Int64
 	maxActive      atomic.Int64
@@ -261,6 +265,17 @@ type ollamaUsageHTTPStub struct {
 }
 
 func (s *ollamaUsageHTTPStub) Do(req *http.Request, proxyURL string, _ int64, _ int) (*http.Response, error) {
+	if req.URL.Path == "/api/me" {
+		s.profileCalls.Add(1)
+		s.mu.Lock()
+		s.profileRequest = req
+		s.mu.Unlock()
+		status := s.profileStatus
+		if status == 0 {
+			status = http.StatusUnauthorized
+		}
+		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(s.profileBody))), Request: req}, nil
+	}
 	s.calls.Add(1)
 	active := s.active.Add(1)
 	defer s.active.Add(-1)
@@ -587,6 +602,48 @@ func TestParseOllamaCloudUsageHTMLMissingOptionalFieldsAndCSSWidthFallback(t *te
 	}}, data.Models)
 }
 
+func TestParseOllamaCloudUsageHTMLMonthlyLayout(t *testing.T) {
+	data, err := parseOllamaCloudUsageHTML([]byte(`
+		<section>
+			<h2><span>Included usage</span><span>pro</span></h2>
+			<div>
+				<div><span>Monthly usage</span><span>$5.03 of $60 used</span></div>
+				<div data-time="2026-10-18T02:05:47Z">Resets in 4 weeks.</div>
+				<div data-usage-track aria-label="Monthly usage $5.03 of $60 used">
+					<button data-usage-segment style="width: 99%" aria-label="deepseek-v4.1-flash: 749 requests"></button>
+					<button data-usage-segment style="width: 1%" aria-label="deepseek-v4-flash:0731: 3 requests"></button>
+				</div>
+			</div>
+			<div><div><div>$0</div><div>Current balance</div></div></div>
+		</section>`))
+	require.NoError(t, err)
+	require.Equal(t, "pro", data.Plan)
+	require.Nil(t, data.FiveHour)
+	require.Nil(t, data.SevenDay)
+	require.NotNil(t, data.Monthly)
+	require.InDelta(t, 8.3833333333, data.Monthly.UsedPercent, 0.0000001)
+	require.NotNil(t, data.Monthly.ResetAt)
+	require.Equal(t, "2026-10-18T02:05:47Z", data.Monthly.ResetAt.Format(time.RFC3339))
+	require.Equal(t, "$0", data.Balance)
+	require.Equal(t, []OllamaCloudUsageModel{
+		{Model: "deepseek-v4-flash:0731", Window: OllamaCloudUsageModelWindowMonthly, Requests: 3},
+		{Model: "deepseek-v4.1-flash", Window: OllamaCloudUsageModelWindowMonthly, Requests: 749},
+	}, data.Models)
+}
+
+func TestParseOllamaCloudUsageHTMLMonthlyARIAWinsOverDistributionWidth(t *testing.T) {
+	data, err := parseOllamaCloudUsageHTML([]byte(`
+		<section>
+			<span>Monthly usage</span>
+			<div data-usage-track aria-label="Monthly usage $15 of $60 used">
+				<button data-usage-segment style="width: 100%" aria-label="deepseek-v4.1-flash: 100 requests"></button>
+			</div>
+		</section>`))
+	require.NoError(t, err)
+	require.NotNil(t, data.Monthly)
+	require.Equal(t, 25.0, data.Monthly.UsedPercent)
+}
+
 func TestParseOllamaCloudUsageHTMLResetElementVariants(t *testing.T) {
 	const want = "2026-07-23T03:00:00Z"
 	for name, element := range map[string]string{
@@ -893,6 +950,38 @@ func TestOllamaCloudUsageRefreshUsesFixedURLCookieAndNoRedirects(t *testing.T) {
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.lastRequest.Context()))
 }
 
+func TestOllamaCloudUsageRefreshFetchesEmailForAPIKey(t *testing.T) {
+	account := ollamaUsageAccount(88)
+	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=browser-secret"
+	repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{88: account}}}
+	upstream := &ollamaUsageHTTPStub{
+		body:          ollamaUsageFixture(t),
+		profileStatus: http.StatusOK,
+		profileBody:   []byte(`{"email":"key-owner@example.com","name":"Owner"}`),
+	}
+	svc := newOllamaUsageTestService(t, repo, upstream, &upstreamBillingProbeSettingRepo{}, true)
+
+	state, err := svc.Refresh(context.Background(), 88)
+	require.NoError(t, err)
+	require.Equal(t, "key-owner@example.com", state.Snapshot.Data.Email)
+	require.Equal(t, int64(1), upstream.profileCalls.Load())
+	require.Equal(t, http.MethodPost, upstream.profileRequest.Method)
+	require.Equal(t, ollamaCloudUsageProfileURL, upstream.profileRequest.URL.String())
+	require.Equal(t, "Bearer key-88", upstream.profileRequest.Header.Get("Authorization"))
+	require.Empty(t, upstream.profileRequest.Header.Get("Cookie"))
+	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.profileRequest.Context()))
+
+	// An unavailable profile endpoint must not invalidate a successful usage fetch.
+	other := ollamaUsageAccount(89)
+	other.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=other"
+	otherRepo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{89: other}}}
+	otherUpstream := &ollamaUsageHTTPStub{body: ollamaUsageFixture(t)}
+	otherSvc := newOllamaUsageTestService(t, otherRepo, otherUpstream, &upstreamBillingProbeSettingRepo{}, true)
+	state, err = otherSvc.Refresh(context.Background(), 89)
+	require.NoError(t, err)
+	require.Empty(t, state.Snapshot.Data.Email)
+}
+
 func TestOllamaCloudUsageManualRefreshUsesShortIndependentInterval(t *testing.T) {
 	account := ollamaUsageAccount(12)
 	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=initial"
@@ -1122,4 +1211,120 @@ func TestOllamaCloudUsageSingleflightConcurrencyAndRunnerSwitches(t *testing.T) 
 	<-done
 	require.LessOrEqual(t, upstream.maxActive.Load(), int64(ollamaCloudUsageConcurrency))
 	require.Equal(t, int64(8), upstream.calls.Load())
+}
+
+func TestParseOllamaCloudUsageHTMLMonthlyCreditsLongModelList(t *testing.T) {
+	body, err := os.ReadFile("testdata/ollama_settings_monthly_credits.html")
+	require.NoError(t, err)
+	data, err := parseOllamaCloudUsageHTML(body)
+	require.NoError(t, err)
+	require.NotNil(t, data.Monthly)
+	require.Equal(t, 50.0, data.Monthly.UsedPercent)
+	require.Nil(t, data.FiveHour)
+	require.Nil(t, data.SevenDay)
+	require.Nil(t, data.Monthly.ResetAt, "do not invent a precise reset from a rounded refill hint")
+	require.Equal(t, "Refills in 1 week", data.Monthly.ResetText)
+	require.Equal(t, "$40", data.Balance)
+	require.Len(t, data.Models, 24)
+	require.Equal(t, OllamaCloudUsageModelWindowMonthly, data.Models[0].Window)
+}
+
+func TestParseOllamaCloudUsageHTMLMonthlyCreditsRatios(t *testing.T) {
+	for _, tt := range []struct {
+		label string
+		want  float64
+		valid bool
+	}{
+		{"Monthly credits used: $0 of $300", 0, true},
+		{"Monthly credits used: $300 of $300", 100, true},
+		{"Monthly credits used: $1,500.25 of $3,000.50", 50, true},
+		{"Monthly credits used: $0 of $0", 0, false},
+		{"Monthly credits used: $-1 of $300", 0, false},
+		{"Monthly credits used: $301 of $300", 0, false},
+		{"Monthly credits used: $150 of $300 remaining", 0, false},
+	} {
+		t.Run(tt.label, func(t *testing.T) {
+			got, ok := ollamaUsagePercentFromRatio(tt.label)
+			require.Equal(t, tt.valid, ok)
+			if ok {
+				require.InDelta(t, tt.want, got, 0.00001)
+			}
+		})
+	}
+	// The monthly model distribution always sums to 100%; it is not quota usage.
+	data, err := parseOllamaCloudUsageHTML([]byte(`<div><span>Balance remaining</span><span>$40</span></div><section><span>Monthly credits used</span><div data-usage-track aria-label="Monthly credits used: unavailable"><button data-usage-segment style="width:100%" aria-label="example: 3 requests"></button></div></section>`))
+	require.NoError(t, err)
+	require.Nil(t, data.Monthly)
+}
+
+func TestOllamaCloudUsageIncompleteRefreshPreservesPreviousData(t *testing.T) {
+	for _, scheduled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scheduled=%v", scheduled), func(t *testing.T) {
+			account := ollamaUsageAccount(701)
+			account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=test"
+			account.Extra[OllamaCloudUsageAutoRefreshExtraKey] = true
+			repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}}
+			body, err := os.ReadFile("testdata/ollama_settings_monthly_credits.html")
+			require.NoError(t, err)
+			upstream := &ollamaUsageHTTPStub{body: body}
+			settingsRepo := &upstreamBillingProbeSettingRepo{values: map[string]string{SettingKeyOllamaCloudUsageSettings: `{"enabled":true,"interval_minutes":60,"debounce_minutes":1}`}}
+			svc := newOllamaUsageTestService(t, repo, upstream, settingsRepo, true)
+			now := time.Date(2026, time.October, 8, 8, 0, 0, 0, time.UTC)
+			svc.now = func() time.Time { return now }
+			refresh := func() {
+				if scheduled {
+					require.NoError(t, svc.RunDue(context.Background()))
+				} else {
+					_, e := svc.Refresh(context.Background(), account.ID)
+					require.NoError(t, e)
+				}
+			}
+			refresh()
+			before := decodeOllamaCloudUsageSnapshot(account.Extra)
+			require.NotNil(t, before)
+			require.Equal(t, OllamaCloudUsageStatusOK, before.Status)
+			require.Equal(t, 50.0, before.Data.Monthly.UsedPercent)
+			now = now.Add(2 * time.Hour)
+			activity := now.Add(-5 * time.Minute)
+			account.LastUsedAt = &activity
+			upstream.body = []byte(`<div><span>Balance remaining</span><span>$39</span></div>`)
+			refresh()
+			after := decodeOllamaCloudUsageSnapshot(account.Extra)
+			require.Equal(t, OllamaCloudUsageStatusFailed, after.Status)
+			require.Equal(t, "incomplete_usage", after.LastError)
+			require.Equal(t, before.Data, after.Data)
+			require.Equal(t, before.FetchedAt, after.FetchedAt)
+			require.Equal(t, now, after.LastAttemptAt)
+			require.Equal(t, 1, after.FailureCount)
+			require.Equal(t, true, account.Extra[OllamaCloudUsageAutoRefreshExtraKey])
+			require.Equal(t, int64(2), upstream.calls.Load())
+		})
+	}
+}
+
+func TestParseOllamaCloudUsageHTMLCreditRefillHintScope(t *testing.T) {
+	monthly := `<section><span>Monthly credits used</span><div data-usage-track aria-label="Monthly credits used: $30 of $300"></div></section>`
+	for _, tt := range []struct{ name, html, want string }{
+		{"separate balance card", `<p>Refills to $300 in 1 week.</p>` + monthly, "Refills in 1 week"},
+		{"nested text and whitespace", `<p>Refills to <span>$300</span> in <span>2 days</span>.</p>` + monthly, "Refills in 2 days"},
+		{"same hint duplicated", `<p>Refills to $300 in 1 week.</p><p>Refills to $300 in 1 week.</p>` + monthly, "Refills in 1 week"},
+		{"ambiguous balances", `<p>Refills to $300 in 1 week.</p><p>Refills to $60 in 2 weeks.</p>` + monthly, ""},
+		{"auto reload is not refill date", `<p>Automatically add $300 when credits are low.</p>` + monthly, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d, e := parseOllamaCloudUsageHTML([]byte(tt.html))
+			require.NoError(t, e)
+			require.Equal(t, tt.want, d.Monthly.ResetText)
+			require.Nil(t, d.Monthly.ResetAt)
+		})
+	}
+	d, e := parseOllamaCloudUsageHTML([]byte(`<p>Refills to $300 in 1 week.</p><section><p>Session usage 10% used</p></section>`))
+	require.NoError(t, e)
+	require.Empty(t, d.FiveHour.ResetText)
+	require.Nil(t, d.Monthly)
+	d, e = parseOllamaCloudUsageHTML([]byte(`<p>Refills to $300 in 1 week.</p><section><span>Monthly usage</span><span>10% used</span><time datetime="2026-10-18T02:05:47Z">Resets in 10 days</time></section>`))
+	require.NoError(t, e)
+	require.NotNil(t, d.Monthly.ResetAt)
+	require.Equal(t, "2026-10-18T02:05:47Z", d.Monthly.ResetAt.Format(time.RFC3339))
+	require.NotEqual(t, "Refills in 1 week", d.Monthly.ResetText)
 }

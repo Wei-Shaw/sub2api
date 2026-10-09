@@ -117,6 +117,25 @@ func TestOllamaCloudUsageExhaustionResetAt(t *testing.T) {
 			wantOK:   true,
 		},
 		{
+			name: "monthly included credits exhausted with purchased balance is not a hard limit",
+			snapshot: okSnapshot(&OllamaCloudUsageData{
+				Monthly: window(100, at(720, 0)),
+				Balance: "$15.47",
+			}),
+			minFresh: minFetchedAt,
+			wantOK:   false,
+		},
+		{
+			name: "monthly exhaustion without a reset does not hide a five-hour recovery",
+			snapshot: okSnapshot(&OllamaCloudUsageData{
+				FiveHour: window(100, at(2, 0)),
+				Monthly:  window(100, nil),
+			}),
+			minFresh: minFetchedAt,
+			want:     now.Add(2 * time.Hour),
+			wantOK:   true,
+		},
+		{
 			name: "seven day exhausted missing reset blocks complete recovery",
 			snapshot: okSnapshot(&OllamaCloudUsageData{
 				FiveHour: window(100, at(2, 0)),

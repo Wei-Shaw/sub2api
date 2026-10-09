@@ -104,7 +104,7 @@ describe('OllamaCloudUsageCell', () => {
     expect(query.classes()).toEqual(expect.arrayContaining(['text-blue-600', 'hover:bg-blue-50']))
     expect(query.text()).toContain('admin.accounts.usageWindow.activeQuery')
     expect(wrapper.text()).not.toContain('max')
-    expect(wrapper.text()).not.toContain('$0')
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text()).toContain('$0')
     expect(wrapper.text()).not.toContain('gpt-oss:120b-cloud')
   })
 
@@ -116,6 +116,23 @@ describe('OllamaCloudUsageCell', () => {
     await wrapper.setProps({ account: account(next) })
 
     expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
+  })
+
+  it('renders the current monthly Ollama usage window', () => {
+    const monthly = usageState()
+    monthly.snapshot!.data = {
+      monthly: { used_percent: 8.4, reset_at: '2026-10-18T02:05:47Z' }
+    }
+
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(monthly) } })
+    const bars = wrapper.findAllComponents(UsageProgressBar)
+
+    expect(bars).toHaveLength(1)
+    expect(bars[0].props()).toMatchObject({
+      label: 'mo',
+      utilization: 8.4,
+      resetsAt: '2026-10-18T02:05:47Z'
+    })
   })
 
   it('queries through the edit-page refresh endpoint and emits the updated state', async () => {
@@ -140,4 +157,37 @@ describe('OllamaCloudUsageCell', () => {
 
     expect(wrapper.find('[data-testid="ollama-cloud-usage-query"]').exists()).toBe(false)
   })
+  it('warns about legacy balance-only snapshots and keeps the balance visible', () => {
+    const incomplete = usageState()
+    incomplete.snapshot!.data = { balance: '$40' }
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(incomplete) } })
+    expect(wrapper.findAllComponents(UsageProgressBar)).toHaveLength(0)
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text()).toContain('$40')
+    expect(wrapper.get('[data-testid="ollama-cloud-usage-warning"]').text()).toContain('admin.accounts.ollamaCloud.errors.incomplete_usage')
+  })
+
+  it('keeps previous bars and marks them stale after an incomplete refresh', async () => {
+    const incomplete = usageState()
+    incomplete.snapshot!.status = 'failed'
+    incomplete.snapshot!.last_error = 'incomplete_usage'
+    refreshOllamaCloudUsage.mockResolvedValueOnce(incomplete)
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account() } })
+    await wrapper.get('[data-testid="ollama-cloud-usage-query"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAllComponents(UsageProgressBar)).toHaveLength(2)
+    const warning = wrapper.get('[data-testid="ollama-cloud-usage-warning"]')
+    expect(warning.text()).toContain('admin.accounts.ollamaCloud.errors.incomplete_usage')
+    expect(warning.text()).toContain('admin.accounts.ollamaCloud.staleData')
+  })
+
+  it('passes an upstream refill hint to the monthly progress bar', () => {
+    const monthly = usageState()
+    monthly.snapshot!.data = { monthly: { used_percent: 63, reset_text: 'Refills in 1 week' } }
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(monthly) } })
+    const bar = wrapper.getComponent(UsageProgressBar)
+    expect(bar.props('resetsAt')).toBeUndefined()
+    expect(bar.props('resetText')).toBe('admin.accounts.ollamaCloud.approximateReset')
+    expect(bar.text()).toContain('admin.accounts.ollamaCloud.approximateReset')
+  })
+
 })

@@ -9,6 +9,7 @@
       label="5h"
       :utilization="snapshot.data.five_hour.used_percent"
       :resets-at="snapshot.data.five_hour.reset_at"
+      :reset-text="formatResetText(snapshot.data.five_hour.reset_text)"
       color="indigo"
       data-testid="ollama-cloud-five-hour"
     />
@@ -17,9 +18,26 @@
       label="7d"
       :utilization="snapshot.data.seven_day.used_percent"
       :resets-at="snapshot.data.seven_day.reset_at"
+      :reset-text="formatResetText(snapshot.data.seven_day.reset_text)"
       color="emerald"
       data-testid="ollama-cloud-seven-day"
     />
+    <UsageProgressBar
+      v-if="snapshot?.data?.monthly"
+      label="mo"
+      :utilization="snapshot.data.monthly.used_percent"
+      :resets-at="snapshot.data.monthly.reset_at"
+      :reset-text="formatResetText(snapshot.data.monthly.reset_text)"
+      color="purple"
+      data-testid="ollama-cloud-monthly"
+    />
+    <div v-if="snapshot?.data?.balance" class="text-[10px] text-gray-500 dark:text-gray-400" data-testid="ollama-cloud-balance">
+      {{ t('admin.accounts.ollamaCloud.balance') }} {{ snapshot.data.balance }}
+    </div>
+    <div v-if="usageWarning" role="status" class="text-[10px] text-amber-600 dark:text-amber-400" data-testid="ollama-cloud-usage-warning">
+      {{ usageWarning }}
+      <span v-if="hasUsageWindows">{{ t('admin.accounts.ollamaCloud.staleData') }}</span>
+    </div>
     <div v-if="state.configured" class="flex items-center pt-0.5">
       <button
         type="button"
@@ -55,13 +73,24 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, OllamaCloudUsageState } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
+import { formatOllamaResetText } from '@/utils/ollamaUsage'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const formatResetText = (text?: string) => formatOllamaResetText(text, locale?.value || 'en', t)
 const state = ref(props.account.ollama_cloud_usage)
 const refreshing = ref(false)
 const snapshot = computed(() => state.value?.snapshot)
+const hasUsageWindows = computed(() => !!(snapshot.value?.data?.five_hour || snapshot.value?.data?.seven_day || snapshot.value?.data?.monthly))
+const usageWarning = computed(() => {
+  if (!snapshot.value) return ''
+  if (snapshot.value.status === 'unauthorized') return t('admin.accounts.ollamaCloud.unauthorized')
+  if (snapshot.value.last_error === 'incomplete_usage' || (snapshot.value.status === 'ok' && !hasUsageWindows.value)) {
+    return t('admin.accounts.ollamaCloud.errors.incomplete_usage')
+  }
+  return snapshot.value.status === 'failed' ? t('admin.accounts.ollamaCloud.failed') : ''
+})
 
 watch(() => props.account.ollama_cloud_usage, (next) => {
   state.value = next
