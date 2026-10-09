@@ -451,6 +451,61 @@ func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, ac
 	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, true)
 }
 
+// AcquireAccountSlotWithWaitCtx acquires an account slot, waiting up to timeout
+// for one to free up, using the same immediate-try plus jittered backoff loop as
+// the HTTP path.
+//
+// Unlike AcquireAccountSlotWithWaitTimeout it takes a plain context and never
+// writes SSE ping frames. That makes it the only safe waiting variant on the
+// WebSocket ingress path: after the upgrade the response writer is hijacked, so
+// a single SSE byte would corrupt the frame stream. Callers there must keep the
+// timeout short enough that the client does not give up on the turn first.
+//
+// timeout <= 0 degrades to a single non-blocking attempt, preserving the legacy
+// "try once, then give up" behavior.
+func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitCtx(ctx context.Context, accountID int64, maxConcurrency int, timeout time.Duration) (func(), error) {
+	if timeout <= 0 {
+		releaseFunc, acquired, err := h.TryAcquireAccountSlot(ctx, accountID, maxConcurrency)
+		if err != nil {
+			return nil, err
+		}
+		if !acquired {
+			return nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		}
+		return releaseFunc, nil
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	backoff := initialBackoff
+	// 首次立即尝试：与 waitForSlotWithPingTimeout 的 tryImmediate 语义一致。
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			// 父 ctx 先结束（客户端断开/连接被抢占）时返回原始原因，调用方据此
+			// 区分「容量不足」和「对端已经走了」。
+			if parentErr := ctx.Err(); parentErr != nil {
+				return nil, parentErr
+			}
+			return nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		case <-timer.C:
+			result, err := h.concurrencyService.AcquireAccountSlot(waitCtx, accountID, maxConcurrency)
+			if err != nil {
+				return nil, err
+			}
+			if result.Acquired {
+				return result.ReleaseFunc, nil
+			}
+			backoff = nextBackoff(backoff)
+			timer.Reset(backoff)
+		}
+	}
+}
+
 // nextBackoff 计算下一次退避时间
 // 性能优化：使用指数退避 + 随机抖动，避免惊群效应
 // current: 当前退避时间
