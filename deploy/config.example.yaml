@@ -241,6 +241,14 @@ gateway:
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432
+  # Optional POST Responses upload threshold in bytes; 0 disables it.
+  # Env: GATEWAY_RESPONSES_COMPACTION_BODY_LIMIT (e.g. 2097152 for 2 MiB).
+  # Returns 400/context_length_exceeded, including bounded chunked uploads.
+  # This is a transport-size hint, not a tokenizer/model context limit. It does
+  # not guarantee client recovery; image-heavy inputs may require manual reduction.
+  # Explicit /responses/compact endpoints and WebSockets are excluded. Body-signaled
+  # compaction on POST /responses is subject to the threshold too.
+  responses_compaction_body_limit: 0
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
