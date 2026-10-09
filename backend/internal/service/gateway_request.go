@@ -573,6 +573,55 @@ func isClaude55SignedThinkingModel(model string) bool {
 	return claude.IsOpus55(model) || claude.IsSonnet55(model)
 }
 
+// NormalizeClaudeOpus55Thinking converts legacy enabled thinking to adaptive
+// and removes stale budget_tokens from adaptive requests for Claude Opus 5.5.
+// Converting enabled thinking supplies medium only when effort is absent;
+// existing adaptive requests retain their effort or its absence. The legacy
+// budget is discarded, not translated into an equivalent token limit.
+//
+// This is deliberately limited to Opus 5.5 and enabled/adaptive thinking. Explicitly
+// disabled thinking and unknown model families retain the existing validation
+// behavior. Invalid JSON and rewrite failures are handled fail-safe.
+func NormalizeClaudeOpus55Thinking(body []byte, model string) ([]byte, bool) {
+	if !claude.IsOpus55(model) || !gjson.ValidBytes(body) {
+		return body, false
+	}
+	thinking := gjson.GetBytes(body, "thinking")
+	thinkingType := thinking.Get("type").String()
+	hasBudget := thinking.Get("budget_tokens").Exists()
+	if thinkingType != "enabled" && !(thinkingType == "adaptive" && hasBudget) {
+		return body, false
+	}
+
+	// Do not repair malformed output_config or explicit invalid efforts as a
+	// side effect of legacy thinking compatibility.
+	if output := gjson.GetBytes(body, "output_config"); output.Exists() && !output.IsObject() {
+		return body, false
+	}
+
+	modified := body
+	var err error
+	if thinkingType == "enabled" {
+		modified, err = sjson.SetBytes(modified, "thinking.type", "adaptive")
+		if err != nil {
+			return body, false
+		}
+		if !gjson.GetBytes(modified, "output_config.effort").Exists() {
+			modified, err = sjson.SetBytes(modified, "output_config.effort", "medium")
+			if err != nil {
+				return body, false
+			}
+		}
+	}
+	if hasBudget {
+		modified, err = sjson.DeleteBytes(modified, "thinking.budget_tokens")
+		if err != nil {
+			return body, false
+		}
+	}
+	return modified, true
+}
+
 // validateClaude55Request rejects settings that the upstream cannot honor.
 // Call before OAuth mimicry can remove tool_choice or alter thinking defaults.
 func validateClaude55Request(body []byte, model string) error {

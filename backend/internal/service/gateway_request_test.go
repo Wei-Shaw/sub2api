@@ -1315,6 +1315,64 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 	}
 }
 
+func TestNormalizeClaudeOpus55Thinking(t *testing.T) {
+	tests := []struct {
+		name        string
+		model       string
+		input       string
+		wantApplied bool
+		wantEffort  string
+	}{
+		{
+			name:        "legacy enabled with budget",
+			model:       "claude-opus-5-5",
+			input:       `{"model":"claude-opus-5-5","thinking":{"type":"enabled","budget_tokens":1024},"max_tokens":1152}`,
+			wantApplied: true,
+			wantEffort:  "medium",
+		},
+		{
+			name:        "preserves explicit effort",
+			model:       "claude-opus-5-5",
+			input:       `{"model":"claude-opus-5-5","thinking":{"type":"enabled","budget_tokens":2048},"output_config":{"effort":"high"}}`,
+			wantApplied: true,
+			wantEffort:  "high",
+		},
+		{
+			name:        "normalizes dotted alias",
+			model:       "anthropic/claude-opus-5.5",
+			input:       `{"model":"anthropic/claude-opus-5.5","thinking":{"type":"enabled","budget_tokens":1024}}`,
+			wantApplied: true,
+			wantEffort:  "medium",
+		},
+		{
+			name:        "disabled remains unchanged",
+			model:       "claude-opus-5-5",
+			input:       `{"model":"claude-opus-5-5","thinking":{"type":"disabled"}}`,
+			wantApplied: false,
+		},
+		{
+			name:        "other model remains unchanged",
+			model:       "claude-sonnet-4-6",
+			input:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":1024}}`,
+			wantApplied: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, applied := NormalizeClaudeOpus55Thinking([]byte(tt.input), tt.model)
+			require.Equal(t, tt.wantApplied, applied)
+			if !tt.wantApplied {
+				require.Equal(t, tt.input, string(got))
+				return
+			}
+			require.Equal(t, "adaptive", gjson.GetBytes(got, "thinking.type").String())
+			require.False(t, gjson.GetBytes(got, "thinking.budget_tokens").Exists())
+			require.Equal(t, tt.wantEffort, gjson.GetBytes(got, "output_config.effort").String())
+		})
+	}
+}
+
 func TestNormalizeChineseLLMThinking(t *testing.T) {
 	tests := []struct {
 		name          string

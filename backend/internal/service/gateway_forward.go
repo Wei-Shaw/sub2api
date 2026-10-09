@@ -105,6 +105,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if account != nil && account.Platform == PlatformAnthropic {
+		if s.cfg != nil && s.cfg.Gateway.ClaudeOpus55LegacyThinkingEnabled {
+			if normalized, applied := NormalizeClaudeOpus55Thinking(parsed.Body.Bytes(), validationModel); applied {
+				if err := parsed.ReplaceBody(normalized); err != nil {
+					return nil, fmt.Errorf("normalize Opus 5.5 thinking: %w", err)
+				}
+			}
+		}
 		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
 			return nil, err
