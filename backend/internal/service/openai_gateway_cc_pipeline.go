@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -349,15 +350,16 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 		return nil, OpenAIUsage{}, fmt.Errorf("read upstream body: %w", err)
 	}
 
+	payload := unwrapCCDataEnvelope(respBody)
 	var ccResp apicompat.ChatCompletionsResponse
-	if err := json.Unmarshal(respBody, &ccResp); err != nil {
+	if err := json.Unmarshal(payload, &ccResp); err != nil {
 		writeError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")
 		return nil, OpenAIUsage{}, fmt.Errorf("parse chat completions response: %w", err)
 	}
 	// 观察上游 CC JSON 回显的 model / service_tier（计费以回显为准）。
 	// CC JSON 无 type 字段，按 untyped payload 观察（上游约束）。
 	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
-		observer.ObserveOpenAI(respBody, "")
+		observer.ObserveOpenAI(payload, "")
 	}
 
 	usage := OpenAIUsage{}
@@ -365,6 +367,21 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 		usage = parsed
 	}
 	return &ccResp, usage, nil
+}
+
+// unwrapCCDataEnvelope 兼容部分 OpenAI 兼容上游（例如 Cline API）的非流式响应包装：
+// {"success":true,"data":{"choices":[...],"usage":{...}}}。
+// 仅当顶层缺少 choices 且 data.choices 存在时解包，标准响应原样返回。
+// 用量提取（extractOpenAIUsageFromJSONBytes）已单独兼容 data.usage。
+func unwrapCCDataEnvelope(body []byte) []byte {
+	if gjson.GetBytes(body, "choices").Exists() {
+		return body
+	}
+	inner := gjson.GetBytes(body, "data")
+	if !inner.IsObject() || !inner.Get("choices").Exists() {
+		return body
+	}
+	return []byte(inner.Raw)
 }
 
 // writeOpenAIResponsesFallbackError 以 /v1/responses 回退路径的既有错误格式回写
