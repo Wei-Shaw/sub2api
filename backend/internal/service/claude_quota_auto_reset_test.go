@@ -133,7 +133,9 @@ func TestClaudeResetRecoveryRejectsCredentialReplacement(t *testing.T) {
 	for _, duringProbe := range []bool{false, true} {
 		t.Run(fmt.Sprint(duringProbe), func(t *testing.T) {
 			w, _ := newClaudeAutoIntegration(t, true, 75)
-			r := &claudeRecoveryRepo{claudeAutoIntegrationRepo: w.accounts.(*claudeAutoIntegrationRepo)}
+			baseRepo, ok := w.accounts.(*claudeAutoIntegrationRepo)
+			require.True(t, ok)
+			r := &claudeRecoveryRepo{claudeAutoIntegrationRepo: baseRepo}
 			w.accounts = r
 			now := time.Now().UTC().Truncate(time.Second)
 			reset := now.Add(time.Hour)

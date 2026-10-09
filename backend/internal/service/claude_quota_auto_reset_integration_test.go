@@ -172,7 +172,8 @@ func TestClaudeAutoIntegrationFinalQuotaProbeReplacement(t *testing.T) {
 	for _, change := range []string{"unchanged", "credentials", "disabled"} {
 		t.Run(change, func(t *testing.T) {
 			w, claims := newClaudeAutoIntegration(t, true, 100)
-			repo := w.accounts.(*claudeAutoIntegrationRepo)
+			repo, ok := w.accounts.(*claudeAutoIntegrationRepo)
+			require.True(t, ok)
 			repo.account.Extra["claude_auto_reset_credit_mode"] = "exhausted"
 			w.scopes.Store("scope", claudeResetScope{model: "claude-opus-4", gateway: &GatewayService{}, expires: time.Now().Add(time.Minute)})
 			u := &ClaudeUsageResponse{}
