@@ -33,6 +33,8 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
 import type { AdminGroup } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+const authStore = useAuthStore()
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
@@ -62,6 +64,6 @@ const privacyOpts = computed(() => [
 const gOpts = computed(() => [
   { value: '', label: t('admin.accounts.allGroups') },
   { value: 'ungrouped', label: t('admin.accounts.ungroupedGroup') },
-  ...(props.groups || []).map(g => ({ value: String(g.id), label: g.name }))
+  ...(props.groups || []).filter(g => !authStore.isSimpleMode || g.platform !== 'composite').map(g => ({ value: String(g.id), label: g.name }))
 ])
 </script>
