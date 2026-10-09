@@ -827,7 +827,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
+			h.submitOpenAIUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
 					APIKey:             apiKey,
@@ -1421,7 +1421,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
+			h.submitOpenAIUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
 					APIKey:             apiKey,
@@ -3161,7 +3161,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
 				turnBillingAPIKey := turnBillingAPIKeys.forTurn(turn, apiKey)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
+				h.submitOpenAIUsageRecordTask(service.WithRelayUsage(ctx, account), result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
 						APIKey:             turnBillingAPIKey,
@@ -3436,7 +3436,7 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 		return
 	}
 	task, abandon := wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	if h.usageRecordWorkerPool != nil && !service.IsRelayUsage(parent) {
 		if mode := h.usageRecordWorkerPool.Submit(task); mode != service.UsageRecordSubmitModeDroppedStopped {
 			if mode.Dropped() {
 				abandon()
@@ -3478,7 +3478,7 @@ func (h *OpenAIGatewayHandler) submitMandatoryUsageRecordTask(parent context.Con
 		return
 	}
 	task, _ = wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	if h.usageRecordWorkerPool != nil && !service.IsRelayUsage(parent) {
 		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
 			return
 		}

@@ -57,6 +57,8 @@ type APIKeyAuthUserSnapshot struct {
 
 // APIKeyAuthGroupSnapshot 分组快照
 type APIKeyAuthGroupSnapshot struct {
+	OwnerUserID                     *int64                        `json:"owner_user_id,omitempty"`
+	SupplierRate                    float64                       `json:"supplier_rate"`
 	ID                              int64                         `json:"id"`
 	Name                            string                        `json:"name"`
 	Platform                        string                        `json:"platform"`

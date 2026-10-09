@@ -226,7 +226,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
-			return derefAccounts(cached), useMixed, nil
+			return excludeUngroupedRelayAccounts(derefAccounts(cached), groupID), useMixed, nil
 		}
 		token, err := s.cache.CaptureBucketWriteToken(ctx, bucket)
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -269,7 +269,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		}
 	}
 
-	return accounts, useMixed, nil
+	return excludeUngroupedRelayAccounts(accounts, groupID), useMixed, nil
 }
 
 func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -1732,4 +1732,14 @@ func (l *fallbackLimiter) Allow() bool {
 	}
 	l.count++
 	return true
+}
+
+func excludeUngroupedRelayAccounts(accounts []Account, groupID *int64) []Account {
+	out := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.OwnerUserID == nil || (groupID != nil && *groupID > 0 && openAIStickyAccountMatchesGroup(&account, groupID)) {
+			out = append(out, account)
+		}
+	}
+	return out
 }

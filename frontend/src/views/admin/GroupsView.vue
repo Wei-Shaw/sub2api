@@ -626,6 +626,11 @@
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
         </div>
+        <div v-if="!createForm.is_exclusive && createForm.subscription_type === 'standard'">
+          <label class="input-label">{{ t('relay.supplierRate') }}</label>
+          <input v-model.number="createForm.supplier_rate" type="number" min="0" max="1" step="0.01" class="input" />
+          <p class="input-hint">{{ t('relay.supplierRateHint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -2258,11 +2263,16 @@
             v-model.number="editForm.rate_multiplier"
             type="number"
             step="0.001"
-            min="0.001"
+            :min="editingGroup?.owner_user_id ? 0 : 0.001"
             required
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div v-if="!editForm.is_exclusive && editForm.subscription_type === 'standard'">
+          <label class="input-label">{{ t('relay.supplierRate') }}</label>
+          <input v-model.number="editForm.supplier_rate" type="number" min="0" max="1" step="0.01" class="input" />
+          <p class="input-hint">{{ t('relay.supplierRateHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -4943,6 +4953,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  supplier_rate: 0.9,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5307,6 +5318,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  supplier_rate: 0.9,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5770,6 +5782,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.supplier_rate = 0.9;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6051,6 +6064,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.supplier_rate = group.supplier_rate ?? 0.9;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";

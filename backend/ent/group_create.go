@@ -72,6 +72,34 @@ func (_c *GroupCreate) SetNillableDeletedAt(v *time.Time) *GroupCreate {
 	return _c
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_c *GroupCreate) SetOwnerUserID(v int64) *GroupCreate {
+	_c.mutation.SetOwnerUserID(v)
+	return _c
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOwnerUserID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetOwnerUserID(*v)
+	}
+	return _c
+}
+
+// SetSupplierRate sets the "supplier_rate" field.
+func (_c *GroupCreate) SetSupplierRate(v float64) *GroupCreate {
+	_c.mutation.SetSupplierRate(v)
+	return _c
+}
+
+// SetNillableSupplierRate sets the "supplier_rate" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSupplierRate(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetSupplierRate(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *GroupCreate) SetName(v string) *GroupCreate {
 	_c.mutation.SetName(v)
@@ -1047,6 +1075,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.SupplierRate(); !ok {
+		v := group.DefaultSupplierRate
+		_c.mutation.SetSupplierRate(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
@@ -1221,6 +1253,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Group.updated_at"`)}
+	}
+	if _, ok := _c.mutation.SupplierRate(); !ok {
+		return &ValidationError{Name: "supplier_rate", err: errors.New(`ent: missing required field "Group.supplier_rate"`)}
+	}
+	if v, ok := _c.mutation.SupplierRate(); ok {
+		if err := group.SupplierRateValidator(v); err != nil {
+			return &ValidationError{Name: "supplier_rate", err: fmt.Errorf(`ent: validator failed for field "Group.supplier_rate": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "Group.name"`)}
@@ -1456,6 +1496,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(group.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
+	}
+	if value, ok := _c.mutation.OwnerUserID(); ok {
+		_spec.SetField(group.FieldOwnerUserID, field.TypeInt64, value)
+		_node.OwnerUserID = &value
+	}
+	if value, ok := _c.mutation.SupplierRate(); ok {
+		_spec.SetField(group.FieldSupplierRate, field.TypeFloat64, value)
+		_node.SupplierRate = value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(group.FieldName, field.TypeString, value)
@@ -1892,6 +1940,24 @@ func (u *GroupUpsert) UpdateDeletedAt() *GroupUpsert {
 // ClearDeletedAt clears the value of the "deleted_at" field.
 func (u *GroupUpsert) ClearDeletedAt() *GroupUpsert {
 	u.SetNull(group.FieldDeletedAt)
+	return u
+}
+
+// SetSupplierRate sets the "supplier_rate" field.
+func (u *GroupUpsert) SetSupplierRate(v float64) *GroupUpsert {
+	u.Set(group.FieldSupplierRate, v)
+	return u
+}
+
+// UpdateSupplierRate sets the "supplier_rate" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSupplierRate() *GroupUpsert {
+	u.SetExcluded(group.FieldSupplierRate)
+	return u
+}
+
+// AddSupplierRate adds v to the "supplier_rate" field.
+func (u *GroupUpsert) AddSupplierRate(v float64) *GroupUpsert {
+	u.Add(group.FieldSupplierRate, v)
 	return u
 }
 
@@ -2935,6 +3001,9 @@ func (u *GroupUpsertOne) UpdateNewValues() *GroupUpsertOne {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(group.FieldCreatedAt)
 		}
+		if _, exists := u.create.mutation.OwnerUserID(); exists {
+			s.SetIgnore(group.FieldOwnerUserID)
+		}
 		if _, exists := u.create.mutation.DuplicateOperationID(); exists {
 			s.SetIgnore(group.FieldDuplicateOperationID)
 		}
@@ -3001,6 +3070,27 @@ func (u *GroupUpsertOne) UpdateDeletedAt() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearDeletedAt() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDeletedAt()
+	})
+}
+
+// SetSupplierRate sets the "supplier_rate" field.
+func (u *GroupUpsertOne) SetSupplierRate(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSupplierRate(v)
+	})
+}
+
+// AddSupplierRate adds v to the "supplier_rate" field.
+func (u *GroupUpsertOne) AddSupplierRate(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSupplierRate(v)
+	})
+}
+
+// UpdateSupplierRate sets the "supplier_rate" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSupplierRate() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSupplierRate()
 	})
 }
 
@@ -4380,6 +4470,9 @@ func (u *GroupUpsertBulk) UpdateNewValues() *GroupUpsertBulk {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(group.FieldCreatedAt)
 			}
+			if _, exists := b.mutation.OwnerUserID(); exists {
+				s.SetIgnore(group.FieldOwnerUserID)
+			}
 			if _, exists := b.mutation.DuplicateOperationID(); exists {
 				s.SetIgnore(group.FieldDuplicateOperationID)
 			}
@@ -4447,6 +4540,27 @@ func (u *GroupUpsertBulk) UpdateDeletedAt() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearDeletedAt() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDeletedAt()
+	})
+}
+
+// SetSupplierRate sets the "supplier_rate" field.
+func (u *GroupUpsertBulk) SetSupplierRate(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSupplierRate(v)
+	})
+}
+
+// AddSupplierRate adds v to the "supplier_rate" field.
+func (u *GroupUpsertBulk) AddSupplierRate(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSupplierRate(v)
+	})
+}
+
+// UpdateSupplierRate sets the "supplier_rate" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSupplierRate() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSupplierRate()
 	})
 }
 

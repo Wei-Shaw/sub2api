@@ -115,6 +115,7 @@ func (s *GrokQuotaService) syncGrokObservedModels(ctx context.Context, account *
 	if s.httpUpstream == nil {
 		return nil
 	}
+	RestrictRelayUpstreamRequest(req, account)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return err

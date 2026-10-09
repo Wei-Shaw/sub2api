@@ -135,6 +135,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
 	// 11. Send request
+	RestrictRelayUpstreamRequest(upstreamReq, account)
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		if resp != nil && resp.Body != nil {

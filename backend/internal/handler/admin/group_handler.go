@@ -182,6 +182,7 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
+	SupplierRate              *float64                      `json:"supplier_rate" binding:"omitempty,gte=0,lte=1"`
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
 	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
@@ -256,6 +257,7 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
+	SupplierRate              *float64                       `json:"supplier_rate" binding:"omitempty,gte=0,lte=1"`
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
 	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
@@ -662,6 +664,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	}
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
+		SupplierRate:                    req.SupplierRate,
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
@@ -807,6 +810,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
+		SupplierRate:                    req.SupplierRate,
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,

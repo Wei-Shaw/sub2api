@@ -25,6 +25,18 @@ func RegisterUserRoutes(
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
+		relay := authenticated.Group("/relay")
+		{
+			relay.GET("/groups", h.Relay.Groups)
+			relay.POST("/groups", h.Relay.CreateGroup)
+			relay.PUT("/groups/:id", h.Relay.UpdateGroup)
+			relay.DELETE("/groups/:id", h.Relay.DeleteGroup)
+			relay.GET("/accounts", h.Relay.Accounts)
+			relay.POST("/accounts", h.Relay.CreateAccount)
+			relay.PUT("/accounts/:id", h.Relay.UpdateAccount)
+			relay.DELETE("/accounts/:id", h.Relay.DeleteAccount)
+			relay.GET("/earnings", panelRateLimiter.Heavy(), h.Relay.Earnings)
+		}
 		// 用户接口
 		user := authenticated.Group("/user")
 		{

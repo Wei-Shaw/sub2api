@@ -55,6 +55,7 @@ func (r *BatchImageModelPricingResolver) BatchImageUnitPrice(ctx context.Context
 }
 
 type BatchImageSettlementService struct {
+	BillingCache *BillingCacheService
 	Repo         BatchImageRepository
 	BillingRepo  UsageBillingRepository
 	UsageLogRepo UsageLogRepository
@@ -157,6 +158,12 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, err
 	}
 	s.invalidateAuthCache(ctx, job.UserID)
+	if job.SupplierUserID != nil {
+		s.invalidateAuthCache(ctx, *job.SupplierUserID)
+		if s.BillingCache != nil {
+			_ = s.BillingCache.InvalidateUserBalance(ctx, *job.SupplierUserID)
+		}
+	}
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())

@@ -811,6 +811,9 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(account.FieldDeletedAt, field.TypeTime)
 	}
+	if _u.mutation.OwnerUserIDCleared() {
+		_spec.ClearField(account.FieldOwnerUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(account.FieldName, field.TypeString, value)
 	}
@@ -1980,6 +1983,9 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(account.FieldDeletedAt, field.TypeTime)
+	}
+	if _u.mutation.OwnerUserIDCleared() {
+		_spec.ClearField(account.FieldOwnerUserID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(account.FieldName, field.TypeString, value)

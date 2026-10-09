@@ -258,7 +258,7 @@ func (h *GatewayHandler) recordSystemOneUsage(c *gin.Context, apiKey *service.AP
 	sessionID := service.ExtractClientSessionID(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
 
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	h.submitMandatoryUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result:             &result.ForwardResult,
 			APIKey:             apiKey,

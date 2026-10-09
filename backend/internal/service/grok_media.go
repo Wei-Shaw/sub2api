@@ -728,6 +728,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
+	RestrictRelayUpstreamRequest(upstreamReq, account)
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
@@ -831,6 +832,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		proxyURL = account.Proxy.URL()
 	}
 	upstreamStart := time.Now()
+	RestrictRelayUpstreamRequest(statusReq, account)
 	statusResp, err := s.httpUpstream.Do(statusReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -890,6 +892,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		account.ApplyHeaderOverrides(contentReq.Header)
 	}
 
+	RestrictRelayUpstreamRequest(contentReq, account)
 	contentResp, err := s.httpUpstream.Do(contentReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {

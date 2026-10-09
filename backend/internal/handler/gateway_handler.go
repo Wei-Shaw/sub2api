@@ -596,7 +596,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
-			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+			h.submitUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
 					QuotaPlatform:      quotaPlatform,
@@ -962,7 +962,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				forceCacheBilling := fs.ForceCacheBilling
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 				sessionID := service.ExtractClientSessionID(c)
-				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				h.submitUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), func(ctx context.Context) {
 					if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 						Result:             result,
 						QuotaPlatform:      quotaPlatform,
@@ -2563,7 +2563,7 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 		return
 	}
 	task, abandon := wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	if h.usageRecordWorkerPool != nil && !service.IsRelayUsage(parent) {
 		if mode := h.usageRecordWorkerPool.Submit(task); mode != service.UsageRecordSubmitModeDroppedStopped {
 			if mode.Dropped() {
 				abandon()
@@ -2596,7 +2596,7 @@ func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, 
 		return
 	}
 	task, _ = wrapUsageRecordTaskContext(parent, task)
-	if h.usageRecordWorkerPool != nil {
+	if h.usageRecordWorkerPool != nil && !service.IsRelayUsage(parent) {
 		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
 			return
 		}

@@ -289,6 +289,15 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
 		return nil
 	}
+	if p.APIKey.Group.IsPrivate() {
+		cost := *p.Cost
+		cost.ActualCost = 0
+		p.Cost = &cost
+		if usageLog != nil {
+			usageLog.ActualCost = 0
+			usageLog.RateMultiplier = 0
+		}
+	}
 
 	cmd := &UsageBillingCommand{
 		RequestID:          requestID,
@@ -345,6 +354,11 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.shouldUpdateAccountQuota() {
 		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
 	}
+	if p.Account.OwnerUserID != nil && p.APIKey.Group.IsPublicRelay() && cmd.BalanceCost > 0 {
+		cmd.GroupID = p.APIKey.GroupID
+		cmd.SupplierUserID = p.Account.OwnerUserID
+		cmd.SupplierRate = p.APIKey.Group.SupplierRate
+	}
 
 	cmd.Normalize()
 	return cmd
@@ -356,6 +370,9 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if cmd != nil && cmd.SupplierUserID != nil && (repo == nil || cmd.RequestID == "") {
+		return false, errors.New("relay settlement requires durable usage billing")
+	}
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		if p.SimpleModeKeyRateLimitOnly {
 			return false, ErrSimpleModeKeyRateLimitBillingUnavailable
@@ -386,6 +403,14 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
+	if result.SupplierUserID != nil {
+		if deps.billingCacheService != nil {
+			_ = deps.billingCacheService.InvalidateUserBalance(billingCtx, *result.SupplierUserID)
+		}
+		if invalidator, ok := p.APIKeyService.(interface{ InvalidateAuthCacheByUserID(context.Context, int64) }); ok {
+			invalidator.InvalidateAuthCacheByUserID(billingCtx, *result.SupplierUserID)
+		}
+	}
 	return true, nil
 }
 
@@ -518,17 +543,27 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 		"threshold", p.User.BalanceNotifyThreshold,
 		"result_has_new_balance", result != nil && result.NewBalance != nil,
 	)
-	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	netCost := balanceCostAfterSupplierCredit(p, result)
+	if netCost > 0 {
+		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, netCost)
+	}
 }
 
 // resolveOldBalance returns the pre-deduction balance.
 // Prefers the DB transaction result (newBalance + cost) over snapshot.
 func resolveOldBalance(p *postUsageBillingParams, result *UsageBillingApplyResult) float64 {
 	if result != nil && result.NewBalance != nil {
-		return *result.NewBalance + p.Cost.ActualCost
+		return *result.NewBalance + balanceCostAfterSupplierCredit(p, result)
 	}
 	// Legacy fallback: snapshot balance from request context
 	return p.User.Balance
+}
+
+func balanceCostAfterSupplierCredit(p *postUsageBillingParams, result *UsageBillingApplyResult) float64 {
+	if result != nil && result.SupplierUserID != nil && p.User != nil && *result.SupplierUserID == p.User.ID {
+		return p.Cost.ActualCost - result.SupplierAmount
+	}
+	return p.Cost.ActualCost
 }
 
 // notifyAccountQuota sends account quota threshold notification after increment.

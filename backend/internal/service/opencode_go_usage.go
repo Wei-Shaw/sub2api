@@ -761,6 +761,7 @@ func (s *OpenCodeGoUsageService) refreshLoadedAccount(ctx context.Context, accou
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("User-Agent", "sub2api-opencode-go-usage/1")
+	RestrictRelayUpstreamRequest(req, account)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.persistFailure(ctx, account, intervalMinutes, now, 0, "request_failed", 0, false)

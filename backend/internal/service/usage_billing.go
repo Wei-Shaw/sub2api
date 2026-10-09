@@ -17,6 +17,9 @@ var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerpri
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
+	GroupID            *int64
+	SupplierUserID     *int64
+	SupplierRate       float64
 	RequestID          string
 	APIKeyID           int64
 	RequestFingerprint string
@@ -132,6 +135,9 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
+	if c.SupplierUserID != nil {
+		raw += fmt.Sprintf("|supplier:%d|group:%d|rate:%.8f", *c.SupplierUserID, valueOrZero(c.GroupID), c.SupplierRate)
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -163,6 +169,8 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
+	SupplierUserID       *int64
+	SupplierAmount       float64
 	Applied              bool
 	APIKeyQuotaExhausted bool
 	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
@@ -172,6 +180,10 @@ type UsageBillingApplyResult struct {
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
 type BatchImageBalanceHoldCommand struct {
+	AccountID          *int64
+	GroupID            *int64
+	SupplierUserID     *int64
+	SupplierRate       float64
 	RequestID          string
 	APIKeyID           int64
 	RequestFingerprint string
@@ -207,6 +219,9 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 	)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
+	}
+	if c.SupplierUserID != nil {
+		raw += fmt.Sprintf("|supplier:%d|group:%d|account:%d|rate:%.8f", *c.SupplierUserID, valueOrZero(c.GroupID), valueOrZero(c.AccountID), c.SupplierRate)
 	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

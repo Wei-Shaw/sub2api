@@ -95,6 +95,8 @@ func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConf
 
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
+		OwnerUserID:                     cloneGroupValuePointer(source.OwnerUserID),
+		SupplierRate:                    source.SupplierRate,
 		Name:                            duplicateGroupName(source.Name, 1),
 		Description:                     source.Description,
 		Platform:                        source.Platform,

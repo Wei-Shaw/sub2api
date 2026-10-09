@@ -87,8 +87,7 @@ func accountToPluginInfo(account *Account) PluginAccountInfo {
 
 // accountReadableSnapshotJSON marshals the account's readable field set to JSON.
 // It is a DENYLIST on purpose: any non-secret field added to the account model
-// later flows through automatically with no host change. Only two categories are
-// stripped:
+// later flows through automatically with no host change. The following fields are stripped:
 //
 //   - Credentials: holds the refresh_token (and possibly api_key), a long-lived
 //     credential that ResolveOutboundIdentity does NOT hand out (that channel only
@@ -101,6 +100,7 @@ func accountToPluginInfo(account *Account) PluginAccountInfo {
 //     recurse into a stack-overflow panic if the reverse relation is ever
 //     populated. GroupIDs already conveys membership, so drop these for
 //     correctness (not secrecy).
+//   - OwnerUserID: the relay owner's user identity is unnecessary for forwarding.
 //
 // Unexported fields (e.g. the hot-path caches) are never marshaled by encoding/json.
 func accountReadableSnapshotJSON(account *Account) []byte {
@@ -108,6 +108,7 @@ func accountReadableSnapshotJSON(account *Account) []byte {
 		return nil
 	}
 	clone := *account
+	clone.OwnerUserID = nil // Plugins do not need the relay owner's user identity.
 	clone.Credentials = nil
 	clone.Groups = nil
 	clone.AccountGroups = nil

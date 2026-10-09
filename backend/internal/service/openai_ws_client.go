@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -138,6 +140,22 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			return nil, 0, nil, err
 		}
 		opts.HTTPClient = proxyClient
+	}
+
+	if HTTPUpstreamPublicHostsOnly(ctx) {
+		parsed, err := url.Parse(targetURL)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		if err = urlvalidator.ValidateResolvedIP(parsed.Hostname()); err != nil {
+			return nil, 0, nil, err
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return urlvalidator.DialPublicContext(ctx, network, address, (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext)
+		}
+		opts.HTTPClient = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)

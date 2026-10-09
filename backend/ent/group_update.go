@@ -63,6 +63,27 @@ func (_u *GroupUpdate) ClearDeletedAt() *GroupUpdate {
 	return _u
 }
 
+// SetSupplierRate sets the "supplier_rate" field.
+func (_u *GroupUpdate) SetSupplierRate(v float64) *GroupUpdate {
+	_u.mutation.ResetSupplierRate()
+	_u.mutation.SetSupplierRate(v)
+	return _u
+}
+
+// SetNillableSupplierRate sets the "supplier_rate" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSupplierRate(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetSupplierRate(*v)
+	}
+	return _u
+}
+
+// AddSupplierRate adds value to the "supplier_rate" field.
+func (_u *GroupUpdate) AddSupplierRate(v float64) *GroupUpdate {
+	_u.mutation.AddSupplierRate(v)
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *GroupUpdate) SetName(v string) *GroupUpdate {
 	_u.mutation.SetName(v)
@@ -1483,6 +1504,11 @@ func (_u *GroupUpdate) defaults() error {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GroupUpdate) check() error {
+	if v, ok := _u.mutation.SupplierRate(); ok {
+		if err := group.SupplierRateValidator(v); err != nil {
+			return &ValidationError{Name: "supplier_rate", err: fmt.Errorf(`ent: validator failed for field "Group.supplier_rate": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := group.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
@@ -1571,6 +1597,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(group.FieldDeletedAt, field.TypeTime)
+	}
+	if _u.mutation.OwnerUserIDCleared() {
+		_spec.ClearField(group.FieldOwnerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.SupplierRate(); ok {
+		_spec.SetField(group.FieldSupplierRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSupplierRate(); ok {
+		_spec.AddField(group.FieldSupplierRate, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(group.FieldName, field.TypeString, value)
@@ -2254,6 +2289,27 @@ func (_u *GroupUpdateOne) SetNillableDeletedAt(v *time.Time) *GroupUpdateOne {
 // ClearDeletedAt clears the value of the "deleted_at" field.
 func (_u *GroupUpdateOne) ClearDeletedAt() *GroupUpdateOne {
 	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
+// SetSupplierRate sets the "supplier_rate" field.
+func (_u *GroupUpdateOne) SetSupplierRate(v float64) *GroupUpdateOne {
+	_u.mutation.ResetSupplierRate()
+	_u.mutation.SetSupplierRate(v)
+	return _u
+}
+
+// SetNillableSupplierRate sets the "supplier_rate" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSupplierRate(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSupplierRate(*v)
+	}
+	return _u
+}
+
+// AddSupplierRate adds value to the "supplier_rate" field.
+func (_u *GroupUpdateOne) AddSupplierRate(v float64) *GroupUpdateOne {
+	_u.mutation.AddSupplierRate(v)
 	return _u
 }
 
@@ -3690,6 +3746,11 @@ func (_u *GroupUpdateOne) defaults() error {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GroupUpdateOne) check() error {
+	if v, ok := _u.mutation.SupplierRate(); ok {
+		if err := group.SupplierRateValidator(v); err != nil {
+			return &ValidationError{Name: "supplier_rate", err: fmt.Errorf(`ent: validator failed for field "Group.supplier_rate": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := group.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
@@ -3795,6 +3856,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(group.FieldDeletedAt, field.TypeTime)
+	}
+	if _u.mutation.OwnerUserIDCleared() {
+		_spec.ClearField(group.FieldOwnerUserID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.SupplierRate(); ok {
+		_spec.SetField(group.FieldSupplierRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSupplierRate(); ok {
+		_spec.AddField(group.FieldSupplierRate, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(group.FieldName, field.TypeString, value)

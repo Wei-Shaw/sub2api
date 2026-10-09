@@ -1358,6 +1358,14 @@ func newUpstreamDialer() *net.Dialer {
 	}
 }
 
+func dialUpstreamContext(ctx context.Context, network, address string) (net.Conn, error) {
+	dial := newUpstreamDialer().DialContext
+	if service.HTTPUpstreamPublicHostsOnly(ctx) {
+		return urlvalidator.DialPublicContext(ctx, network, address, dial)
+	}
+	return dial(ctx, network, address)
+}
+
 // buildUpstreamTransport 构建上游请求的 Transport
 // 使用配置文件中的连接池参数，支持生产环境调优
 //
@@ -1379,7 +1387,7 @@ func newUpstreamDialer() *net.Dialer {
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
-		DialContext:           newUpstreamDialer().DialContext,
+		DialContext:           dialUpstreamContext,
 		TLSHandshakeTimeout:   defaultUpstreamTLSHandshakeTimeout,
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
@@ -1460,7 +1468,7 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
-		dialer := tlsfingerprint.NewDialer(profile, nil)
+		dialer := tlsfingerprint.NewDialer(profile, dialUpstreamContext)
 		transport.DialTLSContext = dialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)

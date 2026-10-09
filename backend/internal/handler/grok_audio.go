@@ -344,7 +344,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 		model = endpoint
 	}
 
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	h.submitMandatoryUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
 			APIKey:             apiKey,

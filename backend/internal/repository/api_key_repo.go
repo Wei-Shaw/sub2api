@@ -976,6 +976,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		}
 	}
 	return &service.Group{
+		OwnerUserID:                     g.OwnerUserID,
+		SupplierRate:                    g.SupplierRate,
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     derefString(g.Description),

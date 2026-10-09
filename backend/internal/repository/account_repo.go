@@ -140,6 +140,7 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	}
 
 	builder := client.Account.Create().
+		SetNillableOwnerUserID(account.OwnerUserID).
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
@@ -1984,6 +1985,7 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bind groups failed: account=%d err=%v", accountID, err)
 	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, accountID)
 	return nil
 }
 
@@ -2130,6 +2132,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
+			dbaccount.OwnerUserIDIsNil(),
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
@@ -2164,6 +2167,7 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
+			dbaccount.OwnerUserIDIsNil(),
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
@@ -2184,6 +2188,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
+			dbaccount.OwnerUserIDIsNil(),
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
@@ -2208,6 +2213,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
+			dbaccount.OwnerUserIDIsNil(),
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
@@ -3620,6 +3626,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 	rateMultiplier := m.RateMultiplier
 
 	return &service.Account{
+		OwnerUserID:             m.OwnerUserID,
 		ID:                      m.ID,
 		Name:                    m.Name,
 		Notes:                   m.Notes,

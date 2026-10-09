@@ -299,6 +299,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		proxyID = source.ProxyFallbackOriginID
 	}
 	input := &CreateAccountInput{
+		OwnerUserID:           cloneAccountValuePointer(source.OwnerUserID),
 		Name:                  duplicateAccountName(source.Name),
 		Notes:                 cloneAccountValuePointer(source.Notes),
 		Platform:              source.Platform,
@@ -425,6 +426,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
+		OwnerUserID: input.OwnerUserID,
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
@@ -436,6 +438,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if input.Status != "" {
+		if input.Status != StatusActive && input.Status != StatusDisabled {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_STATUS", "invalid account status")
+		}
+		account.Status = input.Status
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -1438,6 +1446,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		priority = parent.Priority
 	}
 	shadow := &Account{
+		OwnerUserID:     cloneAccountValuePointer(parent.OwnerUserID),
 		Name:            name,
 		Platform:        PlatformOpenAI,
 		Type:            AccountTypeOAuth,

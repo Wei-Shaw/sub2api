@@ -69,6 +69,7 @@ func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, accou
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	RestrictRelayUpstreamRequest(req, account)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", sanitizeUpstreamErrorMessage(err.Error())))

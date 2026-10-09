@@ -240,7 +240,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			).Info("gateway.web_search.search_price_per_1k_explicit_free")
 		}
 	}
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	h.submitMandatoryUsageRecordTask(service.WithRelayUsage(c.Request.Context(), account), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result: &service.ForwardResult{
 				RequestID:   searchRequestID,

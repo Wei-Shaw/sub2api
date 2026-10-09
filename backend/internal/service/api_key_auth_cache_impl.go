@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24: group model_allowlist field (renamed from models_list_config, enforcing semantics)
+const apiKeyAuthSnapshotVersion = 25 // v25: private relay ownership and supplier settlement rate
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -379,6 +379,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	}
 	if apiKey.Group != nil {
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
+			OwnerUserID:                     apiKey.Group.OwnerUserID,
+			SupplierRate:                    apiKey.Group.SupplierRate,
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
 			Platform:                        apiKey.Group.Platform,
@@ -480,6 +482,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	}
 	if snapshot.Group != nil {
 		apiKey.Group = &Group{
+			OwnerUserID:                     snapshot.Group.OwnerUserID,
+			SupplierRate:                    snapshot.Group.SupplierRate,
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
 			Platform:                        snapshot.Group.Platform,

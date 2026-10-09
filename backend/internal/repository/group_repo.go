@@ -95,6 +95,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
 	builder := client.Group.Create().
+		SetNillableOwnerUserID(groupIn.OwnerUserID).
+		SetSupplierRate(groupIn.SupplierRate).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
@@ -283,6 +285,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
 	builder := r.client.Group.UpdateOneID(groupIn.ID).
+		SetSupplierRate(groupIn.SupplierRate).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).

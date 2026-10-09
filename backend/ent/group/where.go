@@ -70,6 +70,16 @@ func DeletedAt(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDeletedAt, v))
 }
 
+// OwnerUserID applies equality check predicate on the "owner_user_id" field. It's identical to OwnerUserIDEQ.
+func OwnerUserID(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOwnerUserID, v))
+}
+
+// SupplierRate applies equality check predicate on the "supplier_rate" field. It's identical to SupplierRateEQ.
+func SupplierRate(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSupplierRate, v))
+}
+
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
 func Name(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldName, v))
@@ -473,6 +483,96 @@ func DeletedAtIsNil() predicate.Group {
 // DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
 func DeletedAtNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldDeletedAt))
+}
+
+// OwnerUserIDEQ applies the EQ predicate on the "owner_user_id" field.
+func OwnerUserIDEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDNEQ applies the NEQ predicate on the "owner_user_id" field.
+func OwnerUserIDNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDIn applies the In predicate on the "owner_user_id" field.
+func OwnerUserIDIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldOwnerUserID, vs...))
+}
+
+// OwnerUserIDNotIn applies the NotIn predicate on the "owner_user_id" field.
+func OwnerUserIDNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldOwnerUserID, vs...))
+}
+
+// OwnerUserIDGT applies the GT predicate on the "owner_user_id" field.
+func OwnerUserIDGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDGTE applies the GTE predicate on the "owner_user_id" field.
+func OwnerUserIDGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDLT applies the LT predicate on the "owner_user_id" field.
+func OwnerUserIDLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDLTE applies the LTE predicate on the "owner_user_id" field.
+func OwnerUserIDLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldOwnerUserID, v))
+}
+
+// OwnerUserIDIsNil applies the IsNil predicate on the "owner_user_id" field.
+func OwnerUserIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldOwnerUserID))
+}
+
+// OwnerUserIDNotNil applies the NotNil predicate on the "owner_user_id" field.
+func OwnerUserIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldOwnerUserID))
+}
+
+// SupplierRateEQ applies the EQ predicate on the "supplier_rate" field.
+func SupplierRateEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSupplierRate, v))
+}
+
+// SupplierRateNEQ applies the NEQ predicate on the "supplier_rate" field.
+func SupplierRateNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSupplierRate, v))
+}
+
+// SupplierRateIn applies the In predicate on the "supplier_rate" field.
+func SupplierRateIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSupplierRate, vs...))
+}
+
+// SupplierRateNotIn applies the NotIn predicate on the "supplier_rate" field.
+func SupplierRateNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSupplierRate, vs...))
+}
+
+// SupplierRateGT applies the GT predicate on the "supplier_rate" field.
+func SupplierRateGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSupplierRate, v))
+}
+
+// SupplierRateGTE applies the GTE predicate on the "supplier_rate" field.
+func SupplierRateGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSupplierRate, v))
+}
+
+// SupplierRateLT applies the LT predicate on the "supplier_rate" field.
+func SupplierRateLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSupplierRate, v))
+}
+
+// SupplierRateLTE applies the LTE predicate on the "supplier_rate" field.
+func SupplierRateLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSupplierRate, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.

@@ -67,6 +67,20 @@ func (_c *AccountCreate) SetNillableDeletedAt(v *time.Time) *AccountCreate {
 	return _c
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_c *AccountCreate) SetOwnerUserID(v int64) *AccountCreate {
+	_c.mutation.SetOwnerUserID(v)
+	return _c
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableOwnerUserID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetOwnerUserID(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *AccountCreate) SetName(v string) *AccountCreate {
 	_c.mutation.SetName(v)
@@ -696,6 +710,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(account.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
+	}
+	if value, ok := _c.mutation.OwnerUserID(); ok {
+		_spec.SetField(account.FieldOwnerUserID, field.TypeInt64, value)
+		_node.OwnerUserID = &value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(account.FieldName, field.TypeString, value)
@@ -1444,6 +1462,9 @@ func (u *AccountUpsertOne) UpdateNewValues() *AccountUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(account.FieldCreatedAt)
+		}
+		if _, exists := u.create.mutation.OwnerUserID(); exists {
+			s.SetIgnore(account.FieldOwnerUserID)
 		}
 	}))
 	return u
@@ -2228,6 +2249,9 @@ func (u *AccountUpsertBulk) UpdateNewValues() *AccountUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(account.FieldCreatedAt)
+			}
+			if _, exists := b.mutation.OwnerUserID(); exists {
+				s.SetIgnore(account.FieldOwnerUserID)
 			}
 		}
 	}))

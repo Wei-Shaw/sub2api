@@ -179,6 +179,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 
 func groupFromServiceBase(g *service.Group) Group {
 	return Group{
+		OwnerUserID:                     g.OwnerUserID,
+		SupplierRate:                    g.SupplierRate,
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     g.Description,
@@ -246,6 +248,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		openCodeGoUsage = state
 	}
 	out := &Account{
+		OwnerUserID:             a.OwnerUserID,
 		ID:                      a.ID,
 		Name:                    a.Name,
 		Notes:                   a.Notes,

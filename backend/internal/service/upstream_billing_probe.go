@@ -677,6 +677,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(account)
 	}
+	RestrictRelayUpstreamRequest(req, account)
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "request_failed", 0)

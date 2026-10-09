@@ -216,6 +216,7 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	RestrictRelayUpstreamRequest(req, account)
 	return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 }
 

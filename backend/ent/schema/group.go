@@ -35,6 +35,9 @@ func (Group) Mixin() []ent.Mixin {
 
 func (Group) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("owner_user_id").Optional().Nillable().Immutable(),
+		field.Float("supplier_rate").Default(0.9).Min(0).Max(1).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,8)"}),
 		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重用
 		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
 		field.String("name").

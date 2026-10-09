@@ -204,6 +204,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/relay',
+    name: 'MyRelay',
+    component: () => import('@/views/user/RelayView.vue'),
+    meta: { requiresAuth: true, title: 'My relay', titleKey: 'relay.title' }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),

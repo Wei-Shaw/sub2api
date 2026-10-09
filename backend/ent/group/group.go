@@ -22,6 +22,10 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
 	FieldDeletedAt = "deleted_at"
+	// FieldOwnerUserID holds the string denoting the owner_user_id field in the database.
+	FieldOwnerUserID = "owner_user_id"
+	// FieldSupplierRate holds the string denoting the supplier_rate field in the database.
+	FieldSupplierRate = "supplier_rate"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
@@ -226,6 +230,8 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,
+	FieldOwnerUserID,
+	FieldSupplierRate,
 	FieldName,
 	FieldDescription,
 	FieldRateMultiplier,
@@ -324,6 +330,10 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
 	UpdateDefaultUpdatedAt func() time.Time
+	// DefaultSupplierRate holds the default value on creation for the "supplier_rate" field.
+	DefaultSupplierRate float64
+	// SupplierRateValidator is a validator for the "supplier_rate" field. It is called by the builders before save.
+	SupplierRateValidator func(float64) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
@@ -457,6 +467,16 @@ func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByDeletedAt orders the results by the deleted_at field.
 func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
+}
+
+// ByOwnerUserID orders the results by the owner_user_id field.
+func ByOwnerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOwnerUserID, opts...).ToFunc()
+}
+
+// BySupplierRate orders the results by the supplier_rate field.
+func BySupplierRate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSupplierRate, opts...).ToFunc()
 }
 
 // ByName orders the results by the name field.

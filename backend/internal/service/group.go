@@ -16,6 +16,8 @@ type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
 type Group struct {
+	OwnerUserID    *int64
+	SupplierRate   float64
 	ID             int64
 	Name           string
 	Description    string
@@ -145,6 +147,22 @@ type Group struct {
 // surfaced and bound to accounts while running in simple mode.
 func IsGroupBindableInSimpleMode(group *Group) bool {
 	return group != nil && group.Platform != PlatformComposite
+}
+
+func (g *Group) IsPrivate() bool { return g != nil && g.OwnerUserID != nil }
+
+func (g *Group) IsPublicRelay() bool {
+	return g != nil && !g.IsPrivate() && !g.IsExclusive && !g.IsSubscriptionType()
+}
+
+func (g *Group) CanUse(user *User) bool {
+	if g == nil || user == nil {
+		return false
+	}
+	if g.IsPrivate() {
+		return *g.OwnerUserID == user.ID
+	}
+	return user.CanBindGroup(g.ID, g.IsExclusive)
 }
 
 func (g *Group) IsActive() bool {

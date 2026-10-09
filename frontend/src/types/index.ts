@@ -565,6 +565,8 @@ export interface ReasoningEffortMapping {
 }
 
 export interface Group {
+	owner_user_id?: number
+	supplier_rate?: number
   id: number
   name: string
   description: string | null
@@ -791,6 +793,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+	supplier_rate?: number
   name: string
   description?: string | null
   platform?: GroupPlatform
@@ -856,6 +859,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+	supplier_rate?: number
   name?: string
   description?: string | null
   platform?: GroupPlatform
@@ -1206,6 +1210,7 @@ export interface OpenCodeGoUsageSettings {
 }
 
 export interface Account {
+	owner_user_id?: number
   id: number
   name: string
   notes?: string | null

@@ -1168,7 +1168,7 @@ func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool
 	}
 	if groupID == nil {
 		// 无分组的 API Key 只能使用未分组的账号
-		return len(account.AccountGroups) == 0
+		return account.OwnerUserID == nil && len(account.AccountGroups) == 0
 	}
 	for _, ag := range account.AccountGroups {
 		if ag.GroupID == *groupID {

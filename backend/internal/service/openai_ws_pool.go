@@ -2115,6 +2115,9 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 }
 
 func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConn, error) {
+	if req.Account != nil && req.Account.OwnerUserID != nil {
+		ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamPublicHostsOnly(ctx))
+	}
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
 	}

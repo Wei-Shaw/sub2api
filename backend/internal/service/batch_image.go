@@ -121,6 +121,9 @@ type BatchImageJob struct {
 	CancelledCount int
 
 	EstimatedCost           float64
+	RelayGroupID            *int64
+	SupplierUserID          *int64
+	SupplierRate            float64
 	HoldAmount              *float64
 	ActualCost              *float64
 	BaseUnitPrice           float64
@@ -181,6 +184,9 @@ type CreateBatchImageJobParams struct {
 	CancelledCount int
 
 	EstimatedCost           float64
+	RelayGroupID            *int64
+	SupplierUserID          *int64
+	SupplierRate            float64
 	HoldAmount              *float64
 	ActualCost              *float64
 	BaseUnitPrice           float64

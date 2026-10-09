@@ -217,6 +217,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
+				if apiKey.Group.IsPrivate() {
+					break
+				}
 				abortWithAPIKeyQuotaError(c)
 				return
 			case service.StatusAPIKeyExpired:
@@ -229,7 +232,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key 已过期")
 				return
 			}
-			if apiKey.IsQuotaExhausted() {
+			if !apiKey.Group.IsPrivate() && apiKey.IsQuotaExhausted() {
 				abortWithAPIKeyQuotaError(c)
 				return
 			}
@@ -260,7 +263,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+				if !apiKey.Group.IsPrivate() && apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}
@@ -428,10 +431,13 @@ func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {
 		return true
 	}
 	group := apiKey.Group
+	if group.IsPrivate() {
+		return group.CanUse(apiKey.User)
+	}
 	if group.IsSubscriptionType() {
 		return true
 	}
-	return apiKey.User.CanBindGroup(group.ID, group.IsExclusive)
+	return group.CanUse(apiKey.User)
 }
 
 func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool) {
