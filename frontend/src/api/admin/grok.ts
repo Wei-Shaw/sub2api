@@ -130,6 +130,33 @@ export interface GrokQuotaResetResult {
   message: string
 }
 
+export interface GrokUsageResetCard {
+  token_id: string
+  valid_from: string
+  expires_at: string
+}
+
+export interface GrokUsageResetCards {
+  cards: GrokUsageResetCard[]
+}
+
+// Web SSO is sent only in these administrator-initiated request bodies. It must
+// never be placed in a URL, account credential, browser storage, or query key.
+export async function queryUsageResetCards(id: number, ssoToken: string): Promise<GrokUsageResetCards> {
+  const { data } = await apiClient.post<GrokUsageResetCards>(`/admin/grok/accounts/${id}/reset-cards/query`, {
+    sso_token: ssoToken
+  })
+  return data
+}
+
+export async function redeemUsageResetCard(id: number, ssoToken: string, tokenId: string): Promise<GrokUsageResetCards> {
+  const { data } = await apiClient.post<GrokUsageResetCards>(`/admin/grok/accounts/${id}/reset-cards/redeem`, {
+    sso_token: ssoToken,
+    token_id: tokenId
+  })
+  return data
+}
+
 export async function generateAuthUrl(
   payload: GrokAuthUrlRequest
 ): Promise<GrokAuthUrlResponse> {
