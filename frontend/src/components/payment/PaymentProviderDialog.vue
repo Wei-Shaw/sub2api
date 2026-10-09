@@ -160,7 +160,7 @@
               <span v-else class="text-red-500"> *</span>
             </label>
             <textarea
-              v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'"
+              v-if="field.multiline || (field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey')"
               v-model="config[field.key]"
               rows="3"
               class="input font-mono text-xs"
@@ -324,6 +324,7 @@ import {
   PAYMENT_MODE_REDIRECT,
   STRIPE_SDK_API_VERSION,
   getAvailableTypes,
+  getProviderConfigFields,
   extractBaseUrl,
   parseEasyPayCustomMethods,
   serializeEasyPayCustomMethods,
@@ -469,10 +470,13 @@ const availableTypes = computed(() => {
 })
 
 const resolvedFields = computed(() => {
-  const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
+  const fields = getProviderConfigFields(form.provider_key, config)
   return fields.map(f => ({
     ...f,
-    label: f.label || t(`admin.settings.payment.field_${f.key}`),
+    label: f.label || t(f.labelKey || `admin.settings.payment.field_${f.key}`),
+    options: f.key === 'authMode'
+      ? f.options?.map(option => ({ ...option, label: t(option.label) }))
+      : f.options,
   }))
 })
 
@@ -671,12 +675,15 @@ function handleSave() {
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored
   // value (backend merges blanks by preserving the existing secret).
-  for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
+  for (const f of resolvedFields.value) {
     if (f.optional) continue
-    if (props.editing && f.sensitive) continue
+    // Newly selected credentials cannot rely on the old mode's masked values.
+    const unchangedMode = !f.visibleWhen ||
+      (props.editing?.config[f.visibleWhen.key] || 'public_key') === f.visibleWhen.value
+    if (props.editing && f.sensitive && unchangedMode) continue
     const val = (config[f.key] || '').trim()
     if (!val) {
-      const label = f.label || t(`admin.settings.payment.field_${f.key}`)
+      const label = f.label
       emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
       return
     }
@@ -689,6 +696,8 @@ function handleSave() {
   )
   const filteredConfig: Record<string, string> = {}
   for (const [k, v] of Object.entries(config)) {
+    const field = PROVIDER_CONFIG_FIELDS[form.provider_key]?.find(candidate => candidate.key === k)
+    if (field?.visibleWhen && !resolvedFields.value.some(candidate => candidate.key === k)) continue
     if (!v || !v.trim()) {
       if (clearableConfigKeys.has(k)) {
         filteredConfig[k] = ''
