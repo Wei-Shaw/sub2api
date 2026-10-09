@@ -406,6 +406,9 @@ func prepareOpenAIInputTokensCountRequest(
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, strings.TrimSpace(defaultMappedModel))
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 
+	// Match the generation path: reasoning replay depends on the target model,
+	// not the client alias that was mapped to it.
+	anthropicReq.Model = upstreamModel
 	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
 	if err != nil {
 		return nil, fmt.Errorf("convert anthropic request to responses: %w", err)
