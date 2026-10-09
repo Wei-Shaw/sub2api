@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/google/uuid"
+	"golang.org/x/mod/semver"
 )
 
 // codexUpstreamMinVersion 上游 /backend-api/codex 接受的最低 version 头：
@@ -223,28 +224,27 @@ func enforceCodexIdentityHeadersWithUA(h http.Header, overrideUA string) {
 	if h == nil || h.Get("originator") == "" {
 		return
 	}
-	if !codexIdentityEnforcement.Load() {
-		pairCodexIdentityHeaders(h)
-		return
+	var identity codexOutboundIdentity
+	if codexIdentityEnforcement.Load() {
+		identity = resolveCodexOutboundIdentity(overrideUA)
+	} else {
+		identity = resolveCodexTransparentIdentity(h.Get("user-agent"), resolveCodexOutboundIdentity(""))
 	}
-	identity := resolveCodexOutboundIdentity(overrideUA)
 	h.Set("user-agent", identity.userAgent)
 	h.Set("originator", identity.originator)
 	h.Set("version", identity.version)
 }
 
-// pairCodexIdentityHeaders 是关闭强制统一后的兜底收口：保留客户端真实身份，
-// 仅保证 originator 与最终 User-Agent 首段配套、version 不低于上游门槛（issue #3901）。
-func pairCodexIdentityHeaders(h http.Header) {
-	originator, pairedUA, ok := openai.PairCodexClientIdentity(h.Get("user-agent"))
+// resolveCodexTransparentIdentity selects one complete identity without mutating
+// headers. Unsupported identities fall back as a unit, never field by field.
+func resolveCodexTransparentIdentity(userAgent string, fallback codexOutboundIdentity) codexOutboundIdentity {
+	originator, pairedUA, ok := openai.PairCodexClientIdentity(userAgent)
 	if !ok {
-		identity := resolveCodexOutboundIdentity("")
-		originator, pairedUA = identity.originator, identity.userAgent
-		h.Set("version", identity.version)
+		return fallback
 	}
-	h.Set("user-agent", pairedUA)
-	h.Set("originator", originator)
-	if v := strings.TrimSpace(h.Get("version")); v != "" && CompareVersions(v, codexUpstreamMinVersion) < 0 {
-		h.Set("version", resolveCodexOutboundIdentity("").version)
+	version := NormalizeCodexClientVersion(openai.CodexUserAgentVersion(pairedUA))
+	if !semver.IsValid("v"+version) || semver.Compare("v"+version, "v"+codexUpstreamMinVersion) < 0 {
+		return fallback
 	}
+	return codexOutboundIdentity{userAgent: pairedUA, originator: originator, version: version}
 }
