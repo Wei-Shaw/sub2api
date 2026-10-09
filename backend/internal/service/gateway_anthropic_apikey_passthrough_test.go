@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -174,7 +173,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应应用账号级模型映射")
+	require.Equal(t, body, upstream.lastBody, "strict passthrough does not map models")
 
 	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
@@ -252,7 +251,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 	require.NoError(t, err)
 
-	require.Equal(t, "claude-3-opus-20240229", gjson.GetBytes(upstream.lastBody, "model").String(), "count_tokens 透传模式应应用账号级模型映射")
+	require.Equal(t, body, upstream.lastBody, "strict count_tokens does not map models")
 	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "cookie"))
@@ -295,7 +294,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BearerAuthScheme(t *testing.T
 		context.Background(), c, account, []byte(`{"model":"gpt-oss:20b","messages":[]}`), "ollama-key",
 	)
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages?beta=true", msgReq.URL.String())
+	require.Equal(t, "https://ollama.com/v1/messages", msgReq.URL.String())
 	require.JSONEq(t, `{"model":"gpt-oss:20b","messages":[]}`, string(wireBody))
 	require.Equal(t, "Bearer ollama-key", getHeaderRaw(msgReq.Header, "authorization"))
 	require.Empty(t, getHeaderRaw(msgReq.Header, "x-api-key"))
@@ -305,7 +304,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BearerAuthScheme(t *testing.T
 		context.Background(), c, account, []byte(`{"model":"gpt-oss:20b","messages":[]}`), "ollama-key",
 	)
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages/count_tokens?beta=true", countReq.URL.String())
+	require.Equal(t, "https://ollama.com/v1/messages/count_tokens", countReq.URL.String())
 	require.Equal(t, "Bearer ollama-key", getHeaderRaw(countReq.Header, "authorization"))
 	require.Empty(t, getHeaderRaw(countReq.Header, "x-api-key"))
 	require.Empty(t, getHeaderRaw(countReq.Header, "cookie"))
@@ -439,8 +438,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 				result, err := svc.Forward(context.Background(), c, account, parsed)
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				require.Equal(t, tt.expectedModel, gjson.GetBytes(upstream.lastBody, "model").String(),
-					"Forward 上游请求体中的模型应为: %s", tt.expectedModel)
+				require.Equal(t, tt.model, gjson.GetBytes(upstream.lastBody, "model").String(),
+					"Forward 上游请求体中的模型应为: %s", tt.model)
 			} else {
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
 
@@ -460,8 +459,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 
 				err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 				require.NoError(t, err)
-				require.Equal(t, tt.expectedModel, gjson.GetBytes(upstream.lastBody, "model").String(),
-					"CountTokens 上游请求体中的模型应为: %s", tt.expectedModel)
+				require.Equal(t, tt.model, gjson.GetBytes(upstream.lastBody, "model").String(),
+					"CountTokens 上游请求体中的模型应为: %s", tt.model)
 			}
 		})
 	}
@@ -518,16 +517,15 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.NoError(t, err)
 
 	sentBody := upstream.lastBody
-	require.Equal(t, "claude-sonnet-4-5-20241022", gjson.GetBytes(sentBody, "model").String(), "model 应被映射")
+	require.Equal(t, body, sentBody, "all fields including model remain unchanged")
 	require.Equal(t, "You are a helpful assistant.", gjson.GetBytes(sentBody, "system.0.text").String(), "system 字段不应被修改")
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
 	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
-	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
-		"max_tokens 作为生成参数应被 count_tokens 过滤剥离")
+	require.True(t, gjson.GetBytes(sentBody, "max_tokens").Exists(), "provider validates generation-only fields")
 }
 
-func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
+func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensPreservesGenerationFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -574,17 +572,16 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.NoError(t, err)
 
 	sentBody := upstream.lastBody
-	require.False(t, gjson.GetBytes(sentBody, "temperature").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "top_p").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "top_k").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "stream").Exists())
-	require.False(t, gjson.GetBytes(sentBody, "stop_sequences").Exists())
+	require.True(t, gjson.GetBytes(sentBody, "temperature").Exists())
+	require.True(t, gjson.GetBytes(sentBody, "top_p").Exists())
+	require.True(t, gjson.GetBytes(sentBody, "top_k").Exists())
+	require.True(t, gjson.GetBytes(sentBody, "stream").Exists())
+	require.True(t, gjson.GetBytes(sentBody, "stop_sequences").Exists())
 	require.Equal(t, "claude-sonnet-4-20250514", gjson.GetBytes(sentBody, "model").String())
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
 	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
-	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
-		"count_tokens 请求不得携带生成参数 max_tokens")
+	require.True(t, gjson.GetBytes(sentBody, "max_tokens").Exists(), "provider validates generation-only fields")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
 }
 
@@ -723,20 +720,10 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokens404PassthroughNotE
 
 			err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 
-			if tt.wantPassthrough {
-				// 返回 nil（不记录为错误），HTTP 状态码 404 + Anthropic 错误体
-				require.NoError(t, err)
-				require.Equal(t, http.StatusNotFound, rec.Code)
-				var errResp map[string]any
-				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errResp))
-				require.Equal(t, "error", errResp["type"])
-				errObj, ok := errResp["error"].(map[string]any)
-				require.True(t, ok)
-				require.Equal(t, "not_found_error", errObj["type"])
-			} else {
-				require.Error(t, err)
-				require.Equal(t, tt.statusCode, rec.Code)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.statusCode, rec.Code)
+			require.Equal(t, tt.respBody, rec.Body.String())
+
 		})
 	}
 }
@@ -769,7 +756,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BuildRequestRejectsInvalidBas
 	require.Error(t, err)
 }
 
-func TestGatewayService_AnthropicAPIKeyPassthrough_StripsDeferredToolCacheControl(t *testing.T) {
+func TestGatewayService_AnthropicAPIKeyPassthrough_PreservesDeferredToolCacheControl(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -780,8 +767,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StripsDeferredToolCacheContro
 
 	_, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "k")
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
-	require.False(t, gjson.GetBytes(wireBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.1.cache_control").Exists())
 	require.True(t, gjson.GetBytes(wireBody, "tools.2.cache_control").Exists())
 	require.True(t, gjson.GetBytes(wireBody, "tools.3.cache_control").Exists())
 
@@ -789,8 +776,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StripsDeferredToolCacheContro
 	require.NoError(t, err)
 	countBody, err := io.ReadAll(countReq.Body)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(countBody, "tools.0.cache_control").Exists())
-	require.False(t, gjson.GetBytes(countBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.1.cache_control").Exists())
 	require.True(t, gjson.GetBytes(countBody, "tools.2.cache_control").Exists())
 	require.True(t, gjson.GetBytes(countBody, "tools.3.cache_control").Exists())
 }
@@ -1432,7 +1419,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDataIntervalTimeout(
 	require.False(t, result.clientDisconnect)
 }
 
-func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuringIdle(t *testing.T) {
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDoesNotInjectKeepaliveDuringIdle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -1476,7 +1463,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuring
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+	require.NotContains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
