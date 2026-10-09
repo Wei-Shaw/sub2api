@@ -101,6 +101,7 @@ type OpenAIQuotaAutoResetService struct {
 	cancel  context.CancelFunc
 	queue   chan int64
 	pending sync.Map
+	scopes  sync.Map
 	owner   string
 	start   sync.Once
 	stop    sync.Once
@@ -276,6 +277,7 @@ type openAIAutoResetAssessment struct {
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
+	defer s.scopes.Delete(accountID)
 	ctx = withOpenAIAutoResetContext(ctx)
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil {
@@ -292,13 +294,32 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return nil
 	}
 
+	initialMode := config.Mode
+	// Bound policy work below the distributed lease; legacy behavior is unchanged.
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 50*time.Second)
+		defer cancel()
+		release, ok := s.acquireResetPolicyLease(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
+		account, err = s.accountRepo.GetByID(ctx, accountID)
+		if err != nil || account == nil {
+			return err
+		}
+		config = ResolveOpenAIAutoResetCreditConfig(account)
+		if !config.Enabled || config.Mode != initialMode {
+			return nil
+		}
+	}
 	now := time.Now()
 	assessment := s.assessExtra(account, config, now)
 	state := openAIAutoResetStateFromExtra(account.Extra)
-	// 达到用卡阈值本应立即查询以便用卡；但 10 分钟内已确认无卡时，重查不会改变结论，
-	// 只会让调度热路径的通知把同一账号的上游额度接口打到十几秒一次。
+	// Preserve the upstream no-credit cooldown for every automatic policy.
 	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) ||
-		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now))
+		((config.Mode != OpenAIAutoResetModeThreshold || assessment.resetReached) && !openAIAutoResetNoCreditConfirmed(state, now))
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
@@ -348,10 +369,18 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return err
 	}
 	config = ResolveOpenAIAutoResetCreditConfig(account)
-	if !config.Enabled {
+	if !config.Enabled || config.Mode != initialMode {
 		return nil
 	}
+	now = time.Now()
 	assessment = s.assessUsage(usage, account, config, now)
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		assessment.resetReached = config.Mode != OpenAIAutoResetModeExpiring && s.exhaustedCohort(ctx, account, usage, now)
+		if (config.Mode == OpenAIAutoResetModeExpiringOrExhausted || config.Mode == OpenAIAutoResetModeExpiring) && assessExpiringUsefulReset(usage, account, config, now) {
+			assessment.resetReached = true
+			assessment.triggerWindow = "expiring"
+		}
+	}
 	available := usage.RateLimitResetCredits.AvailableCount
 	if !assessment.resetReached {
 		status := OpenAIAutoResetStatusNoCredit
@@ -404,6 +433,22 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	account, err = s.accountRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account).Enabled {
 		return err
+	}
+	latestConfig := ResolveOpenAIAutoResetCreditConfig(account)
+	if latestConfig.Mode != config.Mode || !account.IsActive() || !account.Schedulable {
+		return nil
+	}
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		// Cancel if expiry config changed or elapsed while checking the cohort.
+		if assessment.triggerWindow == "expiring" && !assessExpiringUsefulReset(usage, account, latestConfig, time.Now()) {
+			return nil
+		}
+		if assessment.triggerWindow != "expiring" && !openAIResetNativeExhausted(usage, time.Now()) {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope:          "openai_auto_reset_credit",
