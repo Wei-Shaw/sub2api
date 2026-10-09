@@ -8,7 +8,7 @@ import (
 )
 
 func TestGPTReasoningSurvivesAnthropicToolRoundTrip(t *testing.T) {
-	for _, model := range []string{"gpt-6-luna", "gpt-6.1-sol", "gpt-5.3-codex"} {
+	for _, model := range []string{"gpt-6-luna", "openai/gpt-6-luna", "gpt-6.1-sol", "gpt-5.3-codex"} {
 		t.Run(model, func(t *testing.T) {
 			original := &ResponsesResponse{ID: "resp_tool", Model: model, Status: "completed", Output: []ResponsesOutput{{Type: "reasoning", EncryptedContent: "gAAAA_PROVIDER_CIPHERTEXT", Summary: []ResponsesSummary{{Type: "summary_text", Text: "Keep the original requirement."}}}, {Type: "function_call", CallID: "call_read", Name: "Read", Arguments: `{"file_path":"main.go"}`}}}
 			reply := ResponsesToAnthropic(original, model)
@@ -36,18 +36,40 @@ func TestGPTReasoningSurvivesAnthropicToolRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGrokReasoningReplayFiltersOnlyForeignGPTCiphertext(t *testing.T) {
-	for _, model := range []string{"grok-4.5", "xai/grok-4.5"} {
-		t.Run(model, func(t *testing.T) {
-			next, err := AnthropicToResponses(&AnthropicRequest{Model: model, Messages: []AnthropicMessage{{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"foreign summary","signature":"gAAAA_FOREIGN"},{"type":"thinking","thinking":"local summary","signature":"enc-grok-local"},{"type":"thinking","thinking":"unsigned summary","signature":""},{"type":"text","text":"ok"}]`)}}})
+func TestAnthropicToResponses_ReasoningCiphertextMatchesTarget(t *testing.T) {
+	for _, tc := range []struct {
+		model   string
+		keepGPT bool
+	}{
+		{model: "gpt-6-luna", keepGPT: true},
+		{model: "openai/gpt-6-luna", keepGPT: true},
+		{model: "gpt-5.3-codex", keepGPT: true},
+		{model: "grok-4.5"},
+		{model: "xai/grok-4.5"},
+		{model: "muse-spark-1.3"},
+		{model: "opencode/muse-spark-1.3-contributior-free"},
+		{model: "custom-model-alias"},
+		{model: "gpt-4o"},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			next, err := AnthropicToResponses(&AnthropicRequest{Model: tc.model, Messages: []AnthropicMessage{{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"GPT summary","signature":"gAAAA_GPT_CIPHERTEXT"},{"type":"thinking","thinking":"local summary","signature":"enc-provider-local"},{"type":"thinking","thinking":"unsigned summary","signature":""},{"type":"text","text":"ok"}]`)}}})
 			require.NoError(t, err)
 			var items []ResponsesInputItem
 			require.NoError(t, json.Unmarshal(next.Input, &items))
-			require.Len(t, items, 2)
-			require.Equal(t, "reasoning", items[0].Type)
-			require.Equal(t, "enc-grok-local", items[0].EncryptedContent)
-			require.Equal(t, "message", items[1].Type)
-			require.NotContains(t, string(next.Input), "foreign summary")
+			localIndex := 0
+			if tc.keepGPT {
+				require.Len(t, items, 3)
+				require.Equal(t, "reasoning", items[0].Type)
+				require.Equal(t, "gAAAA_GPT_CIPHERTEXT", items[0].EncryptedContent)
+				localIndex = 1
+			} else {
+				require.Len(t, items, 2)
+				require.NotContains(t, string(next.Input), "gAAAA_GPT_CIPHERTEXT")
+				require.NotContains(t, string(next.Input), "GPT summary")
+			}
+			require.Equal(t, "reasoning", items[localIndex].Type)
+			require.Equal(t, "enc-provider-local", items[localIndex].EncryptedContent)
+			require.Equal(t, "message", items[localIndex+1].Type)
 			require.NotContains(t, string(next.Input), "unsigned summary")
 		})
 	}

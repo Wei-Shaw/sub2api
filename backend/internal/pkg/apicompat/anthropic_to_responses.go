@@ -291,9 +291,10 @@ func anthropicAssistantToResponses(raw json.RawMessage, model string) ([]Respons
 			continue
 		}
 		sig := strings.TrimSpace(b.Signature)
-		// GPT/Codex ciphertext is required for stateless reasoning replay. Only
-		// filter it for Grok targets, where xAI cannot decrypt foreign signatures.
-		if sig == "" || (isGrokResponsesTarget(model) && strings.HasPrefix(sig, "gAAAA")) {
+		// GPT/Codex ciphertext is required for stateless reasoning replay on
+		// recognized GPT reasoning targets. Preserve the existing foreign-signature
+		// filter for other providers and unknown model aliases.
+		if sig == "" || (strings.HasPrefix(sig, "gAAAA") && !isGPTReasoningResponsesTarget(model)) {
 			continue
 		}
 		// The Responses wire format requires a summary array even when the
@@ -551,11 +552,11 @@ func normalizeToolParameters(schema json.RawMessage) json.RawMessage {
 	return out
 }
 
-// Model names may be provider-qualified (for example xai/grok-4.5).
-func isGrokResponsesTarget(model string) bool {
+// Model names may be provider-qualified (for example openai/gpt-6-luna).
+func isGPTReasoningResponsesTarget(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	if i := strings.LastIndexByte(model, '/'); i >= 0 {
 		model = model[i+1:]
 	}
-	return model == "grok" || strings.HasPrefix(model, "grok-")
+	return isReasoningModel(model)
 }
