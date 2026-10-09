@@ -362,8 +362,13 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
-			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-			if !sendEvent(scanEvent{line: scanner.Text()}) {
+			line := scanner.Text()
+			// 心跳行不刷新数据间隔计时：只发心跳的上游挂流必须能被
+			// StreamDataIntervalTimeout 熔断（issue #7955）。
+			if !anthropicSSELineIsHeartbeat(line) {
+				atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+			}
+			if !sendEvent(scanEvent{line: line}) {
 				return
 			}
 		}
