@@ -1,0 +1,54 @@
+{
+  "gpt-5.6-sol": {
+    "cache_creation_input_token_cost": 0.00000625,
+    "cache_creation_input_token_cost_batches": 0.000003125,
+    "cache_creation_input_token_cost_flex": 0.000003125,
+    "cache_creation_input_token_cost_priority": 0.0000125,
+    "cache_read_input_token_cost": 5E-7,
+    "cache_read_input_token_cost_flex": 2.5E-7,
+    "cache_read_input_token_cost_priority": 0.000001,
+    "input_cost_per_token": 0.000005,
+    "input_cost_per_token_batches": 0.0000025,
+    "input_cost_per_token_flex": 0.0000025,
+    "input_cost_per_token_priority": 0.00001,
+    "long_context_input_token_threshold": 272000,
+    "long_context_input_cost_multiplier": 2.0,
+    "long_context_output_cost_multiplier": 1.5,
+    "litellm_provider": "openai",
+    "max_input_tokens": 1050000,
+    "max_output_tokens": 128000,
+    "max_tokens": 128000,
+    "mode": "chat",
+    "output_cost_per_token": 0.00003,
+    "output_cost_per_token_batches": 0.000015,
+    "output_cost_per_token_flex": 0.000015,
+    "output_cost_per_token_priority": 0.00006,
+    "supported_endpoints": [
+      "/v1/chat/completions",
+      "/v1/batch",
+      "/v1/responses"
+    ],
+    "supported_modalities": [
+      "text",
+      "image"
+    ],
+    "supported_output_modalities": [
+      "text"
+    ],
+    "supports_function_calling": true,
+    "supports_minimal_reasoning_effort": false,
+    "supports_native_streaming": true,
+    "supports_none_reasoning_effort": true,
+    "supports_parallel_function_calling": true,
+    "supports_pdf_input": true,
+    "supports_prompt_caching": true,
+    "supports_reasoning": true,
+    "supports_response_schema": true,
+    "supports_service_tier": true,
+    "supports_system_messages": true,
+    "supports_tool_choice": true,
+    "supports_vision": true,
+    "supports_web_search": true,
+    "supports_xhigh_reasoning_effort": true
+  }
+}

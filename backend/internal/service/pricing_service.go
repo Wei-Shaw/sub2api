@@ -140,14 +140,14 @@ var (
 		LiteLLMProvider:         "anthropic", Mode: "chat", SupportsPromptCaching: true,
 	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   5e-06,
-		InputCostPerTokenPriority:           1e-05,
-		OutputCostPerToken:                  3e-05,
-		OutputCostPerTokenPriority:          6e-05,
-		CacheCreationInputTokenCost:         6.25e-06,
-		CacheCreationInputTokenCostPriority: 1.25e-05,
-		CacheReadInputTokenCost:             5e-07,
-		CacheReadInputTokenCostPriority:     1e-06,
+		InputCostPerToken:                   4e-06,
+		InputCostPerTokenPriority:           8e-06,
+		OutputCostPerToken:                  2e-05,
+		OutputCostPerTokenPriority:          4e-05,
+		CacheCreationInputTokenCost:         5e-06,
+		CacheCreationInputTokenCostPriority: 1e-05,
+		CacheReadInputTokenCost:             4e-07,
+		CacheReadInputTokenCostPriority:     8e-07,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -547,7 +547,7 @@ func (s *PricingService) reloadCustomPricingLayers() error {
 		if readErr != nil {
 			return fmt.Errorf("read file failed: %w", readErr)
 		}
-		data, fingerprint, err = s.buildPricingData(body)
+		data, fingerprint, err = s.buildPricingDataFromSource(body, !s.isFallbackPricingBody(body))
 		if err != nil {
 			return fmt.Errorf("parse pricing data: %w", err)
 		}
@@ -616,6 +616,8 @@ func (s *PricingService) downloadPricingData() error {
 	pricingFile := s.getPricingFilePath()
 	if err := os.WriteFile(pricingFile, body, 0644); err != nil {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to save file: %v", err)
+	} else if err := os.Remove(s.fallbackPricingMarkerPath()); err != nil && !os.IsNotExist(err) {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to clear fallback cache marker: %v", err)
 	}
 
 	// 使用远程哈希作为同步锚点，防止重复下载
@@ -644,10 +646,17 @@ func (s *PricingService) downloadPricingData() error {
 
 // parsePricingData 解析价格数据（处理各种格式）
 func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModelPricing, error) {
+	return s.parsePricingDataFromSource(body, false)
+}
+
+func (s *PricingService) parsePricingDataFromSource(body []byte, defaultSource bool) (map[string]*LiteLLMModelPricing, error) {
 	// 首先解析为 map[string]json.RawMessage
 	var rawData map[string]json.RawMessage
 	if err := json.Unmarshal(body, &rawData); err != nil {
 		return nil, fmt.Errorf("parse raw JSON: %w", err)
+	}
+	if defaultSource {
+		migrateObsoleteDefaultSolPricing(rawData)
 	}
 	rawData = s.applyPricingOverrides(rawData)
 
@@ -1029,8 +1038,20 @@ func (s *PricingService) mergeOverrideOnlyModels(data map[string]*LiteLLMModelPr
 // 叠加层文件指纹。指纹在合并读取之前采样：并发改文件只会让存下的指纹落后于实际
 // 合并的数据、不会领先，下一轮定时比对因此会再次重建。
 func (s *PricingService) buildPricingData(body []byte) (map[string]*LiteLLMModelPricing, string, error) {
+	return s.buildPricingDataFromSource(body, true)
+}
+
+func (s *PricingService) buildPricingDataFromSource(body []byte, catalog bool) (map[string]*LiteLLMModelPricing, string, error) {
 	fingerprint := s.customPricingFilesFingerprint()
-	data, err := s.parsePricingData(body)
+	defaultSource := false
+	if catalog && s.cfg != nil {
+		switch strings.TrimSpace(s.cfg.Pricing.RemoteURL) {
+		case "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json",
+			"https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/refs/heads/main//model_prices_and_context_window.json":
+			defaultSource = true
+		}
+	}
+	data, err := s.parsePricingDataFromSource(body, defaultSource)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1046,7 +1067,7 @@ func (s *PricingService) loadPricingData(filePath string) error {
 		return fmt.Errorf("read file failed: %w", err)
 	}
 
-	pricingData, customFilesHash, err := s.buildPricingData(data)
+	pricingData, customFilesHash, err := s.buildPricingDataFromSource(data, filePath != s.cfg.Pricing.FallbackFile && !s.isFallbackPricingBody(data))
 	if err != nil {
 		return fmt.Errorf("parse pricing data: %w", err)
 	}
@@ -1149,6 +1170,16 @@ func (s *PricingService) useFallbackPricing() error {
 	}
 
 	pricingFile := s.getPricingFilePath()
+	hash := sha256.Sum256(data)
+	markerRoot, err := os.OpenRoot(s.cfg.Pricing.DataDir)
+	if err == nil {
+		err = markerRoot.WriteFile(filepath.Base(s.fallbackPricingMarkerPath()), []byte(hex.EncodeToString(hash[:])), 0644)
+		_ = markerRoot.Close()
+	}
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to mark fallback cache, skipping cache write: %v", err)
+		return s.loadPricingData(fallbackFile)
+	}
 	if err := os.WriteFile(pricingFile, data, 0644); err != nil { //nolint:gosec // G703: 路径为配置的数据目录 + 硬编码文件名，非请求输入
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to copy fallback: %v", err)
 	}
@@ -1299,6 +1330,9 @@ func (s *PricingService) buildModelLookupCandidates(modelLower string) []string 
 	} else {
 		// Prefer canonical model names for all other aliases (including models/xxx).
 		candidates = append([]string{normalized}, candidates...)
+	}
+	if lastSegment(normalized) == "gpt-5.6-sol-fast" {
+		candidates = append(candidates, "gpt-5.6-sol")
 	}
 
 	seen := make(map[string]struct{}, len(candidates))
