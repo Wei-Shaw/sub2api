@@ -60,6 +60,11 @@ func genericCompositePoolAccountServable(account *Account) bool {
 	case PlatformAnthropic, PlatformGemini, PlatformAntigravity:
 		return true
 	}
+	if account.RequiresOpenAIProtocolChain() {
+		// 由 handler 层委派 OpenAI 网关链转发（按模型分流 / 协议转换），不要求
+		// Anthropic 协议上游 base。
+		return true
+	}
 	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
 		return strings.TrimSpace(account.GetAnthropicProtocolBaseURL()) != ""
 	}
@@ -78,5 +83,21 @@ func GenericCompositePoolCountableAccount(account *Account) bool {
 	case PlatformAnthropic, PlatformGemini, PlatformAntigravity:
 		return true
 	}
+	if account.RequiresOpenAIProtocolChain() {
+		return false
+	}
 	return account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol()
+}
+
+// RequiresOpenAIProtocolChain 报告 adaptive 多协议账号在跨族账号池中是否只能由
+// OpenAI 网关链转发：按模型分流的聚合平台（OpenCode、Command Code）须按
+// protocol_rules / 模型目录逐模型选协议，只有该链（resolveUpstreamProtocol）实现了
+// 这一分流；没有 Anthropic 原生端点的供应商（如 Cline 只有 Chat Completions）须由
+// 该链做协议转换。其余 adaptive 账号（国产厂商、Ollama Cloud）具备 Anthropic 原生
+// 端点，仍走 generic 转发。
+func (a *Account) RequiresOpenAIProtocolChain() bool {
+	if a == nil || !a.IsMultiProtocolAPIKey() || !a.IsAdaptiveAPIProtocol() {
+		return false
+	}
+	return a.routesByModel() || strings.TrimSpace(a.GetAnthropicProtocolBaseURL()) == ""
 }

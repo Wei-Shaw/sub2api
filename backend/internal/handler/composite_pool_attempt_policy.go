@@ -232,6 +232,11 @@ func compositePoolAccountDelegatesToOpenAI(account *service.Account) bool {
 	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity:
 		return false
 	}
+	if account.RequiresOpenAIProtocolChain() {
+		// 按模型分流的聚合平台与无 Anthropic 原生端点的供应商：只有 OpenAI 网关链
+		// 能按模型选协议或完成协议转换。
+		return true
+	}
 	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
 		// 多协议账号走既有 generic Forward（servable 门已保证 Anthropic 协议
 		// base 非空）；不应停留在 Chat Completions 协议上被误委派。
