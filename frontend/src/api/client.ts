@@ -160,9 +160,13 @@ apiClient.interceptors.response.use(
         })
       }
 
+      // Binding validates local credentials inside the OAuth flow. Let the page
+      // show its error instead of treating it as an expired application login.
+      const isPendingOAuthBindLogin = url.split('?')[0].endsWith('/auth/oauth/pending/bind-login')
+
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
-      if (status === 401 && !originalRequest._retry) {
+      if (status === 401 && !originalRequest._retry && !isPendingOAuthBindLogin) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
