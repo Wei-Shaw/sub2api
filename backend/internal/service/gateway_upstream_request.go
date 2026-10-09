@@ -419,11 +419,13 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 
 // The legacy streaming beta is incompatible with the stable computer and
 // browser toolsets. The per-tool eager_input_streaming field remains available.
+// Applies to Sonnet 5.5 and Haiku 5.5, which share the computer_toolset_20260801
+// / browser_toolset_20260801 toolsets (Haiku 5.5 migration guide).
 func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) string {
 	if at := strings.IndexByte(modelID, '@'); at >= 0 {
 		modelID = modelID[:at] // Vertex's dated model ID
 	}
-	if !claude.IsSonnet55(modelID) {
+	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
 	for _, tool := range gjson.GetBytes(body, "tools").Array() {
