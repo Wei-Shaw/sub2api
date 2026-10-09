@@ -67,31 +67,6 @@ describe('SupportedModelChip', () => {
     }
   )
 
-  it('shows compact price summary on the chip', () => {
-    const wrapper = mount(SupportedModelChip, {
-      props: {
-        model: {
-          name: 'claude-test',
-          platform: '',
-          pricing: {
-            billing_mode: 'token',
-            input_price: 3e-6,
-            output_price: 15e-6,
-            cache_write_price: null,
-            cache_read_price: null,
-            image_input_price: null,
-            image_output_price: null,
-            per_request_price: null,
-            intervals: []
-          }
-        },
-        showPlatform: false
-      }
-    })
-    expect(wrapper.get('[data-testid="model-price-summary"]').text()).toBe('$3 / $15')
-    wrapper.unmount()
-  })
-
   it('仅配置区间倍率时按基础价展示 token 档位', async () => {
     const wrapper = mount(SupportedModelChip, {
       attachTo: document.body,

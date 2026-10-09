@@ -1,11 +1,3 @@
-import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
-import {
-  BILLING_MODE_IMAGE,
-  BILLING_MODE_PER_REQUEST,
-  BILLING_MODE_TOKEN,
-  BILLING_MODE_VIDEO
-} from '@/constants/channel'
-
 /**
  * formatScaled formats a per-token (or per-request) USD price scaled by `scale`.
  *
@@ -31,6 +23,8 @@ export function formatScaled(value: number | null, scale: number, minFractionDig
   return `$${s}`
 }
 
+import type { UserPricingInterval } from '@/api/channels'
+
 type TokenPrices = Pick<UserPricingInterval, 'input_price' | 'output_price' | 'cache_write_price' | 'cache_write_1h_price' | 'cache_read_price'>
 
 export function resolveIntervalPrices(iv: UserPricingInterval, base: TokenPrices): UserPricingInterval {
@@ -45,60 +39,4 @@ export function resolveIntervalPrices(iv: UserPricingInterval, base: TokenPrices
     cache_write_1h_price: iv.cache_write_1h_price ?? iv.cache_write_price ?? price(null, iv.cache_write_multiplier, base.cache_write_1h_price),
     cache_read_price: price(iv.cache_read_price, iv.cache_read_multiplier, base.cache_read_price)
   }
-}
-
-const PER_MILLION = 1_000_000
-
-/**
- * Compact one-line price for model chips (always-visible summary).
- * Returns empty string when pricing is missing / all fields empty.
- *
- *   token        → "$3 / $15"           (input / output per 1M tokens)
- *   per_request  → "$0.05"              (flat per request)
- *   image        → "$0.04"              (image output or per-request)
- *   video        → "$0.05/s"            (per second)
- */
-export function summarizeModelPricing(pricing: UserSupportedModelPricing | null | undefined): string {
-  if (!pricing) return ''
-
-  switch (pricing.billing_mode) {
-    case BILLING_MODE_PER_REQUEST: {
-      if (pricing.per_request_price == null) return firstIntervalPerRequest(pricing) ?? ''
-      return formatScaled(pricing.per_request_price, 1)
-    }
-    case BILLING_MODE_IMAGE: {
-      const value = pricing.image_output_price ?? pricing.per_request_price
-      if (value != null) return formatScaled(value, 1)
-      return firstIntervalPerRequest(pricing) ?? ''
-    }
-    case BILLING_MODE_VIDEO: {
-      if (pricing.per_request_price != null) {
-        return `${formatScaled(pricing.per_request_price, 1)}/s`
-      }
-      const tier = firstIntervalPerRequest(pricing)
-      return tier ? `${tier}/s` : ''
-    }
-    case BILLING_MODE_TOKEN:
-    default: {
-      if (pricing.input_price != null || pricing.output_price != null) {
-        return `${formatScaled(pricing.input_price, PER_MILLION)} / ${formatScaled(pricing.output_price, PER_MILLION)}`
-      }
-      // Fall back to first interval when flat prices are absent.
-      const iv = pricing.intervals?.[0]
-      if (!iv) return ''
-      const resolved = resolveIntervalPrices(iv, pricing)
-      if (resolved.input_price == null && resolved.output_price == null) {
-        if (resolved.per_request_price != null) return formatScaled(resolved.per_request_price, 1)
-        return ''
-      }
-      return `${formatScaled(resolved.input_price, PER_MILLION)} / ${formatScaled(resolved.output_price, PER_MILLION)}`
-    }
-  }
-}
-
-function firstIntervalPerRequest(pricing: UserSupportedModelPricing): string | null {
-  for (const iv of pricing.intervals ?? []) {
-    if (iv.per_request_price != null) return formatScaled(iv.per_request_price, 1)
-  }
-  return null
 }

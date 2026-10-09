@@ -623,7 +623,7 @@ export default {
       description: 'Description',
       platform: 'Platform',
       groups: 'Your Accessible Groups',
-      supportedModels: 'Models & Pricing'
+      supportedModels: 'Supported Models'
     },
     pricing: {
       billingMode: 'Billing Mode',
