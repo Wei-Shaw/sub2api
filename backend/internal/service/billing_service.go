@@ -892,6 +892,31 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// ---- 阿里百炼 文本重排序（text-rerank）----
+	// qwen3.7-text-rerank 官方价 ¥0.5/MTok，仅按输入计费、输出不计费
+	//（https://help.aliyun.com/zh/model-studio/text-rerank-api），OutputPricePerToken 置 0。
+	// 按 ¥7.2≈$1 折算 $0.069/MTok，×1e-6 换算为 USD per token。
+	s.fallbackPrices["qwen3.7-text-rerank"] = &ModelPricing{
+		InputPricePerToken:     0.069e-6, // $0.069/MTok（官方 ¥0.5/MTok ÷ 7.2）
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+
+	// ---- 阿里百炼 文本向量化（text-embedding）----
+	// qwen3.7-text-embedding 官方价 ¥0.5/MTok、qwen3.7-text-embedding-flash 官方价
+	// ¥0.125/MTok，均仅按输入计费、输出不计费（百炼价格页，输入价与 text-rerank 同价），
+	// OutputPricePerToken 置 0。按 ¥7.2≈$1 折算 $0.069、$0.01736/MTok，×1e-6 换算为 USD per token。
+	s.fallbackPrices["qwen3.7-text-embedding"] = &ModelPricing{
+		InputPricePerToken:     0.069e-6, // $0.069/MTok（官方 ¥0.5/MTok ÷ 7.2）
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3.7-text-embedding-flash"] = &ModelPricing{
+		InputPricePerToken:     0.01736e-6, // $0.01736/MTok（官方 ¥0.125/MTok ÷ 7.2）
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+
 	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 	// doubao-embedding-vision 图文向量化：上游 usage 回传 prompt_tokens_details.{text_tokens,image_tokens}，
 	// 按量付费官方价 文本 ¥0.7/MTok、图片 ¥1.8/MTok；汇率口径 ÷7.14（与本表其他国产模型一致，¥1≈$0.14）。
@@ -1184,6 +1209,21 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "minimax-m2") || strings.Contains(modelLower, "minimax-m-2") {
 		return s.fallbackPrices["minimax-m2"]
+	}
+
+	// 阿里百炼 text-rerank：白名单命中，别名兼容连字符写法（qwen3-7-text-rerank）。
+	if strings.Contains(modelLower, "qwen3.7-text-rerank") || strings.Contains(modelLower, "qwen3-7-text-rerank") {
+		return s.fallbackPrices["qwen3.7-text-rerank"]
+	}
+
+	// 阿里百炼 text-embedding：白名单命中，别名兼容连字符写法（qwen3-7-text-embedding）。
+	// most-specific-first：flash 名含标准版子串，必须先判 flash，
+	// 否则 qwen3.7-text-embedding-flash 误命中标准价（4 倍高计费）。
+	if strings.Contains(modelLower, "qwen3.7-text-embedding-flash") || strings.Contains(modelLower, "qwen3-7-text-embedding-flash") {
+		return s.fallbackPrices["qwen3.7-text-embedding-flash"]
+	}
+	if strings.Contains(modelLower, "qwen3.7-text-embedding") || strings.Contains(modelLower, "qwen3-7-text-embedding") {
+		return s.fallbackPrices["qwen3.7-text-embedding"]
 	}
 
 	// 火山方舟 豆包 Embedding（多模态向量化）。
