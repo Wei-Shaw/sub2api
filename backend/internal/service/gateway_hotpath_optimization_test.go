@@ -180,6 +180,25 @@ func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context
 	return out, nil
 }
 
+func (s *modelsListAccountRepoStub) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	// The ownership resolver reads persistent candidates through this method.
+	// Keep the existing group lookup count meaningful to the cache tests.
+	s.listByGroupCalls.Add(1)
+	if s.err != nil {
+		return nil, s.err
+	}
+	if groupID == nil {
+		return nil, nil
+	}
+	accounts, ok := s.byGroup[*groupID]
+	if !ok {
+		return nil, nil
+	}
+	out := make([]Account, len(accounts))
+	copy(out, accounts)
+	return out, nil
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
 	s.listAllCalls.Add(1)
 	if s.err != nil {
