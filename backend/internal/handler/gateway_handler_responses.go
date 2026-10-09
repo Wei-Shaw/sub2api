@@ -184,6 +184,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// generic 调度器共用同一谓词（ctx 携带候选池且无 resolved 平台）；非池请求
 	// poolDenials 恒为空、attempt 策略与委派分支不生效，整条路径零变化。
 	isPoolRequest := service.GenericCompositePoolActive(requestCtx)
+	if isPoolRequest {
+		// 续链只能由 OpenAI 兼容族归属账号服务（路由层已把这类请求收窄后交 OpenAI
+		// handler）；到达这里说明候选池无法承接，明确拒绝而不是静默丢弃上下文。
+		if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error",
+				"previous_response_id is not supported for this composite model; resend the full conversation without previous_response_id")
+			return
+		}
+		// 委派 OpenAI 网关链创建的响应须记录下游归属，后续续链经 OpenAI handler 校验租户。
+		service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
+	}
 	poolDenials := newCompositePoolPlatformDenials()
 
 	// 3. Account selection + failover loop
@@ -349,6 +360,20 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		forwardBody := body
 		if attemptChannelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, attemptChannelMapping.MappedModel)
+		}
+		// 账号池按选中账号应用分组推理强度策略（与 OpenAI handler 同语义，仅 openai 账号）。
+		if isPoolRequest {
+			cappedBody, changed, policyErr := applyCompositePoolReasoningEffortPolicyForSelectedAccount(c, apiKey, account, forwardBody)
+			if policyErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				respondOpenAIReasoningEffortPolicyError(c, policyErr, h.responsesErrorResponse)
+				return
+			}
+			if changed {
+				forwardBody = cappedBody
+			}
 		}
 		var result *service.ForwardResult
 		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。

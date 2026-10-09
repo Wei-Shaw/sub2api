@@ -566,9 +566,19 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		}
 	}
 
+	// composite 账号池要求续链必须命中归属账号（handler 池守卫），删除绑定即永久断链：
+	// 池上下文中只在归属账号永久不可用时删除（previousResponseOwnerPermanentlyUnusable），
+	// 限流、过载、临时不可调度、运行时熔断、调度阈值门等瞬态与配额暂停、利润否决同语义，
+	// 只跳过本次复用、保留绑定。非池请求保持原语义：瞬态即删除，会话改锚到新账号。
+	keepOnTransient := openAICompositePoolActive(ctx)
+	dropTransient := func() {
+		if !keepOnTransient {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		}
+	}
 	account, err := s.getSchedulableAccount(ctx, accountID)
 	if err != nil || account == nil {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		dropTransient()
 		return 0, nil, "", nil
 	}
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
@@ -581,9 +591,12 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return 0, nil, "", nil
 	}
-	if shouldClearStickySession(account, requestedModel) ||
-		(!account.IsOpenAI() && !openAICompositePoolHTTPResponsesOwner(ctx, account)) || !account.IsSchedulable() {
+	if previousResponseOwnerPermanentlyUnusable(ctx, account) {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
+	if shouldClearStickySession(account, requestedModel) {
+		dropTransient()
 		return 0, nil, "", nil
 	}
 	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
@@ -611,13 +624,20 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	}
 	if s.schedulerSnapshot != nil && s.accountRepo != nil {
 		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
-		if latestErr != nil || latest == nil {
+		if latestErr != nil {
+			dropTransient()
+			return 0, nil, "", nil
+		}
+		if latest == nil {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if shouldClearStickySession(latest, requestedModel) ||
-			(!latest.IsOpenAI() && !openAICompositePoolHTTPResponsesOwner(ctx, latest)) || !latest.IsSchedulable() {
+		if previousResponseOwnerPermanentlyUnusable(ctx, latest) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		if shouldClearStickySession(latest, requestedModel) {
+			dropTransient()
 			return 0, nil, "", nil
 		}
 		if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
@@ -644,7 +664,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			return 0, nil, "", nil
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
-			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			dropTransient()
 			return 0, nil, "", nil
 		}
 		account = latest
@@ -654,6 +674,33 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		return 0, nil, "", nil
 	}
 	return accountID, account, responseID, store
+}
+
+// previousResponseOwnerPermanentlyUnusable 报告续链归属账号是否已永久不能继续该响应链
+// （停用、关闭调度、已过期、平台不符），此时删除绑定；其余不可用状态均为瞬态。
+func previousResponseOwnerPermanentlyUnusable(ctx context.Context, account *Account) bool {
+	if account == nil || !account.IsActive() || !account.Schedulable {
+		return true
+	}
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !time.Now().Before(*account.ExpiresAt) {
+		return true
+	}
+	return !account.IsOpenAI() && !openAICompositePoolHTTPResponsesOwner(ctx, account)
+}
+
+// HasPreviousResponseBinding 报告 previous_response_id 是否仍绑定到某个账号（不校验
+// 账号当前是否可用）。供 composite 池守卫区分「归属账号暂时不可用」与「无归属」。
+func (s *OpenAIGatewayService) HasPreviousResponseBinding(ctx context.Context, groupID *int64, previousResponseID string) bool {
+	responseID := strings.TrimSpace(previousResponseID)
+	if s == nil || responseID == "" {
+		return false
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return false
+	}
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	return err == nil && accountID > 0
 }
 
 func classifyOpenAIWSAcquireError(err error) string {

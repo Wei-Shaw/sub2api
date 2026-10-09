@@ -783,6 +783,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 持有的槽位（Acquired=true 时 ReleaseFunc 非空，恰一次）。
 		if previousResponseID != "" && compositePoolResponseStateGuardApplies(c, apiKey) && !scheduleDecision.StickyPreviousHit {
 			releaseCompositePoolSelection(selection)
+			// 归属账号本次已失败被排除（如 429）：返回其可重试错误，不能变成永久性的 400。
+			if lastFailoverErr != nil {
+				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				return
+			}
+			// 绑定仍在但归属账号暂时不可用（限流、过载、临时不可调度等）：可重试。
+			if h.gatewayService.HasPreviousResponseBinding(c.Request.Context(), apiKey.GroupID, previousResponseID) {
+				markOpsRoutingCapacityLimited(c)
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error",
+					"the account that owns previous_response_id is temporarily unavailable; retry later", streamStarted)
+				return
+			}
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
 				"previous_response_id belongs to a response owned by a different account; continue on the account that owns this response state or start a new response")
 			return

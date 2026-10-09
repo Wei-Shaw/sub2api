@@ -287,7 +287,7 @@ func newCompositePoolPolicyTestRouter(t *testing.T, in poolPolicyRouterInput) (*
 
 	handlers := &handler.Handlers{
 		Gateway: handler.NewGatewayHandler(
-			genericGateway, nil, nil, nil, nil,
+			genericGateway, openAIGateway, nil, nil, nil,
 			concurrencyService, billingCache, nil, nil, nil, nil, nil, nil,
 			cfg, nil,
 		),
@@ -542,8 +542,9 @@ func TestCompositePoolCNPreviousResponseIDPinBeatsPriorityAndSeed(t *testing.T) 
 }
 
 // CN→CN 未 hit 跨账号转移必须拒绝：resp id 归属 deepseek，deepseek 首跳 429
-// failover 后选中另一 CN 候选（kimi）时，状态守卫在任何转发前 400 终止，
-// kimi 不收到带旧 prevID 的请求（该用例在 2A 修复前后都必须保持绿）。
+// failover 后不得转给另一 CN 候选（kimi），kimi 不收到带旧 prevID 的请求。归属账号
+// 的 429 是可重试错误，必须原样返回而不是永久性的 400，且续链绑定保留：上游恢复后
+// 同一 previous_response_id 仍回到 deepseek 继续。
 func TestCompositePoolPreviousResponseIDRejectsCrossCNSelection(t *testing.T) {
 	upstream := &captureUpstream{}
 	group := newPoolPolicyGroup(nil)
@@ -577,11 +578,24 @@ func TestCompositePoolPreviousResponseIDRejectsCrossCNSelection(t *testing.T) {
 	wB := postPoolPolicyRequest(t, router, "/v1/responses",
 		`{"model":"pool-model","input":"continue","prompt_cache_key":"sess-cross-b","previous_response_id":"`+responseID+`","stream":false}`)
 
-	require.Equal(t, http.StatusBadRequest, wB.Code, wB.Body.String())
-	require.Contains(t, wB.Body.String(), "previous_response_id")
+	require.Equal(t, http.StatusTooManyRequests, wB.Code, wB.Body.String())
 	for _, record := range upstream.capturedSnapshot()[capturedBefore:] {
 		require.NotEqual(t, "kimi-pool-fake.test", record.host,
 			"the non-owning CN account must never receive the old prevID")
+	}
+
+	// 第三条：上游恢复，同一续链仍由归属账号服务（绑定未因 429 被删除）。
+	upstream.mu.Lock()
+	upstream.failHost = nil
+	upstream.mu.Unlock()
+	capturedBefore = len(upstream.capturedSnapshot())
+	wC := postPoolPolicyRequest(t, router, "/v1/responses",
+		`{"model":"pool-model","input":"continue again","prompt_cache_key":"sess-cross-c","previous_response_id":"`+responseID+`","stream":false}`)
+	require.Equal(t, http.StatusOK, wC.Code, wC.Body.String())
+	after := upstream.capturedSnapshot()[capturedBefore:]
+	require.NotEmpty(t, after)
+	for _, record := range after {
+		require.Equal(t, "deepseek-pool-fake.test", record.host, "continuation must return to the owning account")
 	}
 }
 

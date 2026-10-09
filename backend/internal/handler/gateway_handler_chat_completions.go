@@ -349,6 +349,20 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if attemptChannelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, attemptChannelMapping.MappedModel)
 		}
+		// 账号池按选中账号应用分组推理强度策略（与 OpenAI handler 同语义，仅 openai 账号）。
+		if isPoolRequest {
+			cappedBody, changed, policyErr := applyCompositePoolReasoningEffortPolicyForSelectedAccount(c, apiKey, account, forwardBody)
+			if policyErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				respondOpenAIReasoningEffortPolicyError(c, policyErr, h.chatCompletionsErrorResponse)
+				return
+			}
+			if changed {
+				forwardBody = cappedBody
+			}
+		}
 		var result *service.ForwardResult
 		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
 		var delegatedResult *service.OpenAIForwardResult

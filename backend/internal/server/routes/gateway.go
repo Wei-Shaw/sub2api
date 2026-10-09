@@ -662,6 +662,16 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 				writeCompositeRouteAdmissionError(c, http.StatusBadRequest, fmt.Sprintf("Model %q cannot be resolved to any platform in this composite group (%s)", model, decision.Reason))
 				return
 			}
+			if isCompositePoolResponsesContinuation(c, decision, body) {
+				// 续链绑定只由 OpenAI 网关链创建，归属账号必然属于 OpenAI 兼容族：候选池收窄到
+				// 兼容族后由 OpenAI handler 按归属账号钉住与守卫，避免跨族池选到无该响应状态的
+				// 账号（静默丢失上下文或跨租户续链）。
+				decision.CandidatePlatforms = openAICompatibleCandidatePlatforms(decision.CandidatePlatforms)
+				if len(decision.CandidatePlatforms) == 0 {
+					writeCompositeRouteAdmissionError(c, http.StatusBadRequest, fmt.Sprintf("Model %q has no OpenAI-compatible account in this composite group to continue previous_response_id; resend the full conversation without previous_response_id", model))
+					return
+				}
+			}
 			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
 			if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
 				if _, modelPath := requestmodel.JSONModelPathForRoute(routePath, body); modelPath != "" {
@@ -734,6 +744,29 @@ func compositeGeminiModelFromParams(c *gin.Context) string {
 		return strings.TrimSpace(modelAction[:idx])
 	}
 	return modelAction
+}
+
+// isCompositePoolResponsesContinuation 报告请求是否为 composite 账号池上的 Responses
+// 续链（带 previous_response_id）。
+func isCompositePoolResponsesContinuation(c *gin.Context, decision service.CompositeRouteDecision, body []byte) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil || !strings.Contains(c.Request.URL.Path, "/responses") {
+		return false
+	}
+	if strings.TrimSpace(decision.TargetPlatform) != "" || len(decision.CandidatePlatforms) == 0 {
+		return false
+	}
+	return strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != ""
+}
+
+// openAICompatibleCandidatePlatforms 返回候选平台中经 OpenAI 网关转发的平台（保持顺序）。
+func openAICompatibleCandidatePlatforms(candidates []string) []string {
+	out := make([]string, 0, len(candidates))
+	for _, platform := range candidates {
+		if isOpenAICompatibleGatewayFamilyPlatform(platform) {
+			out = append(out, platform)
+		}
+	}
+	return out
 }
 
 func compositeRouteEndpointForPath(path string) string {

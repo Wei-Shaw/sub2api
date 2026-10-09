@@ -172,6 +172,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	bindRequestedReasoningEffort(c, body, reqModel)
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	// 账号池没有单一目标平台，准入期判不出策略族：绑定分组策略，委派 OpenAI 网关链选中
+	// openai 账号时由 ForwardAsAnthropic 应用（与 OpenAI handler Messages 同语义）。
+	if service.GenericCompositePoolActive(c.Request.Context()) {
+		bindOpenAIReasoningEffortPolicyForMessagesRequest(c, apiKey, body)
+	}
 	if policyBody, changed, err := applyAnthropicReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
 		respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
 		return
