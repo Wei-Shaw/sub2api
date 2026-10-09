@@ -101,6 +101,10 @@ export default {
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
+      grok: 'Grok',
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM',
+      deepseek: 'DeepSeek',
       more: 'More'
     },
     // CTA section
