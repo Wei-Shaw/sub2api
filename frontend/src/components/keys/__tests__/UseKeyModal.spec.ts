@@ -751,6 +751,9 @@ describe('UseKeyModal', () => {
     expect(models['claude-sonnet-5-5'].options).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' })
     expect(models['claude-sonnet-5-5'].variants.xhigh.effort).toBe('xhigh')
     expect(models['claude-sonnet-5-5'].variants).not.toHaveProperty('none')
+    expect(models['claude-haiku-5-5'].limit).toEqual({ context: 1000000, output: 128000 })
+    expect(models['claude-haiku-5-5'].options).toEqual({ thinking: { type: 'adaptive' }, effort: 'medium' })
+    expect(models['claude-haiku-5-5'].variants.max.effort).toBe('max')
   })
 
   it('renders Claude Fable 5 OpenCode config with adaptive thinking', async () => {

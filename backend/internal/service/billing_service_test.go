@@ -2055,6 +2055,29 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 				require.False(t, cost.LongContextBillingApplied)
 			})
 		}
+		for _, model := range []string{"claude-haiku-5-5", "anthropic/claude-haiku-5.5", "us.anthropic.claude-haiku-5-5"} {
+			t.Run(source+"/"+model, func(t *testing.T) {
+				// The rate card switches when the whole prompt, cache included, exceeds 100K tokens.
+				for _, n := range []int{100_000, 100_001} {
+					tokens := UsageTokens{
+						InputTokens: n - 2000, OutputTokens: 500,
+						CacheReadTokens: 1000, CacheCreationTokens: 1000,
+						CacheCreation5mTokens: 400, CacheCreation1hTokens: 600,
+					}
+					cost, err := svc.CalculateCost(model, tokens, 1)
+					require.NoError(t, err)
+					m := 1.0
+					if n > 100_000 {
+						m = 5
+					}
+					require.InDelta(t, float64(tokens.InputTokens)*0.1e-6*m, cost.InputCost, 1e-12)
+					require.InDelta(t, (400*0.125e-6+600*0.2e-6)*m, cost.CacheCreationCost, 1e-12)
+					require.InDelta(t, 1000*0.01e-6*m, cost.CacheReadCost, 1e-12)
+					require.InDelta(t, 500*0.5e-6*m, cost.OutputCost, 1e-12)
+					require.Equal(t, n > 100_000, cost.LongContextBillingApplied)
+				}
+			})
+		}
 	}
 }
 

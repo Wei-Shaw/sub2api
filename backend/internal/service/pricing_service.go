@@ -139,6 +139,14 @@ var (
 		CacheReadInputTokenCost: 0.2e-6,
 		LiteLLMProvider:         "anthropic", Mode: "chat", SupportsPromptCaching: true,
 	}
+	// Haiku 5.5 prompts over 100K tokens use the $0.50 / $2.50 per MTok rate card.
+	claudeHaiku55FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken: 0.1e-6, OutputCostPerToken: 0.5e-6,
+		CacheCreationInputTokenCost: 0.125e-6, CacheCreationInputTokenCostAbove1hr: 0.2e-6,
+		CacheReadInputTokenCost:        0.01e-6,
+		LongContextInputTokenThreshold: 100_000, LongContextInputCostMultiplier: 5, LongContextOutputCostMultiplier: 5,
+		LiteLLMProvider: "anthropic", Mode: "chat", SupportsPromptCaching: true,
+	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:                   5e-06,
 		InputCostPerTokenPriority:           1e-05,
@@ -1407,6 +1415,12 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 			return pricing
 		}
 		return claudeSonnet55FallbackPricing
+	}
+	if claude.IsHaiku55(model) {
+		if pricing, ok := s.pricingData["claude-haiku-5-5"]; ok {
+			return pricing
+		}
+		return claudeHaiku55FallbackPricing
 	}
 	// modelFamily 定义一个模型系列的匹配和定价查找规则。
 	type modelFamily struct {

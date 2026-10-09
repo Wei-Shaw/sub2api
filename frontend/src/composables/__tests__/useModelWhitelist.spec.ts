@@ -58,8 +58,16 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-5-5')
     expect(getModelsByPlatform('claude')).toContain('claude-sonnet-5-5')
     expect(getModelsByPlatform('antigravity')).not.toContain('claude-sonnet-5-5')
+    expect(getModelsByPlatform('claude')).toContain('claude-haiku-5-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-haiku-5-5')
     expect(getModelsByPlatform('claude')).toContain('claude-opus-4-8')
     expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
+  })
+
+  it('Claude Haiku 5.5 预设使用官方模型 ID', () => {
+    expect(getPresetMappingsByPlatform('claude')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5-5' })
+    ]))
   })
 
   it('Claude Sonnet 5.5 预设使用各平台的官方模型 ID', () => {

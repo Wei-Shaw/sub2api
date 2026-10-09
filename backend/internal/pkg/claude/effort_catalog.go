@@ -18,6 +18,7 @@ var effortFamilies = []struct {
 	{family: "claude-mythos-preview", levels: effortLowMediumHighMax},
 	{family: "claude-mythos-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-fable-5", levels: effortLowMediumHighXHighMax},
+	{family: "claude-haiku-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-sonnet-4-6", levels: effortLowMediumHighMax},
 	{family: "claude-sonnet-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-sonnet-5", levels: effortLowMediumHighXHighMax},
@@ -51,6 +52,21 @@ func IsSonnet55(model string) bool {
 	return normalizeEffortModelID(model) == "claude-sonnet-5-5"
 }
 
+// IsHaiku55 identifies the fixed Haiku 5.5 ID after provider/local suffix normalization.
+func IsHaiku55(model string) bool {
+	return normalizeEffortModelID(model) == "claude-haiku-5-5"
+}
+
+// IsClaude55 reports whether model is one of the 5.5 models, which default to
+// adaptive thinking and bind thinking blocks to signed history.
+func IsClaude55(model string) bool {
+	switch normalizeEffortModelID(model) {
+	case "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5":
+		return true
+	}
+	return false
+}
+
 func normalizeEffortModelID(model string) string {
 	id := strings.ToLower(strings.TrimSpace(model))
 	id = strings.TrimPrefix(id, "models/")
@@ -69,6 +85,9 @@ func normalizeEffortModelID(model string) string {
 	}
 	if id == "claude-sonnet-5.5" {
 		id = "claude-sonnet-5-5"
+	}
+	if id == "claude-haiku-5.5" {
+		id = "claude-haiku-5-5"
 	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped

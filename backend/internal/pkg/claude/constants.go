@@ -218,6 +218,12 @@ var DefaultModels = []Model{
 		CreatedAt:   "2025-09-29T00:00:00Z",
 	},
 	{
+		ID:          "claude-haiku-5-5",
+		Type:        "model",
+		DisplayName: "Claude Haiku 5.5",
+		CreatedAt:   "2026-10-07T00:00:00Z",
+	},
+	{
 		ID:          "claude-haiku-4-5-20251001",
 		Type:        "model",
 		DisplayName: "Claude Haiku 4.5",

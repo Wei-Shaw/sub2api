@@ -237,6 +237,7 @@ const formatScopeName = (scope: string): string => {
     'claude-sonnet-4-5-thinking': 'CSon45T',
     'claude-sonnet-5-5': 'CSon55',
     'claude-sonnet-5': 'CSon5',
+    'claude-haiku-5-5': 'CHai55',
     // Gemini 2.5 系列
     'gemini-2.5-flash': 'G25F',
     'gemini-2.5-flash-lite': 'G25FL',

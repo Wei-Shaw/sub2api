@@ -42,6 +42,50 @@ func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 	require.True(t, parsed.ThinkingEnabled)
 }
 
+func TestParseGatewayRequest_Haiku55ThinkingDefault(t *testing.T) {
+	for body, want := range map[string]bool{
+		`{"model":"claude-haiku-5-5","messages":[{"content":"hi"}]}`:                                true,
+		`{"model":"claude-haiku-5-5","thinking":{"type":"disabled"},"messages":[{"content":"hi"}]}`: false,
+	} {
+		parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(body)), domain.PlatformAnthropic)
+		require.NoError(t, err)
+		require.Equal(t, want, parsed.ThinkingEnabled, body)
+	}
+}
+
+func TestValidateHaiku55Request(t *testing.T) {
+	for _, tc := range []struct {
+		body    string
+		wantErr string
+	}{
+		{body: `{}`},
+		{body: `{"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}}`},
+		{body: `{"thinking":{"type":"disabled"},"output_config":{"effort":"high"}}`},
+		{body: `{"thinking":{"type":"disabled"}}`},
+		{body: `{"tool_choice":{"type":"any"}}`},
+		{body: `{"tool_choice":{"type":"tool","name":"lookup"}}`},
+		{body: `{"temperature":1,"top_p":0.99}`},
+		{body: `{"thinking":{"type":"enabled","budget_tokens":2048}}`, wantErr: "budget_tokens"},
+		{body: `{"thinking":{"type":"between_tools"}}`, wantErr: "between_tools"},
+		{body: `{"thinking":{"type":"disabled"},"output_config":{"effort":"xhigh"}}`, wantErr: "low, medium or high"},
+		{body: `{"thinking":{"type":"disabled"},"output_config":{"effort":"max"}}`, wantErr: "low, medium or high"},
+		{body: `{"thinking":{"type":"disabled","block_binding":"strict"}}`, wantErr: "block_binding"},
+		{body: `{"temperature":0.2}`, wantErr: "temperature"},
+		{body: `{"top_p":0.5}`, wantErr: "top_p"},
+		{body: `{"top_k":5}`, wantErr: "top_k"},
+	} {
+		for _, model := range []string{"claude-haiku-5-5", "anthropic/claude-haiku-5.5"} {
+			err := validateClaude55Request([]byte(tc.body), model)
+			if tc.wantErr == "" {
+				require.NoError(t, err, tc.body)
+				continue
+			}
+			require.ErrorContains(t, err, tc.wantErr, tc.body)
+			require.ErrorContains(t, err, "claude-haiku-5-5", tc.body)
+		}
+	}
+}
+
 func TestParseGatewayRequest_AnthropicFastSpeed(t *testing.T) {
 	parsed, err := ParseGatewayRequest(
 		NewRequestBodyRef([]byte(`{"model":"claude-opus-4-8","speed":" FAST "}`)),
@@ -388,7 +432,7 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingAndPreservesAsText(t *test
 
 func TestClaude55FilterThinkingBlocksRemovesSignedChainAfterInvalidBlock(t *testing.T) {
 	input := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"old","signature":""},{"type":"text","text":"answer"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"later","signature":"valid"},{"type":"redacted_thinking","data":"encrypted"},{"type":"text","text":"later answer"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"only thought","signature":"valid"}]}]}`)
-	for _, model := range []string{"claude-sonnet-5-5", "claude-opus-5-5"} {
+	for _, model := range []string{"claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"} {
 		t.Run(model, func(t *testing.T) {
 			out := FilterThinkingBlocks(input, model)
 			require.False(t, gjson.GetBytes(out, "messages.0.content.#(type==thinking)").Exists())

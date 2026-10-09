@@ -224,7 +224,7 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 
 	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
 	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive" || thinkingType == "between_tools" ||
-		(protocol == domain.PlatformAnthropic && isClaude55SignedThinkingModel(parsed.Model))
+		(protocol == domain.PlatformAnthropic && isClaude55SignedThinkingModel(parsed.Model) && thinkingType != "disabled")
 
 	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
 	if protocol == domain.PlatformAnthropic {
@@ -570,7 +570,7 @@ func StripEmptyTextBlocks(body []byte) []byte {
 // isClaude55SignedThinkingModel identifies models whose default thinking mode
 // requires signed history to survive protocol conversion and request filtering.
 func isClaude55SignedThinkingModel(model string) bool {
-	return claude.IsOpus55(model) || claude.IsSonnet55(model)
+	return claude.IsClaude55(model)
 }
 
 // validateClaude55Request rejects settings that the upstream cannot honor.
@@ -578,6 +578,9 @@ func isClaude55SignedThinkingModel(model string) bool {
 func validateClaude55Request(body []byte, model string) error {
 	if !isClaude55SignedThinkingModel(model) {
 		return nil
+	}
+	if claude.IsHaiku55(model) {
+		return validateHaiku55Request(body)
 	}
 	isSonnet55 := claude.IsSonnet55(model)
 	switch gjson.GetBytes(body, "thinking.type").String() {
@@ -612,15 +615,41 @@ func validateClaude55Request(body []byte, model string) error {
 		return fmt.Errorf("%s does not support forced tool_choice; use auto or none", modelName)
 	}
 	if isSonnet55 {
-		if temperature := gjson.GetBytes(body, "temperature"); temperature.Exists() && (temperature.Type != gjson.Number || temperature.Float() != 1) {
-			return fmt.Errorf("claude-sonnet-5-5 does not support non-default temperature")
+		return validateClaude55DefaultSampling(body, modelName)
+	}
+	return nil
+}
+
+// validateHaiku55Request differs from the other 5.5 models: Haiku 5.5 accepts
+// forced tool_choice and thinking.type=disabled, the latter only up to high effort.
+func validateHaiku55Request(body []byte) error {
+	const modelName = "claude-haiku-5-5"
+	switch gjson.GetBytes(body, "thinking.type").String() {
+	case "enabled":
+		return fmt.Errorf("%s does not support thinking.budget_tokens; omit thinking or use thinking.type=adaptive and output_config.effort", modelName)
+	case "between_tools":
+		return fmt.Errorf("%s does not support thinking.type=between_tools; use adaptive or disabled", modelName)
+	case "disabled":
+		effort := gjson.GetBytes(body, "output_config.effort").String()
+		if effort == "xhigh" || effort == "max" {
+			return fmt.Errorf("%s thinking.type=disabled supports only low, medium or high effort", modelName)
 		}
-		if topP := gjson.GetBytes(body, "top_p"); topP.Exists() && (topP.Type != gjson.Number || topP.Float() < 0.99 || topP.Float() > 1) {
-			return fmt.Errorf("claude-sonnet-5-5 does not support non-default top_p")
+		if gjson.GetBytes(body, "thinking.block_binding").Exists() {
+			return fmt.Errorf("%s thinking.type=disabled does not support thinking.block_binding", modelName)
 		}
-		if gjson.GetBytes(body, "top_k").Exists() {
-			return fmt.Errorf("claude-sonnet-5-5 does not support top_k")
-		}
+	}
+	return validateClaude55DefaultSampling(body, modelName)
+}
+
+func validateClaude55DefaultSampling(body []byte, modelName string) error {
+	if temperature := gjson.GetBytes(body, "temperature"); temperature.Exists() && (temperature.Type != gjson.Number || temperature.Float() != 1) {
+		return fmt.Errorf("%s does not support non-default temperature", modelName)
+	}
+	if topP := gjson.GetBytes(body, "top_p"); topP.Exists() && (topP.Type != gjson.Number || topP.Float() < 0.99 || topP.Float() > 1) {
+		return fmt.Errorf("%s does not support non-default top_p", modelName)
+	}
+	if gjson.GetBytes(body, "top_k").Exists() {
+		return fmt.Errorf("%s does not support top_k", modelName)
 	}
 	return nil
 }
