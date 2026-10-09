@@ -249,3 +249,51 @@ func TestDiagnoseModelAvailabilityForPlatform_WrongPlatformFiltersOut(t *testing
 	require.False(t, diag.HasAccountsInPool, "OpenAI route must not see Anthropic accounts in pool")
 	require.False(t, diag.HasModelSupport)
 }
+
+func TestCurrentModelAvailabilityForPlatform_ExcludesUnsupportedAndRateLimitedModels(t *testing.T) {
+	groupID := int64(42)
+	resetAt := time.Now().Add(time.Hour).Format(time.RFC3339)
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-limited": "gpt-limited"},
+				},
+				Extra: map[string]any{
+					"model_rate_limits": map[string]any{
+						"gpt-limited": map[string]any{"rate_limit_reset_at": resetAt},
+					},
+				},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformOpenAI,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-ready": "gpt-ready"},
+				},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	svc := &GatewayService{accountRepo: repo, cfg: testConfig()}
+
+	got, err := svc.CurrentModelAvailabilityForPlatform(
+		context.Background(),
+		&groupID,
+		PlatformOpenAI,
+		[]string{"gpt-limited", "gpt-ready", "gpt-unknown"},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []ModelAvailability{
+		{Model: "gpt-limited", Available: false},
+		{Model: "gpt-ready", Available: true},
+		{Model: "gpt-unknown", Available: false},
+	}, got)
+}
