@@ -1834,3 +1834,48 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal OpenAI 5h window activation', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('saves an independent daily activation schedule on an OAuth parent', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="window-activation-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="window-activation-start"]').setValue('05:00')
+    await wrapper.get('[data-testid="window-activation-end"]').setValue('00:00')
+    expect((wrapper.get('[data-testid="window-activation-jitter"]').element as HTMLInputElement).value).toBe('30')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_window_activation).toEqual({
+      enabled: true, start: '05:00', end: '00:00', jitter_minutes: 30
+    })
+    wrapper.unmount()
+  })
+
+  it('keeps a legacy schedule at zero jitter and saves an edited delay', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { openai_window_activation: { enabled: true, start: '05:00', end: '00:00' } }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="window-activation-jitter"]').element as HTMLInputElement).value).toBe('0')
+    await wrapper.get('[data-testid="window-activation-jitter"]').setValue('17')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_window_activation?.jitter_minutes).toBe(17)
+    wrapper.unmount()
+  })
+
+  it('rejects a jitter outside 0–60 minutes', async () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await wrapper.get('[data-testid="window-activation-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="window-activation-jitter"]').setValue('61')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+})
