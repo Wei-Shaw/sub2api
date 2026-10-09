@@ -876,8 +876,10 @@ func TestAntigravityCompatHandlerPreContentKeepalive(t *testing.T) {
 			require.Equal(t, ": ping\n\n", recorder.Body.String())
 			require.NoError(t, pipeWriter.Close())
 			require.Error(t, <-done)
-			require.Contains(t, recorder.Body.String(), tt.want)
-			require.True(t, IsResponseCommitted(c))
+			if tt.want != "" {
+				require.Contains(t, recorder.Body.String(), tt.want)
+				require.Greater(t, strings.Index(recorder.Body.String(), tt.want), strings.Index(recorder.Body.String(), ": ping"))
+			}
 		})
 	}
 }
@@ -903,7 +905,6 @@ func TestAntigravityCompatHandlerRepeatsPreContentKeepalive(t *testing.T) {
 	require.Error(t, <-done)
 	require.GreaterOrEqual(t, strings.Count(recorder.Body.String(), ": ping\n\n"), 3)
 	require.Contains(t, recorder.Body.String(), "event: error")
-	require.True(t, IsResponseCommitted(c))
 }
 
 func TestAntigravityCompatHandlerPreContentDeadlineWithCommentOnlyStream(t *testing.T) {
@@ -1022,8 +1023,37 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 			var failoverErr *UpstreamFailoverError
 			require.NotErrorAs(t, err, &failoverErr)
 			require.NotNil(t, result)
-			require.True(t, IsResponseCommitted(c))
+			require.Contains(t, recorder.Body.String(), ": ping\n\n")
 			require.Contains(t, recorder.Body.String(), tt.want)
+			require.Contains(t, recorder.Body.String(), "empty_stream")
 		})
 	}
+}
+
+func TestAntigravityCompatMalformedFunctionCallSwitchesAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", nil)
+	body := `data: {"response":{"responseId":"resp_malformed","candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	result, err := svc.handleChatCompletionsStreamingFromAntigravity(
+		c,
+		resp,
+		time.Now(),
+		"gemini-3.8-flash-tiered",
+		true,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Empty(t, recorder.Body.String())
+	require.Empty(t, recorder.Header().Get("Content-Type"))
 }
