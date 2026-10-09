@@ -49,6 +49,11 @@ export function prepareBulkSubscriptionOperation(input: SubscriptionBulkActionRe
     request.weekly = !!input.weekly
     request.monthly = !!input.monthly
   }
+  if (input.action === 'set_quota_windows') {
+    if (input.daily_window_start) request.daily_window_start = input.daily_window_start
+    if (input.weekly_window_start) request.weekly_window_start = input.weekly_window_start
+    if (input.monthly_window_start) request.monthly_window_start = input.monthly_window_start
+  }
   const adminId = currentAdminId()
   const storageKey = adminId ? `sub2api:admin:subscription-bulk:${adminId}:${JSON.stringify(request)}` : null
   let key = storageKey ? pendingKeys.get(storageKey) ?? readStoredKey(storageKey) : null
