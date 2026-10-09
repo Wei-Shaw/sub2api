@@ -23,15 +23,28 @@ const (
 	attemptsKeySuffix = ":attempts"
 )
 
-// incrAttemptsScript atomically increments the attempt counter for an existing
-// verification code and aligns the counter TTL with the code TTL.
-// KEYS[1] = code key, KEYS[2] = attempts key. Returns -1 when the code is missing.
+// incrAttemptsScript atomically inherits legacy JSON attempts, increments the
+// greater of the legacy and separate counters, and preserves the code's TTL.
+// KEYS[1] = code key, KEYS[2] = attempts key. Returns -1 for a missing/invalid code.
 var incrAttemptsScript = redis.NewScript(`
-if redis.call('EXISTS', KEYS[1]) == 0 then
+local raw = redis.call('GET', KEYS[1])
+if not raw then
   return -1
 end
-local n = redis.call('INCR', KEYS[2])
+local ok, data = pcall(cjson.decode, raw)
+if not ok or type(data) ~= 'table' then
+  return -1
+end
 local ttl = redis.call('PTTL', KEYS[1])
+if ttl == -2 or ttl == 0 then
+  return -1
+end
+local legacy = tonumber(data['Attempts']) or 0
+local current = tonumber(redis.call('GET', KEYS[2])) or 0
+if legacy > current then
+  redis.call('SET', KEYS[2], legacy)
+end
+local n = redis.call('INCR', KEYS[2])
 if ttl > 0 then
   redis.call('PEXPIRE', KEYS[2], ttl)
 end
