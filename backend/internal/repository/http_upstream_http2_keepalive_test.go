@@ -24,9 +24,7 @@ func http2KeepAliveTestPoolSettings() poolSettings {
 }
 
 // requireHTTP2Configured 断言 http2 已显式挂到 http.Transport 上。
-// x/net/http2 在 go1.27 && !http2legacy 下是标准库 HTTP/2 的包装：ConfigureTransports 通过
-// Transport.RegisterProtocol("http/2") 注册配置并打开 Protocols.HTTP2（TLSNextProto 不承载 h2 入口），
-// ReadIdleTimeout/PingTimeout 在建连时映射为 http.HTTP2Config.SendPingTimeout/PingTimeout。
+// Protocols.HTTP2 控制协议协商，Transport.HTTP2 配置标准库 HTTP/2 的健康探测。
 func requireHTTP2Configured(t *testing.T, tr *http.Transport, msg string) {
 	t.Helper()
 	require.NotNil(t, tr.Protocols, msg)
@@ -49,14 +47,28 @@ func TestEnableHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			tr := &http.Transport{}
-			h2, err := enableHTTP2KeepAlive(tr, tc.mode)
-			require.NoError(t, err)
-			require.NotNil(t, h2, "必须返回已配置的 *http2.Transport")
-			require.Equal(t, tc.readIdleTimeout, h2.ReadIdleTimeout)
-			require.Equal(t, tc.pingTimeout, h2.PingTimeout, "各模式应使用独立的 PING 应答期限")
+			enableHTTP2KeepAlive(tr, tc.mode)
+			require.NotNil(t, tr.HTTP2)
+			require.Equal(t, tc.readIdleTimeout, tr.HTTP2.SendPingTimeout)
+			require.Equal(t, tc.pingTimeout, tr.HTTP2.PingTimeout, "各模式应使用独立的 PING 应答期限")
+			require.True(t, tr.Protocols.HTTP1())
 			requireHTTP2Configured(t, tr, "http2 必须已挂到底层 http.Transport 上")
 		})
 	}
+}
+
+func TestEnableHTTP2KeepAlive_PreservesOtherConfiguration(t *testing.T) {
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	http2Config := &http.HTTP2Config{MaxReadFrameSize: 64 * 1024}
+	tr := &http.Transport{Protocols: protocols, HTTP2: http2Config}
+	enableHTTP2KeepAlive(tr, upstreamProtocolModeOpenAIH2)
+	require.Same(t, protocols, tr.Protocols)
+	require.Same(t, http2Config, tr.HTTP2)
+	require.False(t, tr.Protocols.HTTP1())
+	require.True(t, tr.Protocols.HTTP2())
+	require.True(t, tr.Protocols.UnencryptedHTTP2())
+	require.Equal(t, 64*1024, tr.HTTP2.MaxReadFrameSize)
 }
 
 // long_stream_h2 模式构建的 Transport 必须带上 H2 PING 健康探测，从源头剔除死连接。
@@ -74,6 +86,7 @@ func TestBuildUpstreamTransport_NonHTTP2_NotEagerlyConfigured(t *testing.T) {
 			tr, err := buildUpstreamTransport(http2KeepAliveTestPoolSettings(), nil, mode)
 			require.NoError(t, err)
 			require.Nil(t, tr.Protocols, "非 H2 模式不应主动配置 http2 keepalive")
+			require.Nil(t, tr.HTTP2)
 			require.Nil(t, tr.TLSNextProto["h2"], "非 H2 模式不应主动配置 http2 keepalive")
 		})
 	}

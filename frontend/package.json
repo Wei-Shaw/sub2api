@@ -21,7 +21,7 @@
     "@stripe/stripe-js": "^9.0.1",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
-    "axios": "^1.18.0",
+    "axios": "^1.20.0",
     "chart.js": "^4.4.1",
     "dompurify": "^3.4.14",
     "driver.js": "^1.4.0",
@@ -29,12 +29,12 @@
     "marked": "^17.0.1",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.4",
-    "vue": "^3.4.0",
+    "vue": "^3.5.43",
     "vue-chartjs": "^5.3.0",
     "vue-draggable-plus": "^0.6.1",
     "vue-i18n": "^9.14.5",
     "vue-router": "^4.2.5",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
     "@intlify/message-compiler": "9.14.5",
@@ -63,6 +63,7 @@
   "pnpm": {
     "overrides": {
       "js-cookie": "3.0.7",
+      "source-map-js@<1.2.2": ">=1.2.2",
       "form-data@<4.0.6": ">=4.0.6",
       "postcss@<8.5.18": ">=8.5.18",
       "dompurify@<3.4.14": ">=3.4.14"
