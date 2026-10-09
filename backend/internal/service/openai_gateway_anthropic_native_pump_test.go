@@ -6,6 +6,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -127,6 +128,104 @@ func TestAnthropicNativeLinePump_DataResetsTimer(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("timeout not respected: %v", elapsed)
+	}
+}
+
+func TestAnthropicNativeLinePump_EnableIntervalAfterDisconnect(t *testing.T) {
+	pr, _ := io.Pipe()
+	scanner := bufio.NewScanner(pr)
+	pump := newAnthropicNativeLinePump(scanner, 0)
+	defer pump.stop()
+	defer func() { _ = pr.Close() }()
+
+	pump.enableInterval(50 * time.Millisecond)
+	start := time.Now()
+	_, err := pump.next()
+	if err == nil || !strings.Contains(err.Error(), "stream data interval timeout") {
+		t.Fatalf("expected fallback interval timeout, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("fallback timeout not respected: %v", elapsed)
+	}
+}
+
+func TestAnthropicNativeLinePump_ContextCancellationEnablesFallback(t *testing.T) {
+	for _, configured := range []time.Duration{0, time.Second} {
+		t.Run(configured.String(), func(t *testing.T) {
+			pr, pw := io.Pipe()
+			defer func() { _ = pr.Close() }()
+			defer func() { _ = pw.Close() }()
+			pump := newAnthropicNativeLinePump(bufio.NewScanner(pr), configured)
+			defer pump.stop()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			observed := make(chan time.Duration, 1)
+			result := make(chan anthropicNativeLineEvent, 1)
+			go func() {
+				line, err := pump.nextWithContext(ctx, func() { observed <- pump.interval })
+				result <- anthropicNativeLineEvent{line: line, err: err}
+			}()
+			cancel()
+			want := configured
+			if want == 0 {
+				want = defaultAnthropicNativeDisconnectDrainTimeout
+			}
+			select {
+			case got := <-observed:
+				if got != want {
+					t.Fatalf("expected drain interval %v, got %v", want, got)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("blocked upstream read did not observe client cancellation")
+			}
+			// The read must remain on the same pending data line after cancellation.
+			if _, err := io.WriteString(pw, "data: usage\n"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case got := <-result:
+				if got.err != nil || got.line != "data: usage" {
+					t.Fatalf("expected pending data line, got %q err=%v", got.line, got.err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("drain did not return upstream data")
+			}
+			_ = pw.Close()
+			if _, err := pump.nextWithContext(ctx, func() { t.Error("disconnect reported twice") }); err != io.EOF {
+				t.Fatalf("expected EOF, got %v", err)
+			}
+		})
+	}
+}
+
+// Cancel just after the first cancellation snapshot, making both EOF and the
+// client cancellation channel ready for the ensuing select.
+type cancelAfterStreamErrCheckContext struct {
+	context.Context
+	cancel context.CancelFunc
+}
+
+func (c *cancelAfterStreamErrCheckContext) Err() error {
+	err := c.Context.Err()
+	c.cancel()
+	return err
+}
+
+func TestAnthropicNativeLinePump_CancellationAndEOFKeepDisconnectState(t *testing.T) {
+	for i := 0; i < 64; i++ {
+		pump := newAnthropicNativeLinePump(bufio.NewScanner(strings.NewReader("")), 0)
+		// With an empty body there are no lines to consume; wait for scanner EOF
+		// so its closed channel is ready together with the cancellation signal.
+		for range pump.events {
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		disconnected := false
+		_, err := pump.nextWithContext(&cancelAfterStreamErrCheckContext{Context: ctx, cancel: cancel}, func() { disconnected = true })
+		pump.stop()
+		cancel()
+		if err != io.EOF || !disconnected {
+			t.Fatalf("iteration %d: EOF lost disconnect state: err=%v disconnected=%v", i, err, disconnected)
+		}
 	}
 }
 
