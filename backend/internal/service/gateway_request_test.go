@@ -413,6 +413,53 @@ func TestSonnet55RetryKeepsBetweenToolsMode(t *testing.T) {
 	}
 }
 
+func TestNormalizeClaude55Thinking_EnabledToAdaptive(t *testing.T) {
+	for _, model := range []string{"claude-opus-5-5", "claude-sonnet-5-5", "anthropic/claude-opus-5.5"} {
+		t.Run(model, func(t *testing.T) {
+			input := []byte(`{"model":"` + model + `","thinking":{"type":"enabled","budget_tokens":32000},"messages":[{"role":"user","content":"hi"}]}`)
+			out, applied := NormalizeClaude55Thinking(input, model)
+			require.True(t, applied, "expected normalization to be applied for %s", model)
+			require.Equal(t, "adaptive", gjson.GetBytes(out, "thinking.type").String())
+			require.False(t, gjson.GetBytes(out, "thinking.budget_tokens").Exists(), "budget_tokens should be removed")
+			require.Equal(t, "high", gjson.GetBytes(out, "output_config.effort").String())
+			require.NoError(t, validateClaude55Request(out, model), "normalized body should pass validation")
+		})
+	}
+}
+
+func TestNormalizeClaude55Thinking_PreservesExistingEffort(t *testing.T) {
+	input := []byte(`{"thinking":{"type":"enabled","budget_tokens":8000},"output_config":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`)
+	out, applied := NormalizeClaude55Thinking(input, "claude-opus-5-5")
+	require.True(t, applied)
+	require.Equal(t, "adaptive", gjson.GetBytes(out, "thinking.type").String())
+	require.Equal(t, "low", gjson.GetBytes(out, "output_config.effort").String(), "existing effort should be preserved")
+}
+
+func TestNormalizeClaude55Thinking_DisabledRemovesThinking(t *testing.T) {
+	input := []byte(`{"thinking":{"type":"disabled"},"messages":[{"role":"user","content":"hi"}]}`)
+	out, applied := NormalizeClaude55Thinking(input, "claude-opus-5-5")
+	require.True(t, applied)
+	require.False(t, gjson.GetBytes(out, "thinking").Exists(), "thinking field should be removed for disabled")
+}
+
+func TestNormalizeClaude55Thinking_AdaptivePassthrough(t *testing.T) {
+	input := []byte(`{"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},"messages":[{"role":"user","content":"hi"}]}`)
+	out, applied := NormalizeClaude55Thinking(input, "claude-opus-5-5")
+	require.False(t, applied, "adaptive should not trigger normalization")
+	require.Equal(t, input, out)
+}
+
+func TestNormalizeClaude55Thinking_NonClaude55NoOp(t *testing.T) {
+	input := []byte(`{"thinking":{"type":"enabled","budget_tokens":32000},"messages":[{"role":"user","content":"hi"}]}`)
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-6", "claude-3-5-sonnet"} {
+		t.Run(model, func(t *testing.T) {
+			out, applied := NormalizeClaude55Thinking(input, model)
+			require.False(t, applied, "non-5.5 models should not be normalized")
+			require.Equal(t, input, out)
+		})
+	}
+}
+
 func TestFilterThinkingBlocksForRetry_DisablesThinkingEvenWithoutThinkingBlocks(t *testing.T) {
 	input := []byte(`{
 		"model":"claude-3-5-sonnet-20241022",

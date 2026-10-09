@@ -65,6 +65,9 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			mappedModel = normalized
 		}
 	}
+	if rewritten, applied := NormalizeClaude55Thinking(body, mappedModel); applied {
+		body = rewritten
+	}
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
