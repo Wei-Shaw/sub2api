@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -243,6 +244,29 @@ func TestCompositePoolChatCompletionsDelegatesPureOpenAIFamilyAccount(t *testing
 	require.Equal(t, "my-model", logs[0].Model)
 	require.NotNil(t, logs[0].UpstreamModel)
 	require.Equal(t, "kimi-k3", *logs[0].UpstreamModel)
+}
+
+// 委派链流中断（已向客户端写出内容、无法 failover）：与 OpenAI handler 同语义，
+// 上游已计量的部分 usage 照常入账（#5148），不得静默漏记。
+func TestCompositePoolChatCompletionsDelegatedStreamTruncationRecordsPartialUsage(t *testing.T) {
+	h := newCompositePoolMessagesHarness(t, []*service.Account{poolKimiAccount(42405, 41011, 0)})
+	h.openAIUpstream.respond = func(compositePoolUpstreamCall, int) *http.Response {
+		stream := "data: {\"id\":\"chatcmpl-cut\",\"object\":\"chat.completion.chunk\",\"model\":\"kimi-k3\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n"
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(io.MultiReader(strings.NewReader(stream), iotest.ErrReader(io.ErrUnexpectedEOF))),
+		}
+	}
+
+	body := `{"model":"my-model","stream":true,"messages":[{"role":"user","content":"hello"}]}`
+	c, _ := h.newRequest(t, "/v1/chat/completions", body, service.PlatformAnthropic, service.PlatformKimi)
+	h.handler.ChatCompletions(c)
+
+	require.Len(t, h.openAIUpstream.snapshot(), 1)
+	logs := h.usageRepo.snapshot()
+	require.Len(t, logs, 1, "流中断的委派结果必须入账")
+	require.EqualValues(t, 42405, logs[0].AccountID)
 }
 
 // 池选中 adaptive 多协议账号：CC 入站由 OpenAI CC 链直转供应商原生 CC 端点

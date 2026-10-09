@@ -410,6 +410,25 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			accountReleaseFunc()
 		}
 
+		// 池委派 OpenAI 网关链的结果按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+		submitDelegatedUsage := func() {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			if isPoolAttempt {
+				quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
+			}
+			h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
+				Result:             delegatedResult,
+				APIKey:             apiKey,
+				Account:            account,
+				Subscription:       subscription,
+				QuotaPlatform:      quotaPlatform,
+				PricingAt:          pricingAt,
+				RequestPayloadHash: service.HashUsageRequestPayload(body),
+				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
+				LogComponent:       "handler.gateway.chat_completions",
+			})
+		}
+
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
@@ -440,26 +459,17 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
+			// 委派链流中断与 OpenAI handler 同语义：上游已计量的部分 usage 照常入账（#5148）；
+			// failover 错误恒定 result=nil，不会重复计费。
+			if delegatedResult != nil {
+				submitDelegatedUsage()
+			}
 			return
 		}
 
 		// 6. Record usage
 		if delegatedResult != nil {
-			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-			if isPoolAttempt {
-				quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
-			}
-			h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
-				Result:             delegatedResult,
-				APIKey:             apiKey,
-				Account:            account,
-				Subscription:       subscription,
-				QuotaPlatform:      quotaPlatform,
-				PricingAt:          pricingAt,
-				RequestPayloadHash: service.HashUsageRequestPayload(body),
-				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
-				LogComponent:       "handler.gateway.chat_completions",
-			})
+			submitDelegatedUsage()
 			return
 		}
 		userAgent := c.GetHeader("User-Agent")
