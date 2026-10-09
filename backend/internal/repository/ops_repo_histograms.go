@@ -34,6 +34,7 @@ SELECT
 FROM usage_logs ul
 ` + join + `
 ` + where + `
+AND ` + opsSuccessfulUsagePredicate("ul.request_type") + `
 AND ul.duration_ms IS NOT NULL
 GROUP BY 1, 3
 ORDER BY 3 ASC`

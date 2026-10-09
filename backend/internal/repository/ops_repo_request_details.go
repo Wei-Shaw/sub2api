@@ -108,6 +108,7 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
   WHERE ul.created_at >= $1 AND ul.created_at < $2
+    AND ` + opsSuccessfulUsagePredicate("ul.request_type") + `
 
   UNION ALL
 
@@ -133,7 +134,7 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
   WHERE o.created_at >= $1 AND o.created_at < $2
-    AND COALESCE(o.status_code, 0) >= 400
+    AND ` + opsClientVisibleErrorPredicate("o.status_code", "o.error_type") + `
 )
 `
 
