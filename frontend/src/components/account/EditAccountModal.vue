@@ -2418,6 +2418,15 @@
             {{ formatDateTime(new Date(String(account.extra.openai_compact_checked_at))) }}
           </span>
         </div>
+        <div v-if="account?.type === 'apikey'">
+          <label class="input-label">{{ t('admin.accounts.openai.compactStrategy') }}</label>
+          <Select
+            v-model="openAICompactStrategy"
+            :options="openAICompactStrategyOptions"
+            data-testid="compact-strategy"
+          />
+          <p class="input-hint">{{ t('admin.accounts.openai.compactStrategyDesc') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
@@ -3732,6 +3741,7 @@ const openAILongContextBillingEnabled = ref(false)
 // 存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAICompactStrategy = ref<'inherit' | 'summary'>('inherit')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
@@ -3864,6 +3874,10 @@ const codexImageToolBadgeClass = computed(() => {
       return 'bg-slate-100 text-slate-600 dark:bg-dark-600 dark:text-slate-300'
   }
 })
+const openAICompactStrategyOptions = computed(() => [
+  { value: 'inherit', label: t('admin.accounts.openai.compactStrategyInherit') },
+  { value: 'summary', label: t('admin.accounts.openai.compactStrategySummary') }
+])
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
@@ -4213,6 +4227,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
+  openAICompactStrategy.value = 'inherit'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
@@ -4236,6 +4251,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
+    openAICompactStrategy.value = extra?.openai_compact_strategy === 'summary' ? 'summary' : 'inherit'
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
@@ -5727,6 +5743,11 @@ const handleSubmit = async () => {
         delete newExtra.openai_long_context_billing_enabled
       } else {
         newExtra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+      }
+      if (props.account.type === 'apikey' && openAICompactStrategy.value === 'summary') {
+        newExtra.openai_compact_strategy = 'summary'
+      } else {
+        delete newExtra.openai_compact_strategy
       }
       if (openAICompactMode.value === 'auto') {
         delete newExtra.openai_compact_mode

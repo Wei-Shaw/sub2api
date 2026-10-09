@@ -58,6 +58,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	// 恢复已有摘要与当前账号策略无关，避免换账号或关闭策略后丢失历史。
+	restoredBody, _, restoreErr := s.RestoreSummaryCompactInput(ctx, body)
+	if restoreErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": restoreErr.Error()}})
+		return nil, restoreErr
+	}
+	body = restoredBody
+	if result, handled, compactErr := s.maybeForwardSummaryRemoteCompaction(ctx, c, account, body); handled {
+		return result, compactErr
+	}
+
 	normalizedBody, normalized, err := normalizeOpenAICodexCompactReasoningEffortForAccount(c, account, body)
 	if err != nil {
 		return nil, err
