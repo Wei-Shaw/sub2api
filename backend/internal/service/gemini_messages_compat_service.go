@@ -1374,6 +1374,14 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, transportErr
 		}
 
+		// 引用缓存不存在先于错误策略识别：错误策略会写临时不可调度，重试与换号也无法恢复。
+		if notFound, rebuilt := s.cachedContentNotFoundInLoop(resp); notFound {
+			resp = rebuilt
+			break
+		} else {
+			resp = rebuilt
+		}
+
 		// 错误策略优先：匹配则跳过重试直接处理。
 		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel); matched {
 			resp = rebuilt
@@ -1467,6 +1475,10 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		// 引用缓存不存在是请求问题：原样返回客户端，不改账号状态、不换号。
+		if isGeminiCachedContentNotFound(resp.StatusCode, respBody) {
+			return nil, s.writeGeminiNativeUpstreamError(c, account, resp, respBody, requestID, isOAuth)
+		}
 		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
 		// This avoids Gemini SDKs failing hard during preflight token counting.
 		// Checked before error policy so it always works regardless of custom error codes.
@@ -1674,6 +1686,21 @@ func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
 	}
 	policy := s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, body, mappedModel)
 	return policy != ErrorPolicyNone, rebuilt
+}
+
+// cachedContentNotFoundInLoop 判断上游响应是否为引用缓存不存在的 403；读取过的响应体以内存副本重建。
+func (s *GeminiMessagesCompatService) cachedContentNotFoundInLoop(resp *http.Response) (notFound bool, rebuilt *http.Response) {
+	if resp.StatusCode != http.StatusForbidden {
+		return false, resp
+	}
+	body := s.readUpstreamErrorBody(resp)
+	_ = resp.Body.Close()
+	rebuilt = &http.Response{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	return isGeminiCachedContentNotFound(resp.StatusCode, body), rebuilt
 }
 
 func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *Account, statusCode int) bool {
@@ -2633,6 +2660,15 @@ func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
 	}
 	lower := strings.ToLower(string(body))
 	return strings.Contains(lower, "insufficient authentication scopes") || strings.Contains(lower, "access_token_scope_insufficient")
+}
+
+// isGeminiCachedContentNotFound 识别请求引用的显式缓存不存在、已过期、已删除或不属于当前项目时
+// 上游返回的 403。四种情况上游响应完全相同，均由请求的 cachedContent 决定，与账号凭据状态无关。
+func isGeminiCachedContentNotFound(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(body)), "cachedcontent not found")
 }
 
 func estimateGeminiCountTokens(reqBody []byte) int {
