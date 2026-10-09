@@ -142,7 +142,7 @@ func (h *APIKeyHandler) List(c *gin.Context) {
 
 	out := make([]dto.APIKey, 0, len(keys))
 	for i := range keys {
-		out = append(out, *dto.APIKeyFromService(&keys[i]))
+		out = append(out, *dto.APIKeyFromService(&keys[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -174,7 +174,7 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.APIKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Create handles creating a new API key
@@ -222,7 +222,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		return dto.APIKeyFromService(key), nil
+		return dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")), nil
 	})
 }
 
@@ -290,7 +290,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.APIKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Delete handles deleting an API key
@@ -334,7 +334,7 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		out = append(out, *dto.GroupFromService(&groups[i]))
+		out = append(out, *dto.GroupFromService(&groups[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Success(c, out)
 }

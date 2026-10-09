@@ -201,6 +201,48 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", got.Name)
 }
 
+func (s *GroupRepoSuite) TestI18n_RoundTrip() {
+	group := &service.Group{
+		Name:             "i18n-roundtrip",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		I18n: service.GroupI18n{
+			"en": {Name: "Standard", Description: "Pro + Max pool"},
+		},
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	got, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(group.I18n, got.I18n)
+
+	got.I18n = service.GroupI18n{"zh": {Description: "号池"}}
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+	got, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.GroupI18n{"zh": {Description: "号池"}}, got.I18n)
+
+	// 未携带译文的写入落库为空对象，而不是 JSON null。
+	got.I18n = nil
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+	var stored string
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{group.ID}, &stored))
+	s.Require().Equal("{}", stored)
+
+	plain := &service.Group{
+		Name:             "i18n-default",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, plain))
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{plain.ID}, &stored))
+	s.Require().Equal("{}", stored)
+}
+
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 	group := &service.Group{
 		Name:                  "openai-dispatch",
