@@ -445,7 +445,12 @@ var allowedHeaders = map[string]bool{
 	"content-type":                              true,
 	"accept-encoding":                           true,
 	"x-claude-code-session-id":                  true,
-	"x-client-request-id":                       true,
+	// Claude Code 2.1.139+ 在子 agent 请求上带这两个头（主线程不带）。按会话串行的
+	// 上游（如另一个 Claude Code 中转）靠它们把子 agent 拆成独立会话并行执行；
+	// 丢掉后所有子 agent 都会排在主会话后面。
+	"x-claude-code-agent-id":        true,
+	"x-claude-code-parent-agent-id": true,
+	"x-client-request-id":           true,
 }
 
 // ErrStickySessionNotFound is returned by GatewayCache.GetSessionAccountID
