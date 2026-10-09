@@ -2333,10 +2333,6 @@ func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int
 	return r.clearOAuthRateLimitIfObserved(ctx, id, service.PlatformGrok, observedLimitedAt, observedResetAt)
 }
 
-// ClearClaudeRateLimitIfObserved preserves unrelated/new cooldown generations.
-func (r *accountRepository) ClearClaudeRateLimitIfObserved(ctx context.Context, id int64, limitedAt, resetAt time.Time) (bool, error) {
-	return r.clearOAuthRateLimitIfObserved(ctx, id, service.PlatformAnthropic, limitedAt, resetAt)
-}
 func (r *accountRepository) clearOAuthRateLimitIfObserved(ctx context.Context, id int64, platform string, observedLimitedAt, observedResetAt time.Time) (bool, error) {
 	updated, err := r.client.Account.Update().
 		Where(
@@ -2358,6 +2354,39 @@ func (r *accountRepository) clearOAuthRateLimitIfObserved(ctx context.Context, i
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue observed rate-limit clear failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
+// ClearClaudeRateLimitIfUnchanged removes only the account-level cooldown after
+// a fresh provider quota check. The row version and rate-limit generation fence
+// a concurrent 429, account edit, or manual clear while the check is in flight.
+func (r *accountRepository) ClearClaudeRateLimitIfUnchanged(ctx context.Context, id int64, observedUpdatedAt, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformAnthropic),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ParentAccountIDIsNil(),
+			dbaccount.UpdatedAtEQ(observedUpdatedAt),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue Claude rate-limit clear failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return true, nil

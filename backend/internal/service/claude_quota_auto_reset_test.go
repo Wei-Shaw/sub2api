@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ type claudeRecoveryRepo struct {
 	limited, reset time.Time
 }
 
-func (r *claudeRecoveryRepo) ClearClaudeRateLimitIfObserved(_ context.Context, _ int64, limited, reset time.Time) (bool, error) {
+func (r *claudeRecoveryRepo) ClearClaudeRateLimitIfUnchanged(_ context.Context, _ int64, updated, limited, reset time.Time) (bool, error) {
 	r.clears++
 	r.limited = limited
 	r.reset = reset
@@ -65,11 +66,15 @@ func (r *claudeRecoveryRepo) ClearClaudeRateLimitIfObserved(_ context.Context, _
 }
 
 type claudeRecoveryUsage struct {
-	usage *ClaudeUsageResponse
-	fail  bool
+	usage   *ClaudeUsageResponse
+	fail    bool
+	onFetch func()
 }
 
 func (f claudeRecoveryUsage) FetchUsage(context.Context, string, string) (*ClaudeUsageResponse, error) {
+	if f.onFetch != nil {
+		f.onFetch()
+	}
 	if f.fail {
 		return nil, errors.New("network")
 	}
@@ -120,6 +125,39 @@ func TestClaudeResetRecoveryVerifiedWindowOnly(t *testing.T) {
 			} else {
 				require.Zero(t, r.clears)
 			}
+		})
+	}
+}
+
+func TestClaudeResetRecoveryRejectsCredentialReplacement(t *testing.T) {
+	for _, duringProbe := range []bool{false, true} {
+		t.Run(fmt.Sprint(duringProbe), func(t *testing.T) {
+			w, _ := newClaudeAutoIntegration(t, true, 75)
+			r := &claudeRecoveryRepo{claudeAutoIntegrationRepo: w.accounts.(*claudeAutoIntegrationRepo)}
+			w.accounts = r
+			now := time.Now().UTC().Truncate(time.Second)
+			reset := now.Add(time.Hour)
+			r.account.RateLimitedAt, r.account.RateLimitResetAt = &now, &reset
+			r.account.Credentials = map[string]any{"scope": "user:profile", "access_token": "observed"}
+			observed := *r.account
+			before, after := &ClaudeUsageResponse{}, &ClaudeUsageResponse{}
+			before.FiveHour.Utilization = 100
+			before.FiveHour.ResetsAt = reset.Format(time.RFC3339)
+			after.FiveHour.ResetsAt = reset.Format(time.RFC3339)
+			replace := func() {
+				replacement := *r.account
+				replacement.Credentials = map[string]any{"scope": "user:profile", "access_token": "replacement"}
+				r.account = &replacement
+			}
+			fetcher := claudeRecoveryUsage{usage: after}
+			if duringProbe {
+				fetcher.onFetch = replace
+			} else {
+				replace()
+			}
+			w.fetcher = fetcher
+			require.False(t, w.recoverVerifiedQuota(context.Background(), &observed, before, []string{"five_hour"}))
+			require.Zero(t, r.clears)
 		})
 	}
 }

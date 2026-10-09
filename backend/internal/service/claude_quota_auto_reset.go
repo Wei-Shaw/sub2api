@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -353,7 +354,7 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 		key := "claude-auto:" + shortOpenAIAutoResetHash(credit.policySelection)
 		outcome, redeemErr := w.service.redeemWithPolicy(ctx, a.ID, key, func(check context.Context, block *claudeResetBlock, grant *claudeResetGrant) error {
 			current, err := w.accounts.GetByID(check, a.ID)
-			if err != nil || current == nil || !current.IsActive() || !current.Schedulable || resolveClaudeAutoResetConfig(current) != cfg || claudeResetPolicySelection(*grant) != credit.policySelection {
+			if err != nil || current == nil || !current.IsActive() || !current.Schedulable || !reflect.DeepEqual(current.Credentials, a.Credentials) || resolveClaudeAutoResetConfig(current) != cfg || claudeResetPolicySelection(*grant) != credit.policySelection {
 				return fmt.Errorf("automatic reset decision changed")
 			}
 			if expiring {
@@ -445,7 +446,11 @@ func claudeGrantClearsAllBlocks(u *ClaudeUsageResponse, clears []string, model s
 	return blocked
 }
 func (w *claudeQuotaAutoReset) recoverVerifiedQuota(ctx context.Context, a *Account, before *ClaudeUsageResponse, clears []string) bool {
-	if a.RateLimitedAt == nil || a.RateLimitResetAt == nil {
+	if a == nil || a.RateLimitedAt == nil || a.RateLimitResetAt == nil {
+		return false
+	}
+	current, err := w.accounts.GetByID(ctx, a.ID)
+	if err != nil || !claudeRecoverySameAccount(a, current) {
 		return false
 	}
 	after, err := w.usage(ctx, a)
@@ -475,12 +480,23 @@ func (w *claudeQuotaAutoReset) recoverVerifiedQuota(ctx context.Context, a *Acco
 			return false
 		}
 	}
+	current, err = w.accounts.GetByID(ctx, a.ID)
+	if err != nil || !claudeRecoverySameAccount(a, current) {
+		return false
+	}
 	repo, ok := w.accounts.(interface {
-		ClearClaudeRateLimitIfObserved(context.Context, int64, time.Time, time.Time) (bool, error)
+		ClearClaudeRateLimitIfUnchanged(context.Context, int64, time.Time, time.Time, time.Time) (bool, error)
 	})
 	if !ok {
 		return false
 	}
-	cleared, err := repo.ClearClaudeRateLimitIfObserved(ctx, a.ID, *a.RateLimitedAt, *a.RateLimitResetAt)
+	cleared, err := repo.ClearClaudeRateLimitIfUnchanged(ctx, a.ID, current.UpdatedAt, *a.RateLimitedAt, *a.RateLimitResetAt)
 	return err == nil && cleared
+}
+
+// The quota observation and cooldown must belong to the same OAuth identity.
+// UpdatedAt is checked atomically by the repository after this comparison.
+func claudeRecoverySameAccount(observed, current *Account) bool {
+	return current != nil && current.Platform == PlatformAnthropic && current.Type == AccountTypeOAuth && current.IsActive() && current.Schedulable && !current.IsShadow() &&
+		current.RateLimitedAt != nil && current.RateLimitResetAt != nil && current.RateLimitedAt.Equal(*observed.RateLimitedAt) && current.RateLimitResetAt.Equal(*observed.RateLimitResetAt) && reflect.DeepEqual(current.Credentials, observed.Credentials)
 }

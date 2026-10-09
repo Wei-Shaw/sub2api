@@ -122,7 +122,7 @@ func TestClaudeAutoIntegrationExhaustedWindowMustBeCleared(t *testing.T) {
 }
 
 func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
-	for _, change := range []string{"grant", "count", "expiry", "benefit", "disabled"} {
+	for _, change := range []string{"grant", "count", "expiry", "benefit", "disabled", "credentials"} {
 		t.Run(change, func(t *testing.T) {
 			w, claims := newClaudeAutoIntegration(t, true, 75)
 			original := w.service.do
@@ -149,6 +149,10 @@ func TestClaudeAutoIntegrationRevalidatesNativeGrantBeforeClaim(t *testing.T) {
 					text = strings.ReplaceAll(text, `"ends_at":`, `"starts_at":`)
 				case "benefit":
 					text = strings.ReplaceAll(text, `"five_hour":75`, `"five_hour":0`)
+				case "credentials":
+					replacement := *w.accounts.(*claudeAutoIntegrationRepo).account
+					replacement.Credentials = map[string]any{"scope": "user:profile", "access_token": "replacement"}
+					w.accounts.(*claudeAutoIntegrationRepo).account = &replacement
 				case "disabled":
 					w.accounts.(*claudeAutoIntegrationRepo).account.Extra["claude_auto_reset_credit_enabled"] = false
 				}
