@@ -6884,7 +6884,7 @@
                     </select>
                   </div>
 
-                  <!-- URL (full width) -->
+                  <!-- External URL (full width) -->
                   <div class="sm:col-span-2">
                     <label
                       class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
@@ -6893,12 +6893,32 @@
                     </label>
                     <input
                       v-model="item.url"
-                      type="url"
+                      type="text"
                       class="input font-mono text-sm"
+                      data-testid="custom-menu-url"
                       :placeholder="
                         t('admin.settings.customMenu.urlPlaceholder')
                       "
                     />
+                  </div>
+
+                  <!-- Same-origin URI (full width) -->
+                  <div class="sm:col-span-2">
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.customMenu.uri") }}
+                    </label>
+                    <input
+                      v-model="item.uri"
+                      type="text"
+                      class="input font-mono text-sm"
+                      data-testid="custom-menu-uri"
+                      :placeholder="t('admin.settings.customMenu.uriPlaceholder')"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.customMenu.uriHint") }}
+                    </p>
                   </div>
 
                   <label class="flex items-center gap-2 sm:col-span-2">
@@ -6909,6 +6929,17 @@
                     />
                     <span class="text-sm text-gray-700 dark:text-gray-300">
                       {{ t("admin.settings.customMenu.hideOpenButton") }}
+                    </span>
+                  </label>
+
+                  <label class="flex items-center gap-2 sm:col-span-2">
+                    <input
+                      v-model="item.open_in_new_tab"
+                      type="checkbox"
+                      data-testid="custom-menu-open-in-new-tab"
+                    />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customMenu.openInNewTab") }}
                     </span>
                   </label>
 
@@ -9853,9 +9884,11 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    uri?: string;
     visibility: "user" | "admin";
     sort_order: number;
     hide_open_button?: boolean;
+    open_in_new_tab?: boolean;
   }>,
   custom_endpoints: [] as Array<{
     name: string;
@@ -10847,8 +10880,10 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    uri: "",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    open_in_new_tab: false,
   });
 }
 
