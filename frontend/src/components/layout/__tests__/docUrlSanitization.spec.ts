@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const headerSource = readFileSync(resolve(dir, '../AppHeader.vue'), 'utf8')
+const complianceSource = readFileSync(resolve(dir, '../../admin/AdminComplianceDialog.vue'), 'utf8')
 const homeViewSource = readFileSync(resolve(dir, '../../../views/HomeView.vue'), 'utf8')
 const keyUsageViewSource = readFileSync(resolve(dir, '../../../views/KeyUsageView.vue'), 'utf8')
 
@@ -16,6 +17,14 @@ describe('doc_url sanitization', () => {
 
   it('AppHeader applies sanitizeUrl to docUrl', () => {
     expect(headerSource).toContain('sanitizeUrl(appStore.docUrl)')
+  })
+
+  it('AppHeader sanitizes the configured SSO logout URL before redirecting', () => {
+    expect(headerSource).toContain("sanitizeUrl(appStore.cachedPublicSettings?.oidc_oauth_logout_url || '')")
+  })
+
+  it('AdminComplianceDialog sanitizes the configured SSO logout URL before redirecting', () => {
+    expect(complianceSource).toContain("sanitizeUrl(appStore.cachedPublicSettings?.oidc_oauth_logout_url || '')")
   })
 
   it('HomeView imports sanitizeUrl', () => {
