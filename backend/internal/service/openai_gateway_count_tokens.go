@@ -273,13 +273,15 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	// 高频调用此端点，本地 tiktoken 估算是与 Grok 一致的既有方案。
 	// Ollama Cloud 同因：其 Anthropic 兼容层同样未提供该端点（上游只有
 	// /v1/responses/input_tokens），转发同样只会得到 404。
-	if account.IsMultiProtocolAPIKey() {
+	// Grok 无 input_tokens 端点且 GetOpenAIBaseURL 为空：composite 兼容族账号池
+	// 可选中 grok 账号，若放行会把 xAI 凭据发往 api.openai.com。
+	if account.IsMultiProtocolAPIKey() || account.IsGrok() {
 		estimated, err := estimateAnthropicCountTokensLocally(body)
 		if err != nil {
 			writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-			return fmt.Errorf("count_tokens: estimate cn provider input tokens: %w", err)
+			return fmt.Errorf("count_tokens: estimate input tokens locally: %w", err)
 		}
-		logger.L().Debug("openai count_tokens: cn provider local estimate",
+		logger.L().Debug("openai count_tokens: local estimate",
 			zap.Int64("account_id", account.ID),
 			zap.Int("estimated_input_tokens", estimated),
 		)

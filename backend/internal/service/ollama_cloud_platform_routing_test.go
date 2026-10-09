@@ -185,34 +185,35 @@ func TestShouldForwardOpenAIResponsesViaRawChatCompletions_OllamaCloud(t *testin
 	require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolResponses)))
 }
 
-// TestForwardCountTokensAsAnthropic_OllamaCloudEstimatesLocally 覆盖 ⑨ findings B1：
-// ollama_cloud 账号命中本地估算分支，返回 200 且不产生任何出站请求。
-func TestForwardCountTokensAsAnthropic_OllamaCloudEstimatesLocally(t *testing.T) {
+// TestForwardCountTokensAsAnthropic_EstimatesLocallyWithoutUpstream 覆盖无
+// Anthropic count_tokens 端点的账号：ollama_cloud（⑨ findings B1）与 grok
+// （composite 兼容族账号池可选中，放行会把 xAI 凭据发往 api.openai.com）
+// 均命中本地估算分支，返回 200 且不产生任何出站请求。
+func TestForwardCountTokensAsAnthropic_EstimatesLocallyWithoutUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"claude-sonnet-4-5","system":"You are helpful.","messages":[{"role":"user","content":"hello"}]}`)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+	for _, account := range []*Account{
+		{ID: 904, Platform: PlatformOllamaCloud, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test"}, Extra: map[string]any{}},
+		{ID: 905, Platform: PlatformGrok, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "xai-test"}, Extra: map[string]any{}},
+		{ID: 906, Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"access_token": "xai-oauth"}, Extra: map[string]any{}},
+	} {
+		t.Run(account.Platform+"_"+account.Type, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
 
-	upstream := &httpUpstreamRecorder{err: errors.New("local estimate must not hit upstream")}
-	svc := ollamaCloudRoutingTestService()
-	svc.httpUpstream = upstream
+			upstream := &httpUpstreamRecorder{err: errors.New("local estimate must not hit upstream")}
+			svc := ollamaCloudRoutingTestService()
+			svc.httpUpstream = upstream
 
-	account := &Account{
-		ID:          904,
-		Name:        "ollama-cloud-count-tokens",
-		Platform:    PlatformOllamaCloud,
-		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{},
+			err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "claude-sonnet-4-5")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Greater(t, gjson.Get(rec.Body.String(), "input_tokens").Int(), int64(0))
+			require.Nil(t, upstream.lastReq)
+			require.Empty(t, upstream.requests)
+		})
 	}
-
-	err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "claude-sonnet-4-5")
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Greater(t, gjson.Get(rec.Body.String(), "input_tokens").Int(), int64(0))
-	require.Nil(t, upstream.lastReq)
-	require.Empty(t, upstream.requests)
 }
