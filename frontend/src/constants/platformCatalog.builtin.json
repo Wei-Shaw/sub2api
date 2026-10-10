@@ -278,6 +278,24 @@
           }
         ]
       }
+    },
+    {
+      "id": "dimagent",
+      "display_name": "DimAgent",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "chat_completions": "https://dimagent.cn/v1"
+            }
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -293,6 +311,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "dimagent"
   ]
 }
