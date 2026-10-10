@@ -213,7 +213,7 @@ func (s *BillingCacheService) InflightReservationFailClosedOnUnpriced() bool {
 
 // ReserveInflightBalance 简化封装：返回释放函数，不续期、不做计费交接（预留最长存活 TTL）。
 func (s *BillingCacheService) ReserveInflightBalance(ctx context.Context, user *User, group *Group, subscription *UserSubscription, estimate float64) (func(), error) {
-	r, err := s.reserveInflight(ctx, user, group, subscription, estimate, false)
+	r, err := s.reserveInflight(ctx, user, group, subscription, estimate, false, true)
 	if err != nil {
 		return noopRelease, err
 	}
@@ -232,10 +232,16 @@ func (s *BillingCacheService) ReserveInflightBalance(ctx context.Context, user *
 // 开关关闭 / 简易模式 / 订阅模式 / estimate <= 0 / 缓存不支持 / 余额读取失败 / Redis 执行失败。
 // 仅当 Redis 明确判定 缓存余额 - 在途合计 < estimate（且已有在途请求）时返回 ErrInsufficientBalance。
 func (s *BillingCacheService) ReserveInflight(ctx context.Context, user *User, group *Group, subscription *UserSubscription, estimate float64) (*InflightReservation, error) {
-	return s.reserveInflight(ctx, user, group, subscription, estimate, true)
+	return s.reserveInflight(ctx, user, group, subscription, estimate, true, true)
 }
 
-func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, group *Group, subscription *UserSubscription, estimate float64, renew bool) (*InflightReservation, error) {
+// ReserveInflightCharge 为扣费前即可确定金额的费用登记在途预留，金额不受 max_reservation_usd 封顶，
+// 其余语义与 ReserveInflight 相同。
+func (s *BillingCacheService) ReserveInflightCharge(ctx context.Context, user *User, group *Group, subscription *UserSubscription, amount float64) (*InflightReservation, error) {
+	return s.reserveInflight(ctx, user, group, subscription, amount, true, false)
+}
+
+func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, group *Group, subscription *UserSubscription, estimate float64, renew, capped bool) (*InflightReservation, error) {
 	cfg, ok := s.inflightReservationConfig()
 	if !ok || user == nil {
 		return nil, nil
@@ -243,7 +249,7 @@ func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, g
 	if group != nil && group.IsSubscriptionType() && subscription != nil {
 		return nil, nil
 	}
-	if cfg.MaxReservationUSD > 0 && estimate > cfg.MaxReservationUSD {
+	if capped && cfg.MaxReservationUSD > 0 && estimate > cfg.MaxReservationUSD {
 		estimate = cfg.MaxReservationUSD
 	}
 	if estimate <= 0 || math.IsNaN(estimate) || math.IsInf(estimate, 0) {

@@ -589,10 +589,18 @@ export default {
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',
       bedrockDesc: 'SigV4 / API Key',
-      vertexLabel: 'Vertex',
+      vertexLabel: 'Agent Platform (Vertex)',
       vertexDesc: 'Service Account',
-      vertexAnthropicHint: 'Use a Google Cloud Service Account JSON to call Anthropic Claude via Vertex AI. It is recommended to configure model mapping to map client Claude model names to Vertex model IDs.',
-      vertexGeminiHint: 'Use a Google Cloud Service Account JSON to access Vertex AI Gemini. It is recommended to place Vertex accounts in a separate group to avoid mixing with AI Studio/Gemini OAuth on the same models.',
+      vertexGeminiDesc: 'Service Account / API Key',
+      vertexAnthropicHint: 'Use a Google Cloud Service Account JSON to call Anthropic Claude via Agent Platform (Vertex). It is recommended to configure model mapping to map client Claude model names to Agent Platform (Vertex) model IDs.',
+      vertexGeminiHint: 'Call Gemini via Agent Platform (Vertex) with a Service Account JSON or an API key. It is recommended to place these accounts in a separate group to avoid mixing with AI Studio/Gemini OAuth on the same models.',
+      vertexAuthMode: 'Authentication',
+      vertexAuthModeServiceAccount: 'Service Account JSON',
+      vertexAuthModeApiKey: 'API Key',
+      vertexApiKeyHint: 'Create it on the Agent Platform API Keys page in the Google Cloud console. Google\'s explicit context caching API does not accept API keys, so these accounts do not serve explicit caching or batch image generation; implicit caching still applies.',
+      vertexApiKeyRequired: 'Please enter an API key',
+      vertexApiKeyProjectIdPlaceholder: 'Optional',
+      vertexApiKeyProjectIdHint: 'Leave empty to use the express mode global endpoint (location is ignored). For a standard API key bound to a service account, enter the Project ID to call the project endpoint with Project ID + Location.',
       vertexSaJsonLabel: 'Service Account JSON',
       vertexSaJsonLoaded: 'Service Account JSON loaded',
       vertexSaJsonDrop: 'Drop Service Account JSON here',
@@ -602,8 +610,8 @@ export default {
       vertexSaJsonUploadHint: 'After uploading or dropping a JSON file, the project_id will be auto-extracted. Key content is only used for account creation.',
       vertexSaJsonEditHint: 'Service Account JSON is not shown on the edit page; to change the JSON, delete the account and recreate it.',
       vertexProjectIdPlaceholder: 'Auto-extracted from JSON',
-      vertexLocationHint: 'Available locations vary by Vertex model. Select the default endpoint location for this account.',
-      vertexLocationRequired: 'Please enter a Vertex location',
+      vertexLocationHint: 'Available locations vary by model. Select the default endpoint location for this account.',
+      vertexLocationRequired: 'Please select a location',
       vertexSaJsonMissingFields: 'Service Account JSON is missing project_id, client_email, or private_key',
       vertexSaJsonMissingProjectId: 'Service Account JSON is missing project_id',
       vertexSaJsonMissingClientEmail: 'Service Account JSON is missing client_email',
@@ -853,6 +861,12 @@ export default {
       poolModeRetryStatusCodes: 'Retry Status Codes',
       poolModeRetryStatusCodesHint:
         'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
+      explicitCacheUpstream: 'Upstream Supports Explicit Caching',
+      explicitCacheUpstreamHint: 'Enable only when the upstream is this system with explicit caching support',
+      explicitCacheUpstreamInfo:
+        'When enabled, this account can create Gemini explicit caches (cachedContents). A cache is only used on this account and never fails over. The upstream must route each cache to the account that created it; account-pool gateways or upstreams without explicit caching support will make caches unreliable.',
+      explicitCacheUpstreamMaxTTL: 'Upstream Cache TTL Limit (seconds)',
+      explicitCacheUpstreamMaxTTLHint: 'Maximum TTL allowed by the upstream gateway; requests above it are not sent to this account. Leave blank to use this site\'s limit.',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
@@ -1408,7 +1422,7 @@ export default {
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
-        apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        apiKeyHint: 'New AI Studio keys start with AQ. (legacy keys start with AIza); for a third-party upstream, use the key it provides',
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
@@ -1431,8 +1445,8 @@ export default {
         accountType: {
           oauthTitle: 'OAuth (Gemini)',
           oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
-          apiKeyTitle: 'API Key (AI Studio)',
-          apiKeyDesc: 'Fastest setup. Use an AIza API key.',
+          apiKeyTitle: 'API Key',
+          apiKeyDesc: 'An official AI Studio key, or a Gemini-compatible third-party upstream.',
           apiKeyNote:
             'Best for light testing. Free tier has strict rate limits and data may be used for training.',
           apiKeyLink: 'Get API Key',
@@ -1493,7 +1507,7 @@ export default {
           docs: {
             codeAssist: 'Code Assist Quotas',
             aiStudio: 'AI Studio Pricing',
-            vertex: 'Vertex AI Quotas'
+            vertex: 'Agent Platform (Vertex) Quotas'
           },
           simulatedNote: 'Simulated quota, for reference only',
           rows: {

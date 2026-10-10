@@ -677,6 +677,72 @@ func TestHandleGeminiUpstreamError_APIKeyFallbackStillPSTMidnight(t *testing.T) 
 	require.WithinDuration(t, expected, repo.lastRateLimitReset, 5*time.Second)
 }
 
+// 第三方上游 API Key 的 429 不套用 AI Studio 每日配额语义：只认显式重试时长，
+// 否则走全局 429 兜底冷却（未配置时默认 5 秒）。
+func TestHandleGeminiUpstreamError_ThirdPartyAPIKey429(t *testing.T) {
+	const relayBaseURL = "https://relay.example.com"
+	tests := []struct {
+		name       string
+		baseURL    string
+		body       string
+		expectWait time.Duration
+		pstNight   bool
+	}{
+		{
+			name:       "no_reset_time_uses_global_fallback",
+			baseURL:    relayBaseURL,
+			body:       `{"error":{"code":429,"message":"You have exhausted your capacity on this model. Your quota will reset after 6h53m10s."}}`,
+			expectWait: defaultRateLimit429CooldownSeconds * time.Second,
+		},
+		{
+			name:       "daily_quota_message_not_treated_as_pst_midnight",
+			baseURL:    relayBaseURL,
+			body:       `{"error":{"code":429,"message":"Quota exceeded for metric: generate_content_free_tier_requests, limit: 50 per day"}}`,
+			expectWait: defaultRateLimit429CooldownSeconds * time.Second,
+		},
+		{
+			name:       "explicit_quota_reset_delay_respected",
+			baseURL:    relayBaseURL,
+			body:       `{"error":{"code":429,"message":"rate limit","details":[{"metadata":{"quotaResetDelay":"42s"}}]}}`,
+			expectWait: 42 * time.Second,
+		},
+		{
+			name:     "official_base_url_keeps_pst_midnight",
+			baseURL:  "https://generativelanguage.googleapis.com/",
+			body:     `{"error":{"code":429,"message":"rate limit"}}`,
+			pstNight: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &rateLimit429AccountRepoStub{}
+			svc := &GeminiMessagesCompatService{
+				accountRepo:      repo,
+				rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+			}
+			account := &Account{
+				ID:          700,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": tt.baseURL},
+			}
+
+			before := time.Now()
+			svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(tt.body))
+
+			require.Equal(t, 1, repo.rateLimitCalls)
+			require.Equal(t, int64(700), repo.lastRateLimitID)
+			if tt.pstNight {
+				expected := time.Unix(*nextGeminiDailyResetUnix(), 0)
+				require.WithinDuration(t, expected, repo.lastRateLimitReset, 5*time.Second)
+				return
+			}
+			require.WithinDuration(t, before.Add(tt.expectWait), repo.lastRateLimitReset, 2*time.Second)
+		})
+	}
+}
+
 type geminiErrorPolicyRepo struct {
 	mockAccountRepoForGemini
 	setErrorCalls            int

@@ -253,6 +253,9 @@ gateway:
   # Enable Gemini upstream response header debug logs (default: false)
   # 是否开启 Gemini 上游响应头调试日志（默认 false）
   gemini_debug_response_headers: false
+  # Maximum TTL (seconds) a Gemini explicit context cache may be created or extended to (default: 86400)
+  # Gemini 显式上下文缓存单次可设置的最长有效期（秒，默认 86400）；存储费在创建/延长请求中一次性收取
+  gemini_cached_content_max_ttl_seconds: 86400
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)
@@ -1102,6 +1105,12 @@ pricing:
   # 覆盖补丁文件（可选，优先级最高）：条目按字段浅合并覆盖目录/回退数据，
   # 字段值为 null 表示删除该字段。模型名须与目录键完全一致。
   # 修改后在下一次哈希检查时按内容哈希自动重载，无需重启。
+  # Gemini explicit context caching requires a storage price per model, e.g.
+  # {"gemini-3.8-flash": {"cache_storage_cost_per_token_per_hour": 0.0000005}};
+  # models without it reject POST /v1beta/cachedContents.
+  # Gemini 显式缓存需按模型配置存储单价（每 token 每小时，USD）字段
+  # cache_storage_cost_per_token_per_hour；未配置的模型拒绝创建缓存。
+  # 目录中不存在的模型条目还须同时提供 input_cost_per_token / output_cost_per_token。
   # override_file: "./data/model_pricing_overrides.json"
   # Update interval in hours
   # 更新间隔（小时）

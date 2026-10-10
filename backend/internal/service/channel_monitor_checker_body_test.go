@@ -279,6 +279,17 @@ func TestRunCheckForModel_Grok_RedactsXAIKeyFromUpstreamBody(t *testing.T) {
 	}
 }
 
+func TestSanitizeErrorMessage_RedactsGeminiAuthKey(t *testing.T) {
+	authKey := "AQ." + "Ab" + strings.Repeat("Xy9_-z", 8)
+	got := sanitizeErrorMessage(`{"error":{"message":"API key not valid: ` + authKey + `"}}`)
+	if strings.Contains(got, authKey) {
+		t.Fatalf("Gemini auth key leaked: %q", got)
+	}
+	if !strings.Contains(got, "AQ.***REDACTED***") {
+		t.Fatalf("expected redaction marker, got %q", got)
+	}
+}
+
 func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	h := &openAICaptureHandler{}
 	endpoint := setupFakeOpenAI(t, h)

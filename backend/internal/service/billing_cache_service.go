@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -573,6 +574,11 @@ func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, key
 // resets expired windows in-memory and triggers async DB reset,
 // and returns an error if any window limit is exceeded.
 func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	return s.checkAPIKeyRateLimitsWithPending(ctx, apiKey, 0)
+}
+
+// checkAPIKeyRateLimitsWithPending 在窗口用量上叠加 pending（即将扣除的金额）后检查限速窗口。
+func (s *BillingCacheService) checkAPIKeyRateLimitsWithPending(ctx context.Context, apiKey *APIKey, pending float64) error {
 	if s.cache == nil {
 		// No cache: fall back to reading from DB directly
 		if s.apiKeyRateLimitLoader == nil {
@@ -583,7 +589,7 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 			return nil // Don't block requests on DB errors
 		}
 		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d,
-			data.Window5hStart, data.Window1dStart, data.Window7dStart)
+			data.Window5hStart, data.Window1dStart, data.Window7dStart, pending)
 	}
 
 	cacheData, err := s.cache.GetAPIKeyRateLimit(ctx, apiKey.ID)
@@ -628,11 +634,11 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		t := time.Unix(cacheData.Window7d, 0)
 		w7d = &t
 	}
-	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d, pending)
 }
 
-// evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
-func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
+// evaluateRateLimits checks usage (plus pending) against limits, triggering async resets for expired windows.
+func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time, pending float64) error {
 	needsReset := false
 
 	// Reset expired windows in-memory for check purposes
@@ -675,13 +681,16 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 	}
 
 	// Check limits
-	if apiKey.RateLimit5h > 0 && usage5h >= apiKey.RateLimit5h {
+	exceeds := func(usage, limit float64) bool {
+		return limit > 0 && (usage >= limit || usage+pending > limit)
+	}
+	if exceeds(usage5h, apiKey.RateLimit5h) {
 		return ErrAPIKeyRateLimit5hExceeded
 	}
-	if apiKey.RateLimit1d > 0 && usage1d >= apiKey.RateLimit1d {
+	if exceeds(usage1d, apiKey.RateLimit1d) {
 		return ErrAPIKeyRateLimit1dExceeded
 	}
-	if apiKey.RateLimit7d > 0 && usage7d >= apiKey.RateLimit7d {
+	if exceeds(usage7d, apiKey.RateLimit7d) {
 		return ErrAPIKeyRateLimit7dExceeded
 	}
 	return nil
@@ -778,6 +787,52 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return err
 	}
 
+	return nil
+}
+
+// CheckChargeAffordable 校验扣费前即可确定金额的费用（倍率后 USD，如显式缓存存储费）不会透支：
+// 余额模式要求缓存余额覆盖 amount，订阅模式要求日 / 周 / 月剩余额度覆盖 amount，
+// API Key 总额度与限速窗口同样叠加 amount 检查。须在 CheckBillingEligibility 通过后调用；简易模式不校验。
+func (s *BillingCacheService) CheckChargeAffordable(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, amount float64) error {
+	if user == nil || amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return nil
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return nil
+	}
+	if group != nil && group.IsSubscriptionType() && subscription != nil {
+		subData, err := s.GetSubscriptionStatus(ctx, user.ID, group.ID)
+		if err != nil {
+			return ErrBillingServiceUnavailable.WithCause(err)
+		}
+		if group.HasDailyLimit() && subData.DailyUsage+amount > *group.DailyLimitUSD {
+			return ErrDailyLimitExceeded
+		}
+		if group.HasWeeklyLimit() && subData.WeeklyUsage+amount > *group.WeeklyLimitUSD {
+			return ErrWeeklyLimitExceeded
+		}
+		if group.HasMonthlyLimit() && subData.MonthlyUsage+amount > *group.MonthlyLimitUSD {
+			return ErrMonthlyLimitExceeded
+		}
+	} else {
+		balance, err := s.GetUserBalance(ctx, user.ID)
+		if err != nil {
+			return ErrBillingServiceUnavailable.WithCause(err)
+		}
+		if balance < amount {
+			return ErrInsufficientBalance
+		}
+	}
+	if apiKey != nil {
+		if apiKey.Quota > 0 && apiKey.QuotaUsed+amount > apiKey.Quota {
+			return ErrAPIKeyQuotaExhausted
+		}
+		if apiKey.HasRateLimits() {
+			if err := s.checkAPIKeyRateLimitsWithPending(ctx, apiKey, amount); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
