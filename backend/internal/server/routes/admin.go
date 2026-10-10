@@ -61,6 +61,9 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
+		// DimAgent OAuth
+		registerDimAgentOAuthRoutes(admin, h)
+
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
 
@@ -505,6 +508,15 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 // registerCNProviderRoutes 注册国产供应商（kimi/zhipu/deepseek）的额度与余额查询端点。
+func registerDimAgentOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	dimagent := admin.Group("/dimagent")
+	{
+		dimagent.POST("/oauth/auth-url", h.Admin.DimAgentOAuth.GenerateAuthURL)
+		dimagent.POST("/oauth/create-from-callback", h.Admin.DimAgentOAuth.CreateAccountFromCallback)
+		dimagent.POST("/accounts/:id/refresh", h.Admin.DimAgentOAuth.RefreshAccountToken)
+	}
+}
+
 func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	cn := admin.Group("/cn-providers")
 	{
