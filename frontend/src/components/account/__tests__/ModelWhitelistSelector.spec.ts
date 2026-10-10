@@ -29,7 +29,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: Record<string, string>) => key === 'common.copy' ? '复制' : key === 'admin.accounts.modelMappingConflict' ? `Model mapping conflict: ${params?.from} → ${params?.to}` : key
+      t: (key: string, params?: Record<string, string>) => key === 'common.copy' ? '复制' : key === 'admin.accounts.modelMappingConflict' ? `Model mapping conflict: ${params?.from} → ${params?.to}` : key === 'admin.accounts.syncUpstreamModelsError' ? `${key}: ${params?.message}` : key
     })
   }
 })
@@ -242,6 +242,26 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')).toEqual([[['x-preview-f-free']]])
     expect(showWarning).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsMetadataIncomplete')
     expect(showSuccess).not.toHaveBeenCalled()
+  })
+
+  it('shows the backend message when upstream sync is rejected', async () => {
+    syncUpstreamModels.mockRejectedValue({
+      status: 400,
+      code: 'BAD_REQUEST',
+      message: 'Vertex API key accounts do not support upstream model listing'
+    })
+    const wrapper = mountSelector({ platform: 'gemini', accountId: 174 })
+
+    const syncButton = wrapper
+      .findAll('button')
+      .find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(
+      'admin.accounts.syncUpstreamModelsError: Vertex API key accounts do not support upstream model listing'
+    )
   })
 
   it('shows success and a partial warning when some capabilities were saved', async () => {
