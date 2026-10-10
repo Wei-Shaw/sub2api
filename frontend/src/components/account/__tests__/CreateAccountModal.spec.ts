@@ -14,6 +14,8 @@ const {
   showWarningMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  generateDimAgentAuthUrlMock,
+  createDimAgentFromCallbackMock,
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
@@ -22,6 +24,8 @@ const {
   showWarningMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  generateDimAgentAuthUrlMock: vi.fn(),
+  createDimAgentFromCallbackMock: vi.fn(),
   authIsSimpleMode: { value: true },
 }))
 
@@ -57,6 +61,10 @@ vi.mock('@/api/admin', () => ({
     },
     tlsFingerprintProfiles: {
       list: vi.fn().mockResolvedValue([]),
+    },
+    dimagent: {
+      generateAuthUrl: generateDimAgentAuthUrlMock,
+      createFromCallback: createDimAgentFromCallbackMock,
     },
   },
 }))
@@ -653,6 +661,30 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       })
       expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('protocol_rules')
     })
+  })
+
+  it('uses the dedicated OAuth-only DimAgent flow', async () => {
+    generateDimAgentAuthUrlMock.mockResolvedValue({
+      auth_url: 'https://dimagent.cn/oauth/authorize?state=test',
+      session_id: 'dim-session',
+      redirect_uri: 'http://localhost:63211/auth/callback',
+    })
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'DimAgent')
+
+    expect(wrapper.text()).toContain('账号类型：OAuth 网页授权')
+    expect(wrapper.text()).not.toContain('admin.accounts.cnProviders.apiProtocol.title')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('dim-oauth')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('DimAgent 网页授权')
+    await selectButtonByText(wrapper, '生成 DimAgent 授权链接')
+    await flushPromises()
+    expect(generateDimAgentAuthUrlMock).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('https://dimagent.cn/oauth/authorize?state=test')
   })
 
   it('groups the aggregators on their own row below the CN providers', () => {
