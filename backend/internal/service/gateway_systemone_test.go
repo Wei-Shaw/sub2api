@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -99,6 +100,34 @@ func TestForwardSystemOneForwardsNativeProtocolAndUsage(t *testing.T) {
 	require.Equal(t, "jev-1.13.0", result.UpstreamResponseModel)
 	require.Equal(t, 123, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
+func TestForwardSystemOneAppliesAccountModelMapping(t *testing.T) {
+	requestBody := []byte(`{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","instructions":"x"}}}`)
+	responseBody := []byte(`{"model":"decision-model-preview","answers":{"q":{"type":"noul","answer":true}},"usage":{"input_tokens":5,"output_tokens":1}}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		var payload struct {
+			Model string `json:"model"`
+		}
+		require.NoError(t, json.Unmarshal(got, &payload))
+		require.Equal(t, "decision-model-preview", payload.Model)
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(responseBody)
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	svc := newSystemOneTestService(&systemOneHTTPUpstream{do: server.Client().Do})
+	account := &Account{ID: 30, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": server.URL, "api_key": "ts-secret",
+		"model_mapping": map[string]any{"jev-latest": "decision-model-preview"},
+	}}
+	result, err := svc.ForwardSystemOne(context.Background(), newSystemOneTestContext(), account, requestBody)
+	require.NoError(t, err)
+	require.Equal(t, "jev-latest", result.Model)
+	require.Equal(t, "decision-model-preview", result.UpstreamResponseModel)
 }
 
 func TestForwardSystemOneAllowsSuccessfulResponseWithoutModel(t *testing.T) {

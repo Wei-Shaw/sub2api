@@ -25,11 +25,12 @@ func TestValidateSystemOneRequestValidQuestionTypes(t *testing.T) {
 		{"score object level", `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"score","instructions":null,"criteria":[{"description":"only","extra":null}]}}}`},
 		{"score array level", `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"score","criteria":[["only",null]]}}}`},
 		{"native extensions preserved", `{"model":"jev-latest","state":"sample","questions":{"q":{"type":"noul","extension":{"kept":true}}},"extension":[1,null]}`},
+		{"custom upstream model", `{"model":"decision-model-preview","state":"sample","questions":{"q":{"type":"noul","instructions":"x"}}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			model, err := ValidateSystemOneRequest([]byte(tc.body))
 			require.NoError(t, err)
-			require.Equal(t, JevLatestModel, model)
+			require.NotEmpty(t, model)
 		})
 	}
 }
@@ -42,8 +43,8 @@ func TestValidateSystemOneRequestRejectsInvalidRequests(t *testing.T) {
 	}{
 		{"invalid json", `{`, "invalid JSON"},
 		{"missing model", `{"state":"x","questions":{"q":{"type":"noul","instructions":"x"}}}`, "model"},
-		{"illegal model", `{"model":"jev-old","state":"x","questions":{"q":{"type":"noul","instructions":"x"}}}`, "jev-latest"},
-		{"model with whitespace", `{"model":" jev-latest ","state":"x","questions":{"q":{"type":"noul","instructions":"x"}}}`, "jev-latest"},
+		{"empty model", `{"model":"","state":"x","questions":{"q":{"type":"noul","instructions":"x"}}}`, "model"},
+		{"non string model", `{"model":42,"state":"x","questions":{"q":{"type":"noul","instructions":"x"}}}`, "model"},
 		{"missing state", `{"model":"jev-latest","questions":{"q":{"type":"noul","instructions":"x"}}}`, "state"},
 		{"scalar state", `{"model":"jev-latest","state":42,"questions":{"q":{"type":"noul","instructions":"x"}}}`, "state"},
 		{"empty questions", `{"model":"jev-latest","state":"x","questions":{}}`, "questions"},

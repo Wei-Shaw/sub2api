@@ -39,8 +39,9 @@ func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, accou
 	if state == "" {
 		state = typeSafeTestDefaultState
 	}
+	testModel := account.GetMappedModel(typesafe.JevLatestModel)
 	payload, err := json.Marshal(map[string]any{
-		"model": typesafe.JevLatestModel,
+		"model": testModel,
 		"state": state,
 		"questions": map[string]any{
 			typeSafeTestQuestionID: map[string]any{
@@ -59,7 +60,7 @@ func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, accou
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: typesafe.JevLatestModel})
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModel})
 
 	req, err := typesafe.NewSystemOneRequest(ctx, baseURL, apiKey, payload)
 	if err != nil {
