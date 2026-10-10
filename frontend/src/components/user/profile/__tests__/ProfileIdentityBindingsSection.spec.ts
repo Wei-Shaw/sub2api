@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
@@ -93,6 +93,13 @@ function createUser(overrides: Partial<User> = {}): User {
     updated_at: '2026-04-20T00:00:00Z',
     ...overrides,
   }
+}
+
+function mountEmailBindingSection(user: User | null) {
+  return mount(ProfileIdentityBindingsSection, {
+    global: { plugins: [pinia] },
+    props: { user },
+  })
 }
 
 describe('ProfileIdentityBindingsSection', () => {
@@ -500,6 +507,159 @@ describe('ProfileIdentityBindingsSection', () => {
     })
     expect(authStore.user?.email).toBe('new@example.com')
     expect(showSuccessSpy).toHaveBeenCalledWith('Primary email updated')
+  })
+
+  describe('email form synchronization', () => {
+    it.each([true, false])('preserves the target email across profile refreshes (email bound: %s)', async (emailBound) => {
+      userApiMocks.sendEmailBindingCode.mockResolvedValue(undefined)
+      userApiMocks.bindEmailIdentity.mockResolvedValue(
+        createUser({ email: 'new@example.com', email_bound: true })
+      )
+      const wrapper = mountEmailBindingSection(createUser({ email_bound: emailBound }))
+      const emailInput = wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]')
+
+      await emailInput.setValue('new@example.com')
+      await wrapper.setProps({ user: createUser({ email_bound: emailBound, balance: 20 }) })
+      expect(emailInput.element.value).toBe('new@example.com')
+
+      await wrapper.get('[data-testid="profile-binding-email-send-code"]').trigger('click')
+      await flushPromises()
+      await wrapper.setProps({ user: createUser({ email_bound: emailBound, balance: 30 }) })
+      expect(userApiMocks.sendEmailBindingCode).toHaveBeenCalledWith('new@example.com')
+      expect(emailInput.element.value).toBe('new@example.com')
+
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('current-password')
+      await wrapper.setProps({
+        user: createUser({ email: 'updated-elsewhere@example.com', email_bound: emailBound }),
+      })
+      await wrapper.get('[data-testid="profile-binding-email-submit"]').trigger('click')
+      await flushPromises()
+
+      expect(userApiMocks.bindEmailIdentity).toHaveBeenCalledWith({
+        email: 'new@example.com',
+        verify_code: '123456',
+        password: 'current-password',
+      })
+    })
+
+    it('preserves the code recipient while an unedited email code request is pending', async () => {
+      let resolveSend!: () => void
+      userApiMocks.sendEmailBindingCode.mockImplementation(() => new Promise<void>((resolve) => {
+        resolveSend = () => resolve()
+      }))
+      const wrapper = mountEmailBindingSection(createUser({ email_bound: true }))
+      const showSuccessSpy = vi.spyOn(useAppStore(), 'showSuccess')
+
+      await wrapper.get('[data-testid="profile-binding-email-send-code"]').trigger('click')
+      await wrapper.setProps({ user: createUser({ email: 'updated-elsewhere@example.com', email_bound: true }) })
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value)
+        .toBe('alice@example.com')
+
+      resolveSend()
+      await flushPromises()
+      expect(showSuccessSpy).toHaveBeenCalledWith('Code sent to alice@example.com')
+      await wrapper.setProps({ user: createUser({ email: 'updated-elsewhere@example.com', email_bound: true, balance: 20 }) })
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value)
+        .toBe('alice@example.com')
+    })
+
+    it('preserves an intentionally cleared target email across profile refreshes', async () => {
+      const wrapper = mountEmailBindingSection(createUser())
+
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('')
+      await wrapper.setProps({ user: createUser({ balance: 20 }) })
+
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe('')
+    })
+
+    it.each(['code', 'password'])('preserves the target email when only the %s field has been edited', async (field) => {
+      const wrapper = mountEmailBindingSection(createUser({ email_bound: true }))
+      const input = wrapper.get<HTMLInputElement>(`[data-testid="profile-binding-email-${field}-input"]`)
+      const value = field === 'code' ? '123456' : 'current-password'
+
+      await input.setValue(value)
+      await wrapper.setProps({ user: createUser({ email: 'updated-elsewhere@example.com', email_bound: true }) })
+
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value)
+        .toBe('alice@example.com')
+      expect(input.element.value).toBe(value)
+    })
+
+    it('hydrates and synchronizes an untouched form, clearing synthetic email addresses', async () => {
+      const wrapper = mountEmailBindingSection(null)
+      const emailInput = wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]')
+      expect(emailInput.element.value).toBe('')
+
+      await wrapper.setProps({ user: createUser() })
+      expect(emailInput.element.value).toBe('alice@example.com')
+
+      await wrapper.setProps({ user: createUser({ email: 'updated@example.com' }) })
+      expect(emailInput.element.value).toBe('updated@example.com')
+
+      await wrapper.setProps({ user: createUser({ email: 'oauth@linuxdo-connect.invalid', email_bound: false }) })
+      expect(emailInput.element.value).toBe('')
+    })
+
+    it.each([
+      { name: 'another account', user: createUser({ id: 8, email: 'bob@example.com' }), email: 'bob@example.com' },
+      { name: 'an OAuth-only account', user: createUser({ id: 8, email: 'oauth@linuxdo-connect.invalid', email_bound: false }), email: '' },
+      { name: 'a signed-out user', user: null, email: '' },
+    ])('resets the draft and credentials for $name', async ({ user, email }) => {
+      const wrapper = mountEmailBindingSection(createUser())
+
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('new@example.com')
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('current-password')
+      await wrapper.setProps({ user })
+
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe(email)
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-code-input"]').element.value).toBe('')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-password-input"]').element.value).toBe('')
+
+      await wrapper.setProps({ user: createUser({ id: 8, email: 'refreshed@example.com' }) })
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value)
+        .toBe('refreshed@example.com')
+    })
+
+    it('preserves the draft after a failed submission and a subsequent profile refresh', async () => {
+      userApiMocks.bindEmailIdentity.mockRejectedValue(new Error('Incorrect password'))
+      const wrapper = mountEmailBindingSection(createUser({ email_bound: true }))
+      const showErrorSpy = vi.spyOn(useAppStore(), 'showError')
+
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('new@example.com')
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('current-password')
+      await wrapper.get('[data-testid="profile-binding-email-submit"]').trigger('click')
+      await flushPromises()
+      await wrapper.setProps({ user: createUser({ email_bound: true, balance: 20 }) })
+
+      expect(showErrorSpy).toHaveBeenCalledWith('Incorrect password')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe('new@example.com')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-code-input"]').element.value).toBe('123456')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-password-input"]').element.value).toBe('current-password')
+    })
+
+    it('resets to the canonical email after success and resumes synchronization', async () => {
+      const updatedUser = createUser({ email: 'new@example.com', email_bound: true })
+      userApiMocks.bindEmailIdentity.mockResolvedValue(updatedUser)
+      const wrapper = mountEmailBindingSection(createUser({ email_bound: true }))
+
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('New@Example.com')
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('current-password')
+      await wrapper.get('[data-testid="profile-binding-email-submit"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe('new@example.com')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-code-input"]').element.value).toBe('')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-password-input"]').element.value).toBe('')
+
+      await wrapper.setProps({ user: updatedUser })
+      await wrapper.setProps({ user: createUser({ email: 'refreshed@example.com', email_bound: true }) })
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value)
+        .toBe('refreshed@example.com')
+    })
   })
 
   it('collapses the email binding form in compact mode until the user expands it', async () => {
