@@ -190,6 +190,10 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 		return nil, ErrSessionResponse
 	}
 	defer func() { _ = response.Body.Close() }()
+	document, expiresAt, err := persistSessionCookies(ctx, session, response, cookies)
+	if err != nil {
+		return nil, err
+	}
 	if response.StatusCode == http.StatusUnauthorized {
 		return nil, ErrSessionExpired
 	}
@@ -207,10 +211,6 @@ func (c *SessionClient) Refresh(ctx context.Context, session Session) (*SessionR
 	}
 	if json.Unmarshal(body, &metadata) != nil || metadata.Status != "assigned" || !validID(metadata.VMID, 256) {
 		return nil, ErrSessionResponse
-	}
-	document, expiresAt, err := applySessionCookies(session, response, cookies)
-	if err != nil {
-		return nil, err
 	}
 	check := SessionCheck{Authenticated: true, Status: metadata.Status, VMID: metadata.VMID, VMState: metadata.VMState, CheckedAt: time.Now(), ExpiresAt: expiresAt}
 	target, _ := ParseGatewayTarget(body)
