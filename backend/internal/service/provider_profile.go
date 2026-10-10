@@ -221,6 +221,18 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformDimAgent: {
+		Platform:         PlatformDimAgent,
+		DefaultMode:      AccountModePayG,
+		DefaultTestModel: DefaultDimAgentTestModel,
+		// DimAgent 订阅端点仅实现 OpenAI Chat Completions。无论调用方使用
+		// Chat/Responses/Messages 入口，协议路由最终都回落至此端点。
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{APIProtocolChatCompletions: DefaultDimAgentBaseURL},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。

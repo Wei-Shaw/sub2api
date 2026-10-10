@@ -17,15 +17,17 @@ var (
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe,
 		PlatformCommandCode,
 		PlatformCline,
+		PlatformDimAgent,
 	}
 	legacySchedulerSnapshotPlatforms = []string{
 		PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe,
 		PlatformCommandCode,
 		PlatformCline,
+		PlatformDimAgent,
 	}
 	legacyCompositeMatchingPlatforms = legacySchedulerSnapshotPlatforms
-	legacyMultiProtocolProviders     = []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline}
+	legacyMultiProtocolProviders     = []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformDimAgent}
 	platformProbeValues              = append(append([]string{}, legacyAllPlatforms...), PlatformComposite, "", "moonshot", "Kimi", "openai ", "glm", "bogus")
 	platformProbeAccountTypes        = []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken, AccountTypeUpstream, ""}
 )
@@ -39,12 +41,12 @@ func legacyIsCNProvider(platform string) bool {
 }
 
 func legacyIsOpenAICompatible(platform string) bool {
-	return platform == PlatformOpenAI || platform == PlatformGrok || legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline
+	return platform == PlatformOpenAI || platform == PlatformGrok || legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformDimAgent
 }
 
 func legacyNormalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
-	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline:
+	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformDimAgent:
 		return platform
 	}
 	return PlatformOpenAI
@@ -127,9 +129,9 @@ func TestProviderProfilesUseOpenAIGateway(t *testing.T) {
 func TestProviderProfileAccountPredicatesMatchLegacy(t *testing.T) {
 	for _, platform := range platformProbeValues {
 		account := &Account{Platform: platform, Type: AccountTypeAPIKey}
-		// Cline 只有 Chat Completions 一个端点，按入站协议分流（其余入站转换）。
-		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformCline, account.RoutesProtocolByInbound(), platform)
-		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline, account.IsMultiProtocolAPIKey(), platform)
+		// Cline、DimAgent 只有 Chat Completions 一个端点，按入站协议分流（其余入站转换）。
+		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformCline || platform == PlatformDimAgent, account.RoutesProtocolByInbound(), platform)
+		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformDimAgent, account.IsMultiProtocolAPIKey(), platform)
 	}
 	var nilAccount *Account
 	require.False(t, nilAccount.RoutesProtocolByInbound())
