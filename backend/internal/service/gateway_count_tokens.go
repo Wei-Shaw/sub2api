@@ -111,6 +111,19 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	// 多协议 API Key 供应商（国产厂商、聚合平台、Ollama Cloud）的 Anthropic 兼容层均未
+	// 提供 /v1/messages/count_tokens：与 OpenAI 族链 ForwardCountTokensAsAnthropic 同口径
+	// 本地估算，不发上游（跨族账号池会把这类账号交给本链，转发只会常态 404）。
+	if account.IsMultiProtocolAPIKey() {
+		estimated, err := estimateAnthropicCountTokensLocally(body)
+		if err != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return fmt.Errorf("count_tokens: estimate input tokens locally: %w", err)
+		}
+		c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
+		return nil
+	}
+
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）

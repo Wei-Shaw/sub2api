@@ -419,6 +419,20 @@ func TestCompositePoolCountTokensSkipsUncountableOpenAIAccount(t *testing.T) {
 	require.Empty(t, h.openAIUpstream.snapshot())
 }
 
+// count_tokens 池请求选中 adaptive 多协议账号（国产厂商 / Ollama Cloud）：其 Anthropic
+// 兼容层无 count_tokens 端点，与 OpenAI 族链同口径本地估算，不转发上游。
+func TestCompositePoolCountTokensMultiProtocolAccountEstimatesLocally(t *testing.T) {
+	h := newCompositePoolMessagesHarness(t, []*service.Account{poolAdaptiveKimiAccount(41451, 41011, 0)})
+
+	c, rec := h.newRequest(t, "/v1/messages/count_tokens", poolCountTokensBody(), service.PlatformAnthropic, service.PlatformKimi)
+	h.handler.CountTokens(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Positive(t, gjson.GetBytes(rec.Body.Bytes(), "input_tokens").Int())
+	require.Empty(t, h.gwUpstream.snapshot(), "多协议账号不得转发 count_tokens 到上游")
+	require.Empty(t, h.openAIUpstream.snapshot())
+}
+
 // count_tokens 池请求跳过纯 OpenAI 族账号后改选可计数的 anthropic 账号并成功转发。
 func TestCompositePoolCountTokensSkipsThenForwardsCountableAccount(t *testing.T) {
 	h := newCompositePoolMessagesHarness(t, []*service.Account{
