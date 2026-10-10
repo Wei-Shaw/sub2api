@@ -2804,6 +2804,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// DimAgent accounts use the same OpenAI-shaped /v1/models catalogue but
+	// authenticate with a provider OAuth token. Prefer live discovery and only
+	// fall back to the provider's known models when the upstream is unavailable.
+	if account.IsDimAgent() {
+		if h.accountTestService != nil {
+			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
+				response.Success(c, models)
+				return
+			}
+		}
+		ids := service.DefaultDimAgentModelIDs()
+		models := make([]openai.Model, 0, len(ids))
+		for _, id := range ids {
+			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", DisplayName: id})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
@@ -2890,6 +2909,29 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				})
 			}
 		}
+		response.Success(c, models)
+		return
+	}
+
+	// DimAgent OAuth accounts expose their request-side model mappings. With no
+	// administrator aliases configured, use the provider's known catalog instead
+	// of falling through to Anthropic's default model picker.
+	if account.Platform == service.PlatformDimAgent {
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			ids := service.DefaultDimAgentModelIDs()
+			models := make([]openai.Model, 0, len(ids))
+			for _, id := range ids {
+				models = append(models, openai.Model{ID: id, Object: "model", Type: "model", DisplayName: id})
+			}
+			response.Success(c, models)
+			return
+		}
+		models := make([]openai.Model, 0, len(mapping))
+		for requestedModel := range mapping {
+			models = append(models, openai.Model{ID: requestedModel, Object: "model", Type: "model", DisplayName: requestedModel})
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 		response.Success(c, models)
 		return
 	}

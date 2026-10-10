@@ -232,6 +232,9 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	// DimAgent subscription identity is service-owned and deliberately applied
+	// after both client header forwarding and administrator overrides.
+	account.ApplyDimAgentSubscriptionHeaders(upstreamReq.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, upstreamReq.Header, body)
 
 	proxyURL := ""
@@ -241,6 +244,31 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	}
+	// DSH refreshes a DimAgent OAuth token on the first upstream 401 and retries
+	// once. Mirror that behavior here, but bound it to one retry so a revoked
+	// account cannot spin a refresh loop or repeatedly spend pool capacity.
+	if resp.StatusCode == http.StatusUnauthorized && account.IsDimAgent() && s.dimAgentTokenProvider != nil {
+		_ = resp.Body.Close()
+		refreshCtx := context.WithoutCancel(ctx)
+		freshToken, refreshErr := s.dimAgentTokenProvider.RefreshAfterUnauthorized(refreshCtx, account)
+		if refreshErr != nil || strings.TrimSpace(freshToken) == "" {
+			if refreshErr != nil {
+				return nil, refreshErr
+			}
+			return nil, errors.New("DimAgent OAuth refresh returned an empty access token")
+		}
+		retryReq, retryErr := http.NewRequestWithContext(upstreamReq.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
+		if retryErr != nil {
+			return nil, fmt.Errorf("build DimAgent OAuth retry request: %w", retryErr)
+		}
+		retryReq = retryReq.WithContext(WithHTTPUpstreamProfile(retryReq.Context(), HTTPUpstreamProfileOpenAI))
+		retryReq.Header = upstreamReq.Header.Clone()
+		retryReq.Header.Set("Authorization", "Bearer "+freshToken)
+		resp, err = s.doOpenAIUpstream(retryReq, proxyURL, account)
+		if err != nil {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		}
 	}
 	return resp, nil
 }

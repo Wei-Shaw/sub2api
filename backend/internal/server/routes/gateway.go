@@ -50,7 +50,47 @@ func RegisterGatewayRoutes(
 		// openai、grok 与多协议 API Key 供应商经 OpenAI 网关转发（平台清单）。
 		return domain.UsesOpenAIGateway(getGroupPlatform(c))
 	}
+	unsupportedDimAgentEndpoint := func(c *gin.Context, capability string) bool {
+		if getGroupPlatform(c) != service.PlatformDimAgent {
+			return false
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": capability + " is not supported for DimAgent",
+			},
+		})
+		return true
+	}
+	alphaSearchHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Alpha search API") {
+			return
+		}
+		h.OpenAIGateway.AlphaSearch(c)
+	}
+	responsesWebSocketHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Responses WebSocket API") {
+			return
+		}
+		h.OpenAIGateway.ResponsesWebSocket(c)
+	}
+	liveHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Realtime API") {
+			return
+		}
+		h.OpenAIGateway.Live(c)
+	}
+	liveSidebandHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Realtime API") {
+			return
+		}
+		h.OpenAIGateway.LiveSideband(c)
+	}
 	countTokensHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Count tokens API") {
+			return
+		}
 		switch platform := getGroupPlatform(c); {
 		case platform == service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
@@ -169,6 +209,9 @@ func RegisterGatewayRoutes(
 				return
 			}
 			if service.IsOpenAIResponsesInputTokensRequestPath(c) && isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				if unsupportedDimAgentEndpoint(c, "Count tokens API") {
+					return
+				}
 				h.OpenAIGateway.ResponsesInputTokens(c)
 				return
 			}
@@ -190,6 +233,9 @@ func RegisterGatewayRoutes(
 	{
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
+			if unsupportedDimAgentEndpoint(c, "Messages API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Messages(c)
 				return
@@ -208,10 +254,13 @@ func RegisterGatewayRoutes(
 		// Single-model discovery never selects the Codex client_version manifest.
 		gateway.GET("/models/:model", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
-		gateway.POST("/live", h.OpenAIGateway.Live)
-		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
+		gateway.POST("/live", liveHandler)
+		gateway.GET("/live/:call_id", liveSidebandHandler)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
+			if unsupportedDimAgentEndpoint(c, "Responses API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -219,16 +268,17 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
+			if unsupportedDimAgentEndpoint(c, "Responses API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
 			}
 			h.Gateway.Responses(c)
 		}))
-		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-		gateway.GET("/responses", func(c *gin.Context) {
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		gateway.POST("/alpha/search", textBodyLimit, alphaSearchHandler)
+		gateway.GET("/responses", responsesWebSocketHandler)
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
@@ -353,6 +403,9 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
+		if unsupportedDimAgentEndpoint(c, "Responses API") {
+			return
+		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.Responses(c)
 			return
@@ -371,24 +424,20 @@ func RegisterGatewayRoutes(
 	}
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
 	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))
-	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-	rootRoute(http.MethodGet, "/responses", bodyLimit, func(c *gin.Context) {
-		h.OpenAIGateway.ResponsesWebSocket(c)
-	})
+	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, alphaSearchHandler)
+	rootRoute(http.MethodGet, "/responses", bodyLimit, responsesWebSocketHandler)
 	rootRoute(http.MethodGet, "/models", bodyLimit, modelsHandler)
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)
 	{
-		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
-		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
+		codexDirect.POST("/realtime/calls", liveHandler)
+		codexDirect.GET("/:call_id", liveSidebandHandler)
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
-		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-		codexDirect.GET("/responses", func(c *gin.Context) {
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		codexDirect.POST("/alpha/search", textBodyLimit, alphaSearchHandler)
+		codexDirect.GET("/responses", responsesWebSocketHandler)
 		codexDirect.GET("/models", codexModelsHandler)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform

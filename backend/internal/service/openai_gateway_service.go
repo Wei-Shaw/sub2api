@@ -461,6 +461,7 @@ type OpenAIGatewayService struct {
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
+	dimAgentTokenProvider *DimAgentTokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
@@ -1200,6 +1201,14 @@ func hashSensitiveValueForLog(raw string) string {
 }
 
 // GetAccessToken gets the access token for an OpenAI account
+// SetDimAgentTokenProvider installs the OAuth token provider after construction.
+// A setter preserves the widely used OpenAIGatewayService constructor signature.
+func (s *OpenAIGatewayService) SetDimAgentTokenProvider(provider *DimAgentTokenProvider) {
+	if s != nil {
+		s.dimAgentTokenProvider = provider
+	}
+}
+
 func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	if account.IsShadow() {
 		credAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
@@ -1210,6 +1219,16 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 	}
 	switch account.Type {
 	case AccountTypeOAuth:
+		if account.IsDimAgent() {
+			if s.dimAgentTokenProvider == nil {
+				return "", "", errors.New("DimAgent token provider is not configured")
+			}
+			accessToken, err := s.dimAgentTokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", "", err
+			}
+			return accessToken, "oauth", nil
+		}
 		if account.IsOpenAIAgentIdentity() {
 			return "", OpenAIAuthModeAgentIdentity, nil
 		}
