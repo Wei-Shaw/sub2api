@@ -58,7 +58,7 @@ const legacyZenRules = [
 ]
 
 function legacyIsMultiProtocol(platform: string): boolean {
-  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)
+  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline', 'dimagent'].includes(platform)
 }
 
 function legacySupportsResponses(platform: string): boolean {
@@ -66,6 +66,7 @@ function legacySupportsResponses(platform: string): boolean {
 }
 
 function legacyHeaderOverride(platform: string, type: string): boolean {
+  if (platform === 'dimagent') return false
   if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
     return type === 'apikey'
   }
@@ -224,6 +225,23 @@ describe('credentialsBuilder built-in Command Code provider', () => {
     expect(cnBalanceCellVisible(account({ account_mode: 'payg' }, 'oauth'))).toBe(false)
     expect(cnQuotaCellVisible({ platform: 'deepseek', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
     expect(cnBalanceCellVisible({ platform: 'zhipu', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
+  })
+})
+
+describe('credentialsBuilder built-in DimAgent provider', () => {
+  it('only offers the managed Chat Completions subscription relay', () => {
+    expect(isMultiProtocolApiKeyPlatform('dimagent')).toBe(true)
+    expect(providerRoutesByModel('dimagent')).toBe(false)
+    expect(providerAccountModes('dimagent')).toEqual(['payg'])
+    expect(defaultCNAdaptiveBaseUrls('dimagent', 'payg')).toEqual({
+      chat_completions: 'https://dimagent.cn/v1',
+      anthropic: '',
+      responses: ''
+    })
+    expect(providerNativeProtocols('dimagent', 'payg')).toEqual(['chat_completions'])
+    expect(isHeaderOverrideCapable('dimagent', 'apikey')).toBe(false)
+    expect(cnQuotaCellVisible({ platform: 'dimagent', type: 'apikey', credentials: {} })).toBe(false)
+    expect(cnBalanceCellVisible({ platform: 'dimagent', type: 'apikey', credentials: {} })).toBe(false)
   })
 })
 

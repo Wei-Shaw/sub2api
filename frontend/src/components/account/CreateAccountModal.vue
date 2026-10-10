@@ -162,6 +162,19 @@
           </button>
           <button
             type="button"
+            @click="selectDimAgentPlatform()"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'dimagent'
+                ? 'bg-white text-fuchsia-600 shadow-sm dark:bg-dark-600 dark:text-fuchsia-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="dimagent" size="sm" />
+            DimAgent
+          </button>
+          <button
+            type="button"
             @click="selectTypeSafePlatform()"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
@@ -653,6 +666,21 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.codingDesc') }}</span>
             </div>
           </button>
+        </div>
+      </div>
+
+      <!-- DimAgent intentionally has no selectable API-key mode or protocol. -->
+      <div v-if="isDimAgentPlatform" class="mt-4 rounded-lg border border-fuchsia-300 bg-fuchsia-50 p-4 dark:border-fuchsia-800 dark:bg-fuchsia-950/30">
+        <div class="flex items-start gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fuchsia-500 text-white">
+            <Icon name="key" size="sm" />
+          </div>
+          <div>
+            <p class="font-medium text-fuchsia-900 dark:text-fuchsia-200">账号类型：OAuth 网页授权</p>
+            <p class="mt-1 text-sm text-fuchsia-800 dark:text-fuchsia-300">
+              DimAgent 仅支持网页 OAuth 授权。下一步将生成授权链接；无需填写 API Key，也不需要选择 API 协议。
+            </p>
+          </div>
         </div>
       </div>
 
@@ -3604,7 +3632,30 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <div v-if="form.platform === 'dimagent'" class="space-y-4 rounded-lg border border-fuchsia-200 bg-fuchsia-50 p-5 dark:border-fuchsia-800 dark:bg-fuchsia-950/30">
+        <div>
+          <h4 class="font-semibold text-fuchsia-900 dark:text-fuchsia-200">DimAgent 网页授权</h4>
+          <p class="mt-1 text-sm text-fuchsia-800 dark:text-fuchsia-300">
+            点击生成授权链接，在浏览器完成 DimAgent 登录。授权完成后，请复制浏览器地址栏中的完整 callback URL 并粘贴到下方；它可以是 localhost:63211 或本预演地址的 /auth/callback 页面。无需填写 access token 或 API Key。
+          </p>
+        </div>
+        <div class="rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+          DimAgent 注册的授权回调是 <code>http://localhost:63211/auth/callback</code>。不要改写授权链接；若浏览器改由本预演地址显示 code/state，也可以直接复制该完整 <code>/auth/callback</code> URL。
+        </div>
+        <button type="button" class="btn btn-primary" :disabled="dimAgentOAuthLoading" @click="handleDimAgentGenerateAuthURL">
+          {{ dimAgentOAuthLoading ? '正在生成…' : '生成 DimAgent 授权链接' }}
+        </button>
+        <div v-if="dimAgentAuthUrl" class="space-y-2">
+          <a :href="dimAgentAuthUrl" target="_blank" rel="noopener noreferrer" class="break-all text-sm text-fuchsia-700 underline dark:text-fuchsia-300">{{ dimAgentAuthUrl }}</a>
+        </div>
+        <div>
+          <label class="input-label">完整 callback URL（保留 code 与 state）</label>
+          <textarea v-model="dimAgentCallbackURL" rows="4" class="input w-full resize-y font-mono text-sm" placeholder="http://localhost:63211/auth/callback?code=...&state=..."></textarea>
+        </div>
+        <p v-if="dimAgentOAuthError" class="text-sm text-red-600 dark:text-red-400">{{ dimAgentOAuthError }}</p>
+      </div>
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -3687,7 +3738,16 @@
           {{ t('common.back') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="form.platform === 'dimagent'"
+          type="button"
+          :disabled="!dimAgentCallbackURL.trim() || !dimAgentOAuthSessionId || dimAgentOAuthLoading"
+          class="btn btn-primary"
+          @click="handleDimAgentCreateFromCallback"
+        >
+          {{ dimAgentOAuthLoading ? '正在完成授权…' : '完成 DimAgent 授权并创建账号' }}
+        </button>
+        <button
+          v-else-if="isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -4076,6 +4136,7 @@ const { t } = useI18n()
 const browserTimeZone = getBrowserTimeZone()
 
 const oauthStepTitle = computed(() => {
+  if (form.platform === 'dimagent') return 'DimAgent 网页授权'
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
@@ -4234,6 +4295,15 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
+// DimAgent OAuth uses a fixed localhost callback registered by the provider.
+// The administrator pastes the final callback URL after browser authorization;
+// only the backend exchanges it and persists OAuth credentials.
+const dimAgentAuthUrl = ref('')
+const dimAgentOAuthSessionId = ref('')
+const dimAgentCallbackURL = ref('')
+const dimAgentOAuthLoading = ref(false)
+const dimAgentOAuthError = ref('')
+
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 // 多协议供应商（国产厂商与走通用表单的供应商）的接入模式；OpenCode 用 openCodeAccountMode。
 const accountMode = ref<string>('payg')
@@ -4254,14 +4324,17 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 })
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
 const isOpenCodeGoPlatform = computed(() => form.platform === 'opencode_go')
-const isMultiProtocolPlatform = computed(() => isMultiProtocolApiKeyPlatform(form.platform))
+const isDimAgentPlatform = computed(() => form.platform === 'dimagent')
+// DimAgent is listed in the provider catalog for its Chat Completions endpoint,
+// but its account credentials are OAuth-only, not the generic API-key form.
+const isMultiProtocolPlatform = computed(() => !isDimAgentPlatform.value && isMultiProtocolApiKeyPlatform(form.platform))
 // 前端没有专属界面、走通用表单的多协议供应商：模式、协议、默认端点
 // 与分流规则全部来自平台清单中的 profile。
 const isGenericMultiProtocolPlatform = computed(
   () => isMultiProtocolPlatform.value && !isCNPlatform.value && !isOpenCodeGoPlatform.value
 )
 const extraMultiProtocolPlatforms = computed(() =>
-  listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go')
+  listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go' && spec.id !== 'dimagent')
 )
 const genericAccountModes = computed(() => providerAccountModes(form.platform))
 // 按模型分流的供应商（OpenCode 等）：adaptive 账号携带 protocol_rules。
@@ -4358,6 +4431,17 @@ function selectOpenCodeGoPlatform() {
   apiKeyBaseUrl.value = defaultCNBaseUrl('opencode_go', openCodeAccountMode.value, 'adaptive')
   resetAdaptiveBaseUrls('opencode_go', openCodeAccountMode.value)
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(openCodeAccountMode.value))
+}
+function selectDimAgentPlatform() {
+  form.platform = 'dimagent'
+  form.type = 'oauth'
+  accountCategory.value = 'oauth-based'
+  apiKeyValue.value = ''
+  apiKeyBaseUrl.value = 'https://dimagent.cn/v1'
+  dimAgentAuthUrl.value = ''
+  dimAgentOAuthSessionId.value = ''
+  dimAgentCallbackURL.value = ''
+  dimAgentOAuthError.value = ''
 }
 function selectTypeSafePlatform() {
   form.platform = 'typesafe'
@@ -4918,6 +5002,10 @@ watch(
 watch(
   [accountCategory, addMethod, antigravityAccountType, () => form.platform],
   ([category, method, agType]) => {
+    if (form.platform === 'dimagent') {
+      form.type = 'oauth'
+      return
+    }
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
       form.type = 'apikey'
@@ -4943,8 +5031,16 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
-    // Reset base URL based on platform
-    if (isMultiProtocolApiKeyPlatform(newPlatform)) {
+    // DimAgent is OAuth-only even though its endpoint profile is listed beside
+    // OpenAI-compatible API-key providers in the platform catalog.
+    if (newPlatform === 'dimagent') {
+      accountCategory.value = 'oauth-based'
+      form.type = 'oauth'
+      apiKeyValue.value = ''
+      apiKeyBaseUrl.value = 'https://dimagent.cn/v1'
+      apiProtocol.value = 'chat_completions'
+      modelRestrictionMode.value = 'mapping'
+    } else if (isMultiProtocolApiKeyPlatform(newPlatform)) {
       const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, mode, apiProtocol.value)
     } else {
@@ -6006,6 +6102,53 @@ const goBackToBasicInfo = () => {
   antigravityOAuth.resetState()
   grokOAuth.resetState()
   oauthFlowRef.value?.reset()
+}
+
+const handleDimAgentGenerateAuthURL = async () => {
+  dimAgentOAuthLoading.value = true
+  dimAgentOAuthError.value = ''
+  try {
+    const result = await adminAPI.dimagent.generateAuthUrl(form.proxy_id)
+    dimAgentAuthUrl.value = result.auth_url
+    dimAgentOAuthSessionId.value = result.session_id
+    dimAgentCallbackURL.value = ''
+  } catch (error: any) {
+    dimAgentOAuthError.value = error.response?.data?.detail || error.message || '无法生成 DimAgent 授权链接'
+    appStore.showError(dimAgentOAuthError.value)
+  } finally {
+    dimAgentOAuthLoading.value = false
+  }
+}
+
+const handleDimAgentCreateFromCallback = async () => {
+  if (!dimAgentOAuthSessionId.value || !dimAgentCallbackURL.value.trim()) return
+  dimAgentOAuthLoading.value = true
+  dimAgentOAuthError.value = ''
+  try {
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value,
+      allowedModels.value,
+      modelMappings.value
+    )
+    await adminAPI.dimagent.createFromCallback({
+      session_id: dimAgentOAuthSessionId.value,
+      callback_url: dimAgentCallbackURL.value.trim(),
+      proxy_id: form.proxy_id,
+      name: form.name.trim() || undefined,
+      concurrency: form.concurrency,
+      priority: form.priority,
+      group_ids: form.group_ids,
+      ...(modelMapping ? { credential_extras: { model_mapping: modelMapping } } : {})
+    })
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
+    emit('created')
+    handleClose()
+  } catch (error: any) {
+    dimAgentOAuthError.value = error.response?.data?.detail || error.message || 'DimAgent 授权失败'
+    appStore.showError(dimAgentOAuthError.value)
+  } finally {
+    dimAgentOAuthLoading.value = false
+  }
 }
 
 const handleGenerateUrl = async () => {

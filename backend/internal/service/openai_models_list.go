@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -23,6 +25,9 @@ func (s *OpenAIGatewayService) FetchOpenAIModelsList(ctx context.Context, accoun
 	credentialAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve model list credentials: %w", err)
+	}
+	if credentialAccount.IsDimAgent() {
+		return s.fetchDimAgentModelsList(ctx, account, credentialAccount)
 	}
 	if credentialAccount.IsOpenAIOAuth() {
 		clientVersion := CodexCanonicalClientVersion()
@@ -70,6 +75,54 @@ func (s *OpenAIGatewayService) FetchOpenAIModelsList(ctx context.Context, accoun
 		return nil, invalidOpenAIModelsList(fmt.Errorf("upstream returned 304 without a cached catalog"))
 	}
 	return response, nil
+}
+
+func (s *OpenAIGatewayService) fetchDimAgentModelsList(ctx context.Context, account, credentialAccount *Account) (*OpenAIModelsResponse, error) {
+	if s.dimAgentTokenProvider == nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "DIMAGENT_MODELS_TOKEN_PROVIDER_UNAVAILABLE", "DimAgent token provider is unavailable")
+	}
+	accessToken, err := s.dimAgentTokenProvider.GetAccessToken(ctx, credentialAccount)
+	if err != nil {
+		return nil, fmt.Errorf("get DimAgent access token: %w", err)
+	}
+	baseURL, err := s.validateUpstreamBaseURL(credentialAccount.GetOpenAIBaseURL())
+	if err != nil {
+		return nil, fmt.Errorf("validate DimAgent base URL: %w", err)
+	}
+	modelsURL, err := url.Parse(buildOpenAIModelsURL(baseURL))
+	if err != nil {
+		return nil, fmt.Errorf("build DimAgent models URL: %w", err)
+	}
+	query := modelsURL.Query()
+	query.Set("type", "dim")
+	modelsURL.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	credentialAccount.ApplyDimAgentSubscriptionHeaders(req.Header)
+	resp, err := s.doOpenAIUpstream(req, upstreamModelsProxyURL(account), account)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamModelsBodyLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > upstreamModelsBodyLimit {
+		return nil, fmt.Errorf("DimAgent model list response exceeds %d bytes", upstreamModelsBodyLimit)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("DimAgent model list returned HTTP %d", resp.StatusCode)
+	}
+	standard, err := standardOpenAIModelsBody(body, false)
+	if err != nil {
+		return nil, invalidOpenAIModelsList(err)
+	}
+	return &OpenAIModelsResponse{Body: standard, ETag: codexModelsManifestBodyETag(standard)}, nil
 }
 
 func invalidOpenAIModelsList(err error) error {
@@ -211,7 +264,7 @@ func projectAccountModelsBody(body []byte, account *Account, group *Group, codex
 	}
 	sort.Strings(aliases)
 	candidates = append(candidates, aliases...)
-	if group.ModelAllowlistEnabled() {
+	if group != nil && group.ModelAllowlistEnabled() {
 		candidates = append(candidates, group.ModelAllowlist.Models...)
 	}
 	projected := make([]json.RawMessage, 0, len(candidates))

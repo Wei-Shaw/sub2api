@@ -788,6 +788,8 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	switch {
+	case account.IsDimAgent():
+		return s.buildDimAgentUpstreamModelsRequest(ctx, account)
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
 	case account.IsGrok():
@@ -999,6 +1001,40 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 	return req, nil
 }
 
+func (s *AccountTestService) buildDimAgentUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account == nil || !account.IsDimAgent() || account.Type != AccountTypeOAuth {
+		return nil, newUpstreamModelSyncUnsupportedError("DimAgent model sync requires an OAuth account", nil)
+	}
+	if s.openaiGatewayService == nil {
+		return nil, newUpstreamModelSyncConfigError("DimAgent token provider is not configured", nil)
+	}
+	accessToken, _, err := s.openaiGatewayService.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to get DimAgent access token", err)
+	}
+	baseURL := account.GetOpenAIBaseURL()
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid DimAgent relay base URL", err)
+	}
+	modelsURL := buildOpenAIModelsURL(normalizedBaseURL)
+	parsed, err := url.Parse(modelsURL)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid DimAgent model list URL", err)
+	}
+	query := parsed.Query()
+	query.Set("type", "dim")
+	parsed.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Failed to build DimAgent model list request", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	account.ApplyDimAgentSubscriptionHeaders(req.Header)
+	return req, nil
+}
+
 func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	if account.IsOpenAIOAuth() {
 		return s.buildOpenAIOAuthUpstreamModelsRequest(ctx, account)
@@ -1038,6 +1074,7 @@ func buildOpenAIAPIKeyModelsRequest(ctx context.Context, account *Account, valid
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyDimAgentSubscriptionHeaders(req.Header)
 	return req, nil
 }
 
