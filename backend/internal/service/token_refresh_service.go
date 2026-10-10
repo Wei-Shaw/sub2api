@@ -142,6 +142,26 @@ func NewTokenRefreshService(
 	return s
 }
 
+// SetDimAgentOAuthService registers the DimAgent OAuth refresher after the
+// base service is constructed. This keeps the longstanding constructor stable
+// for tests while allowing Wire to include the new provider in background scans.
+func (s *TokenRefreshService) SetDimAgentOAuthService(oauth *DimAgentOAuthService) {
+	if s == nil || oauth == nil {
+		return
+	}
+	s.providerMu.Lock()
+	defer s.providerMu.Unlock()
+	refresher := NewDimAgentTokenRefresher(oauth)
+	for _, registration := range s.registrations {
+		if registration.platform == PlatformDimAgent {
+			return
+		}
+	}
+	s.registrations = append(s.registrations, tokenRefreshRegistration{
+		platform: PlatformDimAgent, refresher: refresher, executor: refresher,
+	})
+}
+
 func (s *TokenRefreshService) eligiblePlatforms() []string {
 	platforms := make([]string, 0, len(s.registrations))
 	for _, registration := range s.registrations {
