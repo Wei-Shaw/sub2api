@@ -840,7 +840,8 @@
         </div>
 
         <div
-          v-if="accountCategory === 'apikey'"
+          v-if="accountCategory === 'apikey' && isOfficialGeminiBaseUrl(apiKeyBaseUrl)"
+          data-testid="gemini-apikey-note"
           class="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800 dark:border-purple-800/40 dark:bg-purple-900/20 dark:text-purple-200"
         >
           <p>{{ t('admin.accounts.gemini.accountType.apiKeyNote') }}</p>
@@ -1068,7 +1069,7 @@
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
-        <div v-if="accountCategory !== 'service_account'" class="mt-4">
+        <div v-if="accountCategory === 'oauth-based'" class="mt-4" data-testid="gemini-oauth-tier">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <div class="mt-2">
             <select
@@ -1579,9 +1580,9 @@
         </div>
 
         <!-- Gemini API Key tier selection -->
-        <div v-if="form.platform === 'gemini'">
+        <div v-if="form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl)">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
-          <select v-model="geminiTierAIStudio" class="input">
+          <select v-model="geminiTierAIStudio" class="input" data-testid="gemini-apikey-tier">
             <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
             <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') }}</option>
           </select>
@@ -6061,7 +6062,7 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
-  if (form.platform === 'gemini') {
+  if (form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl.value)) {
     credentials.tier_id = geminiTierAIStudio.value
   }
 

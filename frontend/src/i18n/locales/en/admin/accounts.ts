@@ -1445,8 +1445,8 @@ export default {
         accountType: {
           oauthTitle: 'OAuth (Gemini)',
           oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
-          apiKeyTitle: 'API Key (AI Studio)',
-          apiKeyDesc: 'Fastest setup. Use an AIza API key.',
+          apiKeyTitle: 'API Key',
+          apiKeyDesc: 'An official AI Studio key, or a Gemini-compatible third-party upstream.',
           apiKeyNote:
             'Best for light testing. Free tier has strict rate limits and data may be used for training.',
           apiKeyLink: 'Get API Key',

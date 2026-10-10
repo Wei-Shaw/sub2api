@@ -339,6 +339,13 @@ func (a *Account) IsGeminiGoogleOne() bool {
 	return a.Platform == PlatformGemini && a.Type == AccountTypeOAuth && a.GeminiOAuthType() == "google_one"
 }
 
+// IsGeminiThirdPartyAPIKey reports whether a Gemini API Key account points at a
+// non-Google base URL. Such upstreams carry no AI Studio tier or daily quota.
+func (a *Account) IsGeminiThirdPartyAPIKey() bool {
+	return a != nil && a.Platform == PlatformGemini && a.Type == AccountTypeAPIKey &&
+		!isOfficialGeminiAPIBaseURL(a.GetCredential("base_url"))
+}
+
 func (a *Account) CanGetUsage() bool {
 	return a.Type == AccountTypeOAuth
 }

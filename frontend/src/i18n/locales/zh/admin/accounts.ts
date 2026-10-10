@@ -1536,8 +1536,8 @@ export default {
         accountType: {
           oauthTitle: 'OAuth 授权（Gemini）',
           oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
-          apiKeyTitle: 'API 密钥（AI Studio）',
-          apiKeyDesc: '最快接入方式，使用 AIza API Key。',
+          apiKeyTitle: 'API 密钥',
+          apiKeyDesc: 'AI Studio 官方 Key，或兼容 Gemini 协议的第三方上游。',
           apiKeyNote: '适合轻量测试。免费层限流严格，数据可能用于训练。',
           apiKeyLink: '获取 API Key',
           quotaLink: '配额说明'

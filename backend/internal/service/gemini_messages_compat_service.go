@@ -3159,6 +3159,10 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
 		return
 	}
+	if account.IsGeminiThirdPartyAPIKey() {
+		s.handleGeminiThirdParty429(ctx, account, body)
+		return
+	}
 
 	oauthType := account.GeminiOAuthType()
 	tierID := account.GeminiTierID()
@@ -3207,16 +3211,36 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 		account.ID, resetTime, oauthType, tierID)
 }
 
+// handleGeminiThirdParty429 处理第三方上游的 429：不套用 AI Studio 每日配额语义，
+// 只认响应里显式给出的重试时间，否则走全局 429 兜底冷却。
+func (s *GeminiMessagesCompatService) handleGeminiThirdParty429(ctx context.Context, account *Account, body []byte) {
+	if resetAt := parseGeminiRetryDelayResetTime(body); resetAt != nil {
+		resetTime := time.Unix(*resetAt, 0)
+		_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (third-party API Key) rate limited until %v", account.ID, resetTime)
+		return
+	}
+	if s.rateLimitService != nil {
+		s.rateLimitService.apply429FallbackRateLimit(ctx, account, "gemini_third_party_no_reset_time")
+		return
+	}
+	_ = s.accountRepo.SetRateLimited(ctx, account.ID, time.Now().Add(defaultRateLimit429CooldownSeconds*time.Second))
+}
+
 // ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳
 func ParseGeminiRateLimitResetTime(body []byte) *int64 {
-	// 第一阶段：gjson 结构化提取
 	errMsg := gjson.GetBytes(body, "error.message").String()
 	if looksLikeGeminiDailyQuota(errMsg) {
 		if ts := nextGeminiDailyResetUnix(); ts != nil {
 			return ts
 		}
 	}
+	return parseGeminiRetryDelayResetTime(body)
+}
 
+// parseGeminiRetryDelayResetTime 只解析响应里显式给出的重试时长，返回重置时间的 Unix 时间戳。
+func parseGeminiRetryDelayResetTime(body []byte) *int64 {
+	// 第一阶段：gjson 结构化提取
 	// 遍历 error.details 查找 quotaResetDelay（AI Studio）或 RetryInfo.retryDelay（Vertex）
 	var found *int64
 	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {

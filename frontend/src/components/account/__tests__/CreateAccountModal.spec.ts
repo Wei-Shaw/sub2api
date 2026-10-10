@@ -931,6 +931,58 @@ describe('CreateAccountModal gemini explicit cache upstream switch', () => {
       explicit_cache_upstream_max_ttl_seconds: 1800
     })
   })
+
+  it('only offers the AI Studio tier for the official base url', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.apiKeyTitle')
+    expect(wrapper.find('[data-testid="gemini-oauth-tier"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="gemini-apikey-note"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="gemini-apikey-tier"]').setValue('aistudio_paid')
+
+    const baseUrlInput = wrapper
+      .findAll('form#create-account-form input[type="text"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'https://generativelanguage.googleapis.com')
+    expect(baseUrlInput).toBeDefined()
+    await baseUrlInput!.setValue('https://upstream.example.com')
+    expect(wrapper.find('[data-testid="gemini-apikey-tier"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="gemini-apikey-note"]').exists()).toBe(false)
+
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('gemini relay')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-upstream')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({ base_url: 'https://upstream.example.com' })
+    expect(credentials).not.toHaveProperty('tier_id')
+  })
+
+  it('shows the OAuth tier fallback only on the OAuth form', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.oauthTitle')
+    expect(wrapper.find('[data-testid="gemini-oauth-tier"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="gemini-apikey-note"]').exists()).toBe(false)
+  })
+
+  it('keeps the selected AI Studio tier for the official base url', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.apiKeyTitle')
+    await wrapper.get('[data-testid="gemini-apikey-tier"]').setValue('aistudio_paid')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('gemini official')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('AIza-official')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      base_url: 'https://generativelanguage.googleapis.com',
+      tier_id: 'aistudio_paid'
+    })
+  })
 })
 
 describe('CreateAccountModal Vertex API key auth', () => {
