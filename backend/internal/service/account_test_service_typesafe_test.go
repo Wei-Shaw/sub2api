@@ -90,3 +90,31 @@ func TestTypeSafeAccountTestUsesPromptAsState(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &payload))
 	require.Equal(t, "custom state", payload.State)
 }
+
+func TestTypeSafeAccountTestAppliesModelMapping(t *testing.T) {
+	account := &Account{ID: 31, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "ts-secret", "model_mapping": map[string]any{"jev-latest": "decision-model-preview"},
+	}}
+	repo := &systemOnePolicyAccountRepo{account: account}
+	var requests []*http.Request
+	upstream := &systemOneHTTPUpstream{do: func(req *http.Request) (*http.Response, error) {
+		requests = append(requests, req)
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"answers":{}}`))}, nil
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/31/test", nil)
+
+	require.NoError(t, svc.TestAccountConnection(c, 31, "", "", AccountTestModeDefault))
+	require.Len(t, requests, 1)
+	body, err := io.ReadAll(requests[0].Body)
+	require.NoError(t, err)
+	var payload struct {
+		Model string `json:"model"`
+	}
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Equal(t, "decision-model-preview", payload.Model)
+	require.Contains(t, rec.Body.String(), `"model":"decision-model-preview"`)
+}

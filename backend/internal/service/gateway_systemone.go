@@ -11,6 +11,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type SystemOneForwardResult struct {
@@ -42,6 +44,18 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 	baseURL, err := s.validateUpstreamBaseURL(account.GetTypeSafeBaseURL())
 	if err != nil {
 		return nil, err
+	}
+	reqModel := gjson.GetBytes(body, "model").String()
+	if reqModel == "" {
+		reqModel = typesafe.JevLatestModel
+	}
+	mappedModel := account.GetMappedModel(reqModel)
+	if mappedModel != reqModel {
+		rewritten, err := sjson.SetBytes(body, "model", mappedModel)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply model mapping: %w", err)
+		}
+		body = rewritten
 	}
 	req, err := typesafe.NewSystemOneRequest(ctx, baseURL, key, body)
 	if err != nil {
@@ -90,7 +104,7 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 			RequestID:             resp.Header.Get("x-request-id"),
 			UpstreamHeaders:       resp.Header.Clone(),
 			Usage:                 ClaudeUsage{InputTokens: decoded.Usage.InputTokens, OutputTokens: decoded.Usage.OutputTokens},
-			Model:                 typesafe.JevLatestModel,
+			Model:                 reqModel,
 			UpstreamResponseModel: decoded.Model,
 			Duration:              time.Since(started),
 		},
