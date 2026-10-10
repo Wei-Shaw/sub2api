@@ -227,4 +227,5 @@ func TestOllamaCloudPricingPreflight_AnthropicNativePathRejectsUnpriced(t *testi
 	c, rec, ctx := pricingPreflightContext("/v1/messages", body, nil)
 	_, err := svc.ForwardAsAnthropic(ctx, c, account, body, "", "")
 	assertPricingPreflightRejected(t, c, upstream, rec, err, "totally-unpriced-model")
+	require.Equal(t, "error", gjson.Get(rec.Body.String(), "type").String(), "/v1/messages 入站必须使用 Anthropic 错误信封")
 }

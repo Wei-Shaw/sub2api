@@ -50,14 +50,20 @@ func (e *openAIOllamaCloudUnpricedModelError) Error() string {
 // 先例由服务层直接写出 400 invalid_request_error。写前 MarkResponseCommitted 与
 // cyber_policy / grok content 拒绝同款：handler 侧 ensureForwardErrorResponse /
 // ensureAnthropicErrorResponse 检测到响应已提交便不再追加 fallback 错误；返回的
-// 错误非 UpstreamFailoverError——不换号、不写账号处置。
+// 错误非 UpstreamFailoverError——不换号、不写账号处置。错误信封按入站协议选择：
+// /messages 入站（OpenAI 族原生 Anthropic / Messages 桥接链与 generic 链）为 Anthropic
+// 风格，其余为 OpenAI 风格。
 func respondOpenAIOllamaCloudUnpricedModelError(c *gin.Context, err *openAIOllamaCloudUnpricedModelError) {
+	if c == nil {
+		return
+	}
 	setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
 	MarkResponseCommitted(c)
-	c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-		"type":    "invalid_request_error",
-		"message": err.Error(),
-	}})
+	payload := gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
+	if c.Request != nil && c.Request.URL != nil && strings.Contains(c.Request.URL.Path, "/messages") {
+		payload = gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
+	}
+	c.JSON(http.StatusBadRequest, payload)
 }
 
 // ollamaCloudBillingGroupFromContext 取认证中间件放入 ctx 的计费分组（与利润门 D
@@ -135,7 +141,7 @@ func (s *OpenAIGatewayService) enforceOllamaCloudRequestPricingPreflight(ctx con
 
 // enforceOllamaCloudRequestPricingPreflight 是 generic 网关（composite 跨族账号池经
 // Anthropic 协议链服务 ollama_cloud 账号）的同一预检：在上游 I/O 之前拒绝无价出站模型，
-// 错误信封按入站协议选择（/messages 为 Anthropic 风格，其余为 OpenAI 风格）。
+// 与 OpenAI 网关共用 respondOpenAIOllamaCloudUnpricedModelError（信封按入站协议选择）。
 func (s *GatewayService) enforceOllamaCloudRequestPricingPreflight(ctx context.Context, c *gin.Context, account *Account, body []byte, fallbackModel string) error {
 	if s == nil || account == nil || !account.IsOllamaCloud() {
 		return nil
@@ -148,14 +154,6 @@ func (s *GatewayService) enforceOllamaCloudRequestPricingPreflight(ctx context.C
 		return nil
 	}
 	err := &openAIOllamaCloudUnpricedModelError{model: model}
-	if c != nil {
-		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-		MarkResponseCommitted(c)
-		payload := gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
-		if c.Request != nil && c.Request.URL != nil && strings.Contains(c.Request.URL.Path, "/messages") {
-			payload = gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
-		}
-		c.JSON(http.StatusBadRequest, payload)
-	}
+	respondOpenAIOllamaCloudUnpricedModelError(c, err)
 	return err
 }
