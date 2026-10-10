@@ -334,6 +334,36 @@ type delegatedOpenAIUsage struct {
 	LogComponent       string
 }
 
+// rejectCompositePoolCyberSessionBlocked 在账号池选号前按 OpenAI handler 同语义拒绝
+// 已被 cyber 封禁的会话：池可能委派 OpenAI 网关链，封禁正是为了阻止该会话继续
+// 发往 OpenAI 上游。返回 true 表示已写出 403。非池请求不调用，路径零变化。
+func (h *GatewayHandler) rejectCompositePoolCyberSessionBlocked(c *gin.Context, apiKey *service.APIKey, body []byte, model string, format cyberSessionBlockFormat) bool {
+	if h == nil || h.openAIHandler == nil {
+		return false
+	}
+	return h.openAIHandler.rejectIfCyberSessionBlocked(c, apiKey, body, model, format)
+}
+
+// recordDelegatedCyberPolicyIfMarked 在池委派 OpenAI 网关链的 attempt 返回后做 cyber
+// 事后记录（会话封禁、风控事件、forward 出错时的用量行），与 OpenAI handler 各入口
+// forward 之后的 recordCyberPolicyIfMarked 同口径。无 cyber 标记时为空操作。
+func (h *GatewayHandler) recordDelegatedCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, body []byte, channelFields service.ChannelUsageFields) {
+	if h == nil || h.openAIHandler == nil || service.GetOpsCyberPolicy(c) == nil {
+		return
+	}
+	h.openAIHandler.recordCyberPolicyIfMarked(c, apiKey, account, subscription, model, forwardErrored, body, channelFields, service.HashUsageRequestPayload(body))
+}
+
+// compositePoolDelegatedForwardErrorAlreadyCommunicated 按 attempt 实际走的转发链判定
+// 错误是否已告知客户端：委派 OpenAI 网关链时用该链的判定（上游 response.failed /
+// cyber 原始错误体已透传），避免 generic 判定把流式响应当作未告知再追加错误帧。
+func compositePoolDelegatedForwardErrorAlreadyCommunicated(c *gin.Context, delegated bool, writerSizeBeforeForward int, err error) bool {
+	if delegated {
+		return openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+	}
+	return gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+}
+
 // submitDelegatedOpenAIUsage 用 OpenAI 网关计费链记录池委派结果：委派链产出的是
 // OpenAI 口径 usage（input_tokens 含缓存读取、BillingModel、生图/搜索附加计费等），
 // 必须与该账号在 OpenAI 网关上被直接服务时同一口径入账。转成 ForwardResult 走
@@ -360,6 +390,7 @@ func (h *GatewayHandler) submitDelegatedOpenAIUsage(c *gin.Context, in delegated
 		QuotaPlatform:      in.QuotaPlatform,
 		PricingAt:          in.PricingAt,
 		ChannelUsageFields: in.ChannelUsageFields,
+		CyberBlocked:       service.GetOpsCyberPolicy(c) != nil,
 	}
 	task := func(ctx context.Context) {
 		if err := h.openAIGatewayService.RecordUsage(ctx, input); err != nil {

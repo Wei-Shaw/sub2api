@@ -58,6 +58,9 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	// openAIHandler 供账号池委派 OpenAI 网关链时复用其 cyber 会话封禁与事后记录
+	// （cyber_policy 只在该链标记，见 composite_pool_attempt_policy.go）。
+	openAIHandler *OpenAIGatewayHandler
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -646,6 +649,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// generic 调度器共用同一谓词（ctx 携带候选池且无 resolved 平台）；非池请求
 	// poolDenials 恒为空、attempt 策略不生效，整条路径零变化。
 	isPoolRequest := service.GenericCompositePoolActive(c.Request.Context())
+	if isPoolRequest && h.rejectCompositePoolCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatAnthropic) {
+		return
+	}
 	poolDenials := newCompositePoolPlatformDenials()
 	if isPoolRequest && !apiKey.Group.AllowMessagesDispatch {
 		// 与 OpenAI handler 的 allowOpenAICompatibleMessagesDispatch 同语义：openai 账号承接
@@ -992,6 +998,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			var result *service.ForwardResult
 			// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
 			var delegatedResult *service.OpenAIForwardResult
+			delegated := false
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
@@ -1025,6 +1032,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				openAIResult, delegateErr := h.openAIGatewayService.ForwardAsAnthropic(
 					requestCtx, c, account, attemptBody, "",
 					strings.TrimSpace(resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)))
+				delegated = true
 				delegatedResult = openAIResult
 				result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 				err = delegateErr
@@ -1041,6 +1049,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
+			}
+			if delegated {
+				h.recordDelegatedCyberPolicyIfMarked(c, currentAPIKey, account, currentSubscription, reqModel, err != nil, attemptBody, clientRequestedUsageFields(c, attemptChannelMapping, reqModel, ""))
 			}
 
 			// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
@@ -1208,7 +1219,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
-				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				upstreamErrorAlreadyCommunicated := compositePoolDelegatedForwardErrorAlreadyCommunicated(c, delegated, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)

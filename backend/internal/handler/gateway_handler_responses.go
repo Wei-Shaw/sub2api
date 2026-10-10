@@ -192,6 +192,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				"previous_response_id is not supported for this composite model; resend the full conversation without previous_response_id")
 			return
 		}
+		if h.rejectCompositePoolCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatResponses) {
+			return
+		}
 		// 委派 OpenAI 网关链创建的响应须记录下游归属，后续续链经 OpenAI handler 校验租户。
 		service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
 	}
@@ -378,6 +381,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		var result *service.ForwardResult
 		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
 		var delegatedResult *service.OpenAIForwardResult
+		delegated := false
 		setActualUpstreamEndpoint(c, "")
 		// 池请求的 attempt 局部 ctx 携带选中平台（不写回 requestCtx，否则下一轮
 		// 选号会被 resolved 平台截断池语义）：forward 内的渠道定价作用域与计费
@@ -403,6 +407,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			// promptCacheKey 由链内从 body 派生（与 OpenAI handler Responses 路径一致）。
 			setOpenAIClientTransportHTTP(c)
 			openAIResult, delegateErr := h.openAIGatewayService.Forward(attemptCtx, c, account, forwardBody)
+			delegated = true
 			delegatedResult = openAIResult
 			result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 			err = delegateErr
@@ -412,6 +417,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
+		}
+		if delegated {
+			h.recordDelegatedCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, body, clientRequestedUsageFields(c, attemptChannelMapping, reqModel, ""))
 		}
 
 		// 池委派 OpenAI 网关链的结果按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
@@ -453,7 +461,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					return
 				}
 			}
-			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+			upstreamErrorAlreadyCommunicated := compositePoolDelegatedForwardErrorAlreadyCommunicated(c, delegated, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
 				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)

@@ -184,6 +184,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	// 调度器共用同一谓词（ctx 携带候选池且无 resolved 平台）；非池请求 poolDenials
 	// 恒为空、attempt 策略与委派分支不生效，整条路径零变化。
 	isPoolRequest := service.GenericCompositePoolActive(c.Request.Context())
+	if isPoolRequest && h.rejectCompositePoolCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatChat) {
+		return
+	}
 	poolDenials := newCompositePoolPlatformDenials()
 	// 委派 CC 链的 promptCacheKey 语义对齐 OpenAI handler CC 路径（headers →
 	// prompt_cache_key 提取，仅池激活时计算，非池请求不新增解析）。
@@ -366,6 +369,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		var result *service.ForwardResult
 		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
 		var delegatedResult *service.OpenAIForwardResult
+		delegated := false
 		setActualUpstreamEndpoint(c, "")
 		// 池请求的 attempt 局部 ctx 携带选中平台（不写回 c.Request）：forward 内的
 		// 渠道定价作用域与计费 QuotaPlatform 跟随实际平台，对齐 Messages 池 attempt 语义。
@@ -399,6 +403,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			// 包装。defaultMappedModel 传 ""，与 OpenAI handler CC 路径一致。
 			openAIResult, delegateErr := h.openAIGatewayService.ForwardAsChatCompletions(
 				attemptCtx, c, account, forwardBody, poolPromptCacheKey, "")
+			delegated = true
 			delegatedResult = openAIResult
 			result = adaptOpenAIForwardResultToForwardResult(openAIResult)
 			err = delegateErr
@@ -408,6 +413,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
+		}
+		if delegated {
+			h.recordDelegatedCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, body, clientRequestedUsageFields(c, attemptChannelMapping, reqModel, ""))
 		}
 
 		// 池委派 OpenAI 网关链的结果按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
@@ -448,7 +456,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					return
 				}
 			}
-			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+			upstreamErrorAlreadyCommunicated := compositePoolDelegatedForwardErrorAlreadyCommunicated(c, delegated, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
 				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)

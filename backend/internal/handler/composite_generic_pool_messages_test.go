@@ -194,8 +194,9 @@ func newCompositePoolMessagesHarness(t *testing.T, accounts []*service.Account) 
 		nil, nil,
 		billingService,
 		nil, nil,
-		openAIUpstream, // httpUpstream：委派链假上游
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		openAIUpstream,                          // httpUpstream：委派链假上游
+		service.NewDeferredService(nil, nil, 0), // deferredService：SIMPLE 模式入账后登记 last_used
+		nil, nil, nil, nil, nil, nil, nil,
 	)
 
 	billingCacheService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -208,6 +209,7 @@ func newCompositePoolMessagesHarness(t *testing.T, accounts []*service.Account) 
 		concurrencyHelper:    NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0),
 		maxAccountSwitches:   3,
 		cfg:                  cfg,
+		openAIHandler:        &OpenAIGatewayHandler{gatewayService: openAIGatewayService},
 	}
 	return &compositePoolMessagesHarness{
 		handler:        handler,
