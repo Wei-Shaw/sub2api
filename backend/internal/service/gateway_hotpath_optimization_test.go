@@ -575,7 +575,7 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 }
 
 // Scenario: ownership 基于配置态查询解析并按 modelsListCache 短 TTL 缓存——热路径
-// TTL 内不重复查库；瞬态限流字段不影响能力池；配置变更在缓存过期后反映。
+// TTL 内不重复查库；瞬态限流字段不影响能力池；配置变更经缓存失效立即反映。
 func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	groupID := int64(9)
 	rateLimitedReset := time.Now().Add(30 * time.Minute)
@@ -619,8 +619,9 @@ func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	require.Equal(t, first, transient)
 	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
 
-	// 缓存过期后，配置移除声明即反映为能力消失。
-	svc.modelsListCache.Flush()
+	// 账号配置变更触发的失效（InvalidateAvailableModelsCache）立即清除归属缓存：
+	// 移除声明即反映为能力消失，不必等 TTL。
+	svc.InvalidateAvailableModelsCache(&groupID, PlatformDeepseek)
 	repo.byGroup[groupID] = []Account{{
 		ID:       2,
 		Platform: PlatformOpenAI,
@@ -630,8 +631,8 @@ func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	require.Equal(t, CompositeModelOwnership{}, removed)
 	require.Equal(t, int64(3), repo.listByGroupCalls.Load())
 
-	// 缓存过期后，换平台声明生效。
-	svc.modelsListCache.Flush()
+	// 换平台声明同样在失效后立即生效。
+	svc.InvalidateAvailableModelsCache(&groupID, "")
 	repo.byGroup[groupID] = []Account{{
 		ID:          2,
 		Platform:    PlatformOpenAI,
