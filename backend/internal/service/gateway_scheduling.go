@@ -2719,10 +2719,21 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 	)
 }
 
+// compositeMixedSchedulingExpandedAccount 报告账号是否经混合调度展开进入 composite
+// 单目标（anthropic / gemini）的候选集：antigravity 账号的平台默认映射不构成 composite
+// 声明，其可服务性按混合调度原语义由下方映射判定，不受 account_model 归属层级否决。
+func compositeMixedSchedulingExpandedAccount(ctx context.Context, account *Account) bool {
+	if account == nil || account.Platform != PlatformAntigravity || !account.IsMixedSchedulingEnabled() {
+		return false
+	}
+	resolved, ok := ResolvedTargetPlatformFromContext(ctx)
+	return ok && (resolved == PlatformAnthropic || resolved == PlatformGemini)
+}
+
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
-	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
+	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount && !compositeMixedSchedulingExpandedAccount(ctx, account) {
 		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !CompositeAccountMeetsClaimTier(ctx, account, publicModel) {
 			return false
 		}

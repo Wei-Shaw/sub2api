@@ -37,10 +37,13 @@ func CompositeAccountClaimStrength(account *Account, model string) CompositeClai
 	}
 
 	mapping := account.GetModelMapping()
-	if account.Platform == PlatformAntigravity && !account.IsMixedSchedulingEnabled() {
-		// 平台默认映射（Claude / Gemini 模型）只在开启混合调度时才让 antigravity 账号
-		// 服务这些模型，与非 composite 的混合调度开关同一语义；未开启时只有管理员在
-		// 账号上显式配置的映射构成声明。
+	if account.Platform == PlatformAntigravity {
+		// antigravity 只有管理员在账号上显式配置的映射构成 composite 声明。平台默认映射
+		// （Claude / Gemini 模型）属于混合调度语义：开启混合调度时由 detector 判出的
+		// anthropic / gemini 单目标经混合调度展开服务这些模型（配额、渠道定价与分组模型
+		// 路由仍按该平台），与 main 及非 composite 分组一致；若默认映射也算声明，
+		// 「anthropic + 混合调度 antigravity」会被静默改成账号池，antigravity 按自身
+		// 平台计配额，绕过 anthropic 配额。
 		mapping = stringMappingFromRaw(account.Credentials["model_mapping"])
 	}
 	if len(mapping) == 0 {
