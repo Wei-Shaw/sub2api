@@ -1422,7 +1422,7 @@ export default {
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
-        apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        apiKeyHint: 'New AI Studio keys start with AQ. (legacy keys start with AIza); for a third-party upstream, use the key it provides',
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',

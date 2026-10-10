@@ -239,7 +239,7 @@
               account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
-                  ? 'AIza...'
+                  ? 'AQ.Ab...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : account.platform === 'grok'
