@@ -1017,8 +1017,9 @@ func anthropicUpstreamBaseForAuth(account *Account) string {
 
 // anthropicUpstreamTargetURL 组装 Anthropic 上游端点（path 以 "/" 开头，如
 // "/v1/messages"、"/v1/messages/count_tokens"）。CN/多协议账号（
-// GetAnthropicProtocolBaseURL 非空）按 {base}{path} 朴素拼接、不附加 ?beta=true
-// （第三方端点不接受该参数，与 OpenAI 族 nativeAnthropicTargetURL 对齐）；
+// GetAnthropicProtocolBaseURL 非空）经 anthropicProtocolEndpointURL 拼接（与 OpenAI 族
+// nativeAnthropicTargetURL 同一规则，ollama / 按模型分流平台版本感知）、不附加
+// ?beta=true（第三方端点不接受该参数）；
 // classic anthropic 账号保持 {base}{path}?beta=true 现状。返回空串表示无自定义
 // base（走官方默认 claudeAPIURL / claudeAPICountTokensURL），由调用方保持默认。
 func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path string) (string, error) {
@@ -1028,7 +1029,7 @@ func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path strin
 		if err != nil {
 			return "", err
 		}
-		return strings.TrimRight(validatedURL, "/") + path, nil
+		return anthropicProtocolEndpointURL(account, validatedURL, path), nil
 	}
 	baseURL := account.GetBaseURL()
 	if baseURL == "" {

@@ -146,12 +146,18 @@ func (s *OpenAIGatewayService) nativeAnthropicTargetURL(account *Account) (strin
 // 连接测试共用。按模型分流的聚合平台（OpenCode、Command Code 等）的基址可能沿用带 /v1
 // 的 Chat Completions 基址，用版本感知拼接避免 /v1/v1/messages；其余供应商朴素拼接。
 func nativeAnthropicMessagesURL(account *Account, validatedBaseURL string) string {
-	// 版本感知拼接：base 已带 /v1 时不再追加，避免拼出 /v1/v1/messages（按模型分流平台的
-	// Chat Completions base 带 /v1；Ollama Cloud 的 anthropic 默认 base 不带，自定义可能带）。
+	return anthropicProtocolEndpointURL(account, validatedBaseURL, "/v1/messages")
+}
+
+// anthropicProtocolEndpointURL 由已校验的 Anthropic 协议基址拼出端点（endpoint 以 "/v1"
+// 开头），OpenAI 族原生 Anthropic 链与 generic 链共用。版本感知拼接：base 已带 /v1 时
+// 不再追加，避免拼出 /v1/v1/messages（按模型分流平台的 Chat Completions base 带 /v1；
+// Ollama Cloud 的 anthropic 默认 base 不带，自定义可能带）；其余供应商朴素拼接。
+func anthropicProtocolEndpointURL(account *Account, validatedBaseURL, endpoint string) string {
 	if account.routesByModel() || account.IsOllamaCloud() {
-		return buildOpenAIEndpointURL(validatedBaseURL, "/v1/messages")
+		return buildOpenAIEndpointURL(validatedBaseURL, endpoint)
 	}
-	return strings.TrimRight(validatedBaseURL, "/") + "/v1/messages"
+	return strings.TrimRight(validatedBaseURL, "/") + endpoint
 }
 
 func resolveMappedUpstreamModel(account *Account, body []byte, defaultMappedModel string) string {
