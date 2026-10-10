@@ -291,6 +291,13 @@ func TestOpenAIStreamBareErrorUsesSemanticFailover(t *testing.T) {
 	require.True(t, openAIStreamErrorEventShouldFailover(payload, "slow down"))
 }
 
+func TestOpenAIStreamPreOutputTimeBudgetErrorRetries(t *testing.T) {
+	payload := []byte(`{"type":"error","status_code":200,"error":{"message":"Upstream pre-output time budget exhausted"}}`)
+	message := extractOpenAISSEErrorMessage(payload)
+
+	require.True(t, openAIStreamErrorEventShouldFailover(payload, message))
+}
+
 func TestOpenAIStream403FailoverRequiresStructuredAccountCredentialSignal(t *testing.T) {
 	tests := []struct {
 		name    string
