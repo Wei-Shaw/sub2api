@@ -2050,16 +2050,31 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
 	}
 
-	// 窗口重置时清除旧的 utilization 和被动采样数据，避免残留上个窗口的数据
-	if windowEnd != nil && needInitWindow {
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			"session_window_utilization":      nil,
-			"passive_usage_7d_utilization":    nil,
-			"passive_usage_7d_reset":          nil,
-			"passive_usage_7d_oi_utilization": nil,
-			"passive_usage_7d_oi_reset":       nil,
-			"passive_usage_sampled_at":        nil,
-		})
+	// 5h 换窗清理自己的旧用量；周额度按各自的重置时间判断：未到期的保留，
+	// 已到期的随时清除（包括 5h 窗口中途），没有可用重置时间的只在换窗时清除。
+	rollover := windowEnd != nil && needInitWindow
+	updates := map[string]any{}
+	if rollover {
+		updates["session_window_utilization"] = nil
+		updates["passive_usage_sampled_at"] = nil
+	}
+	now := time.Now()
+	for _, window := range [...]struct{ utilizationKey, resetKey string }{
+		{"passive_usage_7d_utilization", "passive_usage_7d_reset"},
+		{"passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset"},
+	} {
+		resetAt := parseSchedulingResetAt(account.Extra[window.resetKey])
+		if resetAt != nil && resetAt.After(now) {
+			continue
+		}
+		if resetAt == nil && !rollover {
+			continue
+		}
+		updates[window.utilizationKey] = nil
+		updates[window.resetKey] = nil
+	}
+	if len(updates) > 0 {
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 	}
 
 	if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, windowStart, windowEnd, status); err != nil {
