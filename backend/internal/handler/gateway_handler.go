@@ -1968,6 +1968,8 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
 	case 403:
 		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
+	case http.StatusRequestEntityTooLarge:
+		return http.StatusRequestEntityTooLarge, "request_too_large", "Request exceeds the upstream size limit"
 	case 429:
 		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
 	case 529:
