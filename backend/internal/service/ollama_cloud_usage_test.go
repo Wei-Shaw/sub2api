@@ -609,6 +609,18 @@ func TestOllamaCloudUsageStateModeAndMonthlyCredit(t *testing.T) {
 			wantMode:    AccountModeOllamaCredits,
 		},
 		{
+			// strconv.ParseFloat 接受 "Inf"/"NaN"：非有限值进 DTO 会让 JSON 序列化失败，
+			// 账号列表接口整页返回空响应体。
+			name:        "信用池为 Inf 字符串 → 视为无该字段",
+			credentials: map[string]any{"account_mode": AccountModeOllamaCredits, "monthly_credit_usd": "Inf"},
+			wantMode:    AccountModeOllamaCredits,
+		},
+		{
+			name:        "信用池为 NaN 字符串 → 视为无该字段",
+			credentials: map[string]any{"account_mode": AccountModeOllamaCredits, "monthly_credit_usd": "NaN"},
+			wantMode:    AccountModeOllamaCredits,
+		},
+		{
 			name:        "不认识的 mode 值保守回落 legacy",
 			credentials: map[string]any{"account_mode": "ollama_turbo"},
 			wantMode:    AccountModeOllamaLegacy,

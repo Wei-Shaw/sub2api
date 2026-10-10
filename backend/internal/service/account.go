@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"net/url"
 	"reflect"
 	"sort"
@@ -443,10 +444,18 @@ func (a *Account) GetCredentialAsInt64(key string) int64 {
 	return 0
 }
 
-// GetCredentialAsFloat64 返回浮点型凭据值，缺失或无法解析时返回 0。与
-// GetCredentialAsInt64 同样的类型容忍（JSONB 数字为 float64/json.Number，
-// 运营也可能手写成字符串），供 Ollama Cloud monthly_credit_usd 等金额键读取。
+// GetCredentialAsFloat64 返回浮点型凭据值，缺失、无法解析或非有限值（NaN/±Inf，
+// strconv.ParseFloat 接受 "Inf"/"NaN"）时返回 0。与 GetCredentialAsInt64 同样的类型
+// 容忍（JSONB 数字为 float64/json.Number，运营也可能手写成字符串），供 Ollama Cloud
+// monthly_credit_usd 等金额键读取；非有限值进入 DTO 会让 JSON 序列化失败。
 func (a *Account) GetCredentialAsFloat64(key string) float64 {
+	if f := a.getCredentialAsFloat64(key); !math.IsNaN(f) && !math.IsInf(f, 0) {
+		return f
+	}
+	return 0
+}
+
+func (a *Account) getCredentialAsFloat64(key string) float64 {
 	if a == nil || a.Credentials == nil {
 		return 0
 	}
