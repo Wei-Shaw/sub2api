@@ -42,7 +42,7 @@ func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component 
 		return nil, middleware.AuthSubject{}, nil, false
 	}
 	if h.geminiCachedContentService == nil {
-		googleError(c, http.StatusNotFound, "Explicit context caching is not enabled")
+		googlePlatformError(c, http.StatusNotFound, "Explicit context caching is not enabled")
 		return nil, middleware.AuthSubject{}, nil, false
 	}
 	if apiKey.Group == nil || apiKey.GroupID == nil || apiKey.Group.Platform == service.PlatformComposite {
@@ -83,11 +83,11 @@ func readGeminiCachedContentBody(c *gin.Context) ([]byte, bool) {
 func (h *GatewayHandler) checkGeminiCachedContentBilling(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subscription *service.UserSubscription) bool {
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("gemini.cached_content.billing_eligibility_check_failed", zap.Error(err))
-		status, _, message, retryAfter := billingErrorDetails(err)
+		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
-		googleError(c, status, message)
+		googleErrorWithType(c, status, code, "", message)
 		return false
 	}
 	return true
@@ -150,11 +150,11 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(modelName, body))
 	if err != nil {
 		reqLog.Info("gemini.cached_content.inflight_reservation_rejected", zap.Error(err))
-		status, _, message, retryAfter := billingErrorDetails(err)
+		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
-		googleError(c, status, message)
+		googleErrorWithType(c, status, code, "", message)
 		return
 	}
 	defer inflightRelease()
@@ -218,7 +218,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 			ChannelUsageFields: usageFields,
 		}) {
 			accountReleaseFunc()
-			googleError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", modelName))
+			googlePlatformError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", modelName))
 			return
 		}
 		upstreamModel, err := service.GeminiCachedContentUpstreamModelResource(account, mappedModel)
@@ -438,7 +438,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt,
 		}
 		if !h.gatewayService.CacheStoragePriced(c.Request.Context(), usage) {
-			googleError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", record.Model))
+			googlePlatformError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", record.Model))
 			return
 		}
 		if !h.checkGeminiCachedContentBilling(c, reqLog, apiKey, subscription) {
@@ -722,11 +722,11 @@ func (h *GatewayHandler) reserveGeminiCachedContentCharge(c *gin.Context, apiKey
 }
 
 func writeGeminiCachedContentBillingError(c *gin.Context, err error) {
-	status, _, message, retryAfter := billingErrorDetails(err)
+	status, code, message, retryAfter := billingErrorDetails(err)
 	if retryAfter > 0 {
 		c.Header("Retry-After", strconv.Itoa(retryAfter))
 	}
-	googleError(c, status, message)
+	googleErrorWithType(c, status, code, "", message)
 }
 
 // writeGeminiCachedContentUpstreamError 透传上游错误：缓存不存在统一返回标准 403（各上游形态不同且可能含上游资源 ID）；
@@ -736,6 +736,7 @@ func writeGeminiCachedContentUpstreamError(c *gin.Context, upErr *service.Gemini
 	message := strings.TrimSpace(extractGoogleErrorMessage(upErr.Body))
 	service.SetOpsUpstreamError(c, status, message, "")
 	if upErr.NotFound() {
+		service.MarkOpsRequestScopedError(c, "permission_error")
 		c.Data(http.StatusForbidden, "application/json", []byte(service.GeminiCachedContentNotFoundResponse))
 		return
 	}

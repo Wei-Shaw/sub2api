@@ -1834,10 +1834,11 @@ func (s *GeminiMessagesCompatService) writeGeminiNativeUpstreamError(c *gin.Cont
 }
 
 // writeGeminiCachedContentNotFound 记录上游原始错误，并向客户端统一返回缓存不存在的 403：
-// 各上游的响应形态不同，且 Vertex 的文案含上游缓存资源 ID。
+// 各上游的响应形态不同，且 Vertex 的文案含上游缓存资源 ID。失败由请求引用的缓存决定，ops 按客户端请求错误统计。
 func (s *GeminiMessagesCompatService) writeGeminiCachedContentNotFound(c *gin.Context, account *Account, resp *http.Response, respBody []byte, requestID string, isOAuth bool) error {
 	respBody = unwrapIfNeeded(isOAuth, respBody)
 	upstreamMsg := s.recordGeminiNativeUpstreamError(c, account, resp.StatusCode, respBody, requestID)
+	MarkOpsRequestScopedError(c, "permission_error")
 	MarkResponseCommitted(c)
 	c.Data(http.StatusForbidden, "application/json", []byte(GeminiCachedContentNotFoundResponse))
 	return fmt.Errorf("gemini upstream error: %d message=%s", resp.StatusCode, upstreamMsg)

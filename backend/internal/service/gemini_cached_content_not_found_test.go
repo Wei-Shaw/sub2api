@@ -75,6 +75,7 @@ func TestGeminiForwardNative_CachedContentNotFoundPassthroughWithoutAccountPenal
 			require.Equal(t, 1, httpStub.calls, "不应重试")
 			require.Equal(t, http.StatusForbidden, rec.Code)
 			require.Equal(t, GeminiCachedContentNotFoundResponse, rec.Body.String(), "应返回标准缓存不存在响应")
+			require.True(t, IsOpsRequestScopedError(c), "缓存不存在按客户端请求错误统计")
 		})
 	}
 }
@@ -177,6 +178,9 @@ func TestGeminiForwardNative_VertexCachedContentNotFoundReturnsStandardForbidden
 			require.Equal(t, http.StatusForbidden, rec.Code)
 			require.Equal(t, GeminiCachedContentNotFoundResponse, rec.Body.String())
 			require.NotContains(t, rec.Body.String(), "8079767076522164224", "不应暴露上游缓存 ID")
+			require.True(t, IsOpsRequestScopedError(c), "缓存不存在按客户端请求错误统计")
+			errType, _ := OpsLocalErrorType(c)
+			require.Equal(t, "permission_error", errType)
 		})
 	}
 }
