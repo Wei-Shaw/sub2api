@@ -74,7 +74,9 @@ func isHeaderOverrideBlockedName(lowerName string) bool {
 // Grok 额外开放 oauth 账号——
 // 订阅流量改发自定义转发地址时，通常需要补充中间层要求的准入头。
 func (a *Account) IsHeaderOverrideEligible() bool {
-	if a == nil {
+	if a == nil || a.IsDimAgent() {
+		// DimAgent requires a service-owned subscription identity. Operator
+		// overrides must not create an unsupported upstream client identity.
 		return false
 	}
 	switch {
