@@ -459,6 +459,15 @@ func TestCompositeGenericPoolPredicates(t *testing.T) {
 	require.True(t, genericCompositePoolAccountServable(&gemini))
 	require.True(t, genericCompositePoolAccountServable(&antigravity))
 
+	// 非 APIKey 的多协议账号（异常配置）：generic Forward 不用协议化 base、回落官方
+	// api.anthropic.com，入池会把自身凭据发往 Anthropic，不可服务。
+	zhipuAnthropicOAuth := zhipuAnthropic
+	zhipuAnthropicOAuth.Type = AccountTypeOAuth
+	require.False(t, genericCompositePoolAccountServable(&zhipuAnthropicOAuth))
+	kimiAdaptiveOAuth := kimiAdaptive
+	kimiAdaptiveOAuth.Type = AccountTypeOAuth
+	require.False(t, genericCompositePoolAccountServable(&kimiAdaptiveOAuth))
+
 	// 池成员资格：平台 ∈ 候选池为准；池外平台一律拒绝。
 	require.True(t, genericCompositePoolAllowsAccount(poolCtx, &kimiAdaptive))
 	require.True(t, genericCompositePoolAllowsAccount(poolCtx, &anthropicNative))

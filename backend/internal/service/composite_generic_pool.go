@@ -68,9 +68,9 @@ func (s *GatewayService) withCompositePoolQuotaAutoPauseContext(ctx context.Cont
 // 纯能力判定，不依赖候选池：
 //   - PlatformAnthropic：generic 网关原生账号（OAuth/APIKey/ServiceAccount）；
 //   - gemini / antigravity：既有 generic 调度支持的平台；
-//   - anthropic-协议 / adaptive 多协议账号：要求能解析出 Anthropic 协议上游 base
-//     （GetAnthropicProtocolBaseURL 非空，含 api_base_urls.anthropic 与供应商×模式
-//     默认端点），避免入池后转发期才发现无端点可用；
+//   - anthropic-协议 / adaptive 多协议账号：要求 APIKey 类型且能解析出 Anthropic 协议
+//     上游 base（GetAnthropicProtocolBaseURL 非空，含 api_base_urls.anthropic 与供应商×
+//     模式默认端点），避免入池后转发期才发现无端点可用或回落官方 Anthropic；
 //   - OpenAI 兼容账号（openai/grok/国产供应商/opencode_go）：转发由 handler 层
 //     委派协议转换链服务，不因账号停留在 Chat Completions 协议而被池排除。
 func genericCompositePoolAccountServable(account *Account) bool {
@@ -87,7 +87,10 @@ func genericCompositePoolAccountServable(account *Account) bool {
 		return true
 	}
 	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
-		return strings.TrimSpace(account.GetAnthropicProtocolBaseURL()) != ""
+		// generic Forward 只对 APIKey 账号使用协议化 base（buildUpstreamRequest），其余
+		// 类型回落官方 api.anthropic.com：非 APIKey 的多协议账号（异常配置）入池会把
+		// 自身凭据发往 Anthropic，一律不可服务。
+		return account.Type == AccountTypeAPIKey && strings.TrimSpace(account.GetAnthropicProtocolBaseURL()) != ""
 	}
 	return account.IsOpenAICompatible()
 }
