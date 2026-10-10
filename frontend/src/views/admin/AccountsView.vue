@@ -1842,9 +1842,11 @@ const loadAccountDetails = async (account: Pick<AccountListItem, 'id'>): Promise
   }
 }
 
+let editRequest = 0
 const handleEdit = async (a: AccountListItem) => {
+  const request = ++editRequest
   const account = await loadAccountDetails(a)
-  if (!account) return
+  if (!account || request !== editRequest) return
   edAcc.value = account
   showEdit.value = true
 }

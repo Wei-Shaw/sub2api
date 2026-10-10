@@ -26,6 +26,8 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <MuseSessionFields v-if="account.platform === 'muse'" :account-id="account.id" v-model:owner-id="museOwnerId" v-model:session-json="museSessionJson" replacement />
+      <MuseStatusPanel v-if="account.platform === 'muse'" :account-id="account.id" />
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -1681,7 +1683,7 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+          <input v-model.number="form.concurrency" type="number" min="1" class="input" :disabled="account.platform === 'muse'"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
@@ -3125,6 +3127,9 @@
 </template>
 
 <script setup lang="ts">
+import MuseSessionFields from './MuseSessionFields.vue'
+import MuseStatusPanel from './MuseStatusPanel.vue'
+import { buildMuseSession } from './museSession'
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -5164,10 +5169,13 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   }
 }
 
+const museOwnerId = ref(0)
+const museSessionJson = ref('')
+watch(() => props.account, (account) => { museOwnerId.value = Number(account?.extra?.muse_owner_user_id || 0); museSessionJson.value = '' }, { immediate: true })
+
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
-
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
@@ -5195,6 +5203,16 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
+    if (props.account.platform === 'muse') {
+      const session = buildMuseSession(museOwnerId.value, museSessionJson.value, true)
+      updatePayload.credentials = session.credentials
+      updatePayload.extra = { ...(props.account.extra || {}), ...session.extra }
+      updatePayload.concurrency = 1
+      updatePayload.schedulable = false
+      await submitUpdateAccount(accountID, updatePayload)
+      museSessionJson.value = ''
+      return
+    }
     if (props.account.type === 'apikey') {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value

@@ -113,6 +113,9 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	museBalances          interface {
+		AvailableBalance(context.Context, int64) (float64, error)
+	}
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -910,7 +913,7 @@ func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) 
 
 // checkBalanceEligibility 检查余额模式资格
 func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
-	balance, err := s.GetUserBalance(ctx, userID)
+	balance, err := s.availableBalance(ctx, userID)
 	if err != nil {
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
@@ -1126,7 +1129,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		ok       bool
 		cacheErr error
 	)
-	if s.cache != nil {
+	if s.cache != nil && platform != PlatformMuse {
 		entry, ok, cacheErr = s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
 	} else {
 		// 标记为"cache 故障"分支：跳过 HIT 路径、不回填、走 DB 一次性检查
@@ -1401,4 +1404,13 @@ func (s *BillingCacheService) HasUserPlatformQuotaLimit(ctx context.Context, use
 		return true
 	}
 	return entry.DailyLimitUSD != nil || entry.WeeklyLimitUSD != nil || entry.MonthlyLimitUSD != nil
+}
+
+// Enabled in-flight protection uses authoritative native holds and gross balance
+// together. Keep the default cached billing path when protection is disabled.
+func (s *BillingCacheService) availableBalance(ctx context.Context, userID int64) (float64, error) {
+	if s.museBalances != nil && s.InflightReservationEnabled() {
+		return s.museBalances.AvailableBalance(ctx, userID)
+	}
+	return s.GetUserBalance(ctx, userID)
 }

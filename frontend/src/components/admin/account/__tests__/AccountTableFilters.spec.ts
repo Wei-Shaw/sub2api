@@ -90,7 +90,7 @@ describe('AccountTableFilters', () => {
     const expectedOptions = [
       ['platform', ['', ...CONCRETE_PLATFORM_OPTIONS.map(option => option.value)]],
       ['status', ['', 'active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable']],
-      ['type', ['', 'oauth', 'setup-token', 'apikey', 'bedrock']],
+      ['type', ['', 'session', 'oauth', 'setup-token', 'apikey', 'bedrock']],
       ['privacy_mode', ['', '__unset__', 'training_off', 'training_set_cf_blocked', 'training_set_failed']],
       ['group', ['', 'ungrouped', '42']]
     ] as const
