@@ -1260,7 +1260,13 @@ func (s *PricingService) lookupIdentifiedModelPricingLocked(lookupCandidates []s
 
 	// 3. 尝试模糊匹配（去掉版本号后缀）
 	// claude-opus-4-5-20251101 -> claude-opus-4.5
+	// 基名为空（如 "qwen3.5:397b" 整段带 ":" 被剥光）时不做模糊匹配：空基名会与
+	// 价格表里所有同样剥光的条目（"ollama/llama2:13b" 等 $0 价）相等，按 map 遍历
+	// 顺序随机命中。
 	baseName := s.extractBaseName(lookupCandidates[0])
+	if baseName == "" {
+		return nil
+	}
 	for key, pricing := range s.pricingData {
 		keyBase := s.extractBaseName(strings.ToLower(key))
 		if keyBase == baseName {

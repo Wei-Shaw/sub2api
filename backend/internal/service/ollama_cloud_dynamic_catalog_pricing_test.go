@@ -25,6 +25,7 @@ package service
 import (
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -175,4 +176,39 @@ func TestGetModelPricing_TaggedNamesNeverGuessedFromStrippedName(t *testing.T) {
 	require.InDelta(t, 0.07e-6, pricing.InputPricePerToken, 1e-12)
 	_, err = bs.getModelPricingAt("gpt-oss-120b-medium", ollamaPricingAt)
 	require.NoError(t, err)
+}
+
+// TestGetModelPricing_OllamaCloudTaggedModelsIgnoreEmptyBaseNameCatalogEntries 回归：
+// "qwen3.5:397b" / "gemma4:31b" 整段带 ":"，extractBaseName 剥光后基名为空串；真实
+// LiteLLM 目录里 "ollama/llama2:13b"（$0）、"openrouter/openai/o3:batch" 等条目的基名
+// 同样为空。模糊匹配不得让空基名互相命中，否则这两个模型按 map 遍历顺序随机落到
+// $0 等错误价卡，fallbackPrices 的 ollama 价卡成为死代码。
+func TestGetModelPricing_OllamaCloudTaggedModelsIgnoreEmptyBaseNameCatalogEntries(t *testing.T) {
+	catalog := `{
+		"ollama/llama2:13b": {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0, "litellm_provider": "ollama", "mode": "chat"},
+		"ollama/llama3:8b": {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0, "litellm_provider": "ollama", "mode": "chat"},
+		"openrouter/thinkingmachines/inkling:free": {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0, "litellm_provider": "openrouter", "mode": "chat"},
+		"openrouter/openai/o3:batch": {"input_cost_per_token": 1e-06, "output_cost_per_token": 4e-06, "litellm_provider": "openrouter", "mode": "chat"}
+	}`
+	bs := NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, catalog))
+
+	tests := []struct {
+		model     string
+		wantInput float64
+		wantOut   float64
+	}{
+		{"qwen3.5:397b", 0.60e-6, 3.60e-6},
+		{"gemma4:31b", 0.14e-6, 0.40e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			require.Nil(t, bs.pricingService.GetModelPricing(tt.model),
+				"model %s must not fuzzy-match catalog entries whose base name is also empty", tt.model)
+			pricing, err := bs.getModelPricingAt(tt.model, ollamaPricingAt)
+			require.NoError(t, err)
+			require.NotNil(t, pricing)
+			require.InDelta(t, tt.wantInput, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.wantOut, pricing.OutputPricePerToken, 1e-12)
+		})
+	}
 }
