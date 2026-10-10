@@ -27,6 +27,7 @@ vi.mock('vue-i18n', async () => {
 const usageState = (): OllamaCloudUsageState => ({
   account_id: 7,
   eligible: true,
+  mode: 'ollama_legacy',
   configured: true,
   auto_refresh_enabled: false,
   encryption_key_configured: true,
@@ -104,8 +105,55 @@ describe('OllamaCloudUsageCell', () => {
     expect(query.classes()).toEqual(expect.arrayContaining(['text-blue-600', 'hover:bg-blue-50']))
     expect(query.text()).toContain('admin.accounts.usageWindow.activeQuery')
     expect(wrapper.text()).not.toContain('max')
-    expect(wrapper.text()).not.toContain('$0')
     expect(wrapper.text()).not.toContain('gpt-oss:120b-cloud')
+    // legacy 模式追加 balance 文本（不含信用池分母）。
+    const balance = wrapper.get('[data-testid="ollama-cloud-balance"]')
+    expect(balance.text()).toBe('admin.accounts.ollamaCloud.balance: $0')
+  })
+
+  it('renders legacy 5h/7d window bars and skips the pool bar', () => {
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account() } })
+
+    expect(wrapper.find('[data-testid="ollama-cloud-monthly-pool"]').exists()).toBe(false)
+    const bars = wrapper.findAllComponents(UsageProgressBar)
+    expect(bars.map(bar => bar.props('label'))).toEqual(['5h', '7d'])
+    expect(wrapper.find('[data-testid="ollama-cloud-snapshot-time"]').exists()).toBe(false)
+  })
+
+  it('renders the monthly pool bar for credits mode instead of window bars', () => {
+    const state = usageState()
+    state.mode = 'ollama_credits'
+    state.monthly_credit_usd = 60
+    state.snapshot!.data!.balance = '$12.00'
+
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(state) } })
+
+    expect(wrapper.find('[data-testid="ollama-cloud-five-hour"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ollama-cloud-seven-day"]').exists()).toBe(false)
+    const bars = wrapper.findAllComponents(UsageProgressBar)
+    expect(bars).toHaveLength(1)
+    expect(bars[0].props()).toMatchObject({
+      // (60 - 12) / 60 = 80%
+      label: 'admin.accounts.ollamaCloud.monthlyPoolShort',
+      utilization: 80,
+      color: 'amber'
+    })
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text())
+      .toBe('admin.accounts.ollamaCloud.balance: $12.00 / $60')
+    expect(wrapper.get('[data-testid="ollama-cloud-snapshot-time"]').text())
+      .toContain('admin.accounts.ollamaCloud.updatedAt')
+  })
+
+  it('falls back to the raw balance text when the credits pool is missing', () => {
+    const state = usageState()
+    state.mode = 'ollama_credits'
+    state.snapshot!.data!.balance = '$12.00'
+
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(state) } })
+
+    expect(wrapper.find('[data-testid="ollama-cloud-monthly-pool"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="ollama-cloud-balance"]').text())
+      .toBe('admin.accounts.ollamaCloud.balance: $12.00')
   })
 
   it('reacts to an account snapshot update', async () => {
@@ -139,5 +187,28 @@ describe('OllamaCloudUsageCell', () => {
     const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(state) } })
 
     expect(wrapper.find('[data-testid="ollama-cloud-usage-query"]').exists()).toBe(false)
+  })
+
+  it('explains an ineligible account via the backend reason code', () => {
+    const state = usageState()
+    state.eligible = false
+    state.eligible_reason = 'unsupported_base_url'
+    state.snapshot = undefined
+
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(state) } })
+
+    const hint = wrapper.get('[data-testid="ollama-cloud-usage-ineligible"]')
+    expect(hint.text()).toBe('admin.accounts.ollamaCloud.eligibleReason.unsupported_base_url')
+    expect(hint.attributes('title')).toBe('admin.accounts.ollamaCloud.eligibleReason.unsupported_base_url')
+  })
+
+  it('keeps the dash placeholder when no state is available', () => {
+    const wrapper = mount(OllamaCloudUsageCell, {
+      props: { account: account(null as unknown as OllamaCloudUsageState) }
+    })
+
+    expect(wrapper.find('[data-testid="ollama-cloud-usage-ineligible"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="ollama-cloud-usage-cell"]').exists()).toBe(false)
+    expect(wrapper.get('span').classes()).toContain('text-sm')
   })
 })

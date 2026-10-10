@@ -16,7 +16,10 @@ const (
 // Anthropic API-key accounts. Missing or invalid values keep the historical
 // x-api-key behavior. CN providers using their native Anthropic endpoints
 // (api_protocol=anthropic) share the same override knob — Kimi/DeepSeek default
-// to x-api-key, Zhipu can opt into Authorization: Bearer.
+// to x-api-key, Zhipu can opt into Authorization: Bearer. Ollama Cloud accounts
+// may read the knob too: it only matters for relay bases (the official
+// ollama.com base is forced to Bearer by host in setAnthropicAPIKeyAuthHeader
+// regardless of this value).
 func (a *Account) GetAnthropicAPIKeyAuthScheme() string {
 	if a == nil || a.Type != AccountTypeAPIKey {
 		return AnthropicAPIKeyAuthSchemeXAPIKey
@@ -39,7 +42,7 @@ func (a *Account) GetAnthropicAPIKeyAuthScheme() string {
 // 与 '.../v1' 均合理），再复用既有严格 host helper isOllamaCloudBaseURL（精确
 // host、https、无 query/fragment、路径仅空或 /v1），不按 substring 匹配。
 func isOllamaCloudAnthropicAuthBaseURL(baseURL string) bool {
-	return isOllamaCloudBaseURL(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+	return isOllamaCloudOutboundBaseURL(baseURL)
 }
 
 // setAnthropicAPIKeyAuthHeader 写入上游认证头。除 extra 覆写外，Ollama Cloud

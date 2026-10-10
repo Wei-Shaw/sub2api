@@ -217,7 +217,7 @@ func TestDuplicateCreatePathMintsFreshSeedWhenEligible(t *testing.T) {
 func TestAccountServiceCreateAndUpdateCodexSeedLifecycle(t *testing.T) {
 	ctx := context.Background()
 	repo := &upstreamBillingProbeAccountRepo{accounts: make(map[int64]*Account)}
-	svc := NewAccountService(repo, nil)
+	svc := NewAccountService(repo, nil, nil)
 
 	created, err := svc.Create(ctx, CreateAccountRequest{
 		Name:     "legacy-create",

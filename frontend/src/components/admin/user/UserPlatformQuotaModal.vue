@@ -173,9 +173,10 @@ function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
 }
 
 function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
-  const byPlatform = new Map<PlatformQuotaPlatform, PlatformQuotaItem>()
+  const byPlatform = new Map<string, PlatformQuotaItem>()
   for (const it of items) byPlatform.set(it.platform, it)
-  return platformQuotaPlatforms().map((p) => {
+  const platforms = platformQuotaPlatforms()
+  const rows = platforms.map((p) => {
     const it = byPlatform.get(p)
     if (!it) return emptyRow(p)
     return {
@@ -188,6 +189,23 @@ function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
       monthly_usage_usd: it.monthly_usage_usd ?? 0,
     }
   })
+  // 稳健性护栏：保留响应中前端未收录（后端新加）的平台行。整体替换语义下丢弃
+  // 这些行，管理员不做任何修改直接保存也会软删其配额（限额 fail-open）。
+  // platform 在前端收录前以服务端返回值透传（服务端返回即其白名单成员）。
+  for (const it of items) {
+    // PUT /admin/users/:id/platform-quotas 是整体替换语义：列表缺平台 = 保存即静默删行。
+    if (platforms.includes(it.platform)) continue
+    rows.push({
+      platform: it.platform as PlatformQuotaPlatform,
+      daily_limit_usd: it.daily_limit_usd ?? null,
+      weekly_limit_usd: it.weekly_limit_usd ?? null,
+      monthly_limit_usd: it.monthly_limit_usd ?? null,
+      daily_usage_usd: it.daily_usage_usd ?? 0,
+      weekly_usage_usd: it.weekly_usage_usd ?? 0,
+      monthly_usage_usd: it.monthly_usage_usd ?? 0,
+    })
+  }
+  return rows
 }
 
 function formatUsage(n: number): string {

@@ -51,6 +51,22 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	}
 }
 
+// ollama_cloud 目标不会经 DetectModelPlatform 的模型名前缀产生（无 ollama 前缀，
+// fail closed），只能来自 composite 路由已解析的 context；这里预置解析结果后
+// 断言文本目标白名单放行 ollama_cloud。
+func TestOpenAICompatibleTextTargetAllowsOllamaCloudResolvedRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses", "/v1/responses/input_tokens", "/v1/messages/count_tokens"} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", path, nil)
+		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformOllamaCloud))
+		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+
+		require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, "gpt-oss:20b"), "path=%s", path)
+	}
+}
+
 // WS ingress 对 CN 账号既过不了 transport 过滤、HTTP 桥也没有 Responses 转换，
 // 放行只会把明确的策略拒绝换成 "no available account"，因此 WS 白名单保持 openai+grok。
 func TestResponsesWebSocketCompositePlatformGuardKeepsOpenAIAndGrokOnly(t *testing.T) {

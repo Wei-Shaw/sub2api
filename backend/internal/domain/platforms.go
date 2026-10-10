@@ -48,6 +48,8 @@ var platformList = []PlatformSpec{
 	{ID: PlatformTypeSafe, DisplayName: "TypeSafe / Jev", Gateway: PlatformGatewayAnthropic, LiteLLMProvider: "typesafe"},
 	{ID: PlatformCommandCode, DisplayName: "Command Code", Gateway: PlatformGatewayOpenAI},
 	{ID: PlatformCline, DisplayName: "Cline", Gateway: PlatformGatewayOpenAI},
+	// Ollama Cloud 定价目录没有 ollama 条目，LiteLLMProvider 留空（不支持从定价目录同步模型）。
+	{ID: PlatformOllamaCloud, DisplayName: "Ollama Cloud", Gateway: PlatformGatewayOpenAI},
 }
 
 var platformIndex = func() map[string]int {

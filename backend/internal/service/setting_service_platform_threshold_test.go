@@ -169,3 +169,31 @@ func TestGetAccountSchedulingThresholds_NilRepoReturnsDefaults(t *testing.T) {
 		PlatformGrok:      100,
 	}, got)
 }
+
+func TestValidateAndNormalizeAccountSchedulingThresholds_AcceptsOllamaCloud(t *testing.T) {
+	normalized, err := validateAndNormalizeAccountSchedulingThresholds(map[string]int{
+		PlatformOllamaCloud: 80,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 80, normalized[PlatformOllamaCloud])
+}
+
+func TestAccountSchedulingThresholds_OllamaCloudRoundTrip(t *testing.T) {
+	svc := newSettingServiceForPlatformThresholdTest(nil)
+
+	// A6 验收的服务层等价路径：PUT account_scheduling_thresholds {"ollama_cloud":80}
+	// 必须被接受并回读 —— 白名单未纳入 ollama_cloud 时这里被
+	// validateAndNormalizeAccountSchedulingThresholds 拒为 unknown platform（400）。
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AccountSchedulingThresholds: map[string]int{
+			PlatformOllamaCloud: 80,
+		},
+	})
+	require.NoError(t, err)
+
+	stored := svc.settingRepo.(*mockSettingRepo).data[SettingKeyAccountSchedulingThresholds]
+	require.Contains(t, stored, `"ollama_cloud":80`)
+
+	cached := svc.GetAccountSchedulingThresholds(context.Background())
+	require.Equal(t, 80, cached[PlatformOllamaCloud])
+}

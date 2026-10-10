@@ -180,6 +180,15 @@ func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context
 	return out, nil
 }
 
+// ListModelAvailabilityCandidates 模拟仓储的配置态查询：忽略限流/过载等瞬态
+// 状态字段，只按 byGroup 返回持久化配置的账号池。
+func (s *modelsListAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	if groupID == nil || len(platforms) == 0 {
+		return nil, nil
+	}
+	return s.ListSchedulableByGroupID(ctx, *groupID)
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
 	s.listAllCalls.Add(1)
 	if s.err != nil {
@@ -565,9 +574,11 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), store)
 }
 
-// Scenario: 账号模型变更会失效所属平台缓存
-func TestResolveCompositeModelOwnershipUsesModelsCacheInvalidation(t *testing.T) {
+// Scenario: ownership 基于配置态查询解析并按 modelsListCache 短 TTL 缓存——热路径
+// TTL 内不重复查库；瞬态限流字段不影响能力池；配置变更经缓存失效立即反映。
+func TestResolveCompositeModelOwnershipCachesConfigState(t *testing.T) {
 	groupID := int64(9)
+	rateLimitedReset := time.Now().Add(30 * time.Minute)
 	repo := &modelsListAccountRepoStub{
 		byGroup: map[int64][]Account{
 			groupID: {{
@@ -585,24 +596,52 @@ func TestResolveCompositeModelOwnershipUsesModelsCacheInvalidation(t *testing.T)
 
 	first, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, first)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, first)
 	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
 
-	repo.byGroup[groupID] = []Account{{
-		ID:          2,
-		Platform:    PlatformOpenAI,
-		Credentials: map[string]any{"model_mapping": map[string]any{"company-model": "gpt-5"}},
-	}}
+	// TTL 内命中缓存，不再查库。
 	cached, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
 	require.NoError(t, err)
 	require.Equal(t, first, cached)
 	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
 
+	// 瞬态限流字段（配置态查询会忽略）不改变能力。
+	svc.modelsListCache.Flush()
+	repo.byGroup[groupID] = []Account{{
+		ID:               1,
+		Platform:         PlatformDeepseek,
+		RateLimitedAt:    &rateLimitedReset,
+		RateLimitResetAt: &rateLimitedReset,
+		Credentials:      map[string]any{"model_mapping": map[string]any{"company-model": "deepseek-v4-pro"}},
+	}}
+	transient, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, first, transient)
+	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
+
+	// 账号配置变更触发的失效（InvalidateAvailableModelsCache）立即清除归属缓存：
+	// 移除声明即反映为能力消失，不必等 TTL。
 	svc.InvalidateAvailableModelsCache(&groupID, PlatformDeepseek)
+	repo.byGroup[groupID] = []Account{{
+		ID:       2,
+		Platform: PlatformOpenAI,
+	}}
+	removed, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{}, removed)
+	require.Equal(t, int64(3), repo.listByGroupCalls.Load())
+
+	// 换平台声明同样在失效后立即生效。
+	svc.InvalidateAvailableModelsCache(&groupID, "")
+	repo.byGroup[groupID] = []Account{{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Credentials: map[string]any{"model_mapping": map[string]any{"company-model": "gpt-5"}},
+	}}
 	refreshed, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, refreshed)
-	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, refreshed)
+	require.Equal(t, int64(4), repo.listByGroupCalls.Load())
 }
 
 func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {

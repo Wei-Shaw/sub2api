@@ -923,7 +923,7 @@ export interface UpdateGroupRequest {
 // ==================== Account & Proxy Types ====================
 
 /** 前端内置专属界面（图标、配色、表单等）的平台。 */
-export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline'
+export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline' | 'ollama_cloud'
 /**
  * 账号平台：内置平台，或后端平台清单中新登记的平台（任意字符串）。
  * `string & {}` 保留内置平台的字面量补全。
@@ -1151,6 +1151,12 @@ export interface OllamaCloudUsageSnapshot {
 export interface OllamaCloudUsageState {
   account_id: number
   eligible: boolean
+  /** eligible=false 的原因码（后端 EligibleReason，"" 缺省表示合格）。 */
+  eligible_reason?: 'platform_not_eligible' | 'wrong_account_type' | 'unsupported_base_url'
+  /** 双额度模式：legacy=5h/7d 滚动窗口，credits=月度美元信用池；非 ollama_cloud 平台缺省。 */
+  mode?: 'ollama_legacy' | 'ollama_credits'
+  /** credits 模式的月度信用池（USD，credentials.monthly_credit_usd）；未录入时缺省。 */
+  monthly_credit_usd?: number
   configured: boolean
   auto_refresh_enabled: boolean
   encryption_key_configured: boolean

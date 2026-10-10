@@ -761,7 +761,25 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 }
 
 // recordUsageCore 是 RecordUsage 的核心实现。
+// usagePricingContext 把组合分组的定价作用域限定到本次请求实际服务的平台。后扣运行在
+// worker 池的 background ctx 上，取不到请求期的目标平台；handler 已在请求 ctx 内把它算定
+// 为 QuotaPlatform（账号池请求为选中账号的平台）。各平台渠道定价严格独立，不能按组合
+// 分组的回退顺序取到其他平台的价格。
+func usagePricingContext(ctx context.Context, apiKey *APIKey, quotaPlatform string) context.Context {
+	if ctx == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != PlatformComposite {
+		return ctx
+	}
+	if _, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+		return ctx
+	}
+	if platform := strings.TrimSpace(quotaPlatform); isConcreteRequestPlatform(platform) {
+		return WithResolvedTargetPlatform(ctx, platform)
+	}
+	return ctx
+}
+
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput) error {
+	ctx = usagePricingContext(ctx, input.APIKey, input.QuotaPlatform)
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -806,6 +824,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	hostedModels := accountServesHostedModels(account)
+	if hostedModels {
+		// 托管模型上游（composite 跨族池经 generic 链转发的 CN / Ollama Cloud 账号）
+		// 按实际转发的模型计费，与 OpenAI 链 result.BillingModel 同口径。
+		concreteBillingModel = forwardResultBillingModel(result.UpstreamModel, result.Model)
+	}
 	billingModel := concreteBillingModel
 	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
 		billingModel = input.ChannelMappedModel
@@ -823,6 +847,14 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 通用兜底（与 OpenAI 路径的 usageBillingModelCandidates 语义对齐）：
 	// 选定模型查不到任何价格时回退到实际转发的具体模型。已定价流量不受影响。
 	billingModel = s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	if hostedModels {
+		// 与 OpenAI 链 filterCNProviderBillingModelCandidates 一致：claude-* 名不会被
+		// 托管上游真正服务，未显式定价时不得按 Claude 价计费；候选全部落空则走零成本告警。
+		billingModel = firstUsageBillingModel(dropUnpricedClaudeBillingCandidates(
+			usageBillingModelCandidates(billingModel, concreteBillingModel),
+			func(model string) bool { return s.resolveChannelPricing(ctx, model, apiKey) != nil },
+		))
+	}
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model

@@ -264,3 +264,25 @@ func TestFixedCNResponsesProtocolOverridesStaleChatMode(t *testing.T) {
 		})
 	}
 }
+
+// TestAdaptiveProtocolRoutesOllamaCloudResponsesToNativeResponses 验证 C31 的连锁
+// 语义：SupportsNativeCNResponses 纳入 ollama_cloud 后，/v1/responses 入站不再被
+// C32 判定降级为 raw CC（https://ollama.com/v1/chat/completions），而是走平台原生
+// /v1/responses 端点；且 normalizeDeepSeekResponsesRequestBody 对 ollama 生效——
+// store 强制 false、previous_response_id 被剥离（Ollama /v1/responses 为
+// non-stateful，透传状态字段会被上游 400）。
+func TestAdaptiveProtocolRoutesOllamaCloudResponsesToNativeResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-oss:120b-cloud","input":"hello","store":true,"previous_response_id":"resp_old","stream":false}`)
+	upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	// api_base_urls 为空 → adaptive 解析到平台默认端点 https://ollama.com/v1。
+	account := adaptiveProtocolTestAccount(PlatformOllamaCloud, nil)
+
+	_, err := svc.Forward(context.Background(), adaptiveProtocolTestContext("/v1/responses", body), account, body)
+	require.Error(t, err)
+	require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+}
