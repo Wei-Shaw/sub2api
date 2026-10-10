@@ -112,13 +112,14 @@ func IsGeminiExplicitCacheAccountType(account *Account) bool {
 }
 
 // IsGeminiExplicitCacheAccount 判断完整账号是否支持显式缓存：官方地址的 AI Studio API Key 账号、
-// 声明上游支持显式缓存的自定义地址 API Key 账号，或 Vertex service account 账号。
+// 声明上游支持显式缓存的自定义地址 API Key 账号，或 Service Account JSON 认证的 Vertex 账号。
+// API Key 认证的 Vertex 账号不参与显式缓存：Vertex 缓存接口只接受 OAuth access token，不接受 API Key。
 func IsGeminiExplicitCacheAccount(account *Account) bool {
 	if !IsGeminiExplicitCacheAccountType(account) {
 		return false
 	}
 	if account.Type == AccountTypeServiceAccount {
-		return true
+		return !account.IsVertexAPIKey()
 	}
 	if strings.TrimSpace(account.GetCredential("api_key")) == "" {
 		return false

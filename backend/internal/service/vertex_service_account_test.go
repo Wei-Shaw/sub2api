@@ -30,6 +30,62 @@ func TestBuildVertexGeminiURLUsesGlobalEndpointHost(t *testing.T) {
 	require.Equal(t, "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse", got)
 }
 
+func TestIsVertexAPIKey(t *testing.T) {
+	apiKeyCreds := map[string]any{"auth_mode": "apikey", "api_key": "k"}
+	require.True(t, (&Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: apiKeyCreds}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"service_account_json": "{}"}}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformAnthropic, Type: AccountTypeServiceAccount, Credentials: apiKeyCreds}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: apiKeyCreds}).IsVertexAPIKey())
+}
+
+func TestBuildVertexGeminiAccountURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		credentials map[string]any
+		want        string
+	}{
+		{
+			name:        "api key without project uses express global endpoint",
+			credentials: map[string]any{"auth_mode": "apikey", "api_key": "k", "location": "us-central1"},
+			want:        "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+		{
+			name:        "api key with project uses project endpoint",
+			credentials: map[string]any{"auth_mode": "apikey", "api_key": "k", "project_id": "my-project", "location": "us-central1"},
+			want:        "https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+		{
+			name:        "service account uses project endpoint",
+			credentials: map[string]any{"project_id": "sa-project", "location": "global"},
+			want:        "https://aiplatform.googleapis.com/v1/projects/sa-project/locations/global/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: tc.credentials}
+			got, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "streamGenerateContent", true)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": "k"}}
+	_, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "rawPredict", false)
+	require.ErrorContains(t, err, "unsupported vertex gemini action")
+}
+
+func TestSetVertexGeminiAuthUsesAPIKeyHeader(t *testing.T) {
+	account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": " vertex-key "}}
+	req := httptest.NewRequest(http.MethodPost, "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3-flash-preview:generateContent", nil)
+
+	require.NoError(t, setVertexGeminiAuth(context.Background(), req, account, nil))
+	require.Equal(t, "vertex-key", req.Header.Get("x-goog-api-key"))
+	require.Empty(t, req.Header.Get("Authorization"))
+
+	account.Credentials["api_key"] = ""
+	require.ErrorContains(t, setVertexGeminiAuth(context.Background(), req, account, nil), "vertex api_key not configured")
+}
+
 func TestBuildVertexAnthropicURL(t *testing.T) {
 	got, err := buildVertexAnthropicURL("my-project", "us-east5", "claude-sonnet-4-5@20250929", false)
 	require.NoError(t, err)

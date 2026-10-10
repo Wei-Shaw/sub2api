@@ -186,6 +186,7 @@ func TestIsGeminiExplicitCacheAccount(t *testing.T) {
 		{"official host with path prefix", &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "k", "base_url": "https://generativelanguage.googleapis.com/antigravity"}}, false},
 		{"missing api key", &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey}, false},
 		{"vertex service account", &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount}, true},
+		{"vertex api key", &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": "k", "project_id": "my-project"}}, false},
 		{"oauth", &Account{Platform: PlatformGemini, Type: AccountTypeOAuth}, false},
 		{"antigravity api key", &Account{Platform: PlatformAntigravity, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "k"}}, false},
 	}
