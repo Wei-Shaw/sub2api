@@ -1402,8 +1402,7 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	}
 	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
 	for _, path := range openAIStreamErrorStatusPaths {
-		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
-			status == http.StatusForbidden || status == http.StatusTooManyRequests || status == 529 {
+		if status := int(gjson.GetBytes(payload, path).Int()); status >= 400 && status <= 599 {
 			return status
 		}
 	}
@@ -1420,6 +1419,8 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 		return http.StatusForbidden
 	case isOpenAIUpstreamCapacityShedEvent(payload):
 		return http.StatusServiceUnavailable
+	case strings.Contains(combined, "service_unavailable"):
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusBadGateway
 	}
@@ -1434,9 +1435,8 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return semanticStatus
 	case http.StatusServiceUnavailable:
-		if isOpenAIUpstreamCapacityShedEvent(payload) {
-			return semanticStatus
-		}
+		// 503 is an explicit transient upstream status and must remain retryable; unlike generic 5xx (for example 500), it is safe to expose as service unavailable.
+		return semanticStatus
 	}
 	return http.StatusBadGateway
 }
@@ -1606,13 +1606,18 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAIContextWindowError(message, payload) {
 		return false
 	}
+	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
+		if status := gjson.GetBytes(payload, path).Int(); status >= 500 && status <= 599 {
+			return true
+		}
+	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
 	}
 	switch openAIStreamFailedEventSemanticStatus(payload, message) {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusServiceUnavailable, 529:
 		return true
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
@@ -1622,6 +1627,7 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 		gjson.GetBytes(payload, "error.message").String() + " " +
 		gjson.GetBytes(payload, "response.error.message").String()))
 	return strings.Contains(combined, "temporary") ||
+		strings.Contains(combined, "temporarily unavailable") ||
 		strings.Contains(combined, "try again") ||
 		strings.Contains(combined, "please retry")
 }
@@ -1766,8 +1772,10 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverErrorWithModel(
 	}
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
-			"type":    errType,
-			"message": message,
+			"code":        openAIStreamErrorCode(payload),
+			"status_code": statusCode,
+			"type":        errType,
+			"message":     message,
 		},
 	})
 	retryableOnSameAccount := openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
@@ -1899,6 +1907,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	suppressCurrentEvent := false
 	responseFailedPending := false
 	var bareErrorPayload []byte
+	var finalFailurePayload []byte
 	bareErrorAccountSideEffectsPending := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
@@ -2061,6 +2070,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			cyberHit := false
 			if eventType == "response.failed" || eventType == "error" {
+				finalFailurePayload = append(finalFailurePayload[:0], dataBytes...)
 				if codexFailureTerminal && eventType == "error" {
 					sawBareError = true
 					bareErrorPayload = append(bareErrorPayload[:0], dataBytes...)
@@ -2239,6 +2249,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
+			markOpenAITerminalStreamFailure(c, finalFailurePayload, failedMessage)
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -2269,6 +2280,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
 	}
 	if sawFailedEvent {
+		markOpenAITerminalStreamFailure(c, finalFailurePayload, failedMessage)
 		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 	}
 	if !clientDisconnected && !sawDone && !sawTerminalEvent && ctx.Err() == nil {

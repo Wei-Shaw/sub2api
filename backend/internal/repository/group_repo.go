@@ -29,6 +29,18 @@ type groupRepository struct {
 	sql    sqlExecutor
 }
 
+func groupSchedulerConfigMap(cfg service.GroupSchedulerConfig) map[string]interface{} {
+	return map[string]interface{}{
+		"strategy":                    cfg.Strategy,
+		"selection_mode":              cfg.SelectionMode,
+		"first_byte_failover":         cfg.FirstByteFailover,
+		"sticky_binding_mode":         cfg.StickyBindingMode,
+		"probe_bypass_sticky":         cfg.ProbeBypassSticky,
+		"max_account_switches":        cfg.MaxAccountSwitches,
+		"same_account_retry_attempts": cfg.SameAccountRetryAttempts,
+	}
+}
+
 // lockLiveGroups makes account-group inserts participate in the same row-lock
 // protocol as guarded group deletion. FOR SHARE conflicts with the deleter's
 // FOR UPDATE lock, and READ COMMITTED rechecks deleted_at after any wait.
@@ -154,7 +166,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
-		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer).
+		SetSchedulerConfig(groupSchedulerConfigMap(groupIn.Scheduler))
 	if groupIn.DuplicateOperationID != "" {
 		builder = builder.SetDuplicateOperationID(groupIn.DuplicateOperationID)
 	}
@@ -334,7 +347,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
-		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer).
+		SetSchedulerConfig(groupSchedulerConfigMap(groupIn.Scheduler))
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {

@@ -121,7 +121,8 @@ func validateJitter(jitterSec, intervalSec int) error {
 }
 
 // validateEndpoint 校验 endpoint：
-//   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
+//   - scheme 仅允许 http/https；HTTP 主要用于明确受控的内网外部中转场景，
+//     但仍经过公网主机和真实连接目标校验
 //   - 允许上游路径前缀（如 /anthropic），不允许 query/fragment
 //   - hostname 不能是 localhost/metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
@@ -136,7 +137,7 @@ func validateEndpoint(ep string) error {
 	if err != nil {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Scheme != "https" {
+	if !strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https") {
 		return ErrChannelMonitorEndpointScheme
 	}
 	if u.Host == "" {

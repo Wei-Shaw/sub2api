@@ -565,6 +565,34 @@ func TestOpsErrorLoggerMiddleware_StreamFailureUsesTerminalErrorOverAttemptConte
 	require.Equal(t, "input exceeds the context window", *job.entry.UpstreamErrorMessage)
 }
 
+func TestOpsErrorLoggerMiddleware_FinalStreamFailureIsNotRecovered(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			setupOpsErrorLogTestQueue(t, 2)
+			ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			router := gin.New()
+			router.Use(OpsErrorLoggerMiddleware(ops))
+			router.POST("/v1/chat/completions", func(c *gin.Context) {
+				service.SetOpsUpstreamError(c, 429, "earlier attempt", "")
+				c.Header("Content-Type", "text/event-stream")
+				c.Status(http.StatusOK)
+				_, _ = c.Writer.WriteString("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+				service.MarkOpsStreamFailure(c, "upstream_error", "upstream_error", "Upstream service temporarily unavailable", status)
+				_, _ = c.Writer.WriteString("data: {\"error\":{\"code\":\"upstream_error\",\"message\":\"Upstream service temporarily unavailable\"}}\n\n")
+			})
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, int64(1), OpsErrorLogQueueLength())
+			entry := (<-opsErrorLogQueue).entry
+			require.Equal(t, status, entry.StatusCode)
+			require.Equal(t, "upstream", entry.ErrorPhase)
+			require.NotContains(t, entry.ErrorMessage, "Recovered")
+			require.False(t, entry.IsBusinessLimited)
+		})
+	}
+}
+
 func TestOpsErrorLoggerMiddleware_PrefersContextRequestID(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 2)
 	gin.SetMode(gin.TestMode)
