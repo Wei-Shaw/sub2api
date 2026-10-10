@@ -1,9 +1,5 @@
 package service
 
-import (
-	"strings"
-)
-
 // clampOllamaCloudAnthropicMessagesMaxTokens 是 Anthropic Messages 出站
 // （/v1/messages，含 CC / Responses 桥接与 passthrough）的 max_tokens clamp 钩子，
 // 与 raw CC / Responses 路径共用 cap 配置与实现。判定与出站 URL 组装同源：调用方
@@ -16,7 +12,7 @@ func clampOllamaCloudAnthropicMessagesMaxTokens(account *Account, baseURL string
 	if account == nil || len(body) == 0 {
 		return body
 	}
-	if !isOllamaCloudBaseURL(strings.TrimRight(strings.TrimSpace(baseURL), "/")) {
+	if !isOllamaCloudOutboundBaseURL(baseURL) {
 		return body
 	}
 	return clampOllamaCloudMaxTokens(account, body)

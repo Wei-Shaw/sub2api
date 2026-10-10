@@ -22,7 +22,7 @@ func isOllamaCloudDeepSeekUpstream(account *Account, upstreamModel string) bool 
 	if account == nil {
 		return false
 	}
-	if !isOllamaCloudBaseURL(account.GetOpenAIBaseURL()) {
+	if !isOllamaCloudOutboundBaseURL(account.GetOpenAIBaseURL()) {
 		return false
 	}
 	return isDeepSeekModel(upstreamModel)

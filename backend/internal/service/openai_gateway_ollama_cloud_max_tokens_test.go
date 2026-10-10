@@ -188,6 +188,17 @@ func ollamaUpstreamTestAccount(platform string, id int64) *Account {
 	}
 }
 
+// base_url 末尾 "/" 不改变出站端点（URL 拼装会规范化），clamp 判定必须与之一致：
+// "https://ollama.com/v1/" 与 "https://ollama.com/" 同样按 Ollama 上游钳制。
+func TestClampOllamaCloudUpstreamMaxTokensToleratesTrailingSlash(t *testing.T) {
+	for _, baseURL := range []string{"https://ollama.com/v1/", "https://ollama.com/"} {
+		account := ollamaUpstreamTestAccount(PlatformOllamaCloud, 303)
+		account.Credentials["base_url"] = baseURL
+		got := clampOllamaCloudUpstreamMaxTokens(account, []byte(`{"model":"gpt-oss:120b","max_tokens":100000}`))
+		require.JSONEq(t, `{"model":"gpt-oss:120b","max_tokens":65535}`, string(got), "base_url=%s", baseURL)
+	}
+}
+
 // officialDeepSeekTestAccount 构造官方 DeepSeek 账号，extra 里带残留的 Ollama
 // usage 快照键：usage extra 不得把非 Ollama host 识别为 Ollama 上游。
 func officialDeepSeekTestAccount(id int64) *Account {

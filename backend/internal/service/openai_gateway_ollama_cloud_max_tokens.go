@@ -28,7 +28,7 @@ func clampOllamaCloudUpstreamMaxTokens(account *Account, body []byte) []byte {
 	if account == nil || len(body) == 0 {
 		return body
 	}
-	if !isOllamaCloudBaseURL(account.GetOpenAIBaseURL()) {
+	if !isOllamaCloudOutboundBaseURL(account.GetOpenAIBaseURL()) {
 		return body
 	}
 	return clampOllamaCloudMaxTokens(account, body)
@@ -59,7 +59,7 @@ func ollamaCloudResponsesMaxOutputTokensClamp(account *Account, upstreamModel st
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return 0, false, ""
 	}
-	if !isOllamaCloudBaseURL(ollamaCloudResponsesUpstreamBaseURL(account)) {
+	if !isOllamaCloudOutboundBaseURL(ollamaCloudResponsesUpstreamBaseURL(account)) {
 		return 0, false, ""
 	}
 	value := gjson.GetBytes(body, "max_output_tokens")

@@ -1119,6 +1119,14 @@ func IsOllamaCloudUsageAccount(account *Account) bool {
 	return ollamaCloudUsageEligibilityReason(account) == ""
 }
 
+// isOllamaCloudOutboundBaseURL 是出站请求整形（max_tokens clamp、推理字段归一化、
+// Bearer 认证）用的官方 host 判定：URL 拼装会规范化末尾 "/"，"https://ollama.com/v1/"
+// 与 "https://ollama.com/v1" 发往同一端点，判定必须一致。用量窗口资格门禁仍按
+// isOllamaCloudBaseURL 严格比对，不受影响。
+func isOllamaCloudOutboundBaseURL(raw string) bool {
+	return isOllamaCloudBaseURL(strings.TrimRight(strings.TrimSpace(raw), "/"))
+}
+
 func isOllamaCloudBaseURL(raw string) bool {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || strings.ContainsAny(raw, "?#") {
