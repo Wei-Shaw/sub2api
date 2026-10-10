@@ -119,18 +119,22 @@ func (c *GatewayClient) token(ctx context.Context, session Session, target Gatew
 		return nil, nil, ErrSessionResponse
 	}
 	defer func() { _ = response.Body.Close() }()
+	// The non-persisting Token API still rejects rotation. Bootstrap's callback
+	// records cookies before parsing the token or validating its trust mode.
+	for _, cookie := range response.Cookies() {
+		if isSessionCookie(cookie.Name) && !allowRotation {
+			return nil, nil, ErrSessionResponse
+		}
+	}
+	document, _, err := persistSessionCookies(ctx, session, response, cookies)
+	if err != nil {
+		return nil, nil, err
+	}
 	if response.StatusCode == http.StatusUnauthorized {
 		return nil, nil, ErrSessionExpired
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, nil, ErrSessionResponse
-	}
-	// A token request must not discard authentication rotation. Let the normal
-	// atomic session-renewal path handle any changed session credential first.
-	for _, cookie := range response.Cookies() {
-		if isSessionCookie(cookie.Name) && !allowRotation {
-			return nil, nil, ErrSessionResponse
-		}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 64<<10+1))
 	if err != nil || len(data) > 64<<10 {
@@ -145,10 +149,6 @@ func (c *GatewayClient) token(ctx context.Context, session Session, target Gatew
 	}
 	if strings.HasPrefix(result.Notary, "delegation.") {
 		return nil, nil, ErrNoiseTrust
-	}
-	document, _, err := applySessionCookies(session, response, cookies)
-	if err != nil {
-		return nil, nil, err
 	}
 	return &GatewayToken{Token: result.Token, NotaryToken: result.Notary}, document, nil
 }

@@ -167,6 +167,18 @@ func parseMuseRequest(body []byte, endpoint string) (*apicompat.ResponsesRequest
 		if err := decode(&input); err != nil {
 			return nil, err
 		}
+		// Validate the original messages before the shared converter, which
+		// normalizes unknown roles into user messages for other providers.
+		if len(input.Messages) == 0 {
+			return nil, muse.ErrInvalid
+		}
+		for _, message := range input.Messages {
+			switch message.Role {
+			case "user", "assistant", "system", "developer", "tool", "function":
+			default:
+				return nil, muse.ErrInvalid
+			}
+		}
 		if len(input.Stop) > 0 || len(input.PromptCacheOptions) > 0 {
 			return nil, muse.ErrCapability
 		}
@@ -258,6 +270,10 @@ func writeMuseError(c *gin.Context, endpoint string, err error, stream bool) err
 	code := "muse_turn_failed"
 	message := "Muse turn could not be completed; accepted work will not be replayed"
 	switch {
+	case errors.Is(err, ErrInsufficientBalance):
+		status = http.StatusForbidden
+		code = "insufficient_balance"
+		message = "Insufficient available balance for this Muse request"
 	case errors.Is(err, muse.ErrTransportUnqualified):
 		status = http.StatusServiceUnavailable
 		code = "muse_transport_unqualified"

@@ -50,11 +50,21 @@ Synthetic conformance tests are not evidence of Meta compatibility.
   attempts; operators can retry local settlement without replaying remote work.
   Remote completion is returned even when local settlement is temporarily pending.
   Another turn cannot be reserved in that workspace until settlement succeeds.
+  Prepaid costs also remain durably reserved on the native turn across all of
+  the owner's workspaces and process restarts. With in-flight protection enabled,
+  billing admission reads authoritative balance and holds together until settlement
+  or a conclusive zero-cost outcome. The temporary
+  Redis reservation transfers to this durable hold before remote submission.
+  Usage retention can remove the log link without deleting the settled turn or
+  its billing deduplication receipt.
   Known session expiries support bounded renewal with backoff. Unknown expiries
   are never assigned a guessed refresh interval.
-- Renewal locks the canonical workspace and validates the account snapshot before
-  contacting the provider, preserves model mapping, invalidates verification, then
-  re-verifies. Busy workspaces and stale callers do not invoke remote renewal.
+- Every native bootstrap locks the canonical workspace and account, loads the
+  latest cookies, and fences owner/account/proxy edits before contacting the
+  provider. Valid cookie rotations commit even if a later bootstrap step fails.
+  Operational rotation preserves the verified account version and active turn
+  snapshot. Native renewal bootstraps and verifies once. The authentication-only
+  import/check path still invalidates verification and refuses busy workspaces.
 - Admin routes use existing authentication/audit handling. Terminal owner resolution
   and local settlement retries use step-up middleware. The account editor shows
   connection status, observed allowance, and unresolved work. Releasing a workspace
