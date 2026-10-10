@@ -45,6 +45,9 @@ export interface HeaderOverrideRow {
 
 /** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
 export function isHeaderOverrideCapable(platform: string, type: string): boolean {
+  // DimAgent enforces a service-owned User-Agent and X-Title for the managed
+  // subscription relay; the administrator form must not offer overrides.
+  if (platform === 'dimagent') return false
   if (platform === 'anthropic' || platform === 'openai' || isMultiProtocolApiKeyPlatform(platform)) {
     return type === 'apikey'
   }
