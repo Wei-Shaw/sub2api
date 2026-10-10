@@ -204,17 +204,45 @@ func TestHandleGeminiCachedContentFailoverExhausted(t *testing.T) {
 	unavailable := `{"error":{"code":503,"message":"The account holding this cached content is temporarily unavailable","status":"UNAVAILABLE"}}`
 
 	c, rec := newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", apiKey)
-	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(unavailable)})
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code, "绑定缓存的请求无账号可换，上游 503 原样返回")
+	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(unavailable), BoundUpstreamPassthrough: true})
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, "绑定缓存的请求无账号可换，上游网关的 503 原样返回")
 	require.JSONEq(t, unavailable, rec.Body.String())
 
 	c, rec = newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", apiKey)
-	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests, ResponseBody: []byte(`{"error":{"code":429,"message":"Too many pending requests, please retry later","status":"RESOURCE_EXHAUSTED"}}`)})
+	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests, ResponseBody: []byte(`{"error":{"code":429,"message":"Too many pending requests, please retry later","status":"RESOURCE_EXHAUSTED"}}`), BoundUpstreamPassthrough: true})
 	require.Equal(t, http.StatusTooManyRequests, rec.Code)
 	require.Contains(t, rec.Body.String(), "Too many pending requests")
+
+	officialQuota := `{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}`
+	c, rec = newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", apiKey)
+	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests, ResponseBody: []byte(officialQuota)})
+	require.Equal(t, http.StatusTooManyRequests, rec.Code, "官方账号的限流按普通 Gemini 路径映射")
+	require.NotContains(t, rec.Body.String(), "FreeTier", "不向客户端暴露上游账号的配额明细")
+	require.Contains(t, rec.Body.String(), "Upstream rate limit exceeded")
 
 	c, rec = newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", apiKey)
 	h.handleGeminiCachedContentFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusUnauthorized, ResponseBody: []byte(`{"error":{"code":401,"message":"bad key"}}`)})
 	require.Equal(t, http.StatusBadGateway, rec.Code, "账号凭据类错误仍按网关映射，不透传给客户端")
 	require.NotContains(t, rec.Body.String(), "bad key")
+}
+
+func TestWriteGeminiCachedContentUpstreamError_RateLimitMappedUnlessUpstreamGateway(t *testing.T) {
+	h := &GatewayHandler{}
+	apiKey := geminiCachedContentTestAPIKey(service.PlatformGemini)
+	quota := `{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED","details":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}}`
+
+	c, rec := newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/cachedContents", apiKey)
+	h.writeGeminiCachedContentUpstreamError(c, &service.GeminiCachedContentUpstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(quota)})
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.NotContains(t, rec.Body.String(), "FreeTier", "官方账号的限流不透传配额明细")
+
+	c, rec = newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/cachedContents", apiKey)
+	h.writeGeminiCachedContentUpstreamError(c, &service.GeminiCachedContentUpstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(quota), UpstreamGateway: true})
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.JSONEq(t, quota, rec.Body.String(), "上游网关账号的限流反映持有缓存的上游账号状态，原样回写")
+
+	c, rec = newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/cachedContents", apiKey)
+	h.writeGeminiCachedContentUpstreamError(c, &service.GeminiCachedContentUpstreamError{StatusCode: http.StatusBadRequest, Body: []byte(`{"error":{"code":400,"message":"Cached content is too small","status":"INVALID_ARGUMENT"}}`)})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "too small", "请求校验类错误仍原样回写")
 }

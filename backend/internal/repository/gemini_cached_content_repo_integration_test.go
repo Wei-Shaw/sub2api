@@ -24,6 +24,7 @@ func TestGeminiCachedContentRepository_Lifecycle(t *testing.T) {
 			PublicID: publicID + suffix, UserID: 1, APIKeyID: keyID, GroupID: groupID, AccountID: 99,
 			UpstreamName: "cachedContents/up" + publicID, Model: "gemini-3.8-flash", UpstreamModel: "models/gemini-3.8-flash",
 			DisplayName: "label", TotalTokenCount: 2730, ExpireTime: expire,
+			ChannelUsage: service.ChannelUsageFields{ChannelID: 7, OriginalModel: "gemini-pro", ChannelMappedModel: "gemini-3.8-flash", BillingModelSource: "requested"},
 		}
 	}
 	first := newRecord("a", apiKeyID, 42, now.Add(time.Hour))
@@ -47,6 +48,7 @@ func TestGeminiCachedContentRepository_Lifecycle(t *testing.T) {
 	require.Equal(t, "cachedContents/upa", got.UpstreamName)
 	require.Equal(t, int64(2730), got.TotalTokenCount)
 	require.True(t, got.ExpireTime.Equal(first.ExpireTime))
+	require.Equal(t, first.ChannelUsage, got.ChannelUsage, "创建时的渠道计费口径随记录持久化")
 	_, err = repo.GetForOwner(ctx, apiKeyID+1, first.PublicID)
 	require.ErrorIs(t, err, service.ErrGeminiCachedContentNotFound)
 

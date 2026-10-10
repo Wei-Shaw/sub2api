@@ -17,7 +17,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -246,7 +245,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 					excluded[account.ID] = struct{}{}
 					continue
 				}
-				writeGeminiCachedContentUpstreamError(c, upErr)
+				h.writeGeminiCachedContentUpstreamError(c, upErr)
 				return
 			}
 			// 上游已返回成功但响应不可用：不换号重建，能识别出资源名时删除上游缓存。
@@ -284,7 +283,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 			reqLog.Info("gemini.cached_content.storage_charge_rejected", zap.Float64("amount", amount), zap.Error(err))
 			h.cleanupGeminiCachedContentUpstream(reqLog, account, upstream.Name)
 			h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
-				"create:"+publicID, modelName, mappedModel, int(tokens), 0, usageFields, body)
+				service.GeminiCachedContentCreateUsageRequestID(publicID), modelName, mappedModel, int(tokens), 0, usageFields, body)
 			writeGeminiCachedContentBillingError(c, err)
 			return
 		}
@@ -303,6 +302,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 			DisplayName:     req.DisplayName,
 			TotalTokenCount: tokens,
 			ExpireTime:      expireTime,
+			ChannelUsage:    usageFields,
 		}
 		persistCtx, cancelPersist := geminiCachedContentPersistContext(c)
 		err = svc.Save(persistCtx, record)
@@ -315,13 +315,13 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 		}
 
 		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
-			"create:"+publicID, modelName, mappedModel, int(tokens), storageTokenHours, usageFields, body)
+			service.GeminiCachedContentCreateUsageRequestID(publicID), modelName, mappedModel, int(tokens), storageTokenHours, usageFields, body)
 		c.JSON(http.StatusOK, service.GeminiCachedContentView(record))
 		return
 	}
 
 	if lastUpstreamErr != nil {
-		writeGeminiCachedContentUpstreamError(c, lastUpstreamErr)
+		h.writeGeminiCachedContentUpstreamError(c, lastUpstreamErr)
 		return
 	}
 	if ttlRejectedLimit > 0 {
@@ -436,6 +436,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 				CacheStorageTokenHours: service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extension),
 			},
 			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt,
+			ChannelUsageFields: record.ChannelUsage,
 		}
 		if !h.gatewayService.CacheStoragePriced(c.Request.Context(), usage) {
 			googlePlatformError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", record.Model))
@@ -463,7 +464,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 					reqLog.Warn("gemini.cached_content.forget_failed", zap.Error(forgetErr))
 				}
 			}
-			writeGeminiCachedContentUpstreamError(c, upErr)
+			h.writeGeminiCachedContentUpstreamError(c, upErr)
 			return
 		}
 		reqLog.Warn("gemini.cached_content.upstream_patch_error", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -486,8 +487,8 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 	// 按库中实际推进的时长收费：并发延长各自只为自己推进的部分付费。
 	if extended := expireTime.Sub(previousExpire); extended > 0 {
 		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
-			"patch:"+record.PublicID+":"+uuid.NewString(), record.Model, record.UpstreamModelID(), 0,
-			service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extended), service.ChannelUsageFields{}, body)
+			service.GeminiCachedContentPatchUsageRequestID(record.PublicID), record.Model, record.UpstreamModelID(), 0,
+			service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extended), record.ChannelUsage, body)
 	}
 	c.JSON(http.StatusOK, service.GeminiCachedContentView(record))
 }
@@ -520,7 +521,7 @@ func (h *GatewayHandler) GeminiCachedContentsDelete(c *gin.Context) {
 				return
 			}
 			if !upErr.NotFound() {
-				writeGeminiCachedContentUpstreamError(c, upErr)
+				h.writeGeminiCachedContentUpstreamError(c, upErr)
 				return
 			}
 		}
@@ -628,14 +629,15 @@ func (h *GatewayHandler) acquireGeminiCachedContentAccountSlot(c *gin.Context, r
 	return wrapReleaseOnDone(c.Request.Context(), release), true
 }
 
-// submitGeminiCachedContentUsage 记录缓存创建 / 延长的计费：inputTokens 按输入价计，storageTokenHours 按计费模型的存储单价计。
+// submitGeminiCachedContentUsage 记录缓存创建 / 延长的计费：inputTokens 按输入价计，storageTokenHours 按计费模型的存储单价计；
+// requestID 是带固定前缀的费用行标识（见 GeminiCachedContentUsageRequestIDPrefix），落库时不被请求 id 覆盖。
 func (h *GatewayHandler) submitGeminiCachedContentUsage(
 	c *gin.Context,
 	apiKey *service.APIKey,
 	account *service.Account,
 	subscription *service.UserSubscription,
 	pricingAt time.Time,
-	requestSuffix string,
+	requestID string,
 	model string,
 	upstreamModel string,
 	inputTokens int,
@@ -650,7 +652,7 @@ func (h *GatewayHandler) submitGeminiCachedContentUsage(
 		upstreamModel = ""
 	}
 	result := &service.ForwardResult{
-		RequestID:              "gemini-cached-content:" + requestSuffix,
+		RequestID:              requestID,
 		Model:                  model,
 		UpstreamModel:          upstreamModel,
 		Usage:                  service.ClaudeUsage{InputTokens: inputTokens},
@@ -729,15 +731,20 @@ func writeGeminiCachedContentBillingError(c *gin.Context, err error) {
 	googleErrorWithType(c, status, code, "", message)
 }
 
-// writeGeminiCachedContentUpstreamError 透传上游错误：缓存不存在统一返回标准 403（各上游形态不同且可能含上游资源 ID）；
-// 账号凭据或权限类错误不是客户端问题，统一改为 502。
-func writeGeminiCachedContentUpstreamError(c *gin.Context, upErr *service.GeminiCachedContentUpstreamError) {
+// writeGeminiCachedContentUpstreamError 回写上游错误：缓存不存在统一返回标准 403（各上游形态不同且可能含上游资源 ID）；
+// 账号凭据或权限类错误不是客户端问题，统一改为 502；限流 / 不可用按普通 Gemini 路径处理（透传规则、通用映射），
+// 只有上游网关账号的这类响应反映持有缓存的上游账号状态，原样回写。
+func (h *GatewayHandler) writeGeminiCachedContentUpstreamError(c *gin.Context, upErr *service.GeminiCachedContentUpstreamError) {
 	status := upErr.StatusCode
 	message := strings.TrimSpace(extractGoogleErrorMessage(upErr.Body))
 	service.SetOpsUpstreamError(c, status, message, "")
 	if upErr.NotFound() {
 		service.MarkOpsRequestScopedError(c, "permission_error")
 		c.Data(http.StatusForbidden, "application/json", []byte(service.GeminiCachedContentNotFoundResponse))
+		return
+	}
+	if (status == http.StatusTooManyRequests || status >= http.StatusInternalServerError) && !upErr.UpstreamGateway {
+		h.handleGeminiFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: status, ResponseBody: upErr.Body})
 		return
 	}
 	if status == http.StatusUnauthorized || status == http.StatusForbidden {
@@ -794,11 +801,11 @@ func mergeAccountIDSets(a, b map[int64]struct{}) map[int64]struct{} {
 	return out
 }
 
-// handleGeminiCachedContentFailoverExhausted 处理绑定缓存的请求在持有账号上重试耗尽：没有其他账号可换，
-// 上游的限流 / 不可用响应原样返回，客户端据此判断缓存所在账号的状态；账号凭据类错误仍按网关映射。
+// handleGeminiCachedContentFailoverExhausted 处理绑定缓存的请求在持有账号上重试耗尽：没有其他账号可换。
+// 上游网关账号的限流 / 不可用响应反映持有缓存的上游账号状态，原样返回供客户端判断；
+// 其余（含官方账号）仍按普通 Gemini 路径处理：透传规则、通用映射。
 func (h *GatewayHandler) handleGeminiCachedContentFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError) {
-	if failoverErr == nil || len(failoverErr.ResponseBody) == 0 || !json.Valid(failoverErr.ResponseBody) ||
-		(failoverErr.StatusCode != http.StatusTooManyRequests && failoverErr.StatusCode < http.StatusInternalServerError) {
+	if failoverErr == nil || !failoverErr.BoundUpstreamPassthrough || len(failoverErr.ResponseBody) == 0 || !json.Valid(failoverErr.ResponseBody) {
 		h.handleGeminiFailoverExhausted(c, failoverErr)
 		return
 	}

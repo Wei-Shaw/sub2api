@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	cachedBillingInputPrice   = 0.00000125
-	cachedBillingStoragePrice = 0.0000045
-	cachedBillingTokens       = 1_000_000
+	cachedBillingInputPrice        = 0.00000125
+	cachedBillingStoragePrice      = 0.0000045
+	cachedBillingAliasStoragePrice = 0.000009
+	cachedBillingTokens            = 1_000_000
 )
 
 type cachedBillingRepo struct {
@@ -175,6 +176,12 @@ func (r *cachedBillingUsageRepo) Create(_ context.Context, log *service.UsageLog
 	return true, nil
 }
 
+func (r *cachedBillingUsageRepo) first() *service.UsageLog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.logs[0]
+}
+
 func (r *cachedBillingUsageRepo) totals() []float64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -192,6 +199,8 @@ type cachedBillingEnv struct {
 	usage    *cachedBillingUsageRepo
 	apiKey   *service.APIKey
 	group    *service.Group
+	// accounts 是调度快照桩直接返回的账号对象，测试可改其凭据。
+	accounts map[int64]*service.Account
 }
 
 func newCachedBillingEnv(t *testing.T, balance float64, accountIDs ...int64) *cachedBillingEnv {
@@ -199,7 +208,10 @@ func newCachedBillingEnv(t *testing.T, balance float64, accountIDs ...int64) *ca
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "model_pricing.json"), []byte(fmt.Sprintf(`{"gemini-2.5-pro":{
 		"litellm_provider":"gemini","mode":"chat","input_cost_per_token":%g,"output_cost_per_token":0.00001,
-		"cache_storage_cost_per_token_per_hour":%g}}`, cachedBillingInputPrice, cachedBillingStoragePrice)), 0o644))
+		"cache_storage_cost_per_token_per_hour":%g},"gemini-alias":{
+		"litellm_provider":"gemini","mode":"chat","input_cost_per_token":%g,"output_cost_per_token":0.00001,
+		"cache_storage_cost_per_token_per_hour":%g}}`,
+		cachedBillingInputPrice, cachedBillingStoragePrice, cachedBillingInputPrice, cachedBillingAliasStoragePrice)), 0o644))
 	cfg := &config.Config{}
 	cfg.Pricing.DataDir = dir
 	cfg.Pricing.UpdateIntervalHours = 100000
@@ -237,7 +249,25 @@ func newCachedBillingEnv(t *testing.T, balance float64, accountIDs ...int64) *ca
 	}
 	apiKey := &service.APIKey{ID: 7, UserID: 3, GroupID: &groupID, Group: group, Status: service.StatusActive,
 		User: &service.User{ID: 3, Concurrency: 10, Balance: balance}}
-	return &cachedBillingEnv{h: h, repo: repo, upstream: upstream, usage: usage, apiKey: apiKey, group: group}
+	return &cachedBillingEnv{h: h, repo: repo, upstream: upstream, usage: usage, apiKey: apiKey, group: group, accounts: accounts}
+}
+
+// TestGeminiExplicitCacheExclusions_FiltersUnsupportedAccountsFromSnapshot 候选过滤直接按快照里的凭据判定：
+// 第三方地址且未声明上游显式缓存的 Key 账号在选号前就被排除，官方地址与声明了上游显式缓存的账号保留。
+func TestGeminiExplicitCacheExclusions_FiltersUnsupportedAccountsFromSnapshot(t *testing.T) {
+	env := newCachedBillingEnv(t, 500, 900, 901, 902)
+	env.accounts[901].Credentials["base_url"] = "https://third.example.com"
+	env.accounts[902].Credentials["base_url"] = "https://gw.example.com"
+	env.accounts[902].Credentials[service.GeminiExplicitCacheUpstreamCredentialKey] = true
+
+	groupID := env.group.ID
+	excluded, err := env.h.gatewayService.GeminiExplicitCacheExclusions(context.Background(), &groupID, 0)
+	require.NoError(t, err)
+	require.Equal(t, map[int64]struct{}{901: {}}, excluded)
+
+	excluded, err = env.h.gatewayService.GeminiExplicitCacheExclusions(context.Background(), &groupID, 902)
+	require.NoError(t, err)
+	require.Equal(t, map[int64]struct{}{900: {}, 901: {}}, excluded, "绑定缓存的请求只保留持有账号")
 }
 
 func (e *cachedBillingEnv) serve(method, target, body string, params gin.Params, call func(*gin.Context)) *httptest.ResponseRecorder {
@@ -279,6 +309,27 @@ func (e *cachedBillingEnv) patch() *httptest.ResponseRecorder {
 		gin.Params{{Key: "cacheID", Value: "abc"}}, e.h.GeminiCachedContentsPatch)
 }
 
+// TestGeminiCachedContentsPatch_UsesChannelUsageRecordedAtCreate 延长有效期沿用创建时的渠道计费口径：
+// 计费模型来源为请求模型时按别名定价，用量记录带渠道 ID。
+func TestGeminiCachedContentsPatch_UsesChannelUsageRecordedAtCreate(t *testing.T) {
+	env := newCachedBillingEnv(t, 500, 900)
+	env.seed(time.Now().Add(time.Hour))
+	env.repo.records["abc"].ChannelUsage = service.ChannelUsageFields{
+		ChannelID: 5, OriginalModel: "gemini-alias", ChannelMappedModel: "gemini-2.5-pro",
+		BillingModelSource: service.BillingModelSourceRequested,
+	}
+
+	rec := env.patch()
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	totals := env.waitForUsage(t, 1)
+	require.Len(t, totals, 1)
+	require.InDelta(t, cachedBillingTokens*cachedBillingAliasStoragePrice*23, totals[0], 0.01, "按创建时的计费模型（请求模型别名）计存储费")
+	usageLog := env.usage.first()
+	require.NotNil(t, usageLog.ChannelID)
+	require.Equal(t, int64(5), *usageLog.ChannelID)
+	require.True(t, strings.HasPrefix(usageLog.RequestID, "gcache:patch:abc:"), usageLog.RequestID)
+}
+
 func cachedBillingCreateBody(expire time.Time) string {
 	return fmt.Sprintf(`{"name":"cachedContents/up1","usageMetadata":{"totalTokenCount":%d},"expireTime":%q}`,
 		cachedBillingTokens, expire.UTC().Format(time.RFC3339Nano))
@@ -296,6 +347,7 @@ func TestGeminiCachedContentsCreate_ChargesInputAndStorage(t *testing.T) {
 	require.Len(t, env.repo.records, 1)
 	for _, record := range env.repo.records {
 		require.False(t, record.ExpireTime.After(time.Now().Add(24*time.Hour)), "本地到期时间不超过请求的有效期")
+		require.Equal(t, "gcache:create:"+record.PublicID, env.usage.first().RequestID, "费用行按缓存 ID 可检索")
 	}
 }
 

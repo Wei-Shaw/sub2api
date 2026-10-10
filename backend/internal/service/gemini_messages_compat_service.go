@@ -1470,7 +1470,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 		// 上游网关的限流 / 不可用只针对其持有缓存的账号：不改本账号状态，交由绑定请求的耗尽处理透传。
 		if isGeminiBoundCacheUpstreamPassthrough(ctx, account, resp.StatusCode) {
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, BoundUpstreamPassthrough: true}
 		}
 		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
 		// This avoids Gemini SDKs failing hard during preflight token counting.

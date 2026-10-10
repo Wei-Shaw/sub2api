@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -23,16 +24,20 @@ func NewGeminiCachedContentRepository(db *sql.DB) service.GeminiCachedContentRep
 }
 
 const geminiCachedContentColumns = `id, public_id, user_id, api_key_id, group_id, account_id, upstream_name, model,
- upstream_model, display_name, total_token_count, expire_time, created_at, updated_at`
+ upstream_model, display_name, total_token_count, expire_time, channel_usage, created_at, updated_at`
 
 func (r *geminiCachedContentRepository) Create(ctx context.Context, record *service.GeminiCachedContent) error {
+	channelUsage, err := json.Marshal(record.ChannelUsage)
+	if err != nil {
+		return err
+	}
 	row := r.sql.QueryRowContext(ctx, `
 INSERT INTO gemini_cached_contents (public_id, user_id, api_key_id, group_id, account_id, upstream_name, model,
- upstream_model, display_name, total_token_count, expire_time)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ upstream_model, display_name, total_token_count, expire_time, channel_usage)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING id, created_at, updated_at`,
 		record.PublicID, record.UserID, record.APIKeyID, record.GroupID, record.AccountID, record.UpstreamName,
-		record.Model, record.UpstreamModel, record.DisplayName, record.TotalTokenCount, record.ExpireTime)
+		record.Model, record.UpstreamModel, record.DisplayName, record.TotalTokenCount, record.ExpireTime, channelUsage)
 	if err := row.Scan(&record.ID, &record.CreatedAt, &record.UpdatedAt); err != nil {
 		return translatePersistenceError(err, nil, service.ErrGeminiCachedContentExists)
 	}
@@ -102,6 +107,7 @@ type geminiCachedContentScanner interface {
 
 func scanGeminiCachedContent(row geminiCachedContentScanner) (*service.GeminiCachedContent, error) {
 	var record service.GeminiCachedContent
+	var channelUsage []byte
 	if err := row.Scan(
 		&record.ID,
 		&record.PublicID,
@@ -115,10 +121,16 @@ func scanGeminiCachedContent(row geminiCachedContentScanner) (*service.GeminiCac
 		&record.DisplayName,
 		&record.TotalTokenCount,
 		&record.ExpireTime,
+		&channelUsage,
 		&record.CreatedAt,
 		&record.UpdatedAt,
 	); err != nil {
 		return nil, err
+	}
+	if len(channelUsage) > 0 {
+		if err := json.Unmarshal(channelUsage, &record.ChannelUsage); err != nil {
+			return nil, err
+		}
 	}
 	return &record, nil
 }

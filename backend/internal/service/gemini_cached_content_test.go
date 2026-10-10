@@ -421,7 +421,7 @@ func TestGeminiCachedContentStorageCostInAccountStats(t *testing.T) {
 			gid := groupID
 			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 				Result: &ForwardResult{
-					RequestID:              "gemini-cached-content:create:" + tc.name,
+					RequestID:              GeminiCachedContentCreateUsageRequestID(tc.name),
 					Model:                  model,
 					Usage:                  ClaudeUsage{InputTokens: tc.tokens},
 					CacheStorageTokenHours: storage / 0.0000005,

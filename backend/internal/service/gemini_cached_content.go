@@ -74,8 +74,10 @@ type GeminiCachedContent struct {
 	DisplayName     string
 	TotalTokenCount int64
 	ExpireTime      time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// ChannelUsage 是创建时的渠道计费口径（渠道 ID、请求模型、计费模型来源），延长有效期按同一口径计费。
+	ChannelUsage ChannelUsageFields
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // PublicName 返回客户端可见的缓存资源名。
@@ -127,9 +129,11 @@ func IsGeminiExplicitCacheAccount(account *Account) bool {
 	return isOfficialGeminiAPIBaseURL(account.GetCredential("base_url")) || account.GeminiExplicitCacheUpstreamEnabled()
 }
 
+// GeminiExplicitCacheUpstreamCredentialKey / GeminiExplicitCacheUpstreamMaxTTLCredentialKey 是 API Key 账号凭据里
+// 声明上游实现显式缓存接口及其有效期上限的键；调度快照投影须保留它们，候选过滤才能直接判定账号是否支持显式缓存。
 const (
-	geminiExplicitCacheUpstreamKey       = "explicit_cache_upstream"
-	geminiExplicitCacheUpstreamMaxTTLKey = "explicit_cache_upstream_max_ttl_seconds"
+	GeminiExplicitCacheUpstreamCredentialKey       = "explicit_cache_upstream"
+	GeminiExplicitCacheUpstreamMaxTTLCredentialKey = "explicit_cache_upstream_max_ttl_seconds"
 )
 
 // GeminiExplicitCacheUpstreamEnabled 判断 API Key 账号是否声明其上游实现了显式缓存接口，
@@ -138,7 +142,7 @@ func (a *Account) GeminiExplicitCacheUpstreamEnabled() bool {
 	if a == nil || a.Type != AccountTypeAPIKey || a.Credentials == nil {
 		return false
 	}
-	enabled, _ := a.Credentials[geminiExplicitCacheUpstreamKey].(bool)
+	enabled, _ := a.Credentials[GeminiExplicitCacheUpstreamCredentialKey].(bool)
 	return enabled
 }
 
@@ -148,7 +152,7 @@ func (a *Account) GeminiExplicitCacheUpstreamMaxTTL() time.Duration {
 		return 0
 	}
 	var seconds float64
-	switch v := a.Credentials[geminiExplicitCacheUpstreamMaxTTLKey].(type) {
+	switch v := a.Credentials[GeminiExplicitCacheUpstreamMaxTTLCredentialKey].(type) {
 	case float64:
 		seconds = v
 	case int:
@@ -196,6 +200,25 @@ func NewGeminiCachedContentPublicID() (string, error) {
 		return "", err
 	}
 	return strings.ToLower(geminiCachedContentPublicIDEncoding.EncodeToString(b[:])), nil
+}
+
+// GeminiCachedContentUsageRequestIDPrefix 是显式缓存创建 / 延长费用在 usage_logs.request_id 中的固定前缀：
+// 这类费用行是独立的扣费事件，不随客户端或网关请求 id 变化，按缓存 ID 即可检索一个缓存的全部费用行。
+// 两种格式都不超过 request_id 列的 64 字符。
+const GeminiCachedContentUsageRequestIDPrefix = "gcache:"
+
+// GeminiCachedContentCreateUsageRequestID 返回创建费用的 request_id（"gcache:create:{id}"）；一个缓存只创建一次。
+func GeminiCachedContentCreateUsageRequestID(publicID string) string {
+	return GeminiCachedContentUsageRequestIDPrefix + "create:" + publicID
+}
+
+// GeminiCachedContentPatchUsageRequestID 返回一次延长费用的 request_id（"gcache:patch:{id}:{8 位随机}"）；每次延长各自唯一。
+func GeminiCachedContentPatchUsageRequestID(publicID string) string {
+	var b [5]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return GeminiCachedContentUsageRequestIDPrefix + "patch:" + publicID + ":" + strconv.FormatInt(time.Now().UnixNano()%(1<<40), 32)
+	}
+	return GeminiCachedContentUsageRequestIDPrefix + "patch:" + publicID + ":" + strings.ToLower(geminiCachedContentPublicIDEncoding.EncodeToString(b[:]))
 }
 
 // ParseGeminiCachedContentPublicID 从 "cachedContents/{id}" 或裸 id 中解析缓存 ID。
@@ -525,6 +548,8 @@ type GeminiCachedContentUpstream struct {
 type GeminiCachedContentUpstreamError struct {
 	StatusCode int
 	Body       []byte
+	// UpstreamGateway 表示响应来自声明实现显式缓存的上游网关账号：限流 / 不可用反映的是持有缓存的上游账号状态。
+	UpstreamGateway bool
 }
 
 func (e *GeminiCachedContentUpstreamError) Error() string {
@@ -827,7 +852,7 @@ func (s *GeminiCachedContentService) doUpstream(ctx context.Context, account *Ac
 		return nil, err
 	}
 	if !success {
-		return nil, &GeminiCachedContentUpstreamError{StatusCode: resp.StatusCode, Body: respBody}
+		return nil, &GeminiCachedContentUpstreamError{StatusCode: resp.StatusCode, Body: respBody, UpstreamGateway: account.GeminiExplicitCacheUpstreamEnabled()}
 	}
 	return respBody, nil
 }
@@ -936,8 +961,9 @@ func GeminiCachedContentView(record *GeminiCachedContent) map[string]any {
 }
 
 // GeminiExplicitCacheExclusions 返回显式缓存请求在 gemini 分组内需要排除的可调度账号。
-// boundAccountID > 0 时只保留该账号；否则排除平台或类型不支持显式缓存的账号
-// （调度快照不含 base_url，官方地址判定在选中后对完整账号进行）。
+// boundAccountID > 0 时只保留该账号；否则排除不支持显式缓存的账号。判定所需的凭据键
+// （api_key、base_url、auth_mode、上游显式缓存声明）都在调度快照投影内，候选过滤一次算全；
+// 选中后仍对完整账号复核。
 func (s *GatewayService) GeminiExplicitCacheExclusions(ctx context.Context, groupID *int64, boundAccountID int64) (map[int64]struct{}, error) {
 	accounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformGemini, false)
 	if err != nil {
@@ -946,7 +972,7 @@ func (s *GatewayService) GeminiExplicitCacheExclusions(ctx context.Context, grou
 	excluded := make(map[int64]struct{}, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
-		keep := IsGeminiExplicitCacheAccountType(account)
+		keep := IsGeminiExplicitCacheAccount(account)
 		if boundAccountID > 0 {
 			keep = account.ID == boundAccountID
 		}

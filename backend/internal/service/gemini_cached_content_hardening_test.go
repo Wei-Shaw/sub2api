@@ -285,6 +285,7 @@ func TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsSkipAccountPenalty(t
 			require.True(t, errors.As(err, &failoverErr), "交由绑定请求的耗尽处理透传")
 			require.Equal(t, status, failoverErr.StatusCode)
 			require.JSONEq(t, body, string(failoverErr.ResponseBody))
+			require.True(t, failoverErr.BoundUpstreamPassthrough, "标记为上游网关账号的响应，handler 原样回写")
 			require.False(t, failoverErr.RetryableOnSameAccount)
 			require.Equal(t, 1, httpStub.calls, "不在同一账号上退避重试")
 			require.Zero(t, repo.rateLimitedCalls, "不限流整个网关账号")
