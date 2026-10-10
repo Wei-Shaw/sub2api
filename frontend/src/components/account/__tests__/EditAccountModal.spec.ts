@@ -1834,3 +1834,75 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal gemini explicit cache upstream switch', () => {
+  function buildGeminiApiKeyAccount(credentials: Record<string, unknown>) {
+    return {
+      id: 21,
+      name: 'Gemini upstream gateway',
+      notes: '',
+      platform: 'gemini',
+      type: 'apikey',
+      credentials: { api_key: 'sk-upstream', ...credentials },
+      credentials_status: { has_api_key: true },
+      extra: {},
+      proxy_id: null,
+      concurrency: 1,
+      priority: 1,
+      rate_multiplier: 1,
+      status: 'active',
+      group_ids: [],
+      expires_at: null,
+      auto_pause_on_expired: false
+    } as any
+  }
+
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('hides the switch for the official AI Studio address', () => {
+    const wrapper = mountModal(buildGeminiApiKeyAccount({ base_url: 'https://generativelanguage.googleapis.com' }))
+    expect(wrapper.find('[data-testid="explicit-cache-upstream-section"]').exists()).toBe(false)
+  })
+
+  it('loads and saves the switch and ttl limit for a custom upstream', async () => {
+    const account = buildGeminiApiKeyAccount({
+      base_url: 'https://upstream.example.com',
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 1800
+    })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="explicit-cache-upstream-section"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="explicit-cache-upstream-toggle"]').attributes('aria-checked')).toBe('true')
+    const ttlInput = wrapper.get('[data-testid="explicit-cache-upstream-max-ttl"]')
+    expect((ttlInput.element as HTMLInputElement).value).toBe('1800')
+
+    await ttlInput.setValue('3600')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 3600
+    })
+  })
+
+  it('removes both fields when the switch is turned off', async () => {
+    const account = buildGeminiApiKeyAccount({
+      base_url: 'https://upstream.example.com',
+      explicit_cache_upstream: true,
+      explicit_cache_upstream_max_ttl_seconds: 1800
+    })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="explicit-cache-upstream-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).not.toHaveProperty('explicit_cache_upstream')
+    expect(credentials).not.toHaveProperty('explicit_cache_upstream_max_ttl_seconds')
+  })
+})

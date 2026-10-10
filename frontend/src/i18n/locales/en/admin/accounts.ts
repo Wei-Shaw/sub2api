@@ -853,6 +853,12 @@ export default {
       poolModeRetryStatusCodes: 'Retry Status Codes',
       poolModeRetryStatusCodesHint:
         'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
+      explicitCacheUpstream: 'Upstream Supports Explicit Caching',
+      explicitCacheUpstreamHint: 'Enable only when the upstream is this system with explicit caching support',
+      explicitCacheUpstreamInfo:
+        'When enabled, this account can create Gemini explicit caches (cachedContents). A cache is only used on this account and never fails over. The upstream must route each cache to the account that created it; account-pool gateways or upstreams without explicit caching support will make caches unreliable.',
+      explicitCacheUpstreamMaxTTL: 'Upstream Cache TTL Limit (seconds)',
+      explicitCacheUpstreamMaxTTLHint: 'Maximum TTL allowed by the upstream gateway; requests above it are not sent to this account. Leave blank to use this site\'s limit.',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:

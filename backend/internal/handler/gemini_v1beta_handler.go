@@ -356,6 +356,12 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		modelName = channelMapping.MappedModel
 	}
 
+	// 引用显式缓存的请求只能发往持有该缓存的账号，且不参与会话粘性与换号。
+	cachedContentBinding, body, ok := h.resolveGeminiCachedContentBinding(c, reqLog, apiKey, modelName, body)
+	if !ok {
+		return
+	}
+
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
 
@@ -405,8 +411,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 3) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
-	sessionHash := extractGeminiCLISessionHash(c, body)
-	if sessionHash == "" {
+	sessionHash := ""
+	if cachedContentBinding == nil {
+		sessionHash = extractGeminiCLISessionHash(c, body)
+	}
+	if sessionHash == "" && cachedContentBinding == nil {
 		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
 		parsedReq, _ := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformGemini)
 		if parsedReq != nil {
@@ -443,7 +452,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	var geminiPrefixHash string
 	var geminiSessionUUID string
 	var matchedDigestChain string
-	useDigestFallback := sessionBoundAccountID == 0
+	useDigestFallback := sessionBoundAccountID == 0 && cachedContentBinding == nil
 
 	if useDigestFallback {
 		// 解析 Gemini 请求体
@@ -507,7 +516,21 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 	cleanedForUnknownBinding := false
 
-	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+	maxAccountSwitches := h.maxAccountSwitchesGemini
+	var cachedContentExclusions map[int64]struct{}
+	if cachedContentBinding != nil {
+		// 缓存只存在于绑定账号：排除分组内其余账号，失败不换号。
+		maxAccountSwitches = 0
+		sessionBoundAccountID = cachedContentBinding.AccountID
+		c.Request = c.Request.WithContext(service.WithGeminiCachedContentBound(c.Request.Context()))
+		cachedContentExclusions, err = h.gatewayService.GeminiExplicitCacheExclusions(c.Request.Context(), apiKey.GroupID, cachedContentBinding.AccountID)
+		if err != nil {
+			reqLog.Warn("gemini.cached_content.list_accounts_failed", zap.Error(err))
+			googleError(c, http.StatusServiceUnavailable, geminiCachedContentUnavailableMessage)
+			return
+		}
+	}
+	fs := NewFailoverState(maxAccountSwitches, hasBoundSession)
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -517,10 +540,30 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		excludedAccountIDs := fs.FailedAccountIDs
+		if cachedContentExclusions != nil {
+			excludedAccountIDs = mergeAccountIDSets(cachedContentExclusions, fs.FailedAccountIDs)
+		}
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, excludedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		if err == nil && cachedContentBinding != nil && selection.Account.ID != cachedContentBinding.AccountID {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			err = service.ErrNoAvailableAccounts
+		}
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("gemini.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
+			if cachedContentBinding != nil {
+				if fs.LastFailoverErr != nil {
+					h.handleGeminiCachedContentFailoverExhausted(c, fs.LastFailoverErr)
+					return
+				}
+				reqLog.Info("gemini.cached_content.bound_account_unavailable", zap.Int64("account_id", cachedContentBinding.AccountID), zap.Error(err))
+				markOpsRoutingCapacityLimited(c)
+				googleError(c, http.StatusServiceUnavailable, geminiCachedContentUnavailableMessage)
 				return
 			}
 			if len(fs.FailedAccountIDs) == 0 {
@@ -631,6 +674,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				accountReleaseFunc()
 			}
 			reqLog.Debug("gemini.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
+			if cachedContentBinding != nil {
+				markOpsRoutingCapacityLimited(c)
+				googleError(c, http.StatusServiceUnavailable, geminiCachedContentUnavailableMessage)
+				return
+			}
 			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 				reqLog.Warn("gemini.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
 				markOpsRoutingCapacityLimited(c)
@@ -684,6 +732,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
+					if cachedContentBinding != nil {
+						h.handleGeminiCachedContentFailoverExhausted(c, fs.LastFailoverErr)
+						return
+					}
 					h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
 					return
 				case FailoverCanceled:

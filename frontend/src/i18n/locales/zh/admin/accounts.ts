@@ -956,6 +956,12 @@ export default {
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
       poolModeRetryStatusCodes: '同账号重试状态码',
       poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
+      explicitCacheUpstream: '上游支持显式缓存',
+      explicitCacheUpstreamHint: '仅当上游是已支持显式缓存的本系统时开启',
+      explicitCacheUpstreamInfo:
+        '开启后该账号可创建 Gemini 显式缓存（cachedContents）：缓存只在本账号上使用，失败不换号。上游必须保证缓存只发往创建它的账号；号池类网关或未支持显式缓存的上游开启后，缓存会时有时无。',
+      explicitCacheUpstreamMaxTTL: '上游缓存有效期上限（秒）',
+      explicitCacheUpstreamMaxTTLHint: '填写上游网关允许的最长有效期，超出的请求不会发往该账号；留空沿用本站上限。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning:
