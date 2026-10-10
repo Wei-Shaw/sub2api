@@ -27,6 +27,11 @@ type Session struct {
 	AccountUpdatedAt time.Time
 	Document         map[string]any
 	ProxyURL         string
+	// WithCredentials serializes bootstrap across replicas and supplies the
+	// latest cookies for this immutable account/proxy snapshot. SaveCredentials
+	// durably records each rotation, including responses followed by a failure.
+	WithCredentials func(context.Context, func(Session) error) error
+	SaveCredentials func(context.Context, map[string]any) error
 }
 
 type Observation struct {

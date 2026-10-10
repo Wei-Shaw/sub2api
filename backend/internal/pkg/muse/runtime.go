@@ -132,6 +132,7 @@ type Reservation struct {
 	LeaseOwner       string
 	LeaseDuration    time.Duration
 	Pricing          Pricing
+	BalanceHold      string // Exact prepaid cost; empty/zero for subscription or free requests.
 }
 
 func (r Reservation) Validate() error {
@@ -142,7 +143,19 @@ func (r Reservation) Validate() error {
 	if err := ValidateLease(r.LeaseDuration); err != nil {
 		return err
 	}
-	return r.Pricing.Validate()
+	if err := r.Pricing.Validate(); err != nil {
+		return err
+	}
+	if r.BalanceHold != "" {
+		if !decimalPattern.MatchString(r.BalanceHold) {
+			return ErrInvalid
+		}
+		hold, _ := new(big.Rat).SetString(r.BalanceHold)
+		if r.Pricing.Mode == "test_free" && hold.Sign() != 0 {
+			return ErrInvalid
+		}
+	}
+	return nil
 }
 
 type Lease struct {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -54,6 +55,7 @@ func TestMuseProviderPostgres(t *testing.T) {
 		"243_muse_provider.sql",
 		"244_muse_submission_snapshot.sql",
 		"245_muse_catalog_constraints.sql",
+		"246_muse_settlement_holds.sql",
 	} {
 		ddl, e := migrations.FS.ReadFile(name)
 		require.NoError(t, e)
@@ -332,6 +334,156 @@ func TestMuseProviderPostgres(t *testing.T) {
 		require.NoError(t, e)
 		_, _ = reserve(t, w)
 	})
+	t.Run("BootstrapRotationSurvivesLaterFailureAndBusyWorkspace", func(t *testing.T) {
+		a := newAccount(t)
+		w := bind(t, a)
+		_, _ = reserve(t, w)
+		at := a.UpdatedAt
+		failure := errors.New("synthetic later handshake failure")
+		err := store.WithSession(ctx, a, func(document map[string]any, save func(map[string]any) error) error {
+			require.Equal(t, "synthetic", document["fixture"])
+			require.NoError(t, save(map[string]any{"fixture": "rotated"}))
+			return failure
+		})
+		require.ErrorIs(t, err, failure)
+		// A fresh repository/replica and the old immutable account snapshot read
+		// the committed rotation; no stale credentials are sent to the provider.
+		require.NoError(t, repository.NewMuseProviderRepository(db).WithSession(ctx, a, func(document map[string]any, _ func(map[string]any) error) error {
+			require.Equal(t, "rotated", document["fixture"])
+			return nil
+		}))
+		cancelled, cancel := context.WithCancel(ctx)
+		require.ErrorIs(t, store.WithSession(cancelled, a, func(_ map[string]any, save func(map[string]any) error) error {
+			require.NoError(t, save(map[string]any{"fixture": "rotated-before-cancellation"}))
+			cancel()
+			return cancelled.Err()
+		}), context.Canceled)
+		require.NoError(t, store.WithSession(ctx, a, func(document map[string]any, _ func(map[string]any) error) error {
+			require.Equal(t, "rotated-before-cancellation", document["fixture"])
+			return nil
+		}))
+		var current time.Time
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT updated_at FROM accounts WHERE id=$1`, a.ID).Scan(&current))
+		require.Equal(t, at, current)
+		_, err = db.ExecContext(ctx, `UPDATE accounts SET updated_at=clock_timestamp() WHERE id=$1`, a.ID)
+		require.NoError(t, err)
+		require.ErrorIs(t, store.WithSession(ctx, a, func(map[string]any, func(map[string]any) error) error { t.Fatal("stale snapshot used"); return nil }), muse.ErrGeneration)
+	})
+	t.Run("PendingChargeHoldsBalanceAcrossWorkspacesAndReplicas", func(t *testing.T) {
+		before := balance()
+		_, err := db.ExecContext(ctx, `UPDATE users SET balance=0.0375 WHERE id=1`)
+		require.NoError(t, err)
+		defer func() { _, _ = db.ExecContext(ctx, `UPDATE users SET balance=$1 WHERE id=1`, before) }()
+		a := newAccount(t)
+		w := bind(t, a)
+		request := muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: muse.Actor{UserID: 1, APIKeyID: 1}, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, LeaseOwner: "fixture", LeaseDuration: time.Minute, Pricing: muse.Pricing{Mode: "flat_request", UnitPrice: "0.03", Multiplier: "1.25"}, BalanceHold: "0.0375"}
+		turn, lease, err := runtime.Reserve(ctx, request)
+		require.NoError(t, err)
+		freeze(t, turn)
+		complete(t, turn, lease, muse.Completed)
+		restarted := repository.NewMuseProviderRepository(db)
+		held, err := restarted.PendingBalance(ctx, 1)
+		require.NoError(t, err)
+		require.InDelta(t, 0.0375, held, 1e-10)
+		available, err := restarted.AvailableBalance(ctx, 1)
+		require.NoError(t, err)
+		require.Zero(t, available)
+		other := newAccount(t)
+		identity := muse.Identity{PrincipalID: t.Name() + "-other", WorkspaceID: "other-workspace", OwnerUserID: 1, AccountID: other.ID, AccountUpdatedAt: other.UpdatedAt}
+		otherWorkspace, err := runtime.BindVerifiedWorkspace(ctx, identity)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveProfile(ctx, other, &muse.Observation{InferenceAllowed: true, Identity: identity, Capabilities: muse.Capabilities{Models: []string{"muse/assistant"}}}))
+		require.NoError(t, store.EnableVerified(ctx, other))
+		request.WorkspaceID = otherWorkspace.ID
+		request.Generation = otherWorkspace.Generation
+		request.AccountID = other.ID
+		request.AccountUpdatedAt = other.UpdatedAt
+		_, _, err = service.NewMuseRuntimeService(repository.NewMuseRuntimeRepository(db)).Reserve(ctx, request)
+		require.ErrorIs(t, err, service.ErrInsufficientBalance)
+		_, err = store.Settle(ctx, turn.ID)
+		require.NoError(t, err)
+		held, err = restarted.PendingBalance(ctx, 1)
+		require.NoError(t, err)
+		require.Zero(t, held)
+		require.Equal(t, "0.00000000", balance())
+		available, err = restarted.AvailableBalance(ctx, 1)
+		require.NoError(t, err)
+		require.Zero(t, available)
+	})
+	t.Run("RetentionDeletesMixedBatchWithoutLosingSettlementReceipt", func(t *testing.T) {
+		a := newAccount(t)
+		w := bind(t, a)
+		turn, lease := reserve(t, w)
+		freeze(t, turn)
+		complete(t, turn, lease, muse.Completed)
+		_, err := store.Settle(ctx, turn.ID)
+		require.NoError(t, err)
+		var nativeID int64
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT usage_log_id FROM muse_turns WHERE id=$1`, turn.ID).Scan(&nativeID))
+		ordinary := &service.UsageLog{UserID: 1, APIKeyID: 1, AccountID: a.ID, RequestID: "ordinary-retention", Model: "ordinary"}
+		_, err = repository.NewUsageLogRepository(client, db).Create(ctx, ordinary)
+		require.NoError(t, err)
+		res, err := db.ExecContext(ctx, `WITH victims AS (SELECT tableoid,ctid FROM usage_logs WHERE id IN ($1,$2)) DELETE FROM usage_logs WHERE (tableoid,ctid) IN (SELECT tableoid,ctid FROM victims)`, nativeID, ordinary.ID)
+		require.NoError(t, err)
+		deleted, err := res.RowsAffected()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, deleted)
+		var linked sql.NullInt64
+		var settled sql.NullTime
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT usage_log_id,settled_at FROM muse_turns WHERE id=$1`, turn.ID).Scan(&linked, &settled))
+		require.False(t, linked.Valid)
+		require.True(t, settled.Valid)
+		before := balance()
+		again, err := store.Settle(ctx, turn.ID)
+		require.NoError(t, err)
+		require.False(t, again.Applied)
+		require.Equal(t, before, balance())
+	})
+
+	t.Run("ConcurrentWorkspacesShareOnePrepaidReservation", func(t *testing.T) {
+		before := balance()
+		_, err := db.ExecContext(ctx, `UPDATE users SET balance=0.0375 WHERE id=1`)
+		require.NoError(t, err)
+		defer func() { _, _ = db.ExecContext(ctx, `UPDATE users SET balance=$1 WHERE id=1`, before) }()
+		requests := []muse.Reservation{}
+		for _, name := range []string{"one", "two"} {
+			a := newAccount(t)
+			identity := muse.Identity{PrincipalID: t.Name() + name, WorkspaceID: "workspace-" + name, OwnerUserID: 1, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt}
+			w, err := runtime.BindVerifiedWorkspace(ctx, identity)
+			require.NoError(t, err)
+			require.NoError(t, store.SaveProfile(ctx, a, &muse.Observation{InferenceAllowed: true, Identity: identity, Capabilities: muse.Capabilities{Models: []string{"muse/assistant"}}}))
+			require.NoError(t, store.EnableVerified(ctx, a))
+			requests = append(requests, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: muse.Actor{UserID: 1, APIKeyID: 1}, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, LeaseOwner: name, LeaseDuration: time.Minute, Pricing: muse.Pricing{Mode: "flat_request", UnitPrice: "0.03", Multiplier: "1.25"}, BalanceHold: "0.0375"})
+		}
+		type admission struct {
+			turn  *muse.Turn
+			lease muse.Lease
+			err   error
+		}
+		results := make(chan admission, 2)
+		for _, request := range requests {
+			go func() {
+				turn, lease, err := service.NewMuseRuntimeService(repository.NewMuseRuntimeRepository(db)).Reserve(ctx, request)
+				results <- admission{turn, lease, err}
+			}()
+		}
+		admitted := 0
+		var winner admission
+		for range requests {
+			result := <-results
+			if result.err != nil {
+				require.ErrorIs(t, result.err, service.ErrInsufficientBalance)
+				continue
+			}
+			admitted++
+			winner = result
+		}
+		require.NoError(t, runtime.Advance(ctx, winner.lease, muse.Reserved, muse.Rejected, ""))
+		// Keep the admitted hold in place until both contenders have returned.
+		// (Rejected turns conclusively release their cost.)
+		require.Equal(t, 1, admitted)
+	})
+
 }
 
 func mustFixtureNumber(t *testing.T, s string) float64 {

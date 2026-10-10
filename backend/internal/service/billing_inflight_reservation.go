@@ -254,8 +254,11 @@ func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, g
 		return nil, nil
 	}
 
-	balance, err := s.GetUserBalance(ctx, user.ID)
+	balance, err := s.availableBalance(ctx, user.ID)
 	if err != nil {
+		if s.museBalances != nil {
+			return nil, ErrBillingServiceUnavailable.WithCause(err)
+		}
 		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation balance read failed for user %d (fail-open): %v", user.ID, err)
 		return nil, nil
 	}

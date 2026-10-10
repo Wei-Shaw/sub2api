@@ -1,6 +1,7 @@
 package muse
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -70,4 +71,19 @@ func applySessionCookies(session Session, response *http.Response, cookies *Cook
 	delete(document, "cookies_exp")
 	delete(document, "cookie_expires")
 	return document, check.ExpiresAt, nil
+}
+
+// Persist before interpreting the rest of the response: a rotated cookie can
+// invalidate its predecessor even if the response body or next step fails.
+func persistSessionCookies(ctx context.Context, session Session, response *http.Response, cookies *CookieSession) (map[string]any, *time.Time, error) {
+	document, expires, err := applySessionCookies(session, response, cookies)
+	if err != nil {
+		return nil, nil, err
+	}
+	if session.SaveCredentials != nil {
+		if err := session.SaveCredentials(ctx, document); err != nil {
+			return nil, nil, err
+		}
+	}
+	return document, expires, nil
 }

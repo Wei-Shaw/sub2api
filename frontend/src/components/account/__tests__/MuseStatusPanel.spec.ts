@@ -32,3 +32,33 @@ describe('native Muse operator controls', () => {
   expect(resolveMuseTurn).toHaveBeenCalledWith('muse_turn_fixture', 'cancelled')
  })
 })
+
+it('discards old status and confirmations after switching accounts', async () => {
+  let finish!: (value: Awaited<ReturnType<typeof getMuseStatus>>) => void
+  const first = new Promise<Awaited<ReturnType<typeof getMuseStatus>>>(resolve => { finish = resolve })
+  const ready = { state: 'ready', verified: true, qualified_transport: true, owner_user_id: 2, models: [], pending_turns: [] }
+  vi.mocked(getMuseStatus).mockImplementation(id => id === 1 ? first : Promise.resolve(ready))
+  const wrapper = mount(MuseStatusPanel, { props: { accountId: 1 } })
+  await wrapper.setProps({ accountId: 2 }); await flushPromises()
+  finish({ ...ready, owner_user_id: 1, pending_turns: [{ id: 'old-account-turn', state: 'owner_review', actor: { user_id: 1, api_key_id: 1 }, created_at: '', pricing: { mode: 'flat_request', unit_price: '0.03', multiplier: '1' } }] })
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('old-account-turn')
+  expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)
+  expect(resolveMuseTurn).not.toHaveBeenCalled()
+})
+
+it('ignores an old action failure without releasing a new account action', async () => {
+  const ready = { state: 'ready', verified: true, qualified_transport: true, owner_user_id: 1, models: [], pending_turns: [] }
+  let rejectOld!: (reason: Error) => void
+  let finishNew!: (value: typeof ready) => void
+  vi.mocked(getMuseStatus).mockResolvedValueOnce(ready).mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve }))
+  vi.mocked(verifyMuse).mockImplementation(() => new Promise((_, reject) => { rejectOld = reject }))
+  const wrapper = mount(MuseStatusPanel, { props: { accountId: 1 } }); await flushPromises()
+  await wrapper.findAll('button').find(button => button.text().includes('.verify'))!.trigger('click')
+  await wrapper.setProps({ accountId: 2 })
+  rejectOld(new Error('old failure')); await flushPromises()
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  expect(wrapper.findAll('button').every(button => button.attributes('disabled') !== undefined)).toBe(true)
+  finishNew({ ...ready, owner_user_id: 2 }); await flushPromises()
+  expect(wrapper.findAll('button')[0].attributes('disabled')).toBeUndefined()
+})

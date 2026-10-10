@@ -95,8 +95,8 @@ func (r *museProviderRepository) FreezeCharge(ctx context.Context, id string, cm
 		return err
 	}
 	result, err := r.db.ExecContext(ctx, `UPDATE muse_turns SET billing_command=$2::jsonb,requested_model=$3,group_id=$4,subscription_id=$5
-		WHERE id=$1 AND state='reserved' AND billing_command IS NULL AND owner_user_id=$6 AND api_key_id=$7 AND account_id=$8`,
-		id, string(encoded), log.Model, log.GroupID, log.SubscriptionID, cmd.UserID, cmd.APIKeyID, cmd.AccountID)
+		WHERE id=$1 AND state='reserved' AND billing_command IS NULL AND owner_user_id=$6 AND api_key_id=$7 AND account_id=$8 AND (balance_hold=0 OR balance_hold=$9::numeric)`,
+		id, string(encoded), log.Model, log.GroupID, log.SubscriptionID, cmd.UserID, cmd.APIKeyID, cmd.AccountID, cmd.BalanceCost)
 	if err != nil {
 		return err
 	}
@@ -123,6 +123,113 @@ func (r *museProviderRepository) EnableVerified(ctx context.Context, a *service.
 		return err
 	}
 	return tx.Commit()
+}
+
+// WithSession serializes bootstrap against the account row, reads the newest
+// cookies, and fences owner/version/proxy edits. Operational cookie rotation
+// leaves updated_at intact so an active native turn keeps its immutable snapshot.
+// Valid rotations commit even when a later bootstrap step fails.
+func (r *museProviderRepository) WithSession(ctx context.Context, a *service.Account, use func(map[string]any, func(map[string]any) error) error) error {
+	if a == nil || use == nil {
+		return muse.ErrInvalid
+	}
+	persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	defer cancel()
+	tx, err := r.db.BeginTx(persist, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Use the canonical lock order shared by submission and explicit renewal.
+	// Active work may refresh its credentials without clearing occupancy.
+	var workspaceID int64
+	err = tx.QueryRowContext(ctx, `SELECT workspace_id FROM muse_account_workspace_bindings WHERE account_id=$1`, a.ID).Scan(&workspaceID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil {
+		w, err := lockMuseWorkspace(ctx, tx, workspaceID)
+		if err != nil {
+			return err
+		}
+		if w.Identity.OwnerUserID != service.MuseOwnerUserID(a.Extra) {
+			return muse.ErrOwner
+		}
+	}
+	var current bool
+	var encoded []byte
+	err = tx.QueryRowContext(ctx, `SELECT updated_at=$2 AND proxy_id IS NOT DISTINCT FROM $3
+		AND platform='muse' AND status='active' AND deleted_at IS NULL, credentials
+		FROM accounts WHERE id=$1 FOR UPDATE`, a.ID, a.UpdatedAt, a.ProxyID).Scan(&current, &encoded)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return muse.ErrGeneration
+	}
+	if a.ProxyID != nil {
+		if a.Proxy == nil {
+			return muse.ErrGeneration
+		}
+		var at time.Time
+		if err = tx.QueryRowContext(ctx, `SELECT updated_at FROM proxies WHERE id=$1 AND deleted_at IS NULL FOR SHARE`, *a.ProxyID).Scan(&at); err != nil {
+			return err
+		}
+		if !at.Equal(a.Proxy.UpdatedAt) {
+			return muse.ErrGeneration
+		}
+	}
+	var credentials map[string]any
+	if json.Unmarshal(encoded, &credentials) != nil {
+		return muse.ErrInvalid
+	}
+	document, ok := credentials["muse_session"].(map[string]any)
+	if !ok {
+		return muse.ErrInvalid
+	}
+	if err = service.ValidateMuseAccount(a.Platform, a.Type, credentials, a.Extra); err != nil {
+		return err
+	}
+	operationErr := use(document, func(next map[string]any) error {
+		credentials["muse_session"] = next
+		if err := service.ValidateMuseAccount(a.Platform, a.Type, credentials, a.Extra); err != nil {
+			credentials["muse_session"] = document
+			return err
+		}
+		document = next
+		return nil
+	})
+	next, err := json.Marshal(credentials)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(persist, `UPDATE accounts SET credentials=$2::jsonb
+		WHERE id=$1 AND credentials IS DISTINCT FROM $2::jsonb`, a.ID, string(next))
+	if err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return operationErr
+}
+
+func (r *museProviderRepository) PendingBalance(ctx context.Context, userID int64) (float64, error) {
+	var amount float64
+	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(balance_hold),0) FROM muse_turns
+		WHERE owner_user_id=$1 AND settled_at IS NULL AND balance_hold>0 AND state NOT IN ('failed','cancelled','rejected')`, userID).Scan(&amount)
+	return amount, err
+}
+
+// Read gross balance and native holds from one authoritative snapshot. A crash
+// after debit/settlement commit but before cache invalidation must not expose the
+// stale cached gross balance when the durable hold has already cleared.
+func (r *museProviderRepository) AvailableBalance(ctx context.Context, userID int64) (float64, error) {
+	var balance float64
+	err := r.db.QueryRowContext(ctx, `SELECT u.balance-COALESCE((SELECT SUM(t.balance_hold) FROM muse_turns t
+		WHERE t.owner_user_id=u.id AND t.settled_at IS NULL AND t.balance_hold>0 AND t.state NOT IN ('failed','cancelled','rejected')),0)
+		FROM users u WHERE u.id=$1 AND u.deleted_at IS NULL`, userID).Scan(&balance)
+	return balance, err
 }
 
 // Lock the canonical workspace before invoking renewal. This prevents any replica
