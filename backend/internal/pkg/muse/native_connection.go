@@ -76,6 +76,23 @@ type nativeBootstrap struct {
 }
 
 func (p *NativeProvider) bootstrap(ctx context.Context, session Session) (*nativeBootstrap, error) {
+	// Include lock contention in the bootstrap budget. Persistence gets an
+	// additional detached commit window and cannot expire under network work.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if session.WithCredentials == nil {
+		return p.bootstrapCredentials(ctx, session)
+	}
+	var boot *nativeBootstrap
+	err := session.WithCredentials(ctx, func(latest Session) error {
+		var err error
+		boot, err = p.bootstrapCredentials(ctx, latest)
+		return err
+	})
+	return boot, err
+}
+
+func (p *NativeProvider) bootstrapCredentials(ctx context.Context, session Session) (*nativeBootstrap, error) {
 	if p == nil || p.do == nil {
 		return nil, ErrTransportUnqualified
 	}
@@ -110,6 +127,11 @@ func (p *NativeProvider) bootstrap(ctx context.Context, session Session) (*nativ
 		return nil, ErrSessionResponse
 	}
 	defer func() { _ = response.Body.Close() }()
+	document, _, err := persistSessionCookies(ctx, session, response, cookies)
+	if err != nil {
+		return nil, err
+	}
+	session.Document = document
 	if response.StatusCode == http.StatusUnauthorized {
 		return nil, ErrSessionExpired
 	}
@@ -125,11 +147,6 @@ func (p *NativeProvider) bootstrap(ctx context.Context, session Session) (*nativ
 	if err != nil || len(body) > 64<<10 || json.Unmarshal(body, &identity) != nil || identity.Outcome != "validated" || !validID(identity.Viewer, 256) || !validID(identity.Binding, 256) {
 		return nil, ErrSessionResponse
 	}
-	document, _, err := applySessionCookies(session, response, cookies)
-	if err != nil {
-		return nil, err
-	}
-	session.Document = document
 	token, document, err := (&GatewayClient{Do: p.do}).TokenAndRefresh(ctx, session, *refreshed.Gateway)
 	if err != nil {
 		return nil, err

@@ -20,6 +20,9 @@ type MuseProviderStore interface {
 	PendingRecovery(context.Context, int) ([]int64, error)
 	ResolveOwnerReview(context.Context, string, muse.Actor, muse.State) error
 	EnableVerified(context.Context, *Account) error
+	WithSession(context.Context, *Account, func(map[string]any, func(map[string]any) error) error) error
+	PendingBalance(context.Context, int64) (float64, error)
+	AvailableBalance(context.Context, int64) (float64, error)
 	RenewSession(context.Context, *Account, func(context.Context) (map[string]any, error)) error
 	DueRenewal(context.Context, int) ([]int64, error)
 	DeferRenewal(context.Context, int64) error

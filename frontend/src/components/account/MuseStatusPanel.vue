@@ -41,7 +41,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getMuseStatus, verifyMuse, renewMuse, resolveMuseTurn, retryMuseSettlement, authenticateMuse, type MuseSessionCheck, type MuseStatus } from '@/api/admin/muse'
 const props = defineProps<{ accountId: number }>()
@@ -52,29 +52,59 @@ const status = ref<MuseStatus>()
 const authentication = ref<MuseSessionCheck>()
 const outcomes = ref<Record<string, 'completed' | 'failed' | 'cancelled'>>({})
 const confirmed = ref<Record<string, boolean>>({})
-async function load() {
-  status.value = await getMuseStatus(props.accountId)
-  for (const turn of status.value.pending_turns ?? []) outcomes.value[turn.id] ??= 'cancelled'
+// A request belongs to the account and generation at dispatch, even when the
+// dialog is reused while it is in flight.
+let generation = 0
+type Operation = { accountId: number; generation: number }
+const current = (op: Operation) => op.generation === generation && op.accountId === props.accountId
+async function load(op: Operation) {
+  const next = await getMuseStatus(op.accountId)
+  if (!current(op)) return
+  status.value = next
+  for (const turn of next.pending_turns ?? []) outcomes.value[turn.id] ??= 'cancelled'
 }
-async function run(action: () => Promise<void>) {
+async function run(action: (op: Operation) => Promise<void>) {
+  if (busy.value) return
+  const op = { accountId: props.accountId, generation }
   busy.value = true
   error.value = ''
-  try { await action() } catch { error.value = t('admin.accounts.muse.verificationUnavailable') }
-  finally { busy.value = false }
+  try { await action(op) } catch {
+    if (current(op)) error.value = t('admin.accounts.muse.verificationUnavailable')
+  } finally { if (current(op)) busy.value = false }
 }
 const refresh = () => run(load)
-const authenticate = () => run(async () => { authentication.value = await authenticateMuse(props.accountId); await load() })
-const verify = () => run(async () => { await verifyMuse(props.accountId); await load() })
-const renew = () => run(async () => { await renewMuse(props.accountId); await load() })
-const retrySettlement = (id: string) => run(async () => { await retryMuseSettlement(id); await load() })
+const authenticate = () => run(async op => {
+  const next = await authenticateMuse(op.accountId)
+  if (!current(op)) return
+  authentication.value = next
+  await load(op)
+})
+const verify = () => run(async op => { await verifyMuse(op.accountId); if (current(op)) await load(op) })
+const renew = () => run(async op => { await renewMuse(op.accountId); if (current(op)) await load(op) })
+const ownsTurn = (id: string) => status.value?.pending_turns?.some(turn => turn.id === id)
+const retrySettlement = (id: string) => {
+  if (!ownsTurn(id)) return
+  return run(async op => { await retryMuseSettlement(id); if (current(op)) await load(op) })
+}
 const resolve = (id: string) => {
-  if (!confirmed.value[id] || !outcomes.value[id]) return
-  return run(async () => { await resolveMuseTurn(id, outcomes.value[id]); confirmed.value[id] = false; await load() })
+  if (!ownsTurn(id) || !confirmed.value[id] || !outcomes.value[id]) return
+  const outcome = outcomes.value[id]
+  return run(async op => {
+    await resolveMuseTurn(id, outcome)
+    if (!current(op)) return
+    confirmed.value[id] = false
+    await load(op)
+  })
 }
 watch(() => props.accountId, () => {
+  generation++
+  busy.value = false
+  error.value = ''
+  status.value = undefined
   authentication.value = undefined
   outcomes.value = {}
   confirmed.value = {}
   void refresh()
 }, { immediate: true })
+onBeforeUnmount(() => { generation++ })
 </script>

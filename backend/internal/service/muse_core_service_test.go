@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/muse"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,8 +34,9 @@ func (f *museAccountsFixture) GetByID(context.Context, int64) (*Account, error) 
 
 type museRuntimeFixture struct {
 	muse.RuntimeStore
-	turn  *muse.Turn
-	state muse.State
+	turn        *muse.Turn
+	state       muse.State
+	balanceHold float64
 }
 
 func (f *museRuntimeFixture) Bind(_ context.Context, i muse.Identity) (*muse.Workspace, error) {
@@ -46,6 +48,8 @@ func (f *museRuntimeFixture) Reserve(_ context.Context, r muse.Reservation) (*mu
 	}
 	f.turn = &muse.Turn{ID: r.TurnID, WorkspaceID: 1, Actor: r.Actor, AccountID: r.AccountID, Pricing: r.Pricing, State: muse.Reserved}
 	f.state = muse.Reserved
+	hold, _ := decimal.NewFromString(r.BalanceHold)
+	f.balanceHold, _ = hold.Float64()
 	return f.turn, muse.Lease{WorkspaceID: 1, TurnID: r.TurnID, Owner: r.LeaseOwner, Fence: 1}, nil
 }
 func (f *museRuntimeFixture) Advance(_ context.Context, _ muse.Lease, from, to muse.State, providerID string) error {
@@ -528,4 +532,43 @@ func TestMuseSchedulerHydratesMetadataProjectionBeforeOwnerAndProfileCheck(t *te
 	require.True(t, candidates[0].IsModelSupported("muse/assistant"))
 	foreign := context.WithValue(context.Background(), ctxkey.UserID, key.UserID+1)
 	require.Empty(t, g.filterMuseAccounts(foreign, []Account{projection}))
+}
+
+func TestMuseUnknownChatRolesRejectedBeforeReservation(t *testing.T) {
+	for _, role := range []string{"", "tool_typo"} {
+		g, _, p, _, _, account, key := newMuseCoreFixture()
+		body := fmt.Sprintf(`{"model":"muse/assistant","messages":[{"role":%q,"content":"hello"}]}`, role)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+		c.Set("api_key", key)
+		_, err := g.forwardMuse(c.Request.Context(), c, account, []byte(body), "chat_completions")
+		require.ErrorIs(t, err, muse.ErrInvalid)
+		require.Zero(t, p.calls)
+		require.Equal(t, 0, g.muse.store.(*museStoreFixture).charges)
+	}
+}
+
+func (f *museStoreFixture) WithSession(_ context.Context, a *Account, use func(map[string]any, func(map[string]any) error) error) error {
+	document := a.Credentials["muse_session"].(map[string]any)
+	return use(document, func(next map[string]any) error { a.Credentials["muse_session"] = next; return nil })
+}
+func (f *museStoreFixture) PendingBalance(context.Context, int64) (float64, error) { return 0, nil }
+
+func (f *museStoreFixture) AvailableBalance(context.Context, int64) (float64, error) { return 0, nil }
+
+func TestMuseBalanceAdmissionReturnsBillingError(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	err := writeMuseError(c, "chat_completions", ErrInsufficientBalance, false)
+	require.ErrorIs(t, err, ErrInsufficientBalance)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	var response struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "insufficient_balance", response.Error.Code)
 }

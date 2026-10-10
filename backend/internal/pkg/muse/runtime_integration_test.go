@@ -333,7 +333,7 @@ func museTestDatabase(t *testing.T) *sql.DB {
 		require.NoError(t, err, "migration must be rerunnable")
 	}
 	// The registered provider migration adds the two settlement admission fields.
-	_, err = db.ExecContext(ctx, `ALTER TABLE muse_turns ADD COLUMN billing_command JSONB;ALTER TABLE muse_turns ADD COLUMN settled_at TIMESTAMPTZ`)
+	_, err = db.ExecContext(ctx, `ALTER TABLE muse_turns ADD COLUMN billing_command JSONB;ALTER TABLE muse_turns ADD COLUMN settled_at TIMESTAMPTZ; ALTER TABLE muse_turns ADD COLUMN balance_hold NUMERIC(20,10) NOT NULL DEFAULT 0`)
 	require.NoError(t, err)
 	snapshotDDL, err := migrations.FS.ReadFile("244_muse_submission_snapshot.sql")
 	require.NoError(t, err)

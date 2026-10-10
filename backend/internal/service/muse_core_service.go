@@ -41,6 +41,9 @@ func NewMuseCoreService(accounts AccountRepository, runtimeStore muse.RuntimeSto
 		})
 	}
 	gateway.muse = s
+	if gateway.billingCacheService != nil {
+		gateway.billingCacheService.museBalances = store
+	}
 	return s
 }
 
@@ -77,7 +80,17 @@ func (s *MuseCoreService) session(a *Account) (muse.Session, error) {
 	if !ok {
 		return muse.Session{}, muse.ErrInvalid
 	}
-	return muse.Session{AccountID: a.ID, OwnerUserID: MuseOwnerUserID(a.Extra), AccountUpdatedAt: a.UpdatedAt, Document: document, ProxyURL: proxy}, nil
+	session := muse.Session{AccountID: a.ID, OwnerUserID: MuseOwnerUserID(a.Extra), AccountUpdatedAt: a.UpdatedAt, Document: document, ProxyURL: proxy}
+	session.WithCredentials = func(ctx context.Context, use func(muse.Session) error) error {
+		return s.store.WithSession(ctx, a, func(document map[string]any, save func(map[string]any) error) error {
+			latest := session
+			latest.Document = document
+			latest.WithCredentials = nil
+			latest.SaveCredentials = func(_ context.Context, document map[string]any) error { return save(document) }
+			return use(latest)
+		})
+	}
+	return session, nil
 }
 
 func (s *MuseCoreService) Verify(ctx context.Context, id int64) (*muse.Observation, error) {
@@ -126,19 +139,10 @@ func (s *MuseCoreService) RenewSession(ctx context.Context, id int64) error {
 		_, err := s.CheckSession(ctx, id)
 		return err
 	}
-	a, err := s.accounts.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	session, err := s.session(a)
-	if err != nil {
-		return err
-	}
-	provider := s.Provider()
-	if err = s.store.RenewSession(ctx, a, func(probe context.Context) (map[string]any, error) { return provider.Renew(probe, session) }); err != nil {
-		return err
-	}
-	_, err = s.Verify(ctx, id)
+	// Verification already bootstraps and durably persists every cookie rotation.
+	// A second renewal/bootstrap would consume and immediately discard a new
+	// generation of credentials.
+	_, err := s.Verify(ctx, id)
 	return err
 }
 
@@ -299,7 +303,15 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if err != nil {
 		return nil, nil, err
 	}
-	turn, lease, err := s.runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: actor, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, ProxyUpdatedAt: profile.ProxyUpdatedAt, LeaseOwner: "gateway", LeaseDuration: time.Minute, Pricing: pricing})
+	isSub := key.Group.IsSubscriptionType() && pricing.Mode != "test_free"
+	if isSub && (subscription == nil || subscription.UserID != key.UserID || subscription.GroupID != key.Group.ID) {
+		return nil, nil, muse.ErrInvalid
+	}
+	balanceHold := "0"
+	if !isSub {
+		balanceHold = decimal.NewFromFloat(cost.ActualCost).String()
+	}
+	turn, lease, err := s.runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: actor, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, ProxyUpdatedAt: profile.ProxyUpdatedAt, LeaseOwner: "gateway", LeaseDuration: time.Minute, Pricing: pricing, BalanceHold: balanceHold})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -310,11 +322,6 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	log.UpstreamModel = &canonical.Model
 	mode := "per_request"
 	log.BillingMode = &mode
-	isSub := key.Group.IsSubscriptionType() && pricing.Mode != "test_free"
-	if isSub && (subscription == nil || subscription.UserID != key.UserID || subscription.GroupID != key.Group.ID) {
-		_ = s.runtime.Advance(ctx, lease, muse.Reserved, muse.Rejected, "")
-		return nil, turn, muse.ErrInvalid
-	}
 	if isSub {
 		log.SubscriptionID = &subscription.ID
 		log.BillingType = BillingTypeSubscription
@@ -331,6 +338,11 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if err = s.store.FreezeCharge(ctx, turn.ID, cmd, log); err != nil {
 		_ = s.runtime.Advance(ctx, lease, muse.Reserved, muse.Rejected, "")
 		return nil, turn, err
+	}
+	// The durable native turn now owns the financial reservation. It survives
+	// handler completion, process restarts and local settlement failures.
+	if balanceHold != "0" {
+		InflightReservationFromContext(ctx).Release()
 	}
 	providerRequest := muse.Request{OperationID: turn.ID, ProviderParentID: parent, Workspace: w, Session: session, Input: &canonical}
 	probeReference := ""

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/muse"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type museRuntimeRepository struct{ db *sql.DB }
@@ -84,6 +85,28 @@ func (r *museRuntimeRepository) Reserve(ctx context.Context, input muse.Reservat
 		return nil, muse.Lease{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Serialize prepaid admission for every workspace of this owner. Settlement
+	// updates the same user row in its transaction, so there is no spend window
+	// between the balance debit and clearing the durable hold.
+	hold := input.BalanceHold
+	if hold == "" {
+		hold = "0"
+	}
+	if hold != "0" {
+		var balance string
+		if err = tx.QueryRowContext(ctx, `SELECT balance::text FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, input.Actor.UserID).Scan(&balance); err != nil {
+			return nil, muse.Lease{}, err
+		}
+		var available bool
+		err = tx.QueryRowContext(ctx, `SELECT $2::numeric-COALESCE(SUM(balance_hold),0)>=$3::numeric FROM muse_turns
+			WHERE owner_user_id=$1 AND settled_at IS NULL AND balance_hold>0 AND state NOT IN ('failed','cancelled','rejected')`, input.Actor.UserID, balance, hold).Scan(&available)
+		if err != nil {
+			return nil, muse.Lease{}, err
+		}
+		if !available {
+			return nil, muse.Lease{}, service.ErrInsufficientBalance
+		}
+	}
 	w, err := lockMuseWorkspace(ctx, tx, input.WorkspaceID)
 	if err != nil {
 		return nil, muse.Lease{}, err
@@ -120,9 +143,9 @@ func (r *museRuntimeRepository) Reserve(ctx context.Context, input muse.Reservat
 		return nil, muse.Lease{}, err
 	}
 	turn, err := scanMuseTurn(tx.QueryRowContext(ctx, `
-		INSERT INTO muse_turns (id, workspace_id, identity_generation, owner_user_id, api_key_id, account_id, pricing_snapshot, account_updated_at, proxy_updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING `+museTurnColumns,
-		input.TurnID, w.ID, w.Generation, input.Actor.UserID, input.Actor.APIKeyID, input.AccountID, string(pricing), input.AccountUpdatedAt, input.ProxyUpdatedAt))
+		INSERT INTO muse_turns (id, workspace_id, identity_generation, owner_user_id, api_key_id, account_id, pricing_snapshot, account_updated_at, proxy_updated_at, balance_hold)
+		VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::numeric) RETURNING `+museTurnColumns,
+		input.TurnID, w.ID, w.Generation, input.Actor.UserID, input.Actor.APIKeyID, input.AccountID, string(pricing), input.AccountUpdatedAt, input.ProxyUpdatedAt, hold))
 	if err != nil {
 		return nil, muse.Lease{}, err
 	}
