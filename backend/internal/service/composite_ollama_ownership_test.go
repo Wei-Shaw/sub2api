@@ -202,3 +202,30 @@ func TestResolveCompositeModelOwnershipSkipsUnschedulableOllamaCloud(t *testing.
 	require.False(t, decision.Matched, "不可调度与其他组的 ollama 账号不得被解析为可路由目标")
 	require.Empty(t, decision.TargetPlatform)
 }
+
+// ollama_cloud 只配 extra.allowed_models、不配 model_mapping 的账号：清单项是管理员
+// 显式声明的出站白名单，必须构成强声明，否则 detector 无 ollama 分支，账号在 composite
+// 里永远不可路由（/v1/models 却列出这些模型）；清单外模型不得冒领。
+func TestResolveCompositeModelOwnershipOllamaCloudAllowedModelsWithoutMapping(t *testing.T) {
+	const group = int64(9)
+	ollama := Account{
+		ID:       171,
+		Platform: PlatformOllamaCloud,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"qwen3.5:397b", "glm-5.1"}},
+	}
+	resolver, _ := newOllamaOwnershipResolver(
+		compositeOwnershipScopedRecord{groupID: group, platform: PlatformOllamaCloud, schedulable: true, account: ollama},
+	)
+
+	for _, model := range []string{"qwen3.5:397b", "glm-5.1"} {
+		decision, err := resolver.Resolve(context.Background(), group, model, CompositeRouteEndpointResponses)
+		require.NoError(t, err)
+		require.True(t, decision.Matched, "model=%s", model)
+		require.Equal(t, CompositeRouteSourceAccount, decision.Source, "model=%s", model)
+		require.Equal(t, PlatformOllamaCloud, decision.TargetPlatform, "model=%s", model)
+	}
+
+	require.Equal(t, CompositeClaimExplicit, CompositeAccountClaimStrength(&ollama, "glm-5.1"))
+	require.Equal(t, CompositeClaimNone, CompositeAccountClaimStrength(&ollama, "kimi-k3"), "清单外模型不得声明")
+}

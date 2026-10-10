@@ -44,6 +44,16 @@ func CompositeAccountClaimStrength(account *Account, model string) CompositeClai
 		mapping = stringMappingFromRaw(account.Credentials["model_mapping"])
 	}
 	if len(mapping) == 0 {
+		if account.IsOllamaCloud() {
+			// ollama_cloud 空 mapping：extra.allowed_models 是管理员逐名声明的出站白名单
+			// （DetectModelPlatform 刻意不识别 ollama，受控 native 永不成立）。清单精确
+			// 命中（IsModelSupported 的 ollama 运行时白名单）即强声明，与 /v1/models
+			// 列表同一语义；无清单为 deny-all。
+			if account.IsModelSupported(model) {
+				return CompositeClaimExplicit
+			}
+			return CompositeClaimNone
+		}
 		// 规则B：空 mapping 仅受控 native 声明。OpenAI OAuth 空 mapping 仍受
 		// isOpenAIOAuthServableModel 约束（IsModelSupported 内部处理）。
 		if platform, ok := DetectModelPlatform(model); !ok || platform != account.Platform {
