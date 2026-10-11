@@ -1086,6 +1086,8 @@
       :platform="selectedKey?.group?.platform || null"
       :claude-code-only="selectedKey?.group?.claude_code_only || false"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :codex-config-default-model="selectedKey?.group?.codex_config_default_model || ''"
+      :codex-config-review-model="selectedKey?.group?.codex_config_review_model || ''"
       @close="closeUseKeyModal"
     />
 
@@ -2051,6 +2053,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
     platform,
+    codexConfigDefaultModel: row.group?.codex_config_default_model,
     clientType,
     providerName,
     apiKey: row.key,

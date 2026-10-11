@@ -48,7 +48,7 @@ func TestGroupHandlerSimpleModeSanitizesCommercialFields(t *testing.T) {
 	svc := newStubAdminService()
 	r := newSimpleModeGroupRouter(svc)
 
-	create := `{"name":"simple","description":"basic grouping","platform":"anthropic","rate_multiplier":7,"is_exclusive":true,"subscription_type":"subscription","daily_limit_usd":10,"long_context_pricing_enabled":true,"model_pricing":[{"model":"claude","input_price":1}],"allow_image_generation":true,"allow_batch_image_generation":true,"video_price_720p":2,"web_search_price_per_call":3,"audio_realtime_price_per_min":4,"rpm_limit":99}`
+	create := `{"name":"simple","description":"basic grouping","platform":"anthropic","codex_config_default_model":"claude-opus-4-8","codex_config_review_model":"claude-haiku-4-5","rate_multiplier":7,"is_exclusive":true,"subscription_type":"subscription","daily_limit_usd":10,"long_context_pricing_enabled":true,"model_pricing":[{"model":"claude","input_price":1}],"allow_image_generation":true,"allow_batch_image_generation":true,"video_price_720p":2,"web_search_price_per_call":3,"audio_realtime_price_per_min":4,"rpm_limit":99}`
 	req := httptest.NewRequest(http.MethodPost, "/groups", bytes.NewBufferString(create))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -57,6 +57,8 @@ func TestGroupHandlerSimpleModeSanitizesCommercialFields(t *testing.T) {
 	require.Len(t, svc.createdGroups, 1)
 	created := svc.createdGroups[0]
 	require.Equal(t, "basic grouping", created.Description)
+	require.Equal(t, "claude-opus-4-8", created.CodexConfigDefaultModel)
+	require.Equal(t, "claude-haiku-4-5", created.CodexConfigReviewModel)
 	require.Equal(t, 1.0, created.RateMultiplier)
 	require.False(t, created.IsExclusive)
 	require.Equal(t, service.SubscriptionTypeStandard, created.SubscriptionType)
@@ -70,7 +72,7 @@ func TestGroupHandlerSimpleModeSanitizesCommercialFields(t *testing.T) {
 	require.Nil(t, created.AudioRealtimePricePerMin)
 	require.Zero(t, created.RPMLimit)
 
-	update := `{"name":"renamed","description":"still basic","rate_multiplier":9,"is_exclusive":true,"subscription_type":"subscription","daily_limit_usd":12,"long_context_pricing_enabled":true,"model_pricing":[{"model":"claude","input_price":1}],"allow_image_generation":true,"allow_batch_image_generation":true,"video_price_720p":2,"web_search_price_per_call":3,"audio_realtime_price_per_min":4,"status":"inactive","rpm_limit":123}`
+	update := `{"name":"renamed","description":"still basic","codex_config_default_model":"claude-sonnet-4-6","codex_config_review_model":"claude-opus-4-8","rate_multiplier":9,"is_exclusive":true,"subscription_type":"subscription","daily_limit_usd":12,"long_context_pricing_enabled":true,"model_pricing":[{"model":"claude","input_price":1}],"allow_image_generation":true,"allow_batch_image_generation":true,"video_price_720p":2,"web_search_price_per_call":3,"status":"inactive","rpm_limit":123}`
 	req = httptest.NewRequest(http.MethodPut, "/groups/2", bytes.NewBufferString(update))
 	req.Header.Set("Content-Type", "application/json")
 	res = httptest.NewRecorder()
@@ -80,6 +82,10 @@ func TestGroupHandlerSimpleModeSanitizesCommercialFields(t *testing.T) {
 	updated := svc.updatedGroups[0]
 	require.NotNil(t, updated.Description)
 	require.Equal(t, "still basic", *updated.Description)
+	require.NotNil(t, updated.CodexConfigDefaultModel)
+	require.Equal(t, "claude-sonnet-4-6", *updated.CodexConfigDefaultModel)
+	require.NotNil(t, updated.CodexConfigReviewModel)
+	require.Equal(t, "claude-opus-4-8", *updated.CodexConfigReviewModel)
 	require.Nil(t, updated.RateMultiplier)
 	require.Nil(t, updated.IsExclusive)
 	require.Empty(t, updated.SubscriptionType)
@@ -153,7 +159,9 @@ func TestGroupHandlerSimpleModeResponseUsesFieldAllowlist(t *testing.T) {
 		ModelPricing:              []service.ChannelModelPricing{{Models: []string{"claude"}}},
 		AllowBatchImageGeneration: true, VideoPrice720P: float64PtrForSimpleModeTest(2),
 		WebSearchPricePerCall: float64PtrForSimpleModeTest(3), AudioRealtimePricePerMin: float64PtrForSimpleModeTest(4),
-		ModelRouting: map[string][]int64{"claude": {2}},
+		ModelRouting:            map[string][]int64{"claude": {2}},
+		CodexConfigDefaultModel: "claude-opus-4-8",
+		CodexConfigReviewModel:  "claude-haiku-4-5",
 	}}
 	r := newSimpleModeGroupRouter(svc)
 	res := httptest.NewRecorder()
@@ -174,6 +182,7 @@ func TestGroupHandlerSimpleModeResponseUsesFieldAllowlist(t *testing.T) {
 	require.Equal(t, float64(3), item["account_count"])
 	require.ElementsMatch(t, []string{
 		"id", "name", "description", "platform", "status", "account_count",
+		"codex_config_default_model", "codex_config_review_model",
 		"active_account_count", "rate_limited_account_count", "sort_order", "created_at", "updated_at",
 	}, mapKeys(item))
 	for _, forbidden := range []string{
