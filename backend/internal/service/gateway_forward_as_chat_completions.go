@@ -70,7 +70,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, err
 	}
 	responsesReq.Model = mappedModel
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
+	anthropicReq, err := responsesToAnthropicForAccount(responsesReq, account)
 	if err != nil {
 		if isClaude55SignedThinkingModel(mappedModel) {
 			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

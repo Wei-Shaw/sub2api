@@ -81,7 +81,7 @@ func (s *GatewayService) ForwardAsResponses(
 		return nil, err
 	}
 	responsesReq.Model = mappedModel
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	anthropicReq, err := responsesToAnthropicForAccount(&responsesReq, account)
 	if err != nil {
 		if isClaude55SignedThinkingModel(mappedModel) {
 			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
