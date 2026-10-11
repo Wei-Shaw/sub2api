@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -652,6 +652,62 @@ describe('user KeysView column settings', () => {
       await getButtonByText(wrapper, 'common.edit').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(12)
+    })
+  })
+
+  describe('ThinkWatch Lite import', () => {
+    const spies: Array<{ mockRestore: () => void }> = []
+
+    afterEach(() => {
+      vi.useRealTimers()
+      spies.splice(0).forEach((spy) => spy.mockRestore())
+    })
+
+    it('opens an import link for the key and explains when no app answers', async () => {
+      getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com/v1/' })
+      const wrapper = await mountView()
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      spies.push(open, vi.spyOn(document, 'hasFocus').mockReturnValue(true))
+      vi.useFakeTimers()
+
+      await getButtonByText(wrapper, 'keys.importToThinkWatchLite').trigger('click')
+
+      expect(open).toHaveBeenCalledWith(
+        'thinkwatch://import?service=sub2api&url=https%3A%2F%2Fapi.example.com&key=sk-test-key',
+        '_self'
+      )
+      expect(showError).not.toHaveBeenCalledWith('keys.thinkWatchLiteNotInstalled')
+      vi.advanceTimersByTime(1500)
+      expect(showError).toHaveBeenCalledWith('keys.thinkWatchLiteNotInstalled')
+      // The view's interval was created with real timers; clear it with real timers.
+      vi.useRealTimers()
+      wrapper.unmount()
+    })
+
+    it('falls back to the page origin when no API base URL is configured', async () => {
+      const wrapper = await mountView()
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      spies.push(open, vi.spyOn(document, 'hasFocus').mockReturnValue(false))
+      vi.useFakeTimers()
+
+      await getButtonByText(wrapper, 'keys.importToThinkWatchLite').trigger('click')
+
+      const url = new URLSearchParams(String(open.mock.calls[0][0]).split('?')[1]).get('url')
+      expect(url).toBe(window.location.origin)
+      vi.advanceTimersByTime(1500)
+      expect(showError).not.toHaveBeenCalledWith('keys.thinkWatchLiteNotInstalled')
+      vi.useRealTimers()
+      wrapper.unmount()
+    })
+
+    it('is hidden together with the CCS import button', async () => {
+      getPublicSettings.mockResolvedValue({ hide_ccs_import_button: true })
+      const wrapper = await mountView()
+
+      const labels = wrapper.findAll('button').map((button) => button.text())
+      expect(labels.some((text) => text.includes('keys.importToThinkWatchLite'))).toBe(false)
+      expect(labels.some((text) => text.includes('keys.importToCcSwitch'))).toBe(false)
+      wrapper.unmount()
     })
   })
 })

@@ -111,6 +111,9 @@ export default {
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
     importToCcSwitch: '导入到 CCS',
+    importToThinkWatchLite: '导入到 ThinkWatch Lite',
+    importToThinkWatchLiteHint:
+      '在 ThinkWatch Lite 中添加此密钥，并显示它的额度、时间窗口与用量（需要 2026.10.16 或更高版本）',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',
@@ -283,6 +286,8 @@ export default {
     ipRestrictionEnabled: '已配置 IP 限制',
     ccSwitchNotInstalled:
       'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
+    thinkWatchLiteNotInstalled:
+      'ThinkWatch Lite 未安装或协议处理程序未注册。请先安装 ThinkWatch Lite 2026.10.16 或更高版本（https://thinkwat.ch/zh-CN/lite），或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
       description: '请选择您要导入到 CC-Switch 的客户端类型：',
