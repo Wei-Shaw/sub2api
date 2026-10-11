@@ -1,8 +1,6 @@
 import type { GroupPlatform } from '@/types'
 import { buildCodexApiKeyAuthConfig } from '@/utils/codexAuthConfig'
-
-export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-6.1-sol'
-export const GROK_CC_SWITCH_MODEL = 'grok-4.5'
+import { getCodexDefaultModel } from '@/constants/codexConfig'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
 
@@ -15,6 +13,7 @@ export interface CcSwitchImportConfig {
 export interface CcSwitchImportDeeplinkInput {
   baseUrl: string
   platform?: GroupPlatform | null
+  codexConfigDefaultModel?: string
   clientType: CcSwitchClientType
   providerName: string
   apiKey: string
@@ -58,8 +57,10 @@ function withoutTrailingSlashes(baseUrl: string): string {
 export function resolveCcSwitchImportConfig(
   platform: GroupPlatform | undefined | null,
   clientType: CcSwitchClientType,
-  baseUrl: string
+  baseUrl: string,
+  codexConfigDefaultModel?: string
 ): CcSwitchImportConfig {
+  const configuredModel = codexConfigDefaultModel?.trim()
   switch (platform || 'anthropic') {
     case 'antigravity':
       return {
@@ -72,7 +73,7 @@ export function resolveCcSwitchImportConfig(
         // CC Switch's Codex provider appends the OpenAI-compatible path itself.
         // Passing /v1 here can make the client request /v1/v1/....
         endpoint: withoutTrailingSlashes(baseUrl),
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: configuredModel || getCodexDefaultModel('openai')
       }
     case 'gemini':
       return {
@@ -83,7 +84,7 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'grokbuild',
         endpoint: withV1Endpoint(baseUrl),
-        model: GROK_CC_SWITCH_MODEL
+        model: configuredModel || getCodexDefaultModel('grok')
       }
     default:
       return {
@@ -94,7 +95,12 @@ export function resolveCcSwitchImportConfig(
 }
 
 export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput): string {
-  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl)
+  const config = resolveCcSwitchImportConfig(
+    input.platform,
+    input.clientType,
+    input.baseUrl,
+    input.codexConfigDefaultModel
+  )
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],
@@ -116,8 +122,7 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     // CC Switch's embedded-config import preserves provider auth and headers.
     // It deliberately leaves global [features] settings to the user.
     const codexConfig = `model_provider = "sub2api"
-model = ${JSON.stringify(config.model)}
-web_search = "live"
+${config.model ? `model = ${JSON.stringify(config.model)}\n` : ''}web_search = "live"
 
 [model_providers.sub2api]
 name = "Sub2API"
