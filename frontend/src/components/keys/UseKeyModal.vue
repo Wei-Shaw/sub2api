@@ -28,13 +28,65 @@
           {{ platformDescription }}
         </p>
 
+        <!-- Provider-backed capability guidance -->
+        <section
+          v-if="showCapabilityGuidance"
+          data-testid="capability-guidance"
+          class="rounded-xl border border-primary-100 bg-primary-50/60 p-4 dark:border-primary-900/60 dark:bg-primary-950/20"
+          aria-live="polite"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('keys.useKeyModal.capabilities.title') }}
+              </h3>
+              <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                {{ t('keys.useKeyModal.capabilities.description') }}
+              </p>
+            </div>
+            <Icon name="sparkles" size="sm" class="mt-0.5 text-primary-500" />
+          </div>
+
+          <p v-if="capabilityState === 'loading'" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.useKeyModal.capabilities.loading') }}
+          </p>
+          <p v-else-if="capabilityState === 'error'" data-testid="capability-guidance-error" class="mt-3 text-xs text-amber-700 dark:text-amber-300">
+            {{ t('keys.useKeyModal.capabilities.error') }}
+          </p>
+          <div v-else-if="capabilities" class="mt-3 grid gap-2 sm:grid-cols-2">
+            <div
+              v-for="item in capabilityGuidanceItems"
+              :key="item.id"
+              :data-testid="`capability-${item.id}`"
+              class="rounded-lg border border-white/80 bg-white/80 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/60"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ item.label }}</span>
+                <span
+                  :class="item.available ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'"
+                  class="text-[11px] font-semibold"
+                >
+                  {{ item.available ? t('keys.useKeyModal.capabilities.available') : t('keys.useKeyModal.capabilities.unavailable') }}
+                </span>
+              </div>
+              <code v-if="item.path" class="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ item.path }}</code>
+              <span v-else-if="item.reason" class="mt-1 block text-[11px] text-gray-500 dark:text-gray-400">{{ capabilityReasonLabel(item.reason) }}</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Client Tabs -->
         <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
-          <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client">
+          <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client" role="tablist">
             <button
               v-for="tab in clientTabs"
               :key="tab.id"
               type="button"
+              :data-testid="`client-tab-${tab.id}`"
+              :id="`client-tab-${tab.id}`"
+              role="tab"
+              :aria-selected="activeClientTab === tab.id"
+              :aria-controls="`${tab.id}-client-panel`"
               @click="activeClientTab = tab.id"
               :class="[
                 'whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors',
@@ -51,9 +103,107 @@
           </nav>
         </div>
 
+        <!-- Capability-backed API examples -->
+        <section
+          v-if="showApiTab && activeClientTab === 'api'"
+          id="api-client-panel"
+          data-testid="api-capability-panel"
+          role="tabpanel"
+          aria-labelledby="client-tab-api"
+          class="space-y-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/40"
+        >
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.title') }}</h3>
+            <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.description') }}</p>
+          </div>
+
+          <section
+            v-if="capabilities && (capabilities.image.sync.available || capabilities.image.async.generation.available || capabilities.image.async.edit.available || capabilities.image.async.poll.available)"
+            data-testid="api-image-section"
+            aria-labelledby="api-image-title"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
+          >
+            <h4 id="api-image-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.image.title') }}</h4>
+            <div v-if="capabilities.image.sync.available" data-testid="api-image-sync">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.sync') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">curl -X {{ capabilities.image.sync.method }} {{ apiExampleUrl(capabilities.image.sync.path) }} -H "Authorization: Bearer {api_key}" -H "Content-Type: application/json" -d '{"model":"{model}","prompt":"..."}'</code>
+            </div>
+            <div v-if="capabilities.image.async.generation.available" data-testid="api-image-async-generation">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.asyncSubmit') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.generation.method }} {{ apiExampleUrl(capabilities.image.async.generation.path) }}</code>
+            </div>
+            <div v-if="capabilities.image.async.poll.available" data-testid="api-image-async-poll">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.poll') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.poll.method }} {{ apiExampleUrl(capabilities.image.async.poll.path) }}</code>
+            </div>
+            <div v-if="capabilities.image.async.edit.available" data-testid="api-image-async-edit">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.edit') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.edit.method }} {{ apiExampleUrl(capabilities.image.async.edit.path) }}</code>
+            </div>
+            <p class="text-xs text-amber-700 dark:text-amber-300">{{ t('keys.useKeyModal.api.image.streamWarning') }}</p>
+          </section>
+
+          <section
+            v-if="capabilities && capabilities.gemini_native.image_generation.available"
+            data-testid="api-gemini-native-section"
+            aria-labelledby="api-gemini-native-title"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
+          >
+            <h4 id="api-gemini-native-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.geminiNative.title') }}</h4>
+            <div v-if="capabilities.gemini_native.image_generation.generate_content.available" data-testid="api-gemini-native-generate">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.generate') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.gemini_native.image_generation.generate_content.method }} {{ apiExampleUrl(capabilities.gemini_native.image_generation.generate_content.path) }}&#10;{"contents":[{"parts":[{"text":"..."}]}],"generationConfig":{"imageConfig":{"aspectRatio":"1:1"}}}</code>
+            </div>
+            <div v-if="capabilities.gemini_native.image_generation.stream_generate_content.available" data-testid="api-gemini-native-stream">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.stream') }}</p>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.gemini_native.image_generation.stream_generate_content.method }} {{ apiExampleUrl(capabilities.gemini_native.image_generation.stream_generate_content.path) }}</code>
+            </div>
+          </section>
+
+          <section
+            v-if="capabilities && (capabilities.batch_image.available || capabilities.batch_image.reason)"
+            data-testid="api-batch-image-section"
+            aria-labelledby="api-batch-image-title"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
+          >
+            <h4 id="api-batch-image-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.batchImage.title') }}</h4>
+            <template v-if="capabilities.batch_image.available">
+              <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.batchImage.models') }}</p>
+              <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.batch_image.models.method }} {{ apiExampleUrl(capabilities.batch_image.models.path) }}</code>
+            </template>
+            <p v-else class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.reason.unavailable') }}</p>
+          </section>
+
+          <section
+            v-if="capabilities && (capabilities.video.generation.available || capabilities.video.status.available || capabilities.video.content.available)"
+            data-testid="api-video-section"
+            aria-labelledby="api-video-title"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
+          >
+            <h4 id="api-video-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.video.title') }}</h4>
+            <code v-if="capabilities.video.generation.available" data-testid="api-video-generation" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.generation.method }} {{ apiExampleUrl(capabilities.video.generation.path) }}</code>
+            <code v-if="capabilities.video.status.available" data-testid="api-video-status" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.status.method }} {{ apiExampleUrl(capabilities.video.status.path) }}</code>
+            <code v-if="capabilities.video.content.available" data-testid="api-video-content" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.content.method }} {{ apiExampleUrl(capabilities.video.content.path) }}</code>
+            <code v-if="capabilities.video.edit.available" data-testid="api-video-edit" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.edit.method }} {{ apiExampleUrl(capabilities.video.edit.path) }}</code>
+            <code v-if="capabilities.video.extension.available" data-testid="api-video-extension" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.extension.method }} {{ apiExampleUrl(capabilities.video.extension.path) }}</code>
+            <p v-if="!capabilities.video.edit.available || !capabilities.video.extension.available" class="text-xs text-amber-700 dark:text-amber-300">{{ t('keys.useKeyModal.api.video.generationOnly') }}</p>
+          </section>
+
+          <section
+            v-if="capabilities && capabilities.seedance.available"
+            data-testid="api-seedance-section"
+            aria-labelledby="api-seedance-title"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
+          >
+            <h4 id="api-seedance-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.seedance.title') }}</h4>
+            <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.seedance.prefixes') }}</p>
+            <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.seedance.create.method }} {{ apiExampleUrl(capabilities.seedance.create.path) }}&#10;{{ capabilities.seedance.status.method }} {{ apiExampleUrl(capabilities.seedance.status.path) }}&#10;{{ capabilities.seedance.delete.method }} {{ apiExampleUrl(capabilities.seedance.delete.path) }}</code>
+          </section>
+        </section>
+
         <!-- Codex Authentication Mode -->
         <div
-          v-if="showCodexAuthMode"
+          v-if="showCodexAuthMode && activeClientTab !== 'api'"
           class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
         >
           <div class="mb-2">
@@ -111,7 +261,7 @@
         </div>
 
         <!-- OS/Shell Tabs -->
-        <div v-if="showShellTabs" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
+        <div v-if="showShellTabs && activeClientTab !== 'api'" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex min-w-max gap-4" aria-label="Tabs">
             <button
               v-for="tab in currentTabs"
@@ -134,7 +284,7 @@
         </div>
 
         <!-- Code Blocks (Stacked for multi-file platforms) -->
-        <div class="space-y-4">
+        <div v-if="activeClientTab !== 'api'" class="space-y-4">
           <div
             v-for="(file, index) in currentFiles"
             :key="index"
@@ -173,7 +323,7 @@
         </div>
 
         <section
-          v-if="showCodexModelCatalog"
+          v-if="showCodexModelCatalog && activeClientTab !== 'api'"
           data-testid="codex-model-catalog"
           class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800/50"
         >
@@ -244,7 +394,7 @@
         </section>
 
         <!-- Usage Note -->
-        <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
+        <div v-if="showPlatformNote && activeClientTab !== 'api'" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
           <Icon name="infoCircle" size="md" class="text-blue-500 flex-shrink-0 mt-0.5" />
           <p class="text-sm text-blue-700 dark:text-blue-300">
             {{ platformNote }}
@@ -267,13 +417,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, watch, type Component } from 'vue'
+import { ref, computed, h, watch, onBeforeUnmount, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildCodexModelCatalogUrl, fetchCodexModelsManifest } from '@/api/codex'
+import { keysAPI, type APIKeyCapabilities, type APIKeyCapabilityReason } from '@/api/keys'
 import type { GroupPlatform } from '@/types'
 import {
   findCodexCatalogModel,
@@ -285,6 +436,7 @@ import {
 interface Props {
   show: boolean
   apiKey: string
+  apiKeyId?: number | null
   baseUrl: string
   platform: GroupPlatform | null
   claudeCodeOnly?: boolean
@@ -316,7 +468,173 @@ const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
+
+type CapabilityState = 'idle' | 'loading' | 'ready' | 'error'
+interface CapabilityGuidanceItem {
+  id: string
+  label: string
+  available: boolean
+  path?: string
+  reason?: APIKeyCapabilityReason
+}
+const capabilityState = ref<CapabilityState>('idle')
+const capabilities = ref<APIKeyCapabilities | null>(null)
+let capabilityController: AbortController | null = null
+let capabilityRequestID = 0
+const showCapabilityGuidance = computed(() => props.show && props.apiKeyId != null)
+const showApiTab = computed(() => {
+  const value = capabilities.value
+  if (!props.show || capabilityState.value !== 'ready' || !value) return false
+  return value.image.sync.available ||
+    value.image.async.generation.available ||
+    value.image.async.edit.available ||
+    value.image.async.poll.available ||
+    value.batch_image.available ||
+    value.video.generation.available ||
+    value.video.status.available ||
+    value.video.content.available ||
+    value.seedance.available ||
+    value.gemini_native.image_generation.available
+})
+const apiExampleUrl = (path?: string) => {
+  const base = props.baseUrl.trim().replace(/\/+$/, '')
+  if (!path) return `${base}/...`
+
+  const isAbsolutePath = path.startsWith('/')
+  const normalizedPath = isAbsolutePath ? path : `/${path}`
+  if (!isAbsolutePath) return `${base}${normalizedPath}`
+
+  try {
+    return `${new URL(base).origin}${normalizedPath}`
+  } catch {
+    return normalizedPath
+  }
+}
+const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
+  if (!capabilities.value) return []
+  const image = capabilities.value.image
+  const video = capabilities.value.video
+  const gemini = capabilities.value.gemini_native.image_generation
+  return [
+    {
+      id: 'image-sync',
+      label: t('keys.useKeyModal.capabilities.imageSync'),
+      available: image.sync.available,
+      path: image.sync.path,
+      reason: image.sync.reason
+    },
+    {
+      id: 'image-async-generation',
+      label: t('keys.useKeyModal.capabilities.imageAsyncSubmit'),
+      available: image.async.generation.available,
+      path: image.async.generation.path,
+      reason: image.async.generation.reason
+    },
+    {
+      id: 'image-async-edit',
+      label: t('keys.useKeyModal.capabilities.imageAsyncEdit'),
+      available: image.async.edit.available,
+      path: image.async.edit.path,
+      reason: image.async.edit.reason
+    },
+    {
+      id: 'image-async-poll',
+      label: t('keys.useKeyModal.capabilities.imageAsyncPoll'),
+      available: image.async.poll.available,
+      path: image.async.poll.path,
+      reason: image.async.poll.reason
+    },
+    {
+      id: 'batch-image',
+      label: t('keys.useKeyModal.capabilities.batchImage'),
+      available: capabilities.value.batch_image.available,
+      path: capabilities.value.batch_image.models.path,
+      reason: capabilities.value.batch_image.reason
+    },
+    {
+      id: 'gemini-native-generate-content',
+      label: t('keys.useKeyModal.capabilities.geminiNativeGenerateContent'),
+      available: gemini.generate_content.available,
+      path: gemini.generate_content.path,
+      reason: gemini.generate_content.reason
+    },
+    {
+      id: 'gemini-native-stream-generate-content',
+      label: t('keys.useKeyModal.capabilities.geminiNativeStreamGenerateContent'),
+      available: gemini.stream_generate_content.available,
+      path: gemini.stream_generate_content.path,
+      reason: gemini.stream_generate_content.reason
+    },
+    {
+      id: 'video-generation',
+      label: t('keys.useKeyModal.capabilities.videoGeneration'),
+      available: video?.generation.available ?? false,
+      path: video?.generation.path,
+      reason: video?.generation.reason
+    },
+    {
+      id: 'video-status',
+      label: t('keys.useKeyModal.capabilities.videoStatus'),
+      available: video?.status.available ?? false,
+      path: video?.status.path,
+      reason: video?.status.reason
+    },
+    {
+      id: 'video-content',
+      label: t('keys.useKeyModal.capabilities.videoContent'),
+      available: video?.content.available ?? false,
+      path: video?.content.path,
+      reason: video?.content.reason
+    },
+    {
+      id: 'video-edit',
+      label: t('keys.useKeyModal.capabilities.videoEdit'),
+      available: video?.edit.available ?? false,
+      path: video?.edit.path,
+      reason: video?.edit.reason
+    },
+    {
+      id: 'video-extension',
+      label: t('keys.useKeyModal.capabilities.videoExtension'),
+      available: video?.extension.available ?? false,
+      path: video?.extension.path,
+      reason: video?.extension.reason
+    },
+    {
+      id: 'seedance-create',
+      label: t('keys.useKeyModal.capabilities.seedanceCreate'),
+      available: capabilities.value.seedance?.create?.available ?? false,
+      path: capabilities.value.seedance?.create?.path,
+      reason: capabilities.value.seedance?.create?.reason
+    },
+    {
+      id: 'seedance-status',
+      label: t('keys.useKeyModal.capabilities.seedanceStatus'),
+      available: capabilities.value.seedance?.status?.available ?? false,
+      path: capabilities.value.seedance?.status?.path,
+      reason: capabilities.value.seedance?.status?.reason
+    },
+    {
+      id: 'seedance-delete',
+      label: t('keys.useKeyModal.capabilities.seedanceDelete'),
+      available: capabilities.value.seedance?.delete?.available ?? false,
+      path: capabilities.value.seedance?.delete?.path,
+      reason: capabilities.value.seedance?.delete?.reason
+    }
+  ]
+})
+
+const capabilityReasonLabel = (reason: APIKeyCapabilityReason) => {
+  const key = `keys.useKeyModal.capabilities.reasons.${reason}`
+  const translated = t(key)
+  return translated === key ? t('keys.useKeyModal.capabilities.unavailable') : translated
+}
 const activeClientTab = ref<string>('claude')
+watch(showApiTab, (available) => {
+  if (!available && activeClientTab.value === 'api') {
+    activeClientTab.value = defaultClientTab.value
+  }
+})
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
 type CodexModelManifestState = 'idle' | 'loading' | 'ready' | 'error'
@@ -385,6 +703,41 @@ watch(() => props.show, (show) => {
   } else {
     resetCodexModelManifest()
   }
+})
+
+const loadCapabilities = async (id: number) => {
+  capabilityController?.abort()
+  const controller = new AbortController()
+  capabilityController = controller
+  const requestID = ++capabilityRequestID
+  capabilityState.value = 'loading'
+  capabilities.value = null
+  try {
+    const nextCapabilities = await keysAPI.getCapabilities(id, { signal: controller.signal })
+    if (requestID === capabilityRequestID && !controller.signal.aborted) {
+      capabilities.value = nextCapabilities
+      capabilityState.value = 'ready'
+    }
+  } catch (error) {
+    if (controller.signal.aborted || requestID !== capabilityRequestID) return
+    console.error('Failed to load API key capabilities')
+    capabilityState.value = 'error'
+  }
+}
+
+watch(() => [props.show, props.apiKeyId] as const, ([show, id]) => {
+  if (show && id != null) {
+    void loadCapabilities(id)
+    return
+  }
+  capabilityController?.abort()
+  capabilityRequestID += 1
+  capabilityState.value = 'idle'
+  capabilities.value = null
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  capabilityController?.abort()
 })
 
 watch(codexManifestContext, (context, previousContext) => {
@@ -463,8 +816,11 @@ const SparkleIcon = {
 
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
+  const withApiTab = (tabs: TabConfig[]) => showApiTab.value
+    ? [...tabs, { id: 'api', label: t('keys.useKeyModal.api.tab'), icon: SparkleIcon }]
+    : tabs
   if (props.claudeCodeOnly) {
-    return [{ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon }]
+    return withApiTab([{ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon }])
   }
   switch (props.platform) {
     case 'openai': {
@@ -476,46 +832,46 @@ const clientTabs = computed((): TabConfig[] => {
         tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
       }
       tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
-      return tabs
+      return withApiTab(tabs)
     }
     case 'gemini':
-      return [
+      return withApiTab([
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      ])
     case 'antigravity':
-      return [
+      return withApiTab([
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      ])
     case 'grok':
-      return [
+      return withApiTab([
         { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      ])
     case 'typesafe':
-      return [
+      return withApiTab([
         { id: 'systemone', label: t('keys.useKeyModal.cliTabs.systemOne'), icon: TerminalIcon }
-      ]
+      ])
     case 'deepseek':
     case 'minimax':
     case 'composite':
-      return [
+      return withApiTab([
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      ])
     default:
-      return [
+      return withApiTab([
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      ])
   }
 })
 
@@ -532,7 +888,7 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() => activeClientTab.value !== 'opencode' && activeClientTab.value !== 'api')
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
@@ -548,6 +904,7 @@ const currentTabs = computed(() => {
 })
 
 const platformDescription = computed(() => {
+  if (activeClientTab.value === 'api') return t('keys.useKeyModal.api.description')
   if (activeClientTab.value === 'codex' &&
     props.platform !== 'openai' &&
     props.platform !== 'grok' &&

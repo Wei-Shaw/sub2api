@@ -165,6 +165,75 @@ export default {
       claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
+      capabilities: {
+        title: 'Available capabilities for this key',
+        description: 'Live availability is resolved from the assigned group, mapped models, scheduler, and provider route.',
+        loading: 'Checking provider capabilities...',
+        error: 'Capability status could not be loaded. The configuration below is still available.',
+        available: 'Available',
+        unavailable: 'Unavailable',
+        imageSync: 'Image generation',
+        imageAsyncSubmit: 'Async image generation',
+        imageAsyncEdit: 'Async image edit',
+        imageAsyncPoll: 'Async image polling',
+        batchImage: 'Batch image jobs',
+        geminiNativeGenerateContent: 'Gemini native generateContent',
+        geminiNativeStreamGenerateContent: 'Gemini native streamGenerateContent',
+        videoGeneration: 'Video generation',
+        videoStatus: 'Video status',
+        videoContent: 'Video content',
+        videoEdit: 'Video editing',
+        videoExtension: 'Video extension',
+        seedance: 'Seedance tasks',
+        seedanceCreate: 'Seedance task submit',
+        seedanceStatus: 'Seedance task status',
+        seedanceDelete: 'Seedance task delete',
+        reasons: {
+          no_group: 'No group is assigned.',
+          group_disabled: 'Disabled by the group.',
+          platform_unsupported: 'The assigned platform does not support this route.',
+          feature_disabled: 'The feature is disabled or not pollable.',
+          no_account: 'No eligible account is currently available.',
+          model_not_available: 'No eligible image model is available.',
+          account_capability_unverified: 'Provider capability could not be verified.',
+          route_unsupported: 'The route is not supported by this configuration.'
+        }
+      },
+      api: {
+        tab: 'API',
+        title: 'Capability-backed API examples',
+        description: 'These examples are derived from the routes confirmed for this API key. Replace placeholders before sending a request.',
+        image: {
+          title: 'Image',
+          sync: 'Synchronous generation',
+          asyncSubmit: 'Async generation submit',
+          poll: 'Async task polling',
+          edit: 'Async image edit',
+          streamWarning: 'Image generation examples use non-streaming requests unless the route contract explicitly says otherwise.'
+        },
+        geminiNative: {
+          title: 'Gemini native image',
+          generate: 'generateContent',
+          stream: 'streamGenerateContent',
+          config: 'Use generationConfig.imageConfig for image options.'
+        },
+        batchImage: {
+          title: 'Batch image',
+          models: 'Discover the allowlisted models, then create and retrieve a batch job.',
+          unavailable: 'Batch image is not confirmed for this key.'
+        },
+        video: {
+          title: 'Video',
+          generationOnly: 'This key is confirmed for video generation/status/content only; edit or extension is not advertised unless its route is confirmed.'
+        },
+        seedance: {
+          title: 'Seedance tasks',
+          prefixes: 'Create, status, and delete use the registered task prefixes (/api/v3, /v3, /v1, and root).'
+        },
+        reason: {
+          unavailable: 'This route is not confirmed for the current key.'
+        }
+      },
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         authModeTitle: 'Codex authentication mode',

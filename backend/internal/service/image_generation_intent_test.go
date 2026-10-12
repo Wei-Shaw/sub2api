@@ -427,3 +427,49 @@ func TestCollectOpenAIImageOutputSizesFromSSEBody(t *testing.T) {
 	require.Equal(t, 2, countOpenAIImageOutputsFromSSEBody(body))
 	require.Equal(t, []string{"3840x2160", "1024x1024"}, collectOpenAIImageOutputSizesFromSSEBody(body))
 }
+
+func TestIsGeminiNativeImageGenerationIntent(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		body  []byte
+		want  bool
+	}{
+		{
+			name:  "image model",
+			model: "gemini-3.1-flash-image",
+			body:  []byte(`{"contents": [{"role": "user"}]}`),
+			want:  true,
+		},
+		{
+			name:  "image response modality",
+			model: "gemini-3.1-flash",
+			body:  []byte(`{"generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}}`),
+			want:  true,
+		},
+		{
+			name:  "image config",
+			model: "gemini-3.1-flash",
+			body:  []byte(`{"generationConfig": {"imageConfig": {"aspectRatio": "1:1"}}}`),
+			want:  true,
+		},
+		{
+			name:  "text request",
+			model: "gemini-3.1-flash",
+			body:  []byte(`{"generationConfig": {"responseModalities": ["TEXT"]}}`),
+			want:  false,
+		},
+		{
+			name:  "invalid body still uses image model evidence",
+			model: "gemini-3.1-flash-image",
+			body:  []byte(`{"generationConfig":`),
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsGeminiNativeImageGenerationIntent(tt.model, tt.body))
+		})
+	}
+}

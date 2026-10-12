@@ -875,6 +875,21 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideAPIKeyCapabilitiesService wires capability resolution to the live async
+// image task feature state while keeping the public resolver contract narrow.
+func ProvideAPIKeyCapabilitiesService(
+	apiKeyRepo APIKeyRepository,
+	groupRepo GroupRepository,
+	accountRepo AccountRepository,
+	imageTaskService *ImageTaskService,
+	batchImageService *BatchImagePublicService,
+) *APIKeyCapabilitiesService {
+	svc := NewAPIKeyCapabilitiesService(apiKeyRepo, groupRepo, accountRepo)
+	svc.SetAsyncImageState(imageTaskService)
+	svc.SetBatchImageReader(batchImageService)
+	return svc
+}
+
 // ProvideInviteBootstrapAPIKeyService exposes API key provisioning to invite login.
 func ProvideInviteBootstrapAPIKeyService(apiKeyService *APIKeyService) InviteBootstrapAPIKeyService {
 	return apiKeyService
@@ -890,6 +905,7 @@ var ProviderSet = wire.NewSet(
 	NewUserService,
 	NewMCPOAuthService,
 	ProvideAPIKeyService,
+	ProvideAPIKeyCapabilitiesService,
 	ProvideInviteBootstrapAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	ProvideAuthCacheInvalidationWorker,

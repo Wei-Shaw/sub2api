@@ -36,6 +36,36 @@ func GroupAllowsImageGeneration(group *Group) bool {
 	return group == nil || group.AllowImageGeneration
 }
 
+// IsGeminiNativeImageGenerationIntent classifies Gemini generateContent
+// requests that can produce an image. Native Gemini uses the model name and/or
+// generationConfig rather than an OpenAI tools payload, so it needs a separate
+// classifier before the native route performs billing or account selection.
+func IsGeminiNativeImageGenerationIntent(model string, body []byte) bool {
+	if isImageGenerationModel(model) {
+		return true
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+
+	modalities := gjson.GetBytes(body, "generationConfig.responseModalities")
+	if modalities.IsArray() {
+		found := false
+		modalities.ForEach(func(_, modality gjson.Result) bool {
+			if strings.EqualFold(strings.TrimSpace(modality.String()), "IMAGE") {
+				found = true
+				return false
+			}
+			return true
+		})
+		if found {
+			return true
+		}
+	}
+
+	return gjson.GetBytes(body, "generationConfig.imageConfig").IsObject()
+}
+
 // IsImageGenerationIntent classifies requests that can produce generated images.
 func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
 	if IsImageGenerationEndpoint(endpoint) {

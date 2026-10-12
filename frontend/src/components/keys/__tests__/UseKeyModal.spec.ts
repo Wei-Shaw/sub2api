@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-const { copyToClipboardMock, saveAsMock } = vi.hoisted(() => ({
+const { copyToClipboardMock, saveAsMock, getCapabilitiesMock } = vi.hoisted(() => ({
   copyToClipboardMock: vi.fn().mockResolvedValue(true),
-  saveAsMock: vi.fn()
+  saveAsMock: vi.fn(),
+  getCapabilitiesMock: vi.fn()
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -17,6 +18,12 @@ vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({
     copyToClipboard: copyToClipboardMock
   })
+}))
+
+vi.mock('@/api/keys', () => ({
+  keysAPI: {
+    getCapabilities: getCapabilitiesMock
+  }
 }))
 
 vi.mock('file-saver', () => ({
@@ -38,6 +45,113 @@ describe('UseKeyModal', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     saveAsMock.mockClear()
+    getCapabilitiesMock.mockReset()
+  })
+
+  it('loads provider-backed capability guidance for the selected API key', async () => {
+    getCapabilitiesMock.mockResolvedValue({
+      image: {
+        sync: { available: true, method: 'POST', path: '/v1/images/generations' },
+        async: {
+          generation: { available: true, method: 'POST', path: '/v1/images/generations/async' },
+          edit: { available: true, method: 'POST', path: '/v1/images/edits/async' },
+          poll: { available: true, method: 'GET', path: '/v1/images/tasks/{task_id}' }
+        }
+      },
+      batch_image: {
+        available: true,
+        models: { available: true, method: 'GET', path: '/v1/images/batches/models' }
+      },
+      video: {
+        generation: { available: true, method: 'POST', path: 'videos/generations' },
+        status: { available: true, method: 'GET', path: '/v1/videos/generations/{request_id}' },
+        content: { available: true, method: 'GET', path: '/v1/videos/generations/{request_id}/content' },
+        edit: { available: false, reason: 'route_unsupported' },
+        extension: { available: false, reason: 'route_unsupported' }
+      },
+      seedance: {
+        available: true,
+        create: { available: true, method: 'POST', path: '/contents/generations/tasks' },
+        status: { available: true, method: 'GET', path: '/contents/generations/tasks/{task_id}' },
+        delete: { available: true, method: 'DELETE', path: '/contents/generations/tasks/{task_id}' }
+      },
+      gemini_native: {
+        image_generation: {
+          available: true,
+          generate_content: { available: true, method: 'POST', path: '/v1beta/models/{model}:generateContent' },
+          stream_generate_content: { available: true, method: 'POST', path: '/v1beta/models/{model}:streamGenerateContent?alt=sse' }
+        }
+      }
+    })
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKeyId: 42,
+        apiKey: '«reda...…»',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getCapabilitiesMock).toHaveBeenCalledWith(42, expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(wrapper.find('[data-testid="capability-guidance"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-image-sync"]').text()).toContain('keys.useKeyModal.capabilities.available')
+    expect(wrapper.find('[data-testid="capability-image-async-generation"]').text()).toContain('/v1/images/generations/async')
+    expect(wrapper.find('[data-testid="capability-image-async-edit"]').text()).toContain('/v1/images/edits/async')
+    expect(wrapper.find('[data-testid="capability-image-async-poll"]').text()).toContain('/v1/images/tasks/{task_id}')
+    expect(wrapper.find('[data-testid="capability-gemini-native-generate-content"]').text()).toContain('/v1beta/models/{model}:generateContent')
+    expect(wrapper.find('[data-testid="capability-gemini-native-stream-generate-content"]').text()).toContain('/v1beta/models/{model}:streamGenerateContent?alt=sse')
+    expect(wrapper.find('[data-testid="client-tab-api"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="client-tab-api"]').attributes('role')).toBe('tab')
+    expect(wrapper.find('[data-testid="client-tab-api"]').attributes('aria-selected')).toBe('false')
+    await wrapper.find('[data-testid="client-tab-api"]').trigger('click')
+    expect(wrapper.find('[data-testid="client-tab-api"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('https://example.com/v1/images/generations')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:generateContent')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:streamGenerateContent?alt=sse')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1/videos/generations')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/contents/generations/tasks')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('?alt=sse')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('{api_key}')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).not.toContain('«reda...…»')
+    expect(wrapper.find('[data-testid="capability-video-generation"]').text()).toContain('videos/generations')
+    expect(wrapper.find('[data-testid="capability-video-edit"]').text()).toContain('keys.useKeyModal.capabilities.unavailable')
+    expect(wrapper.find('[data-testid="capability-seedance-create"]').text()).toContain('/contents/generations/tasks')
+    expect(wrapper.find('[data-testid="capability-seedance-status"]').text()).toContain('/contents/generations/tasks/{task_id}')
+    expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).toContain('GET https://example.com/v1/images/batches/models')
+    expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).not.toContain('/v1/images/batches/{batch_id}/content')
+  })
+
+  it('does not request capability metadata without a selected key id', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: '«reda...…»',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getCapabilitiesMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="capability-guidance"]').exists()).toBe(false)
   })
 
   it('shows only Claude Code for Claude Code-only groups', async () => {

@@ -6,6 +6,67 @@
 import { apiClient } from './client'
 import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
 
+export type APIKeyCapabilityReason =
+  | 'no_group'
+  | 'group_disabled'
+  | 'platform_unsupported'
+  | 'feature_disabled'
+  | 'no_account'
+  | 'model_not_available'
+  | 'account_capability_unverified'
+  | 'route_unsupported'
+
+export interface APIKeyCapabilityRoute {
+  available: boolean
+  reason?: APIKeyCapabilityReason
+  method?: string
+  path?: string
+}
+
+export interface APIKeyCapabilities {
+  object: 'api_key_capabilities'
+  key_id: number
+  group?: { id: number; platform: string }
+  image: {
+    available: boolean
+    gate_open: boolean
+    account_available: boolean
+    sync: APIKeyCapabilityRoute
+    async: {
+      generation: APIKeyCapabilityRoute
+      edit: APIKeyCapabilityRoute
+      poll: APIKeyCapabilityRoute
+    }
+  }
+  batch_image: {
+    available: boolean
+    reason?: APIKeyCapabilityReason
+    models: APIKeyCapabilityRoute
+  }
+  video: {
+    generation: APIKeyCapabilityRoute
+    status: APIKeyCapabilityRoute
+    content: APIKeyCapabilityRoute
+    edit: APIKeyCapabilityRoute
+    extension: APIKeyCapabilityRoute
+  }
+  seedance: {
+    available: boolean
+    reason?: APIKeyCapabilityReason
+    create: APIKeyCapabilityRoute
+    status: APIKeyCapabilityRoute
+    delete: APIKeyCapabilityRoute
+  }
+  gemini_native: {
+    image_generation: {
+      available: boolean
+      reason?: APIKeyCapabilityReason
+      generate_content: APIKeyCapabilityRoute
+      stream_generate_content: APIKeyCapabilityRoute
+    }
+  }
+}
+
 /**
  * List all API keys for current user
  * @param page - Page number (default: 1)
@@ -42,6 +103,21 @@ export async function list(
  */
 export async function getById(id: number): Promise<ApiKey> {
   const { data } = await apiClient.get<ApiKey>(`/keys/${id}`)
+  return data
+}
+
+/**
+ * Resolve the provider-backed capability contract for one API key.
+ * @param id - API key ID
+ * @param options - Optional request options
+ */
+export async function getCapabilities(
+  id: number,
+  options?: { signal?: AbortSignal }
+): Promise<APIKeyCapabilities> {
+  const { data } = await apiClient.get<APIKeyCapabilities>(`/user/api-keys/${id}/capabilities`, {
+    signal: options?.signal
+  })
   return data
 }
 
@@ -160,6 +236,7 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
 export const keysAPI = {
   list,
   getById,
+  getCapabilities,
   create,
   update,
   bulkUpdate,

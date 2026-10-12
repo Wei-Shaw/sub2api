@@ -145,7 +145,76 @@ keys: {
     noGroupTitle: 'Vui lòng gán nhóm trước',
     noGroupDescription:
       'Khóa API này chưa được gán nhóm. Vui lòng nhấp vào cột nhóm trong danh sách khóa để gán trước khi xem cấu hình sử dụng.',
-    openai: {
+    capabilities: {
+      title: 'Khả năng hiện có của khóa này',
+      description: 'Khả năng được kiểm tra theo nhóm, model mapping, scheduler và route provider thực tế.',
+      loading: 'Đang kiểm tra khả năng provider...',
+      error: 'Không thể tải trạng thái capability. Bạn vẫn có thể dùng cấu hình bên dưới.',
+      available: 'Có thể dùng',
+      unavailable: 'Chưa khả dụng',
+      imageSync: 'Tạo ảnh',
+      imageAsyncSubmit: 'Tạo ảnh bất đồng bộ',
+      imageAsyncEdit: 'Chỉnh sửa ảnh bất đồng bộ',
+      imageAsyncPoll: 'Poll tác vụ ảnh bất đồng bộ',
+      batchImage: 'Batch ảnh',
+      geminiNativeGenerateContent: 'Gemini native generateContent',
+      geminiNativeStreamGenerateContent: 'Gemini native streamGenerateContent',
+      videoGeneration: 'Tạo video',
+      videoStatus: 'Trạng thái video',
+      videoContent: 'Nội dung video',
+      videoEdit: 'Chỉnh sửa video',
+      videoExtension: 'Mở rộng video',
+      seedance: 'Tác vụ Seedance',
+      seedanceCreate: 'Gửi tác vụ Seedance',
+      seedanceStatus: 'Trạng thái tác vụ Seedance',
+      seedanceDelete: 'Xóa tác vụ Seedance',
+      reasons: {
+        no_group: 'Chưa gán nhóm.',
+        group_disabled: 'Đã bị nhóm tắt.',
+        platform_unsupported: 'Platform của nhóm không hỗ trợ route này.',
+        feature_disabled: 'Tính năng bị tắt hoặc không thể poll.',
+        no_account: 'Hiện không có account đủ điều kiện.',
+        model_not_available: 'Không có image model đủ điều kiện.',
+        account_capability_unverified: 'Không thể xác minh capability của provider.',
+        route_unsupported: 'Cấu hình này không hỗ trợ route.'
+      }
+      },
+      api: {
+      tab: 'API',
+      title: 'Ví dụ API theo capability',
+      description: 'Các ví dụ này được tạo từ những route đã được xác nhận cho API key. Hãy thay placeholder trước khi gửi request.',
+      image: {
+        title: 'Image',
+        sync: 'Tạo ảnh đồng bộ',
+        asyncSubmit: 'Gửi yêu cầu tạo ảnh async',
+        poll: 'Poll task ảnh async',
+        edit: 'Chỉnh sửa ảnh async',
+        streamWarning: 'Ví dụ tạo ảnh dùng request không stream trừ khi contract của route xác nhận khác.'
+      },
+      geminiNative: {
+        title: 'Gemini native image',
+        generate: 'generateContent',
+        stream: 'streamGenerateContent',
+        config: 'Dùng generationConfig.imageConfig cho tùy chọn ảnh.'
+      },
+      batchImage: {
+        title: 'Batch image',
+        models: 'Lấy danh sách model được allowlist, sau đó tạo và lấy kết quả batch job.',
+        unavailable: 'Batch image chưa được xác nhận cho key này.'
+      },
+      video: {
+        title: 'Video',
+        generationOnly: 'Key này chỉ được xác nhận cho tạo/trạng thái/nội dung video; không quảng cáo edit hoặc extension nếu route chưa được xác nhận.'
+      },
+      seedance: {
+        title: 'Seedance tasks',
+        prefixes: 'Create, status và delete dùng các prefix task đã đăng ký (/api/v3, /v3, /v1 và root).'
+      },
+      reason: {
+        unavailable: 'Route này chưa được xác nhận cho key hiện tại.'
+      }
+      },
+      openai: {
       description: 'Thêm tệp cấu hình sau vào thư mục cấu hình của Codex CLI.',
       configTomlHint: 'Hãy đảm bảo nội dung sau nằm ở phần đầu của tệp config.toml',
       note: 'Hãy đảm bảo thư mục cấu hình tồn tại. Người dùng macOS/Linux có thể chạy mkdir -p ~/.codex để tạo thư mục.',

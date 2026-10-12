@@ -165,6 +165,75 @@ export default {
       noGroupTitle: '请先分配分组',
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
+      capabilities: {
+        title: '此密钥的可用能力',
+        description: '可用性根据分组、模型映射、调度器和实际 provider 路由实时解析。',
+        loading: '正在检查 provider 能力...',
+        error: '无法加载能力状态，下面的配置仍然可用。',
+        available: '可用',
+        unavailable: '不可用',
+        imageSync: '图像生成',
+        imageAsyncSubmit: '异步图像生成',
+        imageAsyncEdit: '异步图像编辑',
+        imageAsyncPoll: '异步图像轮询',
+        batchImage: '批量图像任务',
+        geminiNativeGenerateContent: 'Gemini 原生 generateContent',
+        geminiNativeStreamGenerateContent: 'Gemini 原生 streamGenerateContent',
+        videoGeneration: '视频生成',
+        videoStatus: '视频状态',
+        videoContent: '视频内容',
+        videoEdit: '视频编辑',
+        videoExtension: '视频扩展',
+        seedance: 'Seedance 任务',
+        seedanceCreate: '提交 Seedance 任务',
+        seedanceStatus: 'Seedance 任务状态',
+        seedanceDelete: '删除 Seedance 任务',
+        reasons: {
+          no_group: '未分配分组。',
+          group_disabled: '已被分组禁用。',
+          platform_unsupported: '分组平台不支持此路由。',
+          feature_disabled: '功能已禁用或无法轮询。',
+          no_account: '当前没有符合条件的账号。',
+          model_not_available: '没有符合条件的图像模型。',
+          account_capability_unverified: '无法验证 provider 能力。',
+          route_unsupported: '此配置不支持该路由。'
+        }
+      },
+      api: {
+        tab: 'API',
+        title: '基于能力的 API 示例',
+        description: '以下示例来自此 API key 已确认的路由。发送请求前请替换占位符。',
+        image: {
+          title: '图像',
+          sync: '同步生成',
+          asyncSubmit: '异步生成提交',
+          poll: '异步任务轮询',
+          edit: '异步图像编辑',
+          streamWarning: '除非路由契约明确支持，否则图像生成示例使用非流式请求。'
+        },
+        geminiNative: {
+          title: 'Gemini 原生图像',
+          generate: 'generateContent',
+          stream: 'streamGenerateContent',
+          config: '使用 generationConfig.imageConfig 配置图像选项。'
+        },
+        batchImage: {
+          title: '批量图像',
+          models: '先发现允许的模型，再创建并获取批量任务。',
+          unavailable: '此 key 未确认支持批量图像。'
+        },
+        video: {
+          title: '视频',
+          generationOnly: '此 key 仅确认支持视频生成/状态/内容；未确认路由时不会展示编辑或扩展。'
+        },
+        seedance: {
+          title: 'Seedance 任务',
+          prefixes: '创建、状态和删除使用已注册的任务前缀（/api/v3、/v3、/v1 和根路径）。'
+        },
+        reason: {
+          unavailable: '当前 key 未确认支持此路由。'
+        }
+      },
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         authModeTitle: 'Codex 认证模式',

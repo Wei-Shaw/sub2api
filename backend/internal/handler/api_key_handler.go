@@ -20,14 +20,34 @@ import (
 
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
-	apiKeyService *service.APIKeyService
+	apiKeyService      *service.APIKeyService
+	capabilityOwner    capabilityOwnerReader
+	capabilityResolver capabilityResolver
+}
+
+type capabilityOwnerReader interface {
+	GetByID(ctx context.Context, id int64) (*service.APIKey, error)
+}
+
+type capabilityResolver interface {
+	ResolveCapabilities(ctx context.Context, userID, keyID int64) (*service.APIKeyCapabilities, error)
 }
 
 // NewAPIKeyHandler creates a new APIKeyHandler
 func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
-		apiKeyService: apiKeyService,
+		apiKeyService:   apiKeyService,
+		capabilityOwner: apiKeyService,
 	}
+}
+
+// SetCapabilitiesService wires the capability resolver without changing the
+// existing API-key handler constructor used by the rest of the user routes.
+func (h *APIKeyHandler) SetCapabilitiesService(resolver capabilityResolver) {
+	if h == nil {
+		return
+	}
+	h.capabilityResolver = resolver
 }
 
 // CreateAPIKeyRequest represents the create API key request payload
@@ -175,6 +195,47 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
+}
+
+// GetCapabilities returns route capability metadata for one owned API key.
+// GET /api/v1/user/api-keys/:id/capabilities
+func (h *APIKeyHandler) GetCapabilities(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || keyID <= 0 {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+	if h == nil || h.capabilityOwner == nil || h.capabilityResolver == nil {
+		response.InternalError(c, "Capability service unavailable")
+		return
+	}
+
+	key, err := h.capabilityOwner.GetByID(c.Request.Context(), keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if key == nil || key.UserID != subject.UserID {
+		response.NotFound(c, "API key not found")
+		return
+	}
+
+	caps, err := h.capabilityResolver.ResolveCapabilities(c.Request.Context(), subject.UserID, keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if caps == nil {
+		response.InternalError(c, "Capability service unavailable")
+		return
+	}
+	response.Success(c, caps)
 }
 
 // Create handles creating a new API key

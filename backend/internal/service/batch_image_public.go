@@ -624,6 +624,10 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 	if err := s.ensureGroupAllowsBatchImage(ctx, owner.GroupID); err != nil {
 		return nil, err
 	}
+	modelAllowlist, err := s.batchImageModelAllowlist(ctx, owner.GroupID)
+	if err != nil {
+		return nil, err
+	}
 
 	modelsByProvider := make(map[string]map[string]struct{})
 	for _, providerName := range batchImageProviderSelectionOrder("") {
@@ -641,10 +645,13 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 				continue
 			}
 			for _, model := range batchImageModelsFromAccountMapping(&account) {
+				if !modelAllowlist.Allows(model) {
+					continue
+				}
 				if _, err := s.Pricing.BatchImageUnitPrice(ctx, &BatchImageJob{Provider: providerName, Model: model}); err != nil {
 					continue
 				}
-				if !account.IsModelSupported(model) {
+				if !account.IsModelSupported(model) || !account.IsSchedulableForModelWithContext(ctx, model) {
 					continue
 				}
 				if modelsByProvider[providerName] == nil {
@@ -995,6 +1002,20 @@ func (s *BatchImagePublicService) ensureGroupAllowsBatchImage(ctx context.Contex
 		return ErrBatchImageGroupDisabled
 	}
 	return nil
+}
+
+func (s *BatchImagePublicService) batchImageModelAllowlist(ctx context.Context, groupID *int64) (GroupModelAllowlist, error) {
+	if groupID == nil || *groupID <= 0 {
+		return GroupModelAllowlist{}, nil
+	}
+	if s.GroupRepo == nil {
+		return GroupModelAllowlist{}, ErrBatchImageSettlementPricingMissing
+	}
+	group, err := s.GroupRepo.GetByIDLite(ctx, *groupID)
+	if err != nil || group == nil {
+		return GroupModelAllowlist{}, ErrBatchImageSettlementPricingMissing
+	}
+	return group.ModelAllowlist, nil
 }
 
 func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, owner BatchImageOwner, req BatchImageSubmitRequest, provider string, account *Account) (*BatchImagePricingSnapshot, error) {
