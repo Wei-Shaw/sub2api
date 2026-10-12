@@ -89,7 +89,7 @@
           </div>
 
           <section
-            v-if="selectedCapabilityExample"
+            v-if="selectedCapabilityExample && activeClientTab !== 'api'"
             data-testid="capability-example-panel"
             class="mt-3 space-y-3 rounded-lg border border-primary-200 bg-white p-3 dark:border-primary-800 dark:bg-dark-900/70"
             aria-live="polite"
@@ -198,6 +198,72 @@
           </div>
 
           <section
+            v-if="selectedCapabilityExample && activeClientTab === 'api'"
+            data-testid="api-capability-example-panel"
+            class="space-y-3 rounded-lg border border-primary-200 bg-white p-3 dark:border-primary-800 dark:bg-dark-900/70"
+            aria-live="polite"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.capabilities.exampleTitle') }}: {{ selectedCapabilityExample.label }}
+                </h4>
+                <code class="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ selectedCapabilityExample.method }} {{ selectedCapabilityExample.path }}
+                </code>
+              </div>
+              <button
+                type="button"
+                data-testid="api-capability-example-close"
+                class="flex-shrink-0 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-gray-200"
+                @click="selectedCapabilityExampleId = null"
+              >
+                {{ t('keys.useKeyModal.capabilities.closeExample') }}
+              </button>
+            </div>
+
+            <div class="grid gap-3 lg:grid-cols-2">
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    {{ t('keys.useKeyModal.capabilities.requestExample') }}
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="api-copy-capability-request"
+                    class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                    @click="copyCapabilityExample('request')"
+                  >
+                    {{ copiedCapabilityExamplePart === 'request' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-72 overflow-auto rounded-lg bg-gray-900 p-3 text-[11px] leading-5 text-gray-100"><code>{{ selectedCapabilityExample.request }}</code></pre>
+              </div>
+
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    {{ t('keys.useKeyModal.capabilities.responseExample') }}
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="api-copy-capability-response"
+                    class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                    @click="copyCapabilityExample('response')"
+                  >
+                    {{ copiedCapabilityExamplePart === 'response' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-72 overflow-auto rounded-lg bg-gray-900 p-3 text-[11px] leading-5 text-gray-100"><code>{{ selectedCapabilityExample.response }}</code></pre>
+              </div>
+            </div>
+
+            <p v-if="selectedCapabilityExample.responseNote" class="text-xs text-gray-600 dark:text-gray-400">
+              {{ selectedCapabilityExample.responseNote }}
+            </p>
+          </section>
+
+          <section
             v-if="capabilities && (capabilities.image.sync.available || capabilities.image.async.generation.available || capabilities.image.async.edit.available || capabilities.image.async.poll.available)"
             data-testid="api-image-section"
             aria-labelledby="api-image-title"
@@ -205,19 +271,63 @@
           >
             <h4 id="api-image-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.image.title') }}</h4>
             <div v-if="capabilities.image.sync.available" data-testid="api-image-sync">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.sync') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.sync') }}</p>
+                <button
+                  v-if="hasCapabilityExample('image-sync')"
+                  type="button"
+                  data-testid="api-example-image-sync"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('image-sync')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">curl -X {{ capabilities.image.sync.method }} {{ apiExampleUrl(capabilities.image.sync.path) }} -H "Authorization: Bearer [REDACTED]" -H "Content-Type: application/json" -d '{"model":"{model}","prompt":"..."}'</code>
             </div>
             <div v-if="capabilities.image.async.generation.available" data-testid="api-image-async-generation">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.asyncSubmit') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.asyncSubmit') }}</p>
+                <button
+                  v-if="hasCapabilityExample('image-async-generation')"
+                  type="button"
+                  data-testid="api-example-image-async-generation"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('image-async-generation')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.generation.method }} {{ apiExampleUrl(capabilities.image.async.generation.path) }}</code>
             </div>
             <div v-if="capabilities.image.async.poll.available" data-testid="api-image-async-poll">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.poll') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.poll') }}</p>
+                <button
+                  v-if="hasCapabilityExample('image-async-poll')"
+                  type="button"
+                  data-testid="api-example-image-async-poll"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('image-async-poll')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.poll.method }} {{ apiExampleUrl(capabilities.image.async.poll.path) }}</code>
             </div>
             <div v-if="capabilities.image.async.edit.available" data-testid="api-image-async-edit">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.edit') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.edit') }}</p>
+                <button
+                  v-if="hasCapabilityExample('image-async-edit')"
+                  type="button"
+                  data-testid="api-example-image-async-edit"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('image-async-edit')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.image.async.edit.method }} {{ apiExampleUrl(capabilities.image.async.edit.path) }}</code>
             </div>
             <p class="text-xs text-amber-700 dark:text-amber-300">{{ t('keys.useKeyModal.api.image.streamWarning') }}</p>
@@ -231,11 +341,33 @@
           >
             <h4 id="api-gemini-native-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.geminiNative.title') }}</h4>
             <div v-if="capabilities.gemini_native.image_generation.generate_content.available" data-testid="api-gemini-native-generate">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.generate') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.generate') }}</p>
+                <button
+                  v-if="hasCapabilityExample('gemini-native-generate-content')"
+                  type="button"
+                  data-testid="api-example-gemini-native-generate-content"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('gemini-native-generate-content')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.gemini_native.image_generation.generate_content.method }} {{ apiExampleUrl(capabilities.gemini_native.image_generation.generate_content.path) }}&#10;{"contents":[{"parts":[{"text":"..."}]}],"generationConfig":{"imageConfig":{"aspectRatio":"1:1"}}}</code>
             </div>
             <div v-if="capabilities.gemini_native.image_generation.stream_generate_content.available" data-testid="api-gemini-native-stream">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.stream') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.geminiNative.stream') }}</p>
+                <button
+                  v-if="hasCapabilityExample('gemini-native-stream-generate-content')"
+                  type="button"
+                  data-testid="api-example-gemini-native-stream-generate-content"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('gemini-native-stream-generate-content')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.gemini_native.image_generation.stream_generate_content.method }} {{ apiExampleUrl(capabilities.gemini_native.image_generation.stream_generate_content.path) }}</code>
             </div>
           </section>
@@ -248,7 +380,18 @@
           >
             <h4 id="api-batch-image-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.batchImage.title') }}</h4>
             <template v-if="capabilities.batch_image.available">
-              <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.batchImage.models') }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.batchImage.models') }}</p>
+                <button
+                  v-if="hasCapabilityExample('batch-image')"
+                  type="button"
+                  data-testid="api-example-batch-image"
+                  class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('batch-image')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
               <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.batch_image.models.method }} {{ apiExampleUrl(capabilities.batch_image.models.path) }}</code>
             </template>
             <p v-else class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.reason.unavailable') }}</p>
@@ -261,9 +404,48 @@
             class="space-y-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900/50"
           >
             <h4 id="api-video-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.video.title') }}</h4>
-            <code v-if="capabilities.video.generation.available" data-testid="api-video-generation" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.generation.method }} {{ apiExampleUrl(capabilities.video.generation.path) }}</code>
-            <code v-if="capabilities.video.status.available" data-testid="api-video-status" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.status.method }} {{ apiExampleUrl(capabilities.video.status.path) }}</code>
-            <code v-if="capabilities.video.content.available" data-testid="api-video-content" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.content.method }} {{ apiExampleUrl(capabilities.video.content.path) }}</code>
+            <div v-if="capabilities.video.generation.available" data-testid="api-video-generation">
+              <div class="flex items-center justify-between gap-2">
+                <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.generation.method }} {{ apiExampleUrl(capabilities.video.generation.path) }}</code>
+                <button
+                  v-if="hasCapabilityExample('video-generation')"
+                  type="button"
+                  data-testid="api-example-video-generation"
+                  class="flex-shrink-0 text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('video-generation')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
+            </div>
+            <div v-if="capabilities.video.status.available" data-testid="api-video-status">
+              <div class="flex items-center justify-between gap-2">
+                <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.status.method }} {{ apiExampleUrl(capabilities.video.status.path) }}</code>
+                <button
+                  v-if="hasCapabilityExample('video-status')"
+                  type="button"
+                  data-testid="api-example-video-status"
+                  class="flex-shrink-0 text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('video-status')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
+            </div>
+            <div v-if="capabilities.video.content.available" data-testid="api-video-content">
+              <div class="flex items-center justify-between gap-2">
+                <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.content.method }} {{ apiExampleUrl(capabilities.video.content.path) }}</code>
+                <button
+                  v-if="hasCapabilityExample('video-content')"
+                  type="button"
+                  data-testid="api-example-video-content"
+                  class="flex-shrink-0 text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  @click="openCapabilityExampleById('video-content')"
+                >
+                  {{ t('keys.useKeyModal.capabilities.viewExample') }}
+                </button>
+              </div>
+            </div>
             <code v-if="capabilities.video.edit.available" data-testid="api-video-edit" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.edit.method }} {{ apiExampleUrl(capabilities.video.edit.path) }}</code>
             <code v-if="capabilities.video.extension.available" data-testid="api-video-extension" class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.video.extension.method }} {{ apiExampleUrl(capabilities.video.extension.path) }}</code>
             <p v-if="!capabilities.video.edit.available || !capabilities.video.extension.available" class="text-xs text-amber-700 dark:text-amber-300">{{ t('keys.useKeyModal.api.video.generationOnly') }}</p>
@@ -277,6 +459,35 @@
           >
             <h4 id="api-seedance-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.seedance.title') }}</h4>
             <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.seedance.prefixes') }}</p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-if="capabilities.seedance.create.available && hasCapabilityExample('seedance-create')"
+                type="button"
+                data-testid="api-example-seedance-create"
+                class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                @click="openCapabilityExampleById('seedance-create')"
+              >
+                {{ t('keys.useKeyModal.capabilities.viewExample') }}: {{ capabilities.seedance.create.method }}
+              </button>
+              <button
+                v-if="capabilities.seedance.status.available && hasCapabilityExample('seedance-status')"
+                type="button"
+                data-testid="api-example-seedance-status"
+                class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                @click="openCapabilityExampleById('seedance-status')"
+              >
+                {{ t('keys.useKeyModal.capabilities.viewExample') }}: {{ capabilities.seedance.status.method }}
+              </button>
+              <button
+                v-if="capabilities.seedance.delete.available && hasCapabilityExample('seedance-delete')"
+                type="button"
+                data-testid="api-example-seedance-delete"
+                class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                @click="openCapabilityExampleById('seedance-delete')"
+              >
+                {{ t('keys.useKeyModal.capabilities.viewExample') }}: {{ capabilities.seedance.delete.method }}
+              </button>
+            </div>
             <code class="block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">{{ capabilities.seedance.create.method }} {{ apiExampleUrl(capabilities.seedance.create.path) }}&#10;{{ capabilities.seedance.status.method }} {{ apiExampleUrl(capabilities.seedance.status.path) }}&#10;{{ capabilities.seedance.delete.method }} {{ apiExampleUrl(capabilities.seedance.delete.path) }}</code>
           </section>
         </section>
@@ -757,6 +968,11 @@ const openCapabilityExample = (item: CapabilityGuidanceItem) => {
   if (!item.available || !item.path || !hasCapabilityExample(item.id)) return
   selectedCapabilityExampleId.value = item.id
   copiedCapabilityExamplePart.value = null
+}
+
+const openCapabilityExampleById = (id: string) => {
+  const item = capabilityGuidanceItems.value.find((candidate) => candidate.id === id)
+  if (item) openCapabilityExample(item)
 }
 
 const copyCapabilityExample = async (part: 'request' | 'response') => {

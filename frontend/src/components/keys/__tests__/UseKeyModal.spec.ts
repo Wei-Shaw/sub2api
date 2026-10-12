@@ -124,6 +124,36 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/contents/generations/tasks')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('?alt=sse')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('[REDACTED]')
+    for (const testId of [
+      'api-example-image-sync',
+      'api-example-image-async-generation',
+      'api-example-image-async-poll',
+      'api-example-image-async-edit',
+      'api-example-gemini-native-generate-content',
+      'api-example-gemini-native-stream-generate-content',
+      'api-example-batch-image',
+      'api-example-video-generation',
+      'api-example-video-status',
+      'api-example-video-content',
+      'api-example-seedance-create',
+      'api-example-seedance-status',
+      'api-example-seedance-delete'
+    ]) {
+      expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true)
+    }
+    expect(wrapper.find('[data-testid="api-video-edit"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="api-video-extension"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="api-example-image-sync"]').trigger('click')
+    expect(wrapper.find('[data-testid="api-capability-example-panel"]').text()).toContain('"prompt":"A watercolor mountain landscape"')
+    await wrapper.find('[data-testid="api-example-video-generation"]').trigger('click')
+    expect(wrapper.find('[data-testid="api-capability-example-panel"]').text()).toContain('"duration":8')
+    expect(wrapper.find('[data-testid="api-capability-example-panel"]').text()).toContain('"request_id"')
+    await wrapper.find('[data-testid="api-example-video-status"]').trigger('click')
+    expect(wrapper.find('[data-testid="api-capability-example-panel"]').text()).toContain('"status": "done"')
+    await wrapper.find('[data-testid="api-example-video-content"]').trigger('click')
+    expect(wrapper.find('[data-testid="api-capability-example-panel"]').text()).toContain('video/mp4')
+    await wrapper.find('[data-testid="api-copy-capability-request"]').trigger('click')
+    expect(copyToClipboardMock).toHaveBeenCalledWith(expect.stringContaining('Authorization: Bearer [REDACTED]'), 'keys.copied')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).not.toContain('«reda...…»')
     expect(wrapper.find('[data-testid="capability-video-generation"]').text()).toContain('videos/generations')
     expect(wrapper.find('[data-testid="capability-video-edit"]').text()).toContain('keys.useKeyModal.capabilities.unavailable')
