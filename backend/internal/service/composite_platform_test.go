@@ -10,11 +10,44 @@ import (
 
 type compositeOwnershipAccountRepo struct {
 	AccountRepository
-	accounts []Account
+	accounts             []Account
+	cooledAccountIDs     map[int64]struct{}
+	disabledAccountIDs   map[int64]struct{}
+	listSchedulableCalls int
+	listCandidateCalls   int
+	candidatePlatforms   []string
+	candidateGroupID     *int64
 }
 
 func (r *compositeOwnershipAccountRepo) ListSchedulableByGroupID(context.Context, int64) ([]Account, error) {
-	return r.accounts, nil
+	r.listSchedulableCalls++
+	return r.filteredAccounts(true), nil
+}
+
+func (r *compositeOwnershipAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	r.listCandidateCalls++
+	r.candidatePlatforms = append([]string(nil), platforms...)
+	if groupID != nil {
+		groupIDCopy := *groupID
+		r.candidateGroupID = &groupIDCopy
+	}
+	return r.filteredAccounts(false), nil
+}
+
+func (r *compositeOwnershipAccountRepo) filteredAccounts(ignoreTransientState bool) []Account {
+	accounts := make([]Account, 0, len(r.accounts))
+	for _, account := range r.accounts {
+		if _, disabled := r.disabledAccountIDs[account.ID]; disabled {
+			continue
+		}
+		if ignoreTransientState {
+			if _, cooled := r.cooledAccountIDs[account.ID]; cooled {
+				continue
+			}
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts
 }
 
 // Scenario: 唯一平台的精确别名可路由
@@ -101,6 +134,98 @@ func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatform
 	ambiguous, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "ambiguous")
 	require.NoError(t, err)
 	require.Equal(t, CompositeModelOwnership{Ambiguous: true}, ambiguous)
+}
+
+func TestResolveCompositeModelOwnershipIgnoresCooledOwnerForAccountModelSource(t *testing.T) {
+	const model = "cmdc/deepseek-v4.1-flash"
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{{
+			ID:          1,
+			Platform:    PlatformOpenAI,
+			Credentials: map[string]any{"model_mapping": map[string]any{model: "gpt-5"}},
+		}},
+		cooledAccountIDs: map[int64]struct{}{1: {}},
+	}
+	detected, ok := DetectModelPlatform(model)
+	require.True(t, ok)
+	require.Equal(t, PlatformDeepseek, detected)
+
+	decision := resolveCompositeOwnershipDecision(t, repo, groupID, model)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform)
+	require.Equal(t, 1, repo.listCandidateCalls)
+	require.Zero(t, repo.listSchedulableCalls)
+	requirePersistentOwnershipCandidates(t, repo, groupID)
+}
+
+func TestResolveCompositeModelOwnershipExcludesPermanentlyDisabledAccounts(t *testing.T) {
+	const model = "disabled-owner-alias"
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{{
+			ID:          1,
+			Platform:    PlatformOpenAI,
+			Credentials: map[string]any{"model_mapping": map[string]any{model: "gpt-5"}},
+		}},
+		disabledAccountIDs: map[int64]struct{}{1: {}},
+	}
+
+	decision := resolveCompositeOwnershipDecision(t, repo, groupID, model)
+	require.False(t, decision.Matched)
+	require.Empty(t, decision.TargetPlatform)
+	require.Equal(t, "no explicit route or built-in detector match", decision.Reason)
+	require.Equal(t, 1, repo.listCandidateCalls)
+	require.Zero(t, repo.listSchedulableCalls)
+	requirePersistentOwnershipCandidates(t, repo, groupID)
+}
+
+func TestResolveCompositeModelOwnershipRemainsAmbiguousWhenOneOwnerCooled(t *testing.T) {
+	const model = "shared-provider-alias"
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Credentials: map[string]any{"model_mapping": map[string]any{model: "gpt-5"}},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformDeepseek,
+				Credentials: map[string]any{"model_mapping": map[string]any{model: "deepseek-v4-pro"}},
+			},
+		},
+		cooledAccountIDs: map[int64]struct{}{1: {}},
+	}
+
+	decision := resolveCompositeOwnershipDecision(t, repo, groupID, model)
+	require.False(t, decision.Matched)
+	require.Empty(t, decision.Source)
+	require.Equal(t, "model is exposed by multiple provider platforms", decision.Reason)
+	require.Equal(t, 1, repo.listCandidateCalls)
+	require.Zero(t, repo.listSchedulableCalls)
+	requirePersistentOwnershipCandidates(t, repo, groupID)
+}
+
+func requirePersistentOwnershipCandidates(t *testing.T, repo *compositeOwnershipAccountRepo, groupID int64) {
+	t.Helper()
+	require.NotEmpty(t, repo.candidatePlatforms)
+	expectedPlatforms := schedulerSnapshotPlatforms()
+	require.ElementsMatch(t, expectedPlatforms[:], repo.candidatePlatforms)
+	require.NotNil(t, repo.candidateGroupID)
+	require.Equal(t, groupID, *repo.candidateGroupID)
+}
+
+func resolveCompositeOwnershipDecision(t *testing.T, repo AccountRepository, groupID int64, model string) CompositeRouteDecision {
+	t.Helper()
+	resolver := NewCompositeRouteResolver(nil)
+	svc := &GatewayService{accountRepo: repo}
+	resolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
+	decision, err := resolver.Resolve(context.Background(), groupID, model, CompositeRouteEndpointResponses)
+	require.NoError(t, err)
+	return decision
 }
 
 func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {

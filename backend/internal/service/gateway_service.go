@@ -1497,7 +1497,10 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		}
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	// Ownership is persistent configuration. Do not let a transient cooldown
+	// remove an alias owner and hand the model to another platform or detector.
+	candidatePlatforms := schedulerSnapshotPlatforms()
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, candidatePlatforms[:], false)
 	if err != nil {
 		return CompositeModelOwnership{}, err
 	}

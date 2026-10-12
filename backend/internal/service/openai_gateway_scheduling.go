@@ -440,6 +440,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
+	if !accountOwnsCompositeAccountModelRoute(ctx, account) {
+		return "model_not_supported"
+	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return "model_not_supported"
 	}
