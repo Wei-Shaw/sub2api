@@ -108,3 +108,40 @@ func TestSchedulerMetadataAccountDropsInvalidUpstreamBillingProbe(t *testing.T) 
 		require.NotContains(t, metadata.Extra, service.UpstreamBillingProbeExtraKey)
 	}
 }
+
+func TestFilterSchedulerCredentialsKeepsSeedanceRoutingCredentials(t *testing.T) {
+	filtered := filterSchedulerCredentials(map[string]any{
+		"api_key":             "sk-secret",
+		"base_url":            "https://upstream.example.com/",
+		"openai_capabilities": []any{"chat_completions", "seedance"},
+		"access_token":        "secret-access-token",
+	})
+
+	// Seedance eligibility is the only capability gate that requires both
+	// base_url and openai_capabilities; dropping either from the scheduler
+	// snapshot makes the candidate fail with capability_mismatch.
+	require.Equal(t, "https://upstream.example.com/", filtered["base_url"])
+	require.Equal(t, []any{"chat_completions", "seedance"}, filtered["openai_capabilities"])
+	require.NotContains(t, filtered, "access_token")
+}
+
+func TestSchedulerMetadataAccountKeepsSeedanceCapability(t *testing.T) {
+	account := service.Account{
+		ID:       133,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":             "sk-secret",
+			"base_url":            "https://upstream.example.com/",
+			"openai_capabilities": []any{"chat_completions", "embeddings", "seedance"},
+		},
+	}
+
+	require.True(t, account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance))
+
+	// The scheduler snapshot must project the same capability. Otherwise the
+	// candidate is rejected before forwarding and callers observe
+	// "No eligible Seedance accounts" (503).
+	metadata := buildSchedulerMetadataAccount(account)
+	require.True(t, metadata.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance))
+}
