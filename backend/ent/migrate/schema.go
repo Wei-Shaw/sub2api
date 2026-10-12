@@ -637,6 +637,7 @@ var (
 		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_by", Type: field.TypeInt64},
+		{Name: "sort_order", Type: field.TypeInt, Default: 2147483647},
 		{Name: "extra_headers", Type: field.TypeJSON},
 		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"},
 		{Name: "body_override", Type: field.TypeJSON, Nullable: true},
@@ -650,7 +651,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[22]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -679,12 +680,17 @@ var (
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[22]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[6]},
+			},
+			{
+				Name:    "channelmonitor_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[18]},
 			},
 		},
 	}
@@ -1642,6 +1648,8 @@ var (
 		{Name: "requested_model", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "upstream_model", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "upstream_response_model", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "usage_source", Type: field.TypeString, Size: 16, Default: "upstream"},
+		{Name: "client_disconnected", Type: field.TypeBool, Default: false},
 		{Name: "upstream_model_mismatch", Type: field.TypeBool, Nullable: true},
 		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "model_mapping_chain", Type: field.TypeString, Nullable: true, Size: 500},
@@ -1693,31 +1701,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[43]},
+				Columns:    []*schema.Column{UsageLogsColumns[45]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[44]},
+				Columns:    []*schema.Column{UsageLogsColumns[46]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[45]},
+				Columns:    []*schema.Column{UsageLogsColumns[47]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[46]},
+				Columns:    []*schema.Column{UsageLogsColumns[48]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[47]},
+				Columns:    []*schema.Column{UsageLogsColumns[49]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1726,32 +1734,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[46]},
+				Columns: []*schema.Column{UsageLogsColumns[48]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43]},
+				Columns: []*schema.Column{UsageLogsColumns[45]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[44]},
+				Columns: []*schema.Column{UsageLogsColumns[46]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45]},
+				Columns: []*schema.Column{UsageLogsColumns[47]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[47]},
+				Columns: []*schema.Column{UsageLogsColumns[49]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -1771,17 +1779,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[46], UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[48], UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[43], UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[45], UsageLogsColumns[44]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[45], UsageLogsColumns[42]},
+				Columns: []*schema.Column{UsageLogsColumns[47], UsageLogsColumns[44]},
 			},
 		},
 	}

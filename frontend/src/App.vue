@@ -5,7 +5,6 @@ import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
-import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
@@ -20,6 +19,7 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+const localPreviewMode = import.meta.env.VITE_LOCAL_PREVIEW === 'true'
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -92,6 +92,7 @@ watch(subscriptionFeatureEnabled, (enabled) => {
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated, oldValue) => {
+    if (localPreviewMode) return
     if (isAuthenticated) {
       if (authStore.isAdmin) {
         adminComplianceStore.fetchStatus().catch((error) => {
@@ -129,7 +130,7 @@ watch(
 
 // Route change trigger (throttled by store)
 router.afterEach(() => {
-  if (authStore.isAuthenticated) {
+  if (!localPreviewMode && authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
   }
 })
@@ -143,17 +144,19 @@ onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
 
   // Check if setup is needed
-  try {
-    const status = await getSetupStatus()
-    if (status.needs_setup && route.path !== '/setup') {
-      router.replace('/setup')
-      return
+  if (import.meta.env.VITE_LOCAL_PREVIEW !== 'true') {
+    try {
+      const status = await getSetupStatus()
+      if (status.needs_setup && route.path !== '/setup') {
+        router.replace('/setup')
+        return
+      }
+    } catch {
+      // If setup endpoint fails, assume normal mode and continue
     }
-  } catch {
-    // If setup endpoint fails, assume normal mode and continue
   }
 
-  // Load public settings into appStore (will be cached for other components)
+  // Load public settings into appStore (the local preview adapter serves safe sample data).
   await appStore.fetchPublicSettings()
 
   // Re-resolve document title now that site settings are available
@@ -165,6 +168,5 @@ onMounted(async () => {
   <NavigationProgress />
   <RouterView />
   <Toast />
-  <AnnouncementPopup />
   <AdminComplianceDialog />
 </template>

@@ -71,7 +71,6 @@ function handleEnter(event: KeyboardEvent) {
   event.preventDefault()
   addModel()
 }
-
 function handleTab(event: KeyboardEvent) {
   if (event.isComposing || !inputValue.value.trim()) return
   event.preventDefault()

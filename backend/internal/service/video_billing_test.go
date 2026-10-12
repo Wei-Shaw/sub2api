@@ -108,6 +108,14 @@ func TestLookupVideoBillingResolutionReportsUnknownTiers(t *testing.T) {
 	require.Equal(t, VideoBillingResolution1080P, NormalizeVideoBillingResolutionOrDefault("full_hd"))
 }
 
+func TestNormalizeVideoTierLabelRemovesProviderMetadata(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "1080p", NormalizeVideoTierLabel(" 1080p|off|no "))
+	require.Equal(t, "2k", NormalizeVideoTierLabel("2k"))
+	require.True(t, VideoTierLabelsMatch("1080p|on|yes", "1080p"))
+	require.False(t, VideoTierLabelsMatch("2k|off|yes", "1080p"))
+}
+
 func TestVideoModelPriceMissingTierFallsBackToFlatTierPrice(t *testing.T) {
 	t.Parallel()
 	flat720P := 0.7

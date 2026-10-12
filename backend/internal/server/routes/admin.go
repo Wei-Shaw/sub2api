@@ -24,6 +24,7 @@ func RegisterAdminRoutes(
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
 
 	admin := v1.Group("/admin")
+	admin.Use(middleware.AdminVideoPreviewCookieAuth())
 	admin.Use(gin.HandlerFunc(adminAuth))
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
 	admin.Use(panelRateLimiter.Global())
@@ -196,6 +197,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/user-concurrency", h.Admin.Ops.GetUserConcurrencyStats)
 		ops.GET("/account-availability", h.Admin.Ops.GetAccountAvailability)
 		ops.GET("/realtime-traffic", h.Admin.Ops.GetRealtimeTrafficSummary)
+		ops.GET("/scheduler", h.Admin.Ops.GetSchedulerSnapshot)
 
 		// Alerts (rules + events)
 		ops.GET("/alert-rules", h.Admin.Ops.ListAlertRules)
@@ -701,9 +703,13 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/video-tasks", h.Admin.Usage.VideoTasks)
 	usage := admin.Group("/usage")
 	{
 		usage.GET("", h.Admin.Usage.List)
+		usage.GET("/:id/images/:index", h.Admin.Usage.Image)
+		usage.GET("/:id/videos/:index", h.Admin.Usage.Video)
+		usage.GET("/:id/videos/:index/content", h.Admin.Usage.VideoContent)
 		usage.GET("/stats", h.Admin.Usage.Stats)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
@@ -795,6 +801,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	monitors.Use(guard)
 	{
 		monitors.GET("", h.Admin.ChannelMonitor.List)
+		monitors.GET("/all", h.Admin.ChannelMonitor.ListAll)
+		monitors.PUT("/sort-order", h.Admin.ChannelMonitor.UpdateSortOrder)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.POST("/:id/duplicate", h.Admin.ChannelMonitor.Duplicate)

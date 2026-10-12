@@ -185,7 +185,7 @@ export function formatDateLocalInput(date: Date): string {
  * 格式化为 datetime-local 控件值（YYYY-MM-DDTHH:mm，使用本地时间）
  */
 export function formatDateTimeLocalInput(timestampSeconds: number | null): string {
-  if (!timestampSeconds) return ''
+  if (timestampSeconds == null) return ''
   const date = new Date(timestampSeconds * 1000)
   if (isNaN(date.getTime())) return ''
   const year = date.getFullYear()
@@ -200,58 +200,21 @@ export function formatDateTimeLocalInput(timestampSeconds: number | null): strin
  * 解析 datetime-local 控件值为时间戳（秒，使用本地时间）
  */
 export function parseDateTimeLocalInput(value: string): number | null {
-  if (!value) return null
-
-  // datetime-local intentionally has no timezone. Parse its components explicitly
-  // so malformed values or timezone-bearing strings are not reinterpreted by Date.parse.
-  const match = /^(\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/.exec(value)
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(value)
   if (!match) return null
-
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  const hours = Number(match[4])
-  const minutes = Number(match[5])
-  const seconds = match[6] ? Number(match[6]) : 0
-  const milliseconds = match[7]
-    ? Number(match[7].slice(0, 3).padEnd(3, '0'))
-    : 0
-
-  if (
-    !Number.isSafeInteger(year) ||
-    year < 1 ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31 ||
-    hours > 23 ||
-    minutes > 59 ||
-    seconds > 59
-  ) {
-    return null
-  }
-
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = '0', fraction = ''] = match
+  const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number)
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return null
   const date = new Date(0)
+  date.setHours(0, 0, 0, 0)
   date.setFullYear(year, month - 1, day)
-  date.setHours(hours, minutes, seconds, milliseconds)
-
-  // Date setters normalize calendar overflows (for example, February 30). Keep
-  // the platform's existing DST disambiguation for otherwise valid local times.
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null
-  }
-
-  const timestamp = date.getTime()
-  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : null
+  date.setHours(hour, minute, second, Number(fraction.padEnd(3, '0')))
+  // Reject calendar overflow and local times skipped by daylight-saving changes.
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day ||
+      date.getHours() !== hour || date.getMinutes() !== minute || date.getSeconds() !== second) return null
+  return Math.floor(date.getTime() / 1000)
 }
 
-/**
- * 获取浏览器当前使用的 IANA 时区
- */
 export function getBrowserTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'

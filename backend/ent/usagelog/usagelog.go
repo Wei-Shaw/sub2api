@@ -30,6 +30,10 @@ const (
 	FieldUpstreamModel = "upstream_model"
 	// FieldUpstreamResponseModel holds the string denoting the upstream_response_model field in the database.
 	FieldUpstreamResponseModel = "upstream_response_model"
+	// FieldUsageSource holds the string denoting the usage_source field in the database.
+	FieldUsageSource = "usage_source"
+	// FieldClientDisconnected holds the string denoting the client_disconnected field in the database.
+	FieldClientDisconnected = "client_disconnected"
 	// FieldUpstreamModelMismatch holds the string denoting the upstream_model_mismatch field in the database.
 	FieldUpstreamModelMismatch = "upstream_model_mismatch"
 	// FieldChannelID holds the string denoting the channel_id field in the database.
@@ -168,6 +172,8 @@ var Columns = []string{
 	FieldRequestedModel,
 	FieldUpstreamModel,
 	FieldUpstreamResponseModel,
+	FieldUsageSource,
+	FieldClientDisconnected,
 	FieldUpstreamModelMismatch,
 	FieldChannelID,
 	FieldModelMappingChain,
@@ -230,6 +236,12 @@ var (
 	UpstreamModelValidator func(string) error
 	// UpstreamResponseModelValidator is a validator for the "upstream_response_model" field. It is called by the builders before save.
 	UpstreamResponseModelValidator func(string) error
+	// DefaultUsageSource holds the default value on creation for the "usage_source" field.
+	DefaultUsageSource string
+	// UsageSourceValidator is a validator for the "usage_source" field. It is called by the builders before save.
+	UsageSourceValidator func(string) error
+	// DefaultClientDisconnected holds the default value on creation for the "client_disconnected" field.
+	DefaultClientDisconnected bool
 	// ModelMappingChainValidator is a validator for the "model_mapping_chain" field. It is called by the builders before save.
 	ModelMappingChainValidator func(string) error
 	// BillingTierValidator is a validator for the "billing_tier" field. It is called by the builders before save.
@@ -338,6 +350,16 @@ func ByUpstreamModel(opts ...sql.OrderTermOption) OrderOption {
 // ByUpstreamResponseModel orders the results by the upstream_response_model field.
 func ByUpstreamResponseModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpstreamResponseModel, opts...).ToFunc()
+}
+
+// ByUsageSource orders the results by the usage_source field.
+func ByUsageSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageSource, opts...).ToFunc()
+}
+
+// ByClientDisconnected orders the results by the client_disconnected field.
+func ByClientDisconnected(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientDisconnected, opts...).ToFunc()
 }
 
 // ByUpstreamModelMismatch orders the results by the upstream_model_mismatch field.

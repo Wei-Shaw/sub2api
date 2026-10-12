@@ -1,3 +1,23 @@
+import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
+
+type BasePrices = Partial<Pick<UserSupportedModelPricing,
+  'input_price' | 'output_price' | 'cache_write_price' | 'cache_write_1h_price' | 'cache_read_price' | 'per_request_price'>>
+
+export function resolveIntervalPrices(interval: UserPricingInterval, base: BasePrices) {
+  const scaled = (price: number | null | undefined, multiplier: number | null | undefined) =>
+    price == null ? null : price * (multiplier ?? 1)
+  // Match the backend resolver: explicit prices override multipliers, including zero.
+  return {
+    input_price: interval.input_price ?? scaled(base.input_price, interval.input_multiplier),
+    output_price: interval.output_price ?? scaled(base.output_price, interval.output_multiplier),
+    cache_write_price: interval.cache_write_price ?? scaled(base.cache_write_price, interval.cache_write_multiplier),
+    cache_write_1h_price: interval.cache_write_1h_price ?? interval.cache_write_price ??
+      scaled(base.cache_write_1h_price ?? base.cache_write_price, interval.cache_write_multiplier),
+    cache_read_price: interval.cache_read_price ?? scaled(base.cache_read_price, interval.cache_read_multiplier),
+    per_request_price: interval.per_request_price ?? base.per_request_price ?? null
+  }
+}
+
 /**
  * formatScaled formats a per-token (or per-request) USD price scaled by `scale`.
  *
@@ -21,22 +41,4 @@ export function formatScaled(value: number | null, scale: number, minFractionDig
     }
   }
   return `$${s}`
-}
-
-import type { UserPricingInterval } from '@/api/channels'
-
-type TokenPrices = Pick<UserPricingInterval, 'input_price' | 'output_price' | 'cache_write_price' | 'cache_write_1h_price' | 'cache_read_price'>
-
-export function resolveIntervalPrices(iv: UserPricingInterval, base: TokenPrices): UserPricingInterval {
-  const price = (absolute: number | null | undefined, multiplier: number | null | undefined, fallback: number | null | undefined) =>
-    absolute ?? (fallback == null ? null : fallback * (multiplier ?? 1))
-  return {
-    ...iv,
-    input_price: price(iv.input_price, iv.input_multiplier, base.input_price),
-    output_price: price(iv.output_price, iv.output_multiplier, base.output_price),
-    cache_write_price: price(iv.cache_write_price, iv.cache_write_multiplier, base.cache_write_price),
-    // Resolver uses an explicit cache-write price for both durations unless 1h is overridden.
-    cache_write_1h_price: iv.cache_write_1h_price ?? iv.cache_write_price ?? price(null, iv.cache_write_multiplier, base.cache_write_1h_price),
-    cache_read_price: price(iv.cache_read_price, iv.cache_read_multiplier, base.cache_read_price)
-  }
 }

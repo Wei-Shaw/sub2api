@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -585,7 +586,21 @@ type AccountSelectionResult struct {
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
 	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
 	// 调度栈之外做抢槽后终检与准入后粘性绑定。
-	profitGate *openAIProfitControlGate
+	profitGate        *openAIProfitControlGate
+	transientModel    string
+	transientComplete func(bool, error)
+}
+
+// CompleteTransient must run before ReleaseFunc so only this admission can
+// confirm recovery. Repeated completion (including WS turns) is harmless.
+func (r *AccountSelectionResult) CompleteTransient(success bool, observedErr ...error) {
+	var err error
+	if len(observedErr) > 0 {
+		err = observedErr[0]
+	}
+	if r != nil && r.transientComplete != nil {
+		r.transientComplete(success, err)
+	}
 }
 
 // ProfitGateActive 报告本次选号是否处于利润门之下。
@@ -628,8 +643,12 @@ type ForwardResult struct {
 	UpstreamResponseServiceTier string
 	Stream                      bool
 	Duration                    time.Duration
-	FirstTokenMs                *int // 首字时间（流式请求）
-	ClientDisconnect            bool // 客户端是否在流式传输过程中断开
+	FirstTokenMs                *int   // 首字时间（流式请求）
+	ClientDisconnect            bool   // 客户端是否在流式传输过程中断开
+	UsagePresent                bool   // 上游是否实际返回了 usage 对象
+	UsageSource                 string // upstream 或 estimated
+	RequestBytes                int    // 请求体字节数（仅用于缺失 usage 的估算）
+	ObservedResponseBytes       int    // 已读取的上游响应字节数（仅用于缺失 usage 的估算）
 	ReasoningEffort             *string
 	// RequestedReasoningEffort is the client-requested effort before mapping.
 	RequestedReasoningEffort *string
@@ -726,6 +745,9 @@ func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
 	if e == nil {
 		return false
 	}
+	if e.Scope == GatewayFailureScopeProvider || e.Scope == GatewayFailureScopeRequest {
+		return false
+	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
 }
 
@@ -762,43 +784,45 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo           AccountRepository
-	groupRepo             GroupRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	userGroupRateRepo     UserGroupRateRepository
-	cache                 GatewayCache
-	digestStore           *DigestSessionStore
-	cfg                   *config.Config
-	schedulerSnapshot     *SchedulerSnapshotService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	identityService       *IdentityService
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	concurrencyService    *ConcurrencyService
-	claudeTokenProvider   *ClaudeTokenProvider
-	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
-	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
-	userGroupRateResolver *userGroupRateResolver
-	userGroupRateCache    *gocache.Cache
-	userGroupRateSF       singleflight.Group
-	modelsListCache       *gocache.Cache
-	modelsListCacheTTL    time.Duration
-	settingService        *SettingService
-	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
-	debugModelRouting     atomic.Bool
-	debugClaudeMimic      atomic.Bool
-	channelService        *ChannelService
-	resolver              *ModelPricingResolver
-	compositeResolver     *CompositeRouteResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
-	tlsFPProfileService   *TLSFingerprintProfileService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	anthropicStreamTransientOnce sync.Once
+	anthropicStreamTransient     *openAIAccountModelTransientState
+	accountRepo                  AccountRepository
+	groupRepo                    GroupRepository
+	usageLogRepo                 UsageLogRepository
+	usageBillingRepo             UsageBillingRepository
+	userRepo                     UserRepository
+	userSubRepo                  UserSubscriptionRepository
+	userGroupRateRepo            UserGroupRateRepository
+	cache                        GatewayCache
+	digestStore                  *DigestSessionStore
+	cfg                          *config.Config
+	schedulerSnapshot            *SchedulerSnapshotService
+	billingService               *BillingService
+	rateLimitService             *RateLimitService
+	billingCacheService          *BillingCacheService
+	identityService              *IdentityService
+	httpUpstream                 HTTPUpstream
+	deferredService              *DeferredService
+	concurrencyService           *ConcurrencyService
+	claudeTokenProvider          *ClaudeTokenProvider
+	sessionLimitCache            SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
+	rpmCache                     RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
+	userGroupRateResolver        *userGroupRateResolver
+	userGroupRateCache           *gocache.Cache
+	userGroupRateSF              singleflight.Group
+	modelsListCache              *gocache.Cache
+	modelsListCacheTTL           time.Duration
+	settingService               *SettingService
+	responseHeaderFilter         *responseheaders.CompiledHeaderFilter
+	debugModelRouting            atomic.Bool
+	debugClaudeMimic             atomic.Bool
+	channelService               *ChannelService
+	resolver                     *ModelPricingResolver
+	compositeResolver            *CompositeRouteResolver
+	debugGatewayBodyFile         atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
+	tlsFPProfileService          *TLSFingerprintProfileService
+	balanceNotifyService         *BalanceNotifyService
+	userPlatformQuotaRepo        UserPlatformQuotaRepository
 }
 
 // NewGatewayService creates a new GatewayService

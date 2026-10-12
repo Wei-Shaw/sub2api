@@ -222,6 +222,7 @@ export interface PublicSettings {
   login_agreement_updated_at?: string
   login_agreement_revision?: string
   login_agreement_documents?: LoginAgreementDocument[]
+  login_captcha_enabled?: boolean
   turnstile_enabled: boolean
   tencent_captcha_enabled?: boolean
   tencent_captcha_app_id?: string
@@ -239,6 +240,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  long_notice_content?: string
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
@@ -654,14 +656,14 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  model_allowlist?: ModelAllowlist
+  models_list_config?: ModelsListConfig
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
   sort_order: number
 }
 
-export interface ModelAllowlist {
+export interface ModelsListConfig {
   enabled: boolean
   models: string[]
 }
@@ -837,7 +839,7 @@ export interface CreateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  model_allowlist?: ModelAllowlist
+  models_list_config?: ModelsListConfig
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -903,7 +905,7 @@ export interface UpdateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
-  model_allowlist?: ModelAllowlist
+  models_list_config?: ModelsListConfig
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1511,7 +1513,7 @@ export interface CodexUsageSnapshot {
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seedance'
+export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'videos' | 'seedance'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -1777,9 +1779,9 @@ export interface UsageLog {
   billing_type: number
 
   request_type?: UsageRequestType
+  native_compaction_v2?: boolean
   stream: boolean
   openai_ws_mode?: boolean
-  native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
 
@@ -1819,6 +1821,10 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  image_previews?: string[]
+  video_previews?: string[]
+  usage_source?: 'upstream' | 'estimated' | null
+  client_disconnected?: boolean
   upstream_model?: string | null
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
@@ -2204,6 +2210,7 @@ export interface UserErrorListParams {
 }
 
 export interface UsageQueryParams {
+  native_compaction_v2?: boolean | null
   page?: number
   page_size?: number
   api_key_id?: number
@@ -2213,7 +2220,6 @@ export interface UsageQueryParams {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
-  native_compaction_v2?: boolean | null
   billing_type?: number | null
   billing_mode?: string | null
   start_date?: string

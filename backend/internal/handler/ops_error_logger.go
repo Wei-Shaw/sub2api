@@ -849,11 +849,28 @@ func isOpsTerminalSSEFrame(frame []byte) bool {
 	if !bytes.Contains(payload, []byte("response.failed")) && !bytes.Contains(payload, []byte(`"error"`)) {
 		return false
 	}
-	var event struct {
-		Type string `json:"type"`
-	}
+	var event map[string]any
 	return json.Unmarshal(payload, &event) == nil &&
-		(event.Type == "response.failed" || event.Type == "error")
+		(event["type"] == "response.failed" || event["type"] == "error" || isOpsChatSSEErrorEnvelope(event))
+}
+
+// Chat Completions may signal failure using only data: {"error": {...}}.
+// Require a meaningful top-level error object, not text containing "error",
+// error:null, or an unrelated typed Responses event.
+func isOpsChatSSEErrorEnvelope(event map[string]any) bool {
+	if event["type"] != nil && event["type"] != "" {
+		return false
+	}
+	errObj, ok := event["error"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"message", "type", "code"} {
+		if value, ok := errObj[key].(string); ok && strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return opsJSONInt(errObj["code"]) > 0 || opsJSONInt(errObj["status_code"]) > 0
 }
 
 func parseOpsSSEFrameEnvelope(frame []byte) ([]byte, []byte) {
@@ -1003,8 +1020,8 @@ func mayContainOpsTerminalSSE(chunk []byte) bool {
 	if bytes.Contains(chunk, []byte("response.failed")) {
 		return true
 	}
-	return bytes.Contains(chunk, []byte("error")) &&
-		(bytes.Contains(chunk, []byte("event")) || bytes.Contains(chunk, []byte(`"type"`)))
+	return bytes.Contains(chunk, []byte(`"error"`)) ||
+		(bytes.Contains(chunk, []byte("error")) && bytes.Contains(chunk, []byte("event")))
 }
 
 func isOpsTerminalSSEEventLine(line []byte) bool {
@@ -1118,7 +1135,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 		}
 		if status < 400 {
-			if parsed.StreamFailure {
+			// Protocol handlers may already have recorded a richer in-band
+			// failure (e.g. Gemini's numeric error.code). Prefer that explicit
+			// classification over an inferred Chat-style envelope.
+			if parsed.StreamFailure && !(parsed.ChatErrorEnvelope && len(service.GetOpsStreamErrors(c)) > 0) {
 				status = inferStreamFailureStatus(c, parsed)
 			} else {
 				// A marked in-band error is a visible request failure even though its
@@ -1785,11 +1805,12 @@ func getContextLatencyMs(c *gin.Context, key string) *int64 {
 }
 
 type parsedOpsError struct {
-	ErrorType     string
-	Message       string
-	Code          string
-	StatusCode    int
-	StreamFailure bool
+	ErrorType         string
+	Message           string
+	Code              string
+	StatusCode        int
+	StreamFailure     bool
+	ChatErrorEnvelope bool
 }
 
 func parseOpsErrorResponse(body []byte) parsedOpsError {
@@ -1891,16 +1912,21 @@ func parseOpsSSEFailure(body []byte) (parsedOpsError, bool) {
 
 		payload := string(payloadBytes)
 		var event map[string]any
+		chatErrorEnvelope := false
 		if err := json.Unmarshal(payloadBytes, &event); err == nil {
 			if eventType == "" {
 				eventType, _ = event["type"].(string)
+				if eventType == "" && isOpsChatSSEErrorEnvelope(event) {
+					eventType = "error"
+					chatErrorEnvelope = true
+				}
 			}
 		}
 		if eventType != "response.failed" && eventType != "error" {
 			continue
 		}
 
-		parsed := parsedOpsError{ErrorType: "upstream_error", StreamFailure: true}
+		parsed := parsedOpsError{ErrorType: "upstream_error", StreamFailure: true, ChatErrorEnvelope: chatErrorEnvelope}
 		if eventType == "error" {
 			parsed.ErrorType = "api_error"
 		}

@@ -50,6 +50,25 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// A dedicated disposable database allows CI to run SQL fault-injection tests
+	// without granting the test process access to the host Docker socket.
+	if dsn := os.Getenv("SUB2API_TEST_DATABASE_URL"); dsn != "" {
+		var err error
+		integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := ApplyMigrations(ctx, integrationDB); err != nil {
+			log.Fatal(err)
+		}
+		drv := entsql.OpenDB(dialect.Postgres, integrationDB)
+		integrationEntClient = dbent.NewClient(dbent.Driver(drv))
+		code := m.Run()
+		_ = integrationEntClient.Close()
+		_ = integrationDB.Close()
+		os.Exit(code)
+	}
+
 	if !dockerIsAvailable(ctx) {
 		// In CI we expect Docker to be available so integration tests should fail loudly.
 		if os.Getenv("CI") != "" {

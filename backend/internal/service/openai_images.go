@@ -603,7 +603,9 @@ func (s *OpenAIGatewayService) ForwardImages(
 	body []byte,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (result *OpenAIForwardResult, err error) {
+	clearOpenAIImagePreviews(c)
+	defer func() { persistCapturedImagePreviews(ctx, c, result) }()
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
@@ -969,6 +971,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	// Capture provider-hosted videos (Wan/SD and other OpenAI-compatible media APIs)
+	// for the admin usage preview without changing the client response.
+	if videoURL := ExtractVideoPreviewURL(body); videoURL != "" {
+		c.Set("openai_video_preview_url", videoURL)
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -976,6 +983,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 			contentType = upstreamType
 		}
 	}
+	CaptureOpenAIImagePreviewResponse(c, body)
 	c.Data(resp.StatusCode, contentType, body)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
@@ -1040,6 +1048,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		}
 		mergeOpenAIUsage(&usage, dataBytes)
 		imageCounter.AddSSEData(dataBytes)
+		CaptureOpenAIImagePreviewResponse(c, dataBytes)
 		if direct == nil || string(dataBytes) == "[DONE]" {
 			return
 		}
@@ -1140,6 +1149,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		}
 		mergeOpenAIUsage(&usage, body)
 		imageCounter.AddJSONResponse(body)
+		CaptureOpenAIImagePreviewResponse(c, body)
 	}
 
 	streamInterval := s.openAIImageStreamDataInterval()
@@ -1491,7 +1501,8 @@ func normalizeOpenAIImageBase64(raw string) string {
 		}
 	}
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimRight(raw, "=") + strings.Repeat("=", (4-len(raw)%4)%4)
+	raw = strings.TrimRight(raw, "=")
+	raw += strings.Repeat("=", (4-len(raw)%4)%4)
 	if raw == "" {
 		return ""
 	}
@@ -1530,6 +1541,9 @@ func walkOpenAIImageInlineAssets(node any, prompt string, out *[]openAIImagePoin
 			DownloadURL: firstNonEmptyString(value["download_url"], value["url"], value["image_url"]),
 			B64JSON:     firstNonEmptyString(value["b64_json"], value["base64"], value["image_base64"]),
 			MimeType:    firstNonEmptyString(value["mime_type"], value["mimeType"], value["content_type"]),
+		}
+		if value["type"] == "image_generation_call" && item.B64JSON == "" {
+			item.B64JSON = firstNonEmptyString(value["result"])
 		}
 		switch {
 		case strings.HasPrefix(strings.TrimSpace(item.Pointer), "file-service://"),

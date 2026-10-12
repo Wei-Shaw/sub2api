@@ -209,15 +209,9 @@ describe('ModelWhitelistSelector', () => {
     expect(copyToClipboard).not.toHaveBeenCalled()
   })
 
-  it('warns when model IDs sync but capability metadata is incomplete', async () => {
+  it('reports success when model IDs sync without capability metadata', async () => {
     syncUpstreamModels.mockResolvedValue({
-      models: ['x-preview-f-free'],
-      warnings: [
-        {
-          code: 'upstream_model_metadata_incomplete',
-          message: 'Model IDs were synced, but capability metadata could not be updated.'
-        }
-      ]
+      models: ['x-preview-f-free']
     })
     const wrapper = mount(ModelWhitelistSelector, {
       props: {
@@ -240,8 +234,8 @@ describe('ModelWhitelistSelector', () => {
     await flushPromises()
 
     expect(wrapper.emitted('update:modelValue')).toEqual([[['x-preview-f-free']]])
-    expect(showWarning).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsMetadataIncomplete')
-    expect(showSuccess).not.toHaveBeenCalled()
+    expect(showWarning).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsSuccess')
   })
 
   it('shows success and a partial warning when some capabilities were saved', async () => {

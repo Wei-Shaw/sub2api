@@ -766,8 +766,12 @@ func TestSyncUpstreamModelCatalogDoesNotOverwriteSnapshotWhenRegistryFails(t *te
 	require.Equal(t, []string{"x-preview-f-free"}, catalog.Models)
 	require.Empty(t, catalog.Metadata)
 	require.Equal(t, []UpstreamModelSyncWarning{{
-		Code:    UpstreamModelMetadataIncompleteCode,
-		Message: "Model IDs were synced, but capability metadata is incomplete.",
+		Code:          UpstreamModelMetadataIncompleteCode,
+		Message:       "Model IDs were synced, but capability metadata is incomplete.",
+		ModelIDs:      []string{"x-preview-f-free"},
+		CompleteCount: 0,
+		TotalCount:    1,
+		Reason:        "registry_unavailable",
 	}}, catalog.Warnings)
 	require.Nil(t, repo.updates, "a failed metadata enrichment must not erase a previously saved snapshot")
 }
@@ -1184,4 +1188,116 @@ func TestMatchModelsDevProviderOfficialHostsWithoutAPI(t *testing.T) {
 		Reasoning: new(bool), InputModalities: []string{"text"}, ContextWindow: 1050000,
 	}}
 	require.False(t, upstreamCatalogNeedsRegistry(capabilitySyncModelIDs([]string{"gpt-6-astra", "gpt-image-2"}), metadata))
+}
+
+func TestFetchModelsDevMetadataUsesKnownOpenAIModelsForCompatibleGateway(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{
+			"openai": {"id":"openai", "models": {
+				"gpt-5.5": {
+					"id":"gpt-5.5", "name":"GPT-5.5", "reasoning":true,
+					"reasoning_options":[{"type":"effort","values":["none","low","medium","high","xhigh"]}],
+					"modalities":{"input":["text","image","pdf"]},
+					"limit":{"context":1050000,"output":128000}
+				}
+			}}
+		}`)),
+	}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "key",
+			"base_url": "https://gateway.example/v1",
+		},
+	}
+
+	metadata, err := svc.fetchModelsDevMetadata(context.Background(), account, []string{
+		"gpt-5.5",
+		"codex-auto-review",
+		"gateway-private-model",
+	})
+	require.NoError(t, err)
+	require.Contains(t, metadata, "gpt-5.5")
+	require.Contains(t, metadata, "codex-auto-review")
+	require.NotContains(t, metadata, "gateway-private-model")
+	require.True(t, upstreamModelMetadataIsComplete(metadata["codex-auto-review"]))
+}
+
+func TestLookupModelsDevModelForAccountUsesKnownModelFamilies(t *testing.T) {
+	completeModel := func(id string) modelsDevModel {
+		return modelsDevModel{
+			ID: id, Reasoning: boolPtr(true),
+			ReasoningOptions: []modelsDevReasoningOption{{Type: "effort", Values: []any{"low", "high"}}},
+			Modalities: modelsDevModalities{Input: []string{"text"}},
+			Limit:      modelsDevLimit{Context: 128000, Output: 16384},
+		}
+	}
+	registry := map[string]modelsDevProvider{
+		"relay": {ID: "relay", API: "https://relay.example/v1", Models: map[string]modelsDevModel{}},
+		"deepseek": {ID: "deepseek", Models: map[string]modelsDevModel{
+			"deepseek-v4-flash": completeModel("deepseek-v4-flash"),
+		}},
+		"zhipuai-coding-plan": {ID: "zhipuai-coding-plan", Models: map[string]modelsDevModel{
+			"glm-5.3": completeModel("glm-5.3"),
+		}},
+		"moonshotai-cn": {ID: "moonshotai-cn", Models: map[string]modelsDevModel{
+			"kimi-k3": completeModel("kimi-k3"),
+		}},
+		"alibaba-cn": {ID: "alibaba-cn", Models: map[string]modelsDevModel{
+			"qwen3.8-max": completeModel("qwen3.8-max"),
+		}},
+		"xiaomi": {ID: "xiaomi", Models: map[string]modelsDevModel{
+			"mimo-v2.5": completeModel("mimo-v2.5"),
+		}},
+		"minimax-cn": {ID: "minimax-cn", Models: map[string]modelsDevModel{
+			"MiniMax-M3": completeModel("MiniMax-M3"),
+		}},
+		"tencent-token-plan": {ID: "tencent-token-plan", Models: map[string]modelsDevModel{
+			"hy3": completeModel("hy3"),
+		}},
+		"xai": {ID: "xai", Models: map[string]modelsDevModel{
+			"grok-4.6": completeModel("grok-4.6"),
+		}},
+	}
+
+	preferred := registry["relay"]
+	for _, modelID := range []string{
+		"deepseek-v4-flash-0731", "glm-5.3", "kimi-k3", "qwen3.8-max", "mimo-v2.5",
+		"minimax-m3", "hy3", "grok-4.6",
+	} {
+		model, found := lookupModelsDevModelForAccount(registry, preferred, modelID, true)
+		require.True(t, found, "model %s should use its known provider family", modelID)
+		require.True(t, upstreamModelMetadataIsComplete(upstreamMetadataFromModelsDevModel(modelID, model)))
+	}
+
+	_, found := lookupModelsDevModelForAccount(registry, preferred, "private-company-model", true)
+	require.False(t, found, "unknown private models must not inherit another provider's metadata")
+}
+
+func TestLookupModelsDevModelForAccountKeepsProviderIsolationForNonCompatibleAccounts(t *testing.T) {
+	registry := map[string]modelsDevProvider{
+		"deepseek": {ID: "deepseek", Models: map[string]modelsDevModel{
+			"deepseek-v4-pro": {ID: "deepseek-v4-pro"},
+		}},
+	}
+
+	_, found := lookupModelsDevModelForAccount(registry, modelsDevProvider{}, "deepseek-v4-pro", false)
+	require.False(t, found)
+}
+
+func TestUpstreamMetadataFromModelsDevModelMapsToggleReasoning(t *testing.T) {
+	metadata := upstreamMetadataFromModelsDevModel("glm-5.1", modelsDevModel{
+		ID: "glm-5.1", Reasoning: boolPtr(true),
+		ReasoningOptions: []modelsDevReasoningOption{{Type: "toggle"}},
+		Modalities:       modelsDevModalities{Input: []string{"text"}},
+		Limit:            modelsDevLimit{Context: 200000, Output: 131072},
+	})
+
+	require.True(t, upstreamModelMetadataIsComplete(metadata))
+	require.Equal(t, "high", metadata.DefaultReasoningLevel)
+	require.Equal(t, []string{"none", "high"}, metadata.SupportedReasoningLevels)
 }

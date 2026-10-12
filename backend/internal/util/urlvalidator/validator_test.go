@@ -72,6 +72,15 @@ func TestValidateHTTPURL(t *testing.T) {
 	if _, err := ValidateHTTPURL("https://localhost", false, ValidationOptions{AllowPrivate: false}); err == nil {
 		t.Fatalf("expected localhost to be blocked when allow_private_hosts is false")
 	}
+	if _, err := ValidateHTTPURL("http://gpt.us.aiapisplus.com/", false, ValidationOptions{AllowInsecureHTTPHosts: []string{"gpt.us.aiapisplus.com"}}); err != nil {
+		t.Fatalf("expected configured insecure HTTP host to pass, got %v", err)
+	}
+	if _, err := ValidateHTTPURL("http://new-upstream.example", false, ValidationOptions{AllowInsecureHTTP: true}); err != nil {
+		t.Fatalf("expected account upstream HTTP to pass, got %v", err)
+	}
+	if _, err := ValidateHTTPURL("http://example.com", false, ValidationOptions{AllowInsecureHTTPHosts: []string{"gpt.us.aiapisplus.com"}}); err == nil {
+		t.Fatalf("expected non-allowlisted insecure HTTP host to fail")
+	}
 }
 
 func TestIsBlockedHost(t *testing.T) {

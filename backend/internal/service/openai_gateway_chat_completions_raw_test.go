@@ -53,6 +53,23 @@ func TestBuildOpenAIChatCompletionsURL(t *testing.T) {
 	}
 }
 
+func TestRequestContainsVideoInput(t *testing.T) {
+	var tests = []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"video part", `{"messages":[{"role":"user","content":[{"type":"video_url","video_url":{"url":"https://example/video.mp4"}}]}]}`, true},
+		{"text and image only", `{"messages":[{"role":"user","content":[{"type":"text","text":"hello"},{"type":"image_url","image_url":{"url":"https://example/image.png"}}]}]}`, false},
+		{"string content", `{"messages":[{"role":"user","content":"hello"}]}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, requestContainsVideoInput([]byte(tt.body)))
+		})
+	}
+}
+
 // TestBuildOpenAIResponsesURL_ProbeURL 锁定 probe/测试端点使用的 URL 构建逻辑，
 // 确保 buildOpenAIResponsesURL 对标准 OpenAI base_url 格式均拼出 `/v1/responses`。
 func TestBuildOpenAIResponsesURL_ProbeURL(t *testing.T) {

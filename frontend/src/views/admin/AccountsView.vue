@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <TablePageLayout class="newapi-admin-workspace">
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
@@ -229,6 +229,7 @@
                 v-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
                 width-class="w-max max-w-sm break-all"
+                :interactive="false"
                 class="-ml-1 self-start"
               >
                 <template #trigger>
@@ -237,6 +238,7 @@
                     target="_blank"
                     rel="noopener noreferrer"
                     class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
+                    @click.stop
                   >
                     {{ value }}
                   </a>

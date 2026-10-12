@@ -159,6 +159,8 @@ export interface OpsRequestDetailsParams {
   request_id?: string
   q?: string
 
+  include_recovered_upstream?: boolean
+
   min_duration_ms?: number
   max_duration_ms?: number
 
@@ -407,6 +409,47 @@ export interface OpsAccountAvailabilityStatsResponse {
   group: Record<string, GroupAvailability>
   account: Record<string, AccountAvailability>
   timestamp?: string
+}
+
+export interface OpsSchedulerMetrics {
+  select_total: number
+  sticky_previous_hit_total: number
+  sticky_session_hit_total: number
+  load_balance_select_total: number
+  account_switch_total: number
+  scheduler_latency_ms_total: number
+  scheduler_latency_ms_avg: number
+  sticky_hit_ratio: number
+  account_switch_rate: number
+  load_skew_avg: number
+  runtime_stats_account_count: number
+}
+
+export interface OpsModelCooldown {
+  account_id: number
+  model: string
+  failure_streak: number
+  last_failure_at: string
+  block_until: string
+  remaining_seconds: number
+  scope?: 'account' | 'account_model'
+  state?: 'cooldown' | 'awaiting_probe' | 'probing' | 'recovering'
+  reason?: string
+  probes_in_flight?: number
+  recovery_required?: number
+  probe_started_at?: string
+  recovery_successes?: number
+}
+
+export interface OpsSchedulerSnapshot {
+  generated_at: string
+  metrics: OpsSchedulerMetrics
+  model_cooldowns: OpsModelCooldown[]
+}
+
+export async function getSchedulerSnapshot(): Promise<OpsSchedulerSnapshot> {
+  const { data } = await apiClient.get<OpsSchedulerSnapshot>('/admin/ops/scheduler')
+  return data
 }
 
 export async function getAccountAvailabilityStats(platform?: string, groupId?: number | null): Promise<OpsAccountAvailabilityStatsResponse> {
@@ -1327,6 +1370,7 @@ export const opsAPI = {
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
+  getSchedulerSnapshot,
   getRealtimeTrafficSummary,
   subscribeQPS,
 

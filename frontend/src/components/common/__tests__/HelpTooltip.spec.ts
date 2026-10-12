@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
@@ -12,6 +12,20 @@ function getTooltipElement(): HTMLDivElement {
 }
 
 describe('HelpTooltip', () => {
+  it('only subscribes to viewport events while open', async () => {
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+    const wrapper = mount(HelpTooltip, { attachTo: document.body })
+    expect(add.mock.calls.filter(([name]) => name === 'scroll')).toHaveLength(0)
+    await wrapper.get('.group').trigger('mouseenter')
+    expect(add.mock.calls.filter(([name]) => name === 'scroll')).toHaveLength(1)
+    await wrapper.get('.group').trigger('mouseleave')
+    expect(remove.mock.calls.filter(([name]) => name === 'scroll')).toHaveLength(1)
+    wrapper.unmount()
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
   afterEach(() => {
     document.body.innerHTML = ''
   })
@@ -104,6 +118,25 @@ describe('HelpTooltip', () => {
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(tooltip.style.display).toBe('none')
+
+    wrapper.unmount()
+  })
+
+  it('allows non-interactive hover details to pass pointer events through', async () => {
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: {
+        content: 'passive details',
+        interactive: false,
+      },
+    })
+
+    await wrapper.get('.group').trigger('mouseenter')
+    await nextTick()
+
+    const tooltip = getTooltipElement()
+    expect(tooltip.classList.contains('pointer-events-none')).toBe(true)
+    expect(tooltip.classList.contains('pointer-events-auto')).toBe(false)
 
     wrapper.unmount()
   })

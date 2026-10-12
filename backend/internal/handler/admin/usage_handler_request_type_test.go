@@ -39,7 +39,7 @@ func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters
 func newAdminUsageRequestTypeTestRouter(repo *adminUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
-	handler := NewUsageHandler(usageSvc, nil, nil, nil)
+	handler := NewUsageHandler(usageSvc, nil, nil, nil, nil)
 	router := gin.New()
 	router.GET("/admin/usage", handler.List)
 	router.GET("/admin/usage/stats", handler.Stats)

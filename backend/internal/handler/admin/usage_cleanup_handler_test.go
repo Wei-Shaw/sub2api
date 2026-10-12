@@ -114,7 +114,7 @@ func setupCleanupRouter(cleanupService *service.UsageCleanupService, userID int6
 		})
 	}
 
-	handler := NewUsageHandler(nil, nil, nil, cleanupService)
+	handler := NewUsageHandler(nil, nil, nil, cleanupService, nil)
 	router.POST("/api/v1/admin/usage/cleanup-tasks", handler.CreateCleanupTask)
 	router.GET("/api/v1/admin/usage/cleanup-tasks", handler.ListCleanupTasks)
 	router.POST("/api/v1/admin/usage/cleanup-tasks/:id/cancel", handler.CancelCleanupTask)

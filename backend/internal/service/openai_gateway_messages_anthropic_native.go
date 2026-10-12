@@ -260,6 +260,8 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
+	setObservedResponseBytes(c, responseBodyBytesForUsageEstimate(body))
+	setUsagePresent(c, claudeUsagePresentInJSON(body))
 	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {
@@ -420,6 +422,25 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 		keepaliveTimer.Reset(keepaliveInterval)
 	}
 	inPartialEvent := false
+	sawSemanticOutput := false
+	currentEventHasError := false
+	var upstreamStreamErrorBody []byte
+	streamFailover := func(status int, body []byte, fallback error) error {
+		if clientDisconnected || sawSemanticOutput {
+			return fallback
+		}
+		if status <= 0 {
+			status = http.StatusBadGateway
+		}
+		if s != nil {
+			applyAnthropicStreamFailoverPolicy(ctx, s.rateLimitService, account, upstreamModel, status, body, resp.Header)
+		}
+		failoverErr := markAnthropicModelScopedFailover(s.newOpenAIAccountFailoverError(account, status, resp.Header, body, strings.TrimSpace(extractUpstreamErrorMessage(body)), false, false), body)
+		if fallback != nil {
+			return fmt.Errorf("%w: %v", failoverErr, fallback)
+		}
+		return failoverErr
+	}
 
 	for {
 		select {
@@ -429,8 +450,8 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 					flusher.Flush()
 				}
 				if !sawTerminalEvent {
-					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
-						fmt.Errorf("stream usage incomplete: missing terminal event")
+					failure := fmt.Errorf("stream usage incomplete: missing terminal event")
+					return nil, streamFailover(http.StatusBadGateway, []byte(failure.Error()), failure)
 				}
 				return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
 			}
@@ -450,14 +471,23 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), ev.err
 				}
-				return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
-					fmt.Errorf("stream read error: %w", ev.err)
+				failure := fmt.Errorf("stream read error: %w", ev.err)
+				return nil, streamFailover(http.StatusBadGateway, []byte(failure.Error()), failure)
 			}
 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
+				setObservedResponseBytes(c, usageObservedResponseBytes(c)+responseBodyBytesForUsageEstimate([]byte(trimmed)))
+				setUsagePresent(c, claudeUsagePresentInJSON([]byte(trimmed)))
 				observer.ObserveAnthropic([]byte(trimmed))
+				if anthropicStreamError(trimmed) != nil {
+					upstreamStreamErrorBody = []byte(trimmed)
+					currentEventHasError = true
+				}
+				if anthropicStreamHasSemanticOutput(trimmed) {
+					sawSemanticOutput = true
+				}
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
@@ -468,12 +498,15 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				parseSSEUsagePassthrough(data, usage)
 			} else {
 				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "event:") && strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "error") {
+					currentEventHasError = true
+				}
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
 					sawTerminalEvent = true
 				}
 			}
 
-			if !clientDisconnected {
+			if !clientDisconnected && !currentEventHasError {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
@@ -490,6 +523,17 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				} else {
 					inPartialEvent = true
 				}
+			}
+			if line == "" && len(upstreamStreamErrorBody) > 0 {
+				status := anthropicStreamErrorStatus(string(upstreamStreamErrorBody))
+				failure := anthropicStreamError(string(upstreamStreamErrorBody))
+				if failure == nil {
+					failure = fmt.Errorf("anthropic stream error event")
+				}
+				return nil, streamFailover(status, upstreamStreamErrorBody, failure)
+			}
+			if line == "" {
+				currentEventHasError = false
 			}
 
 		case <-intervalCh:

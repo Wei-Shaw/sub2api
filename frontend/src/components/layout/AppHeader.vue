@@ -1,30 +1,36 @@
 <template>
-  <header class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50">
-    <div class="flex h-16 items-center justify-between gap-2 px-2 sm:px-4 md:px-6">
-      <!-- Left: Mobile Menu Toggle + Page Title -->
-      <div class="flex shrink-0 items-center gap-2 sm:gap-4">
+  <header class="app-header sticky top-0 z-50">
+    <div class="flex h-12 items-center gap-1.5 px-2 sm:gap-2 sm:px-3">
+      <div class="flex min-w-0 shrink-0 items-center gap-1">
         <button
-          @click="toggleMobileSidebar"
-          class="btn-ghost btn-icon lg:hidden"
+          @click="toggleNavigation"
+          class="newapi-icon-button"
           :aria-label="t('common.toggleMenu')"
         >
-          <Icon name="menu" size="md" />
+          <Icon name="menu" size="sm" />
         </button>
-
-        <div class="hidden lg:block">
-          <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ pageTitle }}
-          </h1>
-          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
-            {{ pageDescription }}
-          </p>
+        <div class="newapi-brand" style="height: 38px">
+          <img :src="siteLogo || '/logo.svg'" alt="" class="h-5 w-5 rounded-md object-contain" />
+          <div class="flex min-w-0 flex-col items-start gap-0.5">
+            <router-link :to="homePath" class="max-w-44 truncate leading-tight">{{ siteName }}</router-link>
+            <SiteVersionBadge />
+          </div>
         </div>
       </div>
 
-      <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
-      <div class="flex min-w-0 items-center gap-1 sm:gap-3">
+      <nav class="newapi-topnav hidden items-center lg:flex">
+        <router-link :to="homePath" :class="{ active: route.path === homePath }">控制台</router-link>
+        <router-link v-if="user && modelPlazaEnabled" :to="{ path: '/model-plaza', query: { embedded: '1' } }">模型广场</router-link>
+        <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">文档</a>
+      </nav>
+
+      <div class="ml-auto flex min-w-0 items-center gap-1">
+        <button class="newapi-search hidden md:flex" type="button" title="搜索" @click="openSearch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-4 w-4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span>搜索</span><kbd>⌘ K</kbd>
+        </button>
         <!-- Announcement Bell -->
-        <AnnouncementBell v-if="user" />
+        <AnnouncementBell v-if="user" class="relative" />
 
         <!-- Docs Link -->
         <a
@@ -32,22 +38,21 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white sm:flex"
+          class="hidden"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
 
-        <!-- Model Plaza Entry (icon only below sm) -->
+        <!-- Model Plaza Entry (mobile/tablet; desktop entry stays in the custom top nav) -->
         <router-link
           v-if="user && modelPlazaEnabled"
           :to="{ path: '/model-plaza', query: { embedded: '1' } }"
           :title="t('nav.modelPlaza')"
           :aria-label="t('nav.modelPlaza')"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          class="newapi-icon-button lg:hidden"
         >
           <Icon name="grid" size="sm" />
-          <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
         </router-link>
 
         <!-- Language Switcher -->
@@ -59,10 +64,10 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="group relative hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
+          class="header-balance group relative hidden h-8 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 dark:border-dark-700 dark:bg-dark-800 sm:flex"
         >
           <svg
-            class="h-4 w-4 text-primary-600 dark:text-primary-400"
+            class="h-3.5 w-3.5 text-blue-600 dark:text-blue-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -74,7 +79,7 @@
               d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
             />
           </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
+          <span class="text-xs font-semibold text-gray-800 dark:text-gray-100">
             {{ formatHeaderMoney(availableBalance) }}
           </span>
           <span
@@ -107,10 +112,10 @@
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
             @click="toggleDropdown"
-            class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
+            class="user-trigger flex h-8 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             :aria-label="t('common.userMenu')"
           >
-            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="user-avatar flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-blue-600 text-[10px] font-semibold text-white">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -120,10 +125,10 @@
               <span v-else>{{ userInitials }}</span>
             </div>
             <div class="hidden text-left md:block">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">
+              <div class="text-xs font-medium text-gray-900 dark:text-white">
                 {{ displayName }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-dark-400">
+              <div class="text-[10px] text-gray-500 dark:text-dark-400">
                 {{ t('admin.users.roles.' + user.role) }}
               </div>
             </div>
@@ -249,21 +254,46 @@
       </div>
     </div>
   </header>
+
+  <transition name="newapi-fade">
+    <div v-if="searchOpen" class="newapi-search-overlay" @click.self="closeSearch">
+      <div class="newapi-search-dialog" role="dialog" aria-modal="true" aria-label="页面搜索">
+        <div class="newapi-search-input-row">
+          <Icon name="search" size="sm" />
+          <input ref="searchInput" v-model="searchQuery" type="search" placeholder="搜索页面或功能..." @keydown.esc="closeSearch" />
+          <kbd>ESC</kbd>
+        </div>
+        <div class="newapi-search-results">
+          <button
+            v-for="result in filteredSearchResults"
+            :key="result.path"
+            type="button"
+            class="newapi-search-result"
+            @click="goToSearchResult(result.path)"
+          >
+            <span class="newapi-search-result-icon"><Icon name="arrowRight" size="xs" /></span>
+            <span class="min-w-0 flex-1 truncate text-left">{{ result.label }}</span>
+            <span class="newapi-search-result-path">{{ result.path }}</span>
+          </button>
+          <p v-if="filteredSearchResults.length === 0" class="newapi-search-empty">没有匹配的页面</p>
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import SiteVersionBadge from '@/components/common/SiteVersionBadge.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
-import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
-import { resolveRouteMetaKeys } from '@/router/title'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 
 const router = useRouter()
@@ -271,15 +301,25 @@ const route = useRoute()
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const siteName = computed(() => appStore.siteName || 'BuaGa API')
+const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+const homePath = computed(() => route.path.startsWith('/admin') ? '/admin/dashboard' : '/dashboard')
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
+const searchOpen = ref(false)
+const searchQuery = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const subscriptionFeatureEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.subscription))
+const purchaseLabel = computed(() => {
+  const mode = resolveSiteBillingMode(appStore.cachedPublicSettings)
+  return t(mode === 'recharge_only' ? 'nav.recharge' : mode === 'subscription_only' ? 'nav.subscribe' : 'nav.buySubscription')
+})
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
@@ -313,40 +353,67 @@ const displayName = computed(() => {
   return user.value.username || user.value.email?.split('@')[0] || ''
 })
 
-// 订阅功能关闭时不挂载顶栏订阅徽章（组件 onMounted 会拉取订阅接口）。
-const subscriptionFeatureEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.subscription))
-
-// /purchase 的标题/描述随站点计费模式切换，与 document.title 共用同一解析。
-const routeMetaKeys = computed(() => resolveRouteMetaKeys(route, {
-  billingMode: resolveSiteBillingMode(appStore.cachedPublicSettings),
-}))
-
-const pageTitle = computed(() => {
-  // For custom pages, use the menu item's label instead of generic "自定义页面"
-  if (route.name === 'CustomPage') {
-    const id = route.params.id as string
-    const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
-    const menuItem = publicItems.find((item) => item.id === id)
-      ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
-    if (menuItem?.label) return menuItem.label
-  }
-  const titleKey = routeMetaKeys.value.titleKey
-  if (titleKey) {
-    return t(titleKey)
-  }
-  return (route.meta.title as string) || ''
+const searchResults = computed(() => {
+  const userPages = [
+    { path: '/dashboard', label: '仪表盘' },
+    { path: '/keys', label: 'API 密钥' },
+    { path: '/usage', label: '使用记录' },
+    { path: '/available-channels', label: '可用渠道' },
+    { path: '/monitor', label: '渠道状态' },
+    { path: '/subscriptions', label: '我的订阅' },
+    { path: '/purchase', label: purchaseLabel.value },
+    { path: '/orders', label: '我的订单' },
+    { path: '/redeem', label: '兑换码' },
+    { path: '/profile', label: '个人资料' },
+  ]
+  const adminPages = [
+    { path: '/admin/dashboard', label: '管理控制台' },
+    { path: '/admin/users', label: '用户管理' },
+    { path: '/admin/groups', label: '分组管理' },
+    { path: '/admin/accounts', label: '账号管理' },
+    { path: '/admin/subscriptions', label: '订阅管理' },
+    { path: '/admin/usage', label: '管理端使用记录' },
+    { path: '/admin/settings', label: '系统设置' },
+  ]
+  const visibleUserPages = userPages.filter(page => page.path !== '/subscriptions' || subscriptionFeatureEnabled.value)
+  const pages = authStore.isAdmin ? [...adminPages, ...visibleUserPages] : visibleUserPages
+  const query = searchQuery.value.trim().toLowerCase()
+  return query
+    ? pages.filter((page) => `${page.label} ${page.path}`.toLowerCase().includes(query))
+    : pages
 })
+const filteredSearchResults = computed(() => searchResults.value.slice(0, 12))
 
-const pageDescription = computed(() => {
-  const descKey = routeMetaKeys.value.descriptionKey
-  if (descKey) {
-    return t(descKey)
+function toggleNavigation() {
+  if (window.matchMedia('(min-width: 1024px)').matches) {
+    appStore.toggleSidebar()
+  } else {
+    appStore.toggleMobileSidebar()
   }
-  return (route.meta.description as string) || ''
-})
+}
 
-function toggleMobileSidebar() {
-  appStore.toggleMobileSidebar()
+function openSearch() {
+  searchOpen.value = true
+  searchQuery.value = ''
+  void nextTick(() => searchInput.value?.focus())
+}
+
+function closeSearch() {
+  searchOpen.value = false
+}
+
+function goToSearchResult(path: string) {
+  closeSearch()
+  void router.push(path)
+}
+
+function handleGlobalShortcut(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    searchOpen.value ? closeSearch() : openSearch()
+  } else if (event.key === 'Escape' && searchOpen.value) {
+    closeSearch()
+  }
 }
 
 function toggleDropdown() {
@@ -386,10 +453,12 @@ function handleClickOutside(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleGlobalShortcut)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleGlobalShortcut)
 })
 </script>
 

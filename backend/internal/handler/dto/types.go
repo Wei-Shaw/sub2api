@@ -646,6 +646,9 @@ type UsageLog struct {
 	ImageSizeSource    *string        `json:"image_size_source"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
+	VideoCount         int            `json:"video_count"`
+	VideoResolution    *string        `json:"video_resolution,omitempty"`
+	VideoDurationSeconds *int         `json:"video_duration_seconds,omitempty"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
@@ -672,6 +675,10 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+	// UsageSource distinguishes authoritative upstream usage from local fallback estimates.
+	UsageSource *string `json:"usage_source,omitempty"`
+	// ClientDisconnected is true when the downstream connection ended before forwarding completed.
+	ClientDisconnected bool `json:"client_disconnected"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
@@ -700,6 +707,8 @@ type AdminUsageLog struct {
 
 	// IPAddress 用户请求 IP
 	IPAddress *string `json:"ip_address,omitempty"`
+	ImagePreviews []string `json:"image_previews,omitempty"`
+	VideoPreviews []string `json:"video_previews,omitempty"`
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`

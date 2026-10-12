@@ -485,16 +485,25 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 			responseID,
 			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
 		)
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+		selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}), nil
+		})
+		selection, ok := s.finalizeOpenAIAccountTransientSelection(selection, requestedModel)
+		if !ok {
+			if result.ReleaseFunc != nil {
+				result.ReleaseFunc()
+			}
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return nil, nil
+		}
+		return selection, nil
 	}
 
 	cfg := s.schedulingConfig()
 	if s.concurrencyService != nil {
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+		selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
@@ -502,7 +511,13 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}), nil
+		})
+		selection, ok := s.finalizeOpenAIAccountTransientSelection(selection, requestedModel)
+		if !ok {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return nil, nil
+		}
+		return selection, nil
 	}
 	return nil, nil
 }

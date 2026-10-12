@@ -91,3 +91,61 @@ func TestAccountTestService_OpenAIImageAPIKeyUsesConfiguredV1BaseURL(t *testing.
 	require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")
 	require.Contains(t, rec.Body.String(), "\"success\":true")
 }
+
+func TestAccountTestService_OpenAIImageAPIKeyHandlesURLResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.example/generated.png","revised_prompt":"draw a cat"}]}`)),
+		},
+	}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:       55,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	err := svc.testOpenAIImageAPIKey(c, context.Background(), account, "gpt-image-2", "draw a cat")
+	require.NoError(t, err)
+	require.Contains(t, rec.Body.String(), `"image_url":"https://images.example/generated.png"`)
+	require.Contains(t, rec.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_OpenAIImageAPIKeyRejectsResponseWithoutImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"data":[{"revised_prompt":"draw a cat"}]}`)),
+		},
+	}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:          56,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-api-key"},
+	}
+
+	err := svc.testOpenAIImageAPIKey(c, context.Background(), account, "gpt-image-2", "draw a cat")
+	require.ErrorContains(t, err, "API response contained no usable image data or URL")
+	require.Contains(t, rec.Body.String(), "API response contained no usable image data or URL")
+	require.NotContains(t, rec.Body.String(), `"success":true`)
+}

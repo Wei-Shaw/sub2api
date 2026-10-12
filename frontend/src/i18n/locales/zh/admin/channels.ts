@@ -45,6 +45,8 @@ export default {
 
     // Channel Management
     channels: {
+      noGroupsSelected: '请至少选择一个分组',
+      emptyModelsInPricing: '请为每条定价添加至少一个模型',
       title: '渠道管理',
       description: '管理渠道和自定义模型定价',
       searchChannels: '搜索渠道...',
@@ -66,8 +68,6 @@ export default {
       updateError: '更新渠道失败',
       deleteError: '删除渠道失败',
       nameRequired: '请输入渠道名称',
-      noGroupsSelected: '请为 {platform} 至少选择一个分组',
-      emptyModelsInPricing: '请为 {platform} 定价规则至少添加一个模型',
       duplicateModels: '模型「{0}」在多个定价条目中重复',
       modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。模型名称按大小写不敏感匹配，已有条目已覆盖其所有大小写变体，无需重复添加。",
       mappingConflict: "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。源模式按大小写不敏感匹配，已有条目已覆盖其所有大小写变体。",
@@ -542,6 +542,11 @@ export default {
       duplicateSuccess: '监控已复制为「{name}」，已默认停用，请确认配置后再启用',
       duplicateFailed: '复制监控失败',
       duplicateKeyUnavailable: 'API Key 无法解密，请先编辑并重新填写 Key 后再复制',
+      sortOrder: '自由排序',
+      sortOrderHint: '拖动左侧手柄调整渠道展示顺序，排在前面的渠道会优先显示。',
+      dragToSort: '拖动“{name}”调整顺序',
+      sortOrderUpdated: '渠道展示顺序已保存',
+      failedToUpdateSortOrder: '保存渠道展示顺序失败，请刷新后重试',
       apiKeyDecryptFailed: 'API Key 解密失败，请重新编辑该监控并填入新的 Key',
       createSuccess: '监控创建成功',
       updateSuccess: '监控更新成功',

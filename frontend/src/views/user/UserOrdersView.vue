@@ -1,8 +1,8 @@
 <template>
   <AppLayout>
-    <div class="space-y-4">
+    <div class="newapi-orders-workspace space-y-4">
       <!-- Filters -->
-      <div class="card p-4">
+      <div class="newapi-orders-toolbar card p-3">
         <div class="flex flex-wrap items-center gap-3">
           <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="handlePageChange(1)" />
           <div class="flex flex-1 items-center justify-end gap-2">

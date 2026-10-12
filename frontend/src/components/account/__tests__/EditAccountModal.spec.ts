@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 import {
@@ -354,7 +354,7 @@ describe('EditAccountModal', () => {
     ])
   })
 
-  it('sets expiry presets from now instead of extending the saved expiry', async () => {
+  it('replaces the saved expiry with the date selected in the custom form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))
     const account = buildAccount()
@@ -364,14 +364,9 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account)
     const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
 
-    for (const [label, expected] of [
-      ['payment.oneMonth', '2028-03-29T12:34'],
-      ['payment.oneYear', '2029-02-28T12:34'],
-    ]) {
-      const button = wrapper.findAll('button').find((candidate) => candidate.text() === label)!
-      expect(button.attributes('type')).toBe('button')
-      await button.trigger('click')
-      expect(input.element.value).toBe(expected)
+    for (const selected of ['2028-03-29T12:34', '2029-02-28T12:34']) {
+      await input.setValue(selected)
+      expect(input.element.value).toBe(selected)
       expect(updateAccountMock).not.toHaveBeenCalled()
     }
 
@@ -380,14 +375,13 @@ describe('EditAccountModal', () => {
     wrapper.unmount()
   })
 
-  it('can clear a selected expiry preset before saving the account', async () => {
+  it('can clear the selected expiry before saving the account', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
-    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'payment.oneYear')!
-    await button.trigger('click')
     const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+    await input.setValue('2029-02-28T12:34')
     expect(input.element.value).not.toBe('')
     await input.setValue('')
 

@@ -130,11 +130,11 @@
               {{ getRequestTypeLabel(row) }}
             </span>
             <span
-              v-if="row.native_compaction_v2"
+              v-if="row.native_compaction_v2 === true"
               data-testid="native-compaction-badge"
-              class="inline-flex items-center rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200"
+              class="inline-flex items-center whitespace-nowrap rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200"
             >
-              {{ t('usage.nativeCompactionV2') }}
+              {{ t('usage.compaction') }}
             </span>
           </div>
         </template>
@@ -147,12 +147,40 @@
 
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
-          <div v-if="isImageUsage(row)" class="flex items-center gap-1.5">
+          <div v-if="isImageUsage(row)" class="space-y-2">
+            <div class="flex items-center gap-1.5">
             <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span class="font-medium text-gray-900 dark:text-white">{{ row.image_count }}{{ t('usage.imageUnit') }}</span>
-            <span class="text-gray-400">({{ formatImageBillingSize(row, t) }})</span>
+              <span class="text-gray-400">({{ formatImageBillingSize(row, t) }})</span>
+            </div>
+            <div v-if="row.image_previews?.length" class="flex flex-wrap gap-1.5">
+              <button
+                v-for="(src, index) in row.image_previews"
+                :key="src"
+                :ref="(el) => observeImagePreview(el, src)"
+                type="button"
+                class="h-12 w-12 overflow-hidden rounded border border-gray-200 bg-gray-50 transition hover:border-primary-400 dark:border-dark-600 dark:bg-dark-800"
+                :title="`预览图片 ${index + 1}`"
+                @click="openImagePreview(src)"
+              >
+                <img v-if="previewSources[src]" :src="previewSources[src]" alt="" class="h-full w-full object-cover" loading="lazy" />
+                <span v-else class="flex h-full w-full items-center justify-center text-xs text-gray-400">...</span>
+              </button>
+            </div>
+          </div>
+          <div v-else-if="row.video_previews?.length" class="flex flex-wrap gap-1.5">
+            <button
+              v-for="(src, index) in row.video_previews"
+              :key="src"
+              type="button"
+              class="inline-flex items-center gap-1 rounded border border-primary-200 bg-primary-50 px-2 py-1 text-xs text-primary-700 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300"
+              :title="`预览视频 ${index + 1}`"
+              @click="openVideoPreview(src)"
+            >
+              ▶ 视频{{ index + 1 }}
+            </button>
           </div>
           <!-- Token 请求 -->
           <div v-else class="flex items-center gap-1.5">
@@ -532,12 +560,24 @@
       </div>
     </div>
   </Teleport>
+  <div v-if="previewImage" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-6" @click.self="previewImage = ''">
+    <button type="button" class="absolute right-5 top-5 rounded bg-black/50 px-3 py-2 text-xl text-white" title="关闭预览" @click="previewImage = ''">×</button>
+    <img :src="previewImage" alt="生成图片预览" class="max-h-[90vh] max-w-[90vw] object-contain" />
+  </div>
+  <div v-if="previewVideo" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6" @click.self="previewVideo = ''">
+    <button type="button" class="absolute right-5 top-5 rounded bg-black/50 px-3 py-2 text-xl text-white" title="关闭预览" @click="previewVideo = ''">×</button>
+    <div class="text-center">
+      <video :key="previewVideo" :src="previewVideo" controls autoplay preload="metadata" class="max-h-[85vh] max-w-[90vw]" @error="previewVideoError = '视频暂时无法播放，可能已过期或上游暂不可用。请关闭后重试。'" />
+      <p v-if="previewVideoError" role="alert" class="mt-3 text-sm text-white">{{ previewVideoError }}</p>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { apiClient } from '@/api/client'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
@@ -620,9 +660,109 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const copiedRequestId = ref<string | null>(null)
+const previewImage = ref('')
+const previewVideo = ref('')
+const previewVideoError = ref('')
+const previewVideoSources = ref<Record<string, string>>({})
+const previewLoading = new Map<string, Promise<void>>()
+const previewSources = ref<Record<string, string>>({})
+const previewRequests = new Map<string, AbortController>()
+let visiblePreviewPaths = new Set<string>()
+let previewDisposed = false
+const previewObserver = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      const src = (entry.target as HTMLElement).dataset.previewSrc
+      if (src) void loadImagePreview(src)
+      previewObserver?.unobserve(entry.target)
+    }
+  }
+}, { rootMargin: '100px' })
+
+const observeImagePreview = (el: unknown, src: string) => {
+  if (!(el instanceof HTMLElement)) return
+  el.dataset.previewSrc = src
+  if (previewObserver) previewObserver.observe(el)
+  else void loadImagePreview(src)
+}
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
+
+const openImagePreview = (src: string) => {
+  const resolved = previewSources.value[src]
+  if (resolved) previewImage.value = resolved
+}
+
+const loadImagePreview = async (src: string) => {
+  if (previewDisposed || !visiblePreviewPaths.has(src) || previewSources.value[src] || previewRequests.has(src)) return
+  const controller = new AbortController()
+  previewRequests.set(src, controller)
+  try {
+    const response = await apiClient.get(src.replace(/^\/api\/v1/, ''), { responseType: 'blob', signal: controller.signal })
+    if (!previewDisposed && !controller.signal.aborted && visiblePreviewPaths.has(src)) {
+      previewSources.value = { ...previewSources.value, [src]: URL.createObjectURL(response.data) }
+    }
+  } catch {
+    // Missing or expired previews should not affect the usage table.
+  } finally {
+    if (previewRequests.get(src) === controller) previewRequests.delete(src)
+  }
+}
+
+const openVideoPreview = async (src: string) => {
+  previewVideoError.value = ''
+  // Refresh the short-lived, HttpOnly playback cookie on each open.
+  delete previewVideoSources.value[src]
+  await loadVideoPreview(src)
+  const resolved = previewVideoSources.value[src]
+  if (resolved && !previewDisposed) previewVideo.value = resolved
+}
+
+const loadVideoPreview = async (src: string) => {
+  if (previewVideoSources.value[src]) return
+  const pending = previewLoading.get(`video:${src}`)
+  if (pending) return pending
+  const task = (async () => {
+    try {
+      const response = await apiClient.get(src.replace(/^\/api\/v1/, ''), { responseType: 'text' })
+      const videoURL = String(response.data || '').trim()
+      if (!videoURL.startsWith('/api/v1/admin/usage/') || !videoURL.endsWith('/videos/0/content')) {
+        throw new Error('Invalid playback endpoint')
+      }
+      if (!previewDisposed) previewVideoSources.value = { ...previewVideoSources.value, [src]: videoURL }
+    } catch {
+      if (!previewDisposed) appStore.showError('视频预览暂不可用，仅支持最近 7 天的记录。请稍后重试。')
+    }
+  })()
+  previewLoading.set(`video:${src}`, task)
+  await task
+  previewLoading.delete(`video:${src}`)
+}
+
+watch(() => props.data, (rows) => {
+  previewObserver?.disconnect()
+  visiblePreviewPaths = new Set(rows.flatMap((row) => row.image_previews || []))
+  previewImage.value = ''
+  previewVideo.value = ''
+  previewVideoSources.value = {}
+  for (const [src, controller] of previewRequests) {
+    if (!visiblePreviewPaths.has(src)) { controller.abort(); previewRequests.delete(src) }
+  }
+  const retained: Record<string, string> = {}
+  for (const [src, url] of Object.entries(previewSources.value)) {
+    if (visiblePreviewPaths.has(src)) retained[src] = url
+    else URL.revokeObjectURL(url)
+  }
+  previewSources.value = retained
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  previewDisposed = true
+  previewObserver?.disconnect()
+  previewRequests.forEach(controller => controller.abort())
+  Object.values(previewSources.value).forEach((src) => URL.revokeObjectURL(src))
+})
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 

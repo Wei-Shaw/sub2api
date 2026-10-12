@@ -356,6 +356,9 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] channel monitor maintenance failed: %v", err)
 		}
 	}
+	if err := CleanupAdminMediaPreviews(now); err != nil {
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] admin media preview cleanup failed: %v", err)
+	}
 
 	return out, nil
 }

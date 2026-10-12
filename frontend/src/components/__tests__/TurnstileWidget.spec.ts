@@ -15,16 +15,61 @@ function installSDK() {
   return render
 }
 
-afterEach(() => {
+afterEach(async () => {
   wrapper?.unmount()
   wrapper = undefined
+  document.querySelector(scriptSelector)?.dispatchEvent(new Event('error'))
+  await flushPromises()
   delete window.turnstile
   delete window.onTurnstileLoad
   document.querySelectorAll(scriptSelector).forEach((script) => script.remove())
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('TurnstileWidget', () => {
+  it('retries a failed script and recovers without reloading the page', async () => {
+    wrapper = mount(TurnstileWidget, { props: { siteKey: 'site-key' } })
+    document.querySelector(scriptSelector)!.dispatchEvent(new Event('error'))
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('auth.captchaLoadFailed')
+    expect(document.querySelector(scriptSelector)).toBeNull()
+    await wrapper.get('button').trigger('click')
+    expect(document.querySelector(scriptSelector)).not.toBeNull()
+    const render = installSDK()
+    window.onTurnstileLoad?.()
+    await flushPromises()
+    expect(render).toHaveBeenCalledOnce()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('times out instead of leaving an invisible challenge indefinitely', async () => {
+    vi.useFakeTimers()
+    wrapper = mount(TurnstileWidget, { props: { siteKey: 'site-key' } })
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.emitted('error')).toEqual([[]])
+  })
+
+  it('loads when the site key arrives after mounting', async () => {
+    wrapper = mount(TurnstileWidget, { props: { siteKey: '' } })
+    await wrapper.setProps({ siteKey: 'late-key' })
+    const render = installSDK()
+    window.onTurnstileLoad?.()
+    await flushPromises()
+    expect(render).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ sitekey: 'late-key' }))
+  })
+
+  it('does not render after unmount while the SDK is loading', async () => {
+    wrapper = mount(TurnstileWidget, { props: { siteKey: 'site-key' } })
+    wrapper.unmount()
+    wrapper = undefined
+    const render = installSDK()
+    window.onTurnstileLoad?.()
+    await flushPromises()
+    expect(render).not.toHaveBeenCalled()
+  })
+
   it('shows a loading placeholder until the SDK initializes the widget', async () => {
     wrapper = mount(TurnstileWidget, { props: { siteKey: 'site-key' } })
 

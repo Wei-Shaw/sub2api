@@ -225,11 +225,13 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		}
 
 		if event.Type == "message_start" && event.Message != nil {
+			setUsagePresent(c, true)
 			finalResp = event.Message
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 		if event.Type == "message_delta" {
 			if event.Usage != nil {
+				setUsagePresent(c, true)
 				mergeAnthropicUsage(&usage, *event.Usage)
 			}
 			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
@@ -406,9 +408,11 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 
 		// usage 恒累计（含客户端断开后的排水阶段，payg 上游照常计费）。
 		if event.Type == "message_delta" && event.Usage != nil {
+			setUsagePresent(c, true)
 			mergeAnthropicUsage(&usage, *event.Usage)
 		}
 		if event.Type == "message_start" && event.Message != nil {
+			setUsagePresent(c, true)
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 

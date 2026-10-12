@@ -588,6 +588,14 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 	filter.RequestID = strings.TrimSpace(c.Query("request_id"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
 	filter.Sort = strings.TrimSpace(c.Query("sort"))
+	if v := strings.TrimSpace(c.Query("include_recovered_upstream")); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			response.BadRequest(c, "Invalid include_recovered_upstream")
+			return
+		}
+		filter.IncludeRecoveredUpstream = parsed
+	}
 
 	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)

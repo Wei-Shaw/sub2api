@@ -14,6 +14,8 @@ export interface OpsRequestDetailsPreset {
   title: string
   kind?: OpsRequestDetailsParams['kind']
   sort?: OpsRequestDetailsParams['sort']
+  request_id?: string
+  include_recovered_upstream?: boolean
   min_duration_ms?: number
   max_duration_ms?: number
 }
@@ -82,7 +84,9 @@ const fetchData = async () => {
       page: page.value,
       page_size: pageSize.value,
       kind: props.preset.kind ?? 'all',
-      sort: props.preset.sort ?? 'created_at_desc'
+      sort: props.preset.sort ?? 'created_at_desc',
+      request_id: props.preset.request_id,
+      include_recovered_upstream: props.preset.include_recovered_upstream
     }
 
     const platform = (props.platform || '').trim()
@@ -125,6 +129,8 @@ watch(
     props.groupId,
     props.preset.kind,
     props.preset.sort,
+    props.preset.request_id,
+    props.preset.include_recovered_upstream,
     props.preset.min_duration_ms,
     props.preset.max_duration_ms
   ],

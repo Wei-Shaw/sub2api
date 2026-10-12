@@ -75,18 +75,24 @@ export const useAnnouncementStore = defineStore('announcements', () => {
     shownPopupIds.add(currentPopup.value.id)
   }
 
-  async function dismissPopup() {
-    if (!currentPopup.value) return
-    const id = currentPopup.value.id
-    currentPopup.value = null
-
-    // Mark as read (fire-and-forget, UI already updated)
-    markAsRead(id)
-
-    // Show next popup after a short delay
-    if (popupQueue.value.length > 0) {
-      setTimeout(() => showNextPopup(), 300)
+  function clearPopupBatch() {
+    // Dismiss this batch for the session without marking queued items as read.
+    for (const popup of popupQueue.value) {
+      shownPopupIds.add(popup.id)
     }
+    if (currentPopup.value) shownPopupIds.add(currentPopup.value.id)
+    popupQueue.value = []
+    currentPopup.value = null
+  }
+
+  function acknowledgeCurrentPopup() {
+    const id = currentPopup.value?.id
+    clearPopupBatch()
+    if (id !== undefined) void markAsRead(id)
+  }
+
+  async function dismissPopup() {
+    acknowledgeCurrentPopup()
   }
 
   async function markAsRead(id: number) {
@@ -105,7 +111,10 @@ export const useAnnouncementStore = defineStore('announcements', () => {
 
   async function markAllAsRead() {
     const unread = announcements.value.filter((a) => !a.read_at)
-    if (unread.length === 0) return
+    if (unread.length === 0) {
+      clearPopupBatch()
+      return
+    }
 
     try {
       loading.value = true
@@ -115,6 +124,7 @@ export const useAnnouncementStore = defineStore('announcements', () => {
       }))
       const failure = results.find((result) => result.status === 'rejected')
       if (failure) throw failure.reason
+      clearPopupBatch()
     } catch (err: any) {
       console.error('Failed to mark all as read:', err)
       throw err
@@ -143,6 +153,7 @@ export const useAnnouncementStore = defineStore('announcements', () => {
     // Actions
     fetchAnnouncements,
     dismissPopup,
+    acknowledgeCurrentPopup,
     markAsRead,
     markAllAsRead,
     reset,

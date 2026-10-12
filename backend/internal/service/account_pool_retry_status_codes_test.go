@@ -4,6 +4,7 @@ package service
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -190,4 +191,16 @@ func TestIsPoolModeRetryableStatus_Account(t *testing.T) {
 			require.Equal(t, tt.expected, tt.account.IsPoolModeRetryableStatus(tt.statusCode))
 		})
 	}
+}
+
+func TestIsPoolModeRetryableStatus_Anthropic429SwitchesAccount(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+
+	require.False(t, account.IsPoolModeRetryableStatus(http.StatusTooManyRequests))
+	require.True(t, account.IsPoolModeRetryableStatus(http.StatusUnauthorized))
 }

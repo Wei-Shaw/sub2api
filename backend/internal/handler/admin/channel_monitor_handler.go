@@ -103,6 +103,7 @@ type channelMonitorResponse struct {
 	CreatedBy           int64                                `json:"created_by"`
 	CreatedAt           string                               `json:"created_at"`
 	UpdatedAt           string                               `json:"updated_at"`
+	SortOrder           int                                  `json:"sort_order"`
 	PrimaryStatus       string                               `json:"primary_status"`
 	PrimaryLatencyMs    *int                                 `json:"primary_latency_ms"`
 	Availability7d      float64                              `json:"availability_7d"`
@@ -139,6 +140,13 @@ type channelMonitorHistoryItemResponse struct {
 	Message       string                       `json:"message"`
 	CheckedAt     string                       `json:"checked_at"`
 	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+}
+
+type channelMonitorSortOrderRequest struct {
+	Updates []struct {
+		ID        int64 `json:"id" binding:"required"`
+		SortOrder int   `json:"sort_order"`
+	} `json:"updates" binding:"required,min=1,max=1000"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -178,6 +186,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		CreatedBy:           m.CreatedBy,
 		CreatedAt:           m.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:           m.UpdatedAt.UTC().Format(time.RFC3339),
+		SortOrder:           m.SortOrder,
 		TemplateID:          m.TemplateID,
 		ExtraHeaders:        headers,
 		BodyOverrideMode:    m.BodyOverrideMode,
@@ -273,6 +282,41 @@ func (h *ChannelMonitorHandler) List(c *gin.Context) {
 		out = append(out, buildListItemResponse(m, summaries[m.ID]))
 	}
 	response.Paginated(c, out, total, page, pageSize)
+}
+
+// ListAll GET /api/v1/admin/channel-monitors/all
+func (h *ChannelMonitorHandler) ListAll(c *gin.Context) {
+	items, err := h.monitorService.ListAll(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]*channelMonitorResponse, 0, len(items))
+	for _, monitor := range items {
+		out = append(out, channelMonitorToResponse(monitor))
+	}
+	response.Success(c, out)
+}
+
+// UpdateSortOrder PUT /api/v1/admin/channel-monitors/sort-order
+func (h *ChannelMonitorHandler) UpdateSortOrder(c *gin.Context) {
+	var req channelMonitorSortOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	updates := make([]service.ChannelMonitorSortOrderUpdate, 0, len(req.Updates))
+	for _, item := range req.Updates {
+		updates = append(updates, service.ChannelMonitorSortOrderUpdate{
+			ID:        item.ID,
+			SortOrder: item.SortOrder,
+		})
+	}
+	if err := h.monitorService.UpdateSortOrders(c.Request.Context(), updates); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "Channel monitor sort order updated successfully"})
 }
 
 // batchSummaryFor 批量聚合 latest + 7d 可用率，避免每行 2 次 SQL（消除 N+1）。

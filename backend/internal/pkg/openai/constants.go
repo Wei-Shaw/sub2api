@@ -51,8 +51,9 @@ func DefaultModelIDs() []string {
 	return ids
 }
 
-// DefaultTestModel default model for testing OpenAI accounts
-const DefaultTestModel = "gpt-5.4"
+// DefaultTestModel is the current verified model used when an OpenAI account
+// test or capability probe does not provide a concrete model.
+const DefaultTestModel = "gpt-5.6-sol"
 
 // CodexUsageProbeModel is the model used for OAuth Codex usage probes.
 const CodexUsageProbeModel = "codex-auto-review"

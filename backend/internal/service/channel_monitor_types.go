@@ -48,6 +48,7 @@ type ChannelMonitor struct {
 	CreatedBy       int64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	SortOrder       int
 
 	// 配额模式（check_mode = quota / quota_probe）：
 	// 关联已有账号复用账号侧用量服务，Endpoint/APIKey 可为空（quota 模式）。
@@ -78,6 +79,12 @@ type ChannelMonitorListParams struct {
 	Provider string
 	Enabled  *bool
 	Search   string
+}
+
+// ChannelMonitorSortOrderUpdate describes one admin display-order change.
+type ChannelMonitorSortOrderUpdate struct {
+	ID        int64
+	SortOrder int
 }
 
 // ChannelMonitorCreateParams 创建参数。

@@ -3,7 +3,7 @@
     <!-- Toolbar: left filters (multi-line) + right actions -->
     <div class="flex flex-wrap items-end justify-between gap-4">
       <!-- Left: filters (allowed to wrap to multiple rows) -->
-      <div class="flex flex-1 flex-wrap items-end gap-4">
+      <div class="newapi-usage-filter-grid flex-1">
         <!-- User Search -->
         <div ref="userSearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
           <label class="input-label">{{ t('admin.usage.userFilter') }}</label>
@@ -125,12 +125,6 @@
         <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
           <label class="input-label">{{ t('usage.type') }}</label>
           <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
-        </div>
-
-        <!-- Native compaction is independent of the transport request type. -->
-        <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
-          <label class="input-label">{{ t('usage.compactionFilter') }}</label>
-          <Select v-model="filters.native_compaction_v2" :options="compactionOptions" @change="emitChange" />
         </div>
 
         <!-- Billing Type Filter (usage only) -->
@@ -278,11 +272,6 @@ const requestTypeOptions = ref<SelectOption[]>([
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
   { value: 'cyber', label: t('usage.cyber') }
-])
-
-const compactionOptions = ref<SelectOption[]>([
-  { value: null, label: t('usage.allCompactionTypes') },
-  { value: true, label: t('usage.compactionOnly') }
 ])
 
 const billingTypeOptions = ref<SelectOption[]>([

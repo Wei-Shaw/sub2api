@@ -73,7 +73,7 @@ type geminiUsageTotalsBatchProvider interface {
 const geminiPrecheckCacheTTL = time.Minute
 
 const (
-	defaultRateLimit429CooldownSeconds = 5
+	defaultRateLimit429CooldownSeconds = 60
 	maxRateLimit429CooldownSeconds     = 7200
 )
 
@@ -301,6 +301,9 @@ const (
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	if s.guardUpstreamBalance(ctx, account, statusCode, responseBody) {
+		return ErrorPolicyTempUnscheduled
+	}
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -331,6 +334,9 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	if s.guardUpstreamBalance(ctx, account, statusCode, responseBody) {
+		return true
+	}
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
@@ -1213,6 +1219,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		s.handleOllamaCloudUsage429(ctx, account, headers)
 		return
 	}
+	if s.handleOpenAIAPIKeyAvailabilityRetryAfter(ctx, account, headers, responseBody) {
+		return
+	}
 	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
 	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。
 	if account.IsCNProvider() || account.IsOpenCodeGo() {
@@ -1333,6 +1342,39 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 
 	slog.Info("account_rate_limited", "account_id", account.ID, "reset_at", resetAt)
+}
+
+// Retry-After is a backoff floor for API-key rate limits. Keep longer quota reset
+// windows, but cap this untrusted hint at one day; the existing quota path still
+// owns longer quota reset windows and the fallback when the hint is absent.
+func (s *RateLimitService) handleOpenAIAPIKeyAvailabilityRetryAfter(ctx context.Context, account *Account, headers http.Header, body []byte) bool {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.OpenAIAPIKeyAvailabilityEnabled || account == nil ||
+		account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey || account.IsPoolMode() {
+		return false
+	}
+	now := time.Now()
+	resetAt := parseRetryAfterResetTime(headers, now)
+	if resetAt == nil || !resetAt.After(now) {
+		return false
+	}
+	until := *resetAt
+	if maximum := now.Add(24 * time.Hour); until.After(maximum) {
+		until = maximum
+	}
+	if quotaReset := s.calculateOpenAI429ResetTime(headers); quotaReset != nil && quotaReset.After(until) {
+		until = *quotaReset
+	}
+	if quotaReset := parseOpenAIRateLimitResetTime(body); quotaReset != nil && time.Unix(*quotaReset, 0).After(until) {
+		until = time.Unix(*quotaReset, 0)
+	}
+	persistOpenAI429PlanType(ctx, s.accountRepo, account, body)
+	s.persistOpenAICodexSnapshot(ctx, account, headers)
+	notifyOpenAIAutoReset(account.ID)
+	s.notifyAccountSchedulingBlocked(account, until, "429")
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, until); err != nil {
+		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+	}
+	return true
 }
 
 func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, account *Account, reason string) {

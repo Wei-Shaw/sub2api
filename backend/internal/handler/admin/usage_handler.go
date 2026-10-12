@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	videoGateway   *service.OpenAIGatewayService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +35,14 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	videoGateway *service.OpenAIGatewayService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		videoGateway:   videoGateway,
 	}
 }
 
@@ -215,9 +219,44 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		row := dto.UsageLogFromServiceAdminWithMediaPreviews(&records[i],
+			service.ListOpenAIImagePreviewURLs(records[i].RequestID, records[i].APIKeyID, records[i].ID, records[i].ImageCount),
+			service.ListAdminVideoPreviewURLs(&records[i], time.Now()),
+		)
+		out = append(out, *row)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+// Image serves a generated image preview. The parent admin route is protected by AdminAuthMiddleware.
+// GET /api/v1/admin/usage/:id/images/:index
+func (h *UsageHandler) Image(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.NotFound(c, "usage log not found")
+		return
+	}
+	index, err := strconv.Atoi(c.Param("index"))
+	if err != nil || index < 0 {
+		response.NotFound(c, "image preview not found")
+		return
+	}
+	log, err := h.usageService.GetByID(c.Request.Context(), id)
+	if err != nil || log == nil || log.ImageCount <= 0 {
+		response.NotFound(c, "image preview not found")
+		return
+	}
+	data, contentType, err := service.ReadOpenAIImagePreview(log.RequestID, log.APIKeyID, index)
+	if err != nil {
+		if os.IsNotExist(err) {
+			response.NotFound(c, "image preview not found")
+			return
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Data(http.StatusOK, contentType, data)
 }
 
 // Stats handles getting usage statistics with filters

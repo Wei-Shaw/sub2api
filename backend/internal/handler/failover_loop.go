@@ -80,6 +80,9 @@ func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCo
 	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
 		return false
 	}
+	if service.IsUpstreamInsufficientBalance(failoverErr.StatusCode, failoverErr.ResponseBody) {
+		return false
+	}
 	if !sameAccountRetryDeadlineAllows(failoverErr) {
 		return false
 	}
@@ -139,6 +142,12 @@ type FailoverState struct {
 	profitVetoedAccountIDs map[int64]struct{}
 	// profitVetoCount 本次请求累计的利润否决次数，用于 maxProfitVetoAttempts 上限。
 	profitVetoCount int
+	// Reopening an exhausted pool is a single recovery opportunity, not a new
+	// unbounded retry loop when selection itself cannot advance SwitchCount.
+	selectionRecoveryUsed bool
+	// Keep the earliest deadline even if a service reconstructs its error on
+	// each attempt; otherwise repeated 429s can slide the window indefinitely.
+	sameAccountDeadlines map[int64]time.Time
 }
 
 // NewFailoverState 创建 failover 状态
@@ -209,6 +218,20 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
+	if !failoverErr.SameAccountRetryDeadline.IsZero() {
+		if s.sameAccountDeadlines == nil {
+			s.sameAccountDeadlines = make(map[int64]time.Time)
+		}
+		deadline, exists := s.sameAccountDeadlines[accountID]
+		if !exists || failoverErr.SameAccountRetryDeadline.Before(deadline) {
+			deadline = failoverErr.SameAccountRetryDeadline
+			s.sameAccountDeadlines[accountID] = deadline
+		}
+		copyErr := *failoverErr
+		copyErr.SameAccountRetryDeadline = deadline
+		failoverErr = &copyErr
+		s.LastFailoverErr = failoverErr
+	}
 	retryCount := s.SameAccountRetryCount[accountID]
 	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
@@ -282,6 +305,7 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 
 	if s.LastFailoverErr != nil &&
 		s.LastFailoverErr.StatusCode == http.StatusServiceUnavailable &&
+		!s.selectionRecoveryUsed &&
 		s.SwitchCount <= s.MaxSwitches {
 
 		// 排除列表全由利润门否决贡献时，清空后会被原样恢复：退避重试拿不到
@@ -295,6 +319,7 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 			return FailoverExhausted
 		}
 
+		s.selectionRecoveryUsed = true
 		logger.FromContext(ctx).Warn("gateway.failover_single_account_backoff",
 			zap.Duration("backoff_delay", singleAccountBackoffDelay),
 			zap.Int("switch_count", s.SwitchCount),

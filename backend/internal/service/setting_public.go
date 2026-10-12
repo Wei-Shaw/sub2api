@@ -170,6 +170,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt,
 		SettingKeyLoginAgreementDocuments,
+		SettingKeyLoginCaptchaEnabled,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeyTencentCaptchaEnabled,
@@ -187,6 +188,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeyLongNoticeContent,
 		SettingKeyCompactHomeEnabled,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
@@ -315,6 +317,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		LoginAgreementUpdatedAt:             loginAgreementUpdatedAt,
 		LoginAgreementRevision:              buildLoginAgreementRevision(loginAgreementUpdatedAt, loginAgreementDocuments),
 		LoginAgreementDocuments:             loginAgreementDocuments,
+		LoginCaptchaEnabled:                 s.loginCaptchaEnabled(settings),
 		TurnstileEnabled:                    settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                    settings[SettingKeyTurnstileSiteKey],
 		TencentCaptchaEnabled:               settings[SettingKeyTencentCaptchaEnabled] == "true",
@@ -331,6 +334,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ContactInfo:                         settings[SettingKeyContactInfo],
 		DocURL:                              settings[SettingKeyDocURL],
 		HomeContent:                         settings[SettingKeyHomeContent],
+		LongNoticeContent:                   settings[SettingKeyLongNoticeContent],
 		CompactHomeEnabled:                  settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:                 settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:         settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
@@ -514,6 +518,7 @@ type ModelPlazaRuntime struct {
 	Enabled     bool
 	RequireAuth bool
 	Description string
+	Catalog     []PlazaCatalogGroup
 }
 
 // GetModelPlazaRuntime reads the model-plaza feature switches directly from the
@@ -524,14 +529,21 @@ func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRun
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyModelPlazaDescription,
+		"model_plaza_catalog",
 	})
 	if err != nil {
+		return ModelPlazaRuntime{Enabled: false}
+	}
+	catalog, err := parsePlazaCatalog(vals["model_plaza_catalog"])
+	if err != nil {
+		slog.Warn("invalid model plaza catalog", "error", err)
 		return ModelPlazaRuntime{Enabled: false}
 	}
 	return ModelPlazaRuntime{
 		Enabled:     vals[SettingKeyModelPlazaEnabled] == "true",
 		RequireAuth: vals[SettingKeyModelPlazaRequireAuth] == "true",
 		Description: vals[SettingKeyModelPlazaDescription],
+		Catalog:     catalog,
 	}
 }
 
@@ -574,6 +586,7 @@ type PublicSettingsInjectionPayload struct {
 	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
 	LoginAgreementRevision              string                   `json:"login_agreement_revision"`
 	LoginAgreementDocuments             []LoginAgreementDocument `json:"login_agreement_documents"`
+	LoginCaptchaEnabled                 bool                     `json:"login_captcha_enabled"`
 	TurnstileEnabled                    bool                     `json:"turnstile_enabled"`
 	TurnstileSiteKey                    string                   `json:"turnstile_site_key"`
 	TencentCaptchaEnabled               bool                     `json:"tencent_captcha_enabled"`
@@ -590,6 +603,7 @@ type PublicSettingsInjectionPayload struct {
 	ContactInfo                         string                   `json:"contact_info"`
 	DocURL                              string                   `json:"doc_url"`
 	HomeContent                         string                   `json:"home_content"`
+	LongNoticeContent                   string                   `json:"long_notice_content"`
 	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`
@@ -668,6 +682,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		LoginAgreementUpdatedAt:             settings.LoginAgreementUpdatedAt,
 		LoginAgreementRevision:              settings.LoginAgreementRevision,
 		LoginAgreementDocuments:             settings.LoginAgreementDocuments,
+		LoginCaptchaEnabled:                 settings.LoginCaptchaEnabled,
 		TurnstileEnabled:                    settings.TurnstileEnabled,
 		TurnstileSiteKey:                    settings.TurnstileSiteKey,
 		TencentCaptchaEnabled:               settings.TencentCaptchaEnabled,
@@ -684,6 +699,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ContactInfo:                         settings.ContactInfo,
 		DocURL:                              settings.DocURL,
 		HomeContent:                         settings.HomeContent,
+		LongNoticeContent:                   settings.LongNoticeContent,
 		CompactHomeEnabled:                  settings.CompactHomeEnabled,
 		HideCcsImportButton:                 settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:         settings.PurchaseSubscriptionEnabled,

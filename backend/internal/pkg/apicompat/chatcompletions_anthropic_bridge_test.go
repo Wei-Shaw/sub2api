@@ -131,7 +131,7 @@ func TestAnthropicToChatCompletionsRequest_ToolResultBecomesToolMessage(t *testi
 	require.Equal(t, `"sunny, 72F"`, string(toolMsg.Content))
 }
 
-func TestAnthropicToChatCompletionsRequest_ThinkingDropped(t *testing.T) {
+func TestAnthropicToChatCompletionsRequest_ThinkingPreserved(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "claude-sonnet-4-20250514",
 		MaxTokens: 100,
@@ -143,11 +143,10 @@ func TestAnthropicToChatCompletionsRequest_ThinkingDropped(t *testing.T) {
 	out, err := AnthropicToChatCompletionsRequest(req)
 	require.NoError(t, err)
 	require.Len(t, out.Messages, 1)
-	// Only text survives. Thinking is dropped because this turn carries no tool
-	// calls — reasoning rides along with tool calls only, matching the
-	// Responses→Chat bridge (see anthropicThinkingToReasoningContent).
+	// Preserve plaintext thinking so DeepSeek-style thinking mode can validate
+	// the complete historical assistant turn on the next request.
 	require.Equal(t, `"answer"`, string(out.Messages[0].Content))
-	require.Empty(t, out.Messages[0].ReasoningContent)
+	require.Equal(t, "secret thoughts", out.Messages[0].ReasoningContent)
 }
 
 func TestAnthropicToChatCompletionsRequest_ThinkingDisabledOverridesOutputEffort(t *testing.T) {

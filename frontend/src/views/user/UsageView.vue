@@ -1,10 +1,10 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <div class="newapi-usage-workspace space-y-5">
       <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
 
       <div class="space-y-4">
-        <div class="card p-4">
+        <div class="newapi-filter-toolbar card p-3">
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
@@ -66,7 +66,7 @@
         </div>
       </div>
 
-      <div class="card p-6">
+      <div class="newapi-filter-panel card p-4">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div v-if="activeTab === 'errors'" class="flex flex-1 flex-wrap items-end gap-4">
             <div class="w-full sm:w-auto sm:min-w-[220px]">
@@ -359,10 +359,10 @@ const activeTab = ref<'usage' | 'errors'>('usage')
 const errorViewEnabled = computed(() => appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
 
 const filters = ref<UsageQueryParams>({
+  native_compaction_v2: null,
   start_date: startDate.value,
   end_date: endDate.value,
   request_type: undefined,
-  native_compaction_v2: null,
   billing_type: null,
   billing_mode: null,
 })
@@ -562,10 +562,10 @@ const resetFilters = () => {
   startDate.value = range.start
   endDate.value = range.end
   filters.value = {
+    native_compaction_v2: null,
     start_date: range.start,
     end_date: range.end,
     request_type: undefined,
-    native_compaction_v2: null,
     billing_type: null,
     billing_mode: null,
   }

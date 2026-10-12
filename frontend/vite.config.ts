@@ -50,13 +50,14 @@ function injectBranding(html: string, config: { site_name?: string; site_logo?: 
  * Vite 插件：开发模式下注入公开配置到 index.html
  * 与生产模式的后端注入行为保持一致，消除闪烁
  */
-function injectPublicSettings(backendUrl: string): Plugin {
+function injectPublicSettings(backendUrl: string, enabled = true): Plugin {
   return {
     name: 'inject-public-settings',
     apply: 'serve',
     transformIndexHtml: {
       order: 'pre',
       async handler(html) {
+        if (!enabled) return html
         try {
           const response = await fetch(`${backendUrl}/api/v1/settings/public`, {
             signal: AbortSignal.timeout(2000)
@@ -89,7 +90,7 @@ export default defineConfig(({ mode }) => {
       checker({
         vueTsc: true
       }),
-      injectPublicSettings(backendUrl)
+      injectPublicSettings(backendUrl, env.VITE_LOCAL_PREVIEW !== 'true')
     ],
   resolve: {
     alias: {

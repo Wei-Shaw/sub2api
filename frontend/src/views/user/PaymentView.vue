@@ -1,12 +1,12 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="newapi-wallet-page mx-auto max-w-5xl space-y-5">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
       <template v-else>
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
-        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
+        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="newapi-wallet-tabs flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
           <button v-for="tab in tabs" :key="tab.key"
             class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
             :class="activeTab === tab.key ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"

@@ -99,6 +99,29 @@ export const useAuthStore = defineStore('auth', () => {
   const isSimpleMode = computed(() => runMode.value === 'simple')
   const hasPendingAuthSession = computed(() => pendingAuthSession.value !== null)
 
+  /** Initialize a non-persistent user for the backend-free local UI preview. */
+  function initializeLocalPreview(role: 'user' | 'admin'): void {
+    if (import.meta.env.VITE_LOCAL_PREVIEW !== 'true') return
+
+    token.value = 'local-preview-token'
+    user.value = {
+      id: role === 'admin' ? 1 : 2,
+      username: role === 'admin' ? 'preview-admin' : 'preview-user',
+      email: 'preview@example.com',
+      role,
+      balance: 128.5,
+      frozen_balance: 0,
+      concurrency: 8,
+      status: 'active',
+      allowed_groups: null,
+      balance_notify_enabled: false,
+      balance_notify_threshold: null,
+      balance_notify_extra_emails: [],
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z'
+    }
+  }
+
   // ==================== Actions ====================
 
   /**
@@ -509,6 +532,7 @@ export const useAuthStore = defineStore('auth', () => {
     setToken,
     logout,
     checkAuth,
+    initializeLocalPreview,
     refreshUser,
     setPendingAuthSession,
     clearPendingAuthSession

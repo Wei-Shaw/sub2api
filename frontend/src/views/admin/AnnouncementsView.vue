@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <div class="px-3 pt-4 sm:px-5"><LongNoticeEditor /></div>
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
@@ -278,6 +279,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 import AnnouncementTargetingEditor from '@/components/admin/announcements/AnnouncementTargetingEditor.vue'
 import AnnouncementReadStatusDialog from '@/components/admin/announcements/AnnouncementReadStatusDialog.vue'
+import LongNoticeEditor from '@/components/admin/announcements/LongNoticeEditor.vue'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 
 const { t } = useI18n()

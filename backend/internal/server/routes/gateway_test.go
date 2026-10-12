@@ -302,8 +302,11 @@ func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
-	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+func TestGatewayRoutesUnsupportedPlatformVideosAreRejectedAtPlatformGate(t *testing.T) {
+	routers := map[string]*gin.Engine{
+		service.PlatformAnthropic: newGatewayRoutesTestRouter(service.PlatformAnthropic),
+		service.PlatformDeepseek:  newGatewayRoutesTestRouter(service.PlatformDeepseek),
+	}
 
 	for _, tc := range []struct {
 		method string
@@ -335,13 +338,15 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		{http.MethodGet, "/v1/videos/extensions/request-123/content", ""},
 		{http.MethodGet, "/videos/extensions/request-123/content", ""},
 	} {
-		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
+		for platform, router := range routers {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
 
-		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusNotFound, w.Code, "platform=%s method=%s path=%s", platform, tc.method, tc.path)
+			require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
+		}
 	}
 }
 

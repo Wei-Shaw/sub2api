@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -176,6 +177,9 @@ func runMainServer() {
 	}()
 
 	log.Printf("Server started on %s", app.Server.Addr)
+	directServer := startDirectAPITLS(app.Server, func() []string {
+		return cfg.ForwardedClientIPSettings().Headers
+	})
 
 	// 等待中断信号
 	quit := make(chan os.Signal, 1)
@@ -187,9 +191,20 @@ func runMainServer() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	var shutdown sync.WaitGroup
+	if directServer != nil {
+		shutdown.Add(1)
+		go func() {
+			defer shutdown.Done()
+			if err := directServer.Shutdown(ctx); err != nil {
+				log.Printf("Direct API server forced to shutdown: %v", err)
+			}
+		}()
+	}
 	if err := app.Server.Shutdown(ctx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
+	shutdown.Wait()
 
 	log.Println("Server exited")
 }

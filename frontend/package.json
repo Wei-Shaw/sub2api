@@ -3,10 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.11.0",
   "scripts": {
     "dev": "vite",
-    "check:i18n": "vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts",
-    "build": "pnpm run check:i18n && vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build",
+    "verify:release": "vitest run --maxWorkers=4 --minWorkers=1 && pnpm build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",

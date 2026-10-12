@@ -18,7 +18,14 @@ import (
 )
 
 // Forward forwards request to OpenAI API
-func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (result *OpenAIForwardResult, err error) {
+	clearOpenAIImagePreviews(c)
+	defer func() { persistCapturedImagePreviews(ctx, c, result) }()
+	clearUsageEstimateAttempt(c)
+	requestBytes := requestBodyBytesForUsageEstimate(body)
+	defer func() {
+		s.finalizeUsageEstimate(ctx, c, account, requestBytes, result, err)
+	}()
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -113,6 +120,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	compactPath := isOpenAIResponsesCompactPath(c)
+	// Restore against client-visible call names before namespace/tool adapters
+	// rewrite them. Response cache writers also observe restored client names.
+	if account.Type == AccountTypeAPIKey {
+		replayModel := gjson.GetBytes(body, "model").String()
+		mappedReplayModel := normalizeOpenAIModelForUpstream(account, resolveOpenAIForwardModel(account, replayModel, ""))
+		body = s.restoreDeepSeekReasoning(c, account, body, replayModel, mappedReplayModel)
+	}
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled, compactPath) {
 		body, err = flattenOpenAIResponsesNamespaces(c, body)
 		if err != nil {
@@ -1071,7 +1085,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, s.newOpenAIFirstOutputTimeoutError(
 				ctx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account),
 				startTime, originalModel, reasoningEffortValue,
-				firstOutputTimeout, "response_headers", nil,
+				firstOutputTimeout, "response_headers", nil, upstreamModel,
 			)
 		}
 		if err != nil {
@@ -1084,7 +1098,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
-			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false, upstreamModel)
 		}
 		if headerGuard != nil {
 			resp.Body = &openAIRequestContextReadCloser{ReadCloser: resp.Body, cleanup: headerGuard.close}
@@ -1217,6 +1231,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var usagePresent bool
+		var clientDisconnect bool
+		var observedResponseBytes int
 		responseID := ""
 		imageCount := 0
 		searchCount := 0
@@ -1263,7 +1280,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, err
 			}
 			usage = streamResult.usage
+			usagePresent = streamResult.usagePresent
 			firstTokenMs = streamResult.firstTokenMs
+			clientDisconnect = streamResult.clientDisconnect
+			observedResponseBytes = streamResult.observedBytes
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
@@ -1287,6 +1307,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, err
 			}
 			usage = nonStreamResult.usage
+			usagePresent = nonStreamResult.usagePresent
+			observedResponseBytes = nonStreamResult.observedBytes
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
@@ -1313,6 +1335,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			UpstreamHeaders:               resp.Header,
 			ResponseID:                    responseID,
 			Usage:                         *usage,
+			UsagePresent:                  usagePresent,
+			ClientDisconnect:              clientDisconnect,
+			ObservedResponseBytes:         observedResponseBytes,
 			Model:                         originalModel,
 			BillingModel:                  billingModel,
 			UpstreamModel:                 upstreamModel,
@@ -1367,6 +1392,20 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 		}
 	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
+}
+
+// requestContainsVideoInput reports whether a Chat Completions request has a
+// typed video_url content part. It intentionally only inspects the standard
+// messages/content shape; Responses-shaped requests are handled separately.
+func requestContainsVideoInput(body []byte) bool {
+	for _, message := range gjson.GetBytes(body, "messages").Array() {
+		for _, part := range message.Get("content").Array() {
+			if strings.EqualFold(strings.TrimSpace(part.Get("type").String()), "video_url") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {

@@ -84,7 +84,12 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	cte := `
+	errorPredicate := "COALESCE(o.status_code, 0) >= 400"
+	if filter != nil && filter.IncludeRecoveredUpstream {
+		errorPredicate = "(COALESCE(o.status_code, 0) >= 400 OR o.error_phase IN ('upstream', 'account_auth'))"
+	}
+
+	cte := fmt.Sprintf(`
 WITH combined AS (
   SELECT
     'success'::TEXT AS kind,
@@ -133,9 +138,9 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
   WHERE o.created_at >= $1 AND o.created_at < $2
-    AND COALESCE(o.status_code, 0) >= 400
+    AND %s
 )
-`
+`, errorPredicate)
 
 	countQuery := fmt.Sprintf(`%s SELECT COUNT(1) FROM combined %s`, cte, where)
 	var total int64

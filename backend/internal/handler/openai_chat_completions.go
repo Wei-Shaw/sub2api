@@ -234,6 +234,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -254,14 +258,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		semanticSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		result, err := func() (result *service.OpenAIForwardResult, err error) {
 			defer func() {
+				selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
 			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 		}()
+		streamStarted = streamStarted || (reqStream && c.Writer.Written())
 		var cyberBlockBodyChat []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyChat = body
@@ -338,7 +345,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						)
 						return
 					}
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if !openAIForwardMayFailover(c, semanticSizeBeforeForward, failoverErr) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return

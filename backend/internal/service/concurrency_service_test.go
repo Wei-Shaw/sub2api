@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -191,6 +192,20 @@ func TestCleanupStaleProcessSlots_DelegatesPrefix(t *testing.T) {
 	svc := NewConcurrencyService(cache)
 	require.NoError(t, svc.CleanupStaleProcessSlots(context.Background()))
 	require.Equal(t, RequestIDPrefix(), cache.cleanupPrefix)
+}
+
+func TestProvideConcurrencyServiceBlueGreenPreservesActiveSlots(t *testing.T) {
+	for _, skip := range []bool{false, true} {
+		cache := &trackingConcurrencyCache{}
+		cfg := &config.Config{}
+		cfg.Gateway.Scheduling.SkipStartupCleanup = skip
+		ProvideConcurrencyService(cache, nil, cfg)
+		if skip {
+			require.Empty(t, cache.cleanupPrefix)
+		} else {
+			require.Equal(t, RequestIDPrefix(), cache.cleanupPrefix)
+		}
+	}
 }
 
 func TestAcquireAccountSlot_Success(t *testing.T) {

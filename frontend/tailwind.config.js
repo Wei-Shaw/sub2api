@@ -50,6 +50,13 @@ export default {
       },
       fontFamily: {
         sans: [
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei UI',
+          'Microsoft YaHei',
+          'Noto Sans SC',
+          'Source Han Sans SC',
+          'MiSans',
           'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
@@ -57,9 +64,6 @@ export default {
           'Roboto',
           'Helvetica Neue',
           'Arial',
-          'PingFang SC',
-          'Hiragino Sans GB',
-          'Microsoft YaHei',
           'sans-serif'
         ],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']

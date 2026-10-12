@@ -38,6 +38,55 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	return router
 }
 
+func TestAccountModelPickerUsesSavedWhitelistInsteadOfCachedUpstreamCatalog(t *testing.T) {
+	cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK, Header: make(http.Header),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"upstream-only-compact"},{"id":"gpt-5.5"}]}`)),
+	}}
+	gateway := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+	testService := service.NewAccountTestService(nil, nil, nil, nil, nil, upstream, cfg, nil)
+	testService.SetOpenAIGatewayService(gateway)
+	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{
+		ID: 440, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key", "base_url": "https://models.example"},
+	}}
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, testService, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.GET("/models/:id", handler.GetAvailableModels)
+	readIDs := func() []string {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/models/440", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var response struct {
+			Data []struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"display_name"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		ids := make([]string, 0, len(response.Data))
+		for _, model := range response.Data {
+			require.NotEmpty(t, model.DisplayName)
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
+	// Prime discovery before saving a whitelist, reproducing an already-open picker.
+	require.ElementsMatch(t, []string{"upstream-only-compact", "gpt-5.5"}, readIDs())
+	svc.account.Credentials["model_mapping"] = map[string]any{
+		"codex-auto-review": "codex-auto-review", "gpt-5.5": "gpt-5.5",
+		"gpt-5.6-sol": "gpt-5.6-sol", "gpt-5.6-terra": "gpt-5.6-terra", "gpt-6-astra": "gpt-6-astra",
+	}
+	require.Equal(t, []string{"codex-auto-review", "gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra"}, readIDs())
+	// Mapping aliases remain user-facing IDs; upstream targets must not leak into the picker.
+	svc.account.Credentials["model_mapping"] = map[string]any{"my-model": "upstream-only-compact"}
+	require.Equal(t, []string{"my-model"}, readIDs())
+	svc.account.Extra = map[string]any{"openai_passthrough": true}
+	require.Equal(t, []string{"my-model"}, readIDs())
+}
+
 type syncUpstreamHTTPUpstream struct {
 	resp      *http.Response
 	responses []*http.Response
@@ -184,7 +233,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
-func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefaults(t *testing.T) {
+func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughRespectsExplicitMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
@@ -217,8 +266,8 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Data)
-	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIAPIKeyDefaultsToConcreteGPT56Sol(t *testing.T) {

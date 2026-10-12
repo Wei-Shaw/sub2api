@@ -172,6 +172,7 @@ function mountUsageView() {
 
 describe('user UsageView', () => {
   beforeEach(() => {
+    list.mockResolvedValue({ items: [{ id: 1, name: 'demo-key' }] })
     query.mockReset()
     getStats.mockReset()
     getDashboardModels.mockReset()

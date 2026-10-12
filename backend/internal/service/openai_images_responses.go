@@ -1389,6 +1389,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	CaptureOpenAIImagePreviewResponse(c, responseBody)
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
 	return usage, len(results), openAIResponsesImageResultSizes(results), nil
 }
@@ -1445,6 +1446,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 
 	processData := func(dataBytes []byte) {
+		CaptureOpenAIImagePreviewResponse(c, dataBytes)
 		if processDataDone || processDataErr != nil {
 			return
 		}

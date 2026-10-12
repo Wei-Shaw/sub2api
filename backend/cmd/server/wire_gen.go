@@ -251,7 +251,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	usageCleanupRepository := repository.NewUsageCleanupRepository(client, db)
 	usageCleanupService := service.ProvideUsageCleanupService(usageCleanupRepository, timingWheelService, dashboardAggregationService, configConfig)
-	adminUsageHandler := admin.NewUsageHandler(usageService, apiKeyService, adminService, usageCleanupService)
+	adminUsageHandler := admin.NewUsageHandler(usageService, apiKeyService, adminService, usageCleanupService, openAIGatewayService)
 	userAttributeHandler := admin.NewUserAttributeHandler(userAttributeService)
 	errorPassthroughRepository := repository.NewErrorPassthroughRepository(client)
 	errorPassthroughCache := repository.NewErrorPassthroughCache(redisClient)

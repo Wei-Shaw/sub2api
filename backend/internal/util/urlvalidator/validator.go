@@ -12,9 +12,11 @@ import (
 )
 
 type ValidationOptions struct {
-	AllowedHosts     []string
-	RequireAllowlist bool
-	AllowPrivate     bool
+	AllowedHosts           []string
+	RequireAllowlist       bool
+	AllowPrivate           bool
+	AllowInsecureHTTP      bool
+	AllowInsecureHTTPHosts []string
 }
 
 // ValidateHTTPURL validates an outbound HTTP/HTTPS URL.
@@ -37,13 +39,13 @@ func ValidateHTTPURL(raw string, allowInsecureHTTP bool, opts ValidationOptions)
 	}
 
 	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "https" && (!allowInsecureHTTP || scheme != "http") {
-		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
-	}
-
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 	if host == "" {
 		return "", errors.New("invalid host")
+	}
+	insecureHTTPAllowed := scheme == "http" && (opts.AllowInsecureHTTP || isAllowedHost(host, normalizeAllowlist(opts.AllowInsecureHTTPHosts)))
+	if scheme != "https" && (!allowInsecureHTTP && !insecureHTTPAllowed || scheme != "http") {
+		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
 	}
 	if !opts.AllowPrivate && isBlockedHost(host) {
 		return "", fmt.Errorf("host is not allowed: %s", host)
@@ -69,7 +71,7 @@ func ValidateHTTPURL(raw string, allowInsecureHTTP bool, opts ValidationOptions)
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func ValidateURLFormat(raw string, allowInsecureHTTP bool) (string, error) {
+func ValidateURLFormat(raw string, allowInsecureHTTP bool, allowInsecureHTTPHosts ...[]string) (string, error) {
 	// 最小格式校验：仅保证 URL 可解析且 scheme 合规，不做白名单/私网/SSRF 校验
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -82,13 +84,17 @@ func ValidateURLFormat(raw string, allowInsecureHTTP bool) (string, error) {
 	}
 
 	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "https" && (!allowInsecureHTTP || scheme != "http") {
-		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
-	}
-
 	host := strings.TrimSpace(parsed.Hostname())
 	if host == "" {
 		return "", errors.New("invalid host")
+	}
+	var insecureHTTPHosts []string
+	if len(allowInsecureHTTPHosts) > 0 {
+		insecureHTTPHosts = allowInsecureHTTPHosts[0]
+	}
+	insecureHTTPAllowed := scheme == "http" && isAllowedHost(host, normalizeAllowlist(insecureHTTPHosts))
+	if scheme != "https" && (!allowInsecureHTTP && !insecureHTTPAllowed || scheme != "http") {
+		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
 	}
 
 	if port := parsed.Port(); port != "" {

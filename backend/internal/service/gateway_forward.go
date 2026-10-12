@@ -34,6 +34,9 @@ const (
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
+	if anthropicStreamRecoveryAccount(account) && (statusCode == 429 || statusCode >= 500) {
+		return false
+	}
 	// OAuth/Setup Token 账号：仅 403 重试
 	if account.IsOAuth() {
 		return statusCode == 403
@@ -89,6 +92,14 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (result *ForwardResult, err error) {
+	clearUsageEstimateAttempt(c)
+	requestBytes := 0
+	if parsed != nil && parsed.Body != nil {
+		requestBytes = requestBodyBytesForUsageEstimate(parsed.Body.Bytes())
+	}
+	defer func() {
+		s.finalizeUsageEstimate(ctx, c, account, requestBytes, result, err)
+	}()
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
@@ -150,6 +161,21 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if account != nil && account.IsBedrock() {
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
 	}
+	recoveryModel := canonicalOpenAIAccountSchedulingModel(account, parsed.Model)
+	releaseRecovery, completeRecovery, admitted := s.admitAnthropicStreamRecoveryModel(ctx, account, recoveryModel, nil)
+	if !admitted {
+		return nil, &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(`{"error":{"message":"Model recovery probe in progress"}}`)}
+	}
+	defer func() {
+		var failover *UpstreamFailoverError
+		if errors.As(err, &failover) && !failover.RequestScopedTransient && failover.StatusCode >= 500 {
+			s.recordAnthropicStreamFailure(ctx, account, recoveryModel, &anthropicStreamFailure{reason: "upstream_http_error", transient: true})
+		}
+		completeRecovery(err == nil && result != nil && !result.ClientDisconnect)
+		if releaseRecovery != nil {
+			releaseRecovery()
+		}
+	}()
 
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
 	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
@@ -399,7 +425,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		lastWireBody = wireBody
 
 		// 发送请求
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		resp, err = s.doAnthropicAvailabilityRequest(ctx, upstreamReq, proxyURL, account, reqModel, tlsProfile)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -462,7 +488,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					retryReq, retryWireBody, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+						retryResp, retryErr := s.doAnthropicAvailabilityRequest(ctx, retryReq, proxyURL, account, reqModel, tlsProfile)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
@@ -505,7 +531,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									retryReq2, retryWireBody2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
-										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
+										retryResp2, retryErr2 := s.doAnthropicAvailabilityRequest(ctx, retryReq2, proxyURL, account, reqModel, tlsProfile)
 										if retryErr2 == nil {
 											if retryResp2.StatusCode < 400 {
 												// 二阶段工具块降级成功时也必须更新当前 body。
@@ -588,7 +614,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						budgetRetryReq, budgetWireBody, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
-							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							budgetRetryResp, retryErr := s.doAnthropicAvailabilityRequest(ctx, budgetRetryReq, proxyURL, account, reqModel, tlsProfile)
 							if retryErr == nil {
 								if budgetRetryResp.StatusCode < 400 {
 									// budget 修正请求成功后，ParsedRequest 也要描述被接受的修正版。

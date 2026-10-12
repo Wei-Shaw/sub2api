@@ -1157,6 +1157,9 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if account == nil {
 		return false
 	}
+	if anthropicStreamRecoveryAccount(account) && s.anthropicStreamRecovery().isBlocked(account.ID, canonicalOpenAIAccountSchedulingModel(account, requestedModel), time.Now()) {
+		return false
+	}
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
 }
 

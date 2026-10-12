@@ -59,6 +59,13 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(200).
 			Optional().
 			Nillable(),
+		field.String("usage_source").
+			MaxLen(16).
+			Default("upstream").
+			Comment("Token usage source: upstream or estimated"),
+		field.Bool("client_disconnected").
+			Default(false).
+			Comment("Whether the downstream client disconnected before upstream completion"),
 		// UpstreamModelMismatch is tri-state: NULL means the upstream response did
 		// not declare a model (or predates this field); false/true means observed.
 		field.Bool("upstream_model_mismatch").

@@ -1,6 +1,20 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <div class="newapi-overview space-y-5">
+      <router-link
+        v-if="imageWorkbench"
+        :to="`/custom/${imageWorkbench.id}`"
+        class="flex min-w-0 flex-col gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-5 transition-colors hover:bg-blue-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-blue-900/50 dark:bg-blue-950/30 dark:hover:bg-blue-900/40 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">AI 生图工作台</h2>
+            <span class="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-200">推荐</span>
+          </div>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">输入描述即可生成图片，开启你的创作。</p>
+        </div>
+        <span class="shrink-0 text-sm font-semibold text-blue-700 dark:text-blue-300">开始生图 →</span>
+      </router-link>
       <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
       <template v-else-if="stats">
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
@@ -22,7 +36,10 @@ import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardR
 import type { UsageLog, TrendDataPoint, ModelStat, PlatformQuotaItem } from '@/types'
 import { getMyPlatformQuotas } from '@/api/user'
 import { formatDateLocalInput } from '@/utils/format'
+import { useAppStore } from '@/stores/app'
 
+const appStore = useAppStore()
+const imageWorkbench = computed(() => appStore.cachedPublicSettings?.custom_menu_items?.find(item => item.visibility === 'user' && item.id === '97370c95df45cba1'))
 const authStore = useAuthStore(); const user = computed(() => authStore.user)
 const stats = ref<UserStatsType | null>(null); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const recentUsage = ref<UsageLog[]>([])

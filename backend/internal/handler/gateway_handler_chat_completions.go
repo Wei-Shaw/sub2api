@@ -204,7 +204,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				}
 				message := cls.Message
 				if !cls.ModelNotFound {
-					message = "No available accounts: " + err.Error()
+					message = "当前模型服务繁忙，请稍后重试。"
 				}
 				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, message)
 				return
@@ -220,7 +220,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				if fs.LastFailoverErr != nil {
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
-					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "当前模型服务繁忙，请稍后重试。")
 				}
 				return
 			}
@@ -233,7 +233,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "当前模型服务繁忙，请稍后重试。")
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
@@ -428,5 +428,5 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
 		return
 	}
-	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
+	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "当前模型服务繁忙，请稍后重试。")
 }

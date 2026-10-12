@@ -105,6 +105,42 @@ type modelPlazaResponse struct {
 	Groups      []modelPlazaGroup `json:"groups"`
 }
 
+type videoPlazaTier struct {
+	Label string  `json:"label"`
+	Price float64 `json:"price"`
+}
+
+type videoPlazaOffer struct {
+	GroupID        int64            `json:"group_id"`
+	GroupName      string           `json:"group_name"`
+	RateMultiplier float64          `json:"rate_multiplier"`
+	BillingMode    string           `json:"billing_mode"`
+	Tiers          []videoPlazaTier `json:"tiers,omitempty"`
+	DefaultPrice   *float64         `json:"default_price,omitempty"`
+}
+
+type videoPlazaModel struct {
+	Name     string            `json:"name"`
+	Platform string            `json:"platform"`
+	Offers   []videoPlazaOffer `json:"offers"`
+}
+
+type videoPlazaGroup struct {
+	ID                 int64             `json:"id"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	Platform           string            `json:"platform"`
+	SubscriptionType   string            `json:"subscription_type"`
+	RateMultiplier     float64           `json:"rate_multiplier"`
+	UserRateMultiplier *float64          `json:"user_rate_multiplier,omitempty"`
+	IsExclusive        bool              `json:"is_exclusive"`
+	Models             []videoPlazaModel `json:"models"`
+}
+
+type videoPlazaResponse struct {
+	Groups []videoPlazaGroup `json:"groups"`
+}
+
 // Get 返回模型广场数据。
 // GET /api/v1/model-plaza
 func (h *ModelPlazaHandler) Get(c *gin.Context) {
@@ -124,7 +160,7 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		return
 	}
 
-	groups, err := h.plazaService.ListGroups(c.Request.Context())
+	groups, err := h.plazaService.ListCatalogGroups(c.Request.Context(), rt.Catalog)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -159,6 +195,103 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		Description: rt.Description,
 		Groups:      out,
 	})
+}
+
+// GetVideo returns the video-only storefront. It shares model-plaza visibility
+// rules but has a separate payload and page so the existing catalog remains
+// unchanged.
+func (h *ModelPlazaHandler) GetVideo(c *gin.Context) {
+	if h.settingService == nil {
+		response.NotFound(c, "Video model plaza is not enabled")
+		return
+	}
+	rt := h.settingService.GetModelPlazaRuntime(c.Request.Context())
+	if !rt.Enabled {
+		response.NotFound(c, "Video model plaza is not enabled")
+		return
+	}
+	subject, authed := middleware.GetAuthSubjectFromContext(c)
+	if rt.RequireAuth && !authed {
+		response.Unauthorized(c, "Authentication required")
+		return
+	}
+
+	groups, err := h.plazaService.ListVideoGroups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var allowedGroups map[int64]struct{}
+	var restrictPublicGroups bool
+	var userRates map[int64]float64
+	if authed {
+		allowedGroups, restrictPublicGroups, err = h.apiKeyService.GetUserGroupVisibility(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		userRates, err = h.apiKeyService.GetUserGroupRates(c.Request.Context(), subject.UserID)
+		if err != nil {
+			slog.Warn("video_model_plaza_user_rates_failed", "error", err, "user_id", subject.UserID)
+			userRates = nil
+		}
+	}
+
+	out := make([]videoPlazaGroup, 0, len(groups))
+	for i := range groups {
+		g := &groups[i]
+		if g.IsExclusive || (restrictPublicGroups && allowedGroups != nil) {
+			if allowedGroups == nil {
+				continue
+			}
+			if _, ok := allowedGroups[g.ID]; !ok {
+				continue
+			}
+		}
+		rate := videoPlazaEffectiveRate(g, userRates)
+		models := make([]videoPlazaModel, 0, len(g.Models))
+		for _, model := range g.Models {
+			offers := make([]videoPlazaOffer, 0, len(model.Offers))
+			for _, offer := range model.Offers {
+				o := videoPlazaOffer{GroupID: offer.GroupID, GroupName: offer.GroupName, RateMultiplier: rate, BillingMode: string(offer.BillingMode)}
+				for _, tier := range offer.Tiers {
+					o.Tiers = append(o.Tiers, videoPlazaTier{Label: tier.Label, Price: tier.Price * rate})
+				}
+				if offer.DefaultPrice != nil {
+					price := *offer.DefaultPrice * rate
+					o.DefaultPrice = &price
+				}
+				offers = append(offers, o)
+			}
+			models = append(models, videoPlazaModel{Name: model.Name, Platform: model.Platform, Offers: offers})
+		}
+		out = append(out, videoPlazaGroup{ID: g.ID, Name: g.Name, Description: g.Description, Platform: g.Platform, SubscriptionType: g.SubscriptionType, RateMultiplier: g.RateMultiplier, UserRateMultiplier: videoPlazaUserRate(g, userRates), IsExclusive: g.IsExclusive, Models: models})
+	}
+	response.Success(c, videoPlazaResponse{Groups: out})
+}
+
+func videoPlazaEffectiveRate(g *service.VideoPlazaGroup, userRates map[int64]float64) float64 {
+	if g == nil {
+		return 1
+	}
+	if g.VideoRateIndependent {
+		return g.VideoRateMultiplier
+	}
+	if rate, ok := userRates[g.ID]; ok {
+		return rate
+	}
+	return g.RateMultiplier
+}
+
+func videoPlazaUserRate(g *service.VideoPlazaGroup, userRates map[int64]float64) *float64 {
+	if g == nil || g.VideoRateIndependent {
+		return nil
+	}
+	rate, ok := userRates[g.ID]
+	if !ok {
+		return nil
+	}
+	return &rate
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。

@@ -49,6 +49,8 @@ const (
 	FieldLastCheckedAt = "last_checked_at"
 	// FieldCreatedBy holds the string denoting the created_by field in the database.
 	FieldCreatedBy = "created_by"
+	// FieldSortOrder holds the string denoting the sort_order field in the database.
+	FieldSortOrder = "sort_order"
 	// FieldTemplateID holds the string denoting the template_id field in the database.
 	FieldTemplateID = "template_id"
 	// FieldExtraHeaders holds the string denoting the extra_headers field in the database.
@@ -108,6 +110,7 @@ var Columns = []string{
 	FieldJitterSeconds,
 	FieldLastCheckedAt,
 	FieldCreatedBy,
+	FieldSortOrder,
 	FieldTemplateID,
 	FieldExtraHeaders,
 	FieldBodyOverrideMode,
@@ -161,6 +164,8 @@ var (
 	DefaultJitterSeconds int
 	// JitterSecondsValidator is a validator for the "jitter_seconds" field. It is called by the builders before save.
 	JitterSecondsValidator func(int) error
+	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
+	DefaultSortOrder int
 	// DefaultExtraHeaders holds the default value on creation for the "extra_headers" field.
 	DefaultExtraHeaders map[string]string
 	// DefaultBodyOverrideMode holds the default value on creation for the "body_override_mode" field.
@@ -286,6 +291,11 @@ func ByLastCheckedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedBy orders the results by the created_by field.
 func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
+}
+
+// BySortOrder orders the results by the sort_order field.
+func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
 }
 
 // ByTemplateID orders the results by the template_id field.

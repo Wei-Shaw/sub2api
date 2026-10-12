@@ -45,6 +45,8 @@ export default {
 
     // Channel Management
     channels: {
+      noGroupsSelected: 'Select at least one group',
+      emptyModelsInPricing: 'Add at least one model to each pricing entry',
       title: 'Channel Management',
       description: 'Manage channels and custom model pricing',
       searchChannels: 'Search channels...',
@@ -66,8 +68,6 @@ export default {
       updateError: 'Failed to update channel',
       deleteError: 'Failed to delete channel',
       nameRequired: 'Please enter a channel name',
-      noGroupsSelected: 'Select at least one group for {platform}',
-      emptyModelsInPricing: 'Add at least one model to the {platform} pricing rule',
       duplicateModels: 'Model "{0}" appears in multiple pricing entries',
       modelConflict: "Model patterns '{model1}' and '{model2}' conflict: overlapping match range. Model names are matched case-insensitively, so an existing entry already covers all case variants — no need to add the variant separately.",
       mappingConflict: "Mapping source patterns '{model1}' and '{model2}' conflict: overlapping match range. Source patterns are matched case-insensitively, so an existing entry already covers all case variants.",
@@ -542,6 +542,11 @@ export default {
       duplicateSuccess: 'Monitor duplicated as "{name}" and disabled. Review its configuration before enabling it.',
       duplicateFailed: 'Failed to duplicate monitor',
       duplicateKeyUnavailable: 'The API key cannot be decrypted. Re-enter it before duplicating this monitor.',
+      sortOrder: 'Custom order',
+      sortOrderHint: 'Drag the handle to change the channel display order. Channels at the top appear first.',
+      dragToSort: 'Drag to reorder {name}',
+      sortOrderUpdated: 'Channel display order saved',
+      failedToUpdateSortOrder: 'Failed to save channel display order. Refresh and try again.',
       apiKeyDecryptFailed: 'API Key decryption failed. Please re-edit this monitor with a fresh key.',
       createSuccess: 'Monitor created',
       updateSuccess: 'Monitor updated',

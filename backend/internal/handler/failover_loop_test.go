@@ -904,6 +904,13 @@ func TestHandleFailoverError_EdgeCases(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleSelectionExhausted(t *testing.T) {
+	t.Run("exhausted pool cannot reopen indefinitely without forwarding", func(t *testing.T) {
+		fs := NewFailoverState(10, true)
+		fs.LastFailoverErr = newTestFailoverErr(503, false, false)
+		fs.FailedAccountIDs[1] = struct{}{}
+		require.Equal(t, FailoverContinue, fs.HandleSelectionExhausted(context.Background()))
+		require.Equal(t, FailoverExhausted, fs.HandleSelectionExhausted(context.Background()))
+	})
 	t.Run("无LastFailoverErr时返回Exhausted", func(t *testing.T) {
 		fs := NewFailoverState(3, false)
 		// LastFailoverErr 为 nil
@@ -995,6 +1002,18 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		action := fs.HandleSelectionExhausted(context.Background())
 		require.Equal(t, FailoverContinue, action)
 	})
+}
+
+func TestFailoverRetryDeadlineCannotSlide(t *testing.T) {
+	fs := NewFailoverState(3, false)
+	fs.sameAccountDeadlines = map[int64]time.Time{1: time.Now().Add(-time.Second)}
+	err := &service.UpstreamFailoverError{StatusCode: 429, RetryableOnSameAccount: true, SameAccountRetryDeadline: time.Now().Add(time.Minute)}
+	mock := &mockTempUnscheduler{}
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 1, service.PlatformOpenAI, 3, err))
+	require.Zero(t, fs.SameAccountRetryCount[1])
+	require.Contains(t, fs.FailedAccountIDs, int64(1))
+	require.True(t, fs.LastFailoverErr.SameAccountRetryDeadline.Before(time.Now()))
+	require.True(t, err.SameAccountRetryDeadline.After(time.Now()), "do not mutate a shared upstream error")
 }
 
 // ---------------------------------------------------------------------------

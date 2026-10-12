@@ -413,6 +413,34 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 }
 
+func TestChatCompletionsToResponses_VideoURL(t *testing.T) {
+	content := `[{"type":"text","text":"Read this video"},{"type":"video_url","video_url":{"url":"https://cdn.example/video.mp4"}}]`
+	req := &ChatCompletionsRequest{Model: "kimi-k3", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(content)}}}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "input_video", parts[1].Type)
+	assert.Equal(t, "https://cdn.example/video.mp4", parts[1].VideoURL)
+}
+
+func TestChatCompletionsToResponses_EmptyVideoURLSkipped(t *testing.T) {
+	content := `[{"type":"text","text":"Read this video"},{"type":"video_url","video_url":{"url":"  "}}]`
+	req := &ChatCompletionsRequest{Model: "kimi-k3", Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(content)}}}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+}
+
 func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,"}}]`
 	req := &ChatCompletionsRequest{

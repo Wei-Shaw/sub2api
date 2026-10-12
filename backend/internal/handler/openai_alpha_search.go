@@ -175,6 +175,10 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 		accountRelease, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -190,10 +194,11 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardStart := time.Now()
 		var result *service.OpenAIForwardResult
-		result, err = func() (*service.OpenAIForwardResult, error) {
+		result, err = func() (result *service.OpenAIForwardResult, err error) {
 			if accountRelease != nil {
 				defer accountRelease()
 			}
+			defer func() { selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err) }()
 			return h.gatewayService.ForwardAlphaSearch(c.Request.Context(), c, account, forwardBody)
 		}()
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, time.Since(forwardStart).Milliseconds())

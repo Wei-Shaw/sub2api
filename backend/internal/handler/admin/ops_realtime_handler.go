@@ -167,6 +167,23 @@ func (h *OpsHandler) GetAccountAvailability(c *gin.Context) {
 	response.Success(c, payload)
 }
 
+// GetSchedulerSnapshot returns in-process OpenAI scheduler metrics and active
+// account/model cooldowns. It is read-only and is intentionally not persisted.
+// GET /api/v1/admin/ops/scheduler
+func (h *OpsHandler) GetSchedulerSnapshot(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+
+	snapshot, err := h.opsService.GetSchedulerSnapshot(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, snapshot)
+}
+
 func isOpsRealtimeRequestCanceled(c *gin.Context, err error) bool {
 	if err == nil {
 		return false

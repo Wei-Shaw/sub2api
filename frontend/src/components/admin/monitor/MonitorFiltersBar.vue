@@ -52,6 +52,15 @@
         <Icon name="cog" size="md" class="mr-2" />
         {{ t('admin.channelMonitor.template.manageButton') }}
       </button>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        :title="t('admin.channelMonitor.sortOrder')"
+        @click="$emit('sort')"
+      >
+        <Icon name="menu" size="md" class="mr-2" />
+        {{ t('admin.channelMonitor.sortOrder') }}
+      </button>
       <button @click="$emit('create')" class="btn btn-primary">
         <Icon name="plus" size="md" class="mr-2" />
         {{ t('admin.channelMonitor.createButton') }}
@@ -87,6 +96,7 @@ defineEmits<{
   (e: 'reload'): void
   (e: 'create'): void
   (e: 'manage-templates'): void
+  (e: 'sort'): void
   (e: 'search-input'): void
 }>()
 

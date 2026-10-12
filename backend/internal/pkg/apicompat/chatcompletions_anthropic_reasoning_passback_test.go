@@ -92,7 +92,7 @@ func TestAnthropicChatBridge_ReasoningSurvivesOutboundInboundRoundTrip(t *testin
 }
 
 // 兄弟不变式：Responses→Chat 桥(buildChatMessagesFromItems 的 pendingReasoning)
-// 早就把 reasoning 挂到带 tool_calls 的 assistant 消息上了。等价历史下两条桥必须一致。
+// 早就把 reasoning 挂到 assistant 消息上了。等价历史下两条桥必须一致。
 func TestAnthropicChatBridge_MatchesResponsesChatBridgeReasoningPlacement(t *testing.T) {
 	responsesReq := &ResponsesRequest{
 		Model: "deepseek-v4-flash",
@@ -127,9 +127,9 @@ func TestAnthropicChatBridge_MatchesResponsesChatBridgeReasoningPlacement(t *tes
 		"两条桥对等价历史必须产出同样的 reasoning_content 位置")
 }
 
-// 作用域守卫：不带工具调用的纯文本轮次维持现状(与兄弟桥一致 —— reasoning 只随
-// 工具调用回传)，避免把 reasoning_content 撒到不需要它的上游请求上。
-func TestAnthropicToChatCompletionsRequest_ThinkingWithoutToolCallsStaysDropped(t *testing.T) {
+// DeepSeek validates reasoning_content on every historical thinking turn,
+// including a plain assistant answer without tool calls.
+func TestAnthropicToChatCompletionsRequest_ThinkingWithoutToolCallsIsPreserved(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "deepseek-v4-flash",
 		MaxTokens: 100,
@@ -142,12 +142,12 @@ func TestAnthropicToChatCompletionsRequest_ThinkingWithoutToolCallsStaysDropped(
 	out, err := AnthropicToChatCompletionsRequest(req)
 	require.NoError(t, err)
 	require.Len(t, out.Messages, 1)
-	require.Empty(t, out.Messages[0].ReasoningContent)
+	require.Equal(t, "secret thoughts", out.Messages[0].ReasoningContent)
 	require.Equal(t, `"answer"`, string(out.Messages[0].Content))
 
 	payload, err := json.Marshal(out)
 	require.NoError(t, err)
-	require.NotContains(t, string(payload), "reasoning_content")
+	require.Contains(t, string(payload), `"reasoning_content":"secret thoughts"`)
 }
 
 func TestAnthropicThinkingToReasoningContent(t *testing.T) {
@@ -159,62 +159,54 @@ func TestAnthropicThinkingToReasoningContent(t *testing.T) {
 	}
 
 	cases := []struct {
-		name         string
-		raw          string
-		hasToolCalls bool
-		want         string
+		name string
+		raw  string
+		want string
 	}{
 		{
-			name:         "single_thinking_block",
-			raw:          `[{"type":"thinking","thinking":"a"}]`,
-			hasToolCalls: true,
-			want:         "a",
+			name: "single_thinking_block",
+			raw:  `[{"type":"thinking","thinking":"a"}]`,
+			want: "a",
 		},
 		{
 			// 多个 thinking 块用 "\n" 连接，与 extractResponsesReasoningText 一致。
-			name:         "multiple_blocks_join_with_newline",
-			raw:          `[{"type":"thinking","thinking":"a"},{"type":"text","text":"x"},{"type":"thinking","thinking":"b"}]`,
-			hasToolCalls: true,
-			want:         "a\nb",
+			name: "multiple_blocks_join_with_newline",
+			raw:  `[{"type":"thinking","thinking":"a"},{"type":"text","text":"x"},{"type":"thinking","thinking":"b"}]`,
+			want: "a\nb",
 		},
 		{
 			// redacted_thinking 没有明文可回传。
-			name:         "redacted_thinking_has_no_plaintext",
-			raw:          `[{"type":"redacted_thinking","signature":"abc"}]`,
-			hasToolCalls: true,
-			want:         "",
+			name: "redacted_thinking_has_no_plaintext",
+			raw:  `[{"type":"redacted_thinking","signature":"abc"}]`,
+			want: "",
 		},
 		{
 			// 只带 signature 的 thinking 占位块(xAI/Codex 密文回放形态)同样无明文。
-			name:         "signature_only_thinking",
-			raw:          `[{"type":"thinking","thinking":"","signature":"gAAAAxxx"}]`,
-			hasToolCalls: true,
-			want:         "",
+			name: "signature_only_thinking",
+			raw:  `[{"type":"thinking","thinking":"","signature":"gAAAAxxx"}]`,
+			want: "",
 		},
 		{
-			name:         "no_tool_calls_returns_empty",
-			raw:          `[{"type":"thinking","thinking":"a"}]`,
-			hasToolCalls: false,
-			want:         "",
+			name: "no_tool_calls_returns_empty",
+			raw:  `[{"type":"thinking","thinking":"a"}]`,
+			want: "a",
 		},
 		{
-			name:         "no_thinking_blocks",
-			raw:          `[{"type":"text","text":"x"}]`,
-			hasToolCalls: true,
-			want:         "",
+			name: "no_thinking_blocks",
+			raw:  `[{"type":"text","text":"x"}]`,
+			want: "",
 		},
 		{
-			name:         "empty_blocks",
-			raw:          `[]`,
-			hasToolCalls: true,
-			want:         "",
+			name: "empty_blocks",
+			raw:  `[]`,
+			want: "",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want,
-				anthropicThinkingToReasoningContent(blocksOf(t, tc.raw), tc.hasToolCalls))
+				anthropicThinkingToReasoningContent(blocksOf(t, tc.raw)))
 		})
 	}
 }

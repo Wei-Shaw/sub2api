@@ -87,6 +87,41 @@ func TestOpenAIAccessStateCredentialFailureUsesTypedSafeResponse(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), "must-not-leak")
 }
 
+func TestOpenAIStreamTimeoutExhaustionReturns503Semantics(t *testing.T) {
+	for _, committed := range []bool{false, true} {
+		name := "before_headers"
+		if committed {
+			name = "after_keepalive"
+		}
+		t.Run(name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			if committed {
+				_, err := c.Writer.Write([]byte(":\n\n"))
+				require.NoError(t, err)
+			}
+
+			(&OpenAIGatewayHandler{}).handleFailoverExhausted(c, &service.UpstreamFailoverError{
+				StatusCode:       http.StatusServiceUnavailable,
+				Reason:           service.OpenAIStreamTimeoutReason,
+				ClientStatusCode: http.StatusServiceUnavailable,
+				ClientMessage:    "Upstream response stream timed out; please retry later",
+			}, committed)
+
+			if committed {
+				require.Equal(t, http.StatusOK, recorder.Code, "committed HTTP status cannot be changed")
+				require.Contains(t, recorder.Body.String(), "event: response.failed")
+				require.Contains(t, recorder.Body.String(), `"code":"stream_timeout"`)
+			} else {
+				require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+				require.Equal(t, "stream_timeout", gjson.Get(recorder.Body.String(), "error.code").String())
+			}
+		})
+	}
+}
+
 func TestOpenAICapacityFailoverExhaustionPreservesMessageAsServerError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	message := "Our servers are currently overloaded. Please try again later."

@@ -23,6 +23,7 @@ import (
 )
 
 var (
+	ErrCustomImageManaged = infraerrors.Conflict("CUSTOM_IMAGE_MANAGED", "当前为 BUAGA 定制版，请使用已验证的定制镜像及配套源码升级或回滚，禁止以官方二进制覆盖定制功能。")
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
 )
@@ -163,6 +164,9 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.buildType == "custom" {
+		return ErrCustomImageManaged
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -281,6 +285,9 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.buildType == "custom" {
+		return ErrCustomImageManaged
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -307,6 +314,9 @@ func (s *UpdateService) Rollback() error {
 // strictly older than the current version (the current version itself is excluded),
 // newest first. Draft and prerelease entries are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	if s.buildType == "custom" {
+		return []RollbackVersion{}, nil
+	}
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -327,6 +337,9 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if s.buildType == "custom" {
+		return ErrCustomImageManaged
+	}
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

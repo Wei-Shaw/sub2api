@@ -14,6 +14,15 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    heroEyebrow: 'Unified, reliable and observable AI gateway',
+    livePreview: 'Live preview',
+    apiDemo: {
+      title: 'API request examples',
+      request: 'Request',
+      response: 'Response',
+      stream: 'stream',
+      sse: 'SSE'
+    },
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',

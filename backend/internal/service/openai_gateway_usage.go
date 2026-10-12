@@ -21,6 +21,14 @@ import (
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
+	// RequireAtomicVideo opts durable video tasks into transactional billing and
+	// usage persistence. False preserves existing video/text/image behavior.
+	// True requires VideoCount > 0 and an AtomicVideoUsageBillingRepository.
+	RequireAtomicVideo bool
+	// VideoTaskCost is the immutable create-time quote saved with a durable task.
+	// Supplying it requires RequireAtomicVideo and bypasses all live repricing.
+	VideoTaskCost *VideoTaskCostSnapshot
+
 	Result             *OpenAIForwardResult
 	APIKey             *APIKey
 	User               *User
@@ -160,6 +168,18 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
+	if input.RequireAtomicVideo && !isGrokVideoUsageResult(result, nil) {
+		return errors.New("atomic video usage requires a completed video result")
+	}
+	if input.VideoTaskCost != nil {
+		if !input.RequireAtomicVideo {
+			return errors.New("video task cost requires atomic video billing")
+		}
+		return s.recordVideoTaskCost(ctx, input)
+	}
+	if input.RequireAtomicVideo && input.Account != nil && input.Account.Platform == PlatformOpenAI {
+		return errors.New("atomic OpenAI video billing requires a preflight cost snapshot")
+	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
@@ -254,7 +274,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		pricingAt,
 	)
 	if err != nil {
-		if !isUsagePricingUnavailableError(err) {
+		// Durable settlement must retry pricing failures, never mark a task
+		// completed with the legacy zero-cost placeholder.
+		if input.RequireAtomicVideo || !isUsagePricingUnavailableError(err) {
 			return err
 		}
 		logger.L().With(
@@ -387,6 +409,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		AccountID:                account.ID,
 		RequestID:                requestID,
 		UpstreamRequestID:        usageUpstreamRequestIDPtr(account, result.UpstreamHeaders, result.OpenAIWSMode),
+		UsageSource:              optionalTrimmedStringPtr(result.UsageSource),
+		ClientDisconnected:       result.ClientDisconnect,
 		Model:                    result.Model,
 		RequestedModel:           requestedModel,
 		UpstreamModel:            optionalTrimmedStringPtr(result.UpstreamModel),
@@ -415,7 +439,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount
 		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
-		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+		videoDurationSeconds := NormalizeVideoDurationForPlatform(apiKey.Group, result.VideoDurationSeconds)
 		usageLog.VideoDurationSeconds = &videoDurationSeconds
 	}
 	if cost != nil {
@@ -494,6 +518,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
+		if input.RequireAtomicVideo {
+			return errors.New("atomic video usage billing is unavailable in simple mode")
+		}
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
@@ -506,21 +533,39 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if quotaPlatform == "" {
 		quotaPlatform = PlatformFromAPIKey(apiKey)
 	}
+	requestPayloadHash := resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash)
+	if input.RequireAtomicVideo {
+		// A status poll's context ID is not the durable task's payload identity.
+		// Use only the task's saved hash (or no hash) so retries remain identical.
+		requestPayloadHash = strings.TrimSpace(input.RequestPayloadHash)
+	}
 
-	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-		Cost:                       cost,
-		User:                       user,
-		APIKey:                     apiKey,
-		Account:                    account,
-		Subscription:               subscription,
-		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
-		AccountRateMultiplier:      accountRateMultiplier,
-		APIKeyService:              input.APIKeyService,
-		Platform:                   quotaPlatform,
-		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
-	}, s.billingDeps(), s.usageBillingRepo)
+	billingErr := func() error {
+		applyBilling := applyUsageBilling
+		if input.RequireAtomicVideo {
+			applyBilling = applyVideoUsageBilling
+		}
+		_, err := applyBilling(ctx, requestID, usageLog, &postUsageBillingParams{
+			Cost:                       cost,
+			User:                       user,
+			APIKey:                     apiKey,
+			Account:                    account,
+			Subscription:               subscription,
+			RequestPayloadHash:         requestPayloadHash,
+			IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
+			SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
+			AccountRateMultiplier:      accountRateMultiplier,
+			APIKeyService:              input.APIKeyService,
+			Platform:                   quotaPlatform,
+		}, s.billingDeps(), s.usageBillingRepo)
+		return err
+	}()
 
+	if input.RequireAtomicVideo {
+		// The transaction owns the video usage row, including failures and retries.
+		// A zero-cost fallback row would occupy the retry's unique request key.
+		return billingErr
+	}
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
@@ -830,6 +875,9 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+	if apiKey != nil {
+		durationSeconds = NormalizeVideoDurationForPlatform(apiKey.Group, result.VideoDurationSeconds)
+	}
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if resolved != nil && resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
 		gid := apiKey.Group.ID
@@ -845,13 +893,13 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	groupConfig := videoPriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
-		return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+		return s.calculateVideoCostForPlatform(apiKey, billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = videoPriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredVideoPrice(apiKey, billingModel, resolution) {
-			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+			return s.calculateVideoCostForPlatform(apiKey, billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
 		}
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
@@ -882,7 +930,7 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 		logger.LegacyPrintf("service.openai_gateway", "Calculate video channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+	return s.calculateVideoCostForPlatform(apiKey, billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
 }
 
 func (s *OpenAIGatewayService) apiKeyWithFreshGroupMediaPricing(ctx context.Context, apiKey *APIKey) *APIKey {

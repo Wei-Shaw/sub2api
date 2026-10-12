@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	ErrChannelModified       = infraerrors.Conflict("CHANNEL_MODIFIED", "渠道配置已更新或页面版本过旧，请关闭编辑窗口并刷新页面后重新编辑，避免覆盖最新定价。")
 	ErrChannelNotFound       = infraerrors.NotFound("CHANNEL_NOT_FOUND", "channel not found")
 	ErrChannelExists         = infraerrors.Conflict("CHANNEL_EXISTS", "channel name already exists")
 	ErrGroupAlreadyInChannel = infraerrors.Conflict(
@@ -904,6 +905,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err != nil {
 		return nil, fmt.Errorf("get channel: %w", err)
 	}
+	if input.ExpectedUpdatedAt != nil && !channel.UpdatedAt.Equal(*input.ExpectedUpdatedAt) {
+		return nil, ErrChannelModified
+	}
 
 	if err := s.applyUpdateInput(ctx, channel, input); err != nil {
 		return nil, err
@@ -1180,6 +1184,7 @@ type CreateChannelInput struct {
 
 // UpdateChannelInput 更新渠道输入
 type UpdateChannelInput struct {
+	ExpectedUpdatedAt          *time.Time
 	Name                       string
 	Description                *string
 	Status                     string

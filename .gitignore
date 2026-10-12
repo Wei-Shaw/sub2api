@@ -1,76 +1,6 @@
-# 本地杂项文档、测试数据和外部项目副本
-/docs-local/
-.codex
-
-# ===================
-# Go 后端
-# ===================
-# 二进制文件
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-backend/bin/
-backend/server
-backend/sub2api
-backend/main
-
-# Go 测试二进制
-*.test
-
-# 测试覆盖率
-*.out
-coverage.html
-
-# 依赖（使用 go mod）
-vendor/
-
-# Go 编译缓存
-backend/.gocache/
-
-# ===================
-# Node.js / Vue 前端
-# ===================
 node_modules/
-frontend/node_modules/
-frontend/dist/
-*.local
-*.tsbuildinfo
-vite.config.d.ts
-vite.config.js.timestamp-*
-
-# 日志
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# ===================
-# 环境配置
-# ===================
-.env
-.env.local
-.env.*.local
-*.env
-!.env.example
-docker-compose.override.yml
-
-# ===================
-# IDE / 编辑器
-# ===================
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.project
-.settings/
-.classpath
-
-# ===================
-# 操作系统
-# ===================
+__pycache__/
+*.pyc
 .DS_Store
 Thumbs.db
 Desktop.ini
@@ -94,6 +24,9 @@ temp/
 dist/
 build/
 release/
+!ops/release/
+!ops/release/verify_frontend_http.py
+!ops/release/sub2api-static-assets.conf
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
@@ -161,3 +94,12 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+._*
+.env
+.env.*
+!.env.example
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/coverage/
+.release-output/
+!docs/ANTIGRAVITY_ATTRIBUTION_429.md

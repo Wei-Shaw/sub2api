@@ -33,7 +33,6 @@ const reasoningEffortMatchTypes: readonly ReasoningEffortMatchType[] = [
 
 export const reasoningEffortOverLimitDowngrade = "downgrade";
 export const reasoningEffortOverLimitDeny = "deny";
-export const reasoningEffortMappingDeny = "deny";
 
 const reasoningEffortValuesForPlatform = (
   platform: GroupPlatform,
@@ -66,17 +65,6 @@ export function reasoningEffortSourceOptionsForPlatform(
   ).map((value) => ({ value, label: value }));
 }
 
-export function reasoningEffortTargetOptionsForPlatform(
-  platform: GroupPlatform,
-) {
-  const options = reasoningEffortOptionsForPlatform(platform);
-  if (options.length === 0) return options;
-  return [
-    ...options,
-    { value: reasoningEffortMappingDeny, label: reasoningEffortMappingDeny },
-  ];
-}
-
 export function normalizeReasoningEffortForPlatform(
   platform: GroupPlatform,
   value: string | null | undefined,
@@ -97,17 +85,6 @@ export function normalizeReasoningEffortSourceForPlatform(
   return supportsReasoningEffortPolicyPlatform(platform) &&
     normalized === "none"
     ? "none"
-    : normalizeReasoningEffortForPlatform(platform, value);
-}
-
-export function normalizeReasoningEffortTargetForPlatform(
-  platform: GroupPlatform,
-  value: string | null | undefined,
-): string {
-  const normalized = value?.trim().toLowerCase() ?? "";
-  return supportsReasoningEffortPolicyPlatform(platform) &&
-    normalized === reasoningEffortMappingDeny
-    ? reasoningEffortMappingDeny
     : normalizeReasoningEffortForPlatform(platform, value);
 }
 
@@ -215,7 +192,7 @@ export function reasoningEffortMappingsToRows(
       platform,
       mapping.from,
     );
-    const to = normalizeReasoningEffortTargetForPlatform(platform, mapping.to);
+    const to = normalizeReasoningEffortForPlatform(platform, mapping.to);
     if (!from || !to) return;
 
     const matchType = normalizeReasoningEffortMatchType(mapping.match_type);
@@ -293,7 +270,7 @@ export function validateReasoningEffortMappings(
       }
       if (!to) {
         errors[pair.id] = { ...errors[pair.id], to: "toRequired" };
-      } else if (!normalizeReasoningEffortTargetForPlatform(platform, to)) {
+      } else if (!normalizeReasoningEffortForPlatform(platform, to)) {
         errors[pair.id] = { ...errors[pair.id], to: "unsupportedTo" };
       }
     });

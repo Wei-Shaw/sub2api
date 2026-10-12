@@ -7,7 +7,7 @@ import GroupsView from '../GroupsView.vue'
 const {
   listGroups,
   getAllGroups,
-  getModelAllowlistCandidates,
+  getModelsListCandidates,
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
@@ -16,11 +16,10 @@ const {
   showSuccess,
   isCurrentStep,
   nextStep,
-  authState,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getAllGroups: vi.fn(),
-  getModelAllowlistCandidates: vi.fn(),
+  getModelsListCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
@@ -29,7 +28,6 @@ const {
   showSuccess: vi.fn(),
   isCurrentStep: vi.fn(),
   nextStep: vi.fn(),
-  authState: { isSimpleMode: false },
 }))
 
 const messages: Record<string, string> = {
@@ -55,7 +53,7 @@ vi.mock('@/api/admin', () => ({
     groups: {
       list: listGroups,
       getAll: getAllGroups,
-      getModelAllowlistCandidates,
+      getModelsListCandidates,
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
@@ -75,10 +73,6 @@ vi.mock('@/stores/app', () => ({
     showError,
     showSuccess,
   }),
-}))
-
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => authState,
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -134,7 +128,7 @@ const createGroup = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({
   account_count: 3,
   active_account_count: 2,
   rate_limited_account_count: 1,
-  model_allowlist: undefined,
+  models_list_config: undefined,
   sort_order: 10,
   ...overrides,
 })
@@ -239,16 +233,14 @@ describe('admin GroupsView column settings', () => {
 
     listGroups.mockReset()
     getAllGroups.mockReset()
-    getModelAllowlistCandidates.mockReset()
+    getModelsListCandidates.mockReset()
     getUsageSummary.mockReset()
     getCapacitySummary.mockReset()
-    getLiveCapability.mockReset()
     listAccounts.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     isCurrentStep.mockReset()
     nextStep.mockReset()
-    authState.isSimpleMode = false
 
     listGroups.mockResolvedValue({
       items: [createGroup()],
@@ -258,29 +250,12 @@ describe('admin GroupsView column settings', () => {
       pages: 1,
     })
     getAllGroups.mockResolvedValue([])
-    getModelAllowlistCandidates.mockResolvedValue([])
+    getModelsListCandidates.mockResolvedValue([])
     getUsageSummary.mockResolvedValue([])
     getCapacitySummary.mockResolvedValue([])
     getLiveCapability.mockResolvedValue({ supported: false })
     listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     isCurrentStep.mockReturnValue(false)
-  })
-
-  it('does not call advanced group APIs or expose the exclusive filter in simple mode', async () => {
-    authState.isSimpleMode = true
-    const wrapper = await mountView()
-
-    expect(getLiveCapability).not.toHaveBeenCalled()
-    expect(getModelAllowlistCandidates).not.toHaveBeenCalled()
-    expect(getUsageSummary).not.toHaveBeenCalled()
-    expect(getCapacitySummary).not.toHaveBeenCalled()
-    expect(listGroups).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Number),
-      expect.objectContaining({ is_exclusive: undefined }),
-      expect.anything(),
-    )
-    expect(wrapper.find('select').text()).not.toContain('admin.groups.allGroups')
   })
 
   afterEach(() => {

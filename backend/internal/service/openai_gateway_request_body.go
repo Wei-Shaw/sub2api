@@ -21,7 +21,19 @@ import (
 )
 
 func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
-	normalized, err := s.validateOutboundURL(raw)
+	// Account endpoints are operator-configured. This exception must not apply
+	// to media URLs returned by an upstream or supplied in a request.
+	if s.cfg == nil {
+		return s.validateOutboundURL(raw)
+	}
+	if !s.cfg.Security.URLAllowlist.Enabled {
+		return urlvalidator.ValidateURLFormat(raw, true, s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts)
+	}
+	normalized, err := urlvalidator.ValidateHTTPURL(raw, true, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+	})
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
@@ -34,12 +46,13 @@ func (s *OpenAIGatewayService) validateOutboundURL(raw string) (string, error) {
 		return urlvalidator.ValidateURLFormat(raw, false)
 	}
 	if !s.cfg.Security.URLAllowlist.Enabled {
-		return urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		return urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP, s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts)
 	}
 	return urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowedHosts:           s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist:       true,
+		AllowPrivate:           s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowInsecureHTTPHosts: s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts,
 	})
 }
 
@@ -676,6 +689,9 @@ func openAIRequestBodyHasTools(body []byte) bool {
 // ids, and opaque extensions). Callers scope this normalization to OpenAI
 // destinations; compatible providers may still consume their own content.
 func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, error) {
+	if isDeepSeekReasoningReplayModel(gjson.GetBytes(body, "model").String()) {
+		return body, false, nil
+	}
 	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return body, false, nil
@@ -729,6 +745,9 @@ func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, 
 }
 
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
+	if isDeepSeekReasoningReplayModel(gjson.GetBytes(body, "model").String()) {
+		return body, false, nil
+	}
 	if !knownStoreFalse && gjson.GetBytes(body, "store").Type != gjson.False {
 		return body, false, nil
 	}

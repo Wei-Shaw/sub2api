@@ -58,7 +58,21 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	c *gin.Context,
 	account *Account,
 	input anthropicPassthroughForwardInput,
-) (*ForwardResult, error) {
+) (forwardResult *ForwardResult, forwardErr error) {
+	release, complete, admitted := s.admitAnthropicStreamRecoveryModel(ctx, account, input.RequestModel, nil)
+	if !admitted {
+		return nil, &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(`{"error":{"message":"Model recovery probe in progress"}}`)}
+	}
+	defer func() {
+		var failover *UpstreamFailoverError
+		if errors.As(forwardErr, &failover) && !failover.RequestScopedTransient && failover.StatusCode >= 500 {
+			s.recordAnthropicStreamFailure(ctx, account, input.RequestModel, &anthropicStreamFailure{reason: "upstream_http_error", transient: true})
+		}
+		complete(forwardErr == nil && forwardResult != nil && !forwardResult.ClientDisconnect)
+		if release != nil {
+			release()
+		}
+	}()
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
@@ -109,7 +123,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			input.Body = input.Parsed.Body.Bytes()
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = s.doAnthropicAvailabilityRequest(ctx, upstreamReq, proxyURL, account, input.RequestModel, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -377,7 +391,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	account *Account,
 	startTime time.Time,
 	model string,
-) (*streamingResult, error) {
+) (result *streamingResult, returnErr error) {
+	defer func() {
+		if result != nil && !result.clientDisconnect {
+			s.recordAnthropicStreamFailure(ctx, account, model, returnErr)
+		}
+	}()
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -414,6 +433,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	var upstreamStreamErr error
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -495,6 +515,36 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		keepaliveTimer.Reset(keepaliveInterval)
 	}
 	inPartialEvent := false
+	sawSemanticOutput := false
+	currentEventHasError := false
+	var upstreamStreamErrorBody []byte
+	streamFailover := func(status int, body []byte, fallback error) error {
+		// Once the upstream has reported usage, keep the partial result on this
+		// account. Retrying another account would risk charging the same request
+		// twice even when the stream contained no visible text yet.
+		if clientDisconnected || sawSemanticOutput || usage.hasObservedTokens() {
+			return fallback
+		}
+		// Keep the legacy error shape for callers that intentionally construct
+		// this stream handler without the production rate-limit service (for
+		// example, isolated transport tests). The live gateway always has the
+		// service and will return UpstreamFailoverError below.
+		if s.rateLimitService == nil {
+			return fallback
+		}
+		if status <= 0 {
+			status = http.StatusBadGateway
+		}
+		applyAnthropicStreamFailoverPolicy(ctx, s.rateLimitService, account, model, status, body, resp.Header)
+		if status >= http.StatusInternalServerError || status == http.StatusForbidden || status == http.StatusTooManyRequests {
+			s.recordAnthropicStreamFailure(ctx, account, model, &anthropicStreamFailure{reason: "upstream_stream_failover", transient: true})
+		}
+		failoverErr := markAnthropicModelScopedFailover(&UpstreamFailoverError{StatusCode: status, ResponseBody: body}, body)
+		if fallback != nil {
+			return fmt.Errorf("%w: %v", failoverErr, fallback)
+		}
+		return failoverErr
+	}
 
 	for {
 		select {
@@ -504,6 +554,17 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
 				}
+				if upstreamStreamErr != nil {
+					status := http.StatusBadGateway
+					if len(upstreamStreamErrorBody) > 0 {
+						status = anthropicStreamErrorStatus(string(upstreamStreamErrorBody))
+					}
+					failure := streamFailover(status, upstreamStreamErrorBody, upstreamStreamErr)
+					if failure == upstreamStreamErr {
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, upstreamStreamErr
+					}
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, failure
+				}
 				if !sawTerminalEvent {
 					if clientDisconnected && streamInterval > 0 {
 						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -511,7 +572,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
 						}
 					}
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
+					failure := incompleteAnthropicStream("usage incomplete: missing terminal event")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, streamFailover(http.StatusBadGateway, []byte(failure.Error()), failure)
 				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 			}
@@ -529,13 +591,22 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", ev.err)
+				failure := incompleteAnthropicStream("read error")
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, streamFailover(http.StatusBadGateway, []byte(failure.Error()), failure)
 			}
 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
 				observer.ObserveAnthropic([]byte(trimmed))
+				if streamErr := anthropicStreamError(trimmed); streamErr != nil {
+					upstreamStreamErr = streamErr
+					upstreamStreamErrorBody = []byte(trimmed)
+					currentEventHasError = true
+				}
+				if anthropicStreamHasSemanticOutput(trimmed) {
+					sawSemanticOutput = true
+				}
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
@@ -546,12 +617,15 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				parseSSEUsagePassthrough(data, usage)
 			} else {
 				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "event:") && strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "error") {
+					currentEventHasError = true
+				}
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
 					sawTerminalEvent = true
 				}
 			}
 
-			if !clientDisconnected {
+			if !clientDisconnected && !currentEventHasError {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
@@ -568,6 +642,13 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				} else {
 					inPartialEvent = true
 				}
+			}
+			if line == "" && upstreamStreamErr != nil {
+				status := anthropicStreamErrorStatus(string(upstreamStreamErrorBody))
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, streamFailover(status, upstreamStreamErrorBody, upstreamStreamErr)
+			}
+			if line == "" {
+				currentEventHasError = false
 			}
 
 		case <-intervalCh:
@@ -873,6 +954,8 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
+	setObservedResponseBytes(c, responseBodyBytesForUsageEstimate(body))
+	setUsagePresent(c, gjson.GetBytes(body, "usage").Exists())
 	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {

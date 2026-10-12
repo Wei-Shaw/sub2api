@@ -117,6 +117,7 @@ function simulateGuard(
   // 简易模式限制
   if (authState.isSimpleMode) {
     const restrictedPaths = [
+      '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
@@ -281,7 +282,7 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBe('/dashboard')
     })
 
-    it('管理员简易模式访问 /admin/groups 允许通过', () => {
+    it('管理员简易模式访问 /admin/groups 重定向到 /admin/dashboard', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
@@ -290,7 +291,7 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/admin/groups', { requiresAdmin: true }, authState)
-      expect(redirect).toBeNull()
+      expect(redirect).toBe('/admin/dashboard')
     })
 
     it('管理员简易模式访问 /admin/subscriptions 重定向', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   formatDateTimeLocalInput,
@@ -16,6 +16,13 @@ describe('formatDateTimeLocalInput', () => {
 })
 
 describe('parseDateTimeLocalInput', () => {
+  it('validates leap days and years below 100 without the Date constructor offset', () => {
+    expect(parseDateTimeLocalInput('2024-02-29T12:00')).not.toBeNull()
+    expect(parseDateTimeLocalInput('2025-02-29T12:00')).toBeNull()
+    const value = parseDateTimeLocalInput('0096-02-29T12:00')!
+    expect(new Date(value * 1000).getFullYear()).toBe(96)
+    expect(parseDateTimeLocalInput('0000-01-01T00:00')).toBeNull()
+  })
   it('uses local date components and rejects timezone-bearing values', () => {
     const expected = Math.floor(new Date(2026, 7, 30, 7, 24, 10).getTime() / 1000)
 
@@ -40,6 +47,14 @@ describe('parseDateTimeLocalInput', () => {
 })
 
 describe('getBrowserTimeZone', () => {
+  it('falls back to UTC when Intl is unavailable', () => {
+    const spy = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => { throw new Error('unavailable') })
+    try {
+      expect(getBrowserTimeZone()).toBe('UTC')
+    } finally {
+      spy.mockRestore()
+    }
+  })
   it('returns a timezone identifier or the UTC fallback', () => {
     expect(getBrowserTimeZone()).toBeTruthy()
   })

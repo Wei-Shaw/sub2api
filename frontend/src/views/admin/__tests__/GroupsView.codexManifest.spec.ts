@@ -8,13 +8,15 @@ import GroupsView from "@/views/admin/GroupsView.vue";
 
 const {
   listGroups,
-  getModelAllowlistCandidates,
+  updateGroup,
+  getModelsListCandidates,
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
-  getModelAllowlistCandidates: vi.fn(),
+  updateGroup: vi.fn(),
+  getModelsListCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
@@ -25,12 +27,12 @@ vi.mock("@/api/admin", () => ({
     groups: {
       list: listGroups,
       getAll: vi.fn(),
-      getModelAllowlistCandidates,
+      getModelsListCandidates,
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
       create: vi.fn(),
-      update: vi.fn(),
+      update: updateGroup,
       delete: vi.fn(),
       duplicate: vi.fn(),
       updateSortOrder: vi.fn(),
@@ -220,7 +222,12 @@ const mountView = () =>
         GroupCapacityBadge: true,
         GroupRateMultipliersModal: true,
         GroupRPMOverridesModal: true,
-        ReasoningEffortPolicyFields: true,
+        ReasoningEffortPolicyFields: defineComponent({
+          setup(_, { expose }) {
+            expose({ validate: () => true, resetValidation: () => undefined });
+            return () => null;
+          },
+        }),
         CodexManifestAccountsField: CodexManifestAccountsFieldStub,
         PricingEntryCard: true,
         VueDraggable: true,
@@ -232,7 +239,9 @@ describe("GroupsView Codex manifest binding", () => {
   beforeEach(() => {
     localStorage.clear();
     listGroups.mockReset();
-    getModelAllowlistCandidates.mockReset();
+    updateGroup.mockReset();
+    updateGroup.mockResolvedValue(sourceGroup);
+    getModelsListCandidates.mockReset();
     getUsageSummary.mockReset();
     getCapacitySummary.mockReset();
     getLiveCapability.mockReset();
@@ -244,7 +253,7 @@ describe("GroupsView Codex manifest binding", () => {
       page_size: 20,
       pages: 1,
     });
-    getModelAllowlistCandidates.mockResolvedValue([]);
+    getModelsListCandidates.mockResolvedValue([]);
     getUsageSummary.mockResolvedValue([]);
     getCapacitySummary.mockResolvedValue([]);
     getLiveCapability.mockResolvedValue({ supported: false });
@@ -283,6 +292,16 @@ describe("GroupsView Codex manifest binding", () => {
       }),
     );
 
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      codex_models_manifest_config: {
+        enabled: true,
+        account_ids: [17],
+        fallback_to_scheduler: false,
+      },
+    }));
+    expect(wrapper.find('[data-testid="codex-manifest-field"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

@@ -131,8 +131,8 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 		}
 		result, err := tx.ExecContext(ctx,
 			`UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, features = $7, features_config = $8, apply_pricing_to_account_stats = $9, updated_at = NOW()
-			 WHERE id = $10`,
-			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats, channel.ID,
+			 WHERE id = $10 AND updated_at = $11`,
+			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats, channel.ID, channel.UpdatedAt,
 		)
 		if err != nil {
 			if isUniqueViolation(err) {
@@ -142,7 +142,7 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 		}
 		rows, _ := result.RowsAffected()
 		if rows == 0 {
-			return service.ErrChannelNotFound
+			return service.ErrChannelModified
 		}
 
 		// 更新分组关联

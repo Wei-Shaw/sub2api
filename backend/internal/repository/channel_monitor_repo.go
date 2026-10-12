@@ -189,7 +189,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	}
 
 	rows, err := q.
-		Order(dbent.Desc(channelmonitor.FieldID)).
+		Order(dbent.Asc(channelmonitor.FieldSortOrder), dbent.Asc(channelmonitor.FieldID)).
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		All(ctx)
@@ -204,6 +204,75 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	return out, int64(total), nil
 }
 
+func (r *channelMonitorRepository) ListAll(ctx context.Context) ([]*service.ChannelMonitor, error) {
+	rows, err := r.client.ChannelMonitor.Query().
+		Order(dbent.Asc(channelmonitor.FieldSortOrder), dbent.Asc(channelmonitor.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list all monitors: %w", err)
+	}
+	out := make([]*service.ChannelMonitor, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entToServiceMonitor(row))
+	}
+	return out, nil
+}
+
+func (r *channelMonitorRepository) UpdateSortOrders(ctx context.Context, updates []service.ChannelMonitorSortOrderUpdate) error {
+	if len(updates) == 0 {
+		return fmt.Errorf("channel monitor sort order cannot be empty")
+	}
+	if r.db == nil {
+		return fmt.Errorf("channel monitor sort order database is unavailable")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin channel monitor sort transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE channel_monitors IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return fmt.Errorf("lock channel monitors for sorting: %w", err)
+	}
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM channel_monitors`).Scan(&total); err != nil {
+		return fmt.Errorf("count channel monitors for sorting: %w", err)
+	}
+	if total != len(updates) {
+		return fmt.Errorf("channel monitor list changed; reload before sorting")
+	}
+
+	values := make([]string, 0, len(updates))
+	args := make([]any, 0, len(updates)*2)
+	for i, update := range updates {
+		placeholder := i*2 + 1
+		values = append(values, fmt.Sprintf("($%d, $%d)", placeholder, placeholder+1))
+		args = append(args, update.ID, update.SortOrder)
+	}
+	query := fmt.Sprintf(`
+		UPDATE channel_monitors AS monitors
+		SET sort_order = updates.sort_order::integer
+		FROM (VALUES %s) AS updates(id, sort_order)
+		WHERE monitors.id = updates.id::bigint
+	`, strings.Join(values, ", "))
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update channel monitor sort order: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read channel monitor sort update count: %w", err)
+	}
+	if affected != int64(len(updates)) {
+		return fmt.Errorf("one or more channel monitor ids were not found")
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit channel monitor sort order: %w", err)
+	}
+	return nil
+}
+
 // ---------- 调度器辅助 ----------
 
 func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.ChannelMonitor, error) {
@@ -212,6 +281,21 @@ func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
+	}
+	out := make([]*service.ChannelMonitor, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entToServiceMonitor(row))
+	}
+	return out, nil
+}
+
+func (r *channelMonitorRepository) ListEnabledForDisplay(ctx context.Context) ([]*service.ChannelMonitor, error) {
+	rows, err := r.client.ChannelMonitor.Query().
+		Where(channelmonitor.EnabledEQ(true)).
+		Order(dbent.Asc(channelmonitor.FieldSortOrder), dbent.Asc(channelmonitor.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list enabled monitors for display: %w", err)
 	}
 	out := make([]*service.ChannelMonitor, 0, len(rows))
 	for _, row := range rows {
@@ -786,6 +870,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		CreatedBy:            row.CreatedBy,
 		CreatedAt:            row.CreatedAt,
 		UpdatedAt:            row.UpdatedAt,
+		SortOrder:            row.SortOrder,
 		ExtraHeaders:         headers,
 		BodyOverrideMode:     row.BodyOverrideMode,
 		BodyOverride:         row.BodyOverride,

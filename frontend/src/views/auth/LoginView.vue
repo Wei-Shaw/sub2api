@@ -1,16 +1,21 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <PremiumLoginLayout>
+    <div class="premium-login-form space-y-6">
       <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <div>
+        <span class="premium-login-form-kicker"><Icon name="lock" size="xs" />{{ t('auth.secureSignIn') }}</span>
+        <h2 class="mt-3 text-3xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-dark-400">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
       <!-- Login Form -->
+      <div v-if="publicSettingsFailed" role="alert" class="text-sm text-red-600">
+        {{ t('auth.loginSettingsFailed') }}
+        <button type="button" class="ml-2 underline" @click="reloadLoginPage">{{ t('auth.captchaRetry') }}</button>
+      </div>
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
         <div>
@@ -29,7 +34,7 @@
               autofocus
               autocomplete="email"
               :disabled="authActionDisabled"
-              class="input pl-11"
+              class="input premium-login-input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
@@ -52,7 +57,7 @@
               required
               autocomplete="current-password"
               :disabled="authActionDisabled"
-              class="input pl-11 pr-11"
+              class="input premium-login-input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
             />
@@ -101,7 +106,7 @@
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn btn-primary premium-login-submit w-full"
         >
           <svg
             v-if="isLoading"
@@ -208,7 +213,7 @@
         </router-link>
       </p>
     </template>
-  </AuthLayout>
+  </PremiumLoginLayout>
 
   <!-- 2FA Modal -->
   <TotpLoginModal
@@ -225,7 +230,7 @@
 import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { AuthLayout } from '@/components/layout'
+import PremiumLoginLayout from '@/components/layout/PremiumLoginLayout.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
@@ -345,8 +350,10 @@ const agreementGateActive = computed(
 )
 
 const authActionDisabled = computed(
-  () => isLoading.value || passkeyLoading.value || !publicSettingsLoaded.value || agreementGateActive.value
+  () => isLoading.value || passkeyLoading.value || !publicSettingsLoaded.value || publicSettingsFailed.value || agreementGateActive.value
 )
+const publicSettingsFailed = ref(false)
+const reloadLoginPage = () => window.location.reload()
 
 const showPasskeyLogin = computed(
   () => passkeyEnabled.value && typeof window.PublicKeyCredential !== 'undefined'
@@ -383,12 +390,13 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled === true
-    turnstileEnabled.value = settings.turnstile_enabled
+    const loginCaptchaEnabled = settings.login_captcha_enabled !== false
+    turnstileEnabled.value = loginCaptchaEnabled && settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaEnabled.value = loginCaptchaEnabled && settings.tencent_captcha_enabled === true
     tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
     tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
-    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaEnabled.value = loginCaptchaEnabled && settings.aliyun_captcha_enabled === true
     aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
@@ -406,8 +414,7 @@ onMounted(async () => {
     applyLoginAgreementSettings(settings)
   } catch (error) {
     console.error('Failed to load public settings:', error)
-    loginAgreementEnabled.value = false
-    agreementAccepted.value = true
+    publicSettingsFailed.value = true
   } finally {
     publicSettingsLoaded.value = true
   }
@@ -561,6 +568,7 @@ function validateForm(): boolean {
 // ==================== Form Handlers ====================
 
 async function handleLogin(): Promise<void> {
+  if (authActionDisabled.value) return
   // Clear previous error
   errorMessage.value = ''
 
@@ -734,6 +742,12 @@ function handle2FACancel(): void {
 </script>
 
 <style scoped>
+.premium-login-form-kicker { display: inline-flex; align-items: center; gap: .35rem; color: rgb(37 99 235); font-size: .7rem; font-weight: 650; }
+.premium-login-input { min-height: 3rem; border-radius: .55rem; background: rgb(248 250 252); box-shadow: none; }
+.premium-login-input:focus { background: white; }
+.premium-login-submit { min-height: 3rem; border-radius: .55rem; background: rgb(37 99 235); box-shadow: 0 10px 22px rgb(37 99 235 / .18); }
+.premium-login-submit:hover { background: rgb(29 78 216); box-shadow: 0 12px 26px rgb(37 99 235 / .23); }
+.dark .premium-login-input, .dark .premium-login-input:focus { background: rgb(24 24 27); }
 .fade-enter-active,
 .fade-leave-active {
   transition: all 0.3s ease;

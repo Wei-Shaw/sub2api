@@ -9,6 +9,32 @@ const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
 
+describe('AppSidebar video and scheduler icons', () => {
+  it('uses distinct camera and monitoring-screen icons without changing other navigation', () => {
+    expect(componentSource).toMatch(/path: '\/admin\/video-tasks'[^\n]+icon: VideoTaskIcon/)
+    expect(componentSource).toMatch(/path: '\/admin\/scheduler'[^\n]+icon: SchedulerMonitorIcon/)
+    expect(componentSource).toMatch(/path: '\/admin\/ops'[^\n]+icon: ChartIcon/)
+    expect(componentSource).toContain("d: 'M15 10l6-3v10l-6-3'")
+    expect(componentSource).toContain("d: 'M8 21h8m-4-4v4M6 10h3l2-4 2 8 2-4h3'")
+  })
+
+  it('exposes the video model plaza and video API docs in the main navigation', () => {
+    expect(componentSource).toContain("path: '/video-model-plaza?embedded=1'")
+    expect(componentSource).toContain("path: '/video-docs?embedded=1'")
+    expect(componentSource).toContain('icon: VideoPlazaIcon')
+    expect(componentSource).toContain('icon: DocumentIcon')
+    expect(componentSource).toMatch(
+      /if \(withDashboard\) \{[\s\S]*items\.push\(\{ path: '\/dashboard',[\s\S]*?\}\)\s+\}\s+items\.push\(\s+\{ path: '\/video-model-plaza\?embedded=1'/
+    )
+  })
+
+  it('does not add the user-facing video links to the admin navigation', () => {
+    const adminBlock = componentSource.slice(componentSource.indexOf('const adminNavItems'))
+    expect(adminBlock).not.toContain("path: '/video-model-plaza?embedded=1'")
+    expect(adminBlock).not.toContain("path: '/video-docs?embedded=1'")
+  })
+})
+
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
     expect(componentSource).toContain('.sidebar-svg-icon {')
@@ -65,7 +91,7 @@ describe('AppSidebar header styles', () => {
 
 describe('AppSidebar subscription feature flag', () => {
   it('gates the My Subscriptions entry behind the subscription public-settings flag', () => {
-    expect(componentSource).toContain('const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)')
+    expect(componentSource).toContain('const flagSubscription = () => previewMode.value || makeSidebarFlag(FeatureFlags.subscription)()')
     expect(componentSource).toMatch(/path: '\/subscriptions'[^\n]*featureFlag: flagSubscription/)
   })
 

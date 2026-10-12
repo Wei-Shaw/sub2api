@@ -1,11 +1,9 @@
 <template>
-  <div v-if="siteKey" class="turnstile-wrapper relative">
-    <div
-      v-if="loading"
-      role="status"
-      class="absolute inset-0 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400"
-    >
-      {{ t('auth.captchaLoading') }}
+  <div v-if="siteKey" class="turnstile-wrapper">
+    <p v-if="loading" role="status" class="text-sm text-gray-500">{{ t('auth.captchaLoading') }}</p>
+    <div v-if="failed" role="alert" class="text-sm text-red-600">
+      {{ t('auth.captchaLoadFailed') }}
+      <button type="button" class="ml-2 underline" @click="initialize">{{ t('auth.captchaRetry') }}</button>
     </div>
     <div ref="containerRef" class="turnstile-container"></div>
   </div>
@@ -14,6 +12,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { loadTurnstile } from '@/utils/turnstileLoader'
 
 interface TurnstileRenderOptions {
   sitekey: string
@@ -55,46 +54,30 @@ const emit = defineEmits<{
   (e: 'error'): void
 }>()
 
-const { t } = useI18n()
-const loading = ref(true)
 const containerRef = ref<HTMLElement | null>(null)
 const widgetId = ref<string | null>(null)
-const scriptLoaded = ref(false)
+const { t } = useI18n()
+const loading = ref(Boolean(props.siteKey))
+const failed = ref(false)
+let generation = 0
 
-const loadScript = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    if (window.turnstile) {
-      scriptLoaded.value = true
-      resolve()
-      return
-    }
-
-    // Check if script is already loading
-    const existingScript = document.querySelector('script[src*="turnstile"]')
-    if (existingScript) {
-      window.onTurnstileLoad = () => {
-        scriptLoaded.value = true
-        resolve()
-      }
-      return
-    }
-
-    const script = document.createElement('script')
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad'
-    script.async = true
-    script.defer = true
-
-    window.onTurnstileLoad = () => {
-      scriptLoaded.value = true
-      resolve()
-    }
-
-    script.onerror = () => {
-      reject(new Error('Failed to load Turnstile script'))
-    }
-
-    document.head.appendChild(script)
-  })
+const initialize = async () => {
+  const current = ++generation
+  if (!props.siteKey) return
+  loading.value = true
+  failed.value = false
+  if (widgetId.value) emit('expire')
+  try {
+    await loadTurnstile()
+    if (current !== generation) return
+    renderWidget()
+  } catch {
+    if (current !== generation) return
+    failed.value = true
+    emit('error')
+  } finally {
+    if (current === generation) loading.value = false
+  }
 }
 
 const renderWidget = () => {
@@ -118,12 +101,14 @@ const renderWidget = () => {
   widgetId.value = window.turnstile.render(containerRef.value, {
     sitekey: props.siteKey,
     callback: (token: string) => {
+      failed.value = false
       emit('verify', token)
     },
     'expired-callback': () => {
       emit('expire')
     },
     'error-callback': () => {
+      failed.value = true
       emit('error')
     },
     theme: props.theme,
@@ -132,31 +117,22 @@ const renderWidget = () => {
 }
 
 const reset = () => {
+  emit('expire')
   if (window.turnstile && widgetId.value) {
+    failed.value = false
     window.turnstile.reset(widgetId.value)
+  } else {
+    void initialize()
   }
 }
 
 // Expose reset method to parent
 defineExpose({ reset })
 
-onMounted(async () => {
-  if (!props.siteKey) {
-    return
-  }
-
-  try {
-    await loadScript()
-    renderWidget()
-  } catch (error) {
-    console.error('Failed to initialize Turnstile:', error)
-    emit('error')
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(initialize)
 
 onUnmounted(() => {
+  generation++
   if (window.turnstile && widgetId.value) {
     try {
       window.turnstile.remove(widgetId.value)
@@ -169,11 +145,8 @@ onUnmounted(() => {
 // Re-render when siteKey changes
 watch(
   () => props.siteKey,
-  (newKey) => {
-    if (newKey && scriptLoaded.value) {
-      renderWidget()
-    }
-  }
+  initialize,
+  { flush: 'post' }
 )
 </script>
 

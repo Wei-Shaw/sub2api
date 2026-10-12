@@ -733,6 +733,7 @@ func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
 func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING", "5")
+	t.Setenv("GATEWAY_SCHEDULING_SKIP_STARTUP_CLEANUP", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -742,6 +743,7 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	if cfg.Gateway.Scheduling.StickySessionMaxWaiting != 5 {
 		t.Fatalf("StickySessionMaxWaiting = %d, want 5", cfg.Gateway.Scheduling.StickySessionMaxWaiting)
 	}
+	require.True(t, cfg.Gateway.Scheduling.SkipStartupCleanup)
 }
 
 func TestLoadWeChatConnectConfigFromLegacyEnv(t *testing.T) {
@@ -833,6 +835,7 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 		"api.kimi.com",
 		"api.moonshot.ai",
 		"api.moonshot.cn",
+		"*.aliyuncs.com",
 	}
 	hostSet := make(map[string]struct{}, len(cfg.Security.URLAllowlist.UpstreamHosts))
 	for _, h := range cfg.Security.URLAllowlist.UpstreamHosts {

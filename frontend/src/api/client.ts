@@ -14,6 +14,7 @@ import {
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
+import { localPreviewAdapter } from './localPreview'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -22,9 +23,8 @@ export const apiClient: AxiosInstance = axios.create({
   baseURL: getAPIBaseURL(),
   withCredentials: true,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  headers: { 'Content-Type': 'application/json' },
+  adapter: import.meta.env.VITE_LOCAL_PREVIEW === 'true' ? localPreviewAdapter : undefined
 })
 
 // ==================== Request Interceptor ====================

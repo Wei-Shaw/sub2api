@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"reflect"
 	"sort"
@@ -94,6 +95,7 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	OpenAIEndpointCapabilityVideos          OpenAIEndpointCapability = "videos"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1250,6 +1252,13 @@ func (a *Account) GetPoolModeRetryStatusCodes() []int {
 // IsPoolModeRetryableStatus 在账号上下文中判断给定状态码是否应触发同账号重试。
 // 若账号未配置 pool_mode_retry_status_codes，则回退到默认列表。
 func (a *Account) IsPoolModeRetryableStatus(statusCode int) bool {
+	// Anthropic 429 means this account is currently rate limited. Retrying the
+	// same credential only repeats the provider rejection and can keep a request
+	// pinned to one Claude/Kiro account. Let failover select another account;
+	// the normal 429 cooldown still prevents immediate reselection.
+	if a != nil && a.Platform == PlatformAnthropic && (statusCode == http.StatusTooManyRequests || (a.Type == AccountTypeAPIKey && statusCode >= 500)) {
+		return false
+	}
 	codes := a.GetPoolModeRetryStatusCodes()
 	if codes == nil {
 		return isPoolModeRetryableStatus(statusCode)
@@ -1804,6 +1813,10 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
+	case OpenAIEndpointCapabilityVideos:
+		if a.Platform != PlatformOpenAI || a.Type != AccountTypeAPIKey {
+			return false
+		}
 	case OpenAIEndpointCapabilityLive:
 		return a.Platform == PlatformOpenAI &&
 			a.Type == AccountTypeOAuth &&

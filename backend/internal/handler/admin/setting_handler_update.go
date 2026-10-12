@@ -160,6 +160,7 @@ type UpdateSettingsRequest struct {
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
+	LongNoticeContent                 *string                `json:"long_notice_content"`
 	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
@@ -508,6 +509,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	longNoticeContent := previousSettings.LongNoticeContent
+	if req.LongNoticeContent != nil {
+		longNoticeContent = *req.LongNoticeContent
 	}
 	previousAuthSourceDefaults, err := h.settingService.GetAuthSourceDefaultSettings(c.Request.Context())
 	if err != nil {
@@ -1647,6 +1652,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
+		LongNoticeContent:                            longNoticeContent,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
@@ -2311,6 +2317,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
+		LongNoticeContent:                                            updatedSettings.LongNoticeContent,
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,

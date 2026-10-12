@@ -97,6 +97,7 @@ export interface CreateChannelRequest {
 }
 
 export interface UpdateChannelRequest {
+  expected_updated_at?: string
   name?: string
   description?: string
   status?: string

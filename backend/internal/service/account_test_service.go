@@ -210,8 +210,8 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 		if strings.TrimSpace(model.DisplayName) == "" {
 			model.DisplayName = openaiCodexDisplayName(model.ID)
 		}
-		if strings.TrimSpace(model.Type) == "" {
-			model.Type = "model"
+		if strings.TrimSpace(payload.Data[i].Type) == "" {
+			payload.Data[i].Type = "model"
 		}
 	}
 	// Codex discovery lists Responses drivers, not image_generation tool models.
@@ -285,12 +285,14 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 		return "", errors.New("config is not available")
 	}
 	if !s.cfg.Security.URLAllowlist.Enabled {
-		return urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		return urlvalidator.ValidateURLFormat(raw, true, s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts)
 	}
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowedHosts:           s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist:       true,
+		AllowPrivate:           s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowInsecureHTTP:      true,
+		AllowInsecureHTTPHosts: s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts,
 	})
 	if err != nil {
 		return "", err
@@ -589,8 +591,6 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	} else {
 		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
-		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer，
-		// 其余保持 extra/default 行为。
 		setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetBaseURL())
 	}
 
@@ -3087,6 +3087,8 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	var result struct {
 		Data []struct {
 			B64JSON       string `json:"b64_json"`
+			URL           string `json:"url"`
+			MIMEType      string `json:"mime_type"`
 			RevisedPrompt string `json:"revised_prompt"`
 		} `json:"data"`
 	}
@@ -3098,17 +3100,31 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 		return s.sendErrorAndEnd(c, "No images returned from API")
 	}
 
+	imageCount := 0
 	for _, item := range result.Data {
 		if item.RevisedPrompt != "" {
 			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
 		}
 		if item.B64JSON != "" {
+			mimeType := strings.TrimSpace(item.MIMEType)
+			if mimeType == "" {
+				mimeType = "image/png"
+			}
 			s.sendEvent(c, TestEvent{
 				Type:     "image",
-				ImageURL: "data:image/png;base64," + item.B64JSON,
-				MimeType: "image/png",
+				ImageURL: "data:" + mimeType + ";base64," + item.B64JSON,
+				MimeType: mimeType,
 			})
+			imageCount++
+			continue
 		}
+		if imageURL := strings.TrimSpace(item.URL); imageURL != "" {
+			s.sendEvent(c, TestEvent{Type: "image", ImageURL: imageURL, MimeType: strings.TrimSpace(item.MIMEType)})
+			imageCount++
+		}
+	}
+	if imageCount == 0 {
+		return s.sendErrorAndEnd(c, "API response contained no usable image data or URL")
 	}
 
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})

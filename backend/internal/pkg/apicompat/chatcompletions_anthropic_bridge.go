@@ -244,8 +244,9 @@ func anthropicUserToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 
 // anthropicAssistantToChatMessages handles an Anthropic assistant message.
 // Text content → assistant message content; tool_use blocks → tool_calls on the
-// same assistant message; thinking blocks → reasoning_content, but only on a
-// message that carries tool calls (see anthropicThinkingToReasoningContent).
+// same assistant message; thinking blocks → reasoning_content. DeepSeek-style
+// thinking mode requires historical assistant reasoning to be passed back,
+// including turns that did not produce a tool call.
 func anthropicAssistantToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 	// Plain string → single assistant message.
 	var s string
@@ -284,7 +285,7 @@ func anthropicAssistantToChatMessages(raw json.RawMessage) ([]ChatMessage, error
 		})
 	}
 
-	msg.ReasoningContent = anthropicThinkingToReasoningContent(blocks, len(msg.ToolCalls) > 0)
+	msg.ReasoningContent = anthropicThinkingToReasoningContent(blocks)
 
 	return []ChatMessage{msg}, nil
 }
@@ -297,18 +298,13 @@ func anthropicAssistantToChatMessages(raw json.RawMessage) ([]ChatMessage, error
 // next request; dropping it here made the bridge lose exactly what it had just
 // produced. DeepSeek's thinking mode requires the reasoning_content that
 // produced a tool call to be replayed on that assistant message and answers
-// 400 otherwise, which is why buildChatMessagesFromItems already carries
-// pendingReasoning onto assistant tool-call messages in the Responses→Chat
-// bridge. hasToolCalls keeps the scope identical to that sibling: reasoning
-// rides along with tool calls only, never on a plain assistant text turn.
+// 400 otherwise. Plain assistant turns must retain their reasoning too: the
+// upstream validates the complete historical thinking chain, not just tools.
 //
 // redacted_thinking blocks and signature-only placeholders carry no plaintext
 // and contribute nothing. Multiple blocks join with "\n", matching
 // extractResponsesReasoningText.
-func anthropicThinkingToReasoningContent(blocks []AnthropicContentBlock, hasToolCalls bool) string {
-	if !hasToolCalls {
-		return ""
-	}
+func anthropicThinkingToReasoningContent(blocks []AnthropicContentBlock) string {
 	var parts []string
 	for _, b := range blocks {
 		if b.Type == "thinking" && b.Thinking != "" {

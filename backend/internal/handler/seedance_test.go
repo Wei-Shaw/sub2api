@@ -74,7 +74,13 @@ func TestSeedanceHandlerLifecycleAndOwnership(t *testing.T) {
 		} else {
 			h.SeedanceTasks(c)
 		}
-		require.Equal(t, 404, w.Code, other+": "+w.Body.String())
+		expectedStatus := http.StatusNotFound
+		if other == "provider" {
+			// BUAGA OpenAI video lookups fail closed when durable task tracking
+			// is unavailable; they must not fall through to Seedance bindings.
+			expectedStatus = http.StatusServiceUnavailable
+		}
+		require.Equal(t, expectedStatus, w.Code, other+": "+w.Body.String())
 		require.Equal(t, before, upstream.calls)
 		slots.assertReleased(t)
 	}

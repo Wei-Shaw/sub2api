@@ -104,12 +104,8 @@ const cnUsageCellStubs = {
     props: ['account'],
     template: '<div data-test="opencode-go-cell" />'
   },
-  CNProviderQuotaCell: {
-    template: '<div data-test="cn-quota-cell" />'
-  },
-  CNProviderBalanceCell: {
-    template: '<div data-test="cn-balance-cell" />'
-  }
+  CNProviderQuotaCell: { template: '<div data-test="cn-quota-cell" />' },
+  CNProviderBalanceCell: { template: '<div data-test="cn-balance-cell" />' }
 }
 
 describe('AccountUsageCell', () => {

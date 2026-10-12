@@ -25,10 +25,13 @@ type ChannelMonitorRepository interface {
 	Update(ctx context.Context, m *ChannelMonitor) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
+	ListAll(ctx context.Context) ([]*ChannelMonitor, error)
+	UpdateSortOrders(ctx context.Context, updates []ChannelMonitorSortOrderUpdate) error
 	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
 
 	// 调度器辅助
 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
+	ListEnabledForDisplay(ctx context.Context) ([]*ChannelMonitor, error)
 	MarkChecked(ctx context.Context, id int64, checkedAt time.Time) error
 	InsertHistoryBatch(ctx context.Context, rows []*ChannelMonitorHistoryRow) error
 	DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error)
@@ -132,6 +135,42 @@ func (s *ChannelMonitorService) List(ctx context.Context, params ChannelMonitorL
 		s.decryptInPlace(it)
 	}
 	return items, total, nil
+}
+
+// ListAll returns every monitor in the persisted display order.
+func (s *ChannelMonitorService) ListAll(ctx context.Context) ([]*ChannelMonitor, error) {
+	items, err := s.repo.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list all channel monitors: %w", err)
+	}
+	for _, item := range items {
+		s.decryptInPlace(item)
+	}
+	return items, nil
+}
+
+// UpdateSortOrders validates and persists a complete display order.
+func (s *ChannelMonitorService) UpdateSortOrders(ctx context.Context, updates []ChannelMonitorSortOrderUpdate) error {
+	if len(updates) == 0 {
+		return fmt.Errorf("channel monitor sort order cannot be empty")
+	}
+	if len(updates) > 1000 {
+		return fmt.Errorf("too many channel monitor sort updates")
+	}
+	seen := make(map[int64]struct{}, len(updates))
+	for _, update := range updates {
+		if update.ID <= 0 || update.SortOrder < 0 {
+			return fmt.Errorf("invalid channel monitor sort update")
+		}
+		if _, exists := seen[update.ID]; exists {
+			return fmt.Errorf("duplicate channel monitor id in sort updates")
+		}
+		seen[update.ID] = struct{}{}
+	}
+	if err := s.repo.UpdateSortOrders(ctx, updates); err != nil {
+		return fmt.Errorf("update channel monitor sort order: %w", err)
+	}
+	return nil
 }
 
 // Get 查询单个监控（解密 API Key）。

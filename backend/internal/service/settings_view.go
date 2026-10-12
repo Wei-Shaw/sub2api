@@ -156,6 +156,7 @@ type SystemSettings struct {
 	ContactInfo                 string
 	DocURL                      string
 	HomeContent                 string
+	LongNoticeContent           string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
@@ -342,6 +343,7 @@ type PublicSettings struct {
 	LoginAgreementUpdatedAt             string
 	LoginAgreementRevision              string
 	LoginAgreementDocuments             []LoginAgreementDocument
+	LoginCaptchaEnabled                 bool
 	TurnstileEnabled                    bool
 	TurnstileSiteKey                    string
 	TencentCaptchaEnabled               bool
@@ -358,6 +360,7 @@ type PublicSettings struct {
 	ContactInfo                         string
 	DocURL                              string
 	HomeContent                         string
+	LongNoticeContent                   string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
 
@@ -617,11 +620,11 @@ func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	}
 }
 
-// DefaultRateLimit429CooldownSettings 返回默认的429回避配置（启用，5秒）
+// DefaultRateLimit429CooldownSettings 返回默认的429回避配置（启用，60秒）
 func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 	return &RateLimit429CooldownSettings{
 		Enabled:         true,
-		CooldownSeconds: 5,
+		CooldownSeconds: 60,
 	}
 }
 

@@ -292,6 +292,27 @@ func (_u *ChannelMonitorUpdate) AddCreatedBy(v int64) *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (_u *ChannelMonitorUpdate) SetSortOrder(v int) *ChannelMonitorUpdate {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableSortOrder(v *int) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetSortOrder(*v)
+	}
+	return _u
+}
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *ChannelMonitorUpdate) AddSortOrder(v int) *ChannelMonitorUpdate {
+	_u.mutation.AddSortOrder(v)
+	return _u
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_u *ChannelMonitorUpdate) SetTemplateID(v int64) *ChannelMonitorUpdate {
 	_u.mutation.SetTemplateID(v)
@@ -627,6 +648,12 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(channelmonitor.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(channelmonitor.FieldSortOrder, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
@@ -1039,6 +1066,27 @@ func (_u *ChannelMonitorUpdateOne) AddCreatedBy(v int64) *ChannelMonitorUpdateOn
 	return _u
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (_u *ChannelMonitorUpdateOne) SetSortOrder(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableSortOrder(v *int) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetSortOrder(*v)
+	}
+	return _u
+}
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *ChannelMonitorUpdateOne) AddSortOrder(v int) *ChannelMonitorUpdateOne {
+	_u.mutation.AddSortOrder(v)
+	return _u
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_u *ChannelMonitorUpdateOne) SetTemplateID(v int64) *ChannelMonitorUpdateOne {
 	_u.mutation.SetTemplateID(v)
@@ -1404,6 +1452,12 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(channelmonitor.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(channelmonitor.FieldSortOrder, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)

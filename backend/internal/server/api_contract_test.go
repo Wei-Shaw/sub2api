@@ -624,6 +624,7 @@ func TestAPIContracts(t *testing.T) {
 							"image_size_source": null,
 							"image_size_breakdown": null,
 							"media_type": null,
+							"video_count": 0,
 							"cache_ttl_overridden": false,
 							"created_at": "2025-01-02T03:04:05Z",
 							"user_agent": null
@@ -733,6 +734,7 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"long_notice_content": "",
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
@@ -1092,6 +1094,7 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"long_notice_content": "",
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},

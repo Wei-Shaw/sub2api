@@ -95,6 +95,16 @@ func UpstreamResponseModel(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamResponseModel, v))
 }
 
+// UsageSource applies equality check predicate on the "usage_source" field. It's identical to UsageSourceEQ.
+func UsageSource(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUsageSource, v))
+}
+
+// ClientDisconnected applies equality check predicate on the "client_disconnected" field. It's identical to ClientDisconnectedEQ.
+func ClientDisconnected(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldClientDisconnected, v))
+}
+
 // UpstreamModelMismatch applies equality check predicate on the "upstream_model_mismatch" field. It's identical to UpstreamModelMismatchEQ.
 func UpstreamModelMismatch(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModelMismatch, v))
@@ -698,6 +708,81 @@ func UpstreamResponseModelEqualFold(v string) predicate.UsageLog {
 // UpstreamResponseModelContainsFold applies the ContainsFold predicate on the "upstream_response_model" field.
 func UpstreamResponseModelContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldUpstreamResponseModel, v))
+}
+
+// UsageSourceEQ applies the EQ predicate on the "usage_source" field.
+func UsageSourceEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUsageSource, v))
+}
+
+// UsageSourceNEQ applies the NEQ predicate on the "usage_source" field.
+func UsageSourceNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUsageSource, v))
+}
+
+// UsageSourceIn applies the In predicate on the "usage_source" field.
+func UsageSourceIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUsageSource, vs...))
+}
+
+// UsageSourceNotIn applies the NotIn predicate on the "usage_source" field.
+func UsageSourceNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUsageSource, vs...))
+}
+
+// UsageSourceGT applies the GT predicate on the "usage_source" field.
+func UsageSourceGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUsageSource, v))
+}
+
+// UsageSourceGTE applies the GTE predicate on the "usage_source" field.
+func UsageSourceGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUsageSource, v))
+}
+
+// UsageSourceLT applies the LT predicate on the "usage_source" field.
+func UsageSourceLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUsageSource, v))
+}
+
+// UsageSourceLTE applies the LTE predicate on the "usage_source" field.
+func UsageSourceLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUsageSource, v))
+}
+
+// UsageSourceContains applies the Contains predicate on the "usage_source" field.
+func UsageSourceContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldUsageSource, v))
+}
+
+// UsageSourceHasPrefix applies the HasPrefix predicate on the "usage_source" field.
+func UsageSourceHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldUsageSource, v))
+}
+
+// UsageSourceHasSuffix applies the HasSuffix predicate on the "usage_source" field.
+func UsageSourceHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldUsageSource, v))
+}
+
+// UsageSourceEqualFold applies the EqualFold predicate on the "usage_source" field.
+func UsageSourceEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldUsageSource, v))
+}
+
+// UsageSourceContainsFold applies the ContainsFold predicate on the "usage_source" field.
+func UsageSourceContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldUsageSource, v))
+}
+
+// ClientDisconnectedEQ applies the EQ predicate on the "client_disconnected" field.
+func ClientDisconnectedEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldClientDisconnected, v))
+}
+
+// ClientDisconnectedNEQ applies the NEQ predicate on the "client_disconnected" field.
+func ClientDisconnectedNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldClientDisconnected, v))
 }
 
 // UpstreamModelMismatchEQ applies the EQ predicate on the "upstream_model_mismatch" field.

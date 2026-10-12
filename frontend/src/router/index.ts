@@ -185,6 +185,26 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'modelPlaza.title'
     }
   },
+  {
+    path: '/video-model-plaza',
+    name: 'VideoModelPlaza',
+    component: () => import('@/views/VideoModelPlazaView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Video Model Plaza',
+      titleKey: 'videoPlaza.title'
+    }
+  },
+  {
+    path: '/video-docs',
+    name: 'VideoApiDocs',
+    component: () => import('@/views/VideoApiDocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Video API Documentation',
+      titleKey: 'videoDocs.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -424,6 +444,30 @@ const routes: RouteRecordRaw[] = [
       title: 'Ops Monitoring',
       titleKey: 'admin.ops.title',
       descriptionKey: 'admin.ops.description'
+    }
+  },
+  {
+    path: '/admin/scheduler',
+    name: 'AdminScheduler',
+    component: () => import('@/views/admin/scheduler/SchedulerMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Scheduler Monitor',
+      titleKey: 'admin.ops.scheduler.title',
+      descriptionKey: 'admin.ops.scheduler.description'
+    }
+  },
+  {
+    path: '/admin/video-tasks',
+    name: 'AdminVideoTasks',
+    component: () => import('@/views/admin/VideoTasksView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Video Tasks',
+      titleKey: 'admin.videoTasks.title',
+      descriptionKey: 'admin.videoTasks.description'
     }
   },
   {
@@ -749,6 +793,7 @@ let authInitialized = false
 
 // 初始化导航加载状态和预加载
 const navigationLoading = useNavigationLoadingState()
+const localPreviewMode = import.meta.env.VITE_LOCAL_PREVIEW === 'true'
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
@@ -784,6 +829,14 @@ router.beforeEach(async (to, _from, next) => {
   navigationLoading.startNavigation()
 
   const authStore = useAuthStore()
+
+  // Local preview keeps the real route components accessible without a backend session.
+  // This flag is only enabled by the local preview command and is never set in production.
+  if (localPreviewMode && to.meta.requiresAuth !== false) {
+    authStore.initializeLocalPreview(to.path.startsWith('/admin') ? 'admin' : 'user')
+    next()
+    return
+  }
 
   // Restore auth state from localStorage on first navigation (page refresh)
   if (!authInitialized) {
@@ -949,6 +1002,7 @@ router.beforeEach(async (to, _from, next) => {
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
+      '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',

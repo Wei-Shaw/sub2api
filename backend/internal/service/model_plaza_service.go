@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 )
@@ -60,6 +61,48 @@ type PlazaGroup struct {
 	Models                    []PlazaModel
 }
 
+// VideoPlazaTier is one configured video price tier. Public labels contain only
+// the resolution; legacy provider metadata after '|' is not a user-facing tier.
+type VideoPlazaTier struct {
+	Label string
+	Price float64
+}
+
+// VideoPlazaOffer is a price offer for one model in one visible group.
+type VideoPlazaOffer struct {
+	GroupID        int64
+	GroupName      string
+	RateMultiplier float64
+	BillingMode    BillingMode
+	Tiers          []VideoPlazaTier
+	DefaultPrice   *float64
+}
+
+// VideoPlazaModel is the public video model catalog entry. It contains no
+// account, API key, upstream URL, or scheduler internals.
+type VideoPlazaModel struct {
+	Name     string
+	Platform string
+	Offers   []VideoPlazaOffer
+}
+
+// VideoPlazaGroup is a display-only projection of an active group.
+type VideoPlazaGroup struct {
+	ID               int64
+	Name             string
+	Description      string
+	Platform         string
+	SubscriptionType string
+	RateMultiplier   float64
+	// These fields remain internal to the handler projection. They keep the
+	// public quote aligned with the video billing multiplier without exposing
+	// the setting itself.
+	VideoRateIndependent bool
+	VideoRateMultiplier  float64
+	IsExclusive          bool
+	Models               []VideoPlazaModel
+}
+
 // ModelPlazaService 聚合模型广场数据。
 //
 // 模型枚举来自渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
@@ -103,6 +146,123 @@ func NewModelPlazaService(
 //
 // 可见性过滤（专属分组）不在此层做，由 handler 按登录态裁剪。
 func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error) {
+	return s.ListCatalogGroups(ctx, nil)
+}
+
+// ListVideoGroups returns the active groups that have explicit video pricing.
+// It intentionally reads group pricing cards directly: video groups can be
+// configured before a channel publishes a complete model catalog, and the
+// configured card is the same source used by the billing resolver.
+func (s *ModelPlazaService) ListVideoGroups(ctx context.Context) ([]VideoPlazaGroup, error) {
+	groups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active groups: %w", err)
+	}
+
+	out := make([]VideoPlazaGroup, 0)
+	for i := range groups {
+		g := &groups[i]
+		byModel := make(map[string]*VideoPlazaModel)
+		order := make([]string, 0)
+		for _, pricing := range g.ModelPricing {
+			if pricing.BillingMode != BillingModeVideo && pricing.BillingMode != BillingModePerRequest {
+				continue
+			}
+			offer := VideoPlazaOffer{
+				GroupID:        g.ID,
+				GroupName:      g.Name,
+				RateMultiplier: g.RateMultiplier,
+				BillingMode:    pricing.BillingMode,
+			}
+			for _, interval := range pricing.Intervals {
+				if interval.PerRequestPrice == nil || *interval.PerRequestPrice < 0 {
+					continue
+				}
+				label := NormalizeVideoTierLabel(interval.TierLabel)
+				if label == "" {
+					label = "default"
+				}
+				for tierIndex := range offer.Tiers {
+					if offer.Tiers[tierIndex].Label != label {
+						continue
+					}
+					if offer.Tiers[tierIndex].Price != *interval.PerRequestPrice {
+						slog.Warn("video_model_plaza_conflicting_resolution_price",
+							"group_id", g.ID, "model", strings.Join(pricing.Models, ","),
+							"resolution", label, "existing_price", offer.Tiers[tierIndex].Price,
+							"price", *interval.PerRequestPrice)
+						// Prefer an explicitly plain label when legacy and plain
+						// entries disagree; billing uses the exact label first.
+						if strings.TrimSpace(interval.TierLabel) == label {
+							offer.Tiers[tierIndex].Price = *interval.PerRequestPrice
+						}
+					}
+					break
+				}
+				if !slicesContainsVideoTier(offer.Tiers, label) {
+					offer.Tiers = append(offer.Tiers, VideoPlazaTier{Label: label, Price: *interval.PerRequestPrice})
+				}
+			}
+			if len(offer.Tiers) == 0 && pricing.PerRequestPrice != nil && *pricing.PerRequestPrice >= 0 {
+				price := *pricing.PerRequestPrice
+				offer.DefaultPrice = &price
+			}
+			if len(offer.Tiers) == 0 && offer.DefaultPrice == nil {
+				continue
+			}
+			for _, name := range pricing.Models {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					continue
+				}
+				model := byModel[name]
+				if model == nil {
+					model = &VideoPlazaModel{Name: name, Platform: pricing.Platform}
+					byModel[name] = model
+					order = append(order, name)
+				}
+				model.Offers = append(model.Offers, offer)
+			}
+		}
+		if len(order) == 0 {
+			continue
+		}
+		sort.Strings(order)
+		models := make([]VideoPlazaModel, 0, len(order))
+		for _, name := range order {
+			model := *byModel[name]
+			sort.SliceStable(model.Offers, func(i, j int) bool {
+				return model.Offers[i].GroupName < model.Offers[j].GroupName
+			})
+			models = append(models, model)
+		}
+		out = append(out, VideoPlazaGroup{
+			ID: g.ID, Name: g.Name, Description: g.Description, Platform: g.Platform,
+			SubscriptionType: g.SubscriptionType, RateMultiplier: g.RateMultiplier,
+			VideoRateIndependent: g.VideoRateIndependent, VideoRateMultiplier: g.VideoRateMultiplier,
+			IsExclusive: g.IsExclusive, Models: models,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].RateMultiplier != out[j].RateMultiplier {
+			return out[i].RateMultiplier < out[j].RateMultiplier
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
+}
+
+func slicesContainsVideoTier(tiers []VideoPlazaTier, label string) bool {
+	for _, tier := range tiers {
+		if tier.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+// ListCatalogGroups limits the storefront without changing routing or billing configuration.
+func (s *ModelPlazaService) ListCatalogGroups(ctx context.Context, catalog []PlazaCatalogGroup) ([]PlazaGroup, error) {
 	channels, err := s.channelRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
@@ -199,6 +359,25 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	out := make([]PlazaGroup, 0, len(order))
 	for _, gid := range order {
 		pg := byGroup[gid]
+		g := groupEnt[gid]
+		catalogImages := make(map[string]bool)
+		if catalog != nil {
+			entry, ok := plazaCatalogEntry(catalog, gid)
+			if !ok {
+				continue
+			}
+			s.applyPlazaCatalog(ctx, pg, g, entry)
+			allowedModels := pg.Models[:0]
+			for _, model := range pg.Models {
+				if g.ModelAllowlist.Allows(model.Name) {
+					allowedModels = append(allowedModels, model)
+				}
+			}
+			pg.Models = allowedModels
+			for _, name := range entry.ImageModels {
+				catalogImages[name] = true
+			}
+		}
 		if len(pg.Models) == 0 {
 			continue
 		}
@@ -208,9 +387,10 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			}
 			return pg.Models[i].Platform < pg.Models[j].Platform
 		})
-		g := groupEnt[gid]
 		for j := range pg.Models {
-			s.fillDisplayPricing(ctx, &pg.Models[j], g)
+			if !catalogImages[pg.Models[j].Name] {
+				s.fillDisplayPricing(ctx, &pg.Models[j], g)
+			}
 			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo)
 		}
 		out = append(out, *pg)

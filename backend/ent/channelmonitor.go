@@ -53,6 +53,8 @@ type ChannelMonitor struct {
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 	// CreatedBy holds the value of the "created_by" field.
 	CreatedBy int64 `json:"created_by,omitempty"`
+	// Admin display order; lower values appear first
+	SortOrder int `json:"sort_order,omitempty"`
 	// TemplateID holds the value of the "template_id" field.
 	TemplateID *int64 `json:"template_id,omitempty"`
 	// ExtraHeaders holds the value of the "extra_headers" field.
@@ -118,7 +120,7 @@ func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case channelmonitor.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case channelmonitor.FieldID, channelmonitor.FieldAccountID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
+		case channelmonitor.FieldID, channelmonitor.FieldAccountID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldSortOrder, channelmonitor.FieldTemplateID:
 			values[i] = new(sql.NullInt64)
 		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldCheckMode, channelmonitor.FieldAPIMode, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
@@ -250,6 +252,12 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_by", values[i])
 			} else if value.Valid {
 				_m.CreatedBy = value.Int64
+			}
+		case channelmonitor.FieldSortOrder:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sort_order", values[i])
+			} else if value.Valid {
+				_m.SortOrder = int(value.Int64)
 			}
 		case channelmonitor.FieldTemplateID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -384,6 +392,9 @@ func (_m *ChannelMonitor) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_by=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CreatedBy))
+	builder.WriteString(", ")
+	builder.WriteString("sort_order=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
 	builder.WriteString(", ")
 	if v := _m.TemplateID; v != nil {
 		builder.WriteString("template_id=")

@@ -87,6 +87,9 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.Int64("created_by"),
+		field.Int("sort_order").
+			Default(2147483647).
+			Comment("Admin display order; lower values appear first"),
 
 		// ---- 自定义请求快照字段（来自模板 / 手动编辑） ----
 
@@ -133,5 +136,6 @@ func (ChannelMonitor) Indexes() []ent.Index {
 		index.Fields("group_name"),
 		index.Fields("template_id"),
 		index.Fields("account_id"),
+		index.Fields("sort_order"),
 	}
 }

@@ -831,7 +831,8 @@ type URLAllowlistConfig struct {
 	CRSHosts          []string `mapstructure:"crs_hosts"`
 	AllowPrivateHosts bool     `mapstructure:"allow_private_hosts"`
 	// 关闭 URL 白名单校验时，是否允许 http URL（默认只允许 https）
-	AllowInsecureHTTP bool `mapstructure:"allow_insecure_http"`
+	AllowInsecureHTTP      bool     `mapstructure:"allow_insecure_http"`
+	AllowInsecureHTTPHosts []string `mapstructure:"allow_insecure_http_hosts"`
 }
 
 type ResponseHeaderConfig struct {
@@ -979,6 +980,8 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// Enable only after legacy video workers have drained during rollout.
+	GrokVideoDurableSettlementEnabled bool `mapstructure:"grok_video_durable_settlement_enabled"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -993,6 +996,9 @@ type GatewayConfig struct {
 	// OpenAIHighEffortFirstOutputTimeoutSeconds: high/xhigh/max 推理的首个语义输出超时（秒）。
 	// 0 表示回退到 OpenAIFirstOutputTimeoutSeconds。
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
+	// OpenAIAPIKeyAvailabilityEnabled opts non-pool OpenAI API keys into immediate
+	// model cooldown and next-account failover for recoverable upstream failures.
+	OpenAIAPIKeyAvailabilityEnabled bool `mapstructure:"openai_apikey_availability_enabled"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
@@ -1511,6 +1517,8 @@ type GatewaySchedulingConfig struct {
 
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
+	// Preserve slots owned by the still-running instance during blue-green deployment.
+	SkipStartupCleanup bool `mapstructure:"skip_startup_cleanup"`
 
 	// 受控回源配置
 	DbFallbackEnabled bool `mapstructure:"db_fallback_enabled"`
@@ -2099,6 +2107,7 @@ func setDefaults() {
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
 		"*.openai.azure.com",
+		"*.aliyuncs.com", // Aliyun official API/OSS result links used by Wan3
 	})
 	viper.SetDefault("security.url_allowlist.pricing_hosts", []string{
 		"raw.githubusercontent.com",
@@ -2106,6 +2115,7 @@ func setDefaults() {
 	viper.SetDefault("security.url_allowlist.crs_hosts", []string{})
 	viper.SetDefault("security.url_allowlist.allow_private_hosts", true)
 	viper.SetDefault("security.url_allowlist.allow_insecure_http", true)
+	viper.SetDefault("security.url_allowlist.allow_insecure_http_hosts", []string{"gpt.us.aiapisplus.com"})
 	viper.SetDefault("security.response_headers.enabled", true)
 	viper.SetDefault("security.response_headers.additional_allowed", []string{})
 	viper.SetDefault("security.response_headers.force_remove", []string{})
@@ -2419,8 +2429,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.grok_response_header_timeout", 120)
+	viper.SetDefault("gateway.grok_video_durable_settlement_enabled", false)
 	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.openai_high_effort_first_output_timeout_seconds", 0)
+	viper.SetDefault("gateway.openai_apikey_availability_enabled", false)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -2553,6 +2565,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
 	viper.SetDefault("gateway.scheduling.snapshot_write_chunk_size", 256)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
+	viper.SetDefault("gateway.scheduling.skip_startup_cleanup", false)
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
 	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
 	viper.SetDefault("gateway.scheduling.db_fallback_max_qps", 0)

@@ -361,6 +361,9 @@ func NewOpenAIGatewayHandler(
 	opsService *service.OpsService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
+	if gatewayService != nil {
+		gatewayService.StartVideoTaskWorker(apiKeyService)
+	}
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
 	if cfg != nil {
@@ -766,6 +769,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
 			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
@@ -789,8 +796,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		result, err := func() (result *service.OpenAIForwardResult, err error) {
 			defer func() {
+				selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -1362,6 +1370,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
 			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
@@ -1382,8 +1394,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		result, err := func() (result *service.OpenAIForwardResult, err error) {
 			defer func() {
+				selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -2096,6 +2109,8 @@ const (
 	// 未写任何响应；调用方应经 recordOpenAIProfitVeto 把该账号加入本请求排除集
 	// 后重新选号，全池耗尽由下一轮选号返回标准 no available accounts。
 	openAISlotAcquireProfitVetoed
+	// No response was written; the failed account must be excluded and reselected.
+	openAISlotAcquireTransientVetoed
 )
 
 // openAIWSTurnPricing 持有 WebSocket 连接内「当前 turn」的计费定价时刻。
@@ -2329,6 +2344,10 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		return nil, openAISlotAcquireFailed
 	}
 	if fastAcquired {
+		fastReleaseFunc, admitted := h.gatewayService.AdmitOpenAISelectionAfterWait(selection, fastReleaseFunc)
+		if !admitted {
+			return nil, openAISlotAcquireTransientVetoed
+		}
 		// 分组利润控制：快速抢槽成功后终检。选号与抢槽之间账号
 		// 倍率可能刷新，越线则释放槽位交由调用方排除重选，不绑定粘连。
 		latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(ctx, account)
@@ -2385,6 +2404,10 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 
 	// Slot acquired: no longer waiting in queue.
 	releaseWait()
+	accountReleaseFunc, admitted := h.gatewayService.AdmitOpenAISelectionAfterWait(selection, accountReleaseFunc)
+	if !admitted {
+		return nil, openAISlotAcquireTransientVetoed
+	}
 	// 分组利润控制：WaitPlan 排队成功后终检。排队期间账号倍率
 	// 可能上调，越线则释放槽位交由调用方排除重选，不绑定粘连。
 	latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(ctx, account)
@@ -2873,6 +2896,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
 				return
 			}
+			fastReleaseFunc, admitted := h.gatewayService.AdmitOpenAISelectionAfterWait(selection, fastReleaseFunc)
+			if !admitted {
+				failedAccountIDs[account.ID] = struct{}{}
+				continue
+			}
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。
 			latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(admissionCtx, account)
@@ -3153,6 +3181,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if scheduleModel == "" {
 					scheduleModel = turnRequestedModel
 				}
+				selection.CompleteTransient(turnErr == nil && openAIForwardSucceededForScheduling(result), turnErr)
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, scheduleModel, openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
@@ -3575,6 +3604,12 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			status = http.StatusServiceUnavailable
 		}
 		h.handleStreamingAwareError(c, status, "server_error", failoverErr.ClientMessage, streamStarted)
+		return
+	}
+	if failoverErr.Reason == service.OpenAIStreamTimeoutReason {
+		message := "Upstream response stream timed out; please retry later"
+		service.SetOpsUpstreamError(c, http.StatusServiceUnavailable, message, "")
+		h.handleStreamingAwareErrorWithCode(c, http.StatusServiceUnavailable, "server_error", "stream_timeout", message, streamStarted, false)
 		return
 	}
 	statusCode := failoverErr.StatusCode

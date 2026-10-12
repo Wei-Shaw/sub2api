@@ -27,4 +27,11 @@ func RegisterModelPlazaRoutes(
 	{
 		plaza.GET("", h.ModelPlaza.Get)
 	}
+	videoPlaza := v1.Group("/video-model-plaza")
+	videoPlaza.Use(panelRateLimiter.PublicIP())
+	videoPlaza.Use(gin.HandlerFunc(optionalJWT))
+	videoPlaza.Use(middleware.BackendModeUserGuard(settingService))
+	{
+		videoPlaza.GET("", h.ModelPlaza.GetVideo)
+	}
 }

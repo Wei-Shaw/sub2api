@@ -156,6 +156,7 @@ type SystemSettings struct {
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
+	LongNoticeContent           string           `json:"long_notice_content"`
 	CompactHomeEnabled          bool             `json:"compact_home_enabled"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
@@ -380,6 +381,7 @@ type PublicSettings struct {
 	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
 	LoginAgreementRevision              string                   `json:"login_agreement_revision"`
 	LoginAgreementDocuments             []LoginAgreementDocument `json:"login_agreement_documents"`
+	LoginCaptchaEnabled                 bool                     `json:"login_captcha_enabled"`
 	TurnstileEnabled                    bool                     `json:"turnstile_enabled"`
 	TurnstileSiteKey                    string                   `json:"turnstile_site_key"`
 	TencentCaptchaEnabled               bool                     `json:"tencent_captcha_enabled"`
@@ -396,6 +398,7 @@ type PublicSettings struct {
 	ContactInfo                         string                   `json:"contact_info"`
 	DocURL                              string                   `json:"doc_url"`
 	HomeContent                         string                   `json:"home_content"`
+	LongNoticeContent                   string                   `json:"long_notice_content"`
 	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`

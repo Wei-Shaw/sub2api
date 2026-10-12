@@ -1,13 +1,13 @@
 <template>
   <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
-    <!-- 固定区域：操作按钮 -->
-    <div v-if="$slots.actions" class="layout-section-fixed">
-      <slot name="actions" />
-    </div>
-
-    <!-- 固定区域：搜索和过滤器 -->
-    <div v-if="$slots.filters" class="layout-section-fixed">
-      <slot name="filters" />
+    <!-- NewAPI-style toolbar: filters stay left, actions stay right. -->
+    <div v-if="$slots.actions || $slots.filters" class="newapi-data-toolbar">
+      <div v-if="$slots.filters" class="newapi-data-toolbar-filters">
+        <slot name="filters" />
+      </div>
+      <div v-if="$slots.actions" class="newapi-data-toolbar-actions">
+        <slot name="actions" />
+      </div>
     </div>
 
     <!-- 滚动区域：表格 -->
@@ -46,12 +46,24 @@ onUnmounted(() => {
 <style scoped>
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
-  @apply flex flex-col gap-6;
+  @apply flex flex-col gap-4;
   height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
 .layout-section-fixed {
   @apply flex-shrink-0;
+}
+
+.newapi-data-toolbar {
+  @apply flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm dark:border-dark-700 dark:bg-dark-800;
+}
+
+.newapi-data-toolbar-filters {
+  @apply min-w-0 flex-1;
+}
+
+.newapi-data-toolbar-actions {
+  @apply flex shrink-0 items-center justify-end gap-2;
 }
 
 .layout-section-scrollable {
@@ -60,7 +72,7 @@ onUnmounted(() => {
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-lg border border-gray-200 dark:border-dark-700 shadow-sm;
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -94,6 +106,21 @@ onUnmounted(() => {
 /* 移动端：恢复正常滚动 */
 .table-page-layout.mobile-mode .table-scroll-container {
   @apply h-auto overflow-visible border-none shadow-none bg-transparent;
+}
+
+@media (max-width: 767px) {
+  .newapi-data-toolbar {
+    @apply items-stretch;
+  }
+
+  .newapi-data-toolbar-filters,
+  .newapi-data-toolbar-actions {
+    @apply w-full;
+  }
+
+  .newapi-data-toolbar-actions :deep(> div) {
+    @apply flex-1;
+  }
 }
 
 .table-page-layout.mobile-mode .layout-section-scrollable {

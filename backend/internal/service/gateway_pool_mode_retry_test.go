@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGatewayCompatPoolMode429AllowsSameAccountRetry(t *testing.T) {
+func TestGatewayCompatPoolMode429SwitchesAccountForAnthropic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -70,7 +70,7 @@ func TestGatewayCompatPoolMode429AllowsSameAccountRetry(t *testing.T) {
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
-			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.False(t, failoverErr.RetryableOnSameAccount)
 			require.Equal(t, 1, upstream.callCount)
 			require.Empty(t, recorder.Body.String())
 		})

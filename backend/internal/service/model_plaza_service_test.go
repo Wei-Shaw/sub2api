@@ -57,6 +57,49 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
+func TestListVideoGroups_UsesConfiguredVideoTiers(t *testing.T) {
+	price480, price720 := 0.12, 0.18
+	perRequest := 0.75
+	groups := []Group{{
+		ID: 10, Name: "video", Platform: PlatformOpenAI, RateMultiplier: 0.5,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"seedance-2.5"}, BillingMode: BillingModeVideo,
+				Intervals: []PricingInterval{{TierLabel: "480p", PerRequestPrice: &price480}, {TierLabel: "720p", PerRequestPrice: &price720}}},
+			{Platform: PlatformOpenAI, Models: []string{"grok-imagine-video-1.5"}, BillingMode: BillingModePerRequest, PerRequestPrice: &perRequest},
+			{Platform: PlatformOpenAI, Models: []string{"ignored-token"}, BillingMode: BillingModeToken},
+		},
+	}}
+
+	out, err := newPlazaService(nil, groups, nil).ListVideoGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 2)
+	require.Equal(t, "grok-imagine-video-1.5", out[0].Models[0].Name)
+	require.Equal(t, "seedance-2.5", out[0].Models[1].Name)
+	require.False(t, out[0].VideoRateIndependent)
+	require.Len(t, out[0].Models[1].Offers[0].Tiers, 2)
+	require.InDelta(t, 0.12, out[0].Models[1].Offers[0].Tiers[0].Price, 1e-12)
+}
+
+func TestListVideoGroups_NormalizesAndDeduplicatesLegacyResolutionLabels(t *testing.T) {
+	price := 0.685
+	groups := []Group{{
+		ID: 10, Name: "video", Platform: PlatformOpenAI,
+		ModelPricing: []ChannelModelPricing{{
+			Platform: PlatformOpenAI, Models: []string{"seedance-2.5"}, BillingMode: BillingModeVideo,
+			Intervals: []PricingInterval{
+				{TierLabel: "1080p|off|no", PerRequestPrice: &price},
+				{TierLabel: "1080p|on|yes", PerRequestPrice: &price},
+			},
+		}},
+	}}
+
+	out, err := newPlazaService(nil, groups, nil).ListVideoGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out[0].Models[0].Offers[0].Tiers, 1)
+	require.Equal(t, "1080p", out[0].Models[0].Offers[0].Tiers[0].Label)
+}
+
 func TestListPlazaGroups_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
 	ch := plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-fable-5-1")
 	svc := newPlazaService([]Channel{ch}, []Group{{ID: 10, Platform: "anthropic"}}, nil)

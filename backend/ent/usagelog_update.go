@@ -162,6 +162,34 @@ func (_u *UsageLogUpdate) ClearUpstreamResponseModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetUsageSource sets the "usage_source" field.
+func (_u *UsageLogUpdate) SetUsageSource(v string) *UsageLogUpdate {
+	_u.mutation.SetUsageSource(v)
+	return _u
+}
+
+// SetNillableUsageSource sets the "usage_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUsageSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUsageSource(*v)
+	}
+	return _u
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (_u *UsageLogUpdate) SetClientDisconnected(v bool) *UsageLogUpdate {
+	_u.mutation.SetClientDisconnected(v)
+	return _u
+}
+
+// SetNillableClientDisconnected sets the "client_disconnected" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientDisconnected(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientDisconnected(*v)
+	}
+	return _u
+}
+
 // SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
 func (_u *UsageLogUpdate) SetUpstreamModelMismatch(v bool) *UsageLogUpdate {
 	_u.mutation.SetUpstreamModelMismatch(v)
@@ -1061,6 +1089,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UsageSource(); ok {
+		if err := usagelog.UsageSourceValidator(v); err != nil {
+			return &ValidationError{Name: "usage_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -1158,6 +1191,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UpstreamResponseModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UsageSource(); ok {
+		_spec.SetField(usagelog.FieldUsageSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClientDisconnected(); ok {
+		_spec.SetField(usagelog.FieldClientDisconnected, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
@@ -1673,6 +1712,34 @@ func (_u *UsageLogUpdateOne) SetNillableUpstreamResponseModel(v *string) *UsageL
 // ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamResponseModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamResponseModel()
+	return _u
+}
+
+// SetUsageSource sets the "usage_source" field.
+func (_u *UsageLogUpdateOne) SetUsageSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUsageSource(v)
+	return _u
+}
+
+// SetNillableUsageSource sets the "usage_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUsageSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUsageSource(*v)
+	}
+	return _u
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (_u *UsageLogUpdateOne) SetClientDisconnected(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetClientDisconnected(v)
+	return _u
+}
+
+// SetNillableClientDisconnected sets the "client_disconnected" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientDisconnected(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientDisconnected(*v)
+	}
 	return _u
 }
 
@@ -2588,6 +2655,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UsageSource(); ok {
+		if err := usagelog.UsageSourceValidator(v); err != nil {
+			return &ValidationError{Name: "usage_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -2702,6 +2774,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.UpstreamResponseModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UsageSource(); ok {
+		_spec.SetField(usagelog.FieldUsageSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClientDisconnected(); ok {
+		_spec.SetField(usagelog.FieldClientDisconnected, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)

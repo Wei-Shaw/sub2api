@@ -35,6 +35,27 @@ describe('GroupSelector simple-mode binding policy', () => {
     expect(wrapper.text()).toContain('Composite')
   })
 
+  it('waits for group data before removing known composite selections', async () => {
+    authState.isSimpleMode = true
+    const wrapper = mount(GroupSelector, {
+      props: { modelValue: [1, 2, 99], groups: [] },
+      global: { stubs: { GroupBadge: true, Icon: true } }
+    })
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    await wrapper.setProps({ groups })
+    expect(wrapper.emitted('update:modelValue')).toEqual([[[1, 99]]])
+    wrapper.unmount()
+  })
+
+  it('does not remove selections merely hidden by platform or search filters', async () => {
+    authState.isSimpleMode = true
+    const wrapper = mountSelector([1, 99])
+    await wrapper.setProps({ platform: 'openai', searchable: true })
+    await wrapper.get('input[type="text"]').setValue('no-match')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('cleans hidden historical composite IDs while preserving visible selections', () => {
     authState.isSimpleMode = true
     const wrapper = mountSelector([1, 2])

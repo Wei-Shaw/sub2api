@@ -17,6 +17,10 @@ var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerpri
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
+	// VideoUsageLog must be persisted in the same transaction as billing effects.
+	// Nil preserves the existing text/image billing path and fingerprint.
+	VideoUsageLog *UsageLog
+
 	RequestID          string
 	APIKeyID           int64
 	RequestFingerprint string
@@ -223,4 +227,12 @@ type UsageBillingRepository interface {
 	ReserveBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	CaptureBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	ReleaseBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
+}
+
+// AtomicVideoUsageBillingRepository is an opt-in capability. Implementations
+// must commit billing effects, dedup and the usage row in one transaction.
+// Keeping it separate prevents legacy repositories/mocks from silently
+// accepting an atomic video settlement through their ordinary Apply method.
+type AtomicVideoUsageBillingRepository interface {
+	ApplyVideo(ctx context.Context, cmd *UsageBillingCommand, usageLog *UsageLog) (*UsageBillingApplyResult, error)
 }

@@ -184,6 +184,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -204,8 +208,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		result, err := func() (result *service.OpenAIForwardResult, err error) {
 			defer func() {
+				selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}

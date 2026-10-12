@@ -14626,6 +14626,8 @@ type ChannelMonitorMutation struct {
 	last_checked_at         *time.Time
 	created_by              *int64
 	addcreated_by           *int64
+	sort_order              *int
+	addsort_order           *int
 	extra_headers           *map[string]string
 	body_override_mode      *string
 	body_override           *map[string]interface{}
@@ -15488,6 +15490,62 @@ func (m *ChannelMonitorMutation) ResetCreatedBy() {
 	m.addcreated_by = nil
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (m *ChannelMonitorMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *ChannelMonitorMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *ChannelMonitorMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *ChannelMonitorMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *ChannelMonitorMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
+}
+
 // SetTemplateID sets the "template_id" field.
 func (m *ChannelMonitorMutation) SetTemplateID(i int64) {
 	m.request_template = &i
@@ -15840,7 +15898,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -15891,6 +15949,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.created_by != nil {
 		fields = append(fields, channelmonitor.FieldCreatedBy)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, channelmonitor.FieldSortOrder)
 	}
 	if m.request_template != nil {
 		fields = append(fields, channelmonitor.FieldTemplateID)
@@ -15946,6 +16007,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.LastCheckedAt()
 	case channelmonitor.FieldCreatedBy:
 		return m.CreatedBy()
+	case channelmonitor.FieldSortOrder:
+		return m.SortOrder()
 	case channelmonitor.FieldTemplateID:
 		return m.TemplateID()
 	case channelmonitor.FieldExtraHeaders:
@@ -15997,6 +16060,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldLastCheckedAt(ctx)
 	case channelmonitor.FieldCreatedBy:
 		return m.OldCreatedBy(ctx)
+	case channelmonitor.FieldSortOrder:
+		return m.OldSortOrder(ctx)
 	case channelmonitor.FieldTemplateID:
 		return m.OldTemplateID(ctx)
 	case channelmonitor.FieldExtraHeaders:
@@ -16133,6 +16198,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreatedBy(v)
 		return nil
+	case channelmonitor.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
+		return nil
 	case channelmonitor.FieldTemplateID:
 		v, ok := value.(int64)
 		if !ok {
@@ -16181,6 +16253,9 @@ func (m *ChannelMonitorMutation) AddedFields() []string {
 	if m.addcreated_by != nil {
 		fields = append(fields, channelmonitor.FieldCreatedBy)
 	}
+	if m.addsort_order != nil {
+		fields = append(fields, channelmonitor.FieldSortOrder)
+	}
 	return fields
 }
 
@@ -16197,6 +16272,8 @@ func (m *ChannelMonitorMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedJitterSeconds()
 	case channelmonitor.FieldCreatedBy:
 		return m.AddedCreatedBy()
+	case channelmonitor.FieldSortOrder:
+		return m.AddedSortOrder()
 	}
 	return nil, false
 }
@@ -16233,6 +16310,13 @@ func (m *ChannelMonitorMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCreatedBy(v)
+		return nil
+	case channelmonitor.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor numeric field %s", name)
@@ -16344,6 +16428,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldCreatedBy:
 		m.ResetCreatedBy()
+		return nil
+	case channelmonitor.FieldSortOrder:
+		m.ResetSortOrder()
 		return nil
 	case channelmonitor.FieldTemplateID:
 		m.ResetTemplateID()
@@ -44622,6 +44709,8 @@ type UsageLogMutation struct {
 	requested_model              *string
 	upstream_model               *string
 	upstream_response_model      *string
+	usage_source                 *string
+	client_disconnected          *bool
 	upstream_model_mismatch      *bool
 	channel_id                   *int64
 	addchannel_id                *int64
@@ -45119,6 +45208,78 @@ func (m *UsageLogMutation) UpstreamResponseModelCleared() bool {
 func (m *UsageLogMutation) ResetUpstreamResponseModel() {
 	m.upstream_response_model = nil
 	delete(m.clearedFields, usagelog.FieldUpstreamResponseModel)
+}
+
+// SetUsageSource sets the "usage_source" field.
+func (m *UsageLogMutation) SetUsageSource(s string) {
+	m.usage_source = &s
+}
+
+// UsageSource returns the value of the "usage_source" field in the mutation.
+func (m *UsageLogMutation) UsageSource() (r string, exists bool) {
+	v := m.usage_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsageSource returns the old "usage_source" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldUsageSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsageSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsageSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsageSource: %w", err)
+	}
+	return oldValue.UsageSource, nil
+}
+
+// ResetUsageSource resets all changes to the "usage_source" field.
+func (m *UsageLogMutation) ResetUsageSource() {
+	m.usage_source = nil
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (m *UsageLogMutation) SetClientDisconnected(b bool) {
+	m.client_disconnected = &b
+}
+
+// ClientDisconnected returns the value of the "client_disconnected" field in the mutation.
+func (m *UsageLogMutation) ClientDisconnected() (r bool, exists bool) {
+	v := m.client_disconnected
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientDisconnected returns the old "client_disconnected" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientDisconnected(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientDisconnected is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientDisconnected requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientDisconnected: %w", err)
+	}
+	return oldValue.ClientDisconnected, nil
+}
+
+// ResetClientDisconnected resets all changes to the "client_disconnected" field.
+func (m *UsageLogMutation) ResetClientDisconnected() {
+	m.client_disconnected = nil
 }
 
 // SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
@@ -47366,7 +47527,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47390,6 +47551,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.upstream_response_model != nil {
 		fields = append(fields, usagelog.FieldUpstreamResponseModel)
+	}
+	if m.usage_source != nil {
+		fields = append(fields, usagelog.FieldUsageSource)
+	}
+	if m.client_disconnected != nil {
+		fields = append(fields, usagelog.FieldClientDisconnected)
 	}
 	if m.upstream_model_mismatch != nil {
 		fields = append(fields, usagelog.FieldUpstreamModelMismatch)
@@ -47532,6 +47699,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.UpstreamModel()
 	case usagelog.FieldUpstreamResponseModel:
 		return m.UpstreamResponseModel()
+	case usagelog.FieldUsageSource:
+		return m.UsageSource()
+	case usagelog.FieldClientDisconnected:
+		return m.ClientDisconnected()
 	case usagelog.FieldUpstreamModelMismatch:
 		return m.UpstreamModelMismatch()
 	case usagelog.FieldChannelID:
@@ -47635,6 +47806,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldUpstreamModel(ctx)
 	case usagelog.FieldUpstreamResponseModel:
 		return m.OldUpstreamResponseModel(ctx)
+	case usagelog.FieldUsageSource:
+		return m.OldUsageSource(ctx)
+	case usagelog.FieldClientDisconnected:
+		return m.OldClientDisconnected(ctx)
 	case usagelog.FieldUpstreamModelMismatch:
 		return m.OldUpstreamModelMismatch(ctx)
 	case usagelog.FieldChannelID:
@@ -47777,6 +47952,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpstreamResponseModel(v)
+		return nil
+	case usagelog.FieldUsageSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsageSource(v)
+		return nil
+	case usagelog.FieldClientDisconnected:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientDisconnected(v)
 		return nil
 	case usagelog.FieldUpstreamModelMismatch:
 		v, ok := value.(bool)
@@ -48513,6 +48702,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldUpstreamResponseModel:
 		m.ResetUpstreamResponseModel()
+		return nil
+	case usagelog.FieldUsageSource:
+		m.ResetUsageSource()
+		return nil
+	case usagelog.FieldClientDisconnected:
+		m.ResetClientDisconnected()
 		return nil
 	case usagelog.FieldUpstreamModelMismatch:
 		m.ResetUpstreamModelMismatch()

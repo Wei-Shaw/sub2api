@@ -616,6 +616,10 @@ export interface SyncUpstreamModelsResult {
 export interface UpstreamModelSyncWarning {
   code: string
   message: string
+  reason?: string
+  model_ids?: string[]
+  complete_count?: number
+  total_count?: number
 }
 
 export interface UpstreamModelMetadata {

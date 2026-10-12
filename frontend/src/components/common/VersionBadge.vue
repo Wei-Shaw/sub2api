@@ -286,7 +286,7 @@
                     />
                   </svg>
                   <p class="text-xs text-blue-600 dark:text-blue-400">
-                    {{ t('version.sourceModeHint') }}
+                    {{ t(isCustomBuild ? 'version.customModeHint' : 'version.sourceModeHint') }}
                   </p>
                 </div>
               </div>
@@ -375,7 +375,8 @@
                 </a>
 
                 <!-- Version rollback entry -->
-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
+                <p v-if="isCustomBuild" class="text-xs text-gray-500 dark:text-dark-400">{{ t('version.customModeHint') }}</p>
+                <div v-else class="border-t border-gray-100 pt-2 dark:border-dark-700">
                   <button
                     @click="toggleRollbackPanel"
                     class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
@@ -730,6 +731,7 @@ const activeManualCommand = computed(() =>
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
+const isCustomBuild = computed(() => buildType.value === 'custom')
 
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value

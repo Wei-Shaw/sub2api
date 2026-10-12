@@ -1,22 +1,22 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-dark-950">
-    <!-- Background Decoration -->
-    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
-
-    <!-- Sidebar -->
+  <div class="app-shell min-h-screen">
+    <AppHeader />
     <AppSidebar />
 
-    <!-- Main Content Area -->
     <div
-      class="relative min-h-screen transition-all duration-300"
-      :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
+      class="app-main relative min-h-[calc(100vh-48px)] transition-[margin] duration-200"
+      :class="[sidebarCollapsed ? 'lg:ml-11' : 'lg:ml-52']"
     >
-      <!-- Header -->
-      <AppHeader />
-
-      <!-- Main Content -->
-      <main class="p-4 md:p-6 lg:p-8">
-        <slot />
+      <main class="app-content">
+        <div class="newapi-page-heading">
+          <div class="min-w-0">
+            <h1>{{ pageTitle }}</h1>
+            <p v-if="pageDescription">{{ pageDescription }}</p>
+          </div>
+        </div>
+        <div class="newapi-page-body">
+          <slot />
+        </div>
       </main>
     </div>
   </div>
@@ -25,6 +25,8 @@
 <script setup lang="ts">
 import '@/styles/onboarding.css'
 import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
@@ -34,12 +36,29 @@ import AppHeader from './AppHeader.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
+const { t } = useI18n()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+const localPreviewMode = import.meta.env.VITE_LOCAL_PREVIEW === 'true'
+const pageTitle = computed(() => {
+  const key = route.meta.titleKey as string | undefined
+  if (key) {
+    const translated = t(key)
+    if (translated !== key) return translated
+  }
+  return String(route.meta.title || '')
+})
+const pageDescription = computed(() => {
+  const key = route.meta.descriptionKey as string | undefined
+  if (!key) return ''
+  const translated = t(key)
+  return translated === key ? '' : translated
+})
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
-  autoStart: true
+  autoStart: !localPreviewMode
 })
 
 const onboardingStore = useOnboardingStore()

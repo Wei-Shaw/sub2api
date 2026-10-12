@@ -473,20 +473,33 @@ func TestOpenAIResponseFlush_CompatibleAPIKeyDoesNotUseCodexBareErrorSynthesis(t
 }
 
 func TestOpenAIResponseFlush_RecentBareErrorAllowsCompletedBeforeIdleTimeout(t *testing.T) {
-	reader, writer := io.Pipe()
-	defer func() { _ = writer.Close() }()
+	allowError := make(chan struct{})
+	allowCompleted := make(chan struct{})
+	completedWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{
+			[]byte("data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"}}\n\n"),
+			[]byte("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_late\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n"),
+		},
+		gates:   []<-chan struct{}{allowError, allowCompleted},
+		waiting: []chan struct{}{nil, completedWaiting},
+	}
 	recorder := newOpenAIResponseFlushRecorder()
 	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamDataIntervalTimeout: 1})
 
 	// Place the bare error shortly before the first ticker firing. It is fresh
 	// data, so the ticker must leave the stream open for an authoritative event.
 	time.Sleep(700 * time.Millisecond)
-	_, err := io.WriteString(writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"}}\n\n")
-	require.NoError(t, err)
+	close(allowError)
+	select {
+	case <-completedWaiting:
+	case err := <-errCh:
+		t.Fatalf("stream ended before the completed event was released: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for the completed event read")
+	}
 	time.Sleep(500 * time.Millisecond)
-	_, err = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_late\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n")
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
+	close(allowCompleted)
 
 	require.NoError(t, <-errCh)
 	result := <-resultCh

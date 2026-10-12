@@ -120,3 +120,26 @@ func TestStreamWrittenGuard_NoByteWritten_GuardNotTriggered(t *testing.T) {
 	require.False(t, guardTriggered,
 		"未写入任何字节时，守卫条件必须为 false，应允许正常 failover 继续")
 }
+
+func TestAnthropicAvailabilityExhaustionMessage(t *testing.T) {
+	for _, endpoint := range []string{"messages", "chat", "responses"} {
+		t.Run(endpoint, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, nil)
+			h := &GatewayHandler{}
+			failure := &service.UpstreamFailoverError{StatusCode: 429, ResponseBody: []byte(`{"error":{"message":"private upstream account detail"}}`)}
+			switch endpoint {
+			case "messages":
+				h.handleFailoverExhausted(c, failure, service.PlatformAnthropic, false)
+			case "chat":
+				h.handleCCFailoverExhausted(c, failure, false)
+			case "responses":
+				h.handleResponsesFailoverExhausted(c, failure, false)
+			}
+			require.Equal(t, http.StatusTooManyRequests, w.Code)
+			require.Contains(t, w.Body.String(), "当前模型服务繁忙，请稍后重试。")
+			require.NotContains(t, w.Body.String(), "private upstream")
+		})
+	}
+}

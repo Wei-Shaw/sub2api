@@ -329,8 +329,6 @@ export default {
       customExpiry: 'Custom',
       customExpiryDays: 'Custom days',
       expiryDaysRequired: 'Please enter a valid expiry day count',
-      expiryDateRequired: 'Please enter a valid expiry date and time',
-      localTimeZoneHint: 'Custom time is interpreted in your browser time zone ({timezone}).',
       groupRequired: 'Please select a subscription group',
       days: ' days',
       status: {

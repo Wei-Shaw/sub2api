@@ -107,17 +107,23 @@ type OpenAIAccountScheduleDecision struct {
 }
 
 type OpenAIAccountSchedulerMetricsSnapshot struct {
-	SelectTotal              int64
-	StickyPreviousHitTotal   int64
-	StickySessionHitTotal    int64
-	LoadBalanceSelectTotal   int64
-	AccountSwitchTotal       int64
-	SchedulerLatencyMsTotal  int64
-	SchedulerLatencyMsAvg    float64
-	StickyHitRatio           float64
-	AccountSwitchRate        float64
-	LoadSkewAvg              float64
-	RuntimeStatsAccountCount int
+	SelectTotal              int64   `json:"select_total"`
+	StickyPreviousHitTotal   int64   `json:"sticky_previous_hit_total"`
+	StickySessionHitTotal    int64   `json:"sticky_session_hit_total"`
+	LoadBalanceSelectTotal   int64   `json:"load_balance_select_total"`
+	AccountSwitchTotal       int64   `json:"account_switch_total"`
+	SchedulerLatencyMsTotal  int64   `json:"scheduler_latency_ms_total"`
+	SchedulerLatencyMsAvg    float64 `json:"scheduler_latency_ms_avg"`
+	StickyHitRatio           float64 `json:"sticky_hit_ratio"`
+	AccountSwitchRate        float64 `json:"account_switch_rate"`
+	LoadSkewAvg              float64 `json:"load_skew_avg"`
+	RuntimeStatsAccountCount int     `json:"runtime_stats_account_count"`
+}
+
+type OpenAIAccountSchedulerSnapshot struct {
+	GeneratedAt    time.Time                             `json:"generated_at"`
+	Metrics        OpenAIAccountSchedulerMetricsSnapshot `json:"metrics"`
+	ModelCooldowns []OpenAIAccountModelTransientSnapshot `json:"model_cooldowns"`
 }
 
 type OpenAIAccountScheduler interface {
@@ -532,6 +538,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	if s.service.isOpenAIAccountTransientBlocked(account) {
+		clearBinding()
+		return nil, false, nil
+	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
 		return nil, false, nil
 	}
@@ -579,11 +589,22 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		if !req.PreserveStickyBinding {
 			_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		}
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+		selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}), false, nil
+		})
+		selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+		if !ok {
+			if result.ReleaseFunc != nil {
+				result.ReleaseFunc()
+			}
+			if !req.PreserveStickyBinding {
+				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+			}
+			return nil, false, nil
+		}
+		return selection, false, nil
 	}
 
 	cfg := s.service.schedulingConfig()
@@ -599,7 +620,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			)
 			return nil, true, nil
 		}
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+		selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
@@ -607,7 +628,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}), false, nil
+		})
+		selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+		if !ok {
+			return nil, false, nil
+		}
+		return selection, false, nil
 	}
 	return nil, false, nil
 }
@@ -1237,11 +1263,22 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 		if req.SessionHash != "" && !req.PreserveStickyBinding {
 			_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, fresh.ID)
 		}
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+		selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     fresh,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}), compactBlocked, nil
+		})
+		selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+		if !ok {
+			if result.ReleaseFunc != nil {
+				result.ReleaseFunc()
+			}
+			if req.SessionHash != "" && !req.PreserveStickyBinding {
+				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
+			}
+			continue
+		}
+		return selection, compactBlocked, nil
 	}
 	return nil, compactBlocked, nil
 }
@@ -1328,15 +1365,26 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 			if req.SessionHash != "" && !req.PreserveStickyBinding {
 				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, account.ID)
 			}
-			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+			selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account:     account,
 				Acquired:    true,
 				ReleaseFunc: result.ReleaseFunc,
-			}), nil
+			})
+			selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+			if !ok {
+				if result.ReleaseFunc != nil {
+					result.ReleaseFunc()
+				}
+				if req.SessionHash != "" && !req.PreserveStickyBinding {
+					_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
+				}
+				continue
+			}
+			return selection, nil
 		}
 		if s.service.concurrencyService != nil {
 			cfg := s.service.schedulingConfig()
-			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+			selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: account,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      account.ID,
@@ -1344,7 +1392,12 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 					Timeout:        cfg.StickySessionWaitTimeout,
 					MaxWaiting:     cfg.StickySessionMaxWaiting,
 				},
-			}), nil
+			})
+			selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+			if !ok {
+				continue
+			}
+			return selection, nil
 		}
 	}
 	return nil, nil
@@ -1459,6 +1512,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 			filterStats.exclude("runtime_blocked")
+			continue
+		}
+		if s.service.isOpenAIAccountTransientBlocked(account) {
+			filterStats.exclude("account_transient_blocked")
 			continue
 		}
 		// require_privacy_set is a group-scoped eligibility gate. Do not mutate the
@@ -1722,7 +1779,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				compactBlocked = true
 				continue
 			}
-			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+			selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: fresh,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      fresh.ID,
@@ -1730,7 +1787,12 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					Timeout:        cfg.FallbackWaitTimeout,
 					MaxWaiting:     cfg.FallbackMaxWaiting,
 				},
-			}), candidateCount, topK, loadSkew, nil
+			})
+			selection, ok := s.service.finalizeOpenAIAccountTransientSelection(selection, req.RequestedModel)
+			if !ok {
+				continue
+			}
+			return selection, candidateCount, topK, loadSkew, nil
 		}
 	}
 
@@ -2175,6 +2237,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	ctx = context.WithValue(ctx, openAITransientRequestedModelKey{}, requestedModel)
 	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err
@@ -2187,11 +2250,31 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		return selection, decision, err
 	}
 	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
-	if blocked == 0 {
+	if blocked > 0 {
+		s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
+		ctx = withOpenAIProxyStreamQuarantineBypass(ctx)
+		selection, decision, err = s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	}
+	if err == nil || (!errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts)) || len(excludedIDs) > 0 || requiredImageCapability != "" {
 		return selection, decision, err
 	}
-	s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
-	return s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	delay := s.nextOpenAITransientRetryDelay(ctx, groupID, requestedModel, requiredCapability, requireCompact)
+	if delay <= 0 {
+		return selection, decision, err
+	}
+	releaseWait, admitted := s.getOpenAIAccountTransientState().reserveWait(derefGroupID(groupID))
+	if !admitted {
+		return selection, decision, err
+	}
+	defer releaseWait()
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return nil, decision, ctx.Err()
+	case <-timer.C:
+	}
+	return s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
 type openAIGroupPrivacyRequirementContextKey struct{}
@@ -2527,6 +2610,7 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	}
 	if success {
 		s.openaiOAuth429RetryStartedAt.Delete(accountID)
+		s.clearOpenAIAccountTransientState(accountID)
 		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
 	}
 	scheduler := s.getOpenAIAccountScheduler(context.Background())
@@ -2560,6 +2644,20 @@ func (s *OpenAIGatewayService) SnapshotOpenAIAccountSchedulerMetrics() OpenAIAcc
 		return OpenAIAccountSchedulerMetricsSnapshot{}
 	}
 	return scheduler.SnapshotMetrics()
+}
+
+func (s *OpenAIGatewayService) SnapshotOpenAIAccountSchedulerState() OpenAIAccountSchedulerSnapshot {
+	now := time.Now().UTC()
+	snapshot := OpenAIAccountSchedulerSnapshot{
+		GeneratedAt:    now,
+		Metrics:        s.SnapshotOpenAIAccountSchedulerMetrics(),
+		ModelCooldowns: []OpenAIAccountModelTransientSnapshot{},
+	}
+	if s != nil {
+		snapshot.ModelCooldowns = s.getOpenAIAccountModelTransientState().snapshot(now)
+		snapshot.ModelCooldowns = append(snapshot.ModelCooldowns, s.getOpenAIAccountTransientState().snapshot(now)...)
+	}
+	return snapshot
 }
 
 func (s *OpenAIGatewayService) openAIWSSessionStickyTTL() time.Duration {

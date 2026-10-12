@@ -5351,32 +5351,6 @@
                   </p>
                 </div>
 
-              <!-- OpenAI Responses 首 token 统计 -->
-              <div class="border-b border-gray-100 pb-5 dark:border-dark-700 md:col-span-2">
-                <label
-                  for="openai-ttft-mode"
-                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.gatewayForwarding.openaiTTFTMode") }}
-                </label>
-                <select
-                  id="openai-ttft-mode"
-                  v-model="form.openai_ttft_mode"
-                  class="input mt-2 w-full"
-                  data-testid="openai-ttft-mode"
-                >
-                  <option value="semantic">
-                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") }}
-                  </option>
-                  <option value="visible">
-                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") }}
-                  </option>
-                </select>
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.gatewayForwarding.openaiTTFTModeHint") }}
-                </p>
-              </div>
-
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
                 <div>
@@ -7974,7 +7948,7 @@
                       v-model="form.payment_product_name_prefix"
                       type="text"
                       class="input"
-                      placeholder="Sub2API"
+                      placeholder="BuaGa API"
                     />
                   </div>
                   <div>
@@ -7996,7 +7970,7 @@
                       class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
                     >
                       {{
-                        (form.payment_product_name_prefix || "Sub2API") +
+                        (form.payment_product_name_prefix || "BuaGa API") +
                         " 100 " +
                         (form.payment_product_name_suffix || "CNY")
                       }}
@@ -9806,13 +9780,14 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
-  site_name: "Sub2API",
+  site_name: "BuaGa API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
   contact_info: "",
   doc_url: "",
   home_content: "",
+  long_notice_content: "",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -10014,7 +9989,6 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
-  openai_ttft_mode: "semantic",
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -11520,6 +11494,7 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      long_notice_content: form.long_notice_content,
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
@@ -11658,8 +11633,6 @@ async function saveSettings() {
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
-      openai_ttft_mode:
-        form.openai_ttft_mode === "visible" ? "visible" : "semantic",
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,

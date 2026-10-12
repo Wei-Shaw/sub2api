@@ -1788,6 +1788,7 @@ const openAIEndpointCapabilityOptions = computed<
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'videos', label: t('admin.accounts.openai.capabilityVideos') },
   { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
@@ -1798,7 +1799,7 @@ const openAIResponsesModeApplicable = computed(
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'videos', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }

@@ -1746,18 +1746,7 @@
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
-        <div class="mt-2 flex gap-2">
-          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(1)">
-            {{ t('payment.oneMonth') }}
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(12)">
-            {{ t('payment.oneYear') }}
-          </button>
-        </div>
-        <p class="input-hint">
-          {{ t('admin.accounts.expiresAtHint') }}
-          {{ t('admin.accounts.expiresAtTimezoneHint', { timezone: browserTimeZone }) }}
-        </p>
+        <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
@@ -1955,6 +1944,15 @@
             </label>
           </div>
           <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
+        </div>
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.videoProtocol') }}</label>
+          <p class="input-hint mb-2">{{ t('admin.accounts.openai.videoProtocolDesc') }}</p>
+          <Select
+            v-model="openAIVideoProtocol"
+            :options="openAIVideoProtocolOptions"
+            data-testid="edit-openai-video-protocol-select"
+          />
         </div>
       </div>
 
@@ -3064,6 +3062,7 @@
 
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
+        v-if="!authStore.isSimpleMode"
         v-model="form.group_ids"
         :groups="selectableGroups"
         :platform="account?.platform"
@@ -3128,7 +3127,7 @@
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-
+import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
@@ -3203,12 +3202,10 @@ import {
 import {
   formatDateTime,
   formatDateTimeLocalInput,
-  getBrowserTimeZone,
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -3244,7 +3241,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const browserTimeZone = getBrowserTimeZone()
+const authStore = useAuthStore()
 
 const selectableGroups = computed(() => {
   const groups = new Map<number, Group>(props.groups.map(group => [group.id, group]))
@@ -3733,6 +3730,7 @@ const openAILongContextBillingEnabled = ref(false)
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIVideoProtocol = ref<'native' | 'grok' | 'zhongy' | 'qiandream'>('native')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -3878,6 +3876,12 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
+const openAIVideoProtocolOptions = computed(() => [
+  { value: 'native', label: t('admin.accounts.openai.videoProtocolNative') },
+  { value: 'grok', label: t('admin.accounts.openai.videoProtocolGrok') },
+  { value: 'zhongy', label: t('admin.accounts.openai.videoProtocolZhongy') },
+  { value: 'qiandream', label: t('admin.accounts.openai.videoProtocolQianDream') }
+])
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
     return t('admin.accounts.openai.capabilityResponses')
@@ -3897,6 +3901,7 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'videos', label: t('admin.accounts.openai.capabilityVideos') },
   { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
@@ -3904,7 +3909,7 @@ const openAITextGenerationCapabilityEnabled = computed(() =>
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'videos', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }
@@ -3914,7 +3919,7 @@ const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): 
   if (Array.isArray(raw)) {
     return normalizeOpenAIEndpointCapabilities(
       raw.filter((value): value is OpenAIEndpointCapability =>
-        value === 'chat_completions' || value === 'embeddings' || value === 'seedance'
+        value === 'chat_completions' || value === 'embeddings' || value === 'videos' || value === 'seedance'
       )
     )
   }
@@ -4214,6 +4219,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
+  openAIVideoProtocol.value = 'native'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4236,6 +4242,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
+    if (extra?.openai_video_protocol === 'grok' || extra?.openai_video_protocol === 'zhongy' || extra?.openai_video_protocol === 'qiandream') {
+      openAIVideoProtocol.value = extra.openai_video_protocol
+    }
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
@@ -4666,24 +4675,10 @@ const syncAntigravityUpstreamModels = async () => {
       }
     }
 
-    const warnings = result.warnings ?? []
-    const hasPartialMetadata = warnings.some(
-      (warning) => warning.code === 'upstream_model_metadata_partial'
-    )
-    const hasIncompleteMetadata = warnings.some(
-      (warning) => warning.code === 'upstream_model_metadata_incomplete'
-    )
-    if (hasIncompleteMetadata) {
-      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
-      return
-    }
     if (addedCount > 0) {
       appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
     } else {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
-    }
-    if (hasPartialMetadata) {
-      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
@@ -5733,18 +5728,23 @@ const handleSubmit = async () => {
       } else {
         newExtra.openai_compact_mode = openAICompactMode.value
       }
-		if (props.account.type === 'apikey') {
+      if (props.account.type === 'apikey') {
         if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {
           delete newExtra.openai_responses_mode
         } else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         }
-        if (openAIImagesUrlToB64JsonEnabled.value) {
-          newExtra.images_url_to_b64_json = true
-        } else {
-          delete newExtra.images_url_to_b64_json
-        }
-		}
+	      if (openAIImagesUrlToB64JsonEnabled.value) {
+	        newExtra.images_url_to_b64_json = true
+	      } else {
+	        delete newExtra.images_url_to_b64_json
+	      }
+      if (openAIVideoProtocol.value === 'native') {
+        delete newExtra.openai_video_protocol
+	      } else {
+        newExtra.openai_video_protocol = openAIVideoProtocol.value
+      }
+	    }
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
 		} else {

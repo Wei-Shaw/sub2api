@@ -58,7 +58,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	body []byte,
 	promptCacheKey string,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (result *OpenAIForwardResult, err error) {
+	clearUsageEstimateAttempt(c)
+	requestBytes := requestBodyBytesForUsageEstimate(body)
+	defer func() {
+		s.finalizeUsageEstimate(ctx, c, account, requestBytes, result, err)
+	}()
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 
@@ -113,6 +118,16 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// /v1/chat/completions URL. Detect it before protocol routing so adaptive
 	// accounts never forward the body unchanged to a Chat Completions endpoint.
 	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+
+	// Video understanding is a Chat Completions capability for the Kimi K3
+	// upstreams used by BUAGA. Do not run video parts through the generic
+	// CC→Responses bridge: Kimi's Responses endpoint accepts the request but
+	// silently ignores the video content. Preserve the original video_url
+	// payload and let the upstream Chat Completions endpoint handle it.
+	if account.IsOpenAIApiKey() && !isResponsesShape && requestContainsVideoInput(body) {
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
+
 	inbound := APIProtocolChatCompletions
 	if isResponsesShape {
 		inbound = APIProtocolResponses
@@ -229,7 +244,8 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		// Normal path: convert Chat Completions → Responses.
 		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
 		chatReq.Model = upstreamModel
-		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		responsesReq, err = apicompat.ChatCompletionsToResponsesWithReasoningReplay(&chatReq,
+			account.IsOpenAIApiKey() && isDeepSeekReasoningReplayModel(upstreamModel))
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
@@ -240,6 +256,8 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			return nil, fmt.Errorf("marshal responses request: %w", err)
 		}
 	}
+
+	responsesBody = s.restoreDeepSeekReasoning(c, account, responsesBody, originalModel, upstreamModel)
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
@@ -508,7 +526,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai chat_completions buffered", requestID)
+	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai chat_completions buffered", requestID,
+		s.newDeepSeekReasoningCache(c, account, originalModel, upstreamModel))
 	if err != nil {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
 	}
@@ -669,6 +688,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
+	replay := s.newDeepSeekReasoningCache(c, account, originalModel, upstreamModel)
 	state.Model = originalModel
 	// 网关作为计费链路的一环，不能把下游 usage 输出绑定到客户端是否显式请求。
 	// raw Chat Completions 直转路径已经强制透出 usage，这里保持同样行为，避免级联代理计费为 0。
@@ -680,7 +700,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
-	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+	// Stage the role-only preamble for every request size. Keep the existing
+	// large-request silent-refusal policy separate from explicit-error failover.
+	refusalDetector := &openAIChatSilentRefusalDetector{enabled: true}
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
 	terminalEventType := ""
@@ -723,6 +745,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -750,6 +773,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		replay.observe([]byte(payload))
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
@@ -801,7 +825,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if strings.TrimSpace(event.Type) == "error" {
 				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
 			}
-			if !clientOutputStarted && shouldFailover {
+			if !clientOutputStarted && !clientDisconnected && c.Request.Context().Err() == nil && shouldFailover {
 				streamFailoverErr = s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header)
 				return true
 			}
@@ -892,7 +916,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
 		if streamFailoverErr != nil {
-			if c == nil || c.Writer == nil || !c.Writer.Written() {
+			if !clientOutputStarted {
+				// Only tracked SSE heartbeat comments may have been committed.
+				// Do not bill an abandoned attempt before a safe retry.
 				return nil, streamFailoverErr
 			}
 			return resultWithUsage(), streamFailoverErr
@@ -938,7 +964,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 		}
 		if !clientDisconnected && !clientOutputStarted {
-			if refusalDetector.IsSilentRefusal() {
+			if requestBodyLen >= openAISilentRefusalMinRequestBodyBytes && refusalDetector.IsSilentRefusal() {
 				return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
 			}
 			if len(pendingSSE) > 0 {
@@ -1129,15 +1155,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
-				continue
-			}
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 			}
 			// Send SSE comment as keepalive
 			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
+			written, err := fmt.Fprint(c.Writer, ":\n\n")
+			recordOpenAIStreamKeepaliveBytes(c, written)
+			if err != nil {
 				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)

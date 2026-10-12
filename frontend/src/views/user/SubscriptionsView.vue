@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <div class="newapi-subscriptions-workspace space-y-5">
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center py-12">
         <div
@@ -24,11 +24,11 @@
       </div>
 
       <!-- Subscriptions Grid -->
-      <div v-else class="grid gap-6 lg:grid-cols-2">
+      <div v-else class="newapi-subscription-grid grid gap-4 lg:grid-cols-2">
         <div
           v-for="subscription in subscriptions"
           :key="subscription.id"
-          class="overflow-hidden rounded-2xl border bg-white dark:bg-dark-800"
+          class="newapi-subscription-item overflow-hidden rounded-2xl border bg-white dark:bg-dark-800"
           :class="platformBorderClass(subscription.group?.platform || '')"
         >
           <!-- Header -->

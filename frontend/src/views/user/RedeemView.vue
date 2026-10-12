@@ -1,26 +1,26 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-2xl space-y-6">
+    <div class="newapi-redeem-page mx-auto max-w-4xl space-y-5">
       <!-- Current Balance Card -->
-      <div class="card overflow-hidden">
-        <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
+      <div class="newapi-redeem-balance card overflow-hidden">
+        <div class="px-5 py-4">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm"
+            class="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300"
           >
-            <Icon name="creditCard" size="xl" class="text-white" />
+            <Icon name="creditCard" size="md" class="text-primary-600 dark:text-primary-300" />
           </div>
-          <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
-          <p class="mt-2 text-4xl font-bold text-white">
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('redeem.currentBalance') }}</p>
+          <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
             ${{ user?.balance?.toFixed(2) || '0.00' }}
           </p>
-          <p class="mt-2 text-sm text-primary-100">
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
           </p>
         </div>
       </div>
 
       <!-- Redeem Form -->
-      <div class="card">
+      <div class="newapi-redeem-form card">
         <div class="p-6">
           <form @submit.prevent="handleRedeem" class="space-y-5">
             <div>
@@ -199,7 +199,7 @@
       </div>
 
       <!-- Recent Activity -->
-      <div class="card">
+      <div class="newapi-redeem-history card">
         <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('redeem.recentActivity') }}

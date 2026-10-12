@@ -424,7 +424,7 @@ import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
-import { formatDateLocalInput } from '@/utils/format'
+import { formatDateLocalInput, getBrowserTimeZone } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t, locale } = useI18n()
@@ -433,7 +433,7 @@ const subscriptionFeatureEnabled = computed(() => resolveFeatureFlag(appStore.ca
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'BuaGa API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
@@ -513,7 +513,7 @@ function getDateParams(): string {
     params.set('end_date', end)
   }
   params.set('days', String(dailyUsageDays.value))
-  params.set('timezone', getBrowserTimezone())
+  params.set('timezone', getBrowserTimeZone())
   return params.toString()
 }
 
@@ -848,14 +848,6 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
-}
-
-function getBrowserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  } catch {
-    return 'UTC'
-  }
 }
 
 // ==================== API Query ====================

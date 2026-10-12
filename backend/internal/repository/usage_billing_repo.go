@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -19,6 +20,17 @@ func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBill
 	return &usageBillingRepository{db: sqlDB}
 }
 
+var _ service.AtomicVideoUsageBillingRepository = (*usageBillingRepository)(nil)
+
+func (r *usageBillingRepository) ApplyVideo(ctx context.Context, cmd *service.UsageBillingCommand, usageLog *service.UsageLog) (*service.UsageBillingApplyResult, error) {
+	if cmd == nil || usageLog == nil {
+		return nil, errors.New("atomic video billing command and usage log are required")
+	}
+	videoCmd := *cmd
+	videoCmd.VideoUsageLog = usageLog
+	return r.Apply(ctx, &videoCmd)
+}
+
 func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {
 	if cmd == nil {
 		return &service.UsageBillingApplyResult{}, nil
@@ -30,6 +42,12 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	cmd.Normalize()
 	if cmd.RequestID == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
+	}
+	if log := cmd.VideoUsageLog; log != nil {
+		if log.VideoCount <= 0 || strings.TrimSpace(log.RequestID) != cmd.RequestID ||
+			log.APIKeyID != cmd.APIKeyID || log.UserID != cmd.UserID || log.AccountID != cmd.AccountID {
+			return nil, errors.New("video usage log does not match billing command")
+		}
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -47,6 +65,14 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 		return nil, err
 	}
 	if !applied {
+		if cmd.VideoUsageLog != nil {
+			// A legacy charge without a usage row must not be reported as a
+			// successful video settlement. Do not invent or charge a repair here.
+			var id int64
+			if err := tx.QueryRowContext(ctx, `SELECT id FROM usage_logs WHERE request_id = $1 AND api_key_id = $2`, cmd.RequestID, cmd.APIKeyID).Scan(&id); err != nil {
+				return nil, fmt.Errorf("verify billed video usage log: %w", err)
+			}
+		}
 		return &service.UsageBillingApplyResult{Applied: false}, nil
 	}
 
@@ -54,11 +80,27 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
+	var videoLog service.UsageLog
+	if cmd.VideoUsageLog != nil {
+		// Reuse the complete existing SQL mapper with this *sql.Tx. Work on a
+		// copy so an insert/commit failure cannot expose an uncommitted row ID.
+		videoLog = *cmd.VideoUsageLog
+		inserted, err := (&usageLogRepository{}).createSingle(ctx, tx, &videoLog)
+		if err != nil {
+			return nil, fmt.Errorf("persist billed video usage log: %w", err)
+		}
+		if !inserted {
+			return nil, service.ErrUsageBillingRequestConflict
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	tx = nil
+	if cmd.VideoUsageLog != nil {
+		*cmd.VideoUsageLog = videoLog
+	}
 	return result, nil
 }
 

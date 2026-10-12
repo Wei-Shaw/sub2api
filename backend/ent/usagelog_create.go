@@ -99,6 +99,34 @@ func (_c *UsageLogCreate) SetNillableUpstreamResponseModel(v *string) *UsageLogC
 	return _c
 }
 
+// SetUsageSource sets the "usage_source" field.
+func (_c *UsageLogCreate) SetUsageSource(v string) *UsageLogCreate {
+	_c.mutation.SetUsageSource(v)
+	return _c
+}
+
+// SetNillableUsageSource sets the "usage_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUsageSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetUsageSource(*v)
+	}
+	return _c
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (_c *UsageLogCreate) SetClientDisconnected(v bool) *UsageLogCreate {
+	_c.mutation.SetClientDisconnected(v)
+	return _c
+}
+
+// SetNillableClientDisconnected sets the "client_disconnected" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientDisconnected(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientDisconnected(*v)
+	}
+	return _c
+}
+
 // SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
 func (_c *UsageLogCreate) SetUpstreamModelMismatch(v bool) *UsageLogCreate {
 	_c.mutation.SetUpstreamModelMismatch(v)
@@ -697,6 +725,14 @@ func (_c *UsageLogCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *UsageLogCreate) defaults() {
+	if _, ok := _c.mutation.UsageSource(); !ok {
+		v := usagelog.DefaultUsageSource
+		_c.mutation.SetUsageSource(v)
+	}
+	if _, ok := _c.mutation.ClientDisconnected(); !ok {
+		v := usagelog.DefaultClientDisconnected
+		_c.mutation.SetClientDisconnected(v)
+	}
 	if _, ok := _c.mutation.InputTokens(); !ok {
 		v := usagelog.DefaultInputTokens
 		_c.mutation.SetInputTokens(v)
@@ -820,6 +856,17 @@ func (_c *UsageLogCreate) check() error {
 		if err := usagelog.UpstreamResponseModelValidator(v); err != nil {
 			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.UsageSource(); !ok {
+		return &ValidationError{Name: "usage_source", err: errors.New(`ent: missing required field "UsageLog.usage_source"`)}
+	}
+	if v, ok := _c.mutation.UsageSource(); ok {
+		if err := usagelog.UsageSourceValidator(v); err != nil {
+			return &ValidationError{Name: "usage_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.usage_source": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ClientDisconnected(); !ok {
+		return &ValidationError{Name: "client_disconnected", err: errors.New(`ent: missing required field "UsageLog.client_disconnected"`)}
 	}
 	if v, ok := _c.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
@@ -986,6 +1033,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpstreamResponseModel(); ok {
 		_spec.SetField(usagelog.FieldUpstreamResponseModel, field.TypeString, value)
 		_node.UpstreamResponseModel = &value
+	}
+	if value, ok := _c.mutation.UsageSource(); ok {
+		_spec.SetField(usagelog.FieldUsageSource, field.TypeString, value)
+		_node.UsageSource = value
+	}
+	if value, ok := _c.mutation.ClientDisconnected(); ok {
+		_spec.SetField(usagelog.FieldClientDisconnected, field.TypeBool, value)
+		_node.ClientDisconnected = value
 	}
 	if value, ok := _c.mutation.UpstreamModelMismatch(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
@@ -1383,6 +1438,30 @@ func (u *UsageLogUpsert) UpdateUpstreamResponseModel() *UsageLogUpsert {
 // ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
 func (u *UsageLogUpsert) ClearUpstreamResponseModel() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldUpstreamResponseModel)
+	return u
+}
+
+// SetUsageSource sets the "usage_source" field.
+func (u *UsageLogUpsert) SetUsageSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldUsageSource, v)
+	return u
+}
+
+// UpdateUsageSource sets the "usage_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUsageSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUsageSource)
+	return u
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (u *UsageLogUpsert) SetClientDisconnected(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientDisconnected, v)
+	return u
+}
+
+// UpdateClientDisconnected sets the "client_disconnected" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientDisconnected() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientDisconnected)
 	return u
 }
 
@@ -2257,6 +2336,34 @@ func (u *UsageLogUpsertOne) UpdateUpstreamResponseModel() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearUpstreamResponseModel() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamResponseModel()
+	})
+}
+
+// SetUsageSource sets the "usage_source" field.
+func (u *UsageLogUpsertOne) SetUsageSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUsageSource(v)
+	})
+}
+
+// UpdateUsageSource sets the "usage_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUsageSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUsageSource()
+	})
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (u *UsageLogUpsertOne) SetClientDisconnected(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientDisconnected(v)
+	})
+}
+
+// UpdateClientDisconnected sets the "client_disconnected" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientDisconnected() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientDisconnected()
 	})
 }
 
@@ -3413,6 +3520,34 @@ func (u *UsageLogUpsertBulk) UpdateUpstreamResponseModel() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearUpstreamResponseModel() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamResponseModel()
+	})
+}
+
+// SetUsageSource sets the "usage_source" field.
+func (u *UsageLogUpsertBulk) SetUsageSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUsageSource(v)
+	})
+}
+
+// UpdateUsageSource sets the "usage_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUsageSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUsageSource()
+	})
+}
+
+// SetClientDisconnected sets the "client_disconnected" field.
+func (u *UsageLogUpsertBulk) SetClientDisconnected(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientDisconnected(v)
+	})
+}
+
+// UpdateClientDisconnected sets the "client_disconnected" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientDisconnected() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientDisconnected()
 	})
 }
 

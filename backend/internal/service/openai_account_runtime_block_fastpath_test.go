@@ -509,7 +509,7 @@ func TestOpenAIPoolModeTempRule_StopsSameAccountRetryAndIsolatesBlockToModel(t *
 	require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
 }
 
-func TestOpenAIPoolModeRetryable5xx_DoesNotCreateModelTransientBlock(t *testing.T) {
+func TestOpenAIPoolModeRetryable5xx_CreatesModelTransientBlock(t *testing.T) {
 	repo := &errorPolicyRepoStub{}
 	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 	gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
@@ -523,19 +523,17 @@ func TestOpenAIPoolModeRetryable5xx_DoesNotCreateModelTransientBlock(t *testing.
 		},
 	}
 
-	for i := 0; i < 2; i++ {
-		shouldDisable := gateway.handleOpenAIAccountUpstreamError(
-			context.Background(),
-			account,
-			524,
-			http.Header{},
-			[]byte(`{"error":{"message":"upstream timeout"}}`),
-			"gpt-5.4",
-		)
-		require.False(t, shouldDisable)
-	}
-
-	require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.4"))
+	shouldDisable := gateway.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		524,
+		http.Header{},
+		[]byte(`{"error":{"message":"upstream timeout"}}`),
+		"gpt-5.4",
+	)
+	require.False(t, shouldDisable)
+	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.4"),
+		"pool-mode retry must remain request-local while later requests skip the failed account")
 }
 
 func TestOpenAIPoolModeNonRetryable5xx_StillCreatesModelTransientBlock(t *testing.T) {
@@ -590,6 +588,34 @@ func TestOpenAINonPoolAPIKey5xx_StillCreatesModelTransientBlock(t *testing.T) {
 	}
 
 	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.4"))
+}
+
+func TestOpenAIPoolModeUpstreamTimeoutGetsModelOnlyCooldown(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		status   int
+		body     string
+		cooldown time.Duration
+	}{
+		{"explicit five-minute timeout", http.StatusGatewayTimeout, `{"error":{"code":"channel:response_time_exceeded"}}`, openAIModelTransientTimeoutCooldown},
+		{"524 proxy timeout", 524, `{"error":{"message":"upstream timeout"}}`, openAIModelTransientTimeoutCooldown},
+		{"ordinary 504 unchanged", http.StatusGatewayTimeout, `{"error":{"code":"gateway_timeout"}}`, openAIModelTransientShortCooldown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &errorPolicyRepoStub{}
+			gateway := &OpenAIGatewayService{rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil)}
+			account := &Account{ID: 853, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"pool_mode": true}}
+
+			require.False(t, gateway.handleOpenAIAccountUpstreamError(
+				context.Background(), account, tc.status, http.Header{}, []byte(tc.body), "gpt-5.5"))
+			items := gateway.getOpenAIAccountModelTransientState().snapshot(time.Now())
+			require.Len(t, items, 1)
+			require.Equal(t, tc.cooldown, items[0].BlockUntil.Sub(items[0].LastFailureAt))
+			require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+			require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-6"))
+		})
+	}
 }
 
 func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {

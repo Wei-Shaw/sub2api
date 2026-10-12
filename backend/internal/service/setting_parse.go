@@ -366,6 +366,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ContactInfo:                            settings[SettingKeyContactInfo],
 		DocURL:                                 settings[SettingKeyDocURL],
 		HomeContent:                            settings[SettingKeyHomeContent],
+		LongNoticeContent:                            settings[SettingKeyLongNoticeContent],
 		CompactHomeEnabled:                     settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:                    settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:            settings[SettingKeyPurchaseSubscriptionEnabled] == "true",

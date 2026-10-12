@@ -59,6 +59,12 @@ type OpsRequestDetailFilter struct {
 	RequestID string
 	Query     string
 
+	// IncludeRecoveredUpstream includes provider error records whose gateway
+	// status is 2xx because the request recovered after an upstream retry or
+	// failover. Scheduler drill-downs use this to show the event that caused
+	// the account switch.
+	IncludeRecoveredUpstream bool
+
 	MinDurationMs *int
 	MaxDurationMs *int
 

@@ -9,12 +9,27 @@
           {{ t("admin.groups.codexModelsManifest.hint") }}
         </p>
       </div>
-      <Toggle
+      <button
+        type="button"
         data-testid="codex-manifest-toggle"
+        role="switch"
+        :aria-checked="config.enabled"
+        :class="[
+          'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+          config.enabled
+            ? 'bg-primary-500'
+            : 'bg-gray-300 dark:bg-dark-600',
+        ]"
         :aria-label="t('admin.groups.codexModelsManifest.enable')"
-        :model-value="config.enabled"
-        @update:model-value="emitUpdate({ enabled: $event })"
-      />
+        @click="emitUpdate({ enabled: !config.enabled })"
+      >
+        <span
+          :class="[
+            'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+            config.enabled ? 'translate-x-6' : 'translate-x-1',
+          ]"
+        />
+      </button>
     </div>
 
     <div v-if="config.enabled">
@@ -102,12 +117,33 @@
             {{ t("admin.groups.codexModelsManifest.fallbackHint") }}
           </p>
         </div>
-        <Toggle
+        <button
+          type="button"
           data-testid="codex-manifest-fallback-toggle"
+          role="switch"
+          :aria-checked="config.fallback_to_scheduler"
+          :class="[
+            'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+            config.fallback_to_scheduler
+              ? 'bg-primary-500'
+              : 'bg-gray-300 dark:bg-dark-600',
+          ]"
           :aria-label="t('admin.groups.codexModelsManifest.fallback')"
-          :model-value="config.fallback_to_scheduler"
-          @update:model-value="emitUpdate({ fallback_to_scheduler: $event })"
-        />
+          @click="
+            emitUpdate({
+              fallback_to_scheduler: !config.fallback_to_scheduler,
+            })
+          "
+        >
+          <span
+            :class="[
+              'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+              config.fallback_to_scheduler
+                ? 'translate-x-6'
+                : 'translate-x-1',
+            ]"
+          />
+        </button>
       </div>
 
       <p
@@ -129,7 +165,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "@/components/icons/Icon.vue";
-import Toggle from "@/components/common/Toggle.vue";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { adminAPI } from "@/api/admin";
 import type { CodexModelsManifestConfig } from "@/types";

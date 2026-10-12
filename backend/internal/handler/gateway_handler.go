@@ -365,7 +365,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					)
 					message := cls.Message
 					if !cls.ModelNotFound {
-						message = "No available accounts: " + err.Error()
+						message = "当前模型服务繁忙，请稍后重试。"
 					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
@@ -417,7 +417,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "当前模型服务繁忙，请稍后重试。", streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -700,7 +700,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					)
 					message := cls.Message
 					if !cls.ModelNotFound {
-						message = "No available accounts: " + err.Error()
+						message = "当前模型服务繁忙，请稍后重试。"
 					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
@@ -762,7 +762,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "当前模型服务繁忙，请稍后重试。", streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -1914,6 +1914,9 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
+	if failoverErr != nil {
+		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
@@ -1969,11 +1972,11 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 	case 403:
 		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
 	case 429:
-		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
+		return http.StatusTooManyRequests, "rate_limit_error", "当前模型服务繁忙，请稍后重试。"
 	case 529:
-		return http.StatusServiceUnavailable, "overloaded_error", "Upstream service overloaded, please retry later"
-	case 500, 502, 503, 504:
-		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable"
+		return http.StatusServiceUnavailable, "overloaded_error", "当前模型服务繁忙，请稍后重试。"
+	case 500, 502, 503, 504, 524:
+		return http.StatusBadGateway, "upstream_error", "当前模型服务繁忙，请稍后重试。"
 	default:
 		return http.StatusBadGateway, "upstream_error", "Upstream request failed"
 	}

@@ -996,6 +996,10 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
+	if s.isOpenAIAccountTransientBlocked(account) {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		return nil
+	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 	if account == nil || !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1154,34 +1158,48 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
-		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
-		if err != nil {
-			return nil, err
+		selectionExclusions := make(map[int64]struct{}, len(excludedIDs))
+		for id := range excludedIDs {
+			selectionExclusions[id] = struct{}{}
 		}
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
-		if err == nil && result != nil && result.Acquired {
-			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+		for {
+			account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, selectionExclusions, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
+			if err != nil {
+				return nil, err
+			}
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			if err == nil && result != nil && result.Acquired {
+				selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+				if selectErr != nil || selection != nil {
+					return markStickySessionHit(selection, stickyHit), selectErr
+				}
+				selectionExclusions[account.ID] = struct{}{}
+				continue
+			}
+			if s.hasOpenAIAccountTransientState(account.ID) && isOpenAIAccountTransientCircuitCandidate(account) {
+				selectionExclusions[account.ID] = struct{}{}
+				continue
+			}
+			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
+				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				if waitingCount < cfg.StickySessionMaxWaiting {
+					selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+					})
+					return markStickySessionHit(selection, stickyHit), selectErr
+				}
+			}
+			selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			})
 			return markStickySessionHit(selection, stickyHit), selectErr
 		}
-		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
-			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
-			if waitingCount < cfg.StickySessionMaxWaiting {
-				selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.StickySessionWaitTimeout,
-					MaxWaiting:     cfg.StickySessionMaxWaiting,
-				})
-				return markStickySessionHit(selection, stickyHit), selectErr
-			}
-		}
-		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-			AccountID:      account.ID,
-			MaxConcurrency: account.Concurrency,
-			Timeout:        cfg.FallbackWaitTimeout,
-			MaxWaiting:     cfg.FallbackMaxWaiting,
-		})
-		return markStickySessionHit(selection, stickyHit), selectErr
 	}
 
 	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
@@ -1223,6 +1241,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if s.isOpenAIAccountTransientBlocked(account) {
+						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
@@ -1234,8 +1254,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 							if selectErr != nil {
 								return nil, selectErr
 							}
-							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
-							return markStickySessionHit(selection, true), nil
+							if selection != nil {
+								_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
+								return markStickySessionHit(selection, true), nil
+							}
+							_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 						}
 
 						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
@@ -1246,7 +1269,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 								Timeout:        cfg.StickySessionWaitTimeout,
 								MaxWaiting:     cfg.StickySessionMaxWaiting,
 							})
-							return markStickySessionHit(selection, true), selectErr
+							if selectErr != nil || selection != nil {
+								return markStickySessionHit(selection, true), selectErr
+							}
 						}
 						stickySpillover = true
 					}
@@ -1292,6 +1317,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
 			filterStats.exclude("runtime_blocked")
+			continue
+		}
+		if s.isOpenAIAccountTransientBlocked(acc) {
+			filterStats.exclude("account_transient_blocked")
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -1400,6 +1429,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if selectErr != nil {
 					return nil, true, selectErr
 				}
+				if selection == nil {
+					continue
+				}
 				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
 					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
@@ -1438,6 +1470,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
 					return nil, selectErr
+				}
+				if selection == nil {
+					continue
 				}
 				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
 					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
@@ -1483,12 +1518,15 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 			continue
 		}
-		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
+		selection, selectErr := s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
 			AccountID:      fresh.ID,
 			MaxConcurrency: fresh.Concurrency,
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
+		if selectErr != nil || selection != nil {
+			return selection, selectErr
+		}
 	}
 
 	if requireCompact && baseCandidateCount > 0 {
@@ -1571,6 +1609,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 	}
+	if s.isOpenAIAccountTransientBlocked(fresh) {
+		return nil
+	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, fresh) {
 		return nil
 	}
@@ -1646,6 +1687,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+		return nil
+	}
+	if s.isOpenAIAccountTransientBlocked(latest) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, latest) {
@@ -1739,12 +1783,20 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 	if err != nil {
 		return nil, err
 	}
-	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+	selection := attachSelectionProfitGate(ctx, &AccountSelectionResult{
 		Account:     hydrated,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
-	}), nil
+	})
+	finalized, ok := s.finalizeOpenAIAccountTransientSelection(selection, openAITransientRequestedModel(ctx))
+	if ok {
+		return finalized, nil
+	}
+	if selection != nil && selection.Acquired && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	return nil, nil
 }
 
 func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, account *Account, release func()) (*AccountSelectionResult, error) {

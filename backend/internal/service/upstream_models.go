@@ -21,7 +21,7 @@ import (
 const (
 	upstreamModelsBodyLimit             int64 = 8 << 20
 	modelsDevRegistryURL                      = "https://models.dev/api.json"
-	modelsDevRegistryTTL                      = 6 * time.Hour
+	modelsDevRegistryTTL                      = 5 * time.Minute
 	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
 	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
 	UpstreamModelMetadataPartialCode          = "upstream_model_metadata_partial"
@@ -54,8 +54,12 @@ type UpstreamModelCatalog struct {
 }
 
 type UpstreamModelSyncWarning struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code          string   `json:"code"`
+	Message       string   `json:"message"`
+	ModelIDs      []string `json:"model_ids,omitempty"`
+	CompleteCount int      `json:"complete_count"`
+	TotalCount    int      `json:"total_count"`
+	Reason        string   `json:"reason,omitempty"`
 }
 
 type modelsDevProvider struct {
@@ -242,6 +246,7 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	capabilityIDs := capabilitySyncModelIDs(enrichIDs)
 
 	source := "upstream"
+	metadataReason := "metadata_missing"
 	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
 		if registryMetadata, registryErr := s.fetchModelsDevMetadata(ctx, account, enrichIDs); registryErr == nil {
 			for modelID, fallback := range registryMetadata {
@@ -253,6 +258,7 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 				}
 			}
 		} else {
+			metadataReason = "registry_unavailable"
 			slog.Warn("upstream model capability metadata enrichment failed",
 				"account_id", upstreamModelSyncAccountID(account),
 				"platform", upstreamModelSyncPlatform(account),
@@ -262,7 +268,6 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	}
 
 	completeMetadata := completeUpstreamModelMetadataSubset(capabilityIDs, catalog.Metadata)
-	persistedCapabilities := false
 	if len(completeMetadata) > 0 && account != nil && account.ID > 0 && s.accountRepo != nil {
 		// Retain known metadata only for models still listed or explicitly mapped.
 		if previous := account.GetUpstreamModelMetadataSnapshot(); previous != nil {
@@ -298,19 +303,28 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
 		}
 		account.SetUpstreamModelMetadataSnapshot(snapshot)
-		persistedCapabilities = true
 	}
 
 	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
-		if persistedCapabilities {
+		missing := make([]string, 0)
+		for _, modelID := range capabilityIDs {
+			if !upstreamModelMetadataIsComplete(catalog.Metadata[modelID]) {
+				missing = append(missing, modelID)
+			}
+		}
+		// Preview has no account ID and intentionally does not persist. Classify
+		// the result by capabilities obtained, not by whether a DB write occurred.
+		if len(missing) < len(capabilityIDs) {
 			catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
-				Code:    UpstreamModelMetadataPartialCode,
-				Message: "Some model capabilities were saved; remaining models are still incomplete.",
+				Code:     UpstreamModelMetadataPartialCode,
+				Message:  "Some model capabilities were obtained; remaining models are still incomplete.",
+				ModelIDs: missing, CompleteCount: len(capabilityIDs) - len(missing), TotalCount: len(capabilityIDs), Reason: metadataReason,
 			})
 		} else {
 			catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
-				Code:    UpstreamModelMetadataIncompleteCode,
-				Message: "Model IDs were synced, but capability metadata is incomplete.",
+				Code:     UpstreamModelMetadataIncompleteCode,
+				Message:  "Model IDs were synced, but capability metadata is incomplete.",
+				ModelIDs: missing, CompleteCount: 0, TotalCount: len(capabilityIDs), Reason: metadataReason,
 			})
 		}
 	}
@@ -500,24 +514,18 @@ func (s *AccountTestService) fetchModelsDevMetadata(
 	if err != nil {
 		return nil, err
 	}
-	provider, ok := matchModelsDevProvider(registry, upstreamModelRegistryBaseURL(account))
-	if !ok {
+	preferredProvider, providerMatched := matchModelsDevProvider(registry, upstreamModelRegistryBaseURL(account))
+	// Third-party relay hosts are not registry providers. Resolve known model
+	// families independently of the wire protocol, never arbitrary private IDs.
+	allowCrossProvider := account.IsOpenAICompatible() || account.IsAnthropic() || account.IsGemini() || account.Platform == PlatformAntigravity
+	if !providerMatched && !allowCrossProvider {
 		return nil, fmt.Errorf("no model metadata provider matches account base URL")
 	}
 
 	metadata := make(map[string]UpstreamModelMetadata)
 	for _, modelID := range modelIDs {
 		modelID = strings.TrimSpace(modelID)
-		model, found := provider.Models[modelID]
-		if !found {
-			for candidateID, candidate := range provider.Models {
-				if strings.EqualFold(strings.TrimSpace(candidateID), modelID) || strings.EqualFold(strings.TrimSpace(candidate.ID), modelID) {
-					model = candidate
-					found = true
-					break
-				}
-			}
-		}
+		model, found := lookupModelsDevModelForAccount(registry, preferredProvider, modelID, allowCrossProvider)
 		if !found {
 			continue
 		}
@@ -527,6 +535,235 @@ func (s *AccountTestService) fetchModelsDevMetadata(
 		}
 	}
 	return metadata, nil
+}
+
+func lookupModelsDevModel(models map[string]modelsDevModel, modelID string) (modelsDevModel, bool) {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return modelsDevModel{}, false
+	}
+
+	candidates := modelRegistryLookupCandidates(modelID)
+	if normalized := normalizeKnownOpenAICodexModel(modelID); normalized != "" && normalized != modelID {
+		candidates = appendUniqueModelRegistryCandidates(candidates, normalized)
+	}
+	// This is a local Codex probe/guardian alias, not a separate upstream
+	// capability family. Use the current Codex text-model profile for it.
+	if strings.EqualFold(modelID, "codex-auto-review") {
+		candidates = appendUniqueModelRegistryCandidates(candidates, "gpt-5.5")
+	}
+
+	keys := make([]string, 0, len(models))
+	for registryID := range models {
+		keys = append(keys, registryID)
+	}
+	sort.Strings(keys)
+	for _, candidateID := range candidates {
+		candidateKey := normalizeModelRegistryLookupID(candidateID)
+		for _, registryID := range keys {
+			candidate := models[registryID]
+			if strings.EqualFold(strings.TrimSpace(registryID), candidateID) ||
+				strings.EqualFold(strings.TrimSpace(candidate.ID), candidateID) ||
+				(candidateKey != "" && (normalizeModelRegistryLookupID(registryID) == candidateKey ||
+					normalizeModelRegistryLookupID(candidate.ID) == candidateKey)) {
+				return candidate, true
+			}
+		}
+	}
+	return modelsDevModel{}, false
+}
+
+func lookupModelsDevModelForAccount(
+	registry map[string]modelsDevProvider,
+	preferred modelsDevProvider,
+	modelID string,
+	allowCrossProvider bool,
+) (modelsDevModel, bool) {
+	if model, ok := lookupModelsDevModel(preferred.Models, modelID); ok {
+		return model, true
+	}
+	if !allowCrossProvider {
+		return modelsDevModel{}, false
+	}
+
+	family := knownModelsDevModelFamily(modelID)
+	if family == "" {
+		return modelsDevModel{}, false
+	}
+	for _, providerID := range modelsDevProviderIDsForFamily(family) {
+		provider, ok := registry[providerID]
+		if !ok || len(provider.Models) == 0 {
+			continue
+		}
+		if model, found := lookupModelsDevModel(provider.Models, modelID); found {
+			return model, true
+		}
+	}
+	return modelsDevModel{}, false
+}
+
+func modelRegistryLookupCandidates(modelID string) []string {
+	candidates := make([]string, 0, 4)
+	add := func(candidate string) {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return
+		}
+		for _, existing := range candidates {
+			if strings.EqualFold(existing, candidate) {
+				return
+			}
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	add(modelID)
+	add(strings.TrimPrefix(strings.TrimSpace(modelID), "models/"))
+	if slash := strings.LastIndexByte(modelID, '/'); slash >= 0 {
+		add(modelID[slash+1:])
+	}
+	for _, candidate := range append([]string(nil), candidates...) {
+		add(trimModelRegistryDateSuffix(candidate))
+	}
+	return candidates
+}
+
+func appendUniqueModelRegistryCandidates(candidates []string, values ...string) []string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		found := false
+		for _, existing := range candidates {
+			if strings.EqualFold(existing, value) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			candidates = append(candidates, value)
+		}
+	}
+	return candidates
+}
+
+func normalizeModelRegistryLookupID(modelID string) string {
+	modelID = strings.TrimSpace(modelID)
+	if slash := strings.LastIndexByte(modelID, '/'); slash >= 0 {
+		modelID = modelID[slash+1:]
+	}
+	modelID = strings.TrimPrefix(modelID, "models/")
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	modelID = strings.ReplaceAll(modelID, "_", "-")
+	modelID = strings.Join(strings.Fields(modelID), "-")
+	for strings.Contains(modelID, "--") {
+		modelID = strings.ReplaceAll(modelID, "--", "-")
+	}
+	return modelID
+}
+
+func trimModelRegistryDateSuffix(modelID string) string {
+	modelID = normalizeModelRegistryLookupID(modelID)
+	if modelID == "" {
+		return ""
+	}
+	parts := strings.Split(modelID, "-")
+	if len(parts) > 1 {
+		last := parts[len(parts)-1]
+		if (len(last) == 8 && strings.HasPrefix(last, "20") && allASCIIDigits(last)) ||
+			(len(last) == 4 && validMonthDaySuffix(last)) {
+			return strings.Join(parts[:len(parts)-1], "-")
+		}
+		if len(parts) >= 4 && len(parts[len(parts)-3]) == 4 && strings.HasPrefix(parts[len(parts)-3], "20") &&
+			len(parts[len(parts)-2]) == 2 && len(parts[len(parts)-1]) == 2 &&
+			allASCIIDigits(parts[len(parts)-3]) && allASCIIDigits(parts[len(parts)-2]) && allASCIIDigits(parts[len(parts)-1]) {
+			return strings.Join(parts[:len(parts)-3], "-")
+		}
+	}
+	return modelID
+}
+
+func allASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validMonthDaySuffix(value string) bool {
+	if len(value) != 4 || !allASCIIDigits(value) {
+		return false
+	}
+	month := int(value[0]-'0')*10 + int(value[1]-'0')
+	day := int(value[2]-'0')*10 + int(value[3]-'0')
+	return month >= 1 && month <= 12 && day >= 1 && day <= 31
+}
+
+func knownModelsDevModelFamily(modelID string) string {
+	modelID = trimModelRegistryDateSuffix(modelID)
+	switch {
+	case strings.HasPrefix(modelID, "claude-"):
+		return "anthropic"
+	case strings.HasPrefix(modelID, "gemini-"):
+		return "google"
+	case strings.HasPrefix(modelID, "gpt-") || strings.HasPrefix(modelID, "o1") ||
+		strings.HasPrefix(modelID, "o3") || strings.HasPrefix(modelID, "o4") || strings.Contains(modelID, "codex"):
+		return "openai"
+	case strings.HasPrefix(modelID, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(modelID, "glm-") || strings.HasPrefix(modelID, "chatglm"):
+		return "zhipu"
+	case strings.HasPrefix(modelID, "kimi-") || strings.HasPrefix(modelID, "moonshot"):
+		return "kimi"
+	case strings.HasPrefix(modelID, "qwen") || strings.HasPrefix(modelID, "qwq") ||
+		strings.HasPrefix(modelID, "qvq") || strings.HasPrefix(modelID, "tongyi"):
+		return "alibaba"
+	case strings.HasPrefix(modelID, "mimo"):
+		return "xiaomi"
+	case strings.HasPrefix(modelID, "minimax"):
+		return "minimax"
+	case strings.HasPrefix(modelID, "hy") || strings.HasPrefix(modelID, "hunyuan"):
+		return "tencent"
+	case strings.HasPrefix(modelID, "grok"):
+		return "xai"
+	default:
+		return ""
+	}
+}
+
+func modelsDevProviderIDsForFamily(family string) []string {
+	switch family {
+	case "anthropic":
+		return []string{"anthropic"}
+	case "google":
+		return []string{"google", "google-vertex"}
+	case "openai":
+		return []string{"openai"}
+	case "deepseek":
+		return []string{"deepseek", "alibaba-cn", "alibaba"}
+	case "zhipu":
+		return []string{"zhipuai", "zhipuai-coding-plan", "alibaba-cn", "alibaba", "tencent-coding-plan"}
+	case "kimi":
+		return []string{"moonshotai-cn", "moonshotai", "kimi-for-coding", "alibaba-cn", "tencent-coding-plan"}
+	case "alibaba":
+		return []string{"alibaba-cn", "alibaba"}
+	case "xiaomi":
+		return []string{"xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-sgp", "xiaomi-token-plan-ams"}
+	case "minimax":
+		return []string{"minimax-cn", "minimax", "minimax-cn-coding-plan", "minimax-coding-plan", "alibaba-cn", "tencent-coding-plan"}
+	case "tencent":
+		return []string{"tencent-token-plan", "tencent-coding-plan"}
+	case "xai":
+		return []string{"xai"}
+	default:
+		return nil
+	}
 }
 
 func (s *AccountTestService) fetchModelsDevRegistry(ctx context.Context, account *Account) (map[string]modelsDevProvider, error) {
@@ -575,7 +812,7 @@ func (s *AccountTestService) fetchModelsDevRegistry(ctx context.Context, account
 }
 
 func upstreamMetadataFromModelsDevModel(modelID string, model modelsDevModel) UpstreamModelMetadata {
-	levels := reasoningLevelsFromModelsDevOptions(model.ReasoningOptions)
+	levels := reasoningLevelsFromModelsDevOptions(model.Reasoning, model.ReasoningOptions)
 	reasoning := model.Reasoning
 	if reasoning == nil && len(levels) > 0 {
 		inferred := true
@@ -593,7 +830,7 @@ func upstreamMetadataFromModelsDevModel(modelID string, model modelsDevModel) Up
 		MaxOutputTokens:          model.Limit.Output,
 	}
 	if len(levels) > 0 {
-		metadata.DefaultReasoningLevel = levels[0]
+		metadata.DefaultReasoningLevel = defaultModelsDevReasoningLevel(model.ReasoningOptions, levels)
 	}
 	if strings.TrimSpace(model.ID) != "" {
 		metadata.ID = strings.TrimSpace(model.ID)
@@ -601,23 +838,46 @@ func upstreamMetadataFromModelsDevModel(modelID string, model modelsDevModel) Up
 	return metadata
 }
 
-func reasoningLevelsFromModelsDevOptions(options []modelsDevReasoningOption) []string {
+func reasoningLevelsFromModelsDevOptions(reasoning *bool, options []modelsDevReasoningOption) []string {
 	levels := make([]string, 0)
+	hasToggle := false
 	for _, option := range options {
-		if !strings.EqualFold(strings.TrimSpace(option.Type), "effort") {
-			continue
-		}
-		for _, value := range option.Values {
-			if value == nil {
-				levels = append(levels, "none")
-				continue
-			}
-			if effort, ok := value.(string); ok {
-				levels = append(levels, effort)
+		switch strings.ToLower(strings.TrimSpace(option.Type)) {
+		case "toggle":
+			hasToggle = true
+		case "effort":
+			for _, value := range option.Values {
+				if value == nil {
+					levels = append(levels, "none")
+					continue
+				}
+				if effort, ok := value.(string); ok {
+					levels = append(levels, effort)
+				}
 			}
 		}
 	}
+	if hasToggle {
+		levels = append([]string{"none", "high"}, levels...)
+	}
+	// Some providers publish reasoning=true without enumerating an option. Keep
+	// that known capability usable as a conservative binary toggle.
+	if len(levels) == 0 && reasoning != nil && *reasoning {
+		levels = []string{"none", "high"}
+	}
 	return normalizeReasoningLevels(levels)
+}
+
+func defaultModelsDevReasoningLevel(options []modelsDevReasoningOption, levels []string) string {
+	for _, option := range options {
+		if strings.EqualFold(strings.TrimSpace(option.Type), "toggle") && stringSliceContains(levels, "high") {
+			return "high"
+		}
+	}
+	if len(levels) == 0 {
+		return ""
+	}
+	return levels[0]
 }
 
 func upstreamModelRegistryBaseURL(account *Account) string {
@@ -1328,7 +1588,7 @@ func extractUpstreamModelRawEntries(body []byte) ([]json.RawMessage, error) {
 func upstreamMetadataFromCapabilityEntry(modelID string, entry upstreamModelCapabilityEntry) UpstreamModelMetadata {
 	levels := reasoningLevelsFromRawEntries(entry.SupportedReasoningLevels)
 	if len(levels) == 0 {
-		levels = reasoningLevelsFromModelsDevOptions(entry.ReasoningOptions)
+		levels = reasoningLevelsFromModelsDevOptions(entry.Reasoning, entry.ReasoningOptions)
 	}
 	reasoning := entry.Reasoning
 	if reasoning == nil && len(levels) > 0 {

@@ -17,8 +17,7 @@ describe('ReAuthAccountModal Grok re-auth paths', () => {
 
   it('wires SSO and RT reauth without batch account create', () => {
     expect(source).toContain('@import-sso="handleGrokImportSSO"')
-    expect(source).toContain('@validate-refresh-token="handleValidateRefreshToken"')
-    expect(source).toContain('await handleGrokValidateRefreshToken(refreshTokenInput)')
+    expect(source).toContain('@validate-refresh-token="handleGrokValidateRefreshToken"')
     expect(source).toContain('grokOAuth.validateSSOToken')
     expect(source).toContain('grokOAuth.buildCredentials')
     // Re-auth updates the existing account; must not call createFromSSO batch create

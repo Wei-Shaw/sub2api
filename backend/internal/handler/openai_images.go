@@ -235,6 +235,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
+		if slotResult == openAISlotAcquireTransientVetoed {
+			failedAccountIDs[account.ID] = struct{}{}
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// Images 调度不装利润门，此分支实际不可达；防御性排除重选并受同一否决上限约束。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -254,8 +258,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		forwardStart := time.Now()
 		writerSizeBeforeForward := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
-		result, err := func() (*service.OpenAIForwardResult, error) {
+		result, err := func() (result *service.OpenAIForwardResult, err error) {
 			defer func() {
+				selection.CompleteTransient(err == nil && result != nil && c.Request.Context().Err() == nil && openAIForwardSucceededForScheduling(result), err)
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
@@ -380,6 +385,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			if videoURL, ok := c.Get("openai_video_preview_url"); ok {
+				if value, ok := videoURL.(string); ok {
+					service.SaveGrokVideoPreviewAsync(value, service.ResolveUsageRecordID(c.Request.Context(), result.RequestID), apiKey.ID)
+				}
+			}
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)

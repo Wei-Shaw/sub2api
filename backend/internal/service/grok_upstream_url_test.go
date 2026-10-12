@@ -41,23 +41,25 @@ func TestGrokAPIKeyURLPolicyFollowsGlobalSecurityConfig(t *testing.T) {
 		require.Equal(t, "http://grok.example.test/v1/videos/request%20123/content", contentURL)
 	})
 
-	t.Run("insecure HTTP disabled", func(t *testing.T) {
+	t.Run("account HTTP allowed without global opt-in", func(t *testing.T) {
 		cfg := &config.Config{}
 		cfg.Security.URLAllowlist.Enabled = false
 		cfg.Security.URLAllowlist.AllowInsecureHTTP = false
 
-		_, err := buildGrokResponsesURL(account, cfg)
-		require.EqualError(t, err, "invalid base url: base URL rejected by URL security policy")
+		target, err := buildGrokResponsesURL(account, cfg)
+		require.NoError(t, err)
+		require.Equal(t, "http://grok.example.test/v1/responses", target)
 	})
 
-	t.Run("enabled allowlist remains HTTPS only", func(t *testing.T) {
+	t.Run("enabled allowlist permits configured HTTP account", func(t *testing.T) {
 		cfg := &config.Config{}
 		cfg.Security.URLAllowlist.Enabled = true
 		cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 		cfg.Security.URLAllowlist.UpstreamHosts = []string{"grok.example.test"}
 
-		_, err := buildGrokResponsesURL(account, cfg)
-		require.EqualError(t, err, "invalid base url: base URL rejected by URL security policy")
+		target, err := buildGrokResponsesURL(account, cfg)
+		require.NoError(t, err)
+		require.Equal(t, "http://grok.example.test/v1/responses", target)
 	})
 }
 
@@ -203,7 +205,7 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		require.EqualError(t, err, "invalid base url: base URL rejected by URL security policy")
 	})
 
-	t.Run("insecure HTTP custom address requires operator opt-in", func(t *testing.T) {
+	t.Run("operator configured HTTP custom address is allowed", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformGrok,
 			Type:     AccountTypeOAuth,
@@ -216,7 +218,7 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		cfg.Security.URLAllowlist.AllowInsecureHTTP = false
 
 		_, err := buildGrokResponsesURL(account, cfg)
-		require.EqualError(t, err, "invalid base url: base URL rejected by URL security policy")
+		require.NoError(t, err)
 
 		cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 		target, err := buildGrokResponsesURL(account, cfg)

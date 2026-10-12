@@ -102,6 +102,8 @@ export interface ChannelMonitor {
   account_id: number | null
   /** 主模型最近一次配额快照（配额模式；无历史时为 null） */
   latest_quota?: MonitorQuotaSnapshot | null
+  /** 管理员定义的展示顺序，数值越小越靠前 */
+  sort_order: number
 }
 
 export interface ExtraModelStatus {
@@ -204,6 +206,20 @@ export async function list(
   const { data } = await apiClient.get<ListResponse>('/admin/channel-monitors', {
     params,
     signal: options?.signal,
+  })
+  return data
+}
+
+export async function listAll(): Promise<ChannelMonitor[]> {
+  const { data } = await apiClient.get<ChannelMonitor[]>('/admin/channel-monitors/all')
+  return data
+}
+
+export async function updateSortOrder(
+  updates: Array<{ id: number; sort_order: number }>
+): Promise<{ message: string }> {
+  const { data } = await apiClient.put<{ message: string }>('/admin/channel-monitors/sort-order', {
+    updates,
   })
   return data
 }
@@ -347,6 +363,8 @@ export async function listHistory(
 
 export const channelMonitorAPI = {
   list,
+  listAll,
+  updateSortOrder,
   get,
   create,
   duplicate,

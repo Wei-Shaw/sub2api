@@ -217,50 +217,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
   })
 
-  afterEach(() => vi.useRealTimers())
-
-  it('sets month and year expiry presets without submitting the account form', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-01-31T12:34:00'))
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await selectButtonByText(wrapper, 'API Key')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('expiry account')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
-    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
-
-    for (const [label, expected] of [
-      ['payment.oneMonth', '2026-02-28T12:34'],
-      ['payment.oneYear', '2027-01-31T12:34'],
-    ]) {
-      const button = wrapper.findAll('button').find((candidate) => candidate.text() === label)!
-      expect(button.attributes('type')).toBe('button')
-      await button.trigger('click')
-      expect(input.element.value).toBe(expected)
-      expect(createAccountMock).not.toHaveBeenCalled()
-    }
-
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(createAccountMock.mock.calls[0]?.[0]?.expires_at).toBe(new Date('2027-01-31T12:34:00').getTime() / 1000)
-    wrapper.unmount()
-  })
-
-  it('allows a manually entered expiry to override a preset before account creation', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await selectButtonByText(wrapper, 'API Key')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('custom expiry account')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
-    await selectButtonByText(wrapper, 'payment.oneMonth')
-    await wrapper.get('input[type="datetime-local"]').setValue('2030-04-15T09:20')
-
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(createAccountMock.mock.calls[0]?.[0]?.expires_at).toBe(new Date('2030-04-15T09:20:00').getTime() / 1000)
-    wrapper.unmount()
-  })
-
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
     authIsSimpleMode.value = false
     const wrapper = mountModal([
@@ -384,10 +340,9 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
   })
 
-  it('warns when post-create capability metadata remains incomplete', async () => {
+  it('does not show a capability warning after post-create model sync', async () => {
     syncUpstreamModelsMock.mockResolvedValue({
       models: ['x-preview-f-free'],
-      warnings: [{ code: 'upstream_model_metadata_incomplete', message: 'metadata incomplete' }],
     })
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
@@ -398,7 +353,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(showWarningMock).toHaveBeenCalledWith(
+    expect(showWarningMock).not.toHaveBeenCalledWith(
       'admin.accounts.syncUpstreamModelsMetadataIncomplete'
     )
   })

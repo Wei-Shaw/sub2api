@@ -47,6 +47,23 @@ func LookupVideoBillingResolution(resolution string) (string, bool) {
 	}
 }
 
+// NormalizeVideoTierLabel removes optional provider metadata from a configured
+// video tier while preserving the actual resolution. Older video pricing cards
+// may store labels such as "1080p|off|no".
+func NormalizeVideoTierLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if separator := strings.IndexByte(label, '|'); separator >= 0 {
+		label = strings.TrimSpace(label[:separator])
+	}
+	return label
+}
+
+// VideoTierLabelsMatch compares a requested resolution with a configured video
+// tier, including legacy labels that carry provider metadata after '|'.
+func VideoTierLabelsMatch(configured, requested string) bool {
+	return NormalizeVideoTierLabel(configured) == NormalizeVideoTierLabel(requested)
+}
+
 // NormalizeVideoBillingResolutionOrDefault 用于运行时计费：上游回传的分辨率
 // 缺失或无法识别时按最低档兜底，保证请求仍可计费。
 func NormalizeVideoBillingResolutionOrDefault(resolution string) string {

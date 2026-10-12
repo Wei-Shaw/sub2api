@@ -21,20 +21,16 @@
         </template>
       </div>
 
-      <!-- 右:登录 / 回到后台 -->
+      <nav class="hidden items-center gap-4 text-sm text-gray-500 dark:text-dark-300 sm:flex">
+        <RouterLink to="/model-plaza" class="transition-colors hover:text-primary-600 dark:hover:text-primary-300">{{ t('modelPlaza.title') }}</RouterLink>
+        <RouterLink to="/video-model-plaza" class="transition-colors hover:text-primary-600 dark:hover:text-primary-300">{{ t('videoPlaza.title') }}</RouterLink>
+        <RouterLink to="/video-docs" class="transition-colors hover:text-primary-600 dark:hover:text-primary-300">{{ t('videoDocs.shortTitle') }}</RouterLink>
+      </nav>
       <RouterLink
-        v-if="isAuthenticated"
-        :to="backTarget"
+        :to="isAuthenticated ? backTarget : { path: '/login', query: { redirect: '/model-plaza' } }"
         class="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
       >
-        {{ t('modelPlaza.nav.backToDashboard') }}
-      </RouterLink>
-      <RouterLink
-        v-else
-        :to="{ path: '/login', query: { redirect: '/model-plaza' } }"
-        class="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
-      >
-        {{ t('modelPlaza.nav.login') }}
+        {{ isAuthenticated ? t('modelPlaza.nav.backToDashboard') : t('modelPlaza.nav.login') }}
       </RouterLink>
     </div>
   </header>
@@ -52,7 +48,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const settings = computed(() => appStore.cachedPublicSettings)
-const siteName = computed(() => settings.value?.site_name || 'Sub2API')
+const siteName = computed(() => settings.value?.site_name || 'BuaGa API')
 const siteLogo = computed(() =>
   sanitizeUrl(settings.value?.site_logo || '', { allowRelative: true, allowDataUrl: true })
 )

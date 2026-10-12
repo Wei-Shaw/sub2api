@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <TablePageLayout class="newapi-admin-workspace">
       <!-- Single Row: Search, Filters, and Actions -->
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">

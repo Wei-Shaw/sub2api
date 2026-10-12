@@ -387,6 +387,23 @@ func TestAdminServiceBulkUpdateAccounts_EmbeddingsOnlyResetsResponsesMode(t *tes
 	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
 }
 
+func TestAdminServiceBulkUpdateAccounts_AcceptsVideoCapabilities(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			openAIEndpointCapabilitiesCredentialKey: []string{"videos", "seedance"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"videos", "seedance"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
+}
+
 func TestAdminServiceBulkUpdateAccounts_RejectsInvalidOpenAISettingValuesBeforeWrite(t *testing.T) {
 	tests := []struct {
 		name        string

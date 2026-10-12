@@ -193,6 +193,21 @@ func isOpenAIRequestScopedCapacityShed(upstreamMsg string, upstreamBody []byte) 
 		(!gjson.ValidBytes(upstreamBody) && isOpenAICapacityShedMessage(string(upstreamBody)))
 }
 
+// isOpenAIUpstreamResponseTimeExceeded recognizes the upstream's explicit
+// five-minute channel timeout. Do not infer it from a message: providers can
+// echo client input there, and ordinary long-running requests may succeed.
+func isOpenAIUpstreamResponseTimeExceeded(statusCode int, body []byte) bool {
+	if statusCode < http.StatusInternalServerError || !gjson.ValidBytes(body) {
+		return false
+	}
+	for _, path := range []string{"error.code", "response.error.code", "code"} {
+		if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, path).String()), "channel:response_time_exceeded") {
+			return true
+		}
+	}
+	return false
+}
+
 func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 	match := func(text string) bool {
 		lower := strings.ToLower(strings.TrimSpace(text))
@@ -266,6 +281,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
+	// Some relays incorrectly return HTTP 400 for a structured transport or
+	// temporary upstream failure.  Only rotate for the explicit transient
+	// signatures; arbitrary 400 request errors remain deterministic.
+	if statusCode == http.StatusBadRequest && isOpenAIExplicitTransientHTTPBadRequest(upstreamBody, upstreamMsg) {
+		return true
+	}
 	// A missing model is account/provider availability, not a malformed client
 	// request. Keep this unconditional exception inside the OpenAI-compatible
 	// gateway and require an eligible account so Anthropic/Gemini paths retain
@@ -283,6 +304,21 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 		return true
 	}
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+}
+
+// isOpenAIExplicitTransientHTTPBadRequest only permits a 400 response to use
+// the stream classifier when the payload is visibly an SSE terminal event.
+// Ordinary JSON 400 bodies with the generic "Upstream request failed" text
+// remain deterministic client errors and must not be replayed.
+func isOpenAIExplicitTransientHTTPBadRequest(body []byte, message string) bool {
+	if !gjson.ValidBytes(body) {
+		return false
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(body, "type").String())
+	if eventType != "error" && eventType != "response.failed" {
+		return false
+	}
+	return isOpenAIExplicitTransientStreamFailure(body, message)
 }
 
 func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
@@ -393,6 +429,12 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	if s.openAIAPIKeyAvailabilityEnabled(account) &&
+		(openAIAPIKeyAvailabilityTransientStatus(statusCode) || statusCode == http.StatusTooManyRequests || s.openAIAPIKeyCredentialFailure(account, statusCode, responseBody)) {
+		// The account/model cooldown excludes this attempt; do not spend the
+		// request-local same-account retry budget on the unavailable route.
+		failoverErr.RetryableOnSameAccount = false
+	}
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
@@ -402,6 +444,9 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 
 const (
 	openAIUpstreamAccessUnavailableClientMessage = "Upstream access is temporarily unavailable, please retry later"
+	// OpenAIStreamTimeoutReason marks an upstream SSE stream_timeout that can be
+	// retried on another account before client-visible model output starts.
+	OpenAIStreamTimeoutReason = GatewayFailureReason("openai_stream_timeout")
 	// OpenAIUpstreamAccessStateReason marks a provider credential whose
 	// account, workspace, or organization is unavailable.
 	OpenAIUpstreamAccessStateReason = GatewayFailureReason("openai_upstream_access_state")
@@ -445,6 +490,19 @@ func isOpenAIUpstreamAccessStateCode(value string) bool {
 // such a code must flow through the existing authentication/403 policies.
 func isOpenAIHTTPUpstreamAccessStateError(_ int, _ string, body []byte) bool {
 	return isOpenAIUpstreamAccessStateError("", body)
+}
+
+func (s *OpenAIGatewayService) openAIAPIKeyCredentialFailure(account *Account, statusCode int, body []byte) bool {
+	if !s.openAIAPIKeyAvailabilityEnabled(account) || !gjson.ValidBytes(body) {
+		return false
+	}
+	if isOpenAIUpstreamAccessStateError("", body) {
+		return true
+	}
+	if statusCode == http.StatusUnauthorized {
+		return gjson.GetBytes(body, "error").IsObject() || openAIStreamCredentialAuthFailure(body)
+	}
+	return statusCode == http.StatusForbidden && openAIStreamCredentialAuthFailure(body)
 }
 
 func openAICapacityShedClientMessage(upstreamMsg string, body []byte) string {

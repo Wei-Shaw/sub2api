@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, nextTick } from 'vue'
+import { onBeforeUnmount, watch, ref, useTemplateRef, nextTick } from 'vue'
 
 const props = withDefaults(defineProps<{
   content?: string
   trigger?: 'hover' | 'click'
   widthClass?: string
+  interactive?: boolean
 }>(), {
   trigger: 'hover',
   widthClass: 'w-64',
+  interactive: true,
 })
 
 const show = ref(false)
@@ -72,33 +74,46 @@ function onDocumentKeydown(event: KeyboardEvent) {
 }
 
 function onViewportChange() {
-  if (!show.value) return
-  updatePosition()
+  if (!show.value || positionFrame) return
+  positionFrame = requestAnimationFrame(() => {
+    positionFrame = 0
+    if (show.value) updatePosition()
+  })
 }
+
+let positionFrame = 0
 
 function updatePosition() {
   const el = triggerRef.value
   if (!el) return
   const rect = el.getBoundingClientRect()
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    top: `${rect.top}px`,
+    left: `${rect.left + rect.width / 2}px`,
   }
 }
 
-onMounted(() => {
+function attachListeners() {
   document.addEventListener('click', onDocumentClick, true)
   document.addEventListener('keydown', onDocumentKeydown)
   window.addEventListener('resize', onViewportChange)
-  window.addEventListener('scroll', onViewportChange, true)
-})
+  window.addEventListener('scroll', onViewportChange, { capture: true, passive: true })
+}
 
-onBeforeUnmount(() => {
+function detachListeners() {
   document.removeEventListener('click', onDocumentClick, true)
   document.removeEventListener('keydown', onDocumentKeydown)
   window.removeEventListener('resize', onViewportChange)
   window.removeEventListener('scroll', onViewportChange, true)
-})
+  if (positionFrame) cancelAnimationFrame(positionFrame)
+  positionFrame = 0
+}
+
+watch(show, (visible) => {
+  if (visible) attachListeners()
+  else detachListeners()
+}, { flush: 'sync' })
+onBeforeUnmount(detachListeners)
 </script>
 
 <template>
@@ -134,7 +149,8 @@ onBeforeUnmount(() => {
         v-show="show"
         role="tooltip"
         :class="[
-          'fixed z-[99999] -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 selection:bg-primary-200 selection:text-gray-900 before:absolute before:inset-x-0 before:top-full before:h-3 dark:bg-gray-800 dark:selection:bg-primary-200 dark:selection:text-gray-900',
+          'fixed z-[99999] -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 selection:bg-primary-200 selection:text-gray-900 before:pointer-events-none before:absolute before:inset-x-0 before:top-full before:h-2 dark:bg-gray-800 dark:selection:bg-primary-200 dark:selection:text-gray-900',
+          props.interactive ? 'pointer-events-auto' : 'pointer-events-none',
           props.widthClass,
         ]"
         :style="{ top: `calc(${tooltipStyle.top} - 8px)`, left: tooltipStyle.left }"
@@ -152,7 +168,7 @@ onBeforeUnmount(() => {
           </svg>
         </button>
         <slot>{{ content }}</slot>
-        <div class="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+        <div class="pointer-events-none absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
       </div>
     </Teleport>
   </div>

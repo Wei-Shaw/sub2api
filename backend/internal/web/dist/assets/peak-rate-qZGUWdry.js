@@ -1,0 +1,1 @@
+function r(a){return!!(a!=null&&a.peak_rate_enabled&&a.peak_start&&a.peak_end)}function t(a){return a?`UTC${a}`:""}function o(a,e){if(!r(a)||!a)return"";const n=`${a.peak_start}-${a.peak_end} ×${a.peak_rate_multiplier??1}`;return e?`${n} (${e})`:n}export{o as f,r as h,t as s};

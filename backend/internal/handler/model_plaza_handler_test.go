@@ -262,3 +262,17 @@ func TestFilterPlazaVisibleGroups_SubscribedExclusiveGroup(t *testing.T) {
 		require.Equal(t, int64(42), visible[0].ID)
 	}
 }
+
+func TestVideoPlazaEffectiveRate_IndependentVideoRateWins(t *testing.T) {
+	g := &service.VideoPlazaGroup{ID: 7, RateMultiplier: 0.5, VideoRateIndependent: true, VideoRateMultiplier: 0.8}
+	require.InDelta(t, 0.8, videoPlazaEffectiveRate(g, map[int64]float64{7: 0.2}), 1e-12)
+	require.Nil(t, videoPlazaUserRate(g, map[int64]float64{7: 0.2}))
+}
+
+func TestVideoPlazaEffectiveRate_UserRateAppliesWhenVideoRateIsLinked(t *testing.T) {
+	g := &service.VideoPlazaGroup{ID: 7, RateMultiplier: 0.5}
+	require.InDelta(t, 0.2, videoPlazaEffectiveRate(g, map[int64]float64{7: 0.2}), 1e-12)
+	rate := videoPlazaUserRate(g, map[int64]float64{7: 0.2})
+	require.NotNil(t, rate)
+	require.InDelta(t, 0.2, *rate, 1e-12)
+}

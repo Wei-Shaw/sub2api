@@ -164,7 +164,7 @@
               <Select
                 :id="`${idPrefix}-${pair.id}-to`"
                 :model-value="pair.to"
-                :options="reasoningEffortTargetOptions"
+                :options="reasoningEffortOptions"
                 :placeholder="t('admin.groups.form.reasoningEffortToPlaceholder')"
                 :error="showValidation && !!pairErrors(pair.id).to"
                 :aria-label="t('admin.groups.form.reasoningEffortTo')"
@@ -218,8 +218,6 @@ import {
   normalizeReasoningEffortMatchType,
   reasoningEffortOptionsForPlatform,
   reasoningEffortSourceOptionsForPlatform,
-  reasoningEffortTargetOptionsForPlatform,
-  reasoningEffortMappingDeny,
   reasoningEffortOverLimitDeny,
   reasoningEffortOverLimitDowngrade,
   validateReasoningEffortMappings,
@@ -248,16 +246,6 @@ const reasoningEffortOptions = computed(() =>
 );
 const reasoningEffortSourceOptions = computed(() =>
   reasoningEffortSourceOptionsForPlatform(props.platform),
-);
-const reasoningEffortTargetOptions = computed(() =>
-  reasoningEffortTargetOptionsForPlatform(props.platform).map((option) =>
-    option.value === reasoningEffortMappingDeny
-      ? {
-          ...option,
-          label: t("admin.groups.form.reasoningEffortToDeny"),
-        }
-      : option,
-  ),
 );
 const matchTypeOptions = computed(() => [
   {

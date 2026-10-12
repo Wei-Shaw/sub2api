@@ -32,7 +32,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	account *Account,
 	body []byte,
 	parsed *ParsedRequest,
-) (*ForwardResult, error) {
+) (forwardResult *ForwardResult, forwardErr error) {
 	startTime := time.Now()
 
 	// 1. Parse Chat Completions request
@@ -65,6 +65,20 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			mappedModel = normalized
 		}
 	}
+	releaseRecovery, completeRecovery, admitted := s.admitAnthropicStreamRecoveryModel(ctx, account, mappedModel, nil)
+	if !admitted {
+		return nil, &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable}
+	}
+	defer func() {
+		var failover *UpstreamFailoverError
+		if errors.As(forwardErr, &failover) && !failover.RequestScopedTransient && failover.StatusCode >= 500 {
+			s.recordAnthropicStreamFailure(ctx, account, mappedModel, &anthropicStreamFailure{reason: "upstream_http_error", transient: true})
+		}
+		completeRecovery(forwardErr == nil && forwardResult != nil && !forwardResult.ClientDisconnect)
+		if releaseRecovery != nil {
+			releaseRecovery()
+		}
+	}()
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -135,7 +149,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
 	// 11. Send request
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doAnthropicAvailabilityRequest(ctx, upstreamReq, proxyURL, account, mappedModel, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()

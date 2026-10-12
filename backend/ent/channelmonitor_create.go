@@ -199,6 +199,20 @@ func (_c *ChannelMonitorCreate) SetCreatedBy(v int64) *ChannelMonitorCreate {
 	return _c
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (_c *ChannelMonitorCreate) SetSortOrder(v int) *ChannelMonitorCreate {
+	_c.mutation.SetSortOrder(v)
+	return _c
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableSortOrder(v *int) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetSortOrder(*v)
+	}
+	return _c
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_c *ChannelMonitorCreate) SetTemplateID(v int64) *ChannelMonitorCreate {
 	_c.mutation.SetTemplateID(v)
@@ -355,6 +369,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultJitterSeconds
 		_c.mutation.SetJitterSeconds(v)
 	}
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		v := channelmonitor.DefaultSortOrder
+		_c.mutation.SetSortOrder(v)
+	}
 	if _, ok := _c.mutation.ExtraHeaders(); !ok {
 		v := channelmonitor.DefaultExtraHeaders
 		_c.mutation.SetExtraHeaders(v)
@@ -458,6 +476,9 @@ func (_c *ChannelMonitorCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedBy(); !ok {
 		return &ValidationError{Name: "created_by", err: errors.New(`ent: missing required field "ChannelMonitor.created_by"`)}
+	}
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "ChannelMonitor.sort_order"`)}
 	}
 	if _, ok := _c.mutation.ExtraHeaders(); !ok {
 		return &ValidationError{Name: "extra_headers", err: errors.New(`ent: missing required field "ChannelMonitor.extra_headers"`)}
@@ -564,6 +585,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.CreatedBy(); ok {
 		_spec.SetField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
 		_node.CreatedBy = value
+	}
+	if value, ok := _c.mutation.SortOrder(); ok {
+		_spec.SetField(channelmonitor.FieldSortOrder, field.TypeInt, value)
+		_node.SortOrder = value
 	}
 	if value, ok := _c.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
@@ -909,6 +934,24 @@ func (u *ChannelMonitorUpsert) UpdateCreatedBy() *ChannelMonitorUpsert {
 // AddCreatedBy adds v to the "created_by" field.
 func (u *ChannelMonitorUpsert) AddCreatedBy(v int64) *ChannelMonitorUpsert {
 	u.Add(channelmonitor.FieldCreatedBy, v)
+	return u
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *ChannelMonitorUpsert) SetSortOrder(v int) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldSortOrder, v)
+	return u
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateSortOrder() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldSortOrder)
+	return u
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *ChannelMonitorUpsert) AddSortOrder(v int) *ChannelMonitorUpsert {
+	u.Add(channelmonitor.FieldSortOrder, v)
 	return u
 }
 
@@ -1287,6 +1330,27 @@ func (u *ChannelMonitorUpsertOne) AddCreatedBy(v int64) *ChannelMonitorUpsertOne
 func (u *ChannelMonitorUpsertOne) UpdateCreatedBy() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *ChannelMonitorUpsertOne) SetSortOrder(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetSortOrder(v)
+	})
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *ChannelMonitorUpsertOne) AddSortOrder(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddSortOrder(v)
+	})
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateSortOrder() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateSortOrder()
 	})
 }
 
@@ -1841,6 +1905,27 @@ func (u *ChannelMonitorUpsertBulk) AddCreatedBy(v int64) *ChannelMonitorUpsertBu
 func (u *ChannelMonitorUpsertBulk) UpdateCreatedBy() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *ChannelMonitorUpsertBulk) SetSortOrder(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetSortOrder(v)
+	})
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *ChannelMonitorUpsertBulk) AddSortOrder(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddSortOrder(v)
+	})
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateSortOrder() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateSortOrder()
 	})
 }
 

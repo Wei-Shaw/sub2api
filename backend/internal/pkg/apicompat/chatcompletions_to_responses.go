@@ -18,12 +18,39 @@ type chatMessageContent struct {
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
+	return ChatCompletionsToResponsesWithReasoningReplay(req, false)
+}
+
+// ChatCompletionsToResponsesWithReasoningReplay preserves plaintext reasoning
+// as protocol data for compatible upstreams that require its replay.
+// OpenAI destinations retain the legacy text representation.
+func ChatCompletionsToResponsesWithReasoningReplay(req *ChatCompletionsRequest, replay bool) (*ResponsesRequest, error) {
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
-	if err != nil {
-		return nil, err
+	var input []ResponsesInputItem
+	if replay {
+		for _, message := range req.Messages {
+			if message.Role == "assistant" && message.ReasoningContent != "" {
+				content, marshalErr := json.Marshal([]ResponsesContentPart{{Type: "reasoning_text", Text: message.ReasoningContent}})
+				if marshalErr != nil {
+					return nil, marshalErr
+				}
+				input = append(input, ResponsesInputItem{Type: "reasoning", Content: content})
+				message.ReasoningContent = ""
+			}
+			items, convertErr := chatMessageToResponsesItems(message)
+			if convertErr != nil {
+				return nil, convertErr
+			}
+			input = append(input, items...)
+		}
+	} else {
+		var err error
+		input, err = convertChatMessagesToResponsesInput(req.Messages)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	inputJSON, err := json.Marshal(input)
@@ -455,6 +482,14 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 					PromptCacheBreakpoint: p.PromptCacheBreakpoint,
 					Type:                  "input_image",
 					ImageURL:              p.ImageURL.URL,
+				})
+			}
+		case "video_url":
+			if p.VideoURL != nil && strings.TrimSpace(p.VideoURL.URL) != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					PromptCacheBreakpoint: p.PromptCacheBreakpoint,
+					Type:                  "input_video",
+					VideoURL:              p.VideoURL.URL,
 				})
 			}
 		case "file":

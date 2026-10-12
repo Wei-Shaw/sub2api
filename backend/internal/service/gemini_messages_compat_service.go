@@ -477,16 +477,18 @@ func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Co
 
 func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (string, error) {
 	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
-		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		normalized, err := urlvalidator.ValidateURLFormat(raw, true, s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts)
 		if err != nil {
 			return "", fmt.Errorf("invalid base_url: %w", err)
 		}
 		return normalized, nil
 	}
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowedHosts:           s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist:       true,
+		AllowPrivate:           s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowInsecureHTTP:      true,
+		AllowInsecureHTTPHosts: s.cfg.Security.URLAllowlist.AllowInsecureHTTPHosts,
 	})
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
@@ -879,7 +881,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 					logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
 					geminiReq = retryGeminiReq
 					// Consume one retry budget attempt and continue with the updated request payload.
-					sleepGeminiBackoff(1)
+					if err := waitGeminiBackoff(ctx, 1); err != nil { return nil, err }
 					continue
 				}
 			}
@@ -946,7 +948,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				})
 
 				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
-				sleepGeminiBackoff(attempt)
+				if err := waitGeminiBackoff(ctx, attempt); err != nil { return nil, err }
 				continue
 			}
 			// Final attempt: surface the upstream error body (mapped below) instead of a generic retry error.
@@ -1426,7 +1428,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				})
 
 				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
-				sleepGeminiBackoff(attempt)
+				if err := waitGeminiBackoff(ctx, attempt); err != nil { return nil, err }
 				continue
 			}
 			if action == "countTokens" {
@@ -1813,7 +1815,7 @@ func (s *GeminiMessagesCompatService) writeGeminiNativeUpstreamError(c *gin.Cont
 	return fmt.Errorf("gemini upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 }
 
-func sleepGeminiBackoff(attempt int) {
+func waitGeminiBackoff(ctx context.Context, attempt int) error {
 	delay := geminiRetryBaseDelay * time.Duration(1<<uint(attempt-1))
 	if delay > geminiRetryMaxDelay {
 		delay = geminiRetryMaxDelay
@@ -1826,7 +1828,12 @@ func sleepGeminiBackoff(attempt int) {
 	if sleepFor < 0 {
 		sleepFor = 0
 	}
-	time.Sleep(sleepFor)
+	timer:=time.NewTimer(sleepFor)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done(): return ctx.Err()
+	case <-timer.C: return nil
+	}
 }
 
 var (

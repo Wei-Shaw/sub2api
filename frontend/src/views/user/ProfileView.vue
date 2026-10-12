@@ -2,7 +2,7 @@
   <AppLayout>
     <div
       data-testid="profile-shell"
-      class="mx-auto max-w-[950px] space-y-6"
+      class="newapi-profile-page mx-auto max-w-[1000px] space-y-5"
     >
       <ProfileInfoCard
         :user="user"

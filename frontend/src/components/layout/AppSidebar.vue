@@ -1,85 +1,84 @@
 <template>
   <aside
-    class="sidebar"
+    class="sidebar app-sidebar"
+    :data-logo-src="safeSiteLogo"
     :class="[
-      sidebarCollapsed ? 'w-[72px]' : 'w-64',
+      sidebarCollapsed ? 'w-11' : 'w-52',
       { '-translate-x-full lg:translate-x-0': !mobileOpen }
     ]"
   >
-    <!-- Logo/Brand -->
-    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
-      <!-- Custom Logo or Default Logo -->
-      <router-link
-        :to="homePath"
-        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow transition-opacity hover:opacity-80"
-        @click="handleMenuItemClick(homePath)"
-      >
-        <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-      </router-link>
-      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-        <router-link
-          :to="homePath"
-          class="sidebar-brand-title text-lg font-bold text-gray-900 transition-colors hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
-          @click="handleMenuItemClick(homePath)"
-        >
-          {{ siteName }}
-        </router-link>
-        <!-- Version Badge -->
-        <VersionBadge :version="siteVersion" />
-      </div>
-    </div>
-
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
       <!-- Admin View: Admin menu first, then personal menu -->
-      <template v-if="isAdmin">
+      <template v-if="isAdminView">
         <!-- Admin Section -->
         <div class="sidebar-section">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }">管理控制台</div>
           <template v-for="item in adminNavItems" :key="item.path">
             <!-- Collapsible group (has children) -->
             <template v-if="item.children?.length">
-              <button
-                type="button"
-                class="sidebar-link mb-1 w-full"
+              <div class="sidebar-group">
+                <button
+                  type="button"
+                  class="sidebar-link mb-1 w-full"
                 :class="{
                   'sidebar-link-active': isGroupActive(item) && !isGroupExpanded(item),
                   'sidebar-link-collapsed': sidebarCollapsed
                 }"
                 :title="sidebarCollapsed ? item.label : undefined"
-                @click="handleGroupClick(item)"
-              >
-                <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-                <span
-                  class="sidebar-label sidebar-label-flex"
-                  :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
-                  :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+                  @click="handleGroupClick(item)"
                 >
-                  <span class="min-w-0 truncate">{{ item.label }}</span>
-                  <ChevronDownIcon
-                    class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
-                    :class="isGroupExpanded(item) ? 'rotate-180' : ''"
-                  />
-                </span>
-              </button>
-              <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
-                <router-link
-                  v-for="child in item.children"
-                  :key="child.path"
-                  :to="child.path"
-                  class="sidebar-link mb-0.5 py-1.5 text-sm"
-                  :class="{ 'sidebar-link-active': route.path === child.path }"
-                  @click="handleMenuItemClick(child.path)"
+                  <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                  <span
+                    class="sidebar-label sidebar-label-flex"
+                    :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
+                    :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+                  >
+                    <span class="min-w-0 truncate">{{ item.label }}</span>
+                    <ChevronDownIcon
+                      class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
+                      :class="isGroupExpanded(item) ? 'rotate-180' : ''"
+                    />
+                  </span>
+                </button>
+                <!-- Children -->
+                <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="sidebar-subnav mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+                  <router-link
+                    v-for="child in item.children"
+                    :key="child.path"
+                    :to="resolveNavPath(child.path)"
+                    class="sidebar-link mb-0.5 py-1.5 text-sm"
+                    :class="{ 'sidebar-link-active': route.path === child.path }"
+                    @click="handleMenuItemClick(child.path)"
+                  >
+                    <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
+                    <span>{{ child.label }}</span>
+                  </router-link>
+                </div>
+                <!-- Keep nested navigation reachable when the rail is collapsed. -->
+                <div
+                  v-if="sidebarCollapsed && collapsedGroupOpen === item.path"
+                  class="sidebar-collapsed-popover"
                 >
-                  <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
-                  <span>{{ child.label }}</span>
-                </router-link>
+                  <div class="sidebar-collapsed-popover-title">{{ item.label }}</div>
+                  <router-link
+                    v-for="child in item.children"
+                    :key="child.path"
+                    :to="resolveNavPath(child.path)"
+                    class="sidebar-collapsed-popover-link"
+                    :class="{ 'sidebar-collapsed-popover-link-active': route.path === child.path }"
+                    @click="handleMenuItemClick(child.path)"
+                  >
+                    <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
+                    <span>{{ child.label }}</span>
+                  </router-link>
+                </div>
               </div>
             </template>
             <!-- Normal item (no children) -->
             <router-link
               v-else
-              :to="item.path"
+              :to="resolveNavPath(item.path)"
               class="sidebar-link mb-1"
               :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
               :title="sidebarCollapsed ? item.label : undefined"
@@ -112,7 +111,7 @@
           <router-link
             v-for="item in personalNavItems"
             :key="item.path"
-            :to="item.path"
+            :to="resolveNavPath(item.path)"
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
@@ -122,17 +121,19 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span v-if="item.recommended && !sidebarCollapsed" class="ml-auto shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-200">推荐</span>
           </router-link>
         </div>
       </template>
 
       <!-- Regular User View -->
-      <template v-else-if="!appStore.backendModeEnabled">
+      <template v-else-if="!isAdminView && !appStore.backendModeEnabled">
         <div class="sidebar-section">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }">工作台</div>
           <router-link
             v-for="item in userNavItems"
             :key="item.path"
-            :to="item.path"
+            :to="resolveNavPath(item.path)"
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
@@ -142,13 +143,14 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span v-if="item.recommended && !sidebarCollapsed" class="ml-auto shrink-0 rounded bg-blue-100 px-1 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-200">推荐</span>
           </router-link>
         </div>
       </template>
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
+    <div class="sidebar-footer mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
       <!-- Theme Toggle -->
       <button
         @click="toggleTheme"
@@ -192,7 +194,6 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
-import VersionBadge from '@/components/common/VersionBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
@@ -205,6 +206,7 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  recommended?: boolean
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -251,20 +253,20 @@ const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+const safeSiteLogo = computed(() => sanitizeUrl(appStore.siteLogo, { allowRelative: true, allowDataUrl: true }))
 
-const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
+const previewMode = computed(() => import.meta.env.VITE_LOCAL_PREVIEW === 'true')
+const isAdminView = computed(() => isAdmin.value || (previewMode.value && route.path.startsWith('/admin')))
+function resolveNavPath(path: string): string {
+  return path
+}
 
+const collapsedGroupOpen = ref<string | null>(null)
 // Per-group expand/collapse overrides. A group with no entry follows the
 // automatic behavior (expanded while the active route is one of its children);
 // a chevron click records the user's choice, which wins over the automatic
 // state so an active group can still be collapsed manually.
 const groupExpandOverrides = ref<Map<string, boolean>>(new Map())
-
-// Site settings from appStore (cached, no flicker)
-const siteName = computed(() => appStore.siteName)
-const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteVersion = computed(() => appStore.siteVersion)
-const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -312,6 +314,69 @@ const BatchImageIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z'
+        })
+      ]
+    )
+}
+
+const VideoTaskIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('rect', { x: '3', y: '6', width: '12', height: '12', rx: '2' }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M15 10l6-3v10l-6-3'
+        })
+      ]
+    )
+}
+
+const VideoPlazaIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('rect', { x: '3', y: '5', width: '18', height: '14', rx: '2' }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'm10 9 5 3-5 3V9z'
+        })
+      ]
+    )
+}
+
+const DocumentIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M19.5 14.25v-8.625a1.875 1.875 0 0 0-1.875-1.875H8.625A1.875 1.875 0 0 0 6.75 5.625v12.75a1.875 1.875 0 0 0 1.875 1.875h8.625m2.25-6-3.75 3.75m0 0-3.75-3.75m3.75 3.75V9.75'
+        })
+      ]
+    )
+}
+
+const SchedulerMonitorIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('rect', { x: '3', y: '3', width: '18', height: '14', rx: '2' }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8 21h8m-4-4v4M6 10h3l2-4 2 8 2-4h3'
         })
       ]
     )
@@ -689,28 +754,24 @@ const ChevronDownIcon = {
 // Public-settings flags go through the registry in utils/featureFlags.ts,
 // which handles the opt-in vs opt-out fallback when settings haven't loaded
 // yet. Admin-only flags (not in public settings) stay inline below.
-const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
-const flagPayment = makeSidebarFlag(FeatureFlags.payment)
-const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
-const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
-
-// 购买入口文案随站点计费模式切换：仅充值 → 「充值」，仅订阅 → 「订阅」，否则「充值/订阅」。
+const flagChannelMonitor = () => previewMode.value || makeSidebarFlag(FeatureFlags.channelMonitor)()
+const flagPayment = () => previewMode.value || makeSidebarFlag(FeatureFlags.payment)()
+const flagAvailableChannels = () => previewMode.value || makeSidebarFlag(FeatureFlags.availableChannels)()
+const flagAffiliate = () => previewMode.value || makeSidebarFlag(FeatureFlags.affiliate)()
+const flagRiskControl = () => previewMode.value || makeSidebarFlag(FeatureFlags.riskControl)()
+const flagPluginManagement = () => previewMode.value || makeSidebarFlag(FeatureFlags.pluginManagement)()
+const flagOpsMonitoring = () => previewMode.value || adminSettingsStore.opsMonitoringEnabled
+const flagAdminPayment = () => previewMode.value || adminSettingsStore.paymentEnabled
+const flagBatchImageAccess = () => previewMode.value || canUseBatchImage.value
+const accessDocsMenuItemId = 'buaga_access_docs'
+const flagSubscription = () => previewMode.value || makeSidebarFlag(FeatureFlags.subscription)()
 const purchaseNavLabel = computed(() => {
   switch (resolveSiteBillingMode(appStore.cachedPublicSettings)) {
-    case 'recharge_only':
-      return t('nav.recharge')
-    case 'subscription_only':
-      return t('nav.subscribe')
-    default:
-      return t('nav.buySubscription')
+    case 'recharge_only': return t('nav.recharge')
+    case 'subscription_only': return t('nav.subscribe')
+    default: return t('nav.buySubscription')
   }
 })
-const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
-const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
-const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
-const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
-const flagAdminPayment = () => adminSettingsStore.paymentEnabled
-const flagBatchImageAccess = () => canUseBatchImage.value
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
@@ -719,11 +780,31 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
+  const isAccessDocsItem = (item: (typeof customMenuItemsForUser.value)[number]) =>
+    item.id === accessDocsMenuItemId || item.label === '接入文档' || item.url === 'md:buaga-access'
+  const accessDocsItem = customMenuItemsForUser.value.find(isAccessDocsItem)
+  const imageWorkbench = customMenuItemsForUser.value.find((item) => item.id === '97370c95df45cba1')
+  const remainingCustomMenuItems = customMenuItemsForUser.value.filter((item) => !isAccessDocsItem(item) && item.id !== imageWorkbench?.id)
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/video-model-plaza?embedded=1', label: t('videoPlaza.title'), icon: VideoPlazaIcon },
+    { path: '/video-docs?embedded=1', label: t('videoDocs.shortTitle'), icon: DocumentIcon },
+  )
+  if (imageWorkbench) {
+    items.push({ path: `/custom/${imageWorkbench.id}`, label: imageWorkbench.label, icon: BatchImageIcon, recommended: true })
+  }
+  items.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+  if (accessDocsItem) {
+    items.push({
+      path: `/custom/${accessDocsItem.id}`,
+      label: accessDocsItem.label,
+      icon: null,
+      iconSvg: accessDocsItem.icon_svg,
+    })
+  }
+  items.push(
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
@@ -734,7 +815,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
+    ...remainingCustomMenuItems.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
@@ -777,8 +858,10 @@ const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
+    { path: '/admin/scheduler', label: t('nav.scheduler'), icon: SchedulerMonitorIcon, featureFlag: flagOpsMonitoring },
+    { path: '/admin/video-tasks', label: t('admin.videoTasks.title'), icon: VideoTaskIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     {
       path: '/admin/channels',
       label: t('nav.channelManagement'),
@@ -874,6 +957,7 @@ function closeMobile() {
 }
 
 function handleMenuItemClick(itemPath: string) {
+  collapsedGroupOpen.value = null
   if (mobileOpen.value) {
     setTimeout(() => {
       appStore.setMobileOpen(false)
@@ -894,7 +978,8 @@ function handleMenuItemClick(itemPath: string) {
 }
 
 function isActive(path: string): boolean {
-  return route.path === path || route.path.startsWith(path + '/')
+  const routePath = path.split('?')[0]
+  return route.path === routePath || route.path.startsWith(routePath + '/')
 }
 
 function isGroupActive(item: NavItem): boolean {
@@ -920,7 +1005,10 @@ function toggleGroup(item: NavItem) {
  *   (router-link semantics) and ensure the group is expanded.
  */
 function handleGroupClick(item: NavItem) {
-  if (sidebarCollapsed.value) return
+  if (sidebarCollapsed.value) {
+    collapsedGroupOpen.value = collapsedGroupOpen.value === item.path ? null : item.path
+    return
+  }
   if (item.expandOnly) {
     toggleGroup(item)
     return
@@ -982,9 +1070,10 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-header-collapsed {
+  justify-content: center;
   gap: 0;
-  padding-left: 1.125rem;
-  padding-right: 1.125rem;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .sidebar-brand {
@@ -1014,9 +1103,10 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-link-collapsed {
+  justify-content: center;
   gap: 0;
-  padding-left: 0.875rem;
-  padding-right: 0.875rem;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .sidebar-section-title {
