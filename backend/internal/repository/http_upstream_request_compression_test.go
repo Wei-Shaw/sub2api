@@ -39,7 +39,7 @@ func readAllGzip(t *testing.T, r io.Reader) []byte {
 	if err != nil {
 		t.Fatalf("gzip reader: %v", err)
 	}
-	defer zr.Close()
+	defer zr.Close() //nolint:errcheck // 测试辅助函数，只读解压流；Close 的错误不影响断言
 	out, err := io.ReadAll(zr)
 	if err != nil {
 		t.Fatalf("gunzip: %v", err)
@@ -152,7 +152,7 @@ func TestDoUpstreamRequestWithOptionalCompression_FallsBackOnRejection(t *testin
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // 测试收尾，响应体关闭失败不影响断言
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 after fallback retry", resp.StatusCode)
@@ -202,7 +202,7 @@ func TestDoUpstreamRequestWithOptionalCompression_AcceptedSendsOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // 测试收尾，响应体关闭失败不影响断言
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -236,7 +236,7 @@ func TestDoUpstreamRequestWithOptionalCompression_DisabledIsPassthrough(t *testi
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // 测试收尾，响应体关闭失败不影响断言
 
 	if gotEncoding != "" {
 		t.Fatalf("Content-Encoding = %q, want empty", gotEncoding)

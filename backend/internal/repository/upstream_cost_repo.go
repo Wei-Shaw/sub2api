@@ -241,7 +241,8 @@ func (r *upstreamCostRepo) ListOpsSupplierBackfill(ctx context.Context, since ti
 	if err != nil {
 		return nil, fmt.Errorf("list ops supplier backfill: %w", err)
 	}
-	defer rows.Close()
+	// 只读查询；迭代错误已由下面的 rows.Err() 检查，Close 的错误无需重复上报。
+	defer rows.Close() //nolint:errcheck
 
 	out := make([]service.OpsSupplierBackfill, 0, limit)
 	for rows.Next() {
