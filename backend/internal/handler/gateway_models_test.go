@@ -557,6 +557,45 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
 }
 
+// A DimAgent group serves DimAgent's own catalogue. Without a fallback branch of
+// its own it fell through to the final Claude list, so a subscription that cannot
+// serve a single Claude model advertised thirteen of them.
+func TestGatewayModels_DimAgentGroupFallsBackToDimAgentModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const groupID int64 = 8801
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformDimAgent},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformDimAgent},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "list", got.Object)
+
+	ids := modelIDsForTest(got.Data)
+	require.ElementsMatch(t, service.DefaultDimAgentModelIDs(), ids)
+	for _, id := range ids {
+		require.Falsef(t, strings.HasPrefix(id, "claude-"), "DimAgent group advertised Claude model %q", id)
+	}
+}
+
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
 	assertGrokGatewayReasoningEfforts(t, 4409, "grok-4.5", []gatewayReasoningEffortOptionForTest{
 		{Value: "low", Label: "Low"},
