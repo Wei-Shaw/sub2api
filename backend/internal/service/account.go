@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type Account struct {
@@ -1995,7 +1996,17 @@ func (a *Account) GetOpenAITokenExpiresAt() *time.Time {
 	if !a.IsOpenAIOAuth() {
 		return nil
 	}
-	return a.GetCredentialAsTime("expires_at")
+	if expiry := a.GetCredentialAsTime("expires_at"); expiry != nil {
+		return expiry
+	}
+	// Decode only the expiry of operator-provided credentials; this is not
+	// authentication or signature validation. Opaque/malformed tokens stay unknown.
+	claims := &jwt.RegisteredClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(a.GetOpenAIAccessToken(), claims); err != nil || claims.ExpiresAt == nil || claims.ExpiresAt.Unix() <= 0 {
+		return nil
+	}
+	expiry := claims.ExpiresAt.Time
+	return &expiry
 }
 
 func (a *Account) IsOpenAITokenExpired() bool {

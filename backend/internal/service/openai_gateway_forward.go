@@ -1099,7 +1099,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 			if !httpOAuth401RecoveryTried && resp.StatusCode == http.StatusUnauthorized {
 				httpOAuth401RecoveryTried = true
-				if nextToken, recovered := s.tryRefreshOpenAIHTTP401(ctx, account, resp.StatusCode, respBody, token); recovered {
+				if nextToken, recovered := s.tryRefreshOpenAIOAuth401(ctx, account, resp.StatusCode, respBody, token); recovered {
 					token = nextToken
 					continue
 				}

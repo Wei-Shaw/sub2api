@@ -394,7 +394,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 			if !httpOAuth401RecoveryTried && resp.StatusCode == http.StatusUnauthorized {
 				httpOAuth401RecoveryTried = true
-				if nextToken, recovered := s.tryRefreshOpenAIHTTP401(ctx, account, resp.StatusCode, probeBody, token); recovered {
+				if nextToken, recovered := s.tryRefreshOpenAIOAuth401(ctx, account, resp.StatusCode, probeBody, token); recovered {
 					token = nextToken
 					continue
 				}

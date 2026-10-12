@@ -11,10 +11,10 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Retry only an HTTP authentication rejection before any response is published.
+// Retry only an authentication rejection before any response is published or WS payload sent.
 // API keys, setup/PAT/agent-identity credentials and permanent/scope failures keep
-// their existing error handling. WebSocket recovery is deliberately separate.
-func (s *OpenAIGatewayService) tryRefreshOpenAIHTTP401(ctx context.Context, account *Account, status int, body []byte, rejectedToken string) (string, bool) {
+// their existing error handling. Both HTTP and WS handshakes use the same refresh locks.
+func (s *OpenAIGatewayService) tryRefreshOpenAIOAuth401(ctx context.Context, account *Account, status int, body []byte, rejectedToken string) (string, bool) {
 	if s == nil || s.openAITokenProvider == nil || status != http.StatusUnauthorized || account == nil {
 		return "", false
 	}
@@ -45,7 +45,7 @@ func (s *OpenAIGatewayService) tryRefreshOpenAIHTTP401(ctx context.Context, acco
 	token, err := s.openAITokenProvider.refreshRejectedAccessToken(ctx, account, rejectedToken)
 	if err != nil {
 		// Neither provider error bodies nor credentials belong in the recovery log.
-		slog.Debug("openai_http_401_recovery_unavailable", "account_id", account.ID)
+		slog.Debug("openai_oauth_401_recovery_unavailable", "account_id", account.ID)
 		return "", false
 	}
 	return token, true
@@ -164,4 +164,22 @@ func (p *OpenAITokenProvider) waitForOpenAI401Rotation(ctx context.Context, expe
 		}
 	}
 	return nil, errors.New("OpenAI OAuth refresh lock winner has not replaced the rejected token")
+}
+
+// Acquire retries only a failed authentication handshake. No generation payload
+// has been sent yet; pool affinity and continuation requirements stay unchanged.
+func (s *OpenAIGatewayService) acquireOpenAIWSWithOAuthRecovery(ctx context.Context, req *openAIWSAcquireRequest) (*openAIWSConnLease, error) {
+	pool := s.getOpenAIWSConnPool()
+	lease, err := pool.Acquire(ctx, *req)
+	var dialErr *openAIWSDialError
+	if err == nil || !errors.As(err, &dialErr) {
+		return lease, err
+	}
+	token, refreshed := s.tryRefreshOpenAIOAuth401(ctx, req.Account, dialErr.StatusCode, dialErr.ResponseBody, strings.TrimPrefix(req.Headers.Get("Authorization"), "Bearer "))
+	if !refreshed {
+		return lease, err
+	}
+	req.Headers = req.Headers.Clone()
+	req.Headers.Set("Authorization", "Bearer "+token)
+	return pool.Acquire(ctx, *req)
 }

@@ -98,21 +98,21 @@ func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
 	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 }
 
-// NeedsRefresh 检查token是否需要刷新
-// expires_at 缺失且处于限流状态时需要刷新，防止限流期间 token 静默过期
+// NeedsRefresh shares the request provider's expiry rule, including accounts
+// imported without expires_at. The refresh API rechecks this under its lock.
 func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
-	if account.IsOpenAIPersonalAccessToken() {
-		return false
-	}
 	if strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
 		return false
 	}
-	expiresAt := account.GetCredentialAsTime("expires_at")
-	if expiresAt == nil {
-		return account.IsRateLimited()
-	}
+	return needsOpenAIOAuthTokenRefresh(account, refreshWindow)
+}
 
-	return time.Until(*expiresAt) < refreshWindow
+func needsOpenAIOAuthTokenRefresh(account *Account, refreshWindow time.Duration) bool {
+	if account.IsOpenAIPersonalAccessToken() || account.IsOpenAIAgentIdentity() {
+		return false
+	}
+	expiry := account.GetOpenAITokenExpiresAt()
+	return expiry == nil || time.Until(*expiry) <= refreshWindow
 }
 
 // Refresh 执行token刷新

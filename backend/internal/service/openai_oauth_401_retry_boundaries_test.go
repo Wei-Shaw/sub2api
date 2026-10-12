@@ -279,7 +279,7 @@ func TestOpenAIOAuth401ShadowRefreshesCredentialOwner(t *testing.T) {
 	provider := NewOpenAITokenProvider(repo, cache, nil)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), executor)
 	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
-	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), shadow,
+	token, recovered := svc.tryRefreshOpenAIOAuth401(context.Background(), shadow,
 		http.StatusUnauthorized, []byte(`{"error":{"code":"invalid_api_key"}}`), "rejected-at")
 	require.True(t, recovered)
 	require.Equal(t, "fresh-at", token)
@@ -303,7 +303,7 @@ func TestOpenAIOAuth401ShadowChangedProxyNotRetried(t *testing.T) {
 	provider := NewOpenAITokenProvider(repo, nil, nil)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil), executor)
 	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
-	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), shadow,
+	token, recovered := svc.tryRefreshOpenAIOAuth401(context.Background(), shadow,
 		http.StatusUnauthorized, nil, "rejected-at")
 	require.False(t, recovered)
 	require.Empty(t, token)
@@ -319,7 +319,7 @@ func TestOpenAIOAuth401AgentIdentityNotRefreshed(t *testing.T) {
 	provider := NewOpenAITokenProvider(repo, nil, nil)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, nil), executor)
 	svc := &OpenAIGatewayService{accountRepo: repo, openAITokenProvider: provider}
-	token, recovered := svc.tryRefreshOpenAIHTTP401(context.Background(), account,
+	token, recovered := svc.tryRefreshOpenAIOAuth401(context.Background(), account,
 		http.StatusUnauthorized, nil, "rejected-at")
 	require.False(t, recovered)
 	require.Empty(t, token)
