@@ -1217,6 +1217,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	// A platform that serves models under its own names must advertise its own
+	// catalogue here. Falling through to the Claude list below is deliberate for
+	// kimi, zhipu, deepseek and minimax — their clients address Claude model names
+	// that account model_mapping rewrites — but a DimAgent subscription serves no
+	// Claude model, so inheriting that list advertised models the group cannot
+	// route to any account.
+	if platform == service.PlatformDimAgent {
+		writeModelsList(c, platform, defaultModelIDsForPlatform(platform))
+		return
+	}
+
 	writeModelsListResponse(c, claude.DefaultModels)
 }
 
