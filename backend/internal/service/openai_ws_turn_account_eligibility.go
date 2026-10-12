@@ -30,7 +30,7 @@ const (
 // openAIWSTurnForwardModel 由客户端本轮模型算出实际转发的渠道模型，与 WS 入口
 // 每轮走的 hooks.MapRequestModel（handler 里返回 ResolveChannelMappingAndRestrict
 // 的 MappedModel）以及入口 parseClientPayload 的 requestModel 回退逐字一致：
-// 渠道映射结果非空就用映射结果，否则沿用客户端模型。
+// 先复用连接建立时解析的组合路由模型，再做渠道映射；映射结果为空时沿用路由模型。
 //
 // 资格复核必须自己算一遍而不是复用上一轮存下来的值：各 WS 入口里 MapRequestModel
 // 与 BeforeTurn 的先后顺序并不一致（ctx_pool / http_bridge 入口在上一轮末尾解析
@@ -40,6 +40,16 @@ func (s *OpenAIGatewayService) openAIWSTurnForwardModel(ctx context.Context, gro
 	model := strings.TrimSpace(clientModel)
 	if s == nil || model == "" {
 		return model
+	}
+	// MapRequestModel uses the connection-scoped composite route before channel
+	// mapping. Reuse that same decision; resolving it again could pick a route
+	// changed after the handshake while the forwarder still uses the original.
+	// A different public model is rejected by MapRequestModel and must not inherit
+	// the original model's route here.
+	if publicModel, ok := RequestedPublicModelFromContext(ctx); ok && publicModel == model {
+		if upstreamModel, ok := ResolvedUpstreamModelFromContext(ctx); ok {
+			model = upstreamModel
+		}
 	}
 	mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 	if mapped := strings.TrimSpace(mapping.MappedModel); mapped != "" {
@@ -236,7 +246,7 @@ func (s *OpenAIGatewayService) releaseOpenAIWSTurnStickyBinding(ctx context.Cont
 // 合格返回 ("", nil)。首轮由握手准入负责，调用方不应对 turn==1 调用本函数。
 //
 // clientModel 传客户端本轮 response.create 声明的模型（省略 model 时传会话实际
-// 生效的模型）。渠道映射、账号级 model_mapping 和上游别名归一都在本函数内部按与
+// 生效的模型）。组合路由、渠道映射、账号级 model_mapping 和上游别名归一都在本函数内部按与
 // 转发相同的口径复算，调用方不要自己先映射一遍。
 func (s *OpenAIGatewayService) EnforceOpenAIWSTurnAccountEligibility(
 	ctx context.Context,

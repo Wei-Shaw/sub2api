@@ -435,3 +435,26 @@ func TestEnforceOpenAIWSTurnAccountEligibility_PassthroughRuntimeBlockerOnUpstre
 	require.Equal(t, OpenAIWSTurnAccountIneligibleRuntimeBlocked, reason)
 	requireWSTurnCloseError(t, err, OpenAIWSTurnAccountIneligibleRuntimeBlocked)
 }
+
+func TestEnforceOpenAIWSTurnAccountEligibility_CompositeRuntimeBlocker(t *testing.T) {
+	svc := newWSTurnEligibilityService(&stubGatewayCache{})
+	account := newWSTurnEligibilityAccount()
+	ctx := WithCompositeRouteDecision(context.Background(), CompositeRouteDecision{
+		Matched: true, PublicModel: "public-alias", UpstreamModel: "gpt-5.4", TargetPlatform: PlatformOpenAI,
+	})
+	state := svc.getOpenAIAccountModelTransientState()
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		state.recordFailure(account.ID, openAIAccountModelTransientModel("gpt-5.4"), now)
+	}
+	require.True(t, state.isBlocked(account.ID, openAIAccountModelTransientModel("gpt-5.4"), now))
+
+	reason, err := svc.EnforceOpenAIWSTurnAccountEligibility(ctx, account, nil, "", "public-alias")
+	require.Equal(t, OpenAIWSTurnAccountIneligibleRuntimeBlocked, reason)
+	requireWSTurnCloseError(t, err, OpenAIWSTurnAccountIneligibleRuntimeBlocked)
+
+	// A connection's route belongs only to its original public model.
+	reason, err = svc.EnforceOpenAIWSTurnAccountEligibility(ctx, account, nil, "", "gpt-5.2")
+	require.Empty(t, reason)
+	require.NoError(t, err)
+}

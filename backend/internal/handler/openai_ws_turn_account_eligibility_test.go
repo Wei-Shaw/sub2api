@@ -188,7 +188,9 @@ type wsTurnEligibilityCase struct {
 	extra       map[string]any
 	// channelMapping 非空时给 API Key 所在分组挂一条 OpenAI 渠道模型映射。
 	channelMapping map[string]string
-	clientModel    string
+	// compositeRouteModel 是连接建立时由组合路由解析出的模型。
+	compositeRouteModel string
+	clientModel         string
 	// secondClientModel 为空时第二轮沿用 clientModel。
 	secondClientModel string
 	// wantFirstUpstreamModel 是首轮实际发往上游的模型，也就是按模型限流应当记录的键。
@@ -304,6 +306,16 @@ func runWSTurnEligibilityCase(t *testing.T, tc wsTurnEligibilityCase) wsTurnElig
 		ID:      1861,
 		GroupID: &groupID,
 		User:    &service.User{ID: 1761, Status: service.StatusActive},
+	}
+	if tc.compositeRouteModel != "" {
+		apiKey.Group = &service.Group{ID: groupID, Platform: service.PlatformComposite}
+		h.compositeResolver = service.NewCompositeRouteResolver(&compositeWSRouteRepo{
+			routes: []service.CompositeModelRoute{{
+				GroupID: groupID, PublicModel: tc.clientModel, MatchType: service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformOpenAI, Endpoint: service.CompositeRouteEndpointResponses,
+				UpstreamModel: tc.compositeRouteModel, Enabled: true,
+			}},
+		})
 	}
 	handlerDone := make(chan struct{})
 	router := gin.New()
@@ -562,5 +574,47 @@ func TestOpenAIResponsesWebSocket_TurnAccountEligibility_UsesCurrentTurnModel(t 
 			})
 			requireWSTurnClosedBeforeUpstream(t, got)
 		})
+	}
+}
+
+// The public alias must resolve through the connection's composite route before
+// channel mapping. Check both rejection and a healthy control in every ingress.
+func TestOpenAIResponsesWebSocket_TurnAccountEligibility_CompositeRoute(t *testing.T) {
+	for _, mode := range []string{
+		service.OpenAIWSIngressModePassthrough,
+		service.OpenAIWSIngressModeCtxPool,
+		service.OpenAIWSIngressModeHTTPBridge,
+	} {
+		for _, withChannel := range []bool{false, true} {
+			for _, limited := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/channel=%t/limited=%t", mode, withChannel, limited), func(t *testing.T) {
+					upstreamModel := "gpt-5.2"
+					tc := wsTurnEligibilityCase{
+						ingressMode: mode, clientModel: "public-alias", compositeRouteModel: upstreamModel,
+						wantClosed: limited,
+					}
+					if withChannel {
+						tc.channelMapping = map[string]string{upstreamModel: "gpt-5.4"}
+						upstreamModel = "gpt-5.4"
+					}
+					tc.wantFirstUpstreamModel = upstreamModel
+					tc.betweenTurns = func(account *service.Account) {
+						model := "gpt-5.1"
+						if limited {
+							model = upstreamModel
+						}
+						account.Extra = wsTurnModelRateLimitedExtra(account.Extra, model)
+					}
+					got := runWSTurnEligibilityCase(t, tc)
+					if limited {
+						requireWSTurnClosedBeforeUpstream(t, got)
+					} else {
+						require.Len(t, got.upstreamRequests, 2)
+						require.Equal(t, upstreamModel, gjson.GetBytes(got.upstreamRequests[1], "model").String())
+						require.Zero(t, got.stickyDeleted)
+					}
+				})
+			}
+		}
 	}
 }
