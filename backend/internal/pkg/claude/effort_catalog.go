@@ -90,3 +90,37 @@ func normalizeEffortModelID(model string) string {
 	}
 	return id
 }
+
+// SupportsMidConversationSystem returns true for Claude models that support
+// inline system messages (Claude 5.x and later). Earlier models (3.x, 4.x)
+// require system content to be hoisted to the top-level system parameter.
+// See: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#mid-conversation-system-messages
+func SupportsMidConversationSystem(model string) bool {
+	normalized := normalizeEffortModelID(model)
+	if !strings.HasPrefix(normalized, "claude-") {
+		return false
+	}
+	// Extract major version from claude-{family}-{major}-{minor} or claude-{family}-{major}
+	// e.g., "claude-opus-5-5" -> parts[2] = "5"
+	//       "claude-sonnet-5" -> parts[2] = "5"
+	parts := strings.Split(normalized, "-")
+	if len(parts) < 3 {
+		return false
+	}
+	// parts[0]="claude", parts[1]="opus/sonnet/haiku/etc", parts[2]=major version
+	majorStr := parts[2]
+	// Handle potential decimal point (though normalizeEffortModelID already handles it)
+	if dotIdx := strings.IndexByte(majorStr, '.'); dotIdx >= 0 {
+		majorStr = majorStr[:dotIdx]
+	}
+	// Parse major version number
+	major := 0
+	for _, r := range majorStr {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+		major = major*10 + int(r-'0')
+	}
+	// Claude 5.x and later support inline system messages
+	return major >= 5
+}
