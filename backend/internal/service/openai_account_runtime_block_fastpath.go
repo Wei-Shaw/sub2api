@@ -155,9 +155,12 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
 		return true
 	}
-	// Isolate a custom temporary-unschedulable match to the known upstream
-	// model before entering the generic account error path. This keeps the
-	// account available to other models and avoids the account runtime blocker.
+	// Isolate a custom temporary-unschedulable match on the known upstream
+	// model before entering the generic account error path: model-scoped rules
+	// keep the account available to other models. Account-wide rules are also
+	// routed here, but they apply their own bounded (until-based) account block
+	// inside triggerTempUnschedulable, so the unbounded runtime blocker below
+	// is still skipped. Either way, avoid the account runtime blocker.
 	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
 		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
 		return true
