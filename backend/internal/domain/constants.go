@@ -32,6 +32,7 @@ const (
 	// PlatformOpenCodeGo 是 OpenCode 平台（账号类型 Zen 按量 / Go 订阅）。
 	// 值保持 opencode_go 以兼容已落库的账号、分组、配额与 Composite 路由。
 	PlatformOpenCodeGo = "opencode_go"
+	PlatformCursor     = "cursor"
 	// PlatformCommandCode 是 Command Code Provider API（多模型聚合，积分计费，
 	// 订阅套餐另有 5 小时 / 每周滚动窗口）。
 	PlatformCommandCode = "command_code"

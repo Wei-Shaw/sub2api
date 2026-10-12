@@ -522,6 +522,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformTypeSafe:
 		// TypeSafe credentials are API keys; inference failures drive health and cooldown state.
 		return nil
+	case PlatformCursor:
+		// Cursor Pro: 凭证经 NAL AgentService/Run 路径验证。
+		return nil
 	default:
 		if IsMultiProtocolAPIKeyProvider(account.Platform) {
 			// 多协议 API Key 供应商（国产厂商与聚合平台）：凭证为 API Key，实际可用性
