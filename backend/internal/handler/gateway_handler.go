@@ -1600,7 +1600,10 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// 解析可选的日期范围参数（用于 model_stats 查询）
-	startTime, endTime := h.parseUsageDateRange(c)
+	startTime, endTime, ok := h.parseUsageDateRange(c)
+	if !ok {
+		return
+	}
 	days, ok := parseAPIKeyDailyUsageDays(c.DefaultQuery("days", ""))
 	if !ok {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid days, allowed range is 1-90")
@@ -1630,8 +1633,10 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats)
 }
 
-// parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
-func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Time) {
+// parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围。
+// from / to（RFC3339）可精确到时刻，优先于 start_date / end_date，区间为 [from, to)。
+// from / to 无效时写入 400 响应并返回 false。
+func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Time, bool) {
 	now := timezone.Now()
 	endTime := now
 	startTime := now.AddDate(0, 0, -30)
@@ -1646,7 +1651,29 @@ func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Ti
 			endTime = t.AddDate(0, 0, 1) // half-open range upper bound
 		}
 	}
-	return startTime, endTime
+
+	from, to := strings.TrimSpace(c.Query("from")), strings.TrimSpace(c.Query("to"))
+	if from != "" {
+		t, err := time.Parse(time.RFC3339, from)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid from, expect RFC3339")
+			return time.Time{}, time.Time{}, false
+		}
+		startTime = t
+	}
+	if to != "" {
+		t, err := time.Parse(time.RFC3339, to)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid to, expect RFC3339")
+			return time.Time{}, time.Time{}, false
+		}
+		endTime = t
+	}
+	if (from != "" || to != "") && !endTime.After(startTime) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid range, to must be after from")
+		return time.Time{}, time.Time{}, false
+	}
+	return startTime, endTime, true
 }
 
 // buildUsageData 构建 today/total 用量摘要
