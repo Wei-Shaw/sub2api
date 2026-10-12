@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -73,6 +74,7 @@ func TestSonnet55ToolsetBetaFilteredAfterAccountOverrideAndOnVertex(t *testing.T
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("Anthropic-Beta", "future-client-beta,"+claude.BetaFineGrainedToolStreaming+","+claude.BetaContext1M)
 	for _, build := range []struct {
 		name string
 		fn   func() (*http.Request, error)
@@ -90,8 +92,15 @@ func TestSonnet55ToolsetBetaFilteredAfterAccountOverrideAndOnVertex(t *testing.T
 			req, err := build.fn()
 			require.NoError(t, err)
 			header := getHeaderRaw(req.Header, "anthropic-beta")
-			require.False(t, containsBetaToken(header, claude.BetaFineGrainedToolStreaming))
-			require.True(t, containsBetaToken(header, claude.BetaContext1M))
+			if build.name == "passthrough" {
+				require.Equal(t, c.Request.Header.Get("Anthropic-Beta"), header)
+				wire, readErr := io.ReadAll(req.Body)
+				require.NoError(t, readErr)
+				require.Equal(t, body, wire)
+			} else {
+				require.False(t, containsBetaToken(header, claude.BetaFineGrainedToolStreaming))
+				require.True(t, containsBetaToken(header, claude.BetaContext1M))
+			}
 		})
 	}
 

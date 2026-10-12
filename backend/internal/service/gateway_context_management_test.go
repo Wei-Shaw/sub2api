@@ -438,7 +438,7 @@ func readUpstreamBodyForTest(t *testing.T, req *http.Request) []byte {
 	return b
 }
 
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
+func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -452,8 +452,8 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsContextManagementW
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"API-key passthrough + 客户端未带 context-management beta → strip body 字段")
+	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
+		"API-key passthrough + 客户端未带 context-management beta → let provider validate")
 }
 
 func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderHasBeta(t *testing.T) {
@@ -473,7 +473,7 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManageme
 		"API-key passthrough + 客户端带 context-management beta → 字段保留（不过度删除）")
 }
 
-func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_StripsContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
+func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -486,8 +486,8 @@ func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_StripsContextManageme
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"count_tokens passthrough + 客户端未带 context-management beta → strip")
+	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
+		"count_tokens passthrough + 客户端未带 context-management beta → preserve")
 }
 
 // ============================================================================

@@ -55,15 +55,15 @@ func TestRestoreToolNamesInBytes_LongestFirst(t *testing.T) {
 		{"abc_12_ext", "bar"},
 		{"abc_12", "foo"},
 	}
-	data := []byte(`{"tool":"abc_12_ext","other":"abc_12"}`)
+	data := []byte(`{"content":[{"type":"tool_use","name":"abc_12_ext"},{"type":"tool_use","name":"abc_12"}],"text":"abc_12_ext"}`)
 	restored := string(restoreToolNamesInBytes(data, rw))
-	require.Equal(t, `{"tool":"bar","other":"foo"}`, restored)
+	require.Equal(t, `{"content":[{"type":"tool_use","name":"bar"},{"type":"tool_use","name":"foo"}],"text":"abc_12_ext"}`, restored)
 }
 
 func TestRestoreToolNamesInBytes_StaticPrefixRollback(t *testing.T) {
 	data := []byte(`{"name":"sessions_list","id":"cc_ses_xyz"}`)
 	got := string(restoreToolNamesInBytes(data, nil))
-	require.Equal(t, `{"name":"sessions_list","id":"session_xyz"}`, got)
+	require.Equal(t, string(data), got, "no mapping means no response changes")
 }
 
 func TestApplyToolNameRewriteToBody_RenamesToolsAndToolChoice(t *testing.T) {

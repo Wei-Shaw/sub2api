@@ -97,7 +97,7 @@ func TestHandleNonStreamingResponse_ValidJSONUnchanged(t *testing.T) {
 	require.JSONEq(t, string(body), rec.Body.String())
 }
 
-func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_NonJSON2xxTriggersFailover(t *testing.T) {
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_NonJSON2xxPreservesProviderResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -113,12 +113,10 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_NonJSON2xxTriggers
 
 	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
 
-	require.Nil(t, usage)
-	var failoverErr *UpstreamFailoverError
-	require.True(t, errors.As(err, &failoverErr))
-	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-	require.Equal(t, body, failoverErr.ResponseBody)
-	require.False(t, c.Writer.Written(), "invalid passthrough response must not be committed before failover")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, body, rec.Body.Bytes())
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ValidJSONUnchanged(t *testing.T) {
@@ -185,7 +183,7 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ForceCacheBillingR
 			require.NoError(t, err)
 			require.Equal(t, int(gjson.Get(tt.body, "usage.input_tokens").Int()), usage.InputTokens, "local accounting must retain the unclassified usage")
 			require.Equal(t, int(gjson.Get(tt.body, "usage.cache_read_input_tokens").Int()), usage.CacheReadInputTokens, "local accounting must convert exactly once in RecordUsage")
-			require.JSONEq(t, tt.want, rec.Body.String())
+			require.Equal(t, tt.body, rec.Body.String(), "billing policy must not rewrite upstream usage")
 		})
 	}
 }

@@ -119,7 +119,7 @@ func TestBuildUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens(t *testing.T) {
 
 // TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_ClampsOllamaCloudDeepSeekMaxTokens
 // 覆盖 Anthropic 平台 APIKey passthrough builder。
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_ClampsOllamaCloudDeepSeekMaxTokens(t *testing.T) {
+func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesOllamaCloudDeepSeekMaxTokens(t *testing.T) {
 	svc := &GatewayService{cfg: messagesClampTestConfig()}
 	c := newMessagesClampTestContext(t)
 
@@ -130,8 +130,8 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_ClampsOllamaCloudDeepSee
 		context.Background(), c, account, body, "sk-test",
 	)
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages?beta=true", req.URL.String())
-	require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
+	require.Equal(t, "https://ollama.com/v1/messages", req.URL.String())
+	require.Equal(t, int64(256000), gjson.GetBytes(wireBody, "max_tokens").Int())
 
 	// 官方 Anthropic（api.anthropic.com）即使 max_tokens 超过 65535 也字节级不变。
 	official := newAnthropicAPIKeyAccountForTest()
@@ -142,7 +142,7 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_ClampsOllamaCloudDeepSee
 	require.Equal(t, int64(256000), gjson.GetBytes(wire, "max_tokens").Int())
 }
 
-// TestBuildNativeAnthropicUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens 覆盖
+// TestBuildNativeAnthropicUpstreamRequest_PreservesOllamaCloudDeepSeekMaxTokens 覆盖
 // 国产供应商原生 Anthropic 协议 builder（Messages / Responses / CC 桥接共享）。
 func TestBuildNativeAnthropicUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: messagesClampTestConfig()}
@@ -317,13 +317,13 @@ func TestBuildUpstreamRequest_ClampsTrailingSlashOllamaBase(t *testing.T) {
 		require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
 	})
 
-	t.Run("builder B trailing slash base is clamped", func(t *testing.T) {
+	t.Run("strict builder retains trailing slash destination and raw max tokens", func(t *testing.T) {
 		req, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
 			context.Background(), c, newAccount(442), body, "sk-test",
 		)
 		require.NoError(t, err)
-		require.Equal(t, "https://ollama.com/v1/messages?beta=true", req.URL.String())
-		require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
+		require.Equal(t, "https://ollama.com/v1/messages", req.URL.String())
+		require.Equal(t, body, wireBody)
 	})
 
 	t.Run("evil suffix and custom path never match", func(t *testing.T) {

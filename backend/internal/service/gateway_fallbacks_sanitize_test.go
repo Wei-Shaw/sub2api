@@ -183,7 +183,7 @@ func TestBuildUpstreamRequest_OAuthMimicHaiku_StripsFallbacksEndToEnd(t *testing
 }
 
 // API-key passthrough + 客户端 header 未带 fallback beta → strip
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsFallbacksWhenClientHeaderMissingBeta(t *testing.T) {
+func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesFallbacksWhenClientHeaderMissingBeta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -197,8 +197,8 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsFallbacksWhenClien
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "fallbacks").Exists(),
-		"API-key passthrough + 客户端未带 fallback beta → strip body 字段")
+	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "fallbacks").Exists(),
+		"API-key passthrough + 客户端未带 fallback beta → let provider validate")
 }
 
 // API-key passthrough + 客户端 header 带 fallback beta → 保留（不过度删除）

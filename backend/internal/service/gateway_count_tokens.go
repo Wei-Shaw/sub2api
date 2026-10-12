@@ -22,6 +22,12 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return fmt.Errorf("parse request: empty request")
 	}
+	if account != nil && !account.IsAnthropicAPIKeyPassthroughEnabled() {
+		if err := parsed.normalizeCompatibilityBody(); err != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize request body")
+			return err
+		}
+	}
 
 	validationModel := parsed.Model
 	if account != nil {
@@ -29,7 +35,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			if resolved, ok := ResolveBedrockModelID(account, validationModel); ok {
 				validationModel = resolved
 			}
-		} else if account.Type == AccountTypeAPIKey {
+		} else if account.Type == AccountTypeAPIKey && !account.IsAnthropicAPIKeyPassthroughEnabled() {
 			validationModel = account.GetMappedModel(validationModel)
 		}
 	}
@@ -42,12 +48,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
-		if reqModel := parsed.Model; reqModel != "" {
-			if mappedModel := account.GetMappedModel(reqModel); mappedModel != reqModel {
-				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
-				logger.LegacyPrintf("service.gateway", "CountTokens passthrough model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
-			}
-		}
+
 		return s.forwardCountTokensAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody)
 	}
 
@@ -320,63 +321,12 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		return err
 	}
 
-	if resp.StatusCode >= 400 {
-		if s.rateLimitService != nil {
-			s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		}
-
-		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-
-		// 中转站不支持 count_tokens 端点时（404），返回 404 让客户端 fallback 到本地估算。
-		// 仅在错误消息明确指向 count_tokens endpoint 不存在时生效，避免误吞其他 404（如错误 base_url）。
-		// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
-		if isCountTokensUnsupported404(resp.StatusCode, respBody) {
-			logger.LegacyPrintf("service.gateway",
-				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
-				account.ID, account.Name, truncateString(upstreamMsg, 512))
-			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported by upstream")
-			return nil
-		}
-
-		upstreamDetail := ""
-		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-			if maxBytes <= 0 {
-				maxBytes = 2048
-			}
-			upstreamDetail = truncateString(string(respBody), maxBytes)
-		}
-		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			ProxyID:            opsUpstreamProxyID(account),
-			ProxyName:          opsUpstreamProxyName(account),
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  resp.Header.Get("x-request-id"),
-			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-			Passthrough:        true,
-			Kind:               "http_error",
-			Message:            upstreamMsg,
-			Detail:             upstreamDetail,
-		})
-
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
-		if upstreamMsg == "" {
-			return fmt.Errorf("upstream error: %d", resp.StatusCode)
-		}
-		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	if resp.StatusCode >= 400 && s.rateLimitService != nil {
+		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		setOpsUpstreamError(c, resp.StatusCode, sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody)), "")
 	}
 
+	c.Set(AnthropicPassthroughResponseContextKey, true)
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
@@ -387,78 +337,11 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 }
 
 func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-	token string,
+	ctx context.Context, c *gin.Context, account *Account, body []byte, token string,
 ) (*http.Request, error) {
-	body = stripDeferredToolCacheControl(body)
-	targetURL := claudeAPICountTokensURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-		if err != nil {
-			return nil, err
-		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
-	}
-	body = sanitizeCountTokensRequestBody(body)
-
-	// 同 buildUpstreamRequestAnthropicAPIKeyPassthrough：能力维度 sanitize。
-	clientBeta := ""
-	if c != nil && c.Request != nil {
-		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
-	}
-	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
-	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
-		clientBeta = beta
-	}
-	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
-		body = sanitized
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-
-	if c != nil && c.Request != nil {
-		for key, values := range c.Request.Header {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
-				continue
-			}
-			wireKey := resolveWireCasing(key)
-			for _, v := range values {
-				addHeaderRaw(req.Header, wireKey, v)
-			}
-		}
-	}
-
-	req.Header.Del("authorization")
-	req.Header.Del("x-api-key")
-	req.Header.Del("x-goog-api-key")
-	req.Header.Del("cookie")
-	// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
-	// targetURL 的 base 取值），其余保持 extra/default 行为。
-	setAnthropicAPIKeyAuthHeader(req.Header, account, token, account.GetBaseURL())
-
-	if req.Header.Get("content-type") == "" {
-		req.Header.Set("content-type", "application/json")
-	}
-	if req.Header.Get("anthropic-version") == "" {
-		req.Header.Set("anthropic-version", "2023-06-01")
-	}
-
-	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
-	account.ApplyHeaderOverrides(req.Header)
-	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
-
-	return req, nil
+	return s.buildAnthropicPassthroughRequest(ctx, c, account, http.MethodPost, "/messages/count_tokens", bytes.NewReader(body), token)
 }
 
-// buildCountTokensRequest 构建 count_tokens 上游请求
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, []byte, error) {
 	body = stripDeferredToolCacheControl(body)
 	// 确定目标 URL
