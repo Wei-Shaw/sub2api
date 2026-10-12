@@ -180,6 +180,26 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
+	// composite 账号池请求状态（B2：generic Responses 循环池化）。池激活判定与
+	// generic 调度器共用同一谓词（ctx 携带候选池且无 resolved 平台）；非池请求
+	// poolDenials 恒为空、attempt 策略与委派分支不生效，整条路径零变化。
+	isPoolRequest := service.GenericCompositePoolActive(requestCtx)
+	if isPoolRequest {
+		// 续链只能由 OpenAI 兼容族归属账号服务（路由层已把这类请求收窄后交 OpenAI
+		// handler）；到达这里说明候选池无法承接，明确拒绝而不是静默丢弃上下文。
+		if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error",
+				"previous_response_id is not supported for this composite model; resend the full conversation without previous_response_id")
+			return
+		}
+		if h.rejectCompositePoolCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatResponses) {
+			return
+		}
+		// 委派 OpenAI 网关链创建的响应须记录下游归属，后续续链经 OpenAI handler 校验租户。
+		service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
+	}
+	poolDenials := newCompositePoolPlatformDenials()
+
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
 
@@ -187,7 +207,16 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if failoverClientGone(c) {
 			return
 		}
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
+		// 池请求把业务限制 deny 过的平台按 deniedPlatforms 整平台 mask 后重选
+		//（候选池 immutable，mask 只叠加在当前请求 ctx 之上）；无 deny 时
+		// 返回原 ctx，非池请求不经此分支，选号 ctx 与原行为一致。
+		selectCtx := requestCtx
+		if isPoolRequest {
+			if maskedCtx, ok := compositePoolSelectionRetryContext(selectCtx, poolDenials); ok {
+				selectCtx = maskedCtx
+			}
+		}
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(selectCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("gateway.responses.account_select_aborted_client_disconnected", zap.Error(err))
@@ -224,6 +253,56 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		// Gemini 账号没有 Responses 转换链（generic 链只能发往 Anthropic 协议上游，会把
+		// Google 凭据发错主机）：池请求整平台屏蔽 gemini 后重选，候选只剩 gemini 时终止。
+		if isPoolRequest && account.Platform == service.PlatformGemini {
+			releaseCompositePoolSelection(selection)
+			h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionHash)
+			poolDenials.deny(account.Platform)
+			fs.FailedAccountIDs[account.ID] = struct{}{}
+			if _, ok := compositePoolSelectionRetryContext(requestCtx, poolDenials); !ok {
+				h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error",
+					"Model is only available on Gemini accounts in this group, which do not support /v1/responses")
+				return
+			}
+			continue
+		}
+
+		// composite 账号池 per-attempt 平台策略：对实际选中平台补做 user×platform
+		// 配额预检与渠道映射/限制（准入 CheckBillingEligibility 时池没有 resolved
+		// 平台、这两个维度被跳过；不得只后扣不预检）。检查为纯读，不写 RPM/计数，
+		// 放在槽位获取前：deny 不占并发槽。generic Responses 循环无
+		// previous_response_id，无 pinned 分支；deny 记入 poolDenials 后按 masked
+		// 候选池整平台重选，候选全部被业务限制时按原语义终止，不误报 model
+		// unsupported。
+		attemptPolicy := compositePoolAttemptPolicy{AttemptCtx: requestCtx, Mapping: channelMapping}
+		isPoolAttempt := false
+		if isPoolRequest && compositePoolAttemptPolicyApplies(c, apiKey) {
+			attemptPolicy = evaluateCompositePoolAttemptPolicy(
+				requestCtx, h.billingCacheService, h.openAIGatewayService, apiKey, subscription, account, reqModel, false)
+			isPoolAttempt = true
+			if attemptPolicy.Failure.denied() {
+				releaseCompositePoolSelection(selection)
+				// 选号链可能已为该账号注册会话槽：排除前释放（镜像 Messages 池分支）。
+				h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionHash)
+				poolDenials.deny(account.Platform)
+				fs.FailedAccountIDs[account.ID] = struct{}{}
+				// 候选全部被业务限制：按 deny 原因明确终止（后续重选不再尝试）。
+				if _, ok := compositePoolSelectionRetryContext(requestCtx, poolDenials); !ok {
+					streamAwareWrite := func(cc *gin.Context, status int, code, message string) {
+						if streamStarted {
+							h.handleStreamingAwareError(cc, status, code, message, true)
+							return
+						}
+						h.responsesErrorResponse(cc, status, code, message)
+					}
+					respondCompositePoolAttemptPolicyFailure(c, attemptPolicy.Failure, streamAwareWrite)
+					return
+				}
+				continue
+			}
+		}
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc
@@ -275,12 +354,42 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()
+		// 渠道模型映射只作用于本次账号尝试：池请求按选中平台的渠道映射（attempt
+		// 策略产出，platform-scoped）派生，非池保持请求级映射语义不变。
+		attemptChannelMapping := channelMapping
+		if isPoolAttempt {
+			attemptChannelMapping = attemptPolicy.Mapping
+		}
 		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+		if attemptChannelMapping.Mapped {
+			forwardBody = h.gatewayService.ReplaceModelInBody(body, attemptChannelMapping.MappedModel)
+		}
+		// 账号池按选中账号应用分组推理强度策略（与 OpenAI handler 同语义，仅 openai 账号）。
+		if isPoolRequest {
+			cappedBody, changed, policyErr := applyCompositePoolReasoningEffortPolicyForSelectedAccount(c, apiKey, account, forwardBody)
+			if policyErr != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				respondOpenAIReasoningEffortPolicyError(c, policyErr, h.responsesErrorResponse)
+				return
+			}
+			if changed {
+				forwardBody = cappedBody
+			}
 		}
 		var result *service.ForwardResult
+		// 池委派 OpenAI 网关链时的原始结果：按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+		var delegatedResult *service.OpenAIForwardResult
+		delegated := false
 		setActualUpstreamEndpoint(c, "")
+		// 池请求的 attempt 局部 ctx 携带选中平台（不写回 requestCtx，否则下一轮
+		// 选号会被 resolved 平台截断池语义）：forward 内的渠道定价作用域与计费
+		// QuotaPlatform 跟随实际平台，对齐 Messages 池 attempt 语义。
+		attemptCtx := requestCtx
+		if isPoolRequest {
+			attemptCtx = compositePoolAttemptContext(attemptCtx, account)
+		}
 		if shouldUseAntigravityCompat(account) {
 			if h.antigravityGatewayService == nil {
 				h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
@@ -290,13 +399,46 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
-			result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+			result, err = h.antigravityGatewayService.ForwardAsResponses(attemptCtx, c, account, forwardBody, parsedReq)
+		} else if isPoolRequest && compositePoolAccountDelegatesResponsesToOpenAI(account) {
+			// 纯 OpenAI 族 / 原生 Responses 账号在池激活时委派 OpenAI 网关 Responses
+			// 链：入站同族优先（零或近零转换），响应写回与 failover 错误信封都由该
+			// 链完成，错误信封已是 OpenAI Responses 风格，不再二次包装。
+			// promptCacheKey 由链内从 body 派生（与 OpenAI handler Responses 路径一致）。
+			setOpenAIClientTransportHTTP(c)
+			openAIResult, delegateErr := h.openAIGatewayService.Forward(attemptCtx, c, account, forwardBody)
+			delegated = true
+			delegatedResult = openAIResult
+			result = adaptOpenAIForwardResultToForwardResult(openAIResult)
+			err = delegateErr
 		} else {
-			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+			result, err = h.gatewayService.ForwardAsResponses(attemptCtx, c, account, forwardBody, parsedReq)
 		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
+		}
+		if delegated {
+			h.recordDelegatedCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, body, clientRequestedUsageFields(c, attemptChannelMapping, reqModel, ""))
+		}
+
+		// 池委派 OpenAI 网关链的结果按 OpenAI 口径入账（见 submitDelegatedOpenAIUsage）。
+		submitDelegatedUsage := func() {
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			if isPoolAttempt {
+				quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
+			}
+			h.submitDelegatedOpenAIUsage(c, delegatedOpenAIUsage{
+				Result:             delegatedResult,
+				APIKey:             apiKey,
+				Account:            account,
+				Subscription:       subscription,
+				QuotaPlatform:      quotaPlatform,
+				PricingAt:          pricingAt,
+				RequestPayloadHash: service.HashUsageRequestPayload(body),
+				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, delegatedResult.UpstreamModel),
+				LogComponent:       "handler.gateway.responses",
+			})
 		}
 
 		if err != nil {
@@ -319,7 +461,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					return
 				}
 			}
-			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+			upstreamErrorAlreadyCommunicated := compositePoolDelegatedForwardErrorAlreadyCommunicated(c, delegated, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
 				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
@@ -330,10 +472,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
+			// 委派链流中断与 OpenAI handler 同语义：上游已计量的部分 usage 照常入账（#5148）；
+			// failover 错误恒定 result=nil，不会重复计费。
+			if delegatedResult != nil {
+				submitDelegatedUsage()
+			}
 			return
 		}
 
 		// 6. Record usage
+		if delegatedResult != nil {
+			submitDelegatedUsage()
+			return
+		}
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
@@ -341,6 +492,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		// 池请求按选中平台计量 user×platform 配额（attempt ctx 携带 resolved
+		// 平台）；非池保持准入语义不变。
+		if isPoolAttempt {
+			quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, apiKey)
+		}
 		sessionID := service.ExtractClientSessionID(c)
 		stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
@@ -359,7 +515,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, result.UpstreamModel),
 			}); err != nil {
 				reqLog.Error("gateway.responses.record_usage_failed",
 					zap.Int64("account_id", account.ID),

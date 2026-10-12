@@ -278,6 +278,34 @@
           }
         ]
       }
+    },
+    {
+      "id": "ollama_cloud",
+      "display_name": "Ollama Cloud",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "ollama_legacy",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "ollama_legacy",
+            "base_urls": {
+              "anthropic": "https://ollama.com",
+              "chat_completions": "https://ollama.com/v1",
+              "responses": "https://ollama.com/v1"
+            }
+          },
+          {
+            "mode": "ollama_credits",
+            "base_urls": {
+              "anthropic": "https://ollama.com",
+              "chat_completions": "https://ollama.com/v1",
+              "responses": "https://ollama.com/v1"
+            }
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -293,6 +321,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "ollama_cloud"
   ]
 }

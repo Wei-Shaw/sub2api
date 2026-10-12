@@ -44,11 +44,13 @@ export type SchedulingThresholdPlatformType =
   | "minimax"
   | "opencode_go"
   | "command_code"
+  | "ollama_cloud"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO 与 Command Code 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO 与 Command Code 有滚动窗口；
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口，credits 型月度信用池无窗口不停调）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -58,6 +60,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "minimax",
   "opencode_go",
   "command_code",
+  "ollama_cloud",
 ]
 
 export function normalizeAccountSchedulingThresholdsMap(
@@ -79,27 +82,47 @@ export function sanitizeAccountSchedulingThresholdsMap(
   return normalizeAccountSchedulingThresholdsMap(input)
 }
 
-/** 归一化为全部平台 × 3 窗口（缺失填 null），供模板非空绑定 */
+/** 归一化为全部平台 × 3 窗口（缺失填 null），供模板非空绑定；保留输入中的未知平台 key */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const normalizeOne = (src?: PlatformQuotaLimits): PlatformQuotaLimits => ({
+    daily:   typeof src?.daily === "number" ? src.daily : null,
+    weekly:  typeof src?.weekly === "number" ? src.weekly : null,
+    monthly: typeof src?.monthly === "number" ? src.monthly : null,
+  })
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of listPlatformIds()) {
-    const src = input?.[p]
-    result[p] = {
-      daily:   typeof src?.daily === "number" ? src.daily : null,
-      weekly:  typeof src?.weekly === "number" ? src.weekly : null,
-      monthly: typeof src?.monthly === "number" ? src.monthly : null,
+  const platforms = listPlatformIds()
+  for (const p of platforms) {
+    result[p] = normalizeOne(input?.[p])
+  }
+  // 稳健性护栏：后端新加、前端尚未收录的平台 key 原样保留（整体替换语义下
+  // 丢弃 = 静默删除该平台的默认配额）。
+  if (input) {
+    for (const [key, value] of Object.entries(input)) {
+      if (!platforms.includes(key)) {
+        result[key] = normalizeOne(value)
+      }
     }
   }
   return result
 }
 
-/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全部平台嵌套 map */
+/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全部平台嵌套 map；保留未知平台 key */
 export function sanitizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const clean = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null)
+  const sanitizeOne = (src?: PlatformQuotaLimits): PlatformQuotaLimits => ({
+    daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly),
+  })
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of listPlatformIds()) {
-    const src = input?.[p]
-    result[p] = { daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly) }
+  const platforms = listPlatformIds()
+  for (const p of platforms) {
+    result[p] = sanitizeOne(input?.[p])
+  }
+  if (input) {
+    for (const [key, value] of Object.entries(input)) {
+      if (!platforms.includes(key)) {
+        result[key] = sanitizeOne(value)
+      }
+    }
   }
   return result
 }

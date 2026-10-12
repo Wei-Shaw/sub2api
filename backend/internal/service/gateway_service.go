@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -1443,15 +1444,27 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 
 		mapping := acc.GetModelMapping()
-		for model := range mapping {
-			// Accounts pulled in through mixed scheduling only contribute the
-			// models that belong to the listing platform (e.g. an antigravity
-			// account's claude-* mappings must not surface on a gemini group).
-			if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
-				continue
+		if len(mapping) > 0 {
+			for model := range mapping {
+				// Accounts pulled in through mixed scheduling only contribute the
+				// models that belong to the listing platform (e.g. an antigravity
+				// account's claude-* mappings must not surface on a gemini group).
+				if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
+					continue
+				}
+				modelSet[model] = struct{}{}
+				hasAnyMapping = true
 			}
-			modelSet[model] = struct{}{}
-			hasAnyMapping = true
+		} else if acc.IsOllamaCloud() {
+			// ollama_cloud 空 mapping：extra.allowed_models 清单即公开模型
+			// 列表（空映射下公开名=出站名）；无清单（deny-all）账号不贡献
+			// 任何模型名，与 IsModelSupported 的运行时白名单语义一致。
+			if allowed := ollamaCloudOutboundModelNames(&acc); len(allowed) > 0 {
+				hasAnyMapping = true
+				for _, model := range allowed {
+					modelSet[model] = struct{}{}
+				}
+			}
 		}
 	}
 
@@ -1482,6 +1495,27 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	return cloneStringSlice(models)
 }
 
+// compositeOwnershipQueryPlatforms 返回 ownership 候选扫描的平台全集。
+// ListModelAvailabilityCandidates 要求显式传入平台列表（空列表返回空结果），
+// 这里传入全部可承接请求的具体平台（平台清单），与旧 ListSchedulableByGroupID 的
+// 扫描范围保持一致，组隔离由该查询的 groupID 维度保证。
+func compositeOwnershipQueryPlatforms() []string {
+	return domain.ConcretePlatformIDs()
+}
+
+// resolveCompositeModelOwnership 基于持久化配置判断一个公开模型由组内哪些平台
+// 提供。数据源是 ListModelAvailabilityCandidates（active + schedulable，显式
+// 忽略限流/过载/临时不可调度等瞬态状态），能力谓词是统一共享的
+// CompositeAccountClaimStrength。结果只取决于持久化配置（不含限流等瞬态状态），
+// 按 modelsListCache 的短 TTL 缓存：每个 composite 请求都会解析归属，不能每次查库；
+// 配置变更（含 mapping 移除）最多一个 TTL 后生效，与 /v1/models 列表缓存同口径。
+//
+// 声明强度分层：精确 mapping 命中与受控 native 空映射同为强声明；通配命中仅
+// 为弱声明（fallback）。存在强声明平台时仅强声明平台构成池/单平台，完全无强
+// 声明才回退通配命中平台集合，避免通配 catch-all 账号与显式声明平台混池。
+//
+// 返回：0 候选 → 零值（调用方回退 detector / unknown）；1 候选 → 单平台
+// （既有语义）；>1 → Matched=true + CandidatePlatforms（去重升序）的池。
 func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
 	model = strings.TrimSpace(model)
 	if s == nil || s.accountRepo == nil || groupID <= 0 || model == "" {
@@ -1492,39 +1526,69 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
 			if ownership, ok := cached.(CompositeModelOwnership); ok {
-				return ownership, nil
+				return cloneCompositeModelOwnership(ownership), nil
 			}
 		}
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, compositeOwnershipQueryPlatforms(), true)
 	if err != nil {
 		return CompositeModelOwnership{}, err
 	}
 
-	platforms := make(map[string]struct{})
-	for _, account := range accounts {
+	strongPlatforms := make(map[string]struct{})
+	wildcardPlatforms := make(map[string]struct{})
+	for i := range accounts {
+		account := &accounts[i]
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
+		if !isConcreteRequestPlatform(platform) {
 			continue
 		}
-		platforms[platform] = struct{}{}
+		switch CompositeAccountClaimStrength(account, model) {
+		case CompositeClaimExplicit:
+			strongPlatforms[platform] = struct{}{}
+		case CompositeClaimWildcard:
+			wildcardPlatforms[platform] = struct{}{}
+		}
+	}
+
+	claimedPlatforms := strongPlatforms
+	requiredStrength := CompositeClaimExplicit
+	if len(claimedPlatforms) == 0 {
+		claimedPlatforms = wildcardPlatforms
+		requiredStrength = CompositeClaimWildcard
 	}
 
 	ownership := CompositeModelOwnership{}
-	if len(platforms) == 1 {
-		for platform := range platforms {
+	if len(claimedPlatforms) > 0 {
+		ownership.RequiredClaimStrength = requiredStrength
+	}
+	switch len(claimedPlatforms) {
+	case 1:
+		for platform := range claimedPlatforms {
 			ownership.TargetPlatform = platform
 		}
 		ownership.Matched = true
-	} else if len(platforms) > 1 {
-		ownership.Ambiguous = true
+	default:
+		if len(claimedPlatforms) > 1 {
+			candidates := make([]string, 0, len(claimedPlatforms))
+			for platform := range claimedPlatforms {
+				candidates = append(candidates, platform)
+			}
+			ownership.Matched = true
+			ownership.CandidatePlatforms = normalizeCompositeCandidatePlatforms(candidates)
+		}
 	}
-
 	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
+		s.modelsListCache.Set(cacheKey, cloneCompositeModelOwnership(ownership), s.modelsListCacheTTL)
 	}
 	return ownership, nil
+}
+
+// cloneCompositeModelOwnership 复制候选平台切片：缓存值与调用方互不共享底层数组。
+func cloneCompositeModelOwnership(ownership CompositeModelOwnership) CompositeModelOwnership {
+	ownership.CandidatePlatforms = cloneStringSlice(ownership.CandidatePlatforms)
+	return ownership
 }
 
 func explicitModelMappingClaims(account Account, model string) bool {
@@ -1582,6 +1646,8 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	if s == nil || s.modelsListCache == nil {
 		return
 	}
+	// composite 归属缓存与模型列表共用 modelsListCache：账号 mapping / 白名单变更时
+	// 一并失效，配置变更立即生效而不必等 TTL。
 	s.invalidateCompositeModelOwnershipCache(groupID)
 
 	normalizedPlatform := strings.TrimSpace(platform)
@@ -1611,6 +1677,8 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	}
 }
 
+// invalidateCompositeModelOwnershipCache 删除 composite 归属缓存条目（键形如
+// "composite-owner|<groupID>|<model>"）；groupID 为 nil 时清空全部分组。
 func (s *GatewayService) invalidateCompositeModelOwnershipCache(groupID *int64) {
 	for key := range s.modelsListCache.Items() {
 		if !strings.HasPrefix(key, compositeModelOwnershipCachePrefix) {

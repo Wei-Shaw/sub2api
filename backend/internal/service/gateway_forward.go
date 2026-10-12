@@ -88,10 +88,24 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 }
 
 // Forward 转发请求到Claude API
+// rejectGeminiAccountOnAnthropicChain 拦截 Gemini 账号进入 Anthropic 协议转发链：
+// 该链按 Anthropic 上游拼地址（Gemini API Key 账号无 base_url 时回落
+// api.anthropic.com）并按 Anthropic 方式携带凭据，Gemini 凭据会被发往错误的主机。
+// Gemini 账号必须经 GeminiMessagesCompatService 转换。
+func rejectGeminiAccountOnAnthropicChain(account *Account) error {
+	if account != nil && account.Platform == PlatformGemini {
+		return fmt.Errorf("account %d is a gemini account and cannot be forwarded through the anthropic protocol chain", account.ID)
+	}
+	return nil
+}
+
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (result *ForwardResult, err error) {
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
+	}
+	if err := rejectGeminiAccountOnAnthropicChain(account); err != nil {
+		return nil, err
 	}
 	// API-key mappings and OAuth native IDs are resolved before mimicry.
 	validationModel := parsed.Model

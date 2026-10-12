@@ -687,6 +687,12 @@ func matchModelsDevProviderByKnownHost(registry map[string]modelsDevProvider, ac
 		providerID = "openai"
 	case "opencode.ai":
 		providerID = "opencode-go"
+	case "ollama.com":
+		// 实测 models.dev registry（api.json）：provider ID 是 `ollama-cloud`
+		// （不是 "ollama"），且其 api 字段为 https://ollama.com/v1 —— 常规
+		// base 走上方 API-URL 匹配即可命中；本 case 兜底 registry 形态漂移
+		// （api 字段缺失/变更）或非常规路径形式，避免官方 host 静默丢元数据。
+		providerID = "ollama-cloud"
 	default:
 		return modelsDevProvider{}, false
 	}

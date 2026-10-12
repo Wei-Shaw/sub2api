@@ -929,6 +929,50 @@ func TestMatchModelsDevProviderFallsBackToOpenAIProviderWithoutAPIField(t *testi
 	require.Equal(t, "opencode", provider.ID)
 }
 
+// Scenario: ollama.com 账号的模型 registry 元数据能匹配到 models.dev 的
+// ollama-cloud provider（实测 provider ID 为 `ollama-cloud`，非 "ollama"）。
+// registry 带 api 字段（当前真实形态 https://ollama.com/v1）时走 API-URL
+// 匹配；api 字段缺失（registry 形态漂移）时 known-host 兜底仍命中；
+// 反代 host 不继承官方 provider，避免跨厂商错误归因。
+func TestMatchModelsDevProviderOllamaCloud(t *testing.T) {
+	t.Parallel()
+
+	newRegistry := func(withAPI bool) map[string]modelsDevProvider {
+		provider := modelsDevProvider{
+			ID:   "ollama-cloud",
+			Name: "Ollama Cloud",
+			Models: map[string]modelsDevModel{
+				"gpt-oss:120b": {ID: "gpt-oss:120b", Name: "GPT-OSS 120B"},
+			},
+		}
+		if withAPI {
+			provider.API = "https://ollama.com/v1"
+		}
+		return map[string]modelsDevProvider{"ollama-cloud": provider}
+	}
+
+	// registry 带 api 字段：API-URL 匹配直接命中。
+	for _, baseURL := range []string{
+		"https://ollama.com/v1",
+		"https://ollama.com",
+	} {
+		provider, ok := matchModelsDevProvider(newRegistry(true), baseURL)
+		require.True(t, ok, baseURL)
+		require.Equal(t, "ollama-cloud", provider.ID, baseURL)
+		require.Contains(t, provider.Models, "gpt-oss:120b", baseURL)
+	}
+
+	// registry api 字段缺失（形态漂移）：known-host 兜底命中官方 host。
+	provider, ok := matchModelsDevProvider(newRegistry(false), "https://ollama.com/v1")
+	require.True(t, ok)
+	require.Equal(t, "ollama-cloud", provider.ID)
+	require.Contains(t, provider.Models, "gpt-oss:120b")
+
+	// 反代/自定义 host 不命中：同前缀名字不得跨厂商归因到 ollama-cloud。
+	_, ok = matchModelsDevProvider(newRegistry(true), "https://relay.example.com/v1")
+	require.False(t, ok, "custom hosts must not inherit the official ollama-cloud provider by name")
+}
+
 // Scenario: 官方 OpenAI ID-only /models + 无 api 字段的 models.dev openai 条目仍能补齐并落库。
 func TestSyncUpstreamModelCatalogEnrichesOfficialOpenAIHostWithoutRegistryAPIField(t *testing.T) {
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{

@@ -60,7 +60,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("openai_image_url_string_gets_url", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}`)
-		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
@@ -70,7 +70,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("nested_image_url_object_flattened", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"input_image","image_url":{"url":"` + deepSeekInputImageDataURI + `"}}`)
-		got := normalizeDeepSeekResponsesRequestBody(native, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(native, body)
 		require.Equal(t, gjson.String, gjson.GetBytes(got, "input.0.content.1.image_url").Type)
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
@@ -78,7 +78,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("chat_completions_image_url_part_converted", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"image_url","image_url":{"url":"` + deepSeekInputImageDataURI + `"}}`)
-		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
@@ -86,7 +86,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("anthropic_source_becomes_data_uri", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AQID"}}`)
-		got := normalizeDeepSeekResponsesRequestBody(native, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(native, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
@@ -94,7 +94,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("lifted_tool_output_image_gets_url", func(t *testing.T) {
 		body := []byte(`{"model":"deepseek-flash","input":[{"type":"function_call","call_id":"call_image","name":"view_image","arguments":"{}"},{"type":"function_call_output","call_id":"call_image","output":[{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}]}]}`)
-		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, gjson.String, gjson.GetBytes(got, "input.1.output").Type)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.2.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.2.content.1.image_url").String())
@@ -103,7 +103,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("file_id_only_does_not_gain_empty_url", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"input_image","file_id":"file-abc"}`)
-		got := normalizeDeepSeekResponsesRequestBody(native, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(native, body)
 		require.Equal(t, "file-abc", gjson.GetBytes(got, "input.0.content.1.file_id").String())
 		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 		require.False(t, gjson.GetBytes(got, "input.0.content.1.image_url").Exists())
@@ -111,14 +111,14 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 
 	t.Run("kimi_does_not_alias_url", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}`)
-		got := normalizeDeepSeekResponsesRequestBody(kimi, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(kimi, body)
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 	})
 
 	t.Run("openai_host_unchanged", func(t *testing.T) {
 		body := deepSeekUserImageBody(`{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}`)
-		got := normalizeDeepSeekResponsesRequestBody(openai, body)
+		got, _ := normalizeDeepSeekResponsesRequestBody(openai, body)
 		require.Equal(t, string(body), string(got))
 		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 	})

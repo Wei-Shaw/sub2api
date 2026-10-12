@@ -23,6 +23,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
 	MonitorProviderMiniMax:     {},
+	MonitorProviderOllamaCloud: {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -38,6 +39,8 @@ var probeCapableProviders = map[string]struct{}{
 	MonitorProviderZhipu:     {},
 	MonitorProviderDeepseek:  {},
 	MonitorProviderMiniMax:   {},
+	// ollama_cloud 官方提供 OpenAI 兼容 /v1/chat/completions，可真实探活。
+	MonitorProviderOllamaCloud: {},
 }
 
 // validateProvider 校验 provider 字符串。

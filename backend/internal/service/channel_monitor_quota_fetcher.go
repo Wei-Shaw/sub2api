@@ -23,6 +23,8 @@ import (
 //   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsageForAccount
 //   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalanceForAccount
 //     （zhipu payg 无公开余额端点，探测会返回该错误，原样透出）
+//   - ollama_cloud → 账号 extra 里的官方用量快照（OllamaCloudUsageService 随请求
+//     活动被动维护，此处只读取、不实时探测；数据可能陈旧，FetchedAt 如实透出）
 // 数据源统一接受已加载的 *Account：fetchUncached 路由前 GetByID 一次并传下去，
 // 下游服务不再各自重载（每次 GetByID 含 proxies/groups 联查）。
 //
@@ -223,6 +225,8 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 		return f.fetchCNBalance(ctx, account, now)
 	case domain.PlatformOpenCodeGo:
 		return f.fetchCNQuota(ctx, account, now)
+	case domain.PlatformOllamaCloud:
+		return f.fetchOllamaCloudQuota(account, now)
 	default:
 		return f.fetchUsage(ctx, account, now)
 	}
@@ -453,6 +457,118 @@ func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, account
 		snapshot.Error = firstNonEmpty(snapshot.Error, "cn balance probe failed")
 	}
 	return snapshot
+}
+
+// fetchOllamaCloudQuota ollama_cloud：读取 OllamaCloudUsageService 维护在账号
+// extra 里的官方用量快照（请求活动驱动的被动抓取，此处不做实时探测），映射为
+// 配额快照；FetchedAt 沿用快照真实抓取时间——静默账号的数据会陈旧，时间戳
+// 如实透出，不伪装成刚刚抓取。eligible=false（如 base_url 为反代域名）或
+// 快照缺失/失败时返回带可解释原因的错误快照，而不是笼统的「不支持用量查询」。
+func (f *ChannelMonitorQuotaFetcher) fetchOllamaCloudQuota(account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
+	if reason := ollamaCloudUsageEligibilityReason(account); reason != "" {
+		return quotaErrorSnapshot("ollama_quota", "ollama cloud usage unavailable: "+ollamaCloudUsageReasonHint(reason), now)
+	}
+	snapshot := decodeOllamaCloudUsageSnapshot(account.Extra)
+	if snapshot == nil {
+		return quotaErrorSnapshot("ollama_quota",
+			"no ollama cloud usage snapshot yet; snapshots are captured from the official ollama.com usage page on request activity", now)
+	}
+	fetchedAt := now
+	if snapshot.FetchedAt != nil {
+		fetchedAt = *snapshot.FetchedAt
+	}
+	if snapshot.Status != OllamaCloudUsageStatusOK {
+		return &domain.MonitorQuotaSnapshot{
+			Source: "ollama_quota",
+			// 401 是 settings 页会话过期（抓取通道凭据），不是账号 API key 失效，
+			// 不置 CredentialInvalid——渠道本身可能仍然健康。
+			Success: false,
+			Error: truncateMessage(sanitizeErrorMessage(fmt.Sprintf(
+				"ollama cloud usage snapshot status %s (fetched at %s): %s",
+				snapshot.Status, formatOllamaCloudFetchedAt(snapshot.FetchedAt),
+				firstNonEmpty(snapshot.LastError, "unknown error")))),
+			FetchedAt: now,
+		}
+	}
+	if snapshot.Data == nil {
+		return quotaErrorSnapshot("ollama_quota",
+			fmt.Sprintf("ollama cloud usage snapshot has no data (fetched at %s)", formatOllamaCloudFetchedAt(snapshot.FetchedAt)), now)
+	}
+	out := &domain.MonitorQuotaSnapshot{
+		Source:    "ollama_quota",
+		Success:   true,
+		PlanLevel: snapshot.Data.Plan,
+		FetchedAt: fetchedAt,
+	}
+	out.Tiers = ollamaCloudQuotaTiers(snapshot.Data)
+	if balance, ok := parseOllamaCloudBalanceUSD(snapshot.Data.Balance); ok {
+		out.Balance = &balance
+		out.Currency = "USD"
+	}
+	return out
+}
+
+// ollamaCloudQuotaTiers 把官方用量窗口归一为 tier 列表（窗口缺失时跳过）。
+func ollamaCloudQuotaTiers(data *OllamaCloudUsageData) []domain.MonitorQuotaTier {
+	if data == nil {
+		return nil
+	}
+	tiers := make([]domain.MonitorQuotaTier, 0, 2)
+	appendOllamaCloudQuotaTier(&tiers, "5h", data.FiveHour)
+	appendOllamaCloudQuotaTier(&tiers, "7d", data.SevenDay)
+	if len(tiers) == 0 {
+		return nil
+	}
+	return tiers
+}
+
+func appendOllamaCloudQuotaTier(tiers *[]domain.MonitorQuotaTier, window string, w *OllamaCloudUsageWindow) {
+	if w == nil {
+		return
+	}
+	tier := domain.MonitorQuotaTier{Window: window, UsedPercent: w.UsedPercent}
+	if w.ResetAt != nil {
+		tier.ResetAt = w.ResetAt.UTC().Format(time.RFC3339)
+	}
+	*tiers = append(*tiers, tier)
+}
+
+// parseOllamaCloudBalanceUSD 把官方页面抓到的余额文本（如 "$9.50" / "USD$9.50"）
+// 解析为美元数值；解析失败返回 false（余额仅作展示，无月度信用总额可用于
+// 派生百分比，故 credits 账号只透出余额，不参与 used_percent 告警）。
+func parseOllamaCloudBalanceUSD(raw string) (float64, bool) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "USD")
+	raw = strings.TrimPrefix(raw, "$")
+	raw = strings.ReplaceAll(strings.TrimSpace(raw), ",", "")
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
+}
+
+// ollamaCloudUsageReasonHint 把 EligibleReason 原因码翻译成运维可读的提示
+// （原因码语义见 OllamaCloudUsageState.EligibleReason）。
+func ollamaCloudUsageReasonHint(reason string) string {
+	switch reason {
+	case ollamaCloudUsageIneligibleBaseURL:
+		return "unsupported_base_url (base_url is not the official ollama.com host; usage snapshots are only captured for official-host accounts)"
+	case ollamaCloudUsageIneligibleAccountType:
+		return "wrong_account_type (usage snapshots require an apikey account)"
+	default:
+		return reason
+	}
+}
+
+func formatOllamaCloudFetchedAt(t *time.Time) string {
+	if t == nil {
+		return "unknown"
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // quotaErrorSnapshot 构造统一错误快照。

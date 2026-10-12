@@ -62,6 +62,31 @@ func (r schedulerTestOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx c
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+// ListModelAvailabilityCandidates 对齐 accountRepository.ListModelAvailabilityCandidates
+// 的 group 分支语义：platforms 为空返回空结果；只返回持久化配置满足
+// active + schedulable 且平台在显式白名单内的账号，忽略限流/过载等瞬态状态。
+// 与本 fake 其余 List* 方法一致，组隔离不在此模拟（fake 内存数据未建组隔离语义）。
+func (r schedulerTestOpenAIAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	if groupID == nil || len(platforms) == 0 {
+		return []Account{}, nil
+	}
+	allowed := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		allowed[platform] = struct{}{}
+	}
+	result := make([]Account, 0, len(r.accounts))
+	for _, acc := range r.accounts {
+		if acc.Status != StatusActive || !acc.Schedulable {
+			continue
+		}
+		if _, ok := allowed[acc.Platform]; !ok {
+			continue
+		}
+		result = append(result, acc)
+	}
+	return result, nil
+}
+
 type schedulerGroupAwareOpenAIAccountRepo struct {
 	schedulerTestOpenAIAccountRepo
 }
@@ -1280,7 +1305,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_AccountModelRouteOnlyUs
 	repo := schedulerTestOpenAIAccountRepo{accounts: []Account{owner, nonOwner}}
 	ownership, err := (&GatewayService{accountRepo: repo}).resolveCompositeModelOwnership(ctx, groupID, "team-alias")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, ownership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, ownership)
 	ctx = WithCompositeRouteDecision(ctx, CompositeRouteDecision{
 		Matched: true, Source: CompositeRouteSourceAccount, GroupID: groupID,
 		PublicModel: "team-alias", TargetPlatform: ownership.TargetPlatform, UpstreamModel: "team-alias",
@@ -3950,7 +3975,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyAccountModelRoute
 	repo := schedulerTestOpenAIAccountRepo{accounts: []Account{owner, nonOwner}}
 	ownership, err := (&GatewayService{accountRepo: repo}).resolveCompositeModelOwnership(ctx, groupID, "team-alias")
 	require.NoError(t, err)
-	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, ownership)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true, RequiredClaimStrength: CompositeClaimExplicit}, ownership)
 	ctx = WithCompositeRouteDecision(ctx, CompositeRouteDecision{
 		Matched: true, Source: CompositeRouteSourceAccount, GroupID: groupID,
 		PublicModel: "team-alias", TargetPlatform: ownership.TargetPlatform, UpstreamModel: "team-alias",

@@ -11,7 +11,7 @@ describe('Composite channel platform options', () => {
     expect(source).toContain('const compositePlatforms = platformOrder')
 
     expect(listPlatformIds()).toEqual(
-      expect.arrayContaining(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'])
+      expect.arrayContaining(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'ollama_cloud'])
     )
   })
 })

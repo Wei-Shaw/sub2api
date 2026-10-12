@@ -23,6 +23,7 @@ import {
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_OLLAMA_CLOUD,
   PROVIDERS,
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
@@ -107,7 +108,7 @@ export function useChannelMonitorFormat() {
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
       // 配色与 utils/platformColors.ts 的平台色对齐：antigravity=purple /
-      // kimi=pink / zhipu=indigo / deepseek=teal。
+      // kimi=pink / zhipu=indigo / deepseek=teal / ollama_cloud=stone。
       case PROVIDER_ANTIGRAVITY:
         return 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
       case PROVIDER_KIMI:
@@ -120,6 +121,8 @@ export function useChannelMonitorFormat() {
         return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
       case PROVIDER_OPENCODE_GO:
         return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+      case PROVIDER_OLLAMA_CLOUD:
+        return 'bg-stone-100 text-stone-700 dark:bg-stone-500/15 dark:text-stone-300'
       default:
         return NEUTRAL_BADGE
     }
@@ -188,6 +191,10 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-amber-500/50'
+      case PROVIDER_OLLAMA_CLOUD:
+        return active
+          ? 'border-stone-500 bg-stone-50 text-stone-700 dark:bg-stone-500/15 dark:text-stone-300 dark:border-stone-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-stone-300 hover:text-stone-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-stone-500/50'
       default:
         return active
           ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
@@ -276,6 +283,8 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-500/10 dark:to-rose-500/20'
     case PROVIDER_OPENCODE_GO:
       return 'bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-500/10 dark:to-amber-500/20'
+    case PROVIDER_OLLAMA_CLOUD:
+      return 'bg-gradient-to-br from-stone-50 to-stone-200 dark:from-stone-500/10 dark:to-stone-500/20'
     default:
       return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
   }
