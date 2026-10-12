@@ -13,6 +13,9 @@ import (
 // Chat Completions intermediary round-trip (e.g. thinking, cache_control,
 // structured system prompts).
 func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
+	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
+		return nil, err
+	}
 	input, err := convertAnthropicToResponsesInput(req.System, req.Messages)
 	if err != nil {
 		return nil, err
@@ -59,6 +62,9 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 
 	// An explicit thinking disable takes precedence over output_config.effort.
 	effort := anthropicReasoningEffort(req)
+	if openai.IsGPT61SolModelSpelling(req.Model) && req.OutputConfig != nil && req.OutputConfig.Effort == "max" && effort != "none" {
+		effort = "max"
+	}
 	out.Reasoning = &ResponsesReasoning{
 		Effort: effort,
 	}

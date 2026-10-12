@@ -137,7 +137,7 @@ jobs:
           check-latest: false
           cache: false
       - name: Verify Go version
-        run: go version | grep -q 'go1.27.0'
+        run: go version | grep -q 'go1.27.2'
       - name: Restore target-specific Go cache
         id: go-cache
         uses: actions/cache/restore@v6

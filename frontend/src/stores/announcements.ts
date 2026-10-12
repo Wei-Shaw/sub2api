@@ -96,8 +96,10 @@ export const useAnnouncementStore = defineStore('announcements', () => {
       if (ann) {
         ann.read_at = new Date().toISOString()
       }
+      return true
     } catch (err: any) {
       console.error('Failed to mark announcement as read:', err)
+      return false
     }
   }
 

@@ -81,6 +81,20 @@ func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate
 	return _c
 }
 
+// SetBonusAmount sets the "bonus_amount" field.
+func (_c *PaymentOrderCreate) SetBonusAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusAmount(v)
+	return _c
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusAmount(*v)
+	}
+	return _c
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_c *PaymentOrderCreate) SetRechargeCode(v string) *PaymentOrderCreate {
 	_c.mutation.SetRechargeCode(v)
@@ -517,6 +531,10 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
 	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		v := paymentorder.DefaultBonusAmount
+		_c.mutation.SetBonusAmount(v)
+	}
 	if _, ok := _c.mutation.OutTradeNo(); !ok {
 		v := paymentorder.DefaultOutTradeNo
 		_c.mutation.SetOutTradeNo(v)
@@ -576,6 +594,9 @@ func (_c *PaymentOrderCreate) check() error {
 	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		return &ValidationError{Name: "fee_rate", err: errors.New(`ent: missing required field "PaymentOrder.fee_rate"`)}
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		return &ValidationError{Name: "bonus_amount", err: errors.New(`ent: missing required field "PaymentOrder.bonus_amount"`)}
 	}
 	if _, ok := _c.mutation.RechargeCode(); !ok {
 		return &ValidationError{Name: "recharge_code", err: errors.New(`ent: missing required field "PaymentOrder.recharge_code"`)}
@@ -724,6 +745,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.FeeRate(); ok {
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 		_node.FeeRate = value
+	}
+	if value, ok := _c.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+		_node.BonusAmount = value
 	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -1027,6 +1052,24 @@ func (u *PaymentOrderUpsert) UpdateFeeRate() *PaymentOrderUpsert {
 // AddFeeRate adds v to the "fee_rate" field.
 func (u *PaymentOrderUpsert) AddFeeRate(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldFeeRate, v)
+	return u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsert) SetBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusAmount)
+	return u
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsert) AddBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusAmount, v)
 	return u
 }
 
@@ -1708,6 +1751,27 @@ func (u *PaymentOrderUpsertOne) AddFeeRate(v float64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateFeeRate() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) SetBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) AddBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
 	})
 }
 
@@ -2640,6 +2704,27 @@ func (u *PaymentOrderUpsertBulk) AddFeeRate(v float64) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateFeeRate() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) SetBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) AddBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
 	})
 }
 

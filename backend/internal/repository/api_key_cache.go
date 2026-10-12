@@ -15,6 +15,7 @@ import (
 const (
 	apiKeyRateLimitKeyPrefix   = "apikey:ratelimit:"
 	apiKeyRateLimitDuration    = 24 * time.Hour
+	apiKeyCreateCountKeyPrefix = "apikey:create_count:"
 	apiKeyAuthCachePrefix      = "apikey:auth:"
 	authCacheInvalidateChannel = "auth:cache:invalidate"
 )
@@ -22,6 +23,11 @@ const (
 // apiKeyRateLimitKey generates the Redis key for API key creation rate limiting.
 func apiKeyRateLimitKey(userID int64) string {
 	return fmt.Sprintf("%s%d", apiKeyRateLimitKeyPrefix, userID)
+}
+
+// apiKeyCreateCountKey generates the Redis key for per-user API key creation counting.
+func apiKeyCreateCountKey(userID int64) string {
+	return fmt.Sprintf("%s%d", apiKeyCreateCountKeyPrefix, userID)
 }
 
 func apiKeyAuthCacheKey(key string) string {
@@ -54,9 +60,18 @@ func (c *apiKeyCache) IncrementCreateAttemptCount(ctx context.Context, userID in
 	return err
 }
 
-func (c *apiKeyCache) DeleteCreateAttemptCount(ctx context.Context, userID int64) error {
-	key := apiKeyRateLimitKey(userID)
-	return c.rdb.Del(ctx, key).Err()
+// IncrementCreateCount 在固定窗口内累加创建次数并返回累加后的值。
+// ExpireNX 只在首次创建计数键时设置过期，后续创建不会延长窗口；
+// MULTI 保证 INCR 与 EXPIRE 同时生效，避免计数键丢失 TTL 后永久封禁。
+func (c *apiKeyCache) IncrementCreateCount(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	key := apiKeyCreateCountKey(userID)
+	pipe := c.rdb.TxPipeline()
+	incr := pipe.Incr(ctx, key)
+	pipe.ExpireNX(ctx, key, window)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, err
+	}
+	return incr.Val(), nil
 }
 
 func (c *apiKeyCache) IncrementDailyUsage(ctx context.Context, apiKey string) error {

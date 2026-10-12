@@ -9,6 +9,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -94,6 +95,9 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 	records = configuredRecords(records)
 	if len(records) == 0 {
 		return nil
+	}
+	if err := validateQuotaPlatforms(records); err != nil {
+		return err
 	}
 
 	client := clientFromContext(ctx, r.client)
@@ -318,6 +322,9 @@ func monthlyMaybeReset(prevUsage float64, prevStart *time.Time, cost float64, no
 // 清空某平台的限额即软删该行并放弃其累计用量；之后再次配置限额会新建行、从新窗口起算。
 func (r *userPlatformQuotaRepository) UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error {
 	records = configuredRecords(records)
+	if err := validateQuotaPlatforms(records); err != nil {
+		return err
+	}
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		platforms := make([]string, 0, len(records))
 		for _, rec := range records {
@@ -479,6 +486,17 @@ func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, sn
 
 		if _, err := client.ExecContext(ctx, sb.String(), args...); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateQuotaPlatforms 在原生 SQL 写入前校验平台须为平台清单中的具体平台，
+// 取代迁移 242 删除的 user_platform_quotas_platform_check 约束（原生 SQL 不经过 ent Validate）。
+func validateQuotaPlatforms(records []UserPlatformQuotaRecord) error {
+	for _, rec := range records {
+		if !domain.IsConcretePlatform(rec.Platform) {
+			return fmt.Errorf("user_platform_quotas: platform %q is not allowed", rec.Platform)
 		}
 	}
 	return nil

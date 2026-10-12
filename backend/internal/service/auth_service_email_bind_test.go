@@ -1165,3 +1165,19 @@ func cloneEmailBindUser(user *service.User) *service.User {
 	cloned := *user
 	return &cloned
 }
+
+func (s *emailBindCacheStub) IncrVerificationCodeAttempts(context.Context, string) (int, error) {
+	if s.data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	s.data.Attempts++
+	return s.data.Attempts, nil
+}
+
+func (s *emailBindCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *emailBindCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
+}

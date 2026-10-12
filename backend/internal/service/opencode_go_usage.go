@@ -779,7 +779,7 @@ func (s *OpenCodeGoUsageService) refreshLoadedAccount(ctx context.Context, accou
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "unauthorized", retryAfter(resp.Header, now), true)
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "OpenCode Go subscription required (403)", retryAfter(resp.Header, now), false)
+		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "forbidden", retryAfter(resp.Header, now), false)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now), false)
@@ -1000,8 +1000,17 @@ func decodeOpenCodeGoUsageSnapshot(extra map[string]any) *OpenCodeGoUsageSnapsho
 
 // nextOpenCodeGoUsageDelay computes the not-before delay for the next refresh:
 // interval * 2^min(failureCount-1, 6) capped at 24h, ±10% jitter capped at 5min,
-// never below a Retry-After hint or one minute.
+// never below a Retry-After hint or one minute. The hint is honored over the
+// local backoff but clamped to the same 24h ceiling: it arrives over a network
+// path we do not control (upstream CDN, account proxy), and an unbounded value
+// would freeze a group's auto refresh indefinitely.
 func nextOpenCodeGoUsageDelay(intervalMinutes, failureCount int, retryAfterDuration time.Duration) time.Duration {
+	if retryAfterDuration < 0 {
+		retryAfterDuration = 0
+	}
+	if retryAfterDuration > opencodeGoUsageMaxDelay {
+		retryAfterDuration = opencodeGoUsageMaxDelay
+	}
 	minimumDelay := retryAfterDuration
 	base := time.Duration(intervalMinutes) * time.Minute
 	if base < opencodeGoUsageMinIntervalMinutes*time.Minute {

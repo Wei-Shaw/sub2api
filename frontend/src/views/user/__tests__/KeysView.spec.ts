@@ -210,6 +210,7 @@ const PaginationStub = {
   template: `
     <div>
       <button data-test="page-size-50" @click="$emit('update:pageSize', 50)">50</button>
+      <button data-test="page-2" @click="$emit('update:page', 2)">Page 2</button>
     </div>
   `,
 }
@@ -511,7 +512,11 @@ describe('user KeysView column settings', () => {
     expect(currentConcurrencyColumn?.sortable).toBe(true)
   })
 
-  it('keeps filters and selected page size when sorting by current concurrency', async () => {
+  it.each([
+    { key: 'current_concurrency', order: 'asc' },
+    { key: 'group', order: 'asc' },
+    { key: 'group', order: 'desc' },
+  ] as const)('keeps filters and resets pagination and selection when sorting $key $order', async ({ key, order }) => {
     getAvailableGroups.mockResolvedValue([{ id: 42, name: 'OpenAI' }])
     const wrapper = await mountView()
 
@@ -528,11 +533,19 @@ describe('user KeysView column settings', () => {
     await selects[1].vm.$emit('update:modelValue', 'active')
     await flushPromises()
 
+    await wrapper.get('[data-test="page-2"]').trigger('click')
+    await flushPromises()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1])
+    await nextTick()
+    expect(table.props('selectedKeys')).toEqual([1])
+    expect(visibleColumnMeta(wrapper).find((column) => column.key === key)?.sortable).toBe(true)
     listKeys.mockClear()
 
-    await wrapper.get('[data-test="sort-current-concurrency"]').trigger('click')
+    table.vm.$emit('sort', key, order)
     await flushPromises()
 
+    expect(table.props('selectedKeys')).toEqual([])
     expect(listKeys).toHaveBeenLastCalledWith(
       1,
       50,
@@ -540,15 +553,15 @@ describe('user KeysView column settings', () => {
         search: 'target',
         status: 'active',
         group_id: 42,
-        sort_by: 'current_concurrency',
-        sort_order: 'asc',
+        sort_by: key,
+        sort_order: order,
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
   })
 
   describe('create provider selection', () => {
-    const platforms = ['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'gemini', 'grok', 'antigravity', 'composite', 'opencode_go']
+    const platforms = ['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'gemini', 'grok', 'antigravity', 'composite', 'opencode_go', 'typesafe']
     const availableGroups = platforms.map((platform, index) => ({
       id: index + 1,
       // Deliberately ambiguous names: classification must follow the platform.
@@ -579,8 +592,8 @@ describe('user KeysView column settings', () => {
       await chooseProvider(wrapper, 'domestic')
       expect(optionIds(wrapper)).toEqual([3, 4, 5, 6])
       await chooseProvider(wrapper, 'other')
-      expect(optionIds(wrapper)).toEqual([7, 8, 9, 10, 11])
-      expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(13)
+      expect(optionIds(wrapper)).toEqual([7, 8, 9, 10, 11, 12])
+      expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(14)
     })
 
     it('clears the previous group on provider change and submits only the newly selected group', async () => {
@@ -638,7 +651,7 @@ describe('user KeysView column settings', () => {
       await wrapper.get('[data-test="close-dialog"]').trigger('click')
       await getButtonByText(wrapper, 'common.edit').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
-      expect(optionIds(wrapper)).toHaveLength(11)
+      expect(optionIds(wrapper)).toHaveLength(12)
     })
   })
 })

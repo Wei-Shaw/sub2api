@@ -160,6 +160,7 @@ const tocItems = ref<TocItem[]>([])
 const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
 const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
+let markdownRequestVersion = 0
 
 const embedShell = ref<HTMLElement | null>(null)
 const openButton = ref<HTMLAnchorElement | null>(null)
@@ -290,6 +291,7 @@ function buildPageImageUrl(slug: string, src: string): string {
 }
 
 async function fetchAndRenderMarkdown(slug: string) {
+  const version = ++markdownRequestVersion
   loading.value = true
   tocItems.value = []
   activeHeadingId.value = ''
@@ -297,11 +299,13 @@ async function fetchAndRenderMarkdown(slug: string) {
     const resp = await fetch(buildApiUrl(`/pages/${encodeURIComponent(slug)}`), {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
+    if (version !== markdownRequestVersion) return
     if (!resp.ok) {
       renderedHtml.value = `<p class="text-red-500">${t('common.pageNotFound')}</p>`
       return
     }
     let raw = await resp.text()
+    if (version !== markdownRequestVersion) return
 
     raw = raw.replace(
       /!\[([^\]]*)\]\(([^)]+)\)/g,
@@ -331,12 +335,16 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    if (version === markdownRequestVersion) {
+      renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    }
   } finally {
-    loading.value = false
-    await nextTick()
-    await nextTick()
-    injectCopyButtons()
+    if (version === markdownRequestVersion) {
+      loading.value = false
+      await nextTick()
+      await nextTick()
+      if (version === markdownRequestVersion) injectCopyButtons()
+    }
   }
 }
 
@@ -406,6 +414,8 @@ watch(markdownSlug, (slug) => {
   if (slug) {
     fetchAndRenderMarkdown(slug)
   } else {
+    markdownRequestVersion++
+    loading.value = false
     renderedHtml.value = ''
     tocItems.value = []
   }
@@ -434,6 +444,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  markdownRequestVersion++
   if (themeObserver) {
     themeObserver.disconnect()
     themeObserver = null

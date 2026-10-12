@@ -11,6 +11,10 @@ const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(
   getUserSpendingRanking: vi.fn()
 }))
 
+vi.mock('vue-chartjs', () => ({
+  Line: { name: 'Line', props: ['data', 'options'], template: '<div class="line-chart" />' }
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     dashboard: {
@@ -113,6 +117,30 @@ describe('admin DashboardView', () => {
       start_date: '',
       end_date: ''
     })
+  })
+
+  it('switches metrics and ignores a stale tokens response', async () => {
+    let resolveTokens!: (value: any) => void
+    getUserUsageTrend.mockImplementationOnce(() => new Promise(resolve => { resolveTokens = resolve }))
+    getUserUsageTrend.mockResolvedValueOnce({ trend: [{ date: '2026-01-01', user_id: 2, username: 'spender', email: '', requests: 1, tokens: 10, cost: 5, actual_cost: 5 }] })
+    const wrapper = mount(DashboardView, {
+      global: { stubs: {
+        AppLayout: { template: '<div><slot /></div>' }, LoadingSpinner: true,
+        Icon: true, DateRangePicker: true, Select: true, ModelDistributionChart: true,
+        TokenUsageTrend: true
+      } }
+    })
+    await flushPromises()
+    expect(getUserUsageTrend).toHaveBeenCalledWith(expect.objectContaining({ metric: 'tokens', limit: 12 }))
+    await wrapper.findAll('button').find(button => button.text() === 'admin.dashboard.actualSpending')!.trigger('click')
+    expect(getUserUsageTrend).toHaveBeenCalledWith(expect.objectContaining({ metric: 'actual_cost', limit: 12 }))
+    await flushPromises()
+    const chart = wrapper.findComponent({ name: 'Line' })
+    expect(chart.props('data').datasets[0].data).toEqual([5])
+    expect(chart.props('options').scales.y.ticks.callback(5)).toBe('$5.00')
+    resolveTokens({ trend: [{ date: '2026-01-01', user_id: 1, username: 'tokens', email: '', requests: 1, tokens: 100, cost: 1, actual_cost: 1 }] })
+    await flushPromises()
+    expect(chart.props('data').datasets[0].data).toEqual([5])
   })
 
   it('uses last 24 hours as default dashboard range', async () => {

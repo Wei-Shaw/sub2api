@@ -108,6 +108,41 @@ func TestAstraCodexToolCapabilitiesUseAccountScopeAndSharedDeclarations(t *testi
 	require.Equal(t, "3000", model["comp_hash"])
 }
 
+func TestCodexToolCapabilitiesNeverAdvertiseNullServiceTiers(t *testing.T) {
+	newAccount := func(id int64, tiers string) Account {
+		account := Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"base_url": "https://relay.example/v1", "model_mapping": map[string]any{"gpt-6-sol": "gpt-6-sol"},
+		}}
+		if tiers != "" {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"gpt-6-sol": {CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(tiers)}},
+			}})
+		}
+		return account
+	}
+	for _, tt := range []struct {
+		name     string
+		accounts []Account
+	}{
+		{"conflicting peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, `[]`)}},
+		{"undeclared peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, "")}},
+		{"explicit null tiers", []Account{newAccount(1, "null")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"gpt-6-sol"}, tt.accounts, nil, nil, true)
+			require.NoError(t, err)
+			model := decodeCodexManifestModels(t, body)[0]
+			require.Equal(t, []any{}, model["service_tiers"])
+		})
+	}
+
+	merged := intersectUpstreamModelMetadata("gpt-6-sol", []UpstreamModelMetadata{
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[{"id":"priority"}]`)}},
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[]`)}},
+	})
+	require.JSONEq(t, `[]`, string(merged.CodexToolCapabilities["service_tiers"]))
+}
+
 func TestAstraCodexToolCapabilitiesPreserveLiveNullAndFalse(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"base_url": "https://api.openai.com/v1"}}

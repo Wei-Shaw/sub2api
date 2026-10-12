@@ -8,6 +8,12 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/account/__tests__/OpenAIReferralCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.transport.spec.ts \
 	src/components/account/__tests__/OpenAIQuotaResetCell.spark_shadow.spec.ts \
+	src/constants/__tests__/platforms.spec.ts \
+	src/components/account/__tests__/credentialsBuilder.platformCatalog.spec.ts \
+	src/components/account/__tests__/CreateAccountModal.spec.ts \
+	src/components/account/__tests__/EditAccountModal.spec.ts \
+	src/components/account/__tests__/credentialsBuilder.spec.ts \
+	src/components/account/__tests__/OpenCodeGoProtocolRulesEditor.spec.ts \
 	src/components/keys/__tests__/BulkEditKeysModal.spec.ts \
 	src/components/admin/user/__tests__/UserPlatformQuotaModal.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \
@@ -18,10 +24,12 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/PaymentResultView.spec.ts \
 	src/views/user/__tests__/ChannelStatusView.mode.spec.ts \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
+	src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
 	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
-	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts
+	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts \
+	src/components/admin/channel/__tests__/PricingEntryCard.modelDefaultPrice.spec.ts
 
 # 一键编译前后端
 build: build-backend build-frontend
