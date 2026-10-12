@@ -1999,8 +1999,7 @@ func (a *Account) GetOpenAITokenExpiresAt() *time.Time {
 	if expiry := a.GetCredentialAsTime("expires_at"); expiry != nil {
 		return expiry
 	}
-	// Decode only the expiry of operator-provided credentials; this is not
-	// authentication or signature validation. Opaque/malformed tokens stay unknown.
+	// JWT expiry is scheduling metadata, not signature validation.
 	claims := &jwt.RegisteredClaims{}
 	if _, _, err := jwt.NewParser().ParseUnverified(a.GetOpenAIAccessToken(), claims); err != nil || claims.ExpiresAt == nil || claims.ExpiresAt.Unix() <= 0 {
 		return nil

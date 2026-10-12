@@ -5,7 +5,9 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newOpenAI401TestAccount() *Account {
+func newOpenAIOAuthRecoveryAccount() *Account {
 	return &Account{ID: 5542, Name: "synthetic-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Concurrency: 1, Credentials: map[string]any{
 			"access_token": "rejected-at", "refresh_token": "old-rt",
@@ -44,7 +46,7 @@ func TestOpenAIOAuth401HTTPRecoveryBoundaries(t *testing.T) {
 			{name: "second_401", requests: 2, refreshes: 1},
 		} {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
-				account := newOpenAI401TestAccount()
+				account := newOpenAIOAuthRecoveryAccount()
 				switch tc.kind {
 				case "api_key":
 					account.Type = AccountTypeAPIKey
@@ -80,12 +82,12 @@ func TestOpenAIOAuth401HTTPRecoveryBoundaries(t *testing.T) {
 				}}
 				svc := newOpenAIRejectedFieldTestService(upstream)
 				svc.openAITokenProvider = provider
-				body := []byte(`{"model":"gpt-5.6-sol","instructions":"synthetic","input":[{"role":"user","content":"synthetic"}],"stream":false}`)
+				body := []byte(`{"model":"gpt-5.4","instructions":"synthetic","input":[{"role":"user","content":"synthetic"}],"stream":false}`)
 				c := newOpenAIRejectedFieldTestContext(body)
 				SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 				var err error
 				if passthrough {
-					_, err = svc.forwardOpenAIPassthrough(context.Background(), c, account, body, body, "gpt-5.6-sol", false, nil, false, time.Now())
+					_, err = svc.forwardOpenAIPassthrough(context.Background(), c, account, body, body, "gpt-5.4", false, nil, false, time.Now())
 				} else {
 					_, err = svc.Forward(context.Background(), c, account, body)
 				}
@@ -120,7 +122,7 @@ func (r *openAI401ConcurrentRepo) UpdateCredentials(_ context.Context, _ int64, 
 	return nil
 }
 func TestOpenAIOAuth401ConcurrentRefreshReusesWinner(t *testing.T) {
-	original := newOpenAI401TestAccount()
+	original := newOpenAIOAuthRecoveryAccount()
 	repo := &openAI401ConcurrentRepo{account: snapshotOAuthRefreshAccount(original)}
 	cache := newOpenAITokenCacheStub()
 	entered := make(chan struct{})
@@ -172,7 +174,7 @@ func (r *openAI401WinnerRepo) GetByID(context.Context, int64) (*Account, error) 
 	return snapshotOAuthRefreshAccount(r.fresh), nil
 }
 func TestOpenAIOAuth401DistributedLockWinner(t *testing.T) {
-	old := newOpenAI401TestAccount()
+	old := newOpenAIOAuthRecoveryAccount()
 	fresh := snapshotOAuthRefreshAccount(old)
 	fresh.Credentials["access_token"] = "winner-at"
 	fresh.Credentials["refresh_token"] = "winner-rt"
@@ -192,7 +194,7 @@ func TestOpenAIOAuth401DistributedLockWinner(t *testing.T) {
 
 func TestOpenAIOAuth401RecoveryCancellationAndAccountChanges(t *testing.T) {
 	t.Run("cancelled_refresh_does_not_persist", func(t *testing.T) {
-		account := newOpenAI401TestAccount()
+		account := newOpenAIOAuthRecoveryAccount()
 		repo := &refreshAPIAccountRepo{account: account}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -205,7 +207,7 @@ func TestOpenAIOAuth401RecoveryCancellationAndAccountChanges(t *testing.T) {
 		require.Equal(t, "old-rt", account.GetOpenAIRefreshToken())
 	})
 	t.Run("changed_proxy", func(t *testing.T) {
-		old := newOpenAI401TestAccount()
+		old := newOpenAIOAuthRecoveryAccount()
 		fresh := snapshotOAuthRefreshAccount(old)
 		proxyID := int64(44)
 		fresh.ProxyID = &proxyID
@@ -218,7 +220,7 @@ func TestOpenAIOAuth401RecoveryCancellationAndAccountChanges(t *testing.T) {
 		require.Zero(t, executor.refreshCalls)
 	})
 	t.Run("lock_held_without_rotation", func(t *testing.T) {
-		account := newOpenAI401TestAccount()
+		account := newOpenAIOAuthRecoveryAccount()
 		repo := &refreshAPIAccountRepo{account: account}
 		cache := newOpenAITokenCacheStub()
 		cache.lockAcquired = false
@@ -247,7 +249,7 @@ func (r *openAI401CancelledWinnerRepo) GetByID(context.Context, int64) (*Account
 }
 
 func TestOpenAIOAuth401CancelledWinnerIsNotRetried(t *testing.T) {
-	old := newOpenAI401TestAccount()
+	old := newOpenAIOAuthRecoveryAccount()
 	fresh := snapshotOAuthRefreshAccount(old)
 	fresh.Credentials["access_token"] = "winner-at"
 	fresh.Credentials["refresh_token"] = "winner-rt"
@@ -265,10 +267,10 @@ func TestOpenAIOAuth401CancelledWinnerIsNotRetried(t *testing.T) {
 }
 
 func TestOpenAIOAuth401ShadowRefreshesCredentialOwner(t *testing.T) {
-	owner := newOpenAI401TestAccount()
+	owner := newOpenAIOAuthRecoveryAccount()
 	shadow := &Account{ID: 5543, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, ParentAccountID: &owner.ID,
-		Credentials: map[string]any{"model_mapping": map[string]any{"spark": "gpt-5.6-sol"}}}
+		Credentials: map[string]any{"model_mapping": map[string]any{"spark": "gpt-5.4"}}}
 	expectedShadow := shallowCopyMap(shadow.Credentials)
 	repo := &refreshAPIAccountRepo{account: owner}
 	cache := newOpenAITokenCacheStub()
@@ -291,7 +293,7 @@ func TestOpenAIOAuth401ShadowRefreshesCredentialOwner(t *testing.T) {
 }
 
 func TestOpenAIOAuth401ShadowChangedProxyNotRetried(t *testing.T) {
-	owner := newOpenAI401TestAccount()
+	owner := newOpenAIOAuthRecoveryAccount()
 	proxyID := int64(44)
 	owner.ProxyID = &proxyID
 	// The selected shadow still represents the old direct transport.
@@ -312,7 +314,7 @@ func TestOpenAIOAuth401ShadowChangedProxyNotRetried(t *testing.T) {
 }
 
 func TestOpenAIOAuth401AgentIdentityNotRefreshed(t *testing.T) {
-	account := newOpenAI401TestAccount()
+	account := newOpenAIOAuthRecoveryAccount()
 	account.Credentials["auth_mode"] = OpenAIAuthModeAgentIdentity
 	repo := &refreshAPIAccountRepo{account: account}
 	executor := &refreshAPIExecutorStub{}
@@ -325,4 +327,54 @@ func TestOpenAIOAuth401AgentIdentityNotRefreshed(t *testing.T) {
 	require.Empty(t, token)
 	require.Zero(t, executor.refreshCalls)
 	require.Zero(t, repo.updateCredentialsCalls)
+}
+
+func TestOpenAIOAuth401HTTPRecovery(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		name := "forward"
+		if passthrough {
+			name = "passthrough"
+		}
+		t.Run(name, func(t *testing.T) {
+			account := &Account{ID: 5542, Name: "synthetic-oauth", Platform: PlatformOpenAI,
+				Type: AccountTypeOAuth, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "rejected-at", "refresh_token": "old-rt",
+					"expires_at": time.Now().Add(2 * time.Hour).Format(time.RFC3339)}}
+			repo := &refreshAPIAccountRepo{account: account}
+			cache := newOpenAITokenCacheStub()
+			executor := &refreshAPIExecutorStub{needsRefresh: false, credentials: map[string]any{
+				"access_token": "fresh-at", "refresh_token": "rotated-rt",
+				"expires_at": time.Now().Add(2 * time.Hour).Format(time.RFC3339)}}
+			provider := NewOpenAITokenProvider(repo, cache, nil)
+			provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), executor)
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				newOpenAIRejectedFieldTestResponse(401, `{"error":{"code":"invalid_api_key","message":"token rejected"}}`),
+				newOpenAIRejectedFieldTestResponse(200, `{"id":"resp_ok","usage":{"input_tokens":1,"output_tokens":2}}`),
+			}}
+			if passthrough {
+				upstream.responses[1].Header.Set("Content-Type", "text/event-stream")
+				upstream.responses[1].Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}}\n\n"))
+			}
+			svc := newOpenAIRejectedFieldTestService(upstream)
+			svc.openAITokenProvider = provider
+			body := []byte(`{"model":"gpt-5.4","instructions":"synthetic test","stream":false,"input":[{"role":"user","content":"synthetic"}]}`)
+			c := newOpenAIRejectedFieldTestContext(body)
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+			var result *OpenAIForwardResult
+			var err error
+			if passthrough {
+				result, err = svc.forwardOpenAIPassthrough(context.Background(), c, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+			} else {
+				result, err = svc.Forward(context.Background(), c, account, body)
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requests, 2)
+			require.Equal(t, "Bearer rejected-at", upstream.requests[0].Header.Get("Authorization"))
+			require.Equal(t, "Bearer fresh-at", upstream.requests[1].Header.Get("Authorization"))
+			require.Equal(t, upstream.bodies[0], upstream.bodies[1], "auth recovery must not change the request payload")
+			require.Equal(t, 1, executor.refreshCalls)
+			require.Equal(t, "rotated-rt", repo.account.GetOpenAIRefreshToken())
+		})
+	}
 }

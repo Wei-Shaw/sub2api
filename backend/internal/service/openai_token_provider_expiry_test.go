@@ -18,14 +18,14 @@ func syntheticOpenAIExpiryToken(exp time.Time) string {
 
 type openAIExpiryExecutor struct{ *refreshAPIExecutorStub }
 
-func (e openAIExpiryExecutor) NeedsRefresh(a *Account, window time.Duration) bool {
-	return (&OpenAITokenRefresher{}).NeedsRefresh(a, window)
+func (e openAIExpiryExecutor) NeedsRefresh(account *Account, window time.Duration) bool {
+	return (&OpenAITokenRefresher{}).NeedsRefresh(account, window)
 }
 
 func TestOpenAIOAuthExpiryWithoutMetadata(t *testing.T) {
 	for _, tc := range []struct {
 		name, token string
-		want        bool
+		wantRefresh bool
 	}{
 		{"expired_jwt", syntheticOpenAIExpiryToken(time.Now().Add(-time.Hour)), true},
 		{"fresh_jwt", syntheticOpenAIExpiryToken(time.Now().Add(time.Hour)), false},
@@ -35,19 +35,23 @@ func TestOpenAIOAuthExpiryWithoutMetadata(t *testing.T) {
 		{"jwt_invalid_exp", "eyJhbGciOiJub25lIn0.eyJleHAiOiJiYWQifQ.c3ludGhldGlj", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a := newOpenAI401TestAccount()
-			delete(a.Credentials, "expires_at")
-			a.Credentials["access_token"] = tc.token
-			require.Equal(t, tc.want, (&OpenAITokenRefresher{}).NeedsRefresh(a, 5*time.Minute))
+			account := newOpenAIOAuthRecoveryAccount()
+			delete(account.Credentials, "expires_at")
+			account.Credentials["access_token"] = tc.token
+			require.Equal(t, tc.wantRefresh, (&OpenAITokenRefresher{}).NeedsRefresh(account, 5*time.Minute))
 			cache := newOpenAITokenCacheStub()
-			require.NoError(t, cache.SetAccessToken(context.Background(), OpenAITokenCacheKey(a), tc.token, time.Hour))
-			repo := &refreshAPIAccountRepo{account: a}
-			executor := openAIExpiryExecutor{&refreshAPIExecutorStub{credentials: map[string]any{"access_token": "fresh-token", "refresh_token": "rotated-rt", "expires_at": time.Now().Add(time.Hour).Format(time.RFC3339)}}}
+			require.NoError(t, cache.SetAccessToken(context.Background(), OpenAITokenCacheKey(account), tc.token, time.Hour))
+			repo := &refreshAPIAccountRepo{account: account}
+			executor := openAIExpiryExecutor{&refreshAPIExecutorStub{credentials: map[string]any{
+				"access_token":  "fresh-token",
+				"refresh_token": "rotated-rt",
+				"expires_at":    time.Now().Add(time.Hour).Format(time.RFC3339),
+			}}}
 			provider := NewOpenAITokenProvider(repo, cache, nil)
 			provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), executor)
-			token, err := provider.GetAccessToken(context.Background(), a)
+			token, err := provider.GetAccessToken(context.Background(), account)
 			require.NoError(t, err)
-			if tc.want {
+			if tc.wantRefresh {
 				require.Equal(t, "fresh-token", token)
 				require.Equal(t, 1, executor.refreshCalls)
 				require.NotEmpty(t, repo.account.GetCredential("expires_at"))
@@ -60,13 +64,13 @@ func TestOpenAIOAuthExpiryWithoutMetadata(t *testing.T) {
 }
 
 func TestOpenAIOAuthExpiryMetadataPrecedenceAndExclusions(t *testing.T) {
-	a := newOpenAI401TestAccount()
-	a.Credentials["access_token"] = syntheticOpenAIExpiryToken(time.Now().Add(-time.Hour))
-	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(a, 5*time.Minute))
-	delete(a.Credentials, "expires_at")
-	delete(a.Credentials, "refresh_token")
-	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(a, 5*time.Minute))
-	a.Credentials["refresh_token"] = "stale-rt"
-	a.Credentials["auth_mode"] = OpenAIAuthModePersonalAccessToken
-	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(a, 5*time.Minute))
+	account := newOpenAIOAuthRecoveryAccount()
+	account.Credentials["access_token"] = syntheticOpenAIExpiryToken(time.Now().Add(-time.Hour))
+	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(account, 5*time.Minute))
+	delete(account.Credentials, "expires_at")
+	delete(account.Credentials, "refresh_token")
+	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(account, 5*time.Minute))
+	account.Credentials["refresh_token"] = "stale-rt"
+	account.Credentials["auth_mode"] = OpenAIAuthModePersonalAccessToken
+	require.False(t, (&OpenAITokenRefresher{}).NeedsRefresh(account, 5*time.Minute))
 }

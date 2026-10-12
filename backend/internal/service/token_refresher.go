@@ -98,8 +98,7 @@ func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
 	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 }
 
-// NeedsRefresh shares the request provider's expiry rule, including accounts
-// imported without expires_at. The refresh API rechecks this under its lock.
+// NeedsRefresh uses the same expiry rule as the request provider.
 func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
 	if strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
 		return false

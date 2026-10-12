@@ -53,7 +53,11 @@ func installOpenAIOAuthRecovery(t *testing.T, svc *OpenAIGatewayService, account
 	t.Helper()
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := newOpenAITokenCacheStub()
-	executor := &refreshAPIExecutorStub{credentials: map[string]any{"access_token": "fresh-at", "refresh_token": "rotated-rt", "expires_at": time.Now().Add(time.Hour).Format(time.RFC3339)}}
+	executor := &refreshAPIExecutorStub{credentials: map[string]any{
+		"access_token":  "fresh-at",
+		"refresh_token": "rotated-rt",
+		"expires_at":    time.Now().Add(time.Hour).Format(time.RFC3339),
+	}}
 	provider := NewOpenAITokenProvider(repo, cache, nil)
 	provider.SetRefreshAPI(NewOAuthRefreshAPI(repo, cache), executor)
 	svc.openAITokenProvider = provider
@@ -80,7 +84,7 @@ func TestOpenAIOAuth401WSHandshakeBoundaries(t *testing.T) {
 			dialer := &openAIOAuthRecoveryDialer{conn: conn, rejectAgain: tc.again, body: tc.body}
 			pool.setClientDialerForTest(dialer)
 			svc := &OpenAIGatewayService{cfg: cfg, openaiWSPool: pool}
-			account := newOpenAI401TestAccount()
+			account := newOpenAIOAuthRecoveryAccount()
 			if tc.noRT {
 				delete(account.Credentials, "refresh_token")
 			}
@@ -123,7 +127,7 @@ func TestOpenAIOAuth401WSIngressRecovery(t *testing.T) {
 			pool.setClientDialerForTest(dialer)
 			svc.openaiWSPool = pool
 			svc.openaiWSPassthroughDialer = dialer
-			account := newOpenAI401TestAccount()
+			account := newOpenAIOAuthRecoveryAccount()
 			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": mode}
 			executor := installOpenAIOAuthRecovery(t, svc, account)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -133,16 +137,16 @@ func TestOpenAIOAuth401WSIngressRecovery(t *testing.T) {
 			client, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
 			require.NoError(t, err)
 			defer client.CloseNow()
-			frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[],"store":false}`)
+			frame := []byte(`{"type":"response.create","model":"gpt-5.4","input":[],"store":false}`)
 			require.NoError(t, client.Write(ctx, coderws.MessageText, frame))
 			select {
 			case written := <-upstream.writes:
 				require.Equal(t, "response.create", gjson.GetBytes(written, "type").String())
-				require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(written, "model").String())
+				require.Equal(t, "gpt-5.4", gjson.GetBytes(written, "model").String())
 			case <-ctx.Done():
 				t.Fatal("no generation frame after recovered handshake")
 			}
-			upstream.Send(`{"type":"response.completed","response":{"id":"resp_synthetic","model":"gpt-5.6-sol","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2}}}`)
+			upstream.Send(`{"type":"response.completed","response":{"id":"resp_synthetic","model":"gpt-5.4","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2}}}`)
 			_, payload, err := client.Read(ctx)
 			require.NoError(t, err)
 			require.Contains(t, string(payload), "response.completed")
@@ -154,9 +158,10 @@ func TestOpenAIOAuth401WSIngressRecovery(t *testing.T) {
 				t.Fatal("relay did not stop")
 			}
 			dialer.mu.Lock()
-			require.Len(t, dialer.headers, 2)
-			require.Equal(t, "Bearer fresh-at", dialer.headers[1].Get("Authorization"))
+			headers := append([]http.Header(nil), dialer.headers...)
 			dialer.mu.Unlock()
+			require.Len(t, headers, 2)
+			require.Equal(t, "Bearer fresh-at", headers[1].Get("Authorization"))
 			require.Equal(t, 1, executor.refreshCalls)
 			require.Empty(t, upstream.writes, "generation must be sent once")
 		})
@@ -167,17 +172,17 @@ func TestOpenAIOAuth401ForwardWSV2Recovery(t *testing.T) {
 	cfg := passthroughLifecycleConfig()
 	cfg.Gateway.OpenAIWS.OAuthEnabled = true
 	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
-	conn := &openAIWSCaptureConn{events: [][]byte{[]byte(`{"type":"response.completed","response":{"id":"resp_synthetic","model":"gpt-5.6-sol","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2}}}`)}}
+	conn := &openAIWSCaptureConn{events: [][]byte{[]byte(`{"type":"response.completed","response":{"id":"resp_synthetic","model":"gpt-5.4","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":2}}}`)}}
 	dialer := &openAIOAuthRecoveryDialer{conn: conn}
 	pool := newOpenAIWSConnPool(cfg)
 	defer pool.Close()
 	pool.setClientDialerForTest(dialer)
 	svc := newPassthroughLifecycleService(cfg, newStagedPassthroughConn())
 	svc.openaiWSPool = pool
-	account := newOpenAI401TestAccount()
+	account := newOpenAIOAuthRecoveryAccount()
 	account.Extra = map[string]any{"responses_websockets_v2_enabled": true, "openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeCtxPool}
 	executor := installOpenAIOAuthRecovery(t, svc, account)
-	body := []byte(`{"model":"gpt-5.6-sol","instructions":"synthetic","stream":false,"input":[{"role":"user","content":"synthetic"}]}`)
+	body := []byte(`{"model":"gpt-5.4","instructions":"synthetic","stream":false,"input":[{"role":"user","content":"synthetic"}]}`)
 	c := newOpenAIRejectedFieldTestContext(body)
 	SetOpenAIClientTransport(c, OpenAIClientTransportWS)
 	result, err := svc.Forward(context.Background(), c, account, body)
@@ -205,7 +210,7 @@ func TestOpenAIOAuth401WSIngressStopsAfterSecondRejection(t *testing.T) {
 			pool.setClientDialerForTest(dialer)
 			svc.openaiWSPool = pool
 			svc.openaiWSPassthroughDialer = dialer
-			account := newOpenAI401TestAccount()
+			account := newOpenAIOAuthRecoveryAccount()
 			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": mode}
 			executor := installOpenAIOAuthRecovery(t, svc, account)
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -215,7 +220,7 @@ func TestOpenAIOAuth401WSIngressStopsAfterSecondRejection(t *testing.T) {
 			client, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
 			require.NoError(t, err)
 			defer client.CloseNow()
-			require.NoError(t, client.Write(ctx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[],"store":false}`)))
+			require.NoError(t, client.Write(ctx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.4","input":[],"store":false}`)))
 			select {
 			case err := <-serverErr:
 				require.Error(t, err)
@@ -236,7 +241,7 @@ func TestOpenAIOAuth401WSStrictAffinityIsPreserved(t *testing.T) {
 	dialer := &openAIOAuthRecoveryDialer{}
 	pool.setClientDialerForTest(dialer)
 	svc := &OpenAIGatewayService{cfg: cfg, openaiWSPool: pool}
-	account := newOpenAI401TestAccount()
+	account := newOpenAIOAuthRecoveryAccount()
 	executor := installOpenAIOAuthRecovery(t, svc, account)
 	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://synthetic.invalid/responses", Headers: http.Header{"Authorization": []string{"Bearer rejected-at"}}, PreferredConnID: "missing-previous-connection", ForcePreferredConn: true}
 	_, err := svc.acquireOpenAIWSWithOAuthRecovery(context.Background(), &req)
