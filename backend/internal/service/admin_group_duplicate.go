@@ -183,6 +183,9 @@ func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, 
 	if group == nil {
 		return nil, nil
 	}
+	if s.channelCacheInvalidator != nil {
+		s.channelCacheInvalidator.InvalidateCache()
+	}
 	hydrated, err := s.groupRepo.GetByID(ctx, group.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load recovered duplicate group: %w", err)
@@ -191,7 +194,7 @@ func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, 
 }
 
 // DuplicateGroup creates an inactive copy of a group's configuration and exact
-// account priorities. The repository commits the group, bindings, and outbox
+// account priorities and channel binding. The repository commits the group, bindings, and outbox
 // event atomically so a failed binding never leaves an orphan group.
 func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error) {
 	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDuplicate); err != nil {
@@ -221,6 +224,9 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 		duplicate.CreatedAt = time.Time{}
 		duplicate.UpdatedAt = time.Time{}
 		if err := s.groupDuplicateRepo.CreateFromSource(ctx, duplicate, source.ID); err == nil {
+			if s.channelCacheInvalidator != nil {
+				s.channelCacheInvalidator.InvalidateCache()
+			}
 			hydrated, loadErr := s.groupRepo.GetByID(ctx, duplicate.ID)
 			if loadErr != nil {
 				return nil, fmt.Errorf("load duplicate group: %w", loadErr)

@@ -80,6 +80,13 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 		RequireOAuthOnly: true,
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, source))
+	var channelID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO channels (name) VALUES ($1) RETURNING id",
+		[]any{"duplicate-source-channel"}, &channelID))
+	_, err := s.tx.ExecContext(s.ctx,
+		"INSERT INTO channel_groups (channel_id, group_id) VALUES ($1, $2)", channelID, source.ID)
+	s.Require().NoError(err)
 
 	insertAccount := func(name, accountType string, deleted bool) int64 {
 		var id int64
@@ -124,6 +131,16 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	}
 	s.Require().NoError(s.repo.CreateFromSource(s.ctx, duplicate, source.ID))
 	s.Require().EqualValues(1, duplicate.AccountCount)
+	var copiedChannelID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"SELECT channel_id FROM channel_groups WHERE group_id = $1",
+		[]any{duplicate.ID}, &copiedChannelID))
+	s.Require().Equal(channelID, copiedChannelID)
+	var sourceChannelID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"SELECT channel_id FROM channel_groups WHERE group_id = $1",
+		[]any{source.ID}, &sourceChannelID))
+	s.Require().Equal(channelID, sourceChannelID)
 
 	rows, err := s.tx.QueryContext(
 		s.ctx,

@@ -195,11 +195,13 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		{AccountID: 13, GroupID: source.ID, Priority: 37},
 		{AccountID: 17, GroupID: source.ID, Priority: 8},
 	}
-	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo}
+	cache := &channelCacheInvalidatorSpy{}
+	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo, channelCacheInvalidator: cache}
 
 	duplicate, err := svc.DuplicateGroup(context.Background(), source.ID, "admin:7", "stable-key")
 
 	require.NoError(t, err)
+	require.Equal(t, 1, cache.calls, "committed channel bindings must be visible immediately")
 	require.NotEqual(t, source.ID, duplicate.ID)
 	require.Equal(t, "高级订阅 (Copy)", duplicate.Name)
 	require.Equal(t, duplicateGroupInactiveStatus, duplicate.Status)
@@ -250,7 +252,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 func TestDuplicateGroupRecoversSameOperationAndScopesByAdmin(t *testing.T) {
 	source := &Group{ID: 9, Name: "team", Platform: PlatformAnthropic, Status: StatusActive}
 	repo := newDuplicateGroupRepoStub(source)
-	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo}
+	cache := &channelCacheInvalidatorSpy{}
+	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo, channelCacheInvalidator: cache}
 	ctx := context.Background()
 
 	first, err := svc.DuplicateGroup(ctx, source.ID, "admin:7", "same-key")
@@ -266,6 +269,7 @@ func TestDuplicateGroupRecoversSameOperationAndScopesByAdmin(t *testing.T) {
 	require.Equal(t, first.ID, recovered.ID)
 	require.NotEqual(t, first.ID, otherAdmin.ID)
 	require.Equal(t, "team (Copy 2)", otherAdmin.Name)
+	require.Equal(t, 4, cache.calls, "new copies and recovered commits refresh channel bindings")
 }
 
 func TestDuplicateGroupAdvancesNameAndTruncatesUnicodeByRunes(t *testing.T) {
@@ -287,7 +291,8 @@ func TestDuplicateGroupAtomicCreateFailureReturnsNoCopy(t *testing.T) {
 	source := &Group{ID: 15, Name: "team", Platform: PlatformAnthropic, Status: StatusActive}
 	repo := newDuplicateGroupRepoStub(source)
 	repo.atomicCreateErr = errors.New("binding insert failed")
-	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo}
+	cache := &channelCacheInvalidatorSpy{}
+	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo, channelCacheInvalidator: cache}
 
 	duplicate, err := svc.DuplicateGroup(context.Background(), source.ID, "admin:1", "key")
 
@@ -295,4 +300,5 @@ func TestDuplicateGroupAtomicCreateFailureReturnsNoCopy(t *testing.T) {
 	require.Nil(t, duplicate)
 	require.Len(t, repo.groups, 1)
 	require.Empty(t, repo.byOperation)
+	require.Zero(t, cache.calls)
 }

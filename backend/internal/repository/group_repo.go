@@ -196,7 +196,7 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 }
 
 // CreateFromSource atomically persists a copied group, clones the source
-// account bindings with their exact priorities, and writes its scheduler event.
+// account and channel bindings, and writes its scheduler event.
 func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service.Group, sourceGroupID int64) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
@@ -238,6 +238,13 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	}
 	if count, countErr := result.RowsAffected(); countErr == nil {
 		groupIn.AccountCount = count
+	}
+	if _, err := txClient.ExecContext(ctx,
+		`INSERT INTO channel_groups (channel_id, group_id)
+		 SELECT channel_id, $2 FROM channel_groups WHERE group_id = $1`,
+		sourceGroupID, groupIn.ID,
+	); err != nil {
+		return err
 	}
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		return err
