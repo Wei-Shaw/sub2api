@@ -1399,8 +1399,12 @@ func (a *Account) GetOpenAIBaseURL() string {
 			return baseURL
 		}
 	}
-	// 平台默认 base_url：多协议供应商按 account_mode 查 provider profile。
-	if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
+	// 显式 Responses 账号使用该协议的默认端点；自定义 base_url 仍优先。
+	protocol := APIProtocolChatCompletions
+	if a.UsesNativeResponsesProtocol() && !a.IsAdaptiveAPIProtocol() {
+		protocol = APIProtocolResponses
+	}
+	if baseURL := a.defaultProviderBaseURL(protocol); baseURL != "" {
 		return baseURL
 	}
 	return "https://api.openai.com"
@@ -1424,10 +1428,50 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
+// SupportsNativeResponsesEndpoint reports whether the provider/account mode
+// exposes a native OpenAI Responses endpoint.
+func (a *Account) SupportsNativeResponsesEndpoint() bool {
+	return a.providerSupportsProtocol(APIProtocolResponses)
+}
+
+// UsesNativeResponsesProtocol reports whether the current protocol selection
+// routes Responses requests to the provider's native endpoint.
+func (a *Account) UsesNativeResponsesProtocol() bool {
+	if !a.SupportsNativeResponsesEndpoint() {
+		return false
+	}
+	switch a.GetAPIProtocol() {
+	case APIProtocolResponses, APIProtocolAdaptive:
+		return true
+	default:
+		return false
+	}
+}
+
+// SupportsCodexResponsesProtocol reports whether this account can serve Codex
+// through a native or gateway-managed Responses protocol.
+func (a *Account) SupportsCodexResponsesProtocol() bool {
+	if a == nil || !a.IsOpenAICompatible() {
+		return false
+	}
+	if a.IsGrok() {
+		return true
+	}
+	if a.IsOpenAI() {
+		return a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses)
+	}
+	return a.Type == AccountTypeAPIKey && a.UsesNativeResponsesProtocol()
+}
+
+// SupportsResponsesWebSocketHTTPBridge reports whether the existing gateway
+// WebSocket-to-HTTP bridge supports this protocol family. Native third-party
+// Responses providers use their documented HTTP/SSE transport instead.
+func (a *Account) SupportsResponsesWebSocketHTTPBridge() bool {
+	return a != nil && (a.IsOpenAI() || a.IsGrok())
+}
+
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
-// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
-// Responses 端点，适配 Codex）；zhipu 无此端点。
+// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
@@ -1438,7 +1482,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.SupportsNativeCNResponses() {
+		if a.SupportsNativeResponsesEndpoint() {
 			return APIProtocolResponses
 		}
 	case APIProtocolChatCompletions:
@@ -1451,25 +1495,15 @@ func (a *Account) GetAPIProtocol() string {
 	return APIProtocolChatCompletions
 }
 
-// SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
-// DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
+// SupportsNativeCNResponses is retained for callers that still use the older name.
 func (a *Account) SupportsNativeCNResponses() bool {
-	return a.providerSupportsProtocol(APIProtocolResponses)
+	return a.SupportsNativeResponsesEndpoint()
 }
 
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
 // （显式 responses，或 adaptive 且平台具备原生端点）。
 func (a *Account) UsesNativeCNResponses() bool {
-	if a == nil || !a.SupportsNativeCNResponses() {
-		return false
-	}
-	switch a.GetAPIProtocol() {
-	case APIProtocolResponses, APIProtocolAdaptive:
-		return true
-	default:
-		return false
-	}
+	return a.UsesNativeResponsesProtocol()
 }
 
 // IsAdaptiveAPIProtocol 报告账号是否按入站协议动态选择供应商原生端点。
