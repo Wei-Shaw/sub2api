@@ -159,6 +159,105 @@ func TestHandleUpstreamTransportError_PersistentEvictsAccount(t *testing.T) {
 	}
 }
 
+func newPoolModeTransportTestAccount(retryStatusCodes []any) *Account {
+	credentials := map[string]any{"pool_mode": true}
+	if retryStatusCodes != nil {
+		credentials["pool_mode_retry_status_codes"] = retryStatusCodes
+	}
+	return &Account{ID: 150, Name: "pool", Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: credentials}
+}
+
+// TestHandleUpstreamTransportError_PoolModeOptInKeepsAccountSchedulable pins
+// that a pool-mode account listing 503 in pool_mode_retry_status_codes is
+// never temporarily unscheduled for a transport failure, durable or
+// transient: the failure is handled as a same-account-retryable 503, so a
+// single-account group backs off and retries instead of going dark for
+// gatewayTransportErrorTempUnschedDuration.
+func TestHandleUpstreamTransportError_PoolModeOptInKeepsAccountSchedulable(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "persistent refused dial", err: errors.New(`dial tcp 1.2.3.4:8787: connect: connection refused`)},
+		{name: "transient EOF", err: errors.New(`Post "http://relay/v1/messages?beta=true": EOF`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &transportTempUnschedRepoStub{}
+			s := &GatewayService{accountRepo: repo}
+			c := newTransportErrorTestGin(t)
+			account := newPoolModeTransportTestAccount([]any{float64(429), float64(503)})
+
+			err := s.handleUpstreamTransportError(context.Background(), c, account, tc.err, OpsUpstreamErrorEvent{})
+
+			var failoverErr *UpstreamFailoverError
+			if !errors.As(err, &failoverErr) {
+				t.Fatalf("expected *UpstreamFailoverError, got %T: %v", err, err)
+			}
+			if failoverErr.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("StatusCode = %d, want 503", failoverErr.StatusCode)
+			}
+			if !failoverErr.RetryableOnSameAccount {
+				t.Fatal("503 is listed; transport failure must be retried on the same account")
+			}
+			if !failoverErr.RequestScopedTransient {
+				t.Fatal("pool-mode transport failure must be request-scoped")
+			}
+			if !failoverErr.ShouldRetryNextAccount() {
+				t.Fatal("pool-mode transport failure must still fail over")
+			}
+			if repo.calls != 0 {
+				t.Fatalf("SetTempUnschedulable called %d times for an opted-in pool-mode account, want 0", repo.calls)
+			}
+			if c.Writer.Written() {
+				t.Fatal("handler owns the response; service must not write on transport failover")
+			}
+		})
+	}
+}
+
+// TestHandleUpstreamTransportError_PoolModeNotOptedInKeepsDefault pins that
+// the opt-in is listing 503 on a direct account: a pool-mode account on the
+// default retry codes, with a list that leaves 503 out, or behind a proxy
+// keeps the existing behavior — a durable transport failure still temporarily
+// unschedules it.
+func TestHandleUpstreamTransportError_PoolModeNotOptedInKeepsDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		codes   []any
+		proxied bool
+	}{
+		{name: "default codes", codes: nil},
+		{name: "only 502 listed", codes: []any{float64(502)}},
+		{name: "explicitly empty", codes: []any{}},
+		{name: "503 listed but proxied", codes: []any{float64(503)}, proxied: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &transportTempUnschedRepoStub{}
+			s := &GatewayService{accountRepo: repo}
+			c := newTransportErrorTestGin(t)
+			account := newPoolModeTransportTestAccount(tc.codes)
+			if tc.proxied {
+				proxyID := int64(7)
+				account.ProxyID = &proxyID
+			}
+
+			err := s.handleUpstreamTransportError(context.Background(), c, account,
+				errors.New(`dial tcp 1.2.3.4:8787: connect: connection refused`), OpsUpstreamErrorEvent{})
+
+			var failoverErr *UpstreamFailoverError
+			if !errors.As(err, &failoverErr) {
+				t.Fatalf("expected *UpstreamFailoverError, got %T: %v", err, err)
+			}
+			if failoverErr.StatusCode != http.StatusBadGateway {
+				t.Fatalf("StatusCode = %d, want 502 (unchanged)", failoverErr.StatusCode)
+			}
+			if repo.calls != 1 {
+				t.Fatalf("SetTempUnschedulable called %d times, want 1 (unchanged)", repo.calls)
+			}
+		})
+	}
+}
+
 // TestHandleUpstreamTransportError_ClientCanceledNoFailover pins that a
 // canceled client neither fails over nor evicts: the upstream never had a
 // chance to exhibit a fault.

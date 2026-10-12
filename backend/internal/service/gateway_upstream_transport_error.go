@@ -32,7 +32,9 @@ var gatewayTransportFailoverBody = []byte(`{"type":"error","error":{"type":"upst
 //     A client disconnect is not recorded (see isClientCanceledTransportError);
 //  2. for durable faults (expired/rejected proxy creds, dead proxy,
 //     DNS/routing) temporarily unschedules the account and logs a stable warn
-//     event that alert rules can key on;
+//     event that alert rules can key on — except for direct pool-mode
+//     accounts that opted in by listing 503 in pool_mode_retry_status_codes,
+//     see poolModeTreatsTransportErrorAs503;
 //  3. returns an error that is *UpstreamFailoverError (so the handler fails
 //     over to a healthy account) for all non-canceled errors, or the original
 //     error for context.Canceled (client gone — no failover, no eviction).
@@ -63,6 +65,10 @@ func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gi
 	// Transport attempt left local validation; count Ollama Cloud activity.
 	scheduleOllamaCloudUsageActivity(s.deferredService, account)
 
+	if poolModeTreatsTransportErrorAs503(account) {
+		return poolModeTransportFailoverError(account, classifyUpstreamTransportError(err).Persistent, safeErr)
+	}
+
 	if classifyUpstreamTransportError(err).Persistent {
 		s.tempUnscheduleTransportError(ctx, account, safeErr)
 	}
@@ -70,6 +76,52 @@ func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gi
 	return &UpstreamFailoverError{
 		StatusCode:   http.StatusBadGateway,
 		ResponseBody: gatewayTransportFailoverBody,
+	}
+}
+
+// poolModeTreatsTransportErrorAs503 extends pool mode's "upstream errors do
+// not mark the local account" contract to failures that never produced an
+// HTTP response. A pool-mode account often fronts a relay or an account pool
+// that is restarted as a unit, so a refused dial means the relay is briefly
+// down, not that this local account is broken. Temporarily unscheduling it
+// for gatewayTransportErrorTempUnschedDuration turns a restart of a few
+// seconds into a ten-minute outage for every group whose only account it is.
+//
+// It is opt-in through the existing pool_mode_retry_status_codes setting:
+// listing 503 says "this upstream recovers from being unavailable", so a
+// transport failure is handled like an upstream 503. The default list (401,
+// 403, 429) leaves 503 out, so accounts that did not opt in keep the
+// temp-unschedule behavior.
+//
+// Accounts with a proxy keep it too: there a refused dial or an auth failure
+// may come from the proxy itself, which is exactly the durable fault the
+// temp-unschedule exists for.
+func poolModeTreatsTransportErrorAs503(account *Account) bool {
+	return account.IsPoolMode() &&
+		account.ProxyID == nil &&
+		account.IsPoolModeRetryableStatus(http.StatusServiceUnavailable)
+}
+
+// poolModeTransportFailoverError reports the failure as a same-account
+// retryable 503: it is retried on this account with the request-scoped
+// exponential backoff (pool_mode_retry_count times) and then failed over; a
+// group whose only candidate this is backs off and retries it via
+// HandleSelectionExhausted, and an exhausted request still maps to the same
+// client-visible 502.
+func poolModeTransportFailoverError(account *Account, persistent bool, safeErr string) *UpstreamFailoverError {
+	logger.L().With(zap.String("component", "service.gateway")).Warn(
+		"gateway.pool_mode_transport_error_not_unscheduled",
+		zap.Int64("account_id", account.ID),
+		zap.String("account_name", account.Name),
+		zap.String("platform", account.Platform),
+		zap.Bool("persistent", persistent),
+		zap.String("reason", safeErr),
+	)
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusServiceUnavailable,
+		ResponseBody:           gatewayTransportFailoverBody,
+		RetryableOnSameAccount: true,
+		RequestScopedTransient: true,
 	}
 }
 
