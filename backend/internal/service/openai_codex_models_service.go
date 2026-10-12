@@ -1547,10 +1547,6 @@ func isRetryableCodexModelsManifestTransportError(err error) bool {
 	if errors.As(err, &dnsErr) {
 		return true
 	}
-	var goAwayErr http2.GoAwayError
-	if errors.As(err, &goAwayErr) {
-		return true
-	}
 	var streamErr http2.StreamError
 	if errors.As(err, &streamErr) {
 		return true

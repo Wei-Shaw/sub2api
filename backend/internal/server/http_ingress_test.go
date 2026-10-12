@@ -53,6 +53,12 @@ func TestProvideHTTPServerEnablesBoundedH2C(t *testing.T) {
 	require.NotNil(t, srv.Protocols)
 	require.True(t, srv.Protocols.UnencryptedHTTP2())
 	require.True(t, srv.Protocols.HTTP1())
+	require.NotNil(t, srv.HTTP2)
+	require.Equal(t, 25, srv.HTTP2.MaxConcurrentStreams)
+	require.Equal(t, 64*1024, srv.HTTP2.MaxReadFrameSize)
+	require.Equal(t, 1024*1024, srv.HTTP2.MaxReceiveBufferPerConnection)
+	require.Equal(t, 256*1024, srv.HTTP2.MaxReceiveBufferPerStream)
+	require.Equal(t, 30*time.Second, srv.IdleTimeout)
 }
 
 func TestConfigureTrustedProxies(t *testing.T) {
