@@ -58,21 +58,101 @@
               v-for="item in capabilityGuidanceItems"
               :key="item.id"
               :data-testid="`capability-${item.id}`"
+              :class="selectedCapabilityExampleId === item.id ? 'ring-2 ring-primary-300 dark:ring-primary-700' : ''"
               class="rounded-lg border border-white/80 bg-white/80 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/60"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ item.label }}</span>
-                <span
-                  :class="item.available ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'"
-                  class="text-[11px] font-semibold"
-                >
-                  {{ item.available ? t('keys.useKeyModal.capabilities.available') : t('keys.useKeyModal.capabilities.unavailable') }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="item.available ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'"
+                    class="text-[11px] font-semibold"
+                  >
+                    {{ item.available ? t('keys.useKeyModal.capabilities.available') : t('keys.useKeyModal.capabilities.unavailable') }}
+                  </span>
+                  <button
+                    v-if="item.available && hasCapabilityExample(item.id)"
+                    type="button"
+                    :data-testid="`capability-example-${item.id}`"
+                    class="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-medium text-primary-700 transition-colors hover:border-primary-300 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-950/40 dark:text-primary-300 dark:hover:bg-primary-950/70"
+                    @click="openCapabilityExample(item)"
+                  >
+                    <Icon name="document" size="sm" />
+                    <span class="hidden sm:inline">{{ t('keys.useKeyModal.capabilities.viewExample') }}</span>
+                    <span class="sm:hidden">{{ t('keys.useKeyModal.capabilities.exampleShort') }}</span>
+                  </button>
+                </div>
               </div>
               <code v-if="item.path" class="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ item.path }}</code>
               <span v-else-if="item.reason" class="mt-1 block text-[11px] text-gray-500 dark:text-gray-400">{{ capabilityReasonLabel(item.reason) }}</span>
             </div>
           </div>
+
+          <section
+            v-if="selectedCapabilityExample"
+            data-testid="capability-example-panel"
+            class="mt-3 space-y-3 rounded-lg border border-primary-200 bg-white p-3 dark:border-primary-800 dark:bg-dark-900/70"
+            aria-live="polite"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.capabilities.exampleTitle') }}: {{ selectedCapabilityExample.label }}
+                </h4>
+                <code class="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ selectedCapabilityExample.method }} {{ selectedCapabilityExample.path }}
+                </code>
+              </div>
+              <button
+                type="button"
+                data-testid="capability-example-close"
+                class="flex-shrink-0 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-gray-200"
+                @click="selectedCapabilityExampleId = null"
+              >
+                {{ t('keys.useKeyModal.capabilities.closeExample') }}
+              </button>
+            </div>
+
+            <div class="grid gap-3 lg:grid-cols-2">
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    {{ t('keys.useKeyModal.capabilities.requestExample') }}
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="copy-capability-request"
+                    class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                    @click="copyCapabilityExample('request')"
+                  >
+                    {{ copiedCapabilityExamplePart === 'request' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-72 overflow-auto rounded-lg bg-gray-900 p-3 text-[11px] leading-5 text-gray-100"><code>{{ selectedCapabilityExample.request }}</code></pre>
+              </div>
+
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    {{ t('keys.useKeyModal.capabilities.responseExample') }}
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="copy-capability-response"
+                    class="text-[11px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                    @click="copyCapabilityExample('response')"
+                  >
+                    {{ copiedCapabilityExamplePart === 'response' ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-72 overflow-auto rounded-lg bg-gray-900 p-3 text-[11px] leading-5 text-gray-100"><code>{{ selectedCapabilityExample.response }}</code></pre>
+              </div>
+            </div>
+
+            <p v-if="selectedCapabilityExample.responseNote" class="text-xs text-gray-600 dark:text-gray-400">
+              {{ selectedCapabilityExample.responseNote }}
+            </p>
+          </section>
         </section>
 
         <!-- Client Tabs -->
@@ -126,7 +206,7 @@
             <h4 id="api-image-title" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.image.title') }}</h4>
             <div v-if="capabilities.image.sync.available" data-testid="api-image-sync">
               <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.sync') }}</p>
-              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">curl -X {{ capabilities.image.sync.method }} {{ apiExampleUrl(capabilities.image.sync.path) }} -H "Authorization: Bearer {api_key}" -H "Content-Type: application/json" -d '{"model":"{model}","prompt":"..."}'</code>
+              <code class="mt-1 block overflow-x-auto rounded bg-gray-900 px-3 py-2 text-[11px] text-gray-100">curl -X {{ capabilities.image.sync.method }} {{ apiExampleUrl(capabilities.image.sync.path) }} -H "Authorization: Bearer [REDACTED]" -H "Content-Type: application/json" -d '{"model":"{model}","prompt":"..."}'</code>
             </div>
             <div v-if="capabilities.image.async.generation.available" data-testid="api-image-async-generation">
               <p class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('keys.useKeyModal.api.image.asyncSubmit') }}</p>
@@ -425,6 +505,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildCodexModelCatalogUrl, fetchCodexModelsManifest } from '@/api/codex'
 import { keysAPI, type APIKeyCapabilities, type APIKeyCapabilityReason } from '@/api/keys'
+import { buildCapabilityAPIExample, type CapabilityAPIExample } from './apiCapabilityExamples'
 import type { GroupPlatform } from '@/types'
 import {
   findCodexCatalogModel,
@@ -474,11 +555,20 @@ interface CapabilityGuidanceItem {
   id: string
   label: string
   available: boolean
+  method?: string
   path?: string
   reason?: APIKeyCapabilityReason
 }
+interface SelectedCapabilityExample extends CapabilityAPIExample {
+  id: string
+  label: string
+  method: string
+  path: string
+}
 const capabilityState = ref<CapabilityState>('idle')
 const capabilities = ref<APIKeyCapabilities | null>(null)
+const selectedCapabilityExampleId = ref<string | null>(null)
+const copiedCapabilityExamplePart = ref<'request' | 'response' | null>(null)
 let capabilityController: AbortController | null = null
 let capabilityRequestID = 0
 const showCapabilityGuidance = computed(() => props.show && props.apiKeyId != null)
@@ -520,6 +610,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'image-sync',
       label: t('keys.useKeyModal.capabilities.imageSync'),
       available: image.sync.available,
+      method: image.sync.method,
       path: image.sync.path,
       reason: image.sync.reason
     },
@@ -527,6 +618,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'image-async-generation',
       label: t('keys.useKeyModal.capabilities.imageAsyncSubmit'),
       available: image.async.generation.available,
+      method: image.async.generation.method,
       path: image.async.generation.path,
       reason: image.async.generation.reason
     },
@@ -534,6 +626,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'image-async-edit',
       label: t('keys.useKeyModal.capabilities.imageAsyncEdit'),
       available: image.async.edit.available,
+      method: image.async.edit.method,
       path: image.async.edit.path,
       reason: image.async.edit.reason
     },
@@ -541,6 +634,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'image-async-poll',
       label: t('keys.useKeyModal.capabilities.imageAsyncPoll'),
       available: image.async.poll.available,
+      method: image.async.poll.method,
       path: image.async.poll.path,
       reason: image.async.poll.reason
     },
@@ -548,6 +642,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'batch-image',
       label: t('keys.useKeyModal.capabilities.batchImage'),
       available: capabilities.value.batch_image.available,
+      method: capabilities.value.batch_image.models.method,
       path: capabilities.value.batch_image.models.path,
       reason: capabilities.value.batch_image.reason
     },
@@ -555,6 +650,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'gemini-native-generate-content',
       label: t('keys.useKeyModal.capabilities.geminiNativeGenerateContent'),
       available: gemini.generate_content.available,
+      method: gemini.generate_content.method,
       path: gemini.generate_content.path,
       reason: gemini.generate_content.reason
     },
@@ -562,6 +658,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'gemini-native-stream-generate-content',
       label: t('keys.useKeyModal.capabilities.geminiNativeStreamGenerateContent'),
       available: gemini.stream_generate_content.available,
+      method: gemini.stream_generate_content.method,
       path: gemini.stream_generate_content.path,
       reason: gemini.stream_generate_content.reason
     },
@@ -569,6 +666,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'video-generation',
       label: t('keys.useKeyModal.capabilities.videoGeneration'),
       available: video?.generation.available ?? false,
+      method: video?.generation.method,
       path: video?.generation.path,
       reason: video?.generation.reason
     },
@@ -576,6 +674,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'video-status',
       label: t('keys.useKeyModal.capabilities.videoStatus'),
       available: video?.status.available ?? false,
+      method: video?.status.method,
       path: video?.status.path,
       reason: video?.status.reason
     },
@@ -583,6 +682,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'video-content',
       label: t('keys.useKeyModal.capabilities.videoContent'),
       available: video?.content.available ?? false,
+      method: video?.content.method,
       path: video?.content.path,
       reason: video?.content.reason
     },
@@ -590,6 +690,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'video-edit',
       label: t('keys.useKeyModal.capabilities.videoEdit'),
       available: video?.edit.available ?? false,
+      method: video?.edit.method,
       path: video?.edit.path,
       reason: video?.edit.reason
     },
@@ -597,6 +698,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'video-extension',
       label: t('keys.useKeyModal.capabilities.videoExtension'),
       available: video?.extension.available ?? false,
+      method: video?.extension.method,
       path: video?.extension.path,
       reason: video?.extension.reason
     },
@@ -604,6 +706,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'seedance-create',
       label: t('keys.useKeyModal.capabilities.seedanceCreate'),
       available: capabilities.value.seedance?.create?.available ?? false,
+      method: capabilities.value.seedance?.create?.method,
       path: capabilities.value.seedance?.create?.path,
       reason: capabilities.value.seedance?.create?.reason
     },
@@ -611,6 +714,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'seedance-status',
       label: t('keys.useKeyModal.capabilities.seedanceStatus'),
       available: capabilities.value.seedance?.status?.available ?? false,
+      method: capabilities.value.seedance?.status?.method,
       path: capabilities.value.seedance?.status?.path,
       reason: capabilities.value.seedance?.status?.reason
     },
@@ -618,6 +722,7 @@ const capabilityGuidanceItems = computed<CapabilityGuidanceItem[]>(() => {
       id: 'seedance-delete',
       label: t('keys.useKeyModal.capabilities.seedanceDelete'),
       available: capabilities.value.seedance?.delete?.available ?? false,
+      method: capabilities.value.seedance?.delete?.method,
       path: capabilities.value.seedance?.delete?.path,
       reason: capabilities.value.seedance?.delete?.reason
     }
@@ -629,6 +734,43 @@ const capabilityReasonLabel = (reason: APIKeyCapabilityReason) => {
   const translated = t(key)
   return translated === key ? t('keys.useKeyModal.capabilities.unavailable') : translated
 }
+
+const hasCapabilityExample = (id: string) => buildCapabilityAPIExample(id, '') !== null
+
+const selectedCapabilityExample = computed<SelectedCapabilityExample | null>(() => {
+  const id = selectedCapabilityExampleId.value
+  if (!id) return null
+  const item = capabilityGuidanceItems.value.find((candidate) => candidate.id === id)
+  if (!item?.available || !item.path) return null
+  const example = buildCapabilityAPIExample(id, apiExampleUrl(item.path))
+  if (!example) return null
+  return {
+    ...example,
+    id,
+    label: item.label,
+    method: item.method || 'GET',
+    path: item.path
+  }
+})
+
+const openCapabilityExample = (item: CapabilityGuidanceItem) => {
+  if (!item.available || !item.path || !hasCapabilityExample(item.id)) return
+  selectedCapabilityExampleId.value = item.id
+  copiedCapabilityExamplePart.value = null
+}
+
+const copyCapabilityExample = async (part: 'request' | 'response') => {
+  const example = selectedCapabilityExample.value
+  if (!example) return
+  const success = await clipboardCopy(example[part], t('keys.copied'))
+  if (success) {
+    copiedCapabilityExamplePart.value = part
+    setTimeout(() => {
+      if (copiedCapabilityExamplePart.value === part) copiedCapabilityExamplePart.value = null
+    }, 2000)
+  }
+}
+
 const activeClientTab = ref<string>('claude')
 watch(showApiTab, (available) => {
   if (!available && activeClientTab.value === 'api') {
@@ -730,6 +872,8 @@ watch(() => [props.show, props.apiKeyId] as const, ([show, id]) => {
     void loadCapabilities(id)
     return
   }
+  selectedCapabilityExampleId.value = null
+  copiedCapabilityExamplePart.value = null
   capabilityController?.abort()
   capabilityRequestID += 1
   capabilityState.value = 'idle'

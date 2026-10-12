@@ -44,6 +44,7 @@ function readBlobAsText(blob: Blob): Promise<string> {
 describe('UseKeyModal', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    copyToClipboardMock.mockClear()
     saveAsMock.mockClear()
     getCapabilitiesMock.mockReset()
   })
@@ -122,7 +123,7 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1/videos/generations')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/contents/generations/tasks')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('?alt=sse')
-    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('{api_key}')
+    expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('[REDACTED]')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).not.toContain('«reda...…»')
     expect(wrapper.find('[data-testid="capability-video-generation"]').text()).toContain('videos/generations')
     expect(wrapper.find('[data-testid="capability-video-edit"]').text()).toContain('keys.useKeyModal.capabilities.unavailable')
@@ -130,6 +131,57 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="capability-seedance-status"]').text()).toContain('/contents/generations/tasks/{task_id}')
     expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).toContain('GET https://example.com/v1/images/batches/models')
     expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).not.toContain('/v1/images/batches/{batch_id}/content')
+  })
+
+  it('opens request and response examples for the supported video routes', async () => {
+    getCapabilitiesMock.mockResolvedValue({
+      image: { sync: {}, async: { generation: {}, edit: {}, poll: {} } },
+      batch_image: { available: false, models: {} },
+      video: {
+        generation: { available: true, method: 'POST', path: '/v1/videos/generations' },
+        status: { available: true, method: 'GET', path: '/v1/videos/generations/{request_id}' },
+        content: { available: true, method: 'GET', path: '/v1/videos/generations/{request_id}/content' },
+        edit: { available: false, reason: 'route_unsupported' },
+        extension: { available: false, reason: 'route_unsupported' }
+      },
+      seedance: { available: false, create: {}, status: {}, delete: {} },
+      gemini_native: { image_generation: { available: false, generate_content: {}, stream_generate_content: {} } }
+    })
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKeyId: 42,
+        apiKey: '',
+        baseUrl: 'https://example.com/v1',
+        platform: 'composite'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    await wrapper.find('[data-testid="capability-example-video-generation"]').trigger('click')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('POST /v1/videos/generations')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('"duration":8')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('"request_id"')
+
+    await wrapper.find('[data-testid="capability-example-video-status"]').trigger('click')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('GET /v1/videos/generations/{request_id}')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('"status": "done"')
+
+    await wrapper.find('[data-testid="capability-example-video-content"]').trigger('click')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('GET /v1/videos/generations/{request_id}/content')
+    expect(wrapper.find('[data-testid="capability-example-panel"]').text()).toContain('video/mp4')
+    expect(wrapper.find('[data-testid="capability-example-video-edit"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="copy-capability-request"]').trigger('click')
+    expect(copyToClipboardMock).toHaveBeenCalledWith(expect.stringContaining('Authorization: Bearer [REDACTED]'), 'keys.copied')
   })
 
   it('does not request capability metadata without a selected key id', async () => {
