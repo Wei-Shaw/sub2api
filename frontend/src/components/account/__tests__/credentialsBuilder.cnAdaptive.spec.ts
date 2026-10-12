@@ -8,6 +8,8 @@ describe('cnSupportsNativeResponses', () => {
     expect(cnSupportsNativeResponses('kimi')).toBe(true)
     expect(cnSupportsNativeResponses('minimax')).toBe(true)
     expect(cnSupportsNativeResponses('zhipu')).toBe(false)
+    expect(cnSupportsNativeResponses('zhipu', 'payg')).toBe(false)
+    expect(cnSupportsNativeResponses('zhipu', 'coding')).toBe(true)
     expect(cnSupportsNativeResponses('openai')).toBe(false)
   })
 })
@@ -35,7 +37,7 @@ describe('defaultCNAdaptiveBaseUrls', () => {
     expect(defaultCNAdaptiveBaseUrls('zhipu', 'coding')).toEqual({
       chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
       anthropic: 'https://open.bigmodel.cn/api/anthropic',
-      responses: ''
+      responses: 'https://open.bigmodel.cn/api/v1'
     })
   })
 

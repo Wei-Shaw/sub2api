@@ -85,7 +85,8 @@
             "mode": "coding",
             "base_urls": {
               "anthropic": "https://open.bigmodel.cn/api/anthropic",
-              "chat_completions": "https://open.bigmodel.cn/api/coding/paas/v4"
+              "chat_completions": "https://open.bigmodel.cn/api/coding/paas/v4",
+              "responses": "https://open.bigmodel.cn/api/v1"
             }
           }
         ]

@@ -35,9 +35,9 @@ func legacyProviderDefaultBaseURL(platform, mode, protocol string) string {
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		if platform == PlatformZhipu && protocol == APIProtocolResponses {
-			// 唯一的函数级差异：旧 switch 对智谱 Responses 也返回 CC 基址，profile
-			// 以"缺条目即不支持"建模后返回空串。所有运行时调用方都先经
-			// UsesNativeCNResponses / SupportsNativeCNResponses 守卫，智谱不会走到这里。
+			if coding {
+				return DefaultZhipuCodingResponsesBaseURL
+			}
 			return ""
 		}
 		switch platform {
@@ -137,7 +137,7 @@ func TestProviderProfile_NativeResponsesMatchesLegacy(t *testing.T) {
 	for _, platform := range []string{PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
 		for _, mode := range modes {
 			account := &Account{Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{"account_mode": mode}}
-			require.Equal(t, legacy[platform], account.SupportsNativeCNResponses(), platform+"/"+mode)
+			require.Equal(t, legacy[platform] || (platform == PlatformZhipu && mode == AccountModeCoding), account.SupportsNativeCNResponses(), platform+"/"+mode)
 		}
 	}
 	require.False(t, (*Account)(nil).SupportsNativeCNResponses())

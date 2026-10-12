@@ -1657,17 +1657,32 @@ type openAIResponsesCompatibilityOptions struct {
 
 func normalizeOpenAIResponsesCompatibilityBodyWithOptions(body []byte, account *Account, opts openAIResponsesCompatibilityOptions) ([]byte, bool, error) {
 	responsesLite := opts.ResponsesLite
-	if account == nil || !account.IsOpenAI() {
+	if account == nil {
 		return body, false, nil
 	}
 	normalized := body
 	changed := false
-	if account.IsOpenAIOAuthLike() {
-		var err error
-		normalized, changed, err = normalizeOpenAIResponsesLegacyIngressWithConfig(opts.Config, body)
+	if planOpenAIResponsesAdaptation(account, normalized).normalizeAgentMessages {
+		next, normalizedAgentMessages, err := normalizeOpenAIResponsesAgentMessages(normalized)
 		if err != nil {
 			return body, false, err
 		}
+		if normalizedAgentMessages {
+			normalized = next
+			changed = true
+		}
+	}
+	if !account.IsOpenAI() {
+		return normalized, changed, nil
+	}
+	if account.IsOpenAIOAuthLike() {
+		var err error
+		var legacyChanged bool
+		normalized, legacyChanged, err = normalizeOpenAIResponsesLegacyIngressWithConfig(opts.Config, normalized)
+		if err != nil {
+			return body, false, err
+		}
+		changed = changed || legacyChanged
 		if next, idsChanged, err := normalizeCodexAdditionalToolsIDsBody(normalized); err != nil {
 			return body, false, err
 		} else if idsChanged {
