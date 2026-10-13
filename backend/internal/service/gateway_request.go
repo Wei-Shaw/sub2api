@@ -573,8 +573,55 @@ func isClaude55SignedThinkingModel(model string) bool {
 	return claude.IsOpus55(model) || claude.IsSonnet55(model)
 }
 
+// NormalizeClaude55Thinking converts legacy thinking parameters to the adaptive
+// format required by Claude 5.5 models (Opus 5.5, Sonnet 5.5).
+//
+// Claude 5.5 models only accept thinking.type="adaptive" (with output_config.effort)
+// or thinking.type="between_tools" (Sonnet 5.5 only). Older clients (e.g. Claude Code)
+// may still send thinking.type="enabled" with budget_tokens, which the upstream API
+// rejects with 400.
+//
+// This function transparently upgrades:
+//   - thinking.type="enabled" → thinking.type="adaptive"
+//   - Removes thinking.budget_tokens (not supported with adaptive)
+//   - Sets output_config.effort="high" if not already present
+//   - thinking.type="disabled" → removes the thinking field entirely
+//
+// Returns (modified body, true) if a rewrite was applied, or (original body, false)
+// if no rewrite was needed.
+func NormalizeClaude55Thinking(body []byte, model string) ([]byte, bool) {
+	if !isClaude55SignedThinkingModel(model) {
+		return body, false
+	}
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	switch thinkingType {
+	case "enabled":
+		// Convert enabled → adaptive
+		modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")
+		if err != nil {
+			return body, false
+		}
+		// Remove budget_tokens (not supported with adaptive thinking)
+		modified, _ = sjson.DeleteBytes(modified, "thinking.budget_tokens")
+		// Set default output_config.effort if not already present
+		if !gjson.GetBytes(modified, "output_config.effort").Exists() {
+			modified, _ = sjson.SetBytes(modified, "output_config.effort", "high")
+		}
+		return modified, true
+	case "disabled":
+		// Remove the thinking field entirely; Claude 5.5 doesn't accept "disabled"
+		modified, err := sjson.DeleteBytes(body, "thinking")
+		if err != nil {
+			return body, false
+		}
+		return modified, true
+	default:
+		return body, false
+	}
+}
+
 // validateClaude55Request rejects settings that the upstream cannot honor.
-// Call before OAuth mimicry can remove tool_choice or alter thinking defaults.
+// Call after NormalizeClaude55Thinking to ensure legacy thinking has been converted.
 func validateClaude55Request(body []byte, model string) error {
 	if !isClaude55SignedThinkingModel(model) {
 		return nil
@@ -582,6 +629,7 @@ func validateClaude55Request(body []byte, model string) error {
 	isSonnet55 := claude.IsSonnet55(model)
 	switch gjson.GetBytes(body, "thinking.type").String() {
 	case "disabled", "enabled":
+		// After normalization these should not appear; kept as a safety net.
 		if isSonnet55 {
 			return fmt.Errorf("claude-sonnet-5-5 requires adaptive thinking or thinking.type=between_tools; omit thinking or use one of those modes")
 		}

@@ -1771,8 +1771,11 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_Non2xxRecordsOllamaActivity(t
 }
 
 func TestOpus55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	// thinking.type=disabled and thinking.type=enabled are now auto-normalized
+	// (disabled → removed, enabled → adaptive), so they should NOT produce errors.
+	// Only tool_choice restrictions remain hard errors.
 	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
-		for _, field := range []string{`"thinking":{"type":"disabled"}`, `"thinking":{"type":"enabled","budget_tokens":1024}`, `"tool_choice":{"type":"any"}`, `"tool_choice":{"type":"tool","name":"lookup"}`} {
+		for _, field := range []string{`"tool_choice":{"type":"any"}`, `"tool_choice":{"type":"tool","name":"lookup"}`} {
 			for _, count := range []bool{false, true} {
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
@@ -1800,6 +1803,35 @@ func TestOpus55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
 	}
 }
 
+func TestOpus55NormalizesLegacyThinkingBeforeMimicry(t *testing.T) {
+	// thinking.type=disabled and thinking.type=enabled should be auto-normalized
+	// and NOT rejected, allowing older clients (e.g. Claude Code) to work.
+	for _, tc := range []struct {
+		field string
+		name  string
+	}{
+		{`"thinking":{"type":"disabled"}`, "disabled"},
+		{`"thinking":{"type":"enabled","budget_tokens":1024}`, "enabled"},
+	} {
+		for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+			t.Run(tc.name+"/"+typ, func(t *testing.T) {
+				model := "claude-opus-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				if typ == AccountTypeAPIKey {
+					model = "public-opus"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-opus-5-5"}}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + tc.field + `}`)
+				// Verify normalization works at the function level
+				resolvedModel := "claude-opus-5-5"
+				rewritten, applied := NormalizeClaude55Thinking(body, resolvedModel)
+				require.True(t, applied, "normalization should be applied")
+				require.NoError(t, validateClaude55Request(rewritten, resolvedModel), "normalized body should pass validation")
+			})
+		}
+	}
+}
+
 func TestOpus55ThinkingDefaultPreservesSignedHistory(t *testing.T) {
 	body := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"tool_choice":{"type":"none"},"thinking":{"type":"adaptive","display":"omitted"}}`)
 	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "claude-opus-5-5")))
@@ -1814,9 +1846,9 @@ func TestOpus55ThinkingDefaultPreservesSignedHistory(t *testing.T) {
 }
 
 func TestSonnet55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	// thinking.type=disabled and thinking.type=enabled are now auto-normalized,
+	// so they are excluded from the rejection list.
 	fields := []string{
-		`"thinking":{"type":"disabled"}`,
-		`"thinking":{"type":"enabled","budget_tokens":1024}`,
 		`"thinking":{"type":"between_tools"},"output_config":{"effort":"xhigh"}`,
 		`"thinking":{"type":"between_tools","display":"summarized"}`,
 		`"tool_choice":{"type":"any"}`,
@@ -1854,6 +1886,23 @@ func TestSonnet55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
 				require.Contains(t, rec.Body.String(), "invalid_request_error", field)
 			}
 		}
+	}
+}
+
+func TestSonnet55NormalizesLegacyThinkingBeforeMimicry(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		name  string
+	}{
+		{`"thinking":{"type":"disabled"}`, "disabled"},
+		{`"thinking":{"type":"enabled","budget_tokens":1024}`, "enabled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"user","content":"hello"}],` + tc.field + `}`)
+			rewritten, applied := NormalizeClaude55Thinking(body, "claude-sonnet-5-5")
+			require.True(t, applied, "normalization should be applied")
+			require.NoError(t, validateClaude55Request(rewritten, "claude-sonnet-5-5"), "normalized body should pass validation")
+		})
 	}
 }
 
