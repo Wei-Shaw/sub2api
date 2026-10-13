@@ -102,6 +102,7 @@
                 <button v-if="canQueueRotation(row, rotationJobs[row.id])" type="button" class="text-xs font-medium text-primary-700 hover:underline dark:text-primary-300" :disabled="Boolean(jobActionBusy) || Boolean(sensitiveBusy) || sessionActive(row.id)" :data-testid="`vault-queue-${row.id}`" @click="openQueue('rotation', [row])">{{ t('admin.accountVault.rotation.start') }}</button>
                 <button v-if="canResumeRotation(rotationJobs[row.id])" type="button" class="text-xs font-medium text-primary-700 hover:underline dark:text-primary-300" :disabled="Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :data-testid="`vault-resume-${row.id}`" @click="runRotationAction('resume', [row])">{{ t('admin.accountVault.rotation.resume') }}</button>
                 <button v-if="canCancelRotation(rotationJobs[row.id])" type="button" class="text-xs text-gray-600 hover:underline dark:text-gray-300" :disabled="Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :data-testid="`vault-cancel-${row.id}`" @click="runRotationAction('cancel', [row])">{{ t('admin.accountVault.rotation.cancel') }}</button>
+                <button v-if="rotationState(row, rotationJobs[row.id]) === 'maintenance'" type="button" class="text-xs font-medium text-amber-800 underline dark:text-amber-300" :data-testid="`vault-maintenance-${row.id}`" @click="rotationDetail = row">{{ t('admin.accountVault.rotation.maintenanceAction') }}</button>
               </div>
             </div>
           </template>
@@ -173,6 +174,11 @@
         <p class="break-all font-medium">{{ rotationDetail.email }}</p>
         <p>{{ t(`admin.accountVault.rotation.states.${rotationState(rotationDetail, rotationJobs[rotationDetail.id])}`) }}</p>
         <p v-if="rotationState(rotationDetail, rotationJobs[rotationDetail.id]) === 'maintenance'">{{ t('admin.accountVault.rotation.maintenanceHint') }}</p>
+        <ol v-if="rotationState(rotationDetail, rotationJobs[rotationDetail.id]) === 'maintenance'" class="list-decimal space-y-2 pl-5 text-sm">
+          <li>{{ t('admin.accountVault.rotation.maintenanceStepOne') }}</li>
+          <li>{{ t('admin.accountVault.rotation.maintenanceStepTwo') }}</li>
+          <li>{{ t('admin.accountVault.rotation.maintenanceStepThree') }}</li>
+        </ol>
         <p v-else>{{ t(`admin.accountVault.rotation.phases.${rotationPhase(rotationDetail, rotationJobs[rotationDetail.id])}`) }}</p>
         <p v-if="rotationJobs[rotationDetail.id]?.message" class="break-words">{{ rotationJobs[rotationDetail.id].message }}</p>
         <p v-if="rotationJobs[rotationDetail.id]?.progress === 'awaiting_user'">{{ t('admin.accountVault.rotation.manualHint') }}</p>

@@ -62,10 +62,16 @@ func (s *AccountUsageService) getOpenAILiveUsage(ctx context.Context, account *A
 		hasCached = json.Unmarshal(raw, &cached) == nil && !cached.FetchedAt.IsZero() &&
 			(cached.Primary != nil || cached.Secondary != nil) && validQuotaWindow(cached.Primary) && validQuotaWindow(cached.Secondary)
 	}
-	if !force && account.Extra != nil {
-		if hasCached && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < time.Minute {
-			return usageFromLiveQuota(&cached, "cached"), nil
+	// The account table requests many rows at once. Refreshing every old
+	// snapshot here can exceed the browser's batch timeout and hide all rows,
+	// even though their last successful readings are still available. Only an
+	// explicit refresh (force=true) should wait for the upstream quota API.
+	if !force && hasCached {
+		state := "stale"
+		if age := time.Since(cached.FetchedAt); age >= 0 && age < time.Minute {
+			state = "cached"
 		}
+		return usageFromLiveQuota(&cached, state), nil
 	}
 	q, err := s.queryLiveQuota(ctx, account.ID)
 	if err != nil {

@@ -172,7 +172,16 @@ func TestVaultLiveQuotaUsesActualWindowAndPreservesFailedSnapshot(t *testing.T) 
 	require.Equal(t, "cached", cached.QuotaQueryStatus)
 	require.Equal(t, q.FetchedAt, *cached.UpdatedAt)
 	require.Equal(t, 1, *calls)
+	old := *q
+	old.FetchedAt = time.Now().Add(-10 * time.Minute)
+	account.Extra = map[string]any{"openai_live_quota": &old}
+	staleList, err := usage.getOpenAILiveUsage(context.Background(), account, false)
+	require.NoError(t, err)
+	require.Equal(t, "stale", staleList.QuotaQueryStatus)
+	require.True(t, old.FetchedAt.Equal(*staleList.UpdatedAt))
+	require.Equal(t, 1, *calls, "loading a stale table snapshot must not query upstream")
 	require.NotContains(t, repo.extraUpdates[100], "access_token")
+	account.Extra = map[string]any{"openai_live_quota": q}
 	failing, _, failedRepo, _ := automationTestUsage(t, 401, `{"error":{"code":"token_revoked"}}`)
 	result, err := failing.getOpenAILiveUsage(context.Background(), account, true)
 	require.Error(t, err)
