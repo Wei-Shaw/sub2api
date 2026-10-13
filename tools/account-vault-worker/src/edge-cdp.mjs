@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { access, lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createServer } from 'node:net';
@@ -8,6 +8,24 @@ import { WorkerError, delay } from './errors.mjs';
 
 const PREFIX = 'sub2api-vault-edge-';
 const EDGE_SUFFIX = join('Microsoft', 'Edge', 'Application', 'msedge.exe');
+
+function runWindows(executable, args, timeout = 3000) {
+  return new Promise((resolveRun, rejectRun) => {
+    execFile(executable, args, { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 },
+      (error, stdout) => error ? rejectRun(error) : resolveRun(stdout));
+  });
+}
+
+async function listenerPID(port) {
+  try {
+    const listing = await runWindows('netstat.exe', ['-ano', '-p', 'tcp']);
+    for (const line of listing.split(/\r?\n/)) {
+      const match = /^\s*TCP\s+127\.0\.0\.1:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/.exec(line);
+      if (match && Number(match[1]) === port) return Number(match[2]);
+    }
+  } catch { /* Cleanup will still close the Playwright connection. */ }
+  return null;
+}
 
 export async function findEdgeExecutable(env = process.env) {
   for (const prefix of [env['PROGRAMFILES(X86)'], env.PROGRAMFILES, env.LOCALAPPDATA]) {
@@ -64,12 +82,32 @@ export async function launchPrivateEdge(chromium, signal) {
   const close = async () => {
     if (closed) return;
     closed = true;
+    const ownerPID = await listenerPID(port);
+    // Browser.close on a CDP attachment can disconnect without terminating
+    // the successor Edge process. Kill only the PID still listening on the
+    // exact loopback port reserved for this temporary profile.
+    let killed = false;
+    if (ownerPID && await listenerPID(port) === ownerPID) {
+      try {
+        await runWindows('taskkill.exe', ['/PID', String(ownerPID), '/T', '/F'], 5000);
+        killed = true;
+      } catch { /* Try the protocol-level close below. */ }
+    }
+    if (!killed && browser?.isConnected()) {
+      try {
+        const session = await browser.newBrowserCDPSession();
+        await Promise.race([
+          session.send('Browser.close').catch(() => {}),
+          new Promise(resolveTimeout => setTimeout(resolveTimeout, 2000)),
+        ]);
+      } catch { /* The owned browser may already be closing. */ }
+    }
     await browser?.close().catch(() => {});
     if (child.exitCode === null) {
       child.kill();
       await Promise.race([
         new Promise(resolveExit => child.once('exit', resolveExit)),
-        new Promise(resolveTimeout => setTimeout(resolveTimeout, 5000)),
+        new Promise(resolveTimeout => setTimeout(resolveTimeout, 1000)),
       ]);
     }
     await removeOwnedProfile(profile);
@@ -77,7 +115,7 @@ export async function launchPrivateEdge(chromium, signal) {
   try {
     let ready = false;
     for (let attempt = 0; attempt < 100; attempt++) {
-      if (signal?.aborted || child.exitCode !== null || spawnFailed) throw new WorkerError('BROWSER_EDGE_CLOSED_ON_START');
+      if (signal?.aborted || spawnFailed) throw new WorkerError('BROWSER_EDGE_CLOSED_ON_START');
       try {
         const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1000) });
         const version = await response.json();

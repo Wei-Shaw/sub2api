@@ -191,6 +191,11 @@ export async function runJob({ session, provider, onManual = async () => { throw
         if (session.job.status === 'completed' && phase === 'completed') return { status: 'completed' };
       } catch { /* Pause using the last known state; the lease will expire. */ }
     }
+    // Record the machine code before browser cleanup; never print provider
+    // errors, URLs, credentials, or page content.
+    if (Number.isSafeInteger(session.job.account_id) && session.job.account_id > 0 && /^[A-Z][A-Z0-9_]{2,63}$/.test(code)) {
+      console.error(`账号 #${session.job.account_id}：已暂停（${code}）`);
+    }
     await session.pause(pauseCode(code, phase));
     return { status: 'paused', code };
   } finally {

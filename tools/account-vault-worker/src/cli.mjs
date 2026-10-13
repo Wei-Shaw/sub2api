@@ -91,16 +91,20 @@ async function main() {
         const closeOnAbort = () => { void task.provider?.close(); };
         session.signal.addEventListener('abort', closeOnAbort, { once: true });
         let result;
+        let setupStage = 'BROWSER_START';
         try {
           const needsBrowser = !(claim.job.kind === 'session' && claim.job.phase === 'prepared');
           if (needsBrowser) {
-          if (privateEdge) task.host = await launchPrivateEdge(chromium, session.signal);
-          task.provider = await createProvider(task.host?.browser ?? browser, session.signal,
-            () => session.stop('BROWSER_CLOSED'), task.host
-              ? { context: task.host.context, page: task.host.page, externalNavigation: true, manualLogin: false }
-              : {});
-          if (task.host) await markWindow(task.host.page, claim.job.account_id);
+            if (privateEdge) task.host = await launchPrivateEdge(chromium, session.signal);
+            setupStage = 'PROVIDER_CREATE';
+            task.provider = await createProvider(task.host?.browser ?? browser, session.signal,
+              () => session.stop('BROWSER_CLOSED'), task.host
+                ? { context: task.host.context, page: task.host.page, externalNavigation: true, manualLogin: false }
+                : {});
+            setupStage = 'MARK_WINDOW';
+            if (task.host) await markWindow(task.host.page, claim.job.account_id);
           }
+          setupStage = 'RUN_JOB';
           console.log(`账号 #${claim.job.account_id}：${LABELS[claim.job.phase] ?? '正在恢复状态'}`);
           result = await (claim.job.kind === 'session' ? runSessionJob : runJob)({
             session, provider: task.provider,
@@ -114,7 +118,16 @@ async function main() {
             onProgress: phase => console.log(`账号 #${claim.job.account_id}：${phase === 'authorization' ? '正在自动确认 OAuth 授权' : phase === 'exchange' ? '正在交换 OAuth 凭据' : phase === 'import' ? '正在导入或更新系统账号' : LABELS[phase] ?? '状态已更新'}`),
           });
         } catch (error) {
-          result = { status: 'paused', code: session.stopReason || safeCode(error) };
+          const rawCode = session.stopReason || safeCode(error);
+          const kind = /^[A-Za-z]+$/.test(error?.name ?? '') ? error.name.toUpperCase() : 'ERROR';
+          const candidate = rawCode === 'WORKER_FAILED' ? `WORKER_FAILED_${setupStage}_${kind}` : rawCode;
+          const code = /^[A-Z][A-Z0-9_]{2,63}$/.test(candidate) ? candidate : 'WORKER_FAILED';
+          // Only a numeric account ID and symbolic code reach the server log.
+          // Emit this before browser cleanup, which can take time after a fault.
+          if (Number.isSafeInteger(claim.job.account_id) && claim.job.account_id > 0) {
+            console.error(`账号 #${claim.job.account_id}：已暂停（${code}）`);
+          }
+          result = { status: 'paused', code };
           await session.pause(pauseCode(result.code, session.job.phase));
         } finally {
           session.signal.removeEventListener('abort', closeOnAbort);

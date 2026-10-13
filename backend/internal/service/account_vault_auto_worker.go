@@ -34,9 +34,11 @@ type autoWorkerErrorSink struct {
 	mu   sync.Mutex
 	tail string
 	code string
+	lastPause string
 }
 
 var autoWorkerErrorPattern = regexp.MustCompile(`助手停止：([A-Z][A-Z0-9_]{2,63})。`)
+var autoWorkerPausePattern = regexp.MustCompile(`账号 #([0-9]{1,12})：已暂停（([A-Z][A-Z0-9_]{2,63})）`)
 
 func (sink *autoWorkerErrorSink) Write(data []byte) (int, error) {
 	sink.mu.Lock()
@@ -48,6 +50,15 @@ func (sink *autoWorkerErrorSink) Write(data []byte) (int, error) {
 	chunk := sink.tail + string(data)
 	if match := autoWorkerErrorPattern.FindStringSubmatch(chunk); match != nil {
 		sink.code = strings.ToLower(match[1])
+	}
+	if match := autoWorkerPausePattern.FindStringSubmatch(chunk); match != nil {
+		// Log only the numeric vault ID and a bounded machine code. The helper's
+		// free-form output can contain sensitive provider data and is discarded.
+		pause := match[1] + ":" + match[2]
+		if pause != sink.lastPause {
+			log.Printf("account vault auto-worker paused: account_id=%s code=%s", match[1], match[2])
+			sink.lastPause = pause
+		}
 	}
 	if len(chunk) > 128 {
 		chunk = chunk[len(chunk)-128:]
