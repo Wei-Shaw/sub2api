@@ -1831,8 +1831,9 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 }
 
 // NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
-// LLM providers that use Anthropic-compatible endpoints but have different accepted
-// values for `thinking.type`. Currently scoped to:
+// LLM providers that use Anthropic-style thinking objects on Messages or Chat
+// Completions endpoints but have different accepted values for `thinking.type`.
+// Currently scoped to:
 //   - MiniMax M-series (`MiniMax-m*`, covering M2.x / M3 / M3.x): official docs accept
 //     only `thinking.type` of "adaptive" or "disabled"; "enabled" is not a valid value
 //     and may be rejected/ignored. Pi-ai and other Anthropic-SDK clients default to
@@ -1843,9 +1844,9 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 // added here as separate case branches.
 //
 // Returns (modified body, true) if a rewrite was applied, or (original body, false)
-// if no rewrite was needed. Caller should be on the Anthropic forward path AFTER
-// FilterThinkingBlocks and BEFORE building the upstream request, only for
-// passback-required models (ResolveThinkingProtocol == PassbackRequired).
+// if no rewrite was needed. Call after model mapping and before building the
+// upstream request. On Anthropic paths, call after FilterThinkingBlocks when
+// that filter is applied.
 func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
 	modelLower := strings.ToLower(mappedModel)
 	if !strings.HasPrefix(modelLower, "minimax-m") {
