@@ -2719,6 +2719,19 @@
         <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
       </div>
 
+      <!-- RPM 限制（所有账号；Anthropic OAuth/SetupToken 在下方配额控制面板内配置） -->
+      <div
+        v-if="account && !isAnthropicQuotaControlAccount"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <AccountRpmLimitSection
+          v-model:enabled="rpmLimitEnabled"
+          v-model:base-rpm="baseRpm"
+          v-model:strategy="rpmStrategy"
+          v-model:sticky-buffer="rpmStickyBuffer"
+        />
+      </div>
+
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
@@ -3261,6 +3274,7 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AccountRpmLimitSection from '@/components/account/AccountRpmLimitSection.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import {
@@ -3827,6 +3841,12 @@ const baseRpm = ref<number | null>(null)
 const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const rpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref('')
+// Anthropic OAuth/SetupToken accounts configure RPM inside their quota-control panel;
+// every other account gets the standalone RPM limit section.
+const isAnthropicQuotaControlAccount = computed(() =>
+  props.account?.platform === 'anthropic' &&
+  (props.account?.type === 'oauth' || props.account?.type === 'setup-token')
+)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -5051,7 +5071,21 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   })
 }
 
-// Load quota control settings from account (Anthropic OAuth/SetupToken only)
+// Normalized RPM limit as stored in extra (base_rpm 0 = disabled).
+function buildRpmLimitExtra() {
+  if (!rpmLimitEnabled.value || baseRpm.value == null || baseRpm.value <= 0) {
+    return { base_rpm: 0, rpm_strategy: '', rpm_sticky_buffer: 0 }
+  }
+  return {
+    base_rpm: Math.floor(baseRpm.value),
+    rpm_strategy: rpmStrategy.value,
+    rpm_sticky_buffer: rpmStrategy.value === 'tiered' && rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0
+      ? Math.floor(rpmStickyBuffer.value)
+      : 0
+  }
+}
+
+// Load quota control settings from account (RPM: every account; the rest: Anthropic OAuth/SetupToken only)
 function loadQuotaControlSettings(account: Account) {
   // Reset all quota control state first
   windowCostEnabled.value = false
@@ -5072,6 +5106,14 @@ function loadQuotaControlSettings(account: Account) {
   cacheTTLOverrideTarget.value = '5m'
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
+
+  // RPM limit applies to every account
+  if (account.base_rpm != null && account.base_rpm > 0) {
+    rpmLimitEnabled.value = true
+    baseRpm.value = account.base_rpm
+    rpmStrategy.value = (account.rpm_strategy as 'tiered' | 'sticky_exempt') || 'tiered'
+    rpmStickyBuffer.value = account.rpm_sticky_buffer ?? null
+  }
 
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
@@ -5094,14 +5136,6 @@ function loadQuotaControlSettings(account: Account) {
     sessionLimitEnabled.value = true
     maxSessions.value = account.max_sessions
     sessionIdleTimeout.value = account.session_idle_timeout_minutes ?? 5
-  }
-
-  // RPM limit
-  if (account.base_rpm != null && account.base_rpm > 0) {
-    rpmLimitEnabled.value = true
-    baseRpm.value = account.base_rpm
-    rpmStrategy.value = (account.rpm_strategy as 'tiered' | 'sticky_exempt') || 'tiered'
-    rpmStickyBuffer.value = account.rpm_sticky_buffer ?? null
   }
 
   // UMQ mode（独立于 RPM 加载，防止编辑无 RPM 账号时丢失已有配置）
@@ -6080,6 +6114,39 @@ const handleSubmit = async () => {
         delete newExtra.upstream_request_id_header
       }
       updatePayload.extra = newExtra
+    }
+
+    // RPM limit for accounts outside the Anthropic OAuth/SetupToken quota panel.
+    // Written only when it changed, like the upstream request-id header above.
+    if (!isAnthropicQuotaControlAccount.value) {
+      const nextRpm = buildRpmLimitExtra()
+      const prevRpm = {
+        base_rpm: props.account.base_rpm ?? 0,
+        rpm_strategy: props.account.base_rpm ? (props.account.rpm_strategy || 'tiered') : '',
+        rpm_sticky_buffer: props.account.base_rpm ? (props.account.rpm_sticky_buffer ?? 0) : 0
+      }
+      if (
+        nextRpm.base_rpm !== prevRpm.base_rpm ||
+        nextRpm.rpm_strategy !== prevRpm.rpm_strategy ||
+        nextRpm.rpm_sticky_buffer !== prevRpm.rpm_sticky_buffer
+      ) {
+        const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+        const newExtra: Record<string, unknown> = { ...currentExtra }
+        if (nextRpm.base_rpm > 0) {
+          newExtra.base_rpm = nextRpm.base_rpm
+          newExtra.rpm_strategy = nextRpm.rpm_strategy
+          if (nextRpm.rpm_sticky_buffer > 0) {
+            newExtra.rpm_sticky_buffer = nextRpm.rpm_sticky_buffer
+          } else {
+            delete newExtra.rpm_sticky_buffer
+          }
+        } else {
+          delete newExtra.base_rpm
+          delete newExtra.rpm_strategy
+          delete newExtra.rpm_sticky_buffer
+        }
+        updatePayload.extra = newExtra
+      }
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

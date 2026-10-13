@@ -285,6 +285,15 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		QuotaDimension:          a.QuotaDimension,
 	}
 
+	// 账号级 RPM 限制适用于所有平台与账号类型
+	if rpm := a.GetBaseRPM(); rpm > 0 {
+		out.BaseRPM = &rpm
+		strategy := a.GetRPMStrategy()
+		out.RPMStrategy = &strategy
+		buffer := a.GetRPMStickyBuffer()
+		out.RPMStickyBuffer = &buffer
+	}
+
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
 	if a.IsAnthropicOAuthOrSetupToken() {
 		if limit := a.GetWindowCostLimit(); limit > 0 {
@@ -298,13 +307,6 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
 			out.SessionIdleTimeoutMin = &idleTimeout
-		}
-		if rpm := a.GetBaseRPM(); rpm > 0 {
-			out.BaseRPM = &rpm
-			strategy := a.GetRPMStrategy()
-			out.RPMStrategy = &strategy
-			buffer := a.GetRPMStickyBuffer()
-			out.RPMStickyBuffer = &buffer
 		}
 		// 用户消息队列模式
 		if mode := a.GetUserMsgQueueMode(); mode != "" {

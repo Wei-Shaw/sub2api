@@ -470,6 +470,7 @@ type OpenAIGatewayService struct {
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
+	rpmCache              RPMCache // 账号级 RPM 计数（与 GatewayService 共用，见 openai_account_rpm.go）
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once

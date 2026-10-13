@@ -123,7 +123,6 @@ const sessionLimitTooltip = computed(() => {
 
 // ====== RPM ======
 const showRpmLimit = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
   props.account.base_rpm != null &&
   props.account.base_rpm > 0
 )

@@ -399,11 +399,11 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 				}
 			}
 		}
+	}
 
-		if h.rpmCache != nil && account.GetBaseRPM() > 0 {
-			if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
-				item.CurrentRPM = &rpm
-			}
+	if h.rpmCache != nil && account.GetBaseRPM() > 0 {
+		if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
+			item.CurrentRPM = &rpm
 		}
 	}
 
@@ -732,7 +732,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
+	// 识别需要查询窗口费用、会话数（Anthropic OAuth/SetupToken 且启用了相应功能）和 RPM（任意启用 RPM 限制的账号）的账号
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
 	rpmAccountIDs := make([]int64, 0)
@@ -747,9 +747,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
 				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 			}
-			if acc.GetBaseRPM() > 0 {
-				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
-			}
+		}
+		if acc.GetBaseRPM() > 0 {
+			rpmAccountIDs = append(rpmAccountIDs, acc.ID)
 		}
 	}
 
