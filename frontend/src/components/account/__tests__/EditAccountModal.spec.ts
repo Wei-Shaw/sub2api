@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, syncUpstreamModelsMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
+  syncUpstreamModelsMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
 
@@ -46,7 +47,10 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  accountsAPI: {
+    syncUpstreamModels: syncUpstreamModelsMock,
+  }
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -308,7 +312,7 @@ function buildOpenAIOAuthParentAccount() {
   } as any
 }
 
-function mountModal(account = buildAccount(), renderGroupSelector = false) {
+function mountModal(account = buildAccount(), renderGroupSelector = false, renderModelSelector = false) {
   return mount(EditAccountModal, {
     props: {
       show: true,
@@ -323,7 +327,8 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
         Icon: true,
         ProxySelector: true,
         GroupSelector: renderGroupSelector ? false : GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        ModelWhitelistSelector: renderModelSelector ? false : ModelWhitelistSelectorStub,
+        ModelIcon: true
       }
     }
   })
@@ -352,6 +357,42 @@ describe('EditAccountModal', () => {
     expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
       { from: 'gpt-latest', to: 'deepseek-chat' }
     ])
+  })
+
+  it('saves filtered additions and removals without overwriting other models or mappings', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      'gpt-kept': 'gpt-kept',
+      'gemini-removed': 'gemini-removed',
+      'gpt-alias': 'deepseek-chat'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    syncUpstreamModelsMock.mockReset().mockResolvedValue({
+      models: ['gpt-upstream-new', 'gemini-upstream-new', 'gpt-alias']
+    })
+    const wrapper = mountModal(account, false, true)
+    const syncButton = wrapper.findAll('button').find(button =>
+      button.text() === 'admin.accounts.syncUpstreamModels'
+    )!
+    await syncButton.trigger('click')
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="model-search"]').setValue('gemini')
+    await wrapper.get('[data-testid="remove-filtered-models"]').trigger('click')
+    await wrapper.get('[data-testid="model-search"]').setValue('gpt')
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledOnce()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-kept': 'gpt-kept',
+      'gpt-upstream-new': 'gpt-upstream-new',
+      'gpt-alias': 'deepseek-chat'
+    })
+    expect(account.credentials.model_mapping).toHaveProperty('gemini-removed')
   })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {

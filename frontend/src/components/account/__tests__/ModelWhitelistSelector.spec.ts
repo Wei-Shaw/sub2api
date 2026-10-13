@@ -239,7 +239,8 @@ describe('ModelWhitelistSelector', () => {
     await syncButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.emitted('update:modelValue')).toEqual([[['x-preview-f-free']]])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(findModelRow(wrapper, 'x-preview-f-free').exists()).toBe(true)
     expect(showWarning).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsMetadataIncomplete')
     expect(showSuccess).not.toHaveBeenCalled()
   })
@@ -274,8 +275,9 @@ describe('ModelWhitelistSelector', () => {
     await syncButton!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-6-astra', 'gpt-image-2']]])
-    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsSuccess')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(findModelRow(wrapper, 'gpt-6-astra').exists()).toBe(true)
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.upstreamModelCandidatesLoaded')
     expect(showWarning).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsMetadataPartial')
   })
 
@@ -308,7 +310,8 @@ describe('ModelWhitelistSelector', () => {
 
     expect(syncUpstreamModelsPreview).toHaveBeenCalledOnce()
     expect(wrapper.emitted('upstream-synced')).toEqual([[]])
-    expect(wrapper.emitted('update:modelValue')).toEqual([[['x-preview-f-free']]])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(findModelRow(wrapper, 'x-preview-f-free').exists()).toBe(true)
   })
 
   it('shows the upstream sync button for OpenCode Go create-account credentials', () => {
@@ -327,5 +330,194 @@ describe('ModelWhitelistSelector', () => {
 
     expect(syncButton).toBeDefined()
     expect(syncButton?.exists()).toBe(true)
+  })
+
+  it('loads over 200 upstream candidates without selecting them or showing unrelated built-ins', async () => {
+    const models = [
+      ...Array.from({ length: 120 }, (_, index) => `gpt-upstream-${index}`),
+      ...Array.from({ length: 100 }, (_, index) => `gemini-upstream-${index}`),
+      'claude-upstream-only'
+    ]
+    syncUpstreamModels.mockResolvedValue({ models })
+    const wrapper = mountSelector({ platform: 'gemini', accountId: 33, modelValue: ['saved-custom-model'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(222)
+    expect(wrapper.find('[data-testid="upstream-model-candidates"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text().includes('gemini-2.0-flash'))).toBe(false)
+
+    await wrapper.get('[data-testid="model-search"]').setValue('  GeMiNi  ')
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(100)
+    expect(wrapper.findAll('[data-testid="selected-model"]')).toHaveLength(0)
+    await wrapper.get('[data-testid="model-search"]').setValue('GPT')
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(120)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('adds and removes only filtered results while keeping other selected models', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-upstream', 'gemini-upstream-a', 'gemini-upstream-b'] })
+    const wrapper = mountSelector({ accountId: 33, modelValue: ['gpt-upstream', 'manual-model', 'gemini-upstream-a'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="model-search"]').setValue('gemini')
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([[
+      'gpt-upstream', 'manual-model', 'gemini-upstream-a', 'gemini-upstream-b'
+    ]])
+
+    await wrapper.setProps({ modelValue: ['gpt-upstream', 'manual-model', 'gemini-upstream-a', 'gemini-upstream-b'] })
+    await wrapper.get('[data-testid="remove-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['gpt-upstream', 'manual-model']])
+  })
+
+  it('supports single selection and deselection of custom upstream IDs', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gemini-custom-future'] })
+    const wrapper = mountSelector({ platform: 'gemini', accountId: 33 })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    const button = findModelRow(wrapper, 'gemini-custom-future').get('[data-testid="select-model"]')
+    expect(button.attributes('aria-checked')).toBe('false')
+    await button.trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['gemini-custom-future']])
+    await wrapper.setProps({ modelValue: ['gemini-custom-future'] })
+    expect(button.attributes('aria-checked')).toBe('true')
+    await button.trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([[]])
+  })
+
+  it('keeps saved models that are no longer in the upstream list searchable and removable', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gemini-current'] })
+    const wrapper = mountSelector({ platform: 'gemini', accountId: 33, modelValue: ['gemini-retired', 'gpt-keep'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="model-search"]').setValue('retired')
+    expect(findModelRow(wrapper, 'gemini-retired').text()).toContain('admin.accounts.selectedModelNotInUpstream')
+    await wrapper.get('[data-testid="remove-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['gpt-keep']])
+  })
+
+  it('trims and deduplicates upstream candidate IDs without normalizing their case', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: [' Gemini-Custom ', 'Gemini-Custom', '', '  ', 'gemini-other'] })
+    const wrapper = mountSelector({ accountId: 33 })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(2)
+    await wrapper.get('[data-testid="model-search"]').setValue('gemini')
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['Gemini-Custom', 'gemini-other']])
+  })
+
+  it('preserves custom mappings when selecting a filtered batch', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gemini-alias', 'gemini-plain'] })
+    const wrapper = mountSelector({
+      accountId: 33,
+      modelValue: ['gpt-keep'],
+      modelMappings: [{ from: 'gemini-alias', to: 'gemini-real-target' }]
+    })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="model-search"]').setValue('gemini')
+    expect(findModelRow(wrapper, 'gemini-alias').get('[data-testid="select-model"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['gpt-keep', 'gemini-plain']])
+    expect(wrapper.props('modelMappings')).toEqual([{ from: 'gemini-alias', to: 'gemini-real-target' }])
+  })
+
+  it.each(['failure', 'empty'])('does not discard previous choices or candidates on sync %s', async (outcome) => {
+    syncUpstreamModels.mockResolvedValueOnce({ models: ['gemini-existing-candidate'] })
+    const wrapper = mountSelector({ accountId: 33, modelValue: ['saved-model'] })
+    const button = wrapper.findAll('button').find(item => item.text() === 'admin.accounts.syncUpstreamModels')!
+    await button.trigger('click')
+    await flushPromises()
+    if (outcome === 'failure') {
+      syncUpstreamModels.mockRejectedValueOnce(new Error('Network unavailable'))
+    } else {
+      syncUpstreamModels.mockResolvedValueOnce({ models: [] })
+    }
+    await button.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(findModelRow(wrapper, 'gemini-existing-candidate').exists()).toBe(true)
+    expect(findModelRow(wrapper, 'saved-model').exists()).toBe(true)
+    if (outcome === 'failure') {
+      expect(showError).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsError')
+    } else {
+      expect(showInfo).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsEmpty')
+    }
+  })
+
+  it('disables batch actions when nothing matches and keeps selection intact', async () => {
+    const wrapper = mountSelector({ modelValue: ['custom-kept'] })
+    await wrapper.get('[data-testid="model-search"]').setValue('nothing-matches-this')
+    expect(wrapper.findAll('[data-testid="model-option"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="select-filtered-models"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="remove-filtered-models"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    await wrapper.get('[data-testid="remove-filtered-models"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('resets candidates when switching accounts without deleting saved selections', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gemini-old-account'] })
+    const wrapper = mountSelector({ accountId: 33, modelValue: ['custom-kept'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="model-search"]').setValue('gemini')
+    await wrapper.setProps({ accountId: 34 })
+    expect(wrapper.find('[data-testid="upstream-model-candidates"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="model-search"]').element).toHaveProperty('value', '')
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text().includes('gemini-old-account'))).toBe(false)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('ignores a stale preview response when the upstream credentials change', async () => {
+    let resolveSync: ((result: { models: string[] }) => void) | undefined
+    syncUpstreamModelsPreview.mockReturnValue(new Promise<{ models: string[] }>(resolve => { resolveSync = resolve }))
+    const credentials = { platform: 'gemini', type: 'apikey', base_url: 'https://old.example.test', api_key: 'test-key' }
+    const wrapper = mountSelector({ platform: 'gemini', syncCredentials: credentials })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await wrapper.setProps({ syncCredentials: { ...credentials, base_url: 'https://new.example.test' } })
+    resolveSync?.({ models: ['gemini-stale-response'] })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="upstream-model-candidates"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text().includes('gemini-stale-response'))).toBe(false)
+    expect(wrapper.emitted('upstream-synced')).toBeUndefined()
+    expect(showSuccess).not.toHaveBeenCalled()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('keeps the newest sync loading state when an older request finishes', async () => {
+    let resolveFirst: ((result: { models: string[] }) => void) | undefined
+    let resolveSecond: ((result: { models: string[] }) => void) | undefined
+    syncUpstreamModels
+      .mockReturnValueOnce(new Promise<{ models: string[] }>(resolve => { resolveFirst = resolve }))
+      .mockReturnValueOnce(new Promise<{ models: string[] }>(resolve => { resolveSecond = resolve }))
+    const wrapper = mountSelector({ accountId: 33 })
+    const syncButton = () => wrapper.findAll('button').find(button =>
+      ['admin.accounts.syncUpstreamModels', 'admin.accounts.syncUpstreamModelsLoading'].includes(button.text())
+    )!
+    await syncButton().trigger('click')
+    await wrapper.setProps({ accountId: 34 })
+    await syncButton().trigger('click')
+    resolveFirst?.({ models: ['old-model'] })
+    await flushPromises()
+    expect(syncButton().attributes('disabled')).toBeDefined()
+    resolveSecond?.({ models: ['new-model'] })
+    await flushPromises()
+    expect(syncButton().attributes('disabled')).toBeUndefined()
+    expect(findModelRow(wrapper, 'new-model').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text().includes('old-model'))).toBe(false)
+  })
+
+  it('keeps search results when closing and reopening the candidate list', async () => {
+    const wrapper = mountSelector()
+    await wrapper.get('[data-testid="model-search"]').setValue('GPT')
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.find('[data-testid="model-option"]').exists()).toBe(false)
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.get('[data-testid="model-search"]').element).toHaveProperty('value', 'GPT')
+    expect(wrapper.findAll('[data-testid="model-option"]').every(row => row.text().toLowerCase().includes('gpt'))).toBe(true)
   })
 })

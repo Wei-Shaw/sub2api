@@ -11,6 +11,7 @@ const {
   createAccountMock,
   probeUpstreamBillingMock,
   syncUpstreamModelsMock,
+  syncUpstreamModelsPreviewMock,
   showWarningMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
@@ -19,6 +20,7 @@ const {
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
+  syncUpstreamModelsPreviewMock: vi.fn(),
   showWarningMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
@@ -63,6 +65,10 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn().mockResolvedValue([]),
+  accountsAPI: {
+    syncUpstreamModels: syncUpstreamModelsMock,
+    syncUpstreamModelsPreview: syncUpstreamModelsPreviewMock,
+  },
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -138,7 +144,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = []) {
+function mountModal(groups: any[] = [], renderModelSelector = false) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
     global: {
@@ -152,7 +158,8 @@ function mountModal(groups: any[] = []) {
         ProxySelector: true,
         ProxyAdBanner: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        ModelWhitelistSelector: renderModelSelector ? false : ModelWhitelistSelectorStub,
+        ModelIcon: true,
         QuotaLimitCard: true,
       },
     },
@@ -205,6 +212,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
+    syncUpstreamModelsPreviewMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
     showWarningMock.mockReset()
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
@@ -349,6 +357,33 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
+  })
+
+  it('saves only filtered upstream choices from the real model selector', async () => {
+    syncUpstreamModelsPreviewMock.mockResolvedValue({
+      models: ['gpt-future-from-upstream', 'gemini-future-from-upstream']
+    })
+    const wrapper = mountModal([], true)
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Filtered account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('synthetic-test-key')
+    await selectButtonByText(wrapper, 'admin.accounts.clearAllModels')
+    await selectButtonByText(wrapper, 'admin.accounts.syncUpstreamModels')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="model-search"]').setValue('GPT')
+    await wrapper.get('[data-testid="select-filtered-models"]').trigger('click')
+    expect(createAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping).toEqual({
+      'gpt-future-from-upstream': 'gpt-future-from-upstream'
+    })
+    expect(syncUpstreamModelsPreviewMock).toHaveBeenCalledOnce()
     expect(syncUpstreamModelsMock).toHaveBeenCalledWith(42)
   })
 

@@ -1,15 +1,25 @@
 <template>
   <div>
+    <input
+      v-model="searchQuery"
+      type="search"
+      class="input mb-2 w-full text-sm"
+      data-testid="model-search"
+      :aria-label="t('admin.accounts.filterModelCandidates')"
+      :placeholder="t('admin.accounts.filterModelCandidates')"
+      @input="showDropdown = true"
+    />
     <!-- Multi-select Dropdown -->
     <div class="relative mb-3">
       <div
         @click="toggleDropdown"
         class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-dark-500 dark:bg-dark-700"
       >
-        <div class="grid grid-cols-2 gap-1.5">
+        <div class="grid max-h-40 grid-cols-2 gap-1.5 overflow-auto">
           <span
-            v-for="model in modelValue"
+            v-for="model in filteredSelectedModels"
             :key="model"
+            data-testid="selected-model"
             class="inline-flex items-center justify-between gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
           >
             <span class="flex items-center gap-1 truncate">
@@ -38,13 +48,29 @@
         class="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-700"
       >
         <div class="sticky top-0 border-b border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-700">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="input w-full text-sm"
-            :placeholder="t('admin.accounts.searchModels')"
-            @click.stop
-          />
+          <p class="mb-2 text-xs text-gray-500 dark:text-gray-400" data-testid="model-match-count">
+            {{ t('admin.accounts.modelCandidateCount', { count: filteredModels.length, total: availableOptions.length }) }}
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="select-filtered-models"
+              class="rounded border border-blue-200 px-2 py-1 text-xs text-blue-600 disabled:opacity-50 dark:border-blue-800 dark:text-blue-400"
+              :disabled="addableFilteredModels.length === 0"
+              @click="selectFilteredModels"
+            >
+              {{ t('admin.accounts.selectFilteredModels') }}
+            </button>
+            <button
+              type="button"
+              data-testid="remove-filtered-models"
+              class="rounded border border-red-200 px-2 py-1 text-xs text-red-600 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+              :disabled="!hasFilteredSelection"
+              @click="removeFilteredModels"
+            >
+              {{ t('admin.accounts.removeFilteredModels') }}
+            </button>
+          </div>
         </div>
         <div class="max-h-52 overflow-auto">
           <div
@@ -56,7 +82,11 @@
             <button
               type="button"
               data-testid="select-model"
-              class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
+              role="checkbox"
+              :aria-checked="modelValue.includes(model.value)"
+              :disabled="!modelValue.includes(model.value) && !!mappingConflict(model.value)"
+              :title="mappingConflict(model.value) ? mappingConflictMessage(model.value) : undefined"
+              class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
               @click="toggleModel(model.value)"
             >
               <span
@@ -74,6 +104,12 @@
               <ModelIcon :model="model.value" size="18px" />
               <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
             </button>
+            <span
+              v-if="upstreamModelIds !== null && !upstreamModelIds.includes(model.value)"
+              class="shrink-0 px-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.selectedModelNotInUpstream') }}
+            </span>
             <button
               type="button"
               data-testid="copy-model-id"
@@ -91,6 +127,13 @@
         </div>
       </div>
     </div>
+    <p
+      v-if="upstreamModelIds !== null"
+      class="mb-3 text-xs text-gray-500 dark:text-gray-400"
+      data-testid="upstream-model-candidates"
+    >
+      {{ t('admin.accounts.upstreamModelCandidatesHint', { count: upstreamModelIds.length }) }}
+    </p>
 
     <!-- Quick Actions -->
     <div class="mb-4 flex flex-wrap gap-2">
@@ -145,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
@@ -185,6 +228,9 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const upstreamModelIds = ref<string[] | null>(null)
+let syncRequestVersion = 0
+const modelLabels = new Map(allModels.map(model => [model.value, model.label]))
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -214,31 +260,84 @@ const canSyncUpstream = computed(() => {
 })
 
 const availableOptions = computed(() => {
-  if (normalizedPlatforms.value.length === 0) {
-    return allModels
-  }
+  const candidateIds = upstreamModelIds.value ?? (
+    normalizedPlatforms.value.length === 0
+      ? allModels.map(model => model.value)
+      : normalizedPlatforms.value.flatMap(getModelsByPlatform)
+  )
 
-  const allowedModels = new Set<string>()
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      allowedModels.add(model)
-    }
-  }
-
-  return allModels.filter(model => allowedModels.has(model.value))
+  // 保留上游已下架的已选项，让用户仍能通过筛选主动移除。
+  return Array.from(new Set([...candidateIds, ...props.modelValue])).map(value => ({
+    value,
+    label: modelLabels.get(value) ?? value
+  }))
 })
 
-const filteredModels = computed(() => {
+const matchesSearch = (model: { value: string; label: string }) => {
   const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return availableOptions.value
-  return availableOptions.value.filter(
-    m => m.value.toLowerCase().includes(query) || m.label.toLowerCase().includes(query)
-  )
+  return !query || model.value.toLowerCase().includes(query) || model.label.toLowerCase().includes(query)
+}
+
+const filteredModels = computed(() => availableOptions.value.filter(matchesSearch))
+const filteredSelectedModels = computed(() => props.modelValue.filter(value =>
+  matchesSearch({ value, label: modelLabels.get(value) ?? value })
+))
+
+const mappingConflict = (model: string) => props.modelMappings?.find(mapping =>
+  mapping.from.trim() === model && mapping.to.trim() && mapping.to.trim() !== model
+)
+
+const mappingConflictMessage = (model: string) => {
+  const conflict = mappingConflict(model)
+  return conflict
+    ? t('admin.accounts.modelMappingConflict', { from: model, to: conflict.to.trim() })
+    : ''
+}
+
+const addableFilteredModels = computed(() => filteredModels.value
+  .map(model => model.value)
+  .filter(model => !props.modelValue.includes(model) && !mappingConflict(model))
+)
+const hasFilteredSelection = computed(() => filteredModels.value.some(model =>
+  props.modelValue.includes(model.value)
+))
+
+const selectFilteredModels = () => {
+  if (addableFilteredModels.value.length === 0) return
+  emit('update:modelValue', [...props.modelValue, ...addableFilteredModels.value])
+}
+
+const removeFilteredModels = () => {
+  const modelsToRemove = new Set(filteredModels.value.map(model => model.value))
+  if (!hasFilteredSelection.value) return
+  emit('update:modelValue', props.modelValue.filter(model => !modelsToRemove.has(model)))
+}
+
+watch(
+  () => [
+    props.accountId,
+    props.platform,
+    props.platforms?.join('\0'),
+    props.syncCredentials?.platform,
+    props.syncCredentials?.type,
+    props.syncCredentials?.base_url,
+    props.syncCredentials?.api_key
+  ],
+  () => {
+    syncRequestVersion += 1
+    upstreamModelIds.value = null
+    searchQuery.value = ''
+    isSyncingUpstream.value = false
+  },
+  { flush: 'sync' }
+)
+
+onBeforeUnmount(() => {
+  syncRequestVersion += 1
 })
 
 const toggleDropdown = () => {
   showDropdown.value = !showDropdown.value
-  if (!showDropdown.value) searchQuery.value = ''
 }
 
 const removeModel = (model: string) => {
@@ -249,6 +348,10 @@ const toggleModel = (model: string) => {
   if (props.modelValue.includes(model)) {
     removeModel(model)
   } else {
+    if (mappingConflict(model)) {
+      appStore.showInfo(mappingConflictMessage(model))
+      return
+    }
     emit('update:modelValue', [...props.modelValue, model])
   }
 }
@@ -264,7 +367,7 @@ const addCustom = () => {
     appStore.showInfo(t('admin.accounts.modelExists'))
     return
   }
-  const conflict = props.modelMappings?.find(mapping => mapping.from.trim() === model && mapping.to.trim() && mapping.to.trim() !== model)
+  const conflict = mappingConflict(model)
   if (conflict) {
     appStore.showInfo(t('admin.accounts.modelMappingConflict', { from: model, to: conflict.to.trim() }))
     return
@@ -292,6 +395,7 @@ const fillRelated = () => {
 const syncUpstreamModels = async () => {
   if (isSyncingUpstream.value || !canSyncUpstream.value) return
 
+  const requestVersion = ++syncRequestVersion
   isSyncingUpstream.value = true
   try {
     let result
@@ -303,7 +407,8 @@ const syncUpstreamModels = async () => {
       return
     }
 
-    const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
+    if (requestVersion !== syncRequestVersion) return
+    const upstreamModels = Array.from(new Set(result.models.map(model => model.trim()).filter(Boolean)))
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
@@ -313,16 +418,8 @@ const syncUpstreamModels = async () => {
       emit('upstream-synced')
     }
 
-    const newModels = [...props.modelValue]
-    let addedCount = 0
-    for (const model of upstreamModels) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
-        addedCount += 1
-      }
-    }
-
-    emit('update:modelValue', newModels)
+    upstreamModelIds.value = upstreamModels
+    showDropdown.value = true
     const warnings = result.warnings ?? []
     const hasPartialMetadata = warnings.some(
       warning => warning.code === 'upstream_model_metadata_partial'
@@ -334,19 +431,16 @@ const syncUpstreamModels = async () => {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
       return
     }
-    if (addedCount > 0) {
-      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
-    } else {
-      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
-    }
+    appStore.showSuccess(t('admin.accounts.upstreamModelCandidatesLoaded', { count: upstreamModels.length }))
     if (hasPartialMetadata) {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
     }
   } catch (error) {
+    if (requestVersion !== syncRequestVersion) return
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {
-    isSyncingUpstream.value = false
+    if (requestVersion === syncRequestVersion) isSyncingUpstream.value = false
   }
 }
 
