@@ -89,7 +89,7 @@ describe('UseKeyModal', () => {
       props: {
         show: true,
         apiKeyId: 42,
-        apiKey: '«reda...…»',
+        apiKey: 'redacted-test-key',
         baseUrl: 'https://example.com/v1',
         platform: 'gemini'
       },
@@ -98,7 +98,8 @@ describe('UseKeyModal', () => {
           BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: { template: '<span />' }
         }
-      }
+      },
+      attachTo: document.body
     })
 
     await flushPromises()
@@ -114,9 +115,15 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="client-tab-api"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="client-tab-api"]').attributes('role')).toBe('tab')
     expect(wrapper.find('[data-testid="client-tab-api"]').attributes('aria-selected')).toBe('false')
-    await wrapper.find('[data-testid="client-tab-api"]').trigger('click')
+    expect(wrapper.find('[data-testid="capability-test-guide"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="open-api-test-guide"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="open-api-test-guide"]').trigger('click')
+    await nextTick()
     expect(wrapper.find('[data-testid="client-tab-api"]').attributes('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="client-tab-api"]').element)
     expect(wrapper.find('[data-testid="api-capability-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="api-test-guide"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="api-video-test-flow"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('https://example.com/v1/images/generations')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:generateContent')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:streamGenerateContent?alt=sse')
@@ -161,6 +168,60 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="capability-seedance-status"]').text()).toContain('/contents/generations/tasks/{task_id}')
     expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).toContain('GET https://example.com/v1/images/batches/models')
     expect(wrapper.find('[data-testid="api-batch-image-section"]').text()).not.toContain('/v1/images/batches/{batch_id}/content')
+  })
+
+  it('explains when no confirmed API route is available', async () => {
+    getCapabilitiesMock.mockResolvedValue({
+      image: {
+        sync: { available: false, reason: 'route_unsupported' },
+        async: {
+          generation: { available: false, reason: 'route_unsupported' },
+          edit: { available: false, reason: 'route_unsupported' },
+          poll: { available: false, reason: 'route_unsupported' }
+        }
+      },
+      batch_image: { available: false, models: {} },
+      video: {
+        generation: { available: false, reason: 'route_unsupported' },
+        status: { available: false, reason: 'route_unsupported' },
+        content: { available: false, reason: 'route_unsupported' },
+        edit: { available: false, reason: 'route_unsupported' },
+        extension: { available: false, reason: 'route_unsupported' }
+      },
+      seedance: { available: false, create: {}, status: {}, delete: {} },
+      gemini_native: {
+        image_generation: {
+          available: false,
+          generate_content: {},
+          stream_generate_content: {}
+        }
+      }
+    })
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKeyId: 42,
+        apiKey: 'redacted-test-key',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="capability-guidance"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-no-api-route"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="capability-test-guide"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="open-api-test-guide"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="client-tab-api"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="api-capability-panel"]').exists()).toBe(false)
   })
 
   it('opens request and response examples for the supported video routes', async () => {

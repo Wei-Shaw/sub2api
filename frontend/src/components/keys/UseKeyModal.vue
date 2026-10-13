@@ -47,6 +47,49 @@
             <Icon name="sparkles" size="sm" class="mt-0.5 text-primary-500" />
           </div>
 
+          <div
+            v-if="showApiTab"
+            data-testid="capability-test-guide"
+            class="mt-3 flex flex-col gap-3 rounded-lg border border-primary-200 bg-white/80 p-3 dark:border-primary-800 dark:bg-dark-900/60 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div class="flex min-w-0 items-start gap-2">
+              <Icon name="infoCircle" size="sm" class="mt-0.5 flex-shrink-0 text-primary-500" />
+              <div>
+                <p class="text-xs font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.capabilities.selfTestTitle') }}
+                </p>
+                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                  {{ t('keys.useKeyModal.capabilities.selfTestDescription') }}
+                </p>
+                <ol class="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  <li class="flex gap-2"><span class="font-semibold text-primary-600 dark:text-primary-400">1.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepSelect') }}</span></li>
+                  <li class="flex gap-2"><span class="font-semibold text-primary-600 dark:text-primary-400">2.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepOpen') }}</span></li>
+                  <li class="flex gap-2"><span class="font-semibold text-primary-600 dark:text-primary-400">3.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepSend') }}</span></li>
+                </ol>
+              </div>
+            </div>
+            <button
+              v-if="activeClientTab !== 'api'"
+              type="button"
+              data-testid="open-api-test-guide"
+              class="inline-flex min-h-9 flex-shrink-0 items-center justify-center rounded-md bg-primary-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-dark-900"
+              @click="focusApiTab"
+            >
+              {{ t('keys.useKeyModal.capabilities.openApiGuide') }}
+            </button>
+          </div>
+          <div
+            v-else-if="capabilityState === 'ready' && capabilities"
+            data-testid="capability-no-api-route"
+            class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200"
+          >
+            <Icon name="infoCircle" size="sm" class="mt-0.5 flex-shrink-0" />
+            <div>
+              <p class="font-semibold">{{ t('keys.useKeyModal.capabilities.noAvailableTitle') }}</p>
+              <p class="mt-1">{{ t('keys.useKeyModal.capabilities.noAvailableDescription') }}</p>
+            </div>
+          </div>
+
           <p v-if="capabilityState === 'loading'" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('keys.useKeyModal.capabilities.loading') }}
           </p>
@@ -196,6 +239,36 @@
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.title') }}</h3>
             <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.description') }}</p>
           </div>
+
+          <section
+            data-testid="api-test-guide"
+            class="space-y-3 rounded-lg border border-primary-200 bg-primary-50/60 p-3 dark:border-primary-800 dark:bg-primary-950/20"
+          >
+            <div class="flex items-start gap-2">
+              <Icon name="infoCircle" size="sm" class="mt-0.5 flex-shrink-0 text-primary-500" />
+              <div>
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.api.testGuideTitle') }}
+                </h4>
+                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                  {{ t('keys.useKeyModal.api.testGuideDescription') }}
+                </p>
+              </div>
+            </div>
+            <ol class="grid gap-2 text-xs text-gray-700 dark:text-gray-300 sm:grid-cols-3">
+              <li class="flex gap-2 rounded-md bg-white/70 p-2 dark:bg-dark-900/50"><span class="font-semibold text-primary-600 dark:text-primary-400">1.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepSelect') }}</span></li>
+              <li class="flex gap-2 rounded-md bg-white/70 p-2 dark:bg-dark-900/50"><span class="font-semibold text-primary-600 dark:text-primary-400">2.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepOpen') }}</span></li>
+              <li class="flex gap-2 rounded-md bg-white/70 p-2 dark:bg-dark-900/50"><span class="font-semibold text-primary-600 dark:text-primary-400">3.</span><span>{{ t('keys.useKeyModal.capabilities.selfTestStepSend') }}</span></li>
+            </ol>
+            <div
+              v-if="capabilities && capabilities.video.generation.available && capabilities.video.status.available && capabilities.video.content.available"
+              data-testid="api-video-test-flow"
+              class="rounded-md border border-primary-200 bg-white/80 p-2 dark:border-primary-800 dark:bg-dark-900/60"
+            >
+              <p class="text-xs font-semibold text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.videoFlowTitle') }}</p>
+              <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.videoFlowDescription') }}</p>
+            </div>
+          </section>
 
           <section
             v-if="selectedCapabilityExample && activeClientTab === 'api'"
@@ -708,7 +781,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, watch, onBeforeUnmount, type Component } from 'vue'
+import { ref, computed, h, watch, nextTick, onBeforeUnmount, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -988,6 +1061,11 @@ const copyCapabilityExample = async (part: 'request' | 'response') => {
 }
 
 const activeClientTab = ref<string>('claude')
+const focusApiTab = async () => {
+  activeClientTab.value = 'api'
+  await nextTick()
+  document.getElementById('client-tab-api')?.focus()
+}
 watch(showApiTab, (available) => {
   if (!available && activeClientTab.value === 'api') {
     activeClientTab.value = defaultClientTab.value
