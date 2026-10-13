@@ -156,7 +156,7 @@ func TestVaultAutomationDisabledOrPausedDoesNotQueue(t *testing.T) {
 		}
 	}
 }
-func TestVaultLiveQuotaUsesActualWindowAndClearsFailedSnapshot(t *testing.T) {
+func TestVaultLiveQuotaUsesActualWindowAndPreservesFailedSnapshot(t *testing.T) {
 	usage, account, repo, calls := automationTestUsage(t, 200, `{"rate_limit":{"primary_window":{"used_percent":7,"limit_window_seconds":2592000,"reset_at":2000000000,"reset_after_seconds":300}}}`)
 	q, err := usage.queryLiveQuota(context.Background(), 100)
 	require.NoError(t, err)
@@ -178,7 +178,14 @@ func TestVaultLiveQuotaUsesActualWindowAndClearsFailedSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Equal(t, 502, infraerrors.Code(err), "upstream 401 must not log the administrator out")
-	require.Nil(t, failedRepo.extraUpdates[100]["openai_live_quota"])
+	require.NotContains(t, failedRepo.extraUpdates[100], "openai_live_quota")
+	transient, _, transientRepo, _ := automationTestUsage(t, 500, `{"detail":"temporary error"}`)
+	stale, err := transient.getOpenAILiveUsage(context.Background(), account, true)
+	require.NoError(t, err)
+	require.Equal(t, "stale", stale.QuotaQueryStatus)
+	require.Equal(t, q.FetchedAt, *stale.UpdatedAt)
+	require.NotEmpty(t, stale.Error)
+	require.NotContains(t, transientRepo.extraUpdates[100], "openai_live_quota")
 }
 func TestVaultAutomaticRefreshFailureClassification(t *testing.T) {
 	for _, tc := range []struct{ message, want string }{

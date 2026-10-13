@@ -48,6 +48,12 @@ type DashboardStats struct {
 	ErrorAccounts     int64 `json:"error_accounts"`     // 异常账户数 (status=error)
 	RateLimitAccounts int64 `json:"ratelimit_accounts"` // 限流账户数
 	OverloadAccounts  int64 `json:"overload_accounts"`  // 过载账户数
+	// Free 账号 30 天额度汇总。一个完整 Free 账号的额度计为 1。
+	FreeQuotaAccounts            int64   `json:"free_quota_accounts"`
+	FreeQuotaCountedAccounts     int64   `json:"free_quota_counted_accounts"`
+	FreeQuotaFreshAccounts       int64   `json:"free_quota_fresh_accounts"`
+	FreeQuotaRemainingEquivalent float64 `json:"free_quota_remaining_equivalent"`
+	FreeQuotaOldestFetchedAt     string  `json:"free_quota_oldest_fetched_at"`
 
 	// 累计 Token 使用统计
 	TotalRequests            int64   `json:"total_requests"`

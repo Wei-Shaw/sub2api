@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -188,7 +190,78 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	); err != nil {
 		return err
 	}
+	if err := r.fillDashboardFreeQuotaStats(ctx, stats, now); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+// fillDashboardFreeQuotaStats sums last-known 30-day quota fractions for usable
+// Free OAuth accounts. Missing snapshots are reported as uncovered and old
+// snapshots are counted separately, never silently treated as current data.
+func (r *usageLogRepository) fillDashboardFreeQuotaStats(ctx context.Context, stats *DashboardStats, now time.Time) error {
+	const query = `
+		SELECT extra->'openai_live_quota'
+		FROM accounts
+		WHERE deleted_at IS NULL AND platform = 'openai' AND type = 'oauth'
+		  AND status = $1 AND schedulable = true
+		  AND LOWER(credentials->>'plan_type') = 'free'
+	`
+	rows, err := r.sql.QueryContext(ctx, query, service.StatusActive)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type quotaWindow struct {
+		UsedPercent        float64 `json:"used_percent"`
+		LimitWindowSeconds int64   `json:"limit_window_seconds"`
+	}
+	type quotaSnapshot struct {
+		Primary   *quotaWindow `json:"primary"`
+		Secondary *quotaWindow `json:"secondary"`
+		FetchedAt time.Time    `json:"fetched_at"`
+	}
+	var oldest time.Time
+	for rows.Next() {
+		stats.FreeQuotaAccounts++
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return err
+		}
+		var snapshot quotaSnapshot
+		if json.Unmarshal(raw, &snapshot) != nil || snapshot.FetchedAt.IsZero() {
+			continue
+		}
+		age := now.Sub(snapshot.FetchedAt)
+		if age < 0 {
+			continue
+		}
+		window := snapshot.Primary
+		if window == nil || window.LimitWindowSeconds != 30*24*60*60 {
+			window = snapshot.Secondary
+		}
+		if window == nil || window.LimitWindowSeconds != 30*24*60*60 ||
+			math.IsNaN(window.UsedPercent) || math.IsInf(window.UsedPercent, 0) ||
+			window.UsedPercent < 0 || window.UsedPercent > 100 {
+			continue
+		}
+		stats.FreeQuotaCountedAccounts++
+		if age <= 10*time.Minute {
+			stats.FreeQuotaFreshAccounts++
+		}
+		stats.FreeQuotaRemainingEquivalent += (100 - window.UsedPercent) / 100
+		if oldest.IsZero() || snapshot.FetchedAt.Before(oldest) {
+			oldest = snapshot.FetchedAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !oldest.IsZero() {
+		stats.FreeQuotaOldestFetchedAt = oldest.UTC().Format(time.RFC3339)
+	}
 	return nil
 }
 

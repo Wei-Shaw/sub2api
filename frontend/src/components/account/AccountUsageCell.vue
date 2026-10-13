@@ -120,9 +120,10 @@
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="error" class="text-xs text-amber-600">{{ t('admin.accountVault.automation.queryFailed') }}<button type="button" class="ml-2 text-blue-600" :disabled="activeQueryLoading" @click="loadActiveUsage">{{ t('common.refresh') }}</button></div>
       <div v-else-if="hasOpenAIUsageFallback" class="space-y-1">
+        <p v-if="usageInfo?.error" class="text-[10px] text-amber-700 dark:text-amber-300">{{ usageInfo.error }}</p>
         <template v-if="openAIQuotaWindows.length">
           <UsageProgressBar v-for="(window, i) in openAIQuotaWindows" :key="i" :label="quotaWindowLabel(window.limit_window_seconds)" :utilization="window.used_percent" :resets-at="window.reset_at > 0 ? new Date(window.reset_at * 1000).toISOString() : null" color="emerald" />
-          <p class="text-[9px] text-gray-500">{{ t(`admin.accountVault.automation.${usageInfo?.quota_query_status === 'cached' ? 'cached' : 'live'}`) }} · {{ usageInfo?.updated_at ? new Date(usageInfo.updated_at).toLocaleString() : '—' }}</p>
+          <p class="text-[9px] text-gray-500">{{ usageInfo?.quota_query_status === 'stale' ? t('admin.dashboard.freeQuotaStale') : t(`admin.accountVault.automation.${usageInfo?.quota_query_status === 'cached' ? 'cached' : 'live'}`) }} · {{ usageInfo?.updated_at ? new Date(usageInfo.updated_at).toLocaleString() : '—' }}</p>
         </template>
         <UsageProgressBar
           v-if="!openAIQuotaWindows.length && usageInfo?.five_hour"
@@ -1426,7 +1427,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const ttl = props.account.platform === 'openai' ? 60000 : USAGE_CACHE_TTL
     if (cached && Date.now() - cached.ts < ttl) {
       usageInfo.value = cached.data
-      if (props.account.platform === 'openai' && cached.data.quota_query_status) usageInfo.value = { ...cached.data, quota_query_status: 'cached' }
+      if (props.account.platform === 'openai' && cached.data.quota_query_status === 'live') usageInfo.value = { ...cached.data, quota_query_status: 'cached' }
       loading.value = false
       return
     }

@@ -95,6 +95,49 @@
           </div>
         </div>
 
+        <!-- Remaining Free account quota (30-day window) -->
+        <div class="card p-4">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                {{ t('admin.dashboard.freeQuotaTitle') }}
+              </p>
+              <div class="mt-1 flex flex-wrap items-baseline gap-2">
+                <span class="text-3xl font-bold text-teal-700 dark:text-teal-300">
+                  {{ stats.free_quota_counted_accounts > 0 ? stats.free_quota_remaining_equivalent.toFixed(2) : '—' }}
+                </span>
+                <span class="text-sm text-gray-600 dark:text-gray-300">
+                  {{ t('admin.dashboard.freeQuotaUnit') }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.dashboard.freeQuotaDefinition') }}
+              </p>
+            </div>
+            <div class="w-full md:max-w-sm">
+              <div class="mb-1 flex justify-between text-xs text-gray-600 dark:text-gray-300">
+                <span>{{ t('admin.dashboard.freeQuotaCoverage', { counted: stats.free_quota_counted_accounts, total: stats.free_quota_accounts }) }}</span>
+                <span>{{ stats.free_quota_accounts > 0 ? ((stats.free_quota_remaining_equivalent / stats.free_quota_accounts) * 100).toFixed(1) : '0.0' }}%</span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+                <div
+                  class="h-full rounded-full bg-teal-500"
+                  :style="{ width: `${stats.free_quota_accounts > 0 ? Math.min(100, Math.max(0, stats.free_quota_remaining_equivalent / stats.free_quota_accounts * 100)) : 0}%` }"
+                />
+              </div>
+              <p v-if="stats.free_quota_accounts > stats.free_quota_counted_accounts" class="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                {{ t('admin.dashboard.freeQuotaUnknown', { count: stats.free_quota_accounts - stats.free_quota_counted_accounts }) }}
+              </p>
+              <p v-if="stats.free_quota_counted_accounts > stats.free_quota_fresh_accounts" class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                {{ t('admin.dashboard.freeQuotaStaleCount', { count: stats.free_quota_counted_accounts - stats.free_quota_fresh_accounts }) }}
+              </p>
+              <p v-if="stats.free_quota_oldest_fetched_at" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.dashboard.freeQuotaOldestUpdate') }}: {{ formatQuotaTime(stats.free_quota_oldest_fetched_at) }}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Row 2: Token Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
@@ -609,6 +652,11 @@ const formatDuration = (ms: number): string => {
     return `${(ms / 1000).toFixed(2)}s`
   }
   return `${Math.round(ms)}ms`
+}
+
+const formatQuotaTime = (value: string): string => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
 const goToUserUsage = (item: UserSpendingRankingItem) => {

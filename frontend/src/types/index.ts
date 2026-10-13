@@ -1422,7 +1422,7 @@ export interface GrokBillingSummary {
 }
 
 export interface AccountUsageInfo {
-  quota_query_status?: 'live' | 'cached'
+  quota_query_status?: 'live' | 'cached' | 'stale'
   quota_primary?: import('./accountVault').VaultQuotaWindow | null
   quota_secondary?: import('./accountVault').VaultQuotaWindow | null
   source?: 'passive' | 'active'
@@ -1925,6 +1925,11 @@ export interface DashboardStats {
   error_accounts: number // 异常账户数
   ratelimit_accounts: number // 限流账户数
   overload_accounts: number // 过载账户数
+  free_quota_accounts: number // 可用 Free OAuth 账号数
+  free_quota_counted_accounts: number // 有有效 30 天额度快照的账号数
+  free_quota_fresh_accounts: number // 快照在 10 分钟内的账号数
+  free_quota_remaining_equivalent: number // 汇总剩余额度，以完整 Free 号为单位
+  free_quota_oldest_fetched_at: string // 纳入汇总的最早查询时间
 
   // 累计 Token 使用统计
   total_requests: number

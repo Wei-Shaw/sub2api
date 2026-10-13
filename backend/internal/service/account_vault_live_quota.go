@@ -20,11 +20,9 @@ func validQuotaWindow(w *OpenAIRateLimitWindow) bool {
 func (s *AccountUsageService) queryLiveQuota(ctx context.Context, accountID int64) (*VaultQuotaSnapshot, error) {
 	q, err := s.openAIQuotaService.QueryUsageSnapshot(ctx, accountID)
 	if err != nil {
-		_ = s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{"openai_live_quota": nil})
 		return nil, err
 	}
 	if q == nil || q.RateLimit == nil || (q.RateLimit.PrimaryWindow == nil && q.RateLimit.SecondaryWindow == nil) || !validQuotaWindow(q.RateLimit.PrimaryWindow) || !validQuotaWindow(q.RateLimit.SecondaryWindow) {
-		_ = s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{"openai_live_quota": nil})
 		return nil, infraerrors.New(502, "OPENAI_QUOTA_INVALID_RESPONSE", "额度接口未返回有效窗口，剩余额度未知")
 	}
 	snapshot := &VaultQuotaSnapshot{Primary: q.RateLimit.PrimaryWindow, Secondary: q.RateLimit.SecondaryWindow, FetchedAt: time.Unix(q.FetchedAt, 0).UTC()}
@@ -57,15 +55,25 @@ func usageFromLiveQuota(q *VaultQuotaSnapshot, state string) *UsageInfo {
 	return info
 }
 func (s *AccountUsageService) getOpenAILiveUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
-	if !force && account.Extra != nil {
+	var cached VaultQuotaSnapshot
+	var hasCached bool
+	if account.Extra != nil {
 		raw, _ := json.Marshal(account.Extra["openai_live_quota"])
-		var cached VaultQuotaSnapshot
-		if json.Unmarshal(raw, &cached) == nil && !cached.FetchedAt.IsZero() && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < time.Minute && (cached.Primary != nil || cached.Secondary != nil) && validQuotaWindow(cached.Primary) && validQuotaWindow(cached.Secondary) {
+		hasCached = json.Unmarshal(raw, &cached) == nil && !cached.FetchedAt.IsZero() &&
+			(cached.Primary != nil || cached.Secondary != nil) && validQuotaWindow(cached.Primary) && validQuotaWindow(cached.Secondary)
+	}
+	if !force && account.Extra != nil {
+		if hasCached && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < time.Minute {
 			return usageFromLiveQuota(&cached, "cached"), nil
 		}
 	}
 	q, err := s.queryLiveQuota(ctx, account.ID)
 	if err != nil {
+		if hasCached && infraerrors.Code(err) != 401 && revokedCredentialError(err) == "" {
+			info := usageFromLiveQuota(&cached, "stale")
+			info.Error = "额度查询失败，显示上次成功查询的快照"
+			return info, nil
+		}
 		// Upstream credential rejection is not rejection of the administrator's
 		// JWT. Do not return local HTTP 401 and trigger a frontend logout/refresh.
 		if infraerrors.Code(err) == 401 {
