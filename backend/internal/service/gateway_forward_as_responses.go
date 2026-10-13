@@ -76,6 +76,10 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
+	if err := validateMiniMaxM31Request(body, mappedModel); err != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err

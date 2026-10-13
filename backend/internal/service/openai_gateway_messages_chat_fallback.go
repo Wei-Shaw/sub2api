@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -50,6 +51,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	clientStream := anthropicReq.Stream
+	billingModel := resolveOpenAIForwardModel(account, anthropicReq.Model, defaultMappedModel)
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	// Select M3.1 semantics from the destination, including aliases mapped away
+	// from M3.1. Other models retain the existing converter behavior.
+	if minimax.IsM31(upstreamModel) || minimax.IsM31(anthropicReq.Model) {
+		anthropicReq.Model = upstreamModel
+	}
 
 	// 2. Anthropic → Chat Completions (direct, no Responses intermediary)
 	chatReq, err := apicompat.AnthropicToChatCompletionsRequest(&anthropicReq)
@@ -58,8 +66,6 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		return nil, fmt.Errorf("convert anthropic to chat completions: %w", err)
 	}
 
-	billingModel := resolveOpenAIForwardModel(account, anthropicReq.Model, defaultMappedModel)
-	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateGPT61SolCompatRequest(body, upstreamModel); err != nil {
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err

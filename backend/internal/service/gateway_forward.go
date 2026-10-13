@@ -104,6 +104,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			validationModel = account.GetMappedModel(validationModel)
 		}
 	}
+	if err := validateMiniMaxM31Request(parsed.Body.Bytes(), validationModel); err != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	if account != nil && account.Platform == PlatformAnthropic {
 		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}})

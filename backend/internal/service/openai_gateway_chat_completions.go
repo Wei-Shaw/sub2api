@@ -73,6 +73,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
+	if err := validateMiniMaxM31Request(body, resolveMappedUpstreamModel(account, body, defaultMappedModel)); err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -445,6 +449,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
 		}
+		result.ReasoningEffort = ApplyThinkingEnabledFallback(result.ReasoningEffort, responsesBody, upstreamModel)
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).

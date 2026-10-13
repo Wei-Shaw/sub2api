@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -131,6 +132,16 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	}
 
 	// reasoning.effort → output_config.effort + thinking
+	if minimax.IsM31(req.Model) {
+		if req.Reasoning != nil && req.Reasoning.Effort != "" {
+			if err := minimax.ValidateReasoningEffort(req.Model, req.Reasoning.Effort); err != nil {
+				return nil, err
+			}
+			out.OutputConfig = &AnthropicOutputConfig{Effort: req.Reasoning.Effort}
+			out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		}
+		return out, nil
+	}
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
 		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
