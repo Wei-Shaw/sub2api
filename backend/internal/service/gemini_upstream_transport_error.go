@@ -16,7 +16,8 @@ var geminiTransportFailoverBody = []byte(`{"error":{"code":502,"message":"Upstre
 // Chat Completions 兼容）上的传输层失败：Do 返回非 HTTP 错误（代理 / DNS / TCP / TLS /
 // 响应头超时），没有拿到任何上游状态码。
 //
-//   - 记录 Ops 错误事件（status 0，kind=request_error）；
+//   - 记录 Ops 错误事件（status 0，kind=request_error）；客户端断开不记录
+//     （见 isClientCanceledTransportError）；
 //   - 持久性故障（代理凭据失效、端点拒绝连接、DNS/路由不可达）临时摘除账号；
 //     瞬时故障（EOF / reset / 超时）账号保持可调度；
 //   - 客户端已断开（context.Canceled）原样返回：不换号、不摘号；
@@ -24,6 +25,9 @@ var geminiTransportFailoverBody = []byte(`{"error":{"code":502,"message":"Upstre
 //
 // 本函数不写响应：响应归 handler 所有（换号，或耗尽后按端点格式渲染错误）。
 func (s *GeminiMessagesCompatService) handleUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error) error {
+	if isClientCanceledTransportError(ctx, err) {
+		return err
+	}
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
 	event := OpsUpstreamErrorEvent{

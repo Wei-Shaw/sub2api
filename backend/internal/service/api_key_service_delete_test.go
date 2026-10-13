@@ -234,11 +234,7 @@ func (s *apiKeyRepoStub) GetRateLimitData(ctx context.Context, id int64) (*APIKe
 
 // apiKeyCacheStub 是 APIKeyCache 接口的测试桩实现。
 // 用于验证删除操作时缓存清理逻辑是否被正确调用。
-//
-// 设计说明：
-//   - invalidated: 记录被清除缓存的用户 ID 列表
 type apiKeyCacheStub struct {
-	invalidated    []int64  // 记录调用 DeleteCreateAttemptCount 时传入的用户 ID
 	deleteAuthKeys []string // 记录调用 DeleteAuthCache 时传入的缓存 key
 }
 
@@ -252,11 +248,9 @@ func (s *apiKeyCacheStub) IncrementCreateAttemptCount(ctx context.Context, userI
 	return nil
 }
 
-// DeleteCreateAttemptCount 记录被清除缓存的用户 ID。
-// 删除 API Key 时会调用此方法清除用户的创建尝试计数缓存。
-func (s *apiKeyCacheStub) DeleteCreateAttemptCount(ctx context.Context, userID int64) error {
-	s.invalidated = append(s.invalidated, userID)
-	return nil
+// IncrementCreateCount 空实现，本测试不验证此行为
+func (s *apiKeyCacheStub) IncrementCreateCount(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	return 0, nil
 }
 
 // IncrementDailyUsage 空实现，本测试不验证此行为
@@ -306,8 +300,7 @@ func TestApiKeyService_Delete_OwnerMismatch(t *testing.T) {
 
 	err := svc.Delete(context.Background(), 10, 2) // API Key ID=10, 调用者 userID=2
 	require.ErrorIs(t, err, ErrInsufficientPerms)
-	require.Empty(t, repo.deletedIDs)   // 验证删除操作未被调用
-	require.Empty(t, cache.invalidated) // 验证缓存未被清除
+	require.Empty(t, repo.deletedIDs) // 验证删除操作未被调用
 	require.Empty(t, cache.deleteAuthKeys)
 }
 
@@ -316,7 +309,7 @@ func TestApiKeyService_Delete_OwnerMismatch(t *testing.T) {
 //   - GetKeyAndOwnerID 返回所有者 ID 为 7
 //   - 调用者 userID 为 7（匹配）
 //   - Delete 成功执行
-//   - 缓存被正确清除（使用 ownerID）
+//   - 认证缓存被正确清除
 //   - 返回 nil 错误
 func TestApiKeyService_Delete_Success(t *testing.T) {
 	repo := &apiKeyRepoStub{
@@ -328,8 +321,7 @@ func TestApiKeyService_Delete_Success(t *testing.T) {
 
 	err := svc.Delete(context.Background(), 42, 7) // API Key ID=42, 调用者 userID=7
 	require.NoError(t, err)
-	require.Equal(t, []int64{42}, repo.deletedIDs)  // 验证正确的 API Key 被删除
-	require.Equal(t, []int64{7}, cache.invalidated) // 验证所有者的缓存被清除
+	require.Equal(t, []int64{42}, repo.deletedIDs) // 验证正确的 API Key 被删除
 	require.Equal(t, []string{svc.authCacheKey("k")}, cache.deleteAuthKeys)
 	_, exists := svc.lastUsedTouchL1.Load(int64(42))
 	require.False(t, exists, "delete should clear touch debounce cache")
@@ -349,7 +341,6 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 	err := svc.Delete(context.Background(), 99, 1)
 	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 	require.Empty(t, repo.deletedIDs)
-	require.Empty(t, cache.invalidated)
 	require.Empty(t, cache.deleteAuthKeys)
 }
 
@@ -496,6 +487,5 @@ func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "delete api key")
 	require.Equal(t, []int64{3}, repo.deletedIDs) // 验证 DeleteWithAudit 被调用
-	require.Empty(t, cache.invalidated)           // 验证删除失败时缓存未被清除（新顺序：先删后清）
 	require.Empty(t, cache.deleteAuthKeys)        // 验证删除失败时 auth 缓存未被清除
 }

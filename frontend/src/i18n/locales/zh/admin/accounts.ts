@@ -78,6 +78,8 @@ export default {
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       searchAccounts: '搜索账号...',
+      moreFilters: '更多筛选',
+      moreFiltersActive: '更多筛选（已启用 {count} 项）',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
@@ -94,6 +96,12 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      priorityQuick: {
+        raise: '提高优先级（数值 -1）',
+        lower: '降低优先级（数值 +1）',
+        editHint: '点击直接输入；数值越小越优先',
+        failed: '更新优先级失败'
+      },
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
@@ -312,6 +320,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        typesafe: 'TypeSafe / Jev',
       },
       cnProviders: {
         accountMode: {
@@ -369,12 +378,15 @@ export default {
         },
         protocolRules: {
           title: '模型协议分流',
-          hint: '自适应模式下按模型匹配上游协议。支持精确 ID 或末尾 * 通配（如 grok-*、qwen*）；自上而下第一条命中生效；未命中走 Chat Completions。',
+          hint: '自适应模式下按模型匹配上游协议。支持精确 ID 或末尾 * 通配（如 grok-*、qwen*）；自上而下第一条命中生效。入站协议是模型也支持的协议时同协议直通、不做转换，否则走所选协议。',
           patternPlaceholder: 'grok-* 或 deepseek-v4-flash',
           add: '添加规则',
           remove: '删除规则',
           restoreDefaults: '恢复默认',
+          alsoSupports: '也支持',
+          alsoSupportsHint: '以这些协议进来的请求同协议直通，免去协议转换',
           fallback: '未命中以上规则 → Chat Completions（/v1/chat/completions）',
+          catalogFallback: '未命中以上规则 → 按上游模型列表（/models 的 supported_endpoints）选协议；列表不可用时走 Chat Completions',
         },
         title: 'OpenCode Go 用量',
         panelHint: '上游 OpenCode Go 账号上报的用量窗口。可手动刷新，或开启自动刷新。',
@@ -399,7 +411,8 @@ export default {
         refreshSuccess: 'OpenCode Go 用量已刷新',
         refreshFailed: '刷新 OpenCode Go 用量失败',
         errors: {
-          OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: '刷新过于频繁，请在 {retry_after_seconds} 秒后重试。'
+          OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: '刷新过于频繁，请在 {retry_after_seconds} 秒后重试。',
+          forbidden: '上游返回 403：可能是订阅缺失/失效，也可能是 WAF 或访问策略拦截，请结合网络路径与 HTTP 状态排查。'
         }
       },
       types: {
@@ -450,7 +463,7 @@ export default {
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
-        hint: '当错误码与关键词同时匹配时，账号会在指定时间内被临时禁用。',
+        hint: '当错误码与关键词同时匹配时，按规则的作用范围在指定时间内暂停整个账号，或只冷却对应模型。',
         notice: '规则按顺序匹配，需同时满足错误码与关键词。',
         addRule: '添加规则',
         ruleOrder: '规则序号',
@@ -466,6 +479,12 @@ export default {
         keywords: '关键词',
         keywordsPlaceholder: '例如 overloaded, too many requests',
         keywordsHint: '多个关键词用逗号分隔，匹配时必须命中其中之一。',
+        scope: '作用范围',
+        scopeModel: '模型级',
+        scopeModelDesc: '只冷却本次请求的模型',
+        scopeAccount: '账户级',
+        scopeAccountDesc: '暂停整个账号的调度',
+        scopeHint: '无法识别请求模型时，模型级规则按账户级处理。',
         description: '描述',
         descriptionPlaceholder: '可选，便于记忆规则用途',
         rulesInvalid: '请至少填写一条包含错误码、关键词和时长的规则。',
@@ -694,10 +713,18 @@ export default {
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',
       bedrockDesc: 'SigV4 / API Key',
-      vertexLabel: 'Vertex',
+      vertexLabel: 'Agent Platform (Vertex)',
       vertexDesc: 'Service Account',
-      vertexAnthropicHint: '使用 Google Cloud Service Account JSON 通过 Vertex AI 调用 Anthropic Claude。建议配置模型映射，将客户端 Claude 模型名映射到 Vertex 模型 ID。',
-      vertexGeminiHint: '使用 Google Cloud Service Account JSON 访问 Vertex AI Gemini。建议将 Vertex 账号放入独立分组，避免和 AI Studio/Gemini OAuth 同模型混调。',
+      vertexGeminiDesc: 'Service Account / API Key',
+      vertexAnthropicHint: '使用 Google Cloud Service Account JSON 通过 Agent Platform (Vertex) 调用 Anthropic Claude。建议配置模型映射，将客户端 Claude 模型名映射到 Agent Platform (Vertex) 模型 ID。',
+      vertexGeminiHint: '通过 Agent Platform (Vertex) 调用 Gemini，支持 Service Account JSON 或 API Key 认证。建议将此类账号放入独立分组，避免和 AI Studio/Gemini OAuth 同模型混调。',
+      vertexAuthMode: '认证方式',
+      vertexAuthModeServiceAccount: 'Service Account JSON',
+      vertexAuthModeApiKey: 'API Key',
+      vertexApiKeyHint: '在 Google Cloud 控制台 Agent Platform 的 API Keys 页面创建。Google 显式缓存接口不接受 API Key，此类账号不参与显式缓存与批量生图；隐式缓存正常生效。',
+      vertexApiKeyRequired: '请输入 API Key',
+      vertexApiKeyProjectIdPlaceholder: '可选',
+      vertexApiKeyProjectIdHint: '留空走 Express mode 全局端点（不区分 Location）；绑定 Service Account 的标准 API Key 可填写 Project ID，按 Project ID + Location 访问。',
       vertexSaJsonLabel: 'Service Account JSON',
       vertexSaJsonLoaded: '已读取 Service Account JSON',
       vertexSaJsonDrop: '拖入 Service Account JSON',
@@ -707,8 +734,8 @@ export default {
       vertexSaJsonUploadHint: '上传或拖入 JSON 后会自动读取 project_id，密钥内容仅用于创建账号提交。',
       vertexSaJsonEditHint: 'Service Account JSON 不在编辑页显示；需要更换 JSON 时请删除账号后重新创建。',
       vertexProjectIdPlaceholder: '从 JSON 自动读取',
-      vertexLocationHint: '不同 Vertex 模型可用 location 可能不同，这里选择账号默认 endpoint location。',
-      vertexLocationRequired: '请填写 Vertex location',
+      vertexLocationHint: '不同模型可用 location 可能不同，这里选择账号默认 endpoint location。',
+      vertexLocationRequired: '请选择 Location',
       vertexSaJsonMissingFields: 'Service Account JSON 缺少 project_id、client_email 或 private_key',
       vertexSaJsonMissingProjectId: 'Service Account JSON 缺少 project_id',
       vertexSaJsonMissingClientEmail: 'Service Account JSON 缺少 client_email',
@@ -937,6 +964,7 @@ export default {
       enterCustomModelName: '输入自定义模型名称',
       addModel: '填入',
       modelExists: '该模型已存在',
+      modelMappingConflict: '该模型已配置映射 {from} → {to}，请在模型映射中修改或删除后再添加白名单模型',
       modelCount: '{count} 个模型',
       poolMode: '池模式',
       poolModeHint: '上游为账号池时启用，错误不标记本地账号状态',
@@ -946,9 +974,16 @@ export default {
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
       poolModeRetryStatusCodes: '同账号重试状态码',
       poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
+      explicitCacheUpstream: '上游支持显式缓存',
+      explicitCacheUpstreamHint: '仅当上游是已支持显式缓存的本系统时开启',
+      explicitCacheUpstreamInfo:
+        '开启后该账号可创建 Gemini 显式缓存（cachedContents）：缓存只在本账号上使用，失败不换号。上游必须保证缓存只发往创建它的账号；号池类网关或未支持显式缓存的上游开启后，缓存会时有时无。',
+      explicitCacheUpstreamMaxTTL: '上游缓存有效期上限（秒）',
+      explicitCacheUpstreamMaxTTLHint: '填写上游网关允许的最长有效期，超出的请求不会发往该账号；留空沿用本站上限。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
-      customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
+      customErrorCodesWarning:
+        '自定义错误码仅用于筛选常规的账号错误处理（如停止调度、限流标记），不决定请求是否重试或切换账号。未选中的错误仍可能触发重试或切换账号，最终返回给客户端的状态码取决于网关路径和错误透传规则，并非统一返回 500。列表为空时不做筛选。',
       customErrorCodes429Warning:
         '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
       customErrorCodes529Warning:
@@ -1030,7 +1065,47 @@ export default {
 	  autoPause5hDisabled: '禁用 5h 自动暂停',
 	  autoPause7dDisabled: '禁用 7d 自动暂停',
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
-	  autoResetCredit: {
+	  claudeResetCredits: {
+	    count: '次数',
+	    countTooltipLoad: '点击查询 Claude 剩余重置次数（只读，不会消耗）',
+	    countTooltipRefresh: '点击刷新 Claude 剩余重置次数（只读，不会消耗）',
+	    fetched: '查询时间：{time}',
+	    error: '无法查询重置次数',
+	    ineligible: '此账号当前不可使用重置',
+	    cooldown: '冷却至 {time}',
+	    expiresAt: '到期 {time}',
+	    expiresAtFull: '重置次数到期时间：{time}',
+	    clears: '可清除窗口：{windows}',
+	    notUsableNow: '暂不可用',
+	    requiresLimit: '需达到限额后才能使用',
+	    reset: '重置',
+	    resetTooltipNeedQuery: '请先点「次数」查询；查询到可用的重置后才能使用',
+	    resetTooltipNone: '当前没有可立即使用的重置',
+	    resetTooltipReady: '消耗 1 次重置，清除限额窗口（需确认）',
+	    confirmTitle: '确认使用 Claude 重置',
+	    confirmMessage: '将消耗 1 次重置次数，立即恢复 {windows} 窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？',
+	    windows: {
+	      fiveHour: '5h',
+	      sevenDay: '7d',
+	      sevenDayOverage: '7d 超额'
+	    },
+	    outcome: {
+	      reset: '重置成功，已清除：{windows}',
+	      alreadyUsed: '该重置已被使用，正在刷新确认',
+	      cooldown: '重置处于冷却中，请稍后再试',
+	      cooldownUntil: '重置处于冷却中，冷却至 {time}',
+	      notLimited: '当前未达到限额，无需重置，未消耗次数',
+	      ineligible: '此账号当前不可使用重置',
+	      unknown: '结果未确认，已阻止再次兑换，请稍后查询',
+	      unavailable: '重置服务暂时不可用，未确认消耗，请稍后再试',
+	      inProgress: '该重置请求仍在处理中，请稍后查询结果',
+	      retryBackoff: '该重置请求刚刚失败，请稍后再试',
+	      busy: '另一个重置正在进行中，请稍后再试',
+	      notAvailable: '当前没有可立即使用的重置，未消耗次数',
+	      failed: '重置请求失败'
+	    }
+	  },
+      autoResetCredit: {
 	    title: '自动使用重置卡',
 	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
 	    threshold5h: '5h 自动用卡阈值(%)',
@@ -1448,7 +1523,7 @@ export default {
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
-        apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        apiKeyHint: 'AI Studio 新建的 Key 以 AQ. 开头（旧版以 AIza 开头）；第三方上游填写其提供的 Key',
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
@@ -1471,8 +1546,8 @@ export default {
         accountType: {
           oauthTitle: 'OAuth 授权（Gemini）',
           oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
-          apiKeyTitle: 'API 密钥（AI Studio）',
-          apiKeyDesc: '最快接入方式，使用 AIza API Key。',
+          apiKeyTitle: 'API 密钥',
+          apiKeyDesc: 'AI Studio 官方 Key，或兼容 Gemini 协议的第三方上游。',
           apiKeyNote: '适合轻量测试。免费层限流严格，数据可能用于训练。',
           apiKeyLink: '获取 API Key',
           quotaLink: '配额说明'
@@ -1532,7 +1607,7 @@ export default {
           docs: {
             codeAssist: 'Code Assist 配额',
             aiStudio: 'AI Studio 定价',
-            vertex: 'Vertex AI 配额'
+            vertex: 'Agent Platform (Vertex) 配额'
           },
           simulatedNote: '本地模拟配额，仅供参考',
           rows: {

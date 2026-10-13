@@ -28,7 +28,8 @@ var gatewayTransportFailoverBody = []byte(`{"type":"error","error":{"type":"upst
 //  1. records the failure in Ops error logs (status 0, kind=request_error) —
 //     the caller passes path-specific fields (UpstreamURL, Passthrough) via
 //     event; identity, proxy attribution and classification fields are
-//     filled here from the same account snapshot that built the transport;
+//     filled here from the same account snapshot that built the transport.
+//     A client disconnect is not recorded (see isClientCanceledTransportError);
 //  2. for durable faults (expired/rejected proxy creds, dead proxy,
 //     DNS/routing) temporarily unschedules the account and logs a stable warn
 //     event that alert rules can key on;
@@ -39,6 +40,9 @@ var gatewayTransportFailoverBody = []byte(`{"type":"error","error":{"type":"upst
 // It deliberately does NOT write to the response: the handler owns the
 // response (failover, or a protocol-correct error once failover is exhausted).
 func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, event OpsUpstreamErrorEvent) error {
+	if isClientCanceledTransportError(ctx, err) {
+		return err
+	}
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
 	event.ProxyID, event.ProxyName = opsUpstreamProxyAttribution(account)

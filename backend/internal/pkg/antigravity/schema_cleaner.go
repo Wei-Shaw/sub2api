@@ -258,6 +258,18 @@ func cleanJSONSchemaRecursive(value any) any {
 		if constVal, exists := schemaMap["const"]; exists {
 			if _, hasEnum := schemaMap["enum"]; !hasEnum {
 				schemaMap["enum"] = []any{constVal}
+			} else if constant, ok := constVal.(string); ok {
+				if existing, ok := schemaMap["enum"].([]any); ok {
+					// Both constraints apply; preserve their intersection before dropping const.
+					values := []any{}
+					for _, value := range existing {
+						if text, ok := value.(string); ok && text == constant {
+							values = append(values, constant)
+							break
+						}
+					}
+					schemaMap["enum"] = values
+				}
 			}
 			if _, hasType := schemaMap["type"]; !hasType {
 				switch constVal.(type) {

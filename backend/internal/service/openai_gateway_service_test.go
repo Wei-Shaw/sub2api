@@ -3250,6 +3250,58 @@ func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing
 	require.Empty(t, req.Header.Get("originator"))
 }
 
+func TestOpenAIBuildUpstreamRequestOAuthResponsesPreservesCallerBeta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	makeRequest := func(betaValues ...string) *gin.Context {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5.5","input":"hello"}`)))
+		for _, value := range betaValues {
+			c.Request.Header.Add("OpenAI-Beta", value)
+		}
+		return c
+	}
+	svc := &OpenAIGatewayService{}
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"}}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-api-key"}}
+
+	t.Run("preserves caller multi-agent beta", func(t *testing.T) {
+		c := makeRequest("responses_multi_agent=v1")
+		req, err := svc.buildUpstreamRequest(c.Request.Context(), c, oauth, []byte(`{"model":"gpt-5.5","input":"hello"}`), "token", true, "", false)
+		require.NoError(t, err)
+		require.Equal(t, "responses_multi_agent=v1", req.Header.Get("OpenAI-Beta"))
+	})
+
+	t.Run("preserves mixed beta tokens and removes legacy token", func(t *testing.T) {
+		c := makeRequest("responses_multi_agent=v1, responses=experimental", "future_feature=v2")
+		req, err := svc.buildUpstreamRequest(c.Request.Context(), c, oauth, []byte(`{"model":"gpt-5.5","input":"hello"}`), "token", true, "", false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"responses_multi_agent=v1", "future_feature=v2"}, req.Header.Values("OpenAI-Beta"))
+	})
+
+	t.Run("absent beta remains absent", func(t *testing.T) {
+		c := makeRequest()
+		req, err := svc.buildUpstreamRequest(c.Request.Context(), c, oauth, []byte(`{"model":"gpt-5.5","input":"hello"}`), "token", true, "", false)
+		require.NoError(t, err)
+		require.Empty(t, req.Header.Values("OpenAI-Beta"))
+	})
+
+	t.Run("api key remains caller controlled", func(t *testing.T) {
+		c := makeRequest("responses=experimental, responses_multi_agent=v1")
+		req, err := svc.buildUpstreamRequest(c.Request.Context(), c, apiKey, []byte(`{"model":"gpt-5.5","input":"hello"}`), "token", true, "", false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"responses=experimental, responses_multi_agent=v1"}, req.Header.Values("OpenAI-Beta"))
+	})
+
+	t.Run("compact OAuth removes legacy token and preserves independent beta", func(t *testing.T) {
+		c := makeRequest("responses=experimental, future_feature=v1")
+		c.Request.URL.Path = "/v1/responses/compact"
+		req, err := svc.buildUpstreamRequest(c.Request.Context(), c, oauth, []byte(`{"model":"gpt-5.5","input":"hello"}`), "token", false, "", false)
+		require.NoError(t, err)
+		require.Equal(t, "future_feature=v1", req.Header.Get("OpenAI-Beta"))
+	})
+}
+
 func TestOpenAIBuildUpstreamRequestPreservesCompactPathForAPIKeyBaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

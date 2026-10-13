@@ -532,8 +532,8 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			}
 			parts = append(parts, part)
 
-		case "image":
-			if block.Source != nil && block.Source.Type == "base64" {
+		case "image", "document":
+			if block.Source != nil && block.Source.Type == "base64" && strings.TrimSpace(block.Source.Data) != "" {
 				parts = append(parts, GeminiPart{
 					InlineData: &GeminiInlineData{
 						MimeType: block.Source.MediaType,
