@@ -5,6 +5,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -204,6 +206,43 @@ func TestNonceHTMLPlaceholder(t *testing.T) {
 	})
 }
 
+func TestFrontendServer_CustomHeadScript(t *testing.T) {
+	provider := &mockSettingsProvider{settings: map[string]string{
+		"custom_head_script": `<script nonce="old">window.custom = 1 < 2;</script><script defer src="https://example.com/a.js"></script>`,
+	}}
+	server, err := NewFrontendServer(provider)
+	require.NoError(t, err)
+	settingsJSON, err := json.Marshal(provider.settings)
+	require.NoError(t, err)
+	rendered := server.injectSettings(settingsJSON)
+	content := string(replaceNoncePlaceholder(rendered, "request-nonce"))
+	require.Contains(t, content, `<script nonce="request-nonce" data-custom-head-script="">window.custom = 1 < 2;</script>`)
+	require.Contains(t, content, `src="https://example.com/a.js" nonce="request-nonce" data-custom-head-script=""`)
+	require.NotContains(t, content, `nonce="old"`)
+	require.Less(t, strings.Index(content, "window.__APP_CONFIG__="), strings.Index(content, "data-custom-head-script"))
+	require.Less(t, strings.Index(content, "data-custom-head-script"), strings.Index(content, "</head>"))
+
+	server.cache.Set(rendered, settingsJSON)
+	for _, path := range []string{"/", "/login", "/dashboard", "/admin/settings"} {
+		router := gin.New()
+		router.Use(func(c *gin.Context) { c.Set(middleware.CSPNonceKey, path) })
+		router.Use(server.Middleware())
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 2, strings.Count(rec.Body.String(), `data-custom-head-script=""`), path)
+		require.Contains(t, rec.Body.String(), `nonce="`+path+`"`)
+	}
+
+	server.InvalidateCache()
+	provider.settings = map[string]string{"custom_head_script": ""}
+	router := gin.New()
+	router.Use(server.Middleware())
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+	require.NotContains(t, rec.Body.String(), "data-custom-head-script")
+}
+
 // mockSettingsProvider implements PublicSettingsProvider for testing
 type mockSettingsProvider struct {
 	settings any
@@ -352,7 +391,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.True(t, strings.HasSuffix(etag, `"`))
 	})
 
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
+	t.Run("returns_304_without_csp_nonce_for_matching_etag", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -362,10 +401,6 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		// Use a real router for proper 304 handling
 		router := gin.New()
-		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, "test-nonce")
-			c.Next()
-		})
 		router.Use(server.Middleware())
 
 		// First request to populate cache and get ETag
@@ -383,6 +418,32 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotModified, w2.Code)
 		assert.Empty(t, w2.Body.String())
+	})
+
+	t.Run("matching_etag_keeps_html_and_csp_nonces_in_sync", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{
+			"custom_head_script": "window.custom = true;",
+		}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		router := gin.New()
+		router.Use(middleware.SecurityHeaders(config.CSPConfig{Enabled: true}, nil))
+		router.Use(server.Middleware())
+
+		first := httptest.NewRecorder()
+		router.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/", nil))
+		second := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.Header.Set("If-None-Match", first.Header().Get("ETag"))
+		router.ServeHTTP(second, request)
+		require.Equal(t, http.StatusOK, second.Code)
+		require.Equal(t, 1, provider.called, "the rendered HTML cache should still be reused")
+		require.NotEqual(t, first.Header().Get("Content-Security-Policy"), second.Header().Get("Content-Security-Policy"))
+		policy := second.Header().Get("Content-Security-Policy")
+		_, nonce, ok := strings.Cut(policy, "'nonce-")
+		require.True(t, ok)
+		nonce, _, _ = strings.Cut(nonce, "'")
+		require.Equal(t, 2, strings.Count(second.Body.String(), `nonce="`+nonce+`"`))
 	})
 
 	t.Run("sets_cache_control_header", func(t *testing.T) {

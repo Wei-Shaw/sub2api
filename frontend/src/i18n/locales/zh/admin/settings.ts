@@ -667,6 +667,8 @@ export default {
         docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
         docUrlPlaceholder: 'https://docs.example.com',
         siteLogo: '站点Logo',
+        customHeadScript: '自定义脚本（JavaScript / <script>，最大 64 KiB）',
+        customHeadScriptWarning: '脚本将在所有站点页面中以当前用户权限执行，且内容公开可见。仅使用可信代码，勿填写密钥；保存后刷新页面生效，清空可停用。第三方请求仍受 CSP 策略限制。',
         uploadImage: '上传图片',
         remove: '移除',
         logoHint: 'PNG、JPG 或 SVG 格式，最大 300KB。建议：80x80px 正方形图片。',

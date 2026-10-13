@@ -959,6 +959,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
+					"custom_head_script": "",
 					"custom_menu_items": [],
 					"custom_endpoints": [],
 					"payment_enabled": false,
@@ -1197,6 +1198,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_oidc_platform_quotas": null,
 					"auth_source_default_wechat_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
+					"custom_head_script": "",
 					"custom_menu_items": [],
 					"custom_endpoints": [],
 					"default_concurrency": 0,
