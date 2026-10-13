@@ -2,15 +2,12 @@ package service
 
 import (
 	"context"
-	"io"
 	"log"
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -152,41 +149,21 @@ func (w *accountVaultAutoWorker) ensure(ctx context.Context, rotation *AccountVa
 		state.status, state.errorCode = "error", "token_failed"
 		return state.status, state.errorCode
 	}
-	cmd := exec.Command(w.node, w.script, "--origin", w.origin, "--concurrency", strconv.Itoa(VaultRotationMaxConcurrency))
-	cmd.Dir = filepath.Dir(filepath.Dir(w.script))
-	cmd.Env = autoWorkerEnvironment(w.node)
 	errorSink := &autoWorkerErrorSink{}
-	cmd.Stdout, cmd.Stderr = io.Discard, errorSink
-	input, err := cmd.StdinPipe()
-	if err != nil {
-		state.status, state.errorCode = "error", "pipe_failed"
-		return state.status, state.errorCode
-	}
-	if err = cmd.Start(); err != nil {
-		_ = input.Close()
-		state.status, state.errorCode = "error", "start_failed"
-		return state.status, state.errorCode
-	}
-	_, writeErr := io.WriteString(input, grant.Token+"\n")
-	_ = input.Close()
+	wait, launchCode := launchAutoWorker(w.node, w.script, w.origin, grant.Token, errorSink)
 	grant.Token = ""
-	if writeErr != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		state.status, state.errorCode = "error", "pipe_failed"
+	if launchCode != "" {
+		state.status, state.errorCode = "error", launchCode
 		return state.status, state.errorCode
 	}
 	state.running, state.status, state.errorCode = true, "starting", ""
 	go func() {
-		err := cmd.Wait()
+		err := wait()
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		state.running = false
 		state.status = "error"
 		state.errorCode = "worker_exited"
-		if exit, ok := err.(*exec.ExitError); ok {
-			state.errorCode += "_" + strconv.Itoa(exit.ExitCode())
-		}
 		if code := errorSink.errorCode(); code != "" {
 			state.errorCode = code
 		}
