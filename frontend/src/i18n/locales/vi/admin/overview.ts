@@ -868,6 +868,12 @@ export default mergeLocaleMessages(
       no: 'Không'
     },
     exclusive: 'Riêng',
+    i18nField: {
+      default: 'Mặc định',
+      add: 'Thêm phiên bản {language}',
+      edit: 'Chỉnh sửa phiên bản {language}',
+      placeholder: 'Phiên bản {language}; để trống để hiển thị nội dung mặc định'
+    },
     exclusiveHint: 'Nhóm riêng có thể được gán thủ công cho người dùng cụ thể',
     exclusiveTooltip: {
       title: 'Nhóm riêng là gì?',

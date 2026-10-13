@@ -180,6 +180,8 @@ export default {
     refreshTitle: 'Khoảng tổng hợp',
     refreshHint: 'Ảnh hưởng đến độ chi tiết của thời gian ma trận và nhịp làm mới',
     refreshAria: 'Khoảng tổng hợp',
+    selectPlatform: 'Chọn nền tảng',
+    addPlatform: 'Thêm nền tảng',
     platformsTitle: 'Nền tảng và mô hình',
     platformsHint: 'Để trống = hiển thị tất cả tên mẫu thực; khi được điền, chỉ những mẫu được liệt kê mới có hàng riêng và những mẫu còn lại sẽ được đưa vào “Khác”',
     modelsPlaceholder: 'Trống = tất cả các mô hình thực tế; hoặc liệt kê các mẫu phổ biến (nghỉ ngơi → Khác)',

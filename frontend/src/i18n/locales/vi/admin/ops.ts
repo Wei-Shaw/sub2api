@@ -446,6 +446,7 @@ export default mergeLocaleMessages(
         kind: 'Loại',
         platform: 'Nền tảng',
         model: 'Mô hình',
+        account: 'Tài khoản',
         duration: 'Thời gian xử lý',
         status: 'Mã trạng thái',
         requestId: 'ID yêu cầu',

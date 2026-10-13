@@ -120,7 +120,10 @@ export default {
         "add": "Thêm quy tắc",
         "remove": "Xóa quy tắc",
         "restoreDefaults": "Khôi phục mặc định",
-        "fallback": "Model không khớp → Chat Completions (/v1/chat/completions)"
+        "alsoSupports": "Cũng hỗ trợ",
+        "alsoSupportsHint": "Các request đến bằng một trong những giao thức này sẽ được chuyển tiếp nguyên trạng, tránh chuyển đổi giao thức",
+        "fallback": "Model không khớp → Chat Completions (/v1/chat/completions)",
+        "catalogFallback": "Model không khớp → dùng giao thức từ danh sách model upstream (supported_endpoints trong /models); nếu không có thì dùng Chat Completions"
       },
       "title": "Mức sử dụng OpenCode Go",
       "panelHint": "Cửa sổ sử dụng do tài khoản OpenCode Go upstream báo cáo. Làm mới theo yêu cầu hoặc tự động khi được bật.",
