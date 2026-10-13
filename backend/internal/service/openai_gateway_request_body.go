@@ -2599,6 +2599,17 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 
 // validateGPT61SolCompatRequest runs after model mapping, before conversion can
 // discard unsupported explicit effort selections or disabled thinking.
+func hasEffectiveGPT61SolCompatEffort(body []byte) bool {
+	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
+		effort := gjson.GetBytes(body, path)
+		if effort.Type == gjson.String && strings.TrimSpace(effort.String()) != "" {
+			return true
+		}
+	}
+	outputEffort := gjson.GetBytes(body, "output_config.effort")
+	return outputEffort.Type == gjson.String && outputEffort.String() != ""
+}
+
 func validateGPT61SolCompatRequest(body []byte, model string) error {
 	if !openai.IsGPT61SolModelSpelling(model) {
 		return nil
@@ -2611,10 +2622,17 @@ func validateGPT61SolCompatRequest(body []byte, model string) error {
 	if gjson.GetBytes(body, "thinking.type").String() == "disabled" {
 		return openai.ValidateGPT61SolReasoningEffort(model, "none")
 	}
-	requestedModel := gjson.GetBytes(body, "model").String()
-	for _, effort := range []string{"none", "minimal"} {
-		if strings.HasSuffix(strings.ToLower(requestedModel), "-"+effort) {
-			return openai.ValidateGPT61SolReasoningEffort(model, effort)
+	// Only a canonical GPT-6.1 Sol effort alias can supply an implicit effort.
+	// Arbitrary client aliases (for example "public-none") may map to this
+	// upstream model and must not be parsed as model-effort syntax.
+	// Match the normalization gates: null/empty reasoning fields do not override;
+	// output_config whitespace is non-empty and does suppress the alias suffix.
+	if !hasEffectiveGPT61SolCompatEffort(body) {
+		requestedModel := openai.CanonicalizeOpenAIModelAliasSpelling(gjson.GetBytes(body, "model").String())
+		if openai.IsGPT61SolModelSpelling(requestedModel) {
+			if effort, ok := strings.CutPrefix(requestedModel, "gpt-6.1-sol-"); ok && effort != "openai-compact" {
+				return openai.ValidateGPT61SolReasoningEffort(model, effort)
+			}
 		}
 	}
 	return nil
