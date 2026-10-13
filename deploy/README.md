@@ -128,6 +128,11 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
 
+For a database migration between Windows, Linux or Docker deployments, use the
+[password-protected portable backup tool](../tools/portable-backup/README.md).
+It packages PostgreSQL data together with the fixed vault, TOTP and JWT keys;
+copying only a SQL dump would leave encrypted 2FA records unreadable.
+
 ### Default proxy for OpenAI accounts
 
 Create an active proxy in **Admin > Proxy Management**, then set its ID as
