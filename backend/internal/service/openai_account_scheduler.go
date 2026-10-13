@@ -1483,7 +1483,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			continue
 		}
 		if !s.service.isOpenAIAccountSchedulableForRPM(ctx, account, false, rpmCounts) {
-			filterStats.exclude("rpm_limited")
+			filterStats.exclude("rpm_rate_limited")
 			continue
 		}
 		filtered = append(filtered, account)

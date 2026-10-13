@@ -169,5 +169,5 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_AdvancedSkipsRPMFullAcc
 	rpm.counts[42022] = 3
 	_, _, err = svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "rpm_limited")
+	require.Contains(t, err.Error(), "rpm_rate_limited")
 }
