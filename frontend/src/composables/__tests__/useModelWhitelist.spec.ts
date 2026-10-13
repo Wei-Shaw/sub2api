@@ -100,6 +100,16 @@ describe('useModelWhitelist', () => {
     ]))
   })
 
+  it('Claude 默认白名单保存后允许 Haiku 5.5，预设使用同一模型 ID', () => {
+    const models: string[] = getModelsByPlatform('anthropic')
+    const mapping: Record<string, string> | null = buildModelMappingObject('whitelist', models, [])
+
+    expect(mapping?.['claude-haiku-5-5']).toBe('claude-haiku-5-5')
+    expect(getPresetMappingsByPlatform('anthropic')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5-5' })
+    ]))
+  })
+
   it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {
     const models = getModelsByPlatform('grok')
 

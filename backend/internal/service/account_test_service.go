@@ -2585,14 +2585,7 @@ func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, accoun
 }
 
 func (s *AccountTestService) buildGeminiServiceAccountRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
-	if s.geminiTokenProvider == nil {
-		return nil, fmt.Errorf("gemini token provider not configured")
-	}
-	accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get service account access token: %w", err)
-	}
-	fullURL, err := buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, "streamGenerateContent", true)
+	fullURL, err := buildVertexGeminiAccountURL(account, modelID, "streamGenerateContent", true)
 	if err != nil {
 		return nil, err
 	}
@@ -2601,7 +2594,9 @@ func (s *AccountTestService) buildGeminiServiceAccountRequest(ctx context.Contex
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if err := setVertexGeminiAuth(ctx, req, account, s.geminiTokenProvider); err != nil {
+		return nil, fmt.Errorf("failed to authenticate vertex request: %w", err)
+	}
 	return req, nil
 }
 

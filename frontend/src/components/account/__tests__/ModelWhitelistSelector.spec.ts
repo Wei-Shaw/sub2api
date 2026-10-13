@@ -29,7 +29,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: Record<string, string>) => key === 'common.copy' ? '复制' : key === 'admin.accounts.modelMappingConflict' ? `Model mapping conflict: ${params?.from} → ${params?.to}` : key
+      t: (key: string, params?: Record<string, string>) => key === 'common.copy' ? '复制' : key === 'admin.accounts.modelMappingConflict' ? `Model mapping conflict: ${params?.from} → ${params?.to}` : key === 'admin.accounts.syncUpstreamModelsError' ? `${key}: ${params?.message}` : key
     })
   }
 })
@@ -245,6 +245,26 @@ describe('ModelWhitelistSelector', () => {
     expect(showSuccess).not.toHaveBeenCalled()
   })
 
+  it('shows the backend message when upstream sync is rejected', async () => {
+    syncUpstreamModels.mockRejectedValue({
+      status: 400,
+      code: 'BAD_REQUEST',
+      message: 'Vertex API key accounts do not support upstream model listing'
+    })
+    const wrapper = mountSelector({ platform: 'gemini', accountId: 174 })
+
+    const syncButton = wrapper
+      .findAll('button')
+      .find(button => button.text() === 'admin.accounts.syncUpstreamModels')
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(
+      'admin.accounts.syncUpstreamModelsError: Vertex API key accounts do not support upstream model listing'
+    )
+  })
+
   it('shows success and a partial warning when some capabilities were saved', async () => {
     syncUpstreamModels.mockResolvedValue({
       models: ['gpt-6-astra', 'gpt-image-2'],
@@ -442,7 +462,7 @@ describe('ModelWhitelistSelector', () => {
     expect(findModelRow(wrapper, 'gemini-existing-candidate').exists()).toBe(true)
     expect(findModelRow(wrapper, 'saved-model').exists()).toBe(true)
     if (outcome === 'failure') {
-      expect(showError).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsError')
+      expect(showError).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsError: Network unavailable')
     } else {
       expect(showInfo).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsEmpty')
     }
@@ -488,11 +508,15 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
-  it('keeps the newest sync loading state when an older request finishes', async () => {
+  it.each(['success', 'failure'])('keeps the newest sync loading state when an older request finishes with %s', async (outcome) => {
     let resolveFirst: ((result: { models: string[] }) => void) | undefined
+    let rejectFirst: ((reason: { message: string }) => void) | undefined
     let resolveSecond: ((result: { models: string[] }) => void) | undefined
     syncUpstreamModels
-      .mockReturnValueOnce(new Promise<{ models: string[] }>(resolve => { resolveFirst = resolve }))
+      .mockReturnValueOnce(new Promise<{ models: string[] }>((resolve, reject) => {
+        resolveFirst = resolve
+        rejectFirst = reject
+      }))
       .mockReturnValueOnce(new Promise<{ models: string[] }>(resolve => { resolveSecond = resolve }))
     const wrapper = mountSelector({ accountId: 33 })
     const syncButton = () => wrapper.findAll('button').find(button =>
@@ -501,9 +525,14 @@ describe('ModelWhitelistSelector', () => {
     await syncButton().trigger('click')
     await wrapper.setProps({ accountId: 34 })
     await syncButton().trigger('click')
-    resolveFirst?.({ models: ['old-model'] })
+    if (outcome === 'failure') {
+      rejectFirst?.({ message: 'Old account upstream error' })
+    } else {
+      resolveFirst?.({ models: ['old-model'] })
+    }
     await flushPromises()
     expect(syncButton().attributes('disabled')).toBeDefined()
+    expect(showError).not.toHaveBeenCalled()
     resolveSecond?.({ models: ['new-model'] })
     await flushPromises()
     expect(syncButton().attributes('disabled')).toBeUndefined()
