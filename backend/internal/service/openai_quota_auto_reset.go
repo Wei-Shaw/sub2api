@@ -89,13 +89,15 @@ type openAIAutoResetRecovery interface {
 // OpenAIQuotaAutoResetService 通过小型去重队列承接实时信号，并用分钟扫描补偿
 // 重启、漏事件和多实例读取；真正消费仍由 PostgreSQL 幂等记录串行化。
 type OpenAIQuotaAutoResetService struct {
-	accountRepo AccountRepository
-	quota       openAIAutoResetQuota
-	recoverer   openAIAutoResetRecovery
-	idempotency *IdempotencyCoordinator
-	audit       *AuditLogService
-	settings    *SettingService
-	leaderLock  LeaderLockCache
+	accountRepo        AccountRepository
+	quota              openAIAutoResetQuota
+	accountTest        openAIWindowActivationTester
+	activationLocation *time.Location
+	recoverer          openAIAutoResetRecovery
+	idempotency        *IdempotencyCoordinator
+	audit              *AuditLogService
+	settings           *SettingService
+	leaderLock         LeaderLockCache
 
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -184,7 +186,7 @@ func (s *OpenAIQuotaAutoResetService) runWorker() {
 		case <-s.ctx.Done():
 			return
 		case accountID := <-s.queue:
-			ctx, cancel := context.WithTimeout(s.ctx, 50*time.Second)
+			ctx, cancel := context.WithTimeout(s.ctx, 100*time.Second)
 			if err := s.evaluateAccount(ctx, accountID); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("openai_auto_reset_evaluate_failed", "account_id", accountID, "error_code", infraerrors.Reason(err))
 			}
@@ -234,7 +236,7 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 		}
 		for i := range accounts {
 			account := &accounts[i]
-			if account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account).Enabled {
+			if (account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account).Enabled) || shouldActivateOpenAIWindow(account, time.Now(), s.activationLocation) {
 				s.Notify(account.ID)
 			}
 		}
@@ -287,6 +289,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		}
 		return nil
 	}
+	s.activateWindow(ctx, account)
 	config := ResolveOpenAIAutoResetCreditConfig(account)
 	if !config.Enabled || !account.IsActive() || !account.Schedulable {
 		return nil
