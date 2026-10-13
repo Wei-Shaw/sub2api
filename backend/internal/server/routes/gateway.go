@@ -349,6 +349,12 @@ func RegisterGatewayRoutes(
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
 		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		// 显式上下文缓存：网关自管资源 ID 与账号绑定，list/get 只读本地记录。
+		gemini.POST("/cachedContents", h.Gateway.GeminiCachedContentsCreate)
+		gemini.GET("/cachedContents", h.Gateway.GeminiCachedContentsList)
+		gemini.GET("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsGet)
+		gemini.PATCH("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsPatch)
+		gemini.DELETE("/cachedContents/:cacheID", h.Gateway.GeminiCachedContentsDelete)
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
