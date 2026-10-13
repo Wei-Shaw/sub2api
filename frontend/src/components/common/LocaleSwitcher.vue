@@ -69,6 +69,8 @@ async function selectLocale(code: string) {
   try {
     await setLocale(code)
     isOpen.value = false
+    // 分组名称等内容由后端按请求语言返回，整页刷新让已加载的数据换成新语言
+    window.location.reload()
   } finally {
     switching.value = false
   }

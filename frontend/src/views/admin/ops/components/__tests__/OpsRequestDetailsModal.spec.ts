@@ -4,14 +4,17 @@ import type { OpsDashboardOverview } from '@/api/admin/ops'
 import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import OpsDashboardHeader from '../OpsDashboardHeader.vue'
 import OpsRequestDetailsModal from '../OpsRequestDetailsModal.vue'
+import { resetAccountNameCacheForTests } from '../../utils/accountNameMap'
 
-const { listRequestDetails, viewport } = vi.hoisted(() => ({
+const { listRequestDetails, listAccounts, viewport } = vi.hoisted(() => ({
   listRequestDetails: vi.fn(),
+  listAccounts: vi.fn(),
   viewport: { desktop: true },
 }))
 
 vi.mock('@vueuse/core', () => ({ useMediaQuery: () => ref(viewport.desktop) }))
 vi.mock('@/api/admin/ops', () => ({ opsAPI: { listRequestDetails } }))
+vi.mock('@/api/admin/accounts', () => ({ accountsAPI: { list: listAccounts } }))
 vi.mock('@/api', () => ({ adminAPI: { groups: { getAll: vi.fn().mockResolvedValue([]) } } }))
 vi.mock('@/stores', () => ({
   useAppStore: () => ({ showError: vi.fn() }),
@@ -36,14 +39,22 @@ async function openDetails(sort: 'duration_desc' | 'ttft_desc') {
 describe('Ops request latency details', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetAccountNameCacheForTests()
     viewport.desktop = true
     listRequestDetails.mockResolvedValue({
       items: [
-        { kind: 'success', created_at: '2026-09-10T00:00:00Z', duration_ms: 12000, first_token_ms: 800 },
-        { kind: 'success', created_at: '2026-09-10T00:00:01Z', duration_ms: 9000, first_token_ms: 0 },
-        { kind: 'success', created_at: '2026-09-10T00:00:02Z', duration_ms: 5000, first_token_ms: null },
+        { kind: 'success', created_at: '2026-09-10T00:00:00Z', duration_ms: 12000, first_token_ms: 800, account_id: 101 },
+        { kind: 'success', created_at: '2026-09-10T00:00:01Z', duration_ms: 9000, first_token_ms: 0, account_id: 102 },
+        { kind: 'success', created_at: '2026-09-10T00:00:02Z', duration_ms: 5000, first_token_ms: null, account_id: 999 },
       ],
       total: 3,
+    })
+    listAccounts.mockResolvedValue({
+      items: [
+        { id: 101, name: 'acc-alpha' },
+        { id: 102, name: 'acc-beta' },
+      ],
+      total: 2,
     })
   })
 
@@ -74,8 +85,18 @@ describe('Ops request latency details', () => {
     expect(wrapper.text()).not.toContain('12000 ms')
     expect(wrapper.text()).not.toContain('9000 ms')
     expect(wrapper.text()).not.toContain('5000 ms')
-    if (desktop) expect(wrapper.findAll('tbody tr')[2].findAll('td')[4].text()).toBe('-')
+    if (desktop) expect(wrapper.findAll('tbody tr')[2].findAll('td')[5].text()).toBe('-')
     else expect(wrapper.text()).toContain('admin.ops.ttftLabel: -')
+    wrapper.unmount()
+  })
+
+  it('shows account names with id fallback in the account column', async () => {
+    const wrapper = await openDetails('ttft_desc')
+    expect(wrapper.text()).toContain('admin.ops.requestDetails.table.account')
+    const accountCells = wrapper.findAll('tbody tr').map(tr => tr.findAll('td')[4].text())
+    expect(accountCells).toEqual(['acc-alpha', 'acc-beta', '#999'])
+    // 999 不在账号映射里，应触发一次强制刷新重建缓存
+    expect(listAccounts).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
