@@ -100,7 +100,7 @@ async function main() {
             task.provider = await createProvider(task.host?.browser ?? browser, session.signal,
               () => session.stop('BROWSER_CLOSED'), task.host
                 ? { context: task.host.context, page: task.host.page, externalNavigation: true, manualLogin: false }
-                : {});
+                : { manualLogin: false });
             setupStage = 'MARK_WINDOW';
             if (task.host) await markWindow(task.host.page, claim.job.account_id);
           }

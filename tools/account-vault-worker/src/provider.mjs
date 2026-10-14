@@ -50,6 +50,7 @@ export class ChatGPTProvider {
   #loginStepSeenAt = 0;
   #callbackOrigin;
   #loginRedirectWaitMs;
+  #loginHydrationWaitMs;
   #clickDelay;
 
   constructor({ page, context, signal, testOrigin, testCallbackOrigin, manualLogin = !testOrigin,
@@ -74,6 +75,7 @@ export class ChatGPTProvider {
     this.#allowedLoginOrigins = testOrigin ? new Set([testOrigin]) : LOGIN_ORIGINS;
     this.#callbackOrigin = testOrigin && testCallbackOrigin ? testCallbackOrigin : 'http://localhost:1455';
     this.#loginRedirectWaitMs = testOrigin ? (testLoginRedirectWaitMs ?? 20_000) : 20_000;
+    this.#loginHydrationWaitMs = testOrigin ? 0 : 2000;
   }
 
   async #fetch(path, { method = 'GET', body, bearer = this.#token } = {}) {
@@ -511,6 +513,13 @@ export class ChatGPTProvider {
         input = otpInput; value = response.code; kind = 'otp';
       }
       if (input) {
+        // The live login form is hydrated after its fields first appear. A
+        // premature click can submit native HTML to a JSON route (HTTP 400).
+        // Wait for this step to settle before the usual 1–2 second click delay.
+        const settleDelay = this.#loginHydrationWaitMs -
+          (performance.now() - Math.max(this.#loginURLSeenAt, this.#loginStepSeenAt));
+        if (settleDelay > 0) await delay(settleDelay, this.#signal);
+        if (this.#page.url() !== currentURL) continue;
         await checkLease();
         assertAlive(this.#signal);
         const form = input.locator('xpath=ancestor::form[1]');

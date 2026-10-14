@@ -387,6 +387,13 @@ test('Linux-style manual login clicks either visible home login button and fills
   assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
 });
 
+test('Ubuntu automatic login opens the home dialog and submits ordinary email, password and OTP steps', async t => {
+  const fixture = await browserFixture(t, { manualLogin: false, homeLoginDialog: true, dualLoginButtons: true });
+  const me = await fixture.provider.login({ ...loginOptions, authorizationOnly: true });
+  assert.deepEqual(me, { email: 'account@example.test' });
+  assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
+});
+
 test('ChatGPT home login dialog gets its email filled before the operator clicks Continue', async t => {
   const fixture = await browserFixture(t, { manualLogin: true, loginModal: true });
   let manual = 0;
