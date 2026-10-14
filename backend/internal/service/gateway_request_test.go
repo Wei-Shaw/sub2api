@@ -1315,7 +1315,7 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 	}
 }
 
-func TestNormalizeClaudeOpus55Thinking(t *testing.T) {
+func TestNormalizeClaude55LegacyThinking(t *testing.T) {
 	tests := []struct {
 		name        string
 		model       string
@@ -1345,6 +1345,13 @@ func TestNormalizeClaudeOpus55Thinking(t *testing.T) {
 			wantEffort:  "medium",
 		},
 		{
+			name:        "sonnet 5.5 legacy enabled",
+			model:       "claude-sonnet-5-5",
+			input:       `{"model":"claude-sonnet-5-5","thinking":{"type":"enabled","budget_tokens":1024}}`,
+			wantApplied: true,
+			wantEffort:  "medium",
+		},
+		{
 			name:        "disabled remains unchanged",
 			model:       "claude-opus-5-5",
 			input:       `{"model":"claude-opus-5-5","thinking":{"type":"disabled"}}`,
@@ -1360,7 +1367,7 @@ func TestNormalizeClaudeOpus55Thinking(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, applied := NormalizeClaudeOpus55Thinking([]byte(tt.input), tt.model)
+			got, applied := NormalizeClaude55LegacyThinking([]byte(tt.input), tt.model)
 			require.Equal(t, tt.wantApplied, applied)
 			if !tt.wantApplied {
 				require.Equal(t, tt.input, string(got))

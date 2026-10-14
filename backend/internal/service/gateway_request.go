@@ -573,17 +573,18 @@ func isClaude55SignedThinkingModel(model string) bool {
 	return claude.IsOpus55(model) || claude.IsSonnet55(model) || claude.IsHaiku55(model)
 }
 
-// NormalizeClaudeOpus55Thinking converts legacy enabled thinking to adaptive
-// and removes stale budget_tokens from adaptive requests for Claude Opus 5.5.
-// Converting enabled thinking supplies medium only when effort is absent;
-// existing adaptive requests retain their effort or its absence. The legacy
-// budget is discarded, not translated into an equivalent token limit.
+// NormalizeClaude55LegacyThinking converts legacy enabled thinking to adaptive
+// and removes stale budget_tokens from adaptive requests for Claude Opus 5.5
+// and Sonnet 5.5. Converting enabled thinking supplies medium only when effort
+// is absent; existing adaptive requests retain their effort or its absence. The
+// legacy budget is discarded, not translated into an equivalent token limit.
 //
-// This is deliberately limited to Opus 5.5 and enabled/adaptive thinking. Explicitly
-// disabled thinking and unknown model families retain the existing validation
-// behavior. Invalid JSON and rewrite failures are handled fail-safe.
-func NormalizeClaudeOpus55Thinking(body []byte, model string) ([]byte, bool) {
-	if !claude.IsOpus55(model) || !gjson.ValidBytes(body) {
+// This is deliberately limited to Opus/Sonnet 5.5 and enabled/adaptive thinking.
+// Explicitly disabled thinking, between_tools, forced tool choices and other
+// model families retain the existing validation behavior. Invalid JSON and
+// rewrite failures are handled fail-safe.
+func NormalizeClaude55LegacyThinking(body []byte, model string) ([]byte, bool) {
+	if !(claude.IsOpus55(model) || claude.IsSonnet55(model)) || !gjson.ValidBytes(body) {
 		return body, false
 	}
 	thinking := gjson.GetBytes(body, "thinking")

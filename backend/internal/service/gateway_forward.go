@@ -105,10 +105,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if account != nil && account.Platform == PlatformAnthropic {
-		if s.cfg != nil && s.cfg.Gateway.ClaudeOpus55LegacyThinkingEnabled {
-			if normalized, applied := NormalizeClaudeOpus55Thinking(parsed.Body.Bytes(), validationModel); applied {
+		if s.cfg != nil && s.cfg.Gateway.Claude55LegacyThinkingEnabled {
+			if normalized, applied := NormalizeClaude55LegacyThinking(parsed.Body.Bytes(), validationModel); applied {
 				if err := parsed.ReplaceBody(normalized); err != nil {
-					return nil, fmt.Errorf("normalize Opus 5.5 thinking: %w", err)
+					return nil, fmt.Errorf("normalize Claude 5.5 thinking: %w", err)
 				}
 			}
 		}
