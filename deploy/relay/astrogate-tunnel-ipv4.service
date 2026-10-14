@@ -1,0 +1,18 @@
+[Unit]
+Description=AstroGate SSH reverse tunnel to IPv4 relay
+Wants=network-online.target
+After=network-online.target caddy.service astrogate.service
+
+[Service]
+Type=simple
+User=lxq
+ExecStart=/usr/bin/ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o IdentitiesOnly=yes -o UpdateHostKeys=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -i /home/lxq/.ssh/astrogate-relay-ipv4 -N -R 127.0.0.1:18080:127.0.0.1:80 -R 127.0.0.1:18443:127.0.0.1:443 astrogate-tunnel@23.94.184.57
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

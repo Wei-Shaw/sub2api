@@ -1,0 +1,26 @@
+[Unit]
+Description=AstroGate IPv4 TCP relay
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=astrogate-relay
+Group=astrogate-relay
+ExecStart=/usr/local/bin/astrogate-relay
+Environment=ASTROGATE_HTTP_LISTEN=:80
+Environment=ASTROGATE_HTTP_UPSTREAM=127.0.0.1:18080
+Environment=ASTROGATE_HTTPS_LISTEN=127.0.0.1:8443
+Environment=ASTROGATE_HTTPS_UPSTREAM=127.0.0.1:18443
+Restart=always
+RestartSec=3
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
