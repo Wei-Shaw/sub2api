@@ -109,7 +109,7 @@ func TestGeminiV1BetaHandler_ListModelsAntigravityFallback(t *testing.T) {
 		expectedBehavior string
 	}{
 		{
-			name:             "有Gemini账户-调用ForwardAIStudioGET",
+			name:             "有Gemini账户-调用ForwardListModels",
 			hasGeminiAccount: true,
 			hasAntigravity:   false,
 			expectedBehavior: "forward_to_upstream",
@@ -155,7 +155,7 @@ func TestGeminiV1BetaHandler_GetModelAntigravityFallback(t *testing.T) {
 		expectedBehavior string
 	}{
 		{
-			name:             "有Gemini账户-调用ForwardAIStudioGET",
+			name:             "有Gemini账户-调用ForwardGetModel",
 			hasGeminiAccount: true,
 			hasAntigravity:   false,
 			expectedBehavior: "forward_to_upstream",
