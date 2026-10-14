@@ -37,7 +37,7 @@ function browserEnvironment(source) {
   return Object.fromEntries(keys.filter(key => source[key]).map(key => [key, source[key]]));
 }
 
-export async function launchLinuxPrivateEdge(chromium, signal, initialURL = 'https://chatgpt.com/') {
+async function launchLinuxPrivateEdgeOnce(chromium, signal, initialURL) {
   if (process.platform !== 'linux') throw new WorkerError('BROWSER_EDGE_PLATFORM_UNSUPPORTED');
   try { await access(EDGE, constants.X_OK); }
   catch { throw new WorkerError('BROWSER_EDGE_NOT_FOUND'); }
@@ -104,4 +104,21 @@ export async function launchLinuxPrivateEdge(chromium, signal, initialURL = 'htt
     if (error instanceof WorkerError) throw error;
     throw new WorkerError('BROWSER_EDGE_CDP_START_FAILED');
   }
+}
+
+export async function launchLinuxPrivateEdge(chromium, signal, initialURL = 'https://chatgpt.com/') {
+  // Edge occasionally exits while its new private profile or first tab is
+  // starting. Each attempt owns and removes only its own temporary profile.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal?.aborted) throw new WorkerError('WORKER_STOPPED');
+    try { return await launchLinuxPrivateEdgeOnce(chromium, signal, initialURL); }
+    catch (error) {
+      const retryable = ['BROWSER_EDGE_CLOSED_ON_START', 'BROWSER_EDGE_START_TIMEOUT',
+        'BROWSER_EDGE_CDP_START_FAILED', 'BROWSER_EDGE_CONTEXT_UNAVAILABLE',
+        'BROWSER_EDGE_PAGE_UNAVAILABLE'].includes(error?.code);
+      if (!retryable || attempt === 2 || signal?.aborted) throw error;
+      await delay(400 * (attempt + 1), signal);
+    }
+  }
+  throw new WorkerError('BROWSER_EDGE_START_FAILED');
 }

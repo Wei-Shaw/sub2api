@@ -205,6 +205,7 @@ export async function runJob({ session, provider, onManual = async () => { throw
 
 export function pauseCode(code, phase) {
   if (code === 'WORKER_STOPPED' || code === 'BROWSER_CLOSED' || code === 'LEASE_LOST') return 'worker_stopped';
+  if (code.startsWith('BROWSER_EDGE_')) return 'worker_stopped';
   if (code.startsWith('ACCOUNT_IDENTITY_RESPONSE_')) return code.toLowerCase().replace('account_', '');
   if (code.includes('IDENTITY')) return 'identity_mismatch';
   if (code.startsWith('BACKEND_') || code === 'ENROLLMENT_NOT_SAVED' || code === 'COMPLETION_NOT_CONFIRMED') return 'storage_failed';
