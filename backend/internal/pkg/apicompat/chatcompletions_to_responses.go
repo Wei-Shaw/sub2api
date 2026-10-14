@@ -211,13 +211,6 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 	return out, nil
 }
 
-// convertChatMessagesToResponsesInput converts the Chat Completions messages
-// array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
-	out, _, err := convertChatMessagesToResponsesInputWithIndexes(msgs)
-	return out, err
-}
-
 func convertChatMessagesToResponsesInputWithIndexes(msgs []ChatMessage) ([]ResponsesInputItem, []int, error) {
 	var out []ResponsesInputItem
 	messageInputIndexes := make([]int, len(msgs))
