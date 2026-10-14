@@ -86,6 +86,8 @@ Linux 如缺少浏览器系统依赖，请按 [Playwright 官方浏览器安装�
 
 Ubuntu/Linux 安装系统版 Microsoft Edge 后，可设置 `ACCOUNT_VAULT_BROWSER_CHANNEL=msedge`。助手会直接启动独立的 Edge InPrivate 窗口，以仅监听本机的 CDP 端口连接，并在任务结束时删除临时浏览器资料。未设置该变量时继续使用 Playwright 的 Chromium。Linux 后台自动助手需要在其启动脚本中传入此变量；仅设置后端进程环境变量不会自动传给助手。
 
+如果 Linux 后端 systemd 服务启用了 `NoNewPrivileges=true`，Edge 的沙箱可能在启动时立即退出。可把 `ACCOUNT_VAULT_AUTO_WORKER_NODE` 指向 [deploy/linux/node-with-display.sh](deploy/linux/node-with-display.sh) 的已配置副本：脚本在这种情况下用当前桌面用户的 `systemd --user` 服务运行助手，保持后端服务的限制；一次性助手连接码仍只通过 stdin 管道传递。部署前核对脚本中的用户目录、Node 路径、显示会话和代理地址。需要该用户的 user manager 与桌面会话正常运行；浏览器沙箱保持启用。不要通过 `--no-sandbox` 规避启动错误。
+
 ## 运行与暂停
 
 - 成功任务自动串行继续；修改远端 2FA 之前暂停的账号不会阻塞后续队列。修改阶段出现不确定状态时，本轮助手停止领取后续账号。
