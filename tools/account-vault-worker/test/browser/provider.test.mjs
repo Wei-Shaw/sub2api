@@ -257,6 +257,16 @@ test('a login redirect back to signed-out home retries the entry and email steps
   assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [2, 1, 1]);
 });
 
+test('first rotation login retries password after two provider redirects', async t => {
+  const fixture = await browserFixture(t, { passwordBounceCount: 2 });
+  const me = await fixture.provider.login({ ...loginOptions, onManual: async reason => {
+    assert.equal(reason, 'LOGIN_PROVIDER_REDIRECT');
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } });
+  assert.deepEqual(me, { id: 'fixture-subject', email: 'account@example.test' });
+  assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 3, 1]);
+});
+
 test('a blank official sign-in redirect reports loading and then continues', async t => {
   const fixture = await browserFixture(t, { intermediateRedirect: true });
   const reasons = [];

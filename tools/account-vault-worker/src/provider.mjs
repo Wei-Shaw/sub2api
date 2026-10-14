@@ -10,6 +10,7 @@ const AUTHENTICATOR = /authenticator(?: app)?|authentication app|身份验证器
 const EXTRA_CHALLENGE = /check your (?:email|inbox)|email verification|verify your email|passkey|security key|检查(?:您|你)?的?邮箱|查看(?:您|你)?的?邮箱|邮件验证码|電子郵件驗證|通行密钥|安全密钥/i;
 const EMAIL_INPUT_SELECTOR = 'input[type="email"], input[autocomplete="username"], input[name="email"], input[placeholder="电子邮件地址"], input[placeholder="Email address"]';
 const ENTRY_ATTEMPTS_LIMIT = 8;
+const PASSWORD_ATTEMPTS_LIMIT = 3;
 
 export const ordinaryClickDelay = (random = Math.random) => 1000 + Math.floor(Math.min(1, Math.max(0, random())) * 1000);
 
@@ -504,7 +505,7 @@ export class ChatGPTProvider {
         this.#loginStepSeenAt = performance.now();
       }
       let input, value, kind;
-      if (passwordInput && attempts.password < 2 && password) {
+      if (passwordInput && attempts.password < PASSWORD_ATTEMPTS_LIMIT && password) {
         input = passwordInput; value = password; kind = 'password';
       } else if (emailInput && attempts.email < 2) {
         input = emailInput; value = email; kind = 'email';

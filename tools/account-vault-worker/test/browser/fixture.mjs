@@ -3,7 +3,7 @@ import { once } from 'node:events';
 
 // Entirely synthetic, public fixtures. No HAR, production account, credential,
 // screenshot, profile export or real provider network request is involved.
-export async function fixtureServer({ oauthConsent = false, consentWorkspace = 'fixture-workspace', accountChooser = false, emailChallenge = false, requireBearer = false, wrongIdentity = false, redirectEnroll = false, anonymousMe200 = false, cloudflareChallenge = false, meWithoutEmail = false, meEmailWithBearerOnly = false, disabledPasswordButton = false, loginModal = false, homeLoginDialog = false, onboardingDialog = false, dualLoginButtons = false, bounceToHomeAfterEmailOnce = false, intermediateRedirect = false, stalledRedirect = false, redirectChallenge = false } = {}) {
+export async function fixtureServer({ oauthConsent = false, consentWorkspace = 'fixture-workspace', accountChooser = false, emailChallenge = false, requireBearer = false, wrongIdentity = false, redirectEnroll = false, anonymousMe200 = false, cloudflareChallenge = false, meWithoutEmail = false, meEmailWithBearerOnly = false, disabledPasswordButton = false, loginModal = false, homeLoginDialog = false, onboardingDialog = false, dualLoginButtons = false, bounceToHomeAfterEmailOnce = false, passwordBounceCount = 0, intermediateRedirect = false, stalledRedirect = false, redirectChallenge = false } = {}) {
   const counts = { email: 0, password: 0, otp: 0, disable: 0, enroll: 0, activate: 0, redirected: 0, session: 0, authorization: 0 };
   let state = 'old';
   let authorization;
@@ -37,7 +37,7 @@ export async function fixtureServer({ oauthConsent = false, consentWorkspace = '
     }
     if (request.method === 'GET' && url.pathname === '/auth/login_with') return html(response, redirectChallenge ? '<title>Just a moment...</title>' : stalledRedirect ? '' : '<script>setTimeout(() => { location.href = "/login/password" }, 2500)</script>');
     if (request.method === 'GET' && url.pathname === '/login/password') return html(response, cloudflareChallenge ? '<title>Just a moment...</title><h1>Checking your browser</h1>' : `<form method="post" action="/login/password"><label>Password<input type="password" name="password"></label><button ${disabledPasswordButton ? 'disabled' : ''}>Continue</button></form>`);
-    if (request.method === 'POST' && url.pathname === '/login/password') { counts.password++; return redirect(response, '/login/otp'); }
+    if (request.method === 'POST' && url.pathname === '/login/password') { counts.password++; return redirect(response, counts.password <= passwordBounceCount ? '/auth/login_with' : '/login/otp'); }
     if (request.method === 'GET' && url.pathname === '/login/otp') return html(response, `<h1>${emailChallenge ? 'Check your email' : 'Authenticator app'}</h1><form method="post" action="/login/otp"><label>Code<input autocomplete="one-time-code" name="code"></label><button>Continue</button></form>`);
     if (request.method === 'POST' && url.pathname === '/login/otp') { counts.otp++; return redirect(response, '/', true); }
     if (url.pathname === '/api/auth/session') { counts.session++; return json(response, signedIn ? { ...(requireBearer || meEmailWithBearerOnly ? { accessToken: 'PUBLIC-SYNTHETIC-BEARER-TOKEN' } : {}), user: { id: 'fixture-subject', email: 'account@example.test' } } : {}); }
