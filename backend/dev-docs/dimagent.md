@@ -10,7 +10,8 @@
 | `POST /v1/responses` / `POST /v1/messages` | Explicitly unsupported in the first OAuth release; this prevents the provider's OAuth token from entering unverified OpenAI/Codex conversion paths |
 | Stream usage | Supported; the outbound body enforces `stream_options.include_usage=true` |
 | Buffered usage | Supported when the upstream response contains `usage` |
-| `/v1/models` sync | Future work: the generic API-key sync UI is intentionally disabled until it acquires the refreshed DimAgent OAuth credential |
+| `GET /v1/models` | Supported; returns the group-visible OpenAI-compatible model IDs |
+| `GET /v1/model-capabilities` | Supported for authenticated `dimagent` keys; returns the group-scoped context/output limits, modalities, reasoning levels and wire values consumed by the DSH Sub2API DimAgent Provider plugin |
 | Existing Sub2API subscriptions and `usage_logs` | Reused |
 | DimAgent OAuth Authorization Code + PKCE | Supported; administrator completes the registered localhost callback by pasting its full URL into Sub2API |
 | Automatic access-token refresh | Supported from the stored OAuth refresh token |
@@ -18,6 +19,51 @@
 | Upstream credit polling | Future work |
 
 Unsupported paths are rejected by the gateway, so the managed token is not sent to an unverified DimAgent endpoint.
+
+### Rich model capability catalog
+
+`GET /v1/model-capabilities` uses the same Sub2API API key as inference. It is
+available only when that key belongs to a `dimagent` group, and never exposes the
+managed OAuth credential. Its stable response shape is:
+
+```json
+{
+  "object": "model_capability_list",
+  "catalog_version": "sha256:<group-and-catalog-hash>",
+  "catalog_scope": { "platform": "dimagent", "group_id": 11 },
+  "data": [{
+    "id": "deepseek-v4.1-flash",
+    "display_name": "DeepSeek V4.1 Flash",
+    "protocol": "openai-completions",
+    "context_window": 1000000,
+    "max_output_tokens": 384000,
+    "input_modalities": ["text", "image"],
+    "reasoning": {
+      "supported": true,
+      "default_level": "high",
+      "efforts": [
+        { "level": "low", "wire_value": "low" },
+        { "level": "high", "wire_value": "high" },
+        { "level": "max", "wire_value": "max" }
+      ]
+    }
+  }]
+}
+```
+
+The endpoint fetches each schedulable account's authenticated `?type=dim`
+catalogue through the existing OAuth/token/header path and its fresh/stale
+singleflight cache. Account aliases are projected before aggregation and the group
+allowlist is applied last. With multiple accounts, only models common to every
+schedulable account are advertised; context/output limits and modalities/reasoning
+levels are conservative intersections. If any account catalogue cannot be obtained
+after the stale cache expires, the endpoint fails closed so a client can keep its
+last-known-good catalogue instead of installing an unsafe partial union.
+
+`ETag` is the quoted `catalog_version`; it includes `group_id`, so changing a key to
+another group cannot reuse a matching model-only validator. `If-None-Match` returns
+304. Capability discovery is not metered and does not create a `usage_logs` row;
+actual chat requests continue through the normal metered path.
 
 ## Managed account setup
 
