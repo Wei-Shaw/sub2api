@@ -1163,7 +1163,7 @@ func TestOpenAIImagesOAuthBodyReadTransportErrorFailover(t *testing.T) {
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-	require.JSONEq(t, `{"error":{"type":"upstream_error","code":"upstream_http2_stream_error","message":"Upstream HTTP/2 stream failed"}}`, string(failoverErr.ResponseBody))
+	require.JSONEq(t, `{"error":{"type":"upstream_error","code":"upstream_http2_stream_error","message":"Upstream HTTP/2 stream failed. You can retry your request."}}`, string(failoverErr.ResponseBody))
 	require.Equal(t, "req_h2_read_failure", failoverErr.ResponseHeaders.Get("x-request-id"))
 	require.Equal(t, "preserved", failoverErr.ResponseHeaders.Get("x-upstream"))
 	resp.Header.Set("X-Upstream", "mutated")
@@ -1176,7 +1176,7 @@ func TestOpenAIImagesOAuthBodyReadTransportErrorFailover(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, "failover", events[0].Kind)
 	require.Equal(t, "req_h2_read_failure", events[0].UpstreamRequestID)
-	require.Equal(t, "Upstream HTTP/2 stream failed", events[0].Message)
+	require.Equal(t, "Upstream HTTP/2 stream failed. You can retry your request.", events[0].Message)
 }
 
 func TestOpenAIImagesOAuthBodyReadErrorsNotMisclassified(t *testing.T) {
