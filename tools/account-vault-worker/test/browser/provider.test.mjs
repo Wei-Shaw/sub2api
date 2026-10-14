@@ -24,7 +24,7 @@ async function browserFixture(t, options = {}) {
   await context.route('**/*', route => new URL(route.request().url()).origin === server.origin ? route.continue() : route.abort());
   const page = await context.newPage();
   const controller = new AbortController();
-  const provider = new ChatGPTProvider({ page, context, signal: controller.signal, testOrigin: server.origin, testCallbackOrigin: callbackOrigin, testLoginRedirectWaitMs: options.testLoginRedirectWaitMs, manualLogin: options.manualLogin, onUnexpectedClose: () => controller.abort() });
+  const provider = new ChatGPTProvider({ page, context, signal: controller.signal, testOrigin: server.origin, testCallbackOrigin: callbackOrigin, testLoginRedirectWaitMs: options.testLoginRedirectWaitMs, manualLogin: options.manualLogin, externalNavigation: options.externalNavigation, onUnexpectedClose: () => controller.abort() });
   controller.signal.addEventListener('abort', () => { void provider.close(); }, { once: true });
   t.after(async () => { await provider.close(); await browser.close(); await server.close(); });
   return { ...server, context, page, provider, controller };
@@ -391,6 +391,22 @@ test('Ubuntu automatic login opens the home dialog and submits ordinary email, p
   const fixture = await browserFixture(t, { manualLogin: false, homeLoginDialog: true, dualLoginButtons: true });
   const me = await fixture.provider.login({ ...loginOptions, authorizationOnly: true });
   assert.deepEqual(me, { email: 'account@example.test' });
+  assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
+});
+
+test('Ubuntu automatic login retries inert home buttons until the hydrated dialog opens', async t => {
+  const fixture = await browserFixture(t, { manualLogin: false, externalNavigation: true, homeLoginDialog: true, dualLoginButtons: true });
+  await fixture.page.goto(fixture.origin + '/');
+  await fixture.page.evaluate(() => {
+    let clicks = 0;
+    for (const button of document.querySelectorAll('button')) {
+      button.onclick = () => {
+        if (++clicks > 3) document.querySelector('[role="dialog"]').hidden = false;
+      };
+    }
+  });
+  const result = await fixture.provider.login({ ...loginOptions, authorizationOnly: true });
+  assert.deepEqual(result, { email: loginOptions.email });
   assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
 });
 

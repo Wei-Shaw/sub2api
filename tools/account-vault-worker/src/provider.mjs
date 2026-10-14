@@ -9,6 +9,7 @@ const LOGIN = /^(?:Log in|Sign in|登录|登入)$/i;
 const AUTHENTICATOR = /authenticator(?: app)?|authentication app|身份验证器|驗證器|身份验证应用|身份驗證應用/i;
 const EXTRA_CHALLENGE = /check your (?:email|inbox)|email verification|verify your email|passkey|security key|检查(?:您|你)?的?邮箱|查看(?:您|你)?的?邮箱|邮件验证码|電子郵件驗證|通行密钥|安全密钥/i;
 const EMAIL_INPUT_SELECTOR = 'input[type="email"], input[autocomplete="username"], input[name="email"], input[placeholder="电子邮件地址"], input[placeholder="Email address"]';
+const ENTRY_ATTEMPTS_LIMIT = 8;
 
 export const ordinaryClickDelay = (random = Math.random) => 1000 + Math.floor(Math.min(1, Math.max(0, random())) * 1000);
 
@@ -424,7 +425,7 @@ export class ChatGPTProvider {
           // Opening the official sign-in dialog is safe even when submitting
           // its hydrated form still needs the operator. The home page can
           // expose equivalent login buttons in both header and sidebar.
-          if ((officialHome || testLogin) && !emailInput && !passwordInput && !otpInput && attempts.entry < 3) {
+          if ((officialHome || testLogin) && !emailInput && !passwordInput && !otpInput && attempts.entry < ENTRY_ATTEMPTS_LIMIT) {
             const entries = [];
             for (const candidate of await this.#page.getByRole('button', { name: LOGIN }).all()) {
               if (await candidate.isVisible()) entries.push(candidate);
@@ -434,7 +435,7 @@ export class ChatGPTProvider {
               try {
                 if (!await this.#clickOrdinary(button)) continue;
                 attempts.entry++;
-                await delay(250, this.#signal);
+                await delay(750, this.#signal);
                 continue;
               } catch {
                 attempts.entry++;
@@ -542,7 +543,7 @@ export class ChatGPTProvider {
           continue;
         }
       }
-      if (!emailInput && !passwordInput && !otpInput && attempts.entry < 3) {
+      if (!emailInput && !passwordInput && !otpInput && attempts.entry < ENTRY_ATTEMPTS_LIMIT) {
         // ChatGPT currently renders equivalent Log in buttons in both its
         // header and sidebar. Either opens the same official sign-in dialog.
         const entries = [];
@@ -558,7 +559,7 @@ export class ChatGPTProvider {
             continue;
           }
           attempts.entry++;
-          await delay(250, this.#signal);
+          await delay(750, this.#signal);
           continue;
         }
       }
