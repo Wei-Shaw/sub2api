@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { BackendClient, JobSession } from './backend.mjs';
 import { browserLaunchFailure, browserLaunchOptions } from './browser-launch.mjs';
 import { launchPrivateEdge } from './edge-cdp.mjs';
+import { launchLinuxPrivateEdge } from './edge-linux-cdp.mjs';
 import { WorkerError, delay, safeCode } from './errors.mjs';
 import { runJob, pauseCode } from './machine.mjs';
 import { runSessionJob } from './session-machine.mjs';
@@ -71,7 +72,8 @@ async function main() {
     client = new BackendClient({ origin, ticket });
     ticket = '';
     const { chromium } = await import('playwright');
-    const privateEdge = process.platform === 'win32' && !process.env.ACCOUNT_VAULT_BROWSER_CHANNEL;
+    const privateEdge = (process.platform === 'win32' && !process.env.ACCOUNT_VAULT_BROWSER_CHANNEL) ||
+      (process.platform === 'linux' && process.env.ACCOUNT_VAULT_BROWSER_CHANNEL === 'msedge');
     if (!privateEdge) {
       const launchOptions = browserLaunchOptions();
       try { browser = await chromium.launch(launchOptions); }
@@ -95,7 +97,9 @@ async function main() {
         try {
           const needsBrowser = !(claim.job.kind === 'session' && claim.job.phase === 'prepared');
           if (needsBrowser) {
-            if (privateEdge) task.host = await launchPrivateEdge(chromium, session.signal);
+            if (privateEdge) task.host = process.platform === 'linux'
+              ? await launchLinuxPrivateEdge(chromium, session.signal)
+              : await launchPrivateEdge(chromium, session.signal);
             setupStage = 'PROVIDER_CREATE';
             task.provider = await createProvider(task.host?.browser ?? browser, session.signal,
               () => session.stop('BROWSER_CLOSED'), task.host

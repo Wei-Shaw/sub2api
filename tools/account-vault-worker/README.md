@@ -84,6 +84,8 @@ npm start -- --origin https://panel.example.com
 
 Linux 如缺少浏览器系统依赖，请按 [Playwright 官方浏览器安装说明](https://playwright.dev/docs/browsers)准备依赖。生产入口始终使用可见浏览器和正常沙箱；没有无头登录、关闭 Web 安全、stealth 或接管你现有浏览器的开关。
 
+Ubuntu/Linux 安装系统版 Microsoft Edge 后，可设置 `ACCOUNT_VAULT_BROWSER_CHANNEL=msedge`。助手会直接启动独立的 Edge InPrivate 窗口，以仅监听本机的 CDP 端口连接，并在任务结束时删除临时浏览器资料。未设置该变量时继续使用 Playwright 的 Chromium。Linux 后台自动助手需要在其启动脚本中传入此变量；仅设置后端进程环境变量不会自动传给助手。
+
 ## 运行与暂停
 
 - 成功任务自动串行继续；修改远端 2FA 之前暂停的账号不会阻塞后续队列。修改阶段出现不确定状态时，本轮助手停止领取后续账号。

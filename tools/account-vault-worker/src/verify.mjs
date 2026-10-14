@@ -2,6 +2,7 @@
 // queues a rotation or calls an MFA mutation. Credentials arrive on stdin and
 // stay in memory; output contains only verification flags.
 import { launchPrivateEdge } from './edge-cdp.mjs';
+import { launchLinuxPrivateEdge } from './edge-linux-cdp.mjs';
 import { browserLaunchFailure, browserLaunchOptions } from './browser-launch.mjs';
 import { ChatGPTProvider } from './provider.mjs';
 import { WorkerError, delay, safeCode } from './errors.mjs';
@@ -65,9 +66,12 @@ async function main() {
     accountPassword = password.password; password.password = '';
     if (typeof accountPassword !== 'string' || !accountPassword) throw new WorkerError('VERIFY_ACCOUNT_PASSWORD_MISSING');
     const { chromium } = await import('playwright');
-    const privateEdge = process.platform === 'win32' && !process.env.ACCOUNT_VAULT_BROWSER_CHANNEL;
+    const privateEdge = (process.platform === 'win32' && !process.env.ACCOUNT_VAULT_BROWSER_CHANNEL) ||
+      (process.platform === 'linux' && process.env.ACCOUNT_VAULT_BROWSER_CHANNEL === 'msedge');
     if (privateEdge) {
-      host = await launchPrivateEdge(chromium, controller.signal);
+      host = process.platform === 'linux'
+        ? await launchLinuxPrivateEdge(chromium, controller.signal)
+        : await launchPrivateEdge(chromium, controller.signal);
     } else {
       const launchOptions = browserLaunchOptions();
       let browser;
