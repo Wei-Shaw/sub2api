@@ -22,11 +22,13 @@ func TestAutoWorkerEnvironmentDoesNotInheritServerSecrets(t *testing.T) {
 	t.Setenv("DATABASE_PASSWORD", "synthetic-db-secret")
 	t.Setenv("ACCOUNT_VAULT_ENCRYPTION_KEY", "synthetic-vault-secret")
 	t.Setenv("ADMIN_PASSWORD", "synthetic-admin-secret")
+	t.Setenv("ACCOUNT_VAULT_BROWSER_PROXY", "http://127.0.0.1:7890")
 	env := strings.Join(autoWorkerEnvironment(filepath.Join(t.TempDir(), "node.exe")), "\n")
 	for _, secret := range []string{"synthetic-db-secret", "synthetic-vault-secret", "synthetic-admin-secret"} {
 		require.NotContains(t, env, secret)
 	}
 	require.Contains(t, env, "PATH=")
+	require.Contains(t, env, "ACCOUNT_VAULT_BROWSER_PROXY=http://127.0.0.1:7890")
 }
 
 func TestAutoWorkerPassesWindowsBrowserLocations(t *testing.T) {

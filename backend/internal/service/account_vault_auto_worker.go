@@ -123,7 +123,7 @@ func (w *accountVaultAutoWorker) state(actorID int64) (string, string) {
 }
 
 func autoWorkerEnvironment(node string) []string {
-	keys := []string{"SystemRoot", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "HOME", "HOMEDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "LANG", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"}
+	keys := []string{"SystemRoot", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "HOME", "HOMEDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "LANG", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ACCOUNT_VAULT_BROWSER_PROXY"}
 	env := make([]string, 0, len(keys)+1)
 	for _, key := range keys {
 		if value := os.Getenv(key); value != "" {
