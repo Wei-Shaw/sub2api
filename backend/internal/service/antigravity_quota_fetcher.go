@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -80,11 +81,21 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, err
 	}
 
+	// 调用 retrieveUserQuotaSummary 获取 5h / Weekly 配额桶（非关键路径，失败不影响主流程）
+	summaryResp, summaryRaw, err := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	if err != nil {
+		slog.Warn("failed to retrieve user quota summary", "error", err)
+	}
+
 	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
 	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
 
 	// 转换为 UsageInfo
-	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
+	usageInfo := f.buildUsageInfo(modelsResp, summaryResp, tierRaw, tierNormalized, loadResp)
+
+	if summaryRaw != nil && modelsRaw != nil {
+		modelsRaw["quota_summary"] = summaryRaw
+	}
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,
@@ -128,7 +139,12 @@ func normalizeTier(raw string) string {
 }
 
 // buildUsageInfo 将 API 响应转换为 UsageInfo。
-func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAvailableModelsResponse, tierRaw, tierNormalized string, loadResp *antigravity.LoadCodeAssistResponse) *UsageInfo {
+func (f *AntigravityQuotaFetcher) buildUsageInfo(
+	modelsResp *antigravity.FetchAvailableModelsResponse,
+	summaryResp *antigravity.RetrieveUserQuotaSummaryResponse,
+	tierRaw, tierNormalized string,
+	loadResp *antigravity.LoadCodeAssistResponse,
+) *UsageInfo {
 	now := time.Now()
 	info := &UsageInfo{
 		UpdatedAt:               &now,
@@ -138,58 +154,123 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 		SubscriptionTierRaw:     tierRaw,
 	}
 
-	// 遍历所有模型，填充 AntigravityQuota 和 AntigravityQuotaDetails
-	for modelName, modelInfo := range modelsResp.Models {
-		if modelInfo.QuotaInfo == nil {
-			continue
-		}
-
-		// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比
-		utilization := int((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100)
-
-		info.AntigravityQuota[modelName] = &AntigravityModelQuota{
-			Utilization: utilization,
-			ResetTime:   modelInfo.QuotaInfo.ResetTime,
-		}
-
-		// 填充模型详细能力信息
-		detail := &AntigravityModelDetail{
-			DisplayName:        modelInfo.DisplayName,
-			SupportsImages:     modelInfo.SupportsImages,
-			SupportsThinking:   modelInfo.SupportsThinking,
-			ThinkingBudget:     modelInfo.ThinkingBudget,
-			Recommended:        modelInfo.Recommended,
-			MaxTokens:          modelInfo.MaxTokens,
-			MaxOutputTokens:    modelInfo.MaxOutputTokens,
-			SupportedMimeTypes: modelInfo.SupportedMimeTypes,
-		}
-		info.AntigravityQuotaDetails[modelName] = detail
-	}
-
-	// 废弃模型转发规则
-	if len(modelsResp.DeprecatedModelIDs) > 0 {
-		info.ModelForwardingRules = make(map[string]string, len(modelsResp.DeprecatedModelIDs))
-		for oldID, deprecated := range modelsResp.DeprecatedModelIDs {
-			info.ModelForwardingRules[oldID] = deprecated.NewModelID
-		}
-	}
-
-	// 同时设置 FiveHour 用于兼容展示（取主要模型）
-	priorityModels := []string{"claude-sonnet-4-20250514", "claude-sonnet-4", "gemini-2.5-pro"}
-	for _, modelName := range priorityModels {
-		if modelInfo, ok := modelsResp.Models[modelName]; ok && modelInfo.QuotaInfo != nil {
-			utilization := (1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100
-			progress := &UsageProgress{
-				Utilization: utilization,
+	if modelsResp != nil {
+		// 遍历所有模型，填充 AntigravityQuota 和 AntigravityQuotaDetails
+		for modelName, modelInfo := range modelsResp.Models {
+			if modelInfo.QuotaInfo == nil {
+				continue
 			}
-			if modelInfo.QuotaInfo.ResetTime != "" {
-				if resetTime, err := time.Parse(time.RFC3339, modelInfo.QuotaInfo.ResetTime); err == nil {
-					progress.ResetsAt = &resetTime
-					progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+
+			// remainingFraction 是剩余比例 (0.0-1.0)，转换为使用率百分比 (0-100)
+			utilization := int((1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100)
+			if utilization < 0 {
+				utilization = 0
+			}
+
+			info.AntigravityQuota[modelName] = &AntigravityModelQuota{
+				Utilization: utilization,
+				ResetTime:   modelInfo.QuotaInfo.ResetTime,
+			}
+
+			// 填充模型详细能力信息
+			detail := &AntigravityModelDetail{
+				DisplayName:        modelInfo.DisplayName,
+				SupportsImages:     modelInfo.SupportsImages,
+				SupportsThinking:   modelInfo.SupportsThinking,
+				ThinkingBudget:     modelInfo.ThinkingBudget,
+				Recommended:        modelInfo.Recommended,
+				MaxTokens:          modelInfo.MaxTokens,
+				MaxOutputTokens:    modelInfo.MaxOutputTokens,
+				SupportedMimeTypes: modelInfo.SupportedMimeTypes,
+			}
+			info.AntigravityQuotaDetails[modelName] = detail
+		}
+
+		// 废弃模型转发规则
+		if len(modelsResp.DeprecatedModelIDs) > 0 {
+			info.ModelForwardingRules = make(map[string]string, len(modelsResp.DeprecatedModelIDs))
+			for oldID, deprecated := range modelsResp.DeprecatedModelIDs {
+				info.ModelForwardingRules[oldID] = deprecated.NewModelID
+			}
+		}
+	}
+
+	// 解析 retrieveUserQuotaSummary 返回的通用 5h 与 Weekly 额度桶
+	if summaryResp != nil {
+		for _, group := range summaryResp.Groups {
+			for _, bucket := range group.Buckets {
+				if bucket.BucketID == "" {
+					continue
+				}
+				// 浮点数精确转换为使用率 (0-100)
+				utilization := int(math.Round((1.0 - bucket.RemainingFraction) * 100))
+				if utilization < 0 {
+					utilization = 0
+				}
+				info.AntigravityQuota[bucket.BucketID] = &AntigravityModelQuota{
+					Utilization: utilization,
+					ResetTime:   bucket.ResetTime,
+				}
+				info.AntigravityQuotaDetails[bucket.BucketID] = &AntigravityModelDetail{
+					DisplayName: bucket.DisplayName,
+				}
+
+				// 将主要桶优先映射到 UsageInfo.FiveHour 与 SevenDay
+				if bucket.BucketID == "gemini-5h" || (info.FiveHour == nil && bucket.BucketID == "3p-5h") {
+					progress := &UsageProgress{
+						Utilization: float64(utilization),
+					}
+					if bucket.ResetTime != "" {
+						if resetTime, err := time.Parse(time.RFC3339, bucket.ResetTime); err == nil {
+							progress.ResetsAt = &resetTime
+							progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+						}
+					}
+					info.FiveHour = progress
+				} else if bucket.BucketID == "gemini-weekly" || (info.SevenDay == nil && bucket.BucketID == "3p-weekly") {
+					progress := &UsageProgress{
+						Utilization: float64(utilization),
+					}
+					if bucket.ResetTime != "" {
+						if resetTime, err := time.Parse(time.RFC3339, bucket.ResetTime); err == nil {
+							progress.ResetsAt = &resetTime
+							progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+						}
+					}
+					info.SevenDay = progress
 				}
 			}
-			info.FiveHour = progress
-			break
+		}
+	}
+
+	// 兼容回退：如果未获取到 retrieveUserQuotaSummary，按模型优先级回退设置 FiveHour
+	if info.FiveHour == nil && modelsResp != nil {
+		priorityModels := []string{
+			"claude-sonnet-4-20250514",
+			"claude-sonnet-4",
+			"claude-sonnet-4-6",
+			"claude-sonnet-4-5",
+			"claude-opus-4-6-thinking",
+			"gemini-3.1-pro-high",
+			"gemini-3.1-pro-low",
+			"gemini-3-flash",
+			"gemini-2.5-pro",
+		}
+		for _, modelName := range priorityModels {
+			if modelInfo, ok := modelsResp.Models[modelName]; ok && modelInfo.QuotaInfo != nil {
+				utilization := (1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100
+				progress := &UsageProgress{
+					Utilization: utilization,
+				}
+				if modelInfo.QuotaInfo.ResetTime != "" {
+					if resetTime, err := time.Parse(time.RFC3339, modelInfo.QuotaInfo.ResetTime); err == nil {
+						progress.ResetsAt = &resetTime
+						progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+					}
+				}
+				info.FiveHour = progress
+				break
+			}
 		}
 	}
 

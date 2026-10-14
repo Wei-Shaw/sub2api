@@ -151,6 +151,33 @@ var BaseURLs = []string{
 	antigravityDailyBaseURL, // daily sandbox (备用)
 }
 
+// QuotaBaseURLs 返回配额与用量查询使用的 URL 顺序（daily 优先，与官方 IDE 客户端及实际消费记账端点保持一致）
+func QuotaBaseURLs() []string {
+	if len(BaseURLs) == 0 {
+		return nil
+	}
+	urls := append([]string(nil), BaseURLs...)
+	dailyIndex := -1
+	for i, url := range urls {
+		if url == antigravityDailyBaseURL {
+			dailyIndex = i
+			break
+		}
+	}
+	if dailyIndex <= 0 {
+		return urls
+	}
+	reordered := make([]string, 0, len(urls))
+	reordered = append(reordered, urls[dailyIndex])
+	for i, url := range urls {
+		if i == dailyIndex {
+			continue
+		}
+		reordered = append(reordered, url)
+	}
+	return reordered
+}
+
 // BaseURL 默认 URL（保持向后兼容）
 var BaseURL = BaseURLs[0]
 
