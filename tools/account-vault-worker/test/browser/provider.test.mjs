@@ -341,15 +341,13 @@ test('a failed automatic login click keeps the browser open for manual completio
   assert.equal(fixture.counts.password, 1);
 });
 
-test('manual login fills known credentials but only the operator submits each form', async t => {
+test('manual login opens the sign-in page and fills known credentials while the operator submits forms', async t => {
   const fixture = await browserFixture(t, { manualLogin: true, requireBearer: true });
   let manual = 0;
   const me = await fixture.provider.login({ ...loginOptions,
     onManual: async () => {
       manual++;
-      if (fixture.page.url() === fixture.origin + '/') {
-        await fixture.page.getByRole('button', { name: 'Log in' }).click();
-      } else if (fixture.page.url().endsWith('/login')) {
+      if (fixture.page.url().endsWith('/login')) {
         assert.equal(await fixture.page.locator('input[type="email"]').inputValue(), 'account@example.test');
         await fixture.page.getByRole('button', { name: 'Continue' }).click();
       } else if (fixture.page.url().endsWith('/login/password')) {
@@ -364,7 +362,28 @@ test('manual login fills known credentials but only the operator submits each fo
     },
   });
   assert.deepEqual(me, { id: 'fixture-subject', email: 'account@example.test' });
-  assert.equal(manual, 4);
+  assert.equal(manual, 3);
+  assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
+});
+
+test('Linux-style manual login clicks either visible home login button and fills the dialog', async t => {
+  const fixture = await browserFixture(t, { manualLogin: true, homeLoginDialog: true, dualLoginButtons: true });
+  let manual = 0;
+  const me = await fixture.provider.login({ ...loginOptions, onManual: async () => {
+    manual++;
+    if (fixture.page.url() === fixture.origin + '/') {
+      assert.equal(await fixture.page.getByRole('dialog').getByPlaceholder('电子邮件地址').inputValue(), 'account@example.test');
+      await fixture.page.getByRole('dialog').getByRole('button', { name: '继续' }).click();
+    } else if (fixture.page.url().endsWith('/login/password')) {
+      assert.equal(await fixture.page.locator('input[type="password"]').inputValue(), 'PUBLIC-SYNTHETIC-PASSWORD');
+      await fixture.page.getByRole('button', { name: 'Continue' }).click();
+    } else if (fixture.page.url().endsWith('/login/otp')) {
+      assert.equal(await fixture.page.locator('input[autocomplete="one-time-code"]').inputValue(), '123456');
+      await fixture.page.getByRole('button', { name: 'Continue' }).click();
+    } else throw new Error('unexpected login page');
+  } });
+  assert.deepEqual(me, { id: 'fixture-subject', email: 'account@example.test' });
+  assert.equal(manual, 3);
   assert.deepEqual([fixture.counts.email, fixture.counts.password, fixture.counts.otp], [1, 1, 1]);
 });
 

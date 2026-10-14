@@ -419,6 +419,27 @@ export class ChatGPTProvider {
             // Navigation or hydration can replace the form mid-fill. Keep the
             // browser open and let the operator click or complete the page.
           }
+          // Opening the official sign-in dialog is safe even when submitting
+          // its hydrated form still needs the operator. The home page can
+          // expose equivalent login buttons in both header and sidebar.
+          if ((officialHome || testLogin) && !emailInput && !passwordInput && !otpInput && attempts.entry < 3) {
+            const entries = [];
+            for (const candidate of await this.#page.getByRole('button', { name: LOGIN }).all()) {
+              if (await candidate.isVisible()) entries.push(candidate);
+            }
+            const button = entries.length >= 1 && entries.length <= 3 ? entries[0] : null;
+            if (button) {
+              try {
+                if (!await this.#clickOrdinary(button)) continue;
+                attempts.entry++;
+                await delay(250, this.#signal);
+                continue;
+              } catch {
+                attempts.entry++;
+                assertAlive(this.#signal);
+              }
+            }
+          }
         }
         if (!authorizationOnly && currentOrigin === this.#origin && currentPath !== '/choose-an-account') {
           try {
