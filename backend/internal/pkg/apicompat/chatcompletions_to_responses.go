@@ -118,20 +118,18 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
-	var input []ResponsesInputItem
+	input, messageInputIndexes, err := convertChatMessagesToResponsesInputWithIndexes(req.Messages)
+	if err != nil {
+		return nil, err
+	}
 	var inputAudio map[int]map[int]string
-	for messageIndex, message := range req.Messages {
-		items, err := chatMessageToResponsesItems(message)
-		if err != nil {
-			return nil, err
-		}
+	for messageIndex := range req.Messages {
 		if audioParts := messageAudio[messageIndex]; len(audioParts) > 0 {
 			if inputAudio == nil {
 				inputAudio = make(map[int]map[int]string)
 			}
-			inputAudio[len(input)] = audioParts
+			inputAudio[messageInputIndexes[messageIndex]] = audioParts
 		}
-		input = append(input, items...)
 	}
 
 	inputJSON, err := json.Marshal(input)
@@ -216,9 +214,16 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
 // array into a Responses API input items array.
 func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+	out, _, err := convertChatMessagesToResponsesInputWithIndexes(msgs)
+	return out, err
+}
+
+func convertChatMessagesToResponsesInputWithIndexes(msgs []ChatMessage) ([]ResponsesInputItem, []int, error) {
 	var out []ResponsesInputItem
+	messageInputIndexes := make([]int, len(msgs))
 	legacyIDs := legacyFunctionCallIDs{msgs: msgs}
-	for _, m := range msgs {
+	for messageIndex, m := range msgs {
+		messageInputIndexes[messageIndex] = len(out)
 		switch {
 		case m.Role == "assistant" && m.FunctionCall != nil && len(m.ToolCalls) == 0:
 			m.ToolCalls = []ChatToolCall{{
@@ -231,11 +236,11 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 		}
 		items, err := chatMessageToResponsesItems(m)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, items...)
 	}
-	return out, nil
+	return out, messageInputIndexes, nil
 }
 
 func validateChatAudioParts(parts []json.RawMessage) error {
