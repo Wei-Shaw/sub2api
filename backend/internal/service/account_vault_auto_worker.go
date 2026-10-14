@@ -31,9 +31,9 @@ type autoWorkerState struct {
 // The helper prints only a symbolic WorkerError code on fatal exit. Discard
 // everything else, including browser diagnostics that may contain account data.
 type autoWorkerErrorSink struct {
-	mu   sync.Mutex
-	tail string
-	code string
+	mu        sync.Mutex
+	tail      string
+	code      string
 	lastPause string
 }
 
@@ -123,10 +123,15 @@ func (w *accountVaultAutoWorker) state(actorID int64) (string, string) {
 }
 
 func autoWorkerEnvironment(node string) []string {
-	keys := []string{"SystemRoot", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "HOME", "HOMEDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "LANG", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ACCOUNT_VAULT_BROWSER_PROXY"}
+	keys := []string{"SystemRoot", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "HOME", "HOMEDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "LANG", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ACCOUNT_VAULT_BROWSER_PROXY", "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"}
 	env := make([]string, 0, len(keys)+1)
+	display := autoWorkerDisplayEnvironment()
 	for _, key := range keys {
-		if value := os.Getenv(key); value != "" {
+		value := os.Getenv(key)
+		if value == "" {
+			value = display[key]
+		}
+		if value != "" {
 			env = append(env, key+"="+value)
 		}
 	}

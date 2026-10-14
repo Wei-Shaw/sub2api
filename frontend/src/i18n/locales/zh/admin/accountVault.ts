@@ -137,7 +137,8 @@ export default {
     },
     worker: {
       title: '助手设置',
-      description: '本机自动模式会直接启动隔离浏览器，无需复制连接码。仅当页面显示自动助手未启用时使用以下备用连接方式。',
+      description: '自动模式会在运行后端的服务器桌面启动隔离浏览器，不会在当前访问网页的电脑弹窗。若要在当前电脑完成邮件码或人机验证，可在该电脑启动下方备用助手。',
+      remoteLocationHint: '授权窗口在运行后端的 Linux 桌面；从其他电脑访问本页不会在该电脑弹窗。需要人工验证时，请连接 Linux 桌面，或点“助手设置”在当前电脑启动备用助手。',
       install: '备用方式：在 Windows 安装 Node.js 24 LTS，双击项目中的 start.cmd。首次运行会安装依赖和 Chromium。',
       origin: '按助手提示输入后台地址（不含 /api/v1）：',
       copyOrigin: '复制后台地址',

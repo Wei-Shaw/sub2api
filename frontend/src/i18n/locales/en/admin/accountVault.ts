@@ -127,7 +127,8 @@ export default {
     },
     worker: {
       title: 'Helper settings',
-      description: 'Local automatic mode opens an isolated browser without a connection code. Use the fallback connection below only if the page says automatic mode is unavailable.',
+      description: 'Automatic mode opens an isolated browser on the backend server desktop, not on the computer viewing this page. To complete email or human verification here, start the fallback helper on this computer.',
+      remoteLocationHint: 'Authorization windows open on the Linux desktop hosting the backend. Visiting this page from another computer will not open a browser there. For manual checks, connect to the Linux desktop or start the fallback helper on this computer under Helper settings.',
       install: 'Fallback: install Node.js 24 LTS on Windows, then double-click the project’s start.cmd. The first run installs dependencies and Chromium.',
       origin: 'Enter the backend address when prompted (without /api/v1):',
       copyOrigin: 'Copy backend address',

@@ -17,6 +17,7 @@
           </div>
         </div>
         <p v-if="ready" class="mt-3 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accountVault.rotation.scopeHint') }}</p>
+        <p v-if="ready" class="mt-2 text-xs leading-5 text-amber-800 dark:text-amber-300" role="note">{{ t('admin.accountVault.worker.remoteLocationHint') }}</p>
         <div v-if="ready" class="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-white/70 p-3 dark:bg-dark-800/70">
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" :checked="automationEnabled" :disabled="automationSaving || automationBusy" data-testid="vault-auto-reauth" @change="toggleAutomation" />{{ t('admin.accountVault.automation.title') }}</label>
           <button type="button" class="btn btn-secondary btn-sm" :disabled="automationBusy || automationSaving" data-testid="vault-query-quota" @click="refreshQuota">{{ t('admin.accountVault.automation.refresh') }}</button>
@@ -114,7 +115,7 @@
                 <div class="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"><div class="h-full bg-primary-500" :style="{ width: `${sessionProgress(row.id)}%` }"></div></div>
               </template>
               <div class="flex flex-wrap gap-2">
-                <button type="button" class="text-primary-700 hover:underline dark:text-primary-300" :disabled="!canQueueSession(row) || Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :data-testid="`vault-session-queue-${row.id}`" @click="openQueue('session', [row])">{{ t(sessionJobs[row.id]?.status === 'completed' ? 'admin.accountVault.session.update' : 'admin.accountVault.session.start') }}</button>
+                <button v-if="sessionJobs[row.id]?.status !== 'paused'" type="button" class="text-primary-700 hover:underline dark:text-primary-300" :disabled="!canQueueSession(row) || Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :data-testid="`vault-session-queue-${row.id}`" @click="openQueue('session', [row])">{{ t(sessionJobs[row.id]?.status === 'completed' ? 'admin.accountVault.session.update' : 'admin.accountVault.session.start') }}</button>
                 <button v-if="sessionJobs[row.id]?.can_resume" type="button" class="text-primary-700 hover:underline" :disabled="Boolean(jobActionBusy)" @click="runSessionAction('resume', [row])">{{ t('admin.accountVault.rotation.resume') }}</button>
                 <button v-if="sessionJobs[row.id]?.can_cancel" type="button" class="text-gray-600 hover:underline" :disabled="Boolean(jobActionBusy)" @click="runSessionAction('cancel', [row])">{{ t('admin.accountVault.rotation.cancel') }}</button>
               </div>
