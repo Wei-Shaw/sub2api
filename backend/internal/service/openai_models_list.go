@@ -96,33 +96,80 @@ func (s *OpenAIGatewayService) fetchDimAgentModelsList(ctx context.Context, acco
 	query := modelsURL.Query()
 	query.Set("type", "dim")
 	modelsURL.RawQuery = query.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL.String(), nil)
+	headers := make(http.Header)
+	headers.Set("Accept", "application/json")
+	headers.Set("Authorization", "Bearer "+accessToken)
+	credentialAccount.ApplyDimAgentSubscriptionHeaders(headers)
+	request := openAIModelsRequest{
+		url: modelsURL.String(), headers: headers,
+		proxyURL: upstreamModelsProxyURL(account), accountID: account.ID,
+		credentialAccountID: credentialAccount.ID, credentialAccount: credentialAccount,
+		accountConcurrency: account.Concurrency, useAPIKeyUpstream: true,
+		standardModelsList: true,
+	}
+	response, err := s.fetchCachedOpenAIModels(ctx, request, func(fetchCtx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error) {
+		req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, request.url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header = request.headers.Clone()
+		if ifNoneMatch = strings.TrimSpace(ifNoneMatch); ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		resp, err := s.doOpenAIUpstream(req, request.proxyURL, account)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			_ = resp.Body.Close()
+			freshToken, refreshErr := s.dimAgentTokenProvider.RefreshAfterUnauthorized(fetchCtx, credentialAccount)
+			if refreshErr != nil {
+				return nil, fmt.Errorf("refresh DimAgent model-list token after 401: %w", refreshErr)
+			}
+			retry, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, request.url, nil)
+			if err != nil {
+				return nil, err
+			}
+			retry.Header = request.headers.Clone()
+			retry.Header.Set("Authorization", "Bearer "+freshToken)
+			if ifNoneMatch != "" {
+				retry.Header.Set("If-None-Match", ifNoneMatch)
+			}
+			resp, err = s.doOpenAIUpstream(retry, request.proxyURL, account)
+			if err != nil {
+				return nil, err
+			}
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusNotModified {
+			return &OpenAIModelsResponse{NotModified: true, upstreamETag: ifNoneMatch}, nil
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamModelsBodyLimit+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(body)) > upstreamModelsBodyLimit {
+			return nil, fmt.Errorf("DimAgent model list response exceeds %d bytes", upstreamModelsBodyLimit)
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("DimAgent model list returned HTTP %d", resp.StatusCode)
+		}
+		standard, err := standardOpenAIModelsBody(body, false)
+		if err != nil {
+			return nil, invalidOpenAIModelsList(err)
+		}
+		return &OpenAIModelsResponse{
+			Body: standard, ETag: codexModelsManifestBodyETag(standard),
+			upstreamETag: strings.TrimSpace(resp.Header.Get("ETag")),
+		}, nil
+	}, "")
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	credentialAccount.ApplyDimAgentSubscriptionHeaders(req.Header)
-	resp, err := s.doOpenAIUpstream(req, upstreamModelsProxyURL(account), account)
-	if err != nil {
-		return nil, err
+	if response.NotModified {
+		return nil, invalidOpenAIModelsList(fmt.Errorf("upstream returned 304 without a cached catalog"))
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamModelsBodyLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > upstreamModelsBodyLimit {
-		return nil, fmt.Errorf("DimAgent model list response exceeds %d bytes", upstreamModelsBodyLimit)
-	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("DimAgent model list returned HTTP %d", resp.StatusCode)
-	}
-	standard, err := standardOpenAIModelsBody(body, false)
-	if err != nil {
-		return nil, invalidOpenAIModelsList(err)
-	}
-	return &OpenAIModelsResponse{Body: standard, ETag: codexModelsManifestBodyETag(standard)}, nil
+	return response, nil
 }
 
 func invalidOpenAIModelsList(err error) error {

@@ -227,6 +227,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.GET("/model-capabilities", h.OpenAIGateway.DimAgentModelCapabilities)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
