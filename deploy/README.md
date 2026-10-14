@@ -2,6 +2,28 @@
 
 This directory contains files for deploying Sub2API on Linux servers and Apple-silicon Macs.
 
+## Local Make Commands
+
+From the repository root, `make run` builds the frontend into `backend/bin/server`
+and starts that single executable. PostgreSQL and Redis must be available; on a
+fresh installation the executable serves the setup wizard at port 8080.
+
+For Docker, first copy `deploy/.env.example` to `deploy/.env` and configure the
+database password, fixed JWT/TOTP keys and optional admin credentials. Then use
+`make docker-build` to build `sub2api:local`, or `make docker-dev` to build and run
+the original development stack with a local override. The override uses named
+volumes for NTFS compatibility and Linux host networking during image builds.
+
+Before `make deploy`, edit `SSH_HOST`, `SSH_PORT`, `APP_PORT`, `BIND_HOST`,
+`REMOTE_DIR`, `PROJECT_NAME` and `LOCAL_IMAGE` at the top of `deploy/deploy.sh`.
+It transfers the already built image over SSH and runs the original server
+Compose with independent container names. Defaults are `gcp`, port 8083 and
+`~/my-sub2api`; the app binds to the server's loopback interface. First-use
+server credentials are generated separately and saved in `~/my-sub2api/.env`.
+Later deployments preserve credentials and data. The image architecture must
+match the server. Access the default deployment through
+`ssh -N -L 8083:127.0.0.1:8083 gcp`, then open `http://localhost:8083`.
+
 ## Deployment Methods
 
 | Method | Best For | Setup Wizard |

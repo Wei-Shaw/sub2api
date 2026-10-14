@@ -1,0 +1,31 @@
+# 保留上游 Compose；本地使用命名卷，避免 NTFS 的 chmod/chown 限制。
+services:
+  sub2api:
+    image: sub2api:local
+    build:
+      # shortcut: 构建网络按 Linux 配置，支持 Docker Desktop 时改用显式代理参数。
+      network: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+    environment:
+      HTTP_PROXY: ${SUB2API_DEV_HTTP_PROXY:-}
+      HTTPS_PROXY: ${SUB2API_DEV_HTTPS_PROXY:-}
+      ALL_PROXY: ${SUB2API_DEV_ALL_PROXY:-}
+      http_proxy: ${SUB2API_DEV_HTTP_PROXY:-}
+      https_proxy: ${SUB2API_DEV_HTTPS_PROXY:-}
+      all_proxy: ${SUB2API_DEV_ALL_PROXY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+  postgres:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    volumes:
+      - redis_data:/data
+
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:

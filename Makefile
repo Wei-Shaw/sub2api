@@ -1,4 +1,6 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend run docker-build docker-dev deploy test test-backend test-frontend test-frontend-critical
+
+DOCKER_DEV := docker compose --env-file deploy/.env -p sub2api-dev -f deploy/docker-compose.dev.yml -f deploy/docker-compose.dev.override.yml
 
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
@@ -43,6 +45,20 @@ build-backend:
 # 编译前端（需要已安装依赖）
 build-frontend:
 	@pnpm --dir frontend run build
+
+# 先编译前端，再嵌入后端二进制并启动。
+run: build-frontend
+	@$(MAKE) -C backend build GOFLAGS="$(GOFLAGS) -tags=embed"
+	@cd backend && exec ./bin/server
+
+docker-build:
+	@$(DOCKER_DEV) build sub2api
+
+docker-dev:
+	@$(DOCKER_DEV) up --build
+
+deploy:
+	@bash deploy/deploy.sh
 
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend
