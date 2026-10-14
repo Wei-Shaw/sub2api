@@ -2,6 +2,7 @@
 // queues a rotation or calls an MFA mutation. Credentials arrive on stdin and
 // stay in memory; output contains only verification flags.
 import { launchPrivateEdge } from './edge-cdp.mjs';
+import { browserLaunchFailure, browserLaunchOptions } from './browser-launch.mjs';
 import { ChatGPTProvider } from './provider.mjs';
 import { WorkerError, delay, safeCode } from './errors.mjs';
 import { validateOrigin } from './security.mjs';
@@ -64,10 +65,21 @@ async function main() {
     accountPassword = password.password; password.password = '';
     if (typeof accountPassword !== 'string' || !accountPassword) throw new WorkerError('VERIFY_ACCOUNT_PASSWORD_MISSING');
     const { chromium } = await import('playwright');
-    host = await launchPrivateEdge(chromium, controller.signal);
+    const privateEdge = process.platform === 'win32' && !process.env.ACCOUNT_VAULT_BROWSER_CHANNEL;
+    if (privateEdge) {
+      host = await launchPrivateEdge(chromium, controller.signal);
+    } else {
+      const launchOptions = browserLaunchOptions();
+      let browser;
+      try { browser = await chromium.launch(launchOptions); }
+      catch (error) { throw new WorkerError(browserLaunchFailure(error, launchOptions)); }
+      host = { browser, close: () => browser.close() };
+      host.context = await browser.newContext({ acceptDownloads: false, serviceWorkers: 'block' });
+      host.page = await host.context.newPage();
+    }
     provider = new ChatGPTProvider({
       page: host.page, context: host.context, signal: controller.signal,
-      manualLogin: false, externalNavigation: true, onUnexpectedClose: stop,
+      manualLogin: false, externalNavigation: privateEdge, onUnexpectedClose: stop,
     });
     let otpSubmissions = 0, lastWait = '';
     console.log(`账号 #${id}：开始用当前账号库验证码重新登录；本次只复核，不换绑。`);
