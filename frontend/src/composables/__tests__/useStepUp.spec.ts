@@ -28,6 +28,27 @@ describe('useStepUp error classification', () => {
   })
 })
 
+describe('useStepUp concurrent prompts', () => {
+  it.each([true, false])('settles every waiter when verification resolves to %s', async (verified) => {
+    const stepUp = useStepUp()
+    const firstDone = vi.fn()
+    const secondDone = vi.fn()
+    const first = stepUp.prompt()
+    first.then(firstDone)
+    stepUp.prompt().then(secondDone)
+    if (verified) stepUp.onVerified()
+    else stepUp.onCancel()
+    await Promise.resolve()
+    expect(firstDone).toHaveBeenCalledWith(verified)
+    expect(secondDone).toHaveBeenCalledWith(verified)
+    expect(stepUp.visible.value).toBe(false)
+    const next = stepUp.prompt()
+    expect(next).not.toBe(first)
+    stepUp.onCancel()
+    await expect(next).resolves.toBe(false)
+  })
+})
+
 describe('useStepUp.run', () => {
   it('returns the action result directly on success', async () => {
     const stepUp = useStepUp()

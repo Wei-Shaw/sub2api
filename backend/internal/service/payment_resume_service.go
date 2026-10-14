@@ -245,6 +245,13 @@ func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, e
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use http or https")
 	}
 	parsed.Fragment = ""
+	// Client-supplied query parameters are dropped: buildPaymentReturnURL adds
+	// its own signed set, and user-controlled pairs such as
+	// "trade_status=TRADE_SUCCESS" inside the signed return_url value can be
+	// smuggled into EasyPay-style sign base strings (values are concatenated
+	// unescaped), letting an order-creation signature be replayed as a forged
+	// payment-success callback. See issue #7881.
+	parsed.RawQuery = ""
 	if parsed.Path == "" {
 		parsed.Path = "/"
 	}

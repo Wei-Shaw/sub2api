@@ -1937,9 +1937,9 @@ func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID 
 		return nil
 	}
 	// 平台配额快照是 best-effort（fail-open）：必须脱离调用方事务执行。
-	// 否则某平台违反 user_platform_quotas 的 CHECK 约束（如尚未进约束的新平台）会让
-	// 整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认配额快照"放大成
-	// "整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
+	// 否则写入时的任何数据库错误（历史上是新平台尚未加入 user_platform_quotas 的
+	// CHECK 约束）都会让整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认
+	// 配额快照"放大成"整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
 	ctx = dbent.WithoutTx(ctx)
 	// 仅为至少配置了一档限额的平台建行：user_platform_quotas 中不存在的行等价于不限额，
 	// 三档全空的记录不携带任何可执行的限额。

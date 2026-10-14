@@ -29,6 +29,8 @@ const (
 	vertexServiceAccountCacheSkew = 5 * time.Minute
 	vertexLockWaitTime            = 200 * time.Millisecond
 	vertexAnthropicVersion        = "vertex-2023-10-16"
+	vertexGlobalHost              = "aiplatform.googleapis.com"
+	vertexAuthModeAPIKey          = "apikey"
 )
 
 var (
@@ -56,6 +58,13 @@ type vertexTokenResponse struct {
 
 func (a *Account) IsVertexServiceAccount() bool {
 	return a != nil && a.Type == AccountTypeServiceAccount
+}
+
+// IsVertexAPIKey 判断 Gemini 平台的 Vertex 账号是否使用 API Key 认证（credentials.auth_mode=apikey）。
+// Anthropic 平台的 Vertex 账号只支持 Service Account JSON。
+func (a *Account) IsVertexAPIKey() bool {
+	return a.IsVertexServiceAccount() && a.Platform == PlatformGemini &&
+		strings.TrimSpace(a.GetCredential("auth_mode")) == vertexAuthModeAPIKey
 }
 
 func (a *Account) VertexProjectID() string {
@@ -283,6 +292,63 @@ func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAc
 	return parsed.AccessToken, ttl, nil
 }
 
+// buildVertexGeminiAccountURL 按账号构造 Vertex Gemini 请求地址：未配置 project_id 的 API Key 账号
+// 走 Express mode 全局端点，其余账号走项目级端点。
+func buildVertexGeminiAccountURL(account *Account, model, action string, stream bool) (string, error) {
+	if account.IsVertexAPIKey() && account.VertexProjectID() == "" {
+		return buildVertexGeminiExpressURL(model, action, stream)
+	}
+	return buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(model), model, action, stream)
+}
+
+// buildVertexGeminiExpressURL 构造不带项目与区域的全局端点地址，仅 API Key 认证可用。
+func buildVertexGeminiExpressURL(model, action string, stream bool) (string, error) {
+	model = strings.TrimSpace(model)
+	action = strings.TrimSpace(action)
+	if model == "" {
+		return "", errors.New("vertex model is required")
+	}
+	if err := validateVertexGeminiAction(action); err != nil {
+		return "", err
+	}
+	u := fmt.Sprintf("https://%s/v1/publishers/google/models/%s:%s", vertexGlobalHost, url.PathEscape(model), action)
+	if stream {
+		u += "?alt=sse"
+	}
+	return u, nil
+}
+
+func validateVertexGeminiAction(action string) error {
+	switch action {
+	case "generateContent", "streamGenerateContent", "countTokens":
+		return nil
+	default:
+		return fmt.Errorf("unsupported vertex gemini action: %s", action)
+	}
+}
+
+// setVertexGeminiAuth 给 Vertex Gemini 请求设置认证头：API Key 账号用 x-goog-api-key，
+// Service Account JSON 账号用换取的 Bearer access token。
+func setVertexGeminiAuth(ctx context.Context, req *http.Request, account *Account, tokenProvider *GeminiTokenProvider) error {
+	if account.IsVertexAPIKey() {
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return errors.New("vertex api_key not configured")
+		}
+		req.Header.Set("x-goog-api-key", apiKey)
+		return nil
+	}
+	if tokenProvider == nil {
+		return errors.New("gemini token provider not configured")
+	}
+	accessToken, err := tokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	return nil
+}
+
 func buildVertexGeminiURL(projectID, location, model, action string, stream bool) (string, error) {
 	projectID = strings.TrimSpace(projectID)
 	location = strings.TrimSpace(location)
@@ -300,14 +366,12 @@ func buildVertexGeminiURL(projectID, location, model, action string, stream bool
 	if model == "" {
 		return "", errors.New("vertex model is required")
 	}
-	switch action {
-	case "generateContent", "streamGenerateContent", "countTokens":
-	default:
-		return "", fmt.Errorf("unsupported vertex gemini action: %s", action)
+	if err := validateVertexGeminiAction(action); err != nil {
+		return "", err
 	}
 	host := fmt.Sprintf("%s-aiplatform.googleapis.com", location)
 	if location == "global" {
-		host = "aiplatform.googleapis.com"
+		host = vertexGlobalHost
 	}
 	u := fmt.Sprintf(
 		"https://%s/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
