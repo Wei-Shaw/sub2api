@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -111,19 +112,50 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 // 不能被 reset 时间排序覆盖（周期末尾周窗口会更早重置）。
 func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
 	t.Parallel()
-	// weekly 的 nextResetTime 早于 5h（模拟周期末尾），但 unit 必须胜出。
+	for _, limitType := range []string{"TOKENS_LIMIT", "CREDIT_LIMIT"} {
+		t.Run(limitType, func(t *testing.T) {
+			t.Parallel()
+			// 周窗口先重置时，token/credit 套餐都必须按 unit 分类（issue #8009）。
+			data := gjson.Parse(fmt.Sprintf(`{
+				"limits": [
+					{"type":%q,"unit":6,"percentage":70,"nextResetTime":1700000000000},
+					{"type":%q,"unit":3,"percentage":20,"nextResetTime":1700000099999}
+				]
+			}`, limitType, limitType))
+			tiers := parseZhipuTokenTiers(data)
+			require.Equal(t, []CNQuotaTier{
+				{Window: "5h", UsedPercent: 20, ResetAt: "2023-11-14T22:14:59Z"},
+				{Window: "weekly", UsedPercent: 70, ResetAt: "2023-11-14T22:13:20Z"},
+			}, tiers)
+
+			updates := cnQuotaExtraUpdates(PlatformZhipu, tiers, time.Now())
+			require.Equal(t, 20.0, updates["zhipu_5h_used_percent"])
+			require.Equal(t, "2023-11-14T22:14:59Z", updates["zhipu_5h_reset_at"])
+			require.Equal(t, 70.0, updates["zhipu_weekly_used_percent"])
+			require.Equal(t, "2023-11-14T22:13:20Z", updates["zhipu_weekly_reset_at"])
+		})
+	}
+}
+
+func TestParseZhipuTokenTiers_CreditLimitWeeklyOnly(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{"limits":[{"type":"CREDIT_LIMIT","unit":6,"percentage":41,"nextResetTime":1700000000000}]}`)
+	require.Equal(t, []CNQuotaTier{
+		{Window: "weekly", UsedPercent: 41, ResetAt: "2023-11-14T22:13:20Z"},
+	}, parseZhipuTokenTiers(data))
+}
+
+func TestParseZhipuTokenTiers_PrefersTokenLimits(t *testing.T) {
+	t.Parallel()
 	data := gjson.Parse(`{
 		"limits": [
-			{"type":"TOKENS_LIMIT","unit":6,"percentage":70,"nextResetTime":1700000000000},
-			{"type":"TOKENS_LIMIT","unit":3,"percentage":20,"nextResetTime":1700000099999}
+			{"type":"CREDIT_LIMIT","unit":3,"percentage":99},
+			{"type":"CREDIT_LIMIT","unit":6,"percentage":98},
+			{"type":"TOKENS_LIMIT","unit":3,"percentage":20}
 		]
 	}`)
-	tiers := parseZhipuTokenTiers(data)
-	require.Len(t, tiers, 2)
-	require.Equal(t, "5h", tiers[0].Window)
-	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
-	require.Equal(t, "weekly", tiers[1].Window)
-	require.InDelta(t, 70.0, tiers[1].UsedPercent, 1e-9)
+	// TOKEN 与 CREDIT 同时存在时，不能混用两种度量填补窗口。
+	require.Equal(t, []CNQuotaTier{{Window: "5h", UsedPercent: 20}}, parseZhipuTokenTiers(data))
 }
 
 // TestParseZhipuTokenTiers_SingleTierOldPlan 老套餐仅回 1 条 → 降级为仅 5h。
@@ -139,19 +171,22 @@ func TestParseZhipuTokenTiers_SingleTierOldPlan(t *testing.T) {
 // 其余按 reset 升序填入剩余槽位。
 func TestParseZhipuTokenTiers_FallbackHeuristic(t *testing.T) {
 	t.Parallel()
-	// 无 unit：A 无 reset、B 有 reset。A 先填 5h，B 填 weekly。
-	data := gjson.Parse(`{
-		"limits": [
-			{"type":"TOKENS_LIMIT","percentage":50,"nextResetTime":1700000000000},
-			{"type":"TOKENS_LIMIT","percentage":10}
-		]
-	}`)
-	tiers := parseZhipuTokenTiers(data)
-	require.Len(t, tiers, 2)
-	require.Equal(t, "5h", tiers[0].Window)
-	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9) // 无 reset 优先 5h
-	require.Equal(t, "weekly", tiers[1].Window)
-	require.InDelta(t, 50.0, tiers[1].UsedPercent, 1e-9)
+	for _, limitType := range []string{"TOKENS_LIMIT", "CREDIT_LIMIT"} {
+		t.Run(limitType, func(t *testing.T) {
+			t.Parallel()
+			// 无 unit：A 无 reset、B 有 reset。A 先填 5h，B 填 weekly。
+			data := gjson.Parse(fmt.Sprintf(`{
+				"limits": [
+					{"type":%q,"percentage":50,"nextResetTime":1700000000000},
+					{"type":%q,"percentage":10}
+				]
+			}`, limitType, limitType))
+			require.Equal(t, []CNQuotaTier{
+				{Window: "5h", UsedPercent: 10},
+				{Window: "weekly", UsedPercent: 50, ResetAt: "2023-11-14T22:13:20Z"},
+			}, parseZhipuTokenTiers(data))
+		})
+	}
 }
 
 // TestParseZhipuTokenTiers_IgnoresNonTokenEntries 非 TOKENS_LIMIT/CREDIT_LIMIT 条目跳过。
