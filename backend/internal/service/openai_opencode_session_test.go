@@ -487,14 +487,13 @@ func TestMeetsOpenCodeFreeTierMinVersion(t *testing.T) {
 	}
 }
 
-// 回归：真实 opencode 客户端自带满足 Zen 版本闸门的 UA 时必须原样透传。
-// 出站降级到 1.0.0 会让合法请求被 Zen 以 426 UpgradeRequired 拒绝。
+// 回归：真实 opencode 客户端自带 UA 时原样透传。
 func TestApplyOpenCodeUpstreamUserAgentPassesThroughRealClientUA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
 	targetURL := "https://opencode.ai/zen/v1/chat/completions"
 
-	t.Run("满足下限的真实客户端 UA 透传", func(t *testing.T) {
+	t.Run("OpenCode 客户端 UA 原样透传", func(t *testing.T) {
 		c := newOpenCodeSessionTestContext(t, "")
 		c.Request.Header.Set("User-Agent", openCodeUpstreamUserAgent)
 		headers := http.Header{"User-Agent": []string{"opencode/1.0.0"}}
@@ -503,13 +502,13 @@ func TestApplyOpenCodeUpstreamUserAgentPassesThroughRealClientUA(t *testing.T) {
 		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
 	})
 
-	t.Run("低于下限的客户端 UA 收敛为兜底值", func(t *testing.T) {
+	t.Run("OpenCode 任意版本客户端 UA 原样透传", func(t *testing.T) {
 		c := newOpenCodeSessionTestContext(t, "")
 		c.Request.Header.Set("User-Agent", "opencode/1.17.0")
 		headers := http.Header{"User-Agent": []string{"opencode/1.17.0"}}
 
 		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
-		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+		require.Equal(t, "opencode/1.17.0", headers.Get("User-Agent"))
 	})
 
 	t.Run("编程库 UA 收敛为兜底值（保留 Cloudflare 防护）", func(t *testing.T) {

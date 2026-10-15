@@ -59,9 +59,6 @@ func (a *Account) providerDefaultTestModel() string {
 	if a.IsCline() && a.clinePassSubscribed() && !a.isRateLimitActiveForKey(clinePassRateLimitKey) {
 		return DefaultClinePassTestModel
 	}
-	if a.IsOpenCodeFreeTier() {
-		return "space-bunny-free"
-	}
 	return profile.DefaultTestModel
 }
 

@@ -243,18 +243,23 @@ func applyOpenCodeUpstreamUserAgent(c *gin.Context, account *Account, targetURL 
 }
 
 // openCodeCanonicalUserAgentForClient 返回本次出站使用的 opencode 客户端 UA。
-// 入站请求确实来自满足 Zen 版本下限的真实 opencode 客户端（携带 opencode/ 前缀
-// 且版本足够新）时透传该 UA；否则回落到规范兜底值。c 为 nil 表示调用方没有
-// 入站上下文（如账号连通性测试），此时一律使用兜底值。
+// 入站请求如果是 OpenCode UA（以 "opencode" 开头，不区分大小写）则原样透传；
+// 否则回落到规范兜底值。c 为 nil 表示调用方没有入站上下文（如账号连通性测试），
+// 此时一律使用兜底值。
 func openCodeCanonicalUserAgentForClient(c *gin.Context) string {
 	if c != nil && c.Request != nil {
 		if incoming := strings.TrimSpace(c.Request.UserAgent()); incoming != "" {
-			if meetsOpenCodeFreeTierMinVersion(incoming) {
+			if isOpenCodeUserAgent(incoming) {
 				return incoming
 			}
 		}
 	}
 	return openCodeUpstreamUserAgent
+}
+
+// isOpenCodeUserAgent 判断客户端 UA 是否为 OpenCode 客户端 UA。
+func isOpenCodeUserAgent(userAgent string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(userAgent)), "opencode")
 }
 
 // meetsOpenCodeFreeTierMinVersion 判断客户端 UA 是否声明了不低于 Zen free tier
