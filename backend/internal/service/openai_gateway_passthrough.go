@@ -2495,9 +2495,15 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 	// x-codex-turn-state：Codex 回合状态头，客户端会在同回合后续请求回带。
 	// 与上面的用量头不同，这里在上游缺失时也主动清除——failover 换号后残留
 	// 上一账号的 blob 会构成跨账号矛盾（openai_codex_turn_state.go）。
+	// 只回传首个非空值：它是单个不透明票据，Codex 客户端也只读取首值，与
+	// 暂存/显式回传路径一致。上游重复下发时逐个 Add 会把响应头放大到数十 KB，
+	// 超出下游反向代理的响应头缓冲（nginx 默认 4k/8k）而返回 502。
 	turnStateKey := http.CanonicalHeaderKey(openAICodexTurnStateHeader)
 	dst.Del(turnStateKey)
 	for _, v := range getCaseInsensitiveValues(src, openAICodexTurnStateHeader) {
-		dst.Add(turnStateKey, v)
+		if v = strings.TrimSpace(v); v != "" {
+			dst.Set(turnStateKey, v)
+			break
+		}
 	}
 }

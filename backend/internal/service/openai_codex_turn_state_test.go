@@ -251,6 +251,18 @@ func TestWriteOpenAIPassthroughResponseHeaders_RelaysAndClearsTurnState(t *testi
 	require.Empty(t, dst.Get("X-Codex-Turn-State"))
 }
 
+func TestWriteOpenAIPassthroughResponseHeaders_RelaysSingleTurnState(t *testing.T) {
+	// 上游在同一响应里重复下发 turn-state 时只回传首个非空值，避免响应头被放大。
+	dst := http.Header{}
+	src := http.Header{}
+	src.Add("X-Codex-Turn-State", " ")
+	for i := 0; i < 9; i++ {
+		src.Add("X-Codex-Turn-State", "blob-P")
+	}
+	writeOpenAIPassthroughResponseHeaders(dst, src, nil)
+	require.Equal(t, []string{"blob-P"}, dst.Values("X-Codex-Turn-State"))
+}
+
 func TestWriteOpenAIPassthroughResponseHeaders_RelaysReasoningIncluded(t *testing.T) {
 	dst := http.Header{}
 	src := http.Header{}
