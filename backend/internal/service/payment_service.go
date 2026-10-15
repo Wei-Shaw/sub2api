@@ -134,6 +134,9 @@ type RefundPlan struct {
 	BalanceToDeduct float64
 	SubDaysToDeduct int
 	SubscriptionID  int64
+	// subscriptionAdjustment is the exact interval removed from the
+	// subscription, so rollback and pending settlement replay it.
+	subscriptionAdjustment *subscriptionRefundAdjustment
 }
 
 type RefundResult struct {
