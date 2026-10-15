@@ -269,6 +269,23 @@ type OpenAIWSIngressHooks struct {
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 
+// Retry only a rejected handshake; no generation frame has been sent yet.
+func (s *OpenAIGatewayService) acquireOpenAIWSWithOAuthRecovery(ctx context.Context, req *openAIWSAcquireRequest) (*openAIWSConnLease, error) {
+	pool := s.getOpenAIWSConnPool()
+	lease, err := pool.Acquire(ctx, *req)
+	var dialErr *openAIWSDialError
+	if err == nil || !errors.As(err, &dialErr) {
+		return lease, err
+	}
+	token, refreshed := s.tryRefreshOpenAIOAuth401(ctx, req.Account, dialErr.StatusCode, dialErr.ResponseBody, strings.TrimPrefix(req.Headers.Get("Authorization"), "Bearer "))
+	if !refreshed {
+		return lease, err
+	}
+	req.Headers = req.Headers.Clone()
+	req.Headers.Set("Authorization", "Bearer "+token)
+	return pool.Acquire(ctx, *req)
+}
+
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {
 	if s == nil {
 		return nil
