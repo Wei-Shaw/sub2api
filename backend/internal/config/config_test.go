@@ -2693,3 +2693,15 @@ func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadClaude55LegacyThinking(t *testing.T) {
+	for _, value := range []string{"", "false", "true"} {
+		t.Run("env="+value, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("GATEWAY_CLAUDE55_LEGACY_THINKING_ENABLED", value)
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, value == "true", cfg.Gateway.Claude55LegacyThinkingEnabled)
+		})
+	}
+}
