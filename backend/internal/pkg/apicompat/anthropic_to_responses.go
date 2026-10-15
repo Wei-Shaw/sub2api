@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
@@ -13,6 +14,9 @@ import (
 // Chat Completions intermediary round-trip (e.g. thinking, cache_control,
 // structured system prompts).
 func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
+	if err := validateMiniMaxAnthropicReasoning(req); err != nil {
+		return nil, err
+	}
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
 		return nil, err
 	}
@@ -65,11 +69,11 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	if openai.IsGPT61SolModelSpelling(req.Model) && req.OutputConfig != nil && req.OutputConfig.Effort == "max" && effort != "none" {
 		effort = "max"
 	}
-	out.Reasoning = &ResponsesReasoning{
-		Effort: effort,
-	}
-	if effort != "none" {
-		out.Reasoning.Summary = "auto"
+	if effort != "" {
+		out.Reasoning = &ResponsesReasoning{Effort: effort}
+		if effort != "none" {
+			out.Reasoning.Summary = "auto"
+		}
 	}
 
 	// Convert tool_choice
@@ -426,9 +430,15 @@ func extractAnthropicTextFromBlocks(blocks []AnthropicContentBlock) string {
 }
 
 // anthropicReasoningEffort resolves the Anthropic request preference for both
-// OpenAI bridges. Explicitly disabled thinking overrides output_config.effort;
-// otherwise the bridge keeps its medium default.
+// OpenAI bridges. M3.1 preserves explicit effort and omission. For other models,
+// disabled thinking overrides output_config.effort; otherwise default to medium.
 func anthropicReasoningEffort(req *AnthropicRequest) string {
+	if minimax.IsM31(req.Model) {
+		if req.OutputConfig != nil {
+			return req.OutputConfig.Effort
+		}
+		return ""
+	}
 	if req.Thinking != nil && req.Thinking.Type == "disabled" {
 		return "none"
 	}
@@ -437,6 +447,21 @@ func anthropicReasoningEffort(req *AnthropicRequest) string {
 		effort = req.OutputConfig.Effort
 	}
 	return mapAnthropicEffortToResponses(effort)
+}
+
+func validateMiniMaxAnthropicReasoning(req *AnthropicRequest) error {
+	if !minimax.IsM31(req.Model) {
+		return nil
+	}
+	if req.Thinking != nil {
+		if err := minimax.ValidateThinkingType(req.Model, req.Thinking.Type); err != nil {
+			return err
+		}
+	}
+	if req.OutputConfig != nil {
+		return minimax.ValidateReasoningEffort(req.Model, req.OutputConfig.Effort)
+	}
+	return nil
 }
 
 // mapAnthropicEffortToResponses maps shared effort levels directly and maps

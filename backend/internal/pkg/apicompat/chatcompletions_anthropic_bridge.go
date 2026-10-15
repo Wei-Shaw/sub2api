@@ -43,6 +43,9 @@ func AnthropicToChatCompletionsRequest(req *AnthropicRequest) (*ChatCompletionsR
 	if req == nil {
 		return nil, fmt.Errorf("anthropic request is nil")
 	}
+	if err := validateMiniMaxAnthropicReasoning(req); err != nil {
+		return nil, err
+	}
 
 	messages, err := anthropicToChatMessages(req.System, req.Messages)
 	if err != nil {

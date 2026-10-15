@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -86,6 +87,9 @@ func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body [
 	if len(body) == 0 || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
 		return body, nil
 	}
+	if minimax.IsM31(resolveMappedUpstreamModel(account, body, "")) {
+		return body, nil
+	}
 
 	out := body
 	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
@@ -111,6 +115,11 @@ func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body [
 
 func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body map[string]any) {
 	if body == nil || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
+		return
+	}
+	model, _ := body["model"].(string)
+	if minimax.IsM31(normalizeOpenAIModelForUpstream(account, resolveOpenAIForwardModel(account, model, ""))) {
+		// Keep explicit none for model validation, including the WS-to-HTTP bridge.
 		return
 	}
 	if effort, ok := body["reasoning_effort"].(string); ok && strings.EqualFold(strings.TrimSpace(effort), "none") {
@@ -1726,6 +1735,11 @@ func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string
 		return &normalized
 	}
 
+	// M3.1 omission uses the upstream max default; an alias suffix does not
+	// represent an effort actually sent to this model.
+	if minimax.IsM31(firstNonEmpty(modelCandidates...)) {
+		return nil
+	}
 	value := deriveOpenAIReasoningEffortFromModelCandidates(modelCandidates)
 	if value == "" {
 		return nil
@@ -2576,6 +2590,9 @@ func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
 // supportsOpenAIReasoningEffortMax reports model families whose upstream scale
 // has a distinct max level. Other models keep the legacy max -> xhigh behavior.
 func supportsOpenAIReasoningEffortMax(model string) bool {
+	if minimax.IsM31(model) {
+		return true
+	}
 	if isOpenAIGPT6Model(model) || isOpenAIGPT56Model(model) {
 		return true
 	}

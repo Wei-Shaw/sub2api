@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
@@ -582,15 +583,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
-			// 国产模型 thinking-enabled 默认 effort 填充：Kimi/GLM/MiniMax 这些不支持 effort 档位的
-			// passback-required 上游，仅要 thinking 启用且 OutputEffort 未明确传递时，在 usage_log 写 "high"
-			// 避免该字段长期为 NULL（详见 DefaultEffortForThinkingEnabled 文档）。
-			if result.ReasoningEffort == nil && parsedReq.ThinkingEnabled {
+			// M3.1 缺省档位为 max；其他国产模型仅在 thinking 已启用时补默认档位。
+			if result.ReasoningEffort == nil {
 				protocolModel := result.UpstreamModel
 				if protocolModel == "" {
 					protocolModel = result.Model
 				}
-				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+				if parsedReq.ThinkingEnabled || minimax.IsM31(protocolModel) {
+					result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+				}
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -951,12 +952,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 				}
 				// 同上（重试路径中的对称填充）。详见非重试路径同名注释。
-				if result.ReasoningEffort == nil && attemptParsedReq.ThinkingEnabled {
+				if result.ReasoningEffort == nil {
 					protocolModel := result.UpstreamModel
 					if protocolModel == "" {
 						protocolModel = result.Model
 					}
-					result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+					if attemptParsedReq.ThinkingEnabled || minimax.IsM31(protocolModel) {
+						result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+					}
 				}
 
 				// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -1471,7 +1474,7 @@ func defaultCodexModelIDsForPlatform(platform string) []string {
 	case service.PlatformDeepseek:
 		return []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-flash"}
 	case service.PlatformMiniMax:
-		return []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"}
+		return []string{minimax.ModelM31FlashPreview, "MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"}
 	default:
 		return defaultModelIDsForPlatform(platform)
 	}

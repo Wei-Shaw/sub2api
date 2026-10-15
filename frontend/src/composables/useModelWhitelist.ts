@@ -212,6 +212,7 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
+  'MiniMax-M3.1-Flash-Preview',
   'MiniMax-M3',
   'MiniMax-M2.7',
   'MiniMax-M2.7-highspeed',

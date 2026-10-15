@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -1575,6 +1576,7 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 // DefaultEffortForThinkingEnabled 给"开启了 thinking 但协议层没有 effort 档位概念"
 // 的国产模型族返回一个默认 effort 字符串（"high"），用于 usage_log.reasoning_effort
 // 字段，避免该字段长期为 NULL 导致用量分析无法区分 thinking 开/关。
+// M3.1 为例外：始终开启思考，缺省档位按其上游规则记录为 max。
 //
 // 适用范围（按 ResolveThinkingProtocol 的 PassbackRequired 集合做白名单过滤）：
 //   - Kimi (kimi-* / moonshot-*)
@@ -1590,7 +1592,7 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 // (2) 已确认 thinking 启用（Anthropic: parsed.ThinkingEnabled；OpenAI: 见
 // OpenAIBodyHasThinkingEnabled) (3) 已有 effort 解析返回 nil 三者同时成立时调用。
 //
-// 返回值固定指向 "high"。理由：Kimi/GLM/MiniMax 启用 thinking 都是"深度推理模式"，
+// 除 M3.1 外返回值固定指向 "high"。理由：Kimi/GLM/MiniMax 启用 thinking 都是"深度推理模式"，
 // 等同 Claude/OpenAI 的 high 档位语义；用 high 比 medium/normal 更贴近实际行为，
 // 也与 DeepSeek thinking-enabled 的默认 effort 一致。
 //
@@ -1598,6 +1600,10 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 // reasoning_effort: high/max），客户端开始显式发 effort 值时，调用方的守卫条件 (3)
 // 会因 extractor 返回非 nil 而不触发本函数，自动让出。
 func DefaultEffortForThinkingEnabled(mappedModel string) *string {
+	if minimax.IsM31(mappedModel) {
+		effort := minimax.DefaultReasoningEffort
+		return &effort
+	}
 	if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired {
 		return nil
 	}
@@ -1622,7 +1628,8 @@ func OpenAIBodyHasThinkingEnabled(body []byte) bool {
 	return thinkingType == "enabled" || thinkingType == "adaptive"
 }
 
-// ApplyThinkingEnabledFallback 补丁已解析出的 effort，仅在 effort 为 nil 且
+// ApplyThinkingEnabledFallback 在 M3.1 缺省 effort 时记录上游默认 max。
+// 其他模型仅在 effort 为 nil 且
 // 检测到 body 里 thinking 启用 + mappedModel 属于国产 passback-required 上游时，
 // 返回 DefaultEffortForThinkingEnabled 的默认值（"high"）。不覆盖已解析出的值。
 //
@@ -1630,6 +1637,9 @@ func OpenAIBodyHasThinkingEnabled(body []byte) bool {
 func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel string) *string {
 	if effort != nil {
 		return effort
+	}
+	if minimax.IsM31(mappedModel) {
+		return DefaultEffortForThinkingEnabled(mappedModel)
 	}
 	if !OpenAIBodyHasThinkingEnabled(body) {
 		return nil
@@ -1831,8 +1841,9 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 }
 
 // NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
-// LLM providers that use Anthropic-compatible endpoints but have different accepted
-// values for `thinking.type`. Currently scoped to:
+// LLM providers that use Anthropic-style thinking objects on Messages or Chat
+// Completions endpoints but have different accepted values for `thinking.type`.
+// Currently scoped to:
 //   - MiniMax M-series (`MiniMax-m*`, covering M2.x / M3 / M3.x): official docs accept
 //     only `thinking.type` of "adaptive" or "disabled"; "enabled" is not a valid value
 //     and may be rejected/ignored. Pi-ai and other Anthropic-SDK clients default to
@@ -1843,12 +1854,12 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 // added here as separate case branches.
 //
 // Returns (modified body, true) if a rewrite was applied, or (original body, false)
-// if no rewrite was needed. Caller should be on the Anthropic forward path AFTER
-// FilterThinkingBlocks and BEFORE building the upstream request, only for
-// passback-required models (ResolveThinkingProtocol == PassbackRequired).
+// if no rewrite was needed. Call after model mapping and before building the
+// upstream request. On Anthropic paths, call after FilterThinkingBlocks when
+// that filter is applied.
 func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
 	modelLower := strings.ToLower(mappedModel)
-	if !strings.HasPrefix(modelLower, "minimax-m") {
+	if !strings.HasPrefix(modelLower, "minimax-m") && !minimax.IsM31(mappedModel) {
 		return body, false
 	}
 	thinkingType := gjson.GetBytes(body, "thinking.type").String()

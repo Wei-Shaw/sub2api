@@ -175,6 +175,11 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 		body = sanitized
 	}
 
+	// Messages 直通与 CC/Responses 桥接共用此处，按最终上游模型归一化 thinking.type。
+	if normalized, changed := NormalizeChineseLLMThinking(body, gjson.GetBytes(body, "model").String()); changed {
+		body = normalized
+	}
+
 	// Ollama Cloud DeepSeek 出站 max_tokens clamp：判定与 nativeAnthropicTargetURL
 	// 的 base 取值同源（GetAnthropicProtocolBaseURL，adaptive 时是 Anthropic 协议
 	// 地址而非 CC/Responses 地址），详见 helper 注释。

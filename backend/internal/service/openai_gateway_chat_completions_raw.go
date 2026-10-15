@@ -110,6 +110,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
+	// MiniMax 的 Chat 端点同样使用 adaptive，按映射后的模型转换客户端的 enabled。
+	if normalizedBody, normalized := NormalizeChineseLLMThinking(upstreamBody, upstreamModel); normalized {
+		upstreamBody = normalizedBody
+	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/net/http2"
@@ -456,6 +457,17 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		EffectiveContextWindowPercent:     95,
 		ExperimentalSupportedTools:        []string{},
 		InputModalities:                   []string{"text"},
+	}
+
+	if minimax.IsM31(modelID) {
+		defaultReasoningLevel := minimax.DefaultReasoningEffort
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = nil
+		for _, effort := range minimax.ReasoningEfforts() {
+			descriptor.SupportedReasoningLevels = append(descriptor.SupportedReasoningLevels, configuredCodexReasoningLevel{
+				Effort: effort, Description: configuredCodexReasoningLevelDescription(effort),
+			})
+		}
 	}
 
 	if isDeepSeekCodexModel(modelID) {

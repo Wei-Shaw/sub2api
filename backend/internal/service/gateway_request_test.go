@@ -1326,6 +1326,13 @@ func TestNormalizeChineseLLMThinking(t *testing.T) {
 	}{
 		// MiniMax M3 / M2.x — passback-required path: rewrite enabled -> adaptive
 		{
+			name:          "namespaced minimax m3.1 enabled -> adaptive",
+			model:         "minimax/MiniMax-M3.1-Flash-Preview",
+			input:         `{"model":"minimax/MiniMax-M3.1-Flash-Preview","thinking":{"type":"enabled"},"messages":[]}`,
+			wantApplied:   true,
+			wantTypeValue: "adaptive",
+		},
+		{
 			name:          "minimax m3 enabled -> adaptive",
 			model:         "MiniMax-M3",
 			input:         `{"model":"MiniMax-M3","thinking":{"type":"enabled","budget_tokens":8192},"messages":[]}`,
@@ -1436,6 +1443,8 @@ func TestDefaultEffortForThinkingEnabled(t *testing.T) {
 		{name: "moonshot-v1-8k", model: "moonshot-v1-8k", want: strPtr("high")},
 		{name: "minimax-m3 (lowercase)", model: "minimax-m3", want: strPtr("high")},
 		{name: "MiniMax-M3 (mixed case)", model: "MiniMax-M3", want: strPtr("high")},
+		{name: "MiniMax M3.1 default", model: "MiniMax-M3.1-Flash-Preview", want: strPtr("max")},
+		{name: "namespaced MiniMax M3.1 default", model: "minimax/MiniMax-M3.1-Flash-Preview", want: strPtr("max")},
 		{name: "qwen3-thinking variant", model: "qwen3-235b-a22b-thinking-2507", want: strPtr("high")},
 
 		// DeepSeek 有原生 effort 支持→不注入默认，让客户端意图透传
