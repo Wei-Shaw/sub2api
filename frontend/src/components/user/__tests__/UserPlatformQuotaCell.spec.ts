@@ -72,7 +72,7 @@ describe('UserPlatformQuotaCell', () => {
     const text = w.text()
     expect(text.indexOf('anthropic')).toBeLessThan(text.indexOf('gemini'))
     expect(text.indexOf('gemini')).toBeLessThan(text.indexOf('typesafe'))
-    expect(text.indexOf('typesafe')).toBeLessThan(text.indexOf('muse'))
+    expect(text.indexOf('muse')).toBeLessThan(text.indexOf('typesafe'))
     expect(text).not.toContain('openai')
   })
 })

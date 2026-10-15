@@ -1183,7 +1183,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID, true)
+		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID, "", true)
 		if h.muse != nil && apiKey != nil {
 			native, err := h.muse.Models(c.Request.Context(), groupID, muse.Actor{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
 			if err == nil {

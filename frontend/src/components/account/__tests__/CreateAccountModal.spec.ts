@@ -204,13 +204,13 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
-  it('places Meta Muse after Grok at the end of the first provider row with its app icon and export instructions', async () => {
+  it('places Meta Muse at the end of the first provider row with its app icon and export instructions', async () => {
     const wrapper = mountModal([], true)
     const firstRow = wrapper.get('[data-tour="account-form-platform"]')
     const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
     expect(muse).toBeDefined()
     expect(firstRow.findAll('button').map(button => button.text())).toEqual([
-      'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok', 'Meta Muse',
+      'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok', 'TypeSafe / Jev', 'Meta Muse',
     ])
     expect(muse.get('img').attributes('src')).toContain('muse.png')
     await muse.trigger('click')
