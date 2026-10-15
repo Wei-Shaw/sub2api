@@ -668,9 +668,8 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 	}{
 		{"kimi payg", PlatformKimi, AccountModePayG, DefaultKimiPayGBaseURL, DefaultKimiPayGAnthropicBaseURL, DefaultKimiPayGBaseURL},
 		{"kimi coding", PlatformKimi, AccountModeCoding, DefaultKimiCodingBaseURL, DefaultKimiCodingAnthropicBaseURL, DefaultKimiCodingBaseURL},
-		// 智谱没有原生 Responses 端点：profile 不登记 responses 条目，默认基址为空。
 		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, ""},
-		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, ""},
+		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingResponsesBaseURL},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
 		{"minimax payg", PlatformMiniMax, AccountModePayG, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
 		{"minimax coding", PlatformMiniMax, AccountModeCoding, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},

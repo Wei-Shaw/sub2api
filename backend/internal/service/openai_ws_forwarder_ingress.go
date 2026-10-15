@@ -117,6 +117,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	forceHTTPBridge := account.Platform == PlatformGrok ||
 		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
+	if !forceHTTPBridge &&
+		!account.SupportsResponsesWebSocketHTTPBridge() &&
+		wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+		return NewOpenAIWSClientCloseError(
+			coderws.StatusTryAgainLater,
+			"upstream does not support native websocket; retry over HTTP",
+			fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport),
+		)
+	}
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
 	if modeRouterV2Enabled && !forceHTTPBridge {
@@ -163,7 +172,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 	}
 	if !forceHTTPBridge && wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		return fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport)
+		return NewOpenAIWSClientCloseError(
+			coderws.StatusTryAgainLater,
+			"upstream does not support native websocket; retry over HTTP",
+			fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport),
+		)
 	}
 	dedicatedMode := modeRouterV2Enabled && ingressMode == OpenAIWSIngressModeDedicated
 

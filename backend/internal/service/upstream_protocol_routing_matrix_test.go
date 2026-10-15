@@ -288,7 +288,7 @@ func captureRoutingMatrixGolden() routingMatrixGolden {
 	return golden
 }
 
-// Zhipu has no Responses endpoint. The refactor routes adaptive /responses to
+// Zhipu modes other than Coding Plan have no Responses endpoint. The refactor routes adaptive /responses to
 // Chat Completions even for unsupported upstream/oauth account types. Both
 // versions reject these accounts before transport, with these exact errors.
 // Only this complete before/after observation is permitted; other no-upstream
@@ -310,6 +310,66 @@ func matchesKnownZhipuNonAPIKeyDifference(tc routingMatrixCase, want, got routin
 		reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
 }
 
+// GLM Coding Plan now has a native Responses endpoint. Validate the complete
+// expected change while keeping the pinned main fixture for all other cases.
+func matchesKnownZhipuCodingResponsesDifference(tc routingMatrixCase, want, got routingObservation) bool {
+	if tc.platform != PlatformZhipu || tc.mode != AccountModeCoding {
+		return false
+	}
+	if tc.apiProtocol != APIProtocolResponses &&
+		(tc.apiProtocol != APIProtocolAdaptive || !tc.ingress.responsesBody) {
+		return false
+	}
+	if tc.accountType != AccountTypeAPIKey {
+		if tc.apiProtocol != APIProtocolAdaptive || tc.ingress.name != "chat_responses_shape" {
+			return false
+		}
+		var oldError string
+		switch tc.accountType {
+		case AccountTypeUpstream:
+			oldError = "unsupported account type: upstream"
+		case AccountTypeOAuth:
+			oldError = "access_token not found in credentials"
+		default:
+			return false
+		}
+		return reflect.DeepEqual(want, routingObservation{Error: oldError, Status: http.StatusOK}) &&
+			reflect.DeepEqual(got, routingObservation{Error: "get access token: " + oldError, Status: http.StatusOK})
+	}
+	oldURL := "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+	if tc.addresses == "base" || tc.addresses == "both" {
+		oldURL = "http://base.example/v1/chat/completions"
+	}
+	if tc.apiProtocol == APIProtocolAdaptive && (tc.addresses == "split" || tc.addresses == "both") {
+		oldURL = "http://cc.example/v1/chat/completions"
+	}
+	oldKind := "messages"
+	if tc.apiProtocol == APIProtocolResponses && tc.ingress.name == "chat_responses_shape" {
+		oldKind = "input"
+	}
+	expectedOld := routingObservation{
+		Requests: []routingUpstreamRequest{{URL: oldURL, Authorization: "Bearer sk-test", BodyKind: oldKind, Model: strings.TrimSpace(tc.model)}},
+		Error:    "upstream error: 502 (failover)", Status: http.StatusOK,
+	}
+	newURL := "https://open.bigmodel.cn/api/v1/responses"
+	if tc.apiProtocol == APIProtocolAdaptive {
+		if tc.addresses == "split" || tc.addresses == "both" {
+			newURL = "http://responses.example/v1/responses"
+		}
+	} else if tc.addresses == "base" || tc.addresses == "both" {
+		newURL = "http://base.example/v1/responses"
+	}
+	model := strings.TrimSpace(tc.model)
+	if tc.ingress.name == "responses" {
+		model = tc.model
+	}
+	expectedNew := routingObservation{
+		Requests: []routingUpstreamRequest{{URL: newURL, Authorization: "Bearer sk-test", BodyKind: "input", Model: model}},
+		Error:    "upstream error: 502 (failover)", Status: http.StatusOK,
+	}
+	return reflect.DeepEqual(want, expectedOld) && reflect.DeepEqual(got, expectedNew)
+}
+
 func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	data, err := os.ReadFile(routingMatrixGoldenPath)
@@ -325,6 +385,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	var differences []string
 	mismatched := 0
 	knownDifferences := 0
+	codingResponsesDifferences := 0
 	for i, tc := range cases {
 		index := golden.Results[i]
 		require.GreaterOrEqual(t, index, 0)
@@ -338,13 +399,18 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 			knownDifferences++
 			continue
 		}
+		if matchesKnownZhipuCodingResponsesDifference(tc, want, got) {
+			codingResponsesDifferences++
+			continue
+		}
 		mismatched++
 		if len(differences) < 12 {
 			differences = append(differences, fmt.Sprintf("%s\nmain: %s\ncurrent: %s", tc.key(), want, got))
 		}
 	}
 	require.Zero(t, mismatched, "routing differs from main %s in %d cases:\n%s", golden.SourceRevision, mismatched, strings.Join(differences, "\n"))
-	// 2 account types × 4 modes × 3 probe states × 4 address configurations ×
+	// 2 account types × 3 modes without native Responses × 3 probe states × 4 address configurations ×
 	// 2 model spellings. A disappeared or expanded exception requires review.
-	require.Equal(t, 192, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	require.Equal(t, 144, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	require.Equal(t, 192, codingResponsesDifferences, "unexpected change to the declared GLM Coding Plan Responses difference")
 }
