@@ -219,6 +219,11 @@ interface NavItem {
    * 开关切换时菜单自动更新。
    */
   featureFlag?: () => boolean | undefined
+  /**
+   * 只给管理员看的入口。普通用户看不到、也进不去（路由那边还有 requiresAdmin 兜底）。
+   * 用在「功能刚做出来、要先由管理员真机测试」的模块上。
+   */
+  adminOnly?: boolean
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -312,6 +317,26 @@ const BatchImageIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z'
+        })
+      ]
+    )
+}
+
+const AiImageIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z'
+        }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z'
         })
       ]
     )
@@ -777,6 +802,11 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannelsUnlessPro },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelStatusUnlessPro },
     { path: '/intelligence-check', label: t('nav.intelligenceCheck'), icon: IntelligenceCheckIcon, hideInSimpleMode: true, featureFlag: flagIntelligenceCheck },
+    // AI生图：位于「智力检测」下方、「我的订阅」上方。用户端主菜单与管理端「我的账户」
+    // 共用这份声明，因此管理端会自动落在左侧最下方对应的同一位置。
+    // adminOnly：这个模块是新做的，先只给管理员测试，普通用户看不到。
+    // 等真机验证通过后，去掉这里的 adminOnly、并把路由的 requiresAdmin 改回 false 即可。
+    { path: '/ai-image', label: t('nav.aiImage'), icon: AiImageIcon, hideInSimpleMode: true, adminOnly: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -793,10 +823,12 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   return items
 }
 
-// finalizeNav 合并三重过滤：featureFlag 过滤 + simple 模式过滤。
+// finalizeNav 合并三重过滤：featureFlag 过滤 + adminOnly 过滤 + simple 模式过滤。
 function finalizeNav(items: NavItem[]): NavItem[] {
   const visible = applyFeatureFlags(items)
-  return authStore.isSimpleMode ? visible.filter(item => !item.hideInSimpleMode) : visible
+  // adminOnly 的入口只给管理员（普通用户既看不到、路由也会拦）。
+  const allowed = authStore.isAdmin ? visible : visible.filter(item => !item.adminOnly)
+  return authStore.isSimpleMode ? allowed.filter(item => !item.hideInSimpleMode) : allowed
 }
 
 // User navigation items (for regular users)

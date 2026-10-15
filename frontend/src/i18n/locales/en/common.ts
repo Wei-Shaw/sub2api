@@ -210,6 +210,7 @@ export default {
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
     intelligenceCheck: 'Intelligence Check',
+    aiImage: 'AI Image',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     securityAudit: 'Security Audit',

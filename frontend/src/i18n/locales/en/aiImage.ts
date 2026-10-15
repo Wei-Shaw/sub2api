@@ -1,0 +1,241 @@
+export default {
+  aiImage: {
+    title: 'AI Image',
+    subtitle: 'Paste a key created on this platform, then enter a prompt to generate or edit images.',
+
+    modules: {
+      title: 'Modules',
+      hint: 'Click to expand, click again to collapse.',
+      primary: 'Main',
+      primaryHint: 'Drop in one image and generate — just write the prompt below.',
+      secondary: 'Secondary',
+    },
+
+    key: {
+      sectionTitle: 'Image key',
+      label: 'Platform key',
+      placeholder: 'Paste a key created on this platform (starts with sk- / cns-)',
+      hint: 'Keys come from this platform\u2019s "API Keys" page and are stored only in your browser.',
+      save: 'Save key',
+      configure: 'Enter key',
+      change: 'Change key',
+      saved: 'Saved',
+      clear: 'Clear key',
+      checking: 'Validating key\u2026',
+      valid: 'Key is usable: {group}',
+      validNoGroup: 'Key is usable',
+      invalid: 'The key is invalid or disabled. Please check and retry.',
+      notImageModel: 'This key is not an image-generation model',
+      notImageModelHint:
+        'The key\u2019s group ({group}) does not have image generation enabled, so it cannot be used for AI image generation. Pick a key from an image-enabled group on the "API Keys" page, or ask an administrator to enable it for the group.',
+      notOwned:
+        'This key does not belong to the current account, so it cannot be validated here. Use a key created by this account.',
+      empty: 'Please enter a key first.',
+      loadFailed: 'Failed to load your key list. Please retry later.',
+    },
+
+    prompt: {
+      label: 'Prompt',
+      placeholder:
+        'Describe what to generate or change, e.g. put this product on a white background, 3:4 portrait, add Russian selling points',
+      generate: 'Generate',
+      generating: 'Generating\u2026',
+      clear: 'Clear',
+    },
+
+    template: {
+      title: 'Prompt templates',
+      label: 'Prompt templates',
+      placeholder: 'Pick a saved template\u2026',
+      save: 'Save as template',
+      delete: 'Delete template',
+      namePlaceholder: 'Name this template',
+      confirm: 'Save',
+      cancel: 'Cancel',
+      applied: 'Applied template "{name}"',
+      saved: 'Template "{name}" saved',
+      overwritten: 'Template "{name}" updated',
+      deleted: 'Template "{name}" deleted',
+      saveFailed: 'The template could not be saved: browser storage is unavailable or full.',
+      needPrompt: 'Write a prompt first, then save it as a template.',
+      needName: 'Please give the template a name.',
+    },
+
+    hot: {
+      title: 'Bestseller clone',
+      hint:
+        'Upload a few competitor bestseller images; the AI extracts the layout (9 traits: layout, palette, copy placement\u2026) and applies it to your own product.',
+      pick: 'Add bestseller images',
+      clear: 'Clear',
+      picked: 'Added {count} bestseller image(s).',
+      analyzing: 'Analyzing\u2026',
+      analyze: 'Extract bestseller layout',
+      progress: '{done}/{total} analyzed',
+      styleTitle: 'Extracted layout (shared traits across images)',
+      analyzed: 'Analyzed {count} bestseller image(s); shared traits merged.',
+      extras: 'Also generate 4 more (multi-angle side view / macro detail / usage scene / FAQ compare)',
+      buildScript: 'Build script from this layout',
+      scriptBuilt: 'Built {count} cards from the bestseller layout \u2014 generate them below.',
+      needRef: 'Add at least one bestseller image first.',
+      needProduct: 'Fill in your product name first (the "Product name" field right below this step).',
+      needTemplate:
+        'No layout template available yet \u2014 either upload bestseller images above and click "Extract bestseller layout", or pick a saved template under "Prompt templates".',
+      templateReady: 'Ready: the template for this clone is set. Fill in the product name and you can generate.',
+      noResult: 'None of these images produced a result. Try different images, or check the vision model.',
+      oneFailed: 'One image failed and was skipped (the rest continued): {reason}',
+      step2: 'Step 2: fill in your own product details (independent of the "Image set" panel)',
+    },
+
+    composite: {
+      title: 'One product, many views',
+      pick: 'Pick several product photos',
+      working: 'Combining\u2026',
+      hint: 'Pick 2+ images to lay out side by side as one reference, so the model sees every angle at once.',
+      done: 'Combined {count} images into one reference.',
+      tooMany: 'At most {max} images; the rest were ignored (too wide gets rejected by the image API).',
+      failed: 'Combine failed: {reason}',
+    },
+
+    watermark: {
+      title: 'Watermark',
+      enable: 'Add watermark when downloading',
+      text: 'Text',
+      alpha: 'Strength',
+      fontSize: 'Font size',
+      auto: '(0 = auto)',
+      download: 'Download with watermark',
+      done: 'Watermarked and downloading.',
+      corsBlocked:
+        'The upstream image does not allow cross-origin reads, so it cannot be watermarked in the browser. Opened the original instead.',
+      note:
+        'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
+    },
+
+    filter: {
+      label: 'Status',
+      all: 'All',
+      completed: 'Completed',
+      generating: 'Generating',
+      failed: 'Failed',
+      empty: 'No records under the current filter',
+    },
+
+    reference: {
+      label: 'Reference image',
+      pick: 'Choose reference',
+      replace: 'Replace reference',
+      clear: 'Remove reference',
+      hint: 'With a reference image the request uses image editing; without one it is text-to-image.',
+      none: 'None (text-to-image)',
+    },
+
+    batch: {
+      concurrency: 'Concurrency',
+      generateAll: 'Generate all ({count})',
+      running: 'Batch generating\u2026',
+      progress: 'Done {done} / {total}',
+      failedCount: '{count} failed',
+      paused: 'Paused',
+      pause: 'Pause',
+      resume: 'Resume',
+      stop: 'Stop',
+      stopHint: 'Stopping submits no new jobs; the one in flight runs to completion.',
+      needScript:
+        'No script yet \u2014 build one in "Bestseller clone" or "Image set" to enable generate-all, pause and stop.',
+      fromHot: 'These cards came from "Bestseller clone" (the extracted bestseller layout was applied).',
+      fromHotSaved:
+        'These cards came from "Bestseller clone" (the template selected under "Prompt templates" was applied).',
+      fromOzon: 'These cards came from the "Image set" panel.',
+    },
+
+    options: {
+      model: 'Model',
+      size: 'Size',
+      count: 'Count',
+      countHint: 'Up to {max} images',
+    },
+
+    result: {
+      sectionTitle: 'Results',
+      currentRound: 'This round',
+      history: 'History',
+      empty: 'Generated images will appear here',
+      emptyHint: 'Use the status filter on the left to narrow the history.',
+      failedReason: 'Failure reason',
+      imageNotRetained:
+        'This image only lived in the current session (the API returned base64), so it must be regenerated after a refresh.',
+      retry: 'Retry',
+      download: 'Download',
+      remove: 'Delete',
+      copyPrompt: 'Copy prompt',
+      copied: 'Copied',
+      promptLabel: 'Prompt',
+      modelLabel: 'Model',
+      sizeLabel: 'Size',
+      timeLabel: 'Time',
+      openInNewTab: 'Open in new tab',
+      downloadAll: 'Download all',
+    },
+
+    product: {
+      label: 'Product ID',
+      placeholder: 'Your own label, e.g. the Ozon article number',
+      hint: 'Just a label for your own reference so you can tell which images belong to which product. The client stores images under its own internal product ID, which you do not need to fill in — what you actually hand to the client is the image URL below.',
+      copied: 'Image URL copied — paste it into the client to list the item.',
+      copyFailed: 'Copy failed, please select and copy manually.',
+      copyUrl: 'Copy image URL',
+      copyAll: 'Copy all URLs ({count})',
+      copiedAll:
+        'Copied {count} image URLs in order — pasting them into the client stores them as images 1, 2, 3\u2026',
+      urlLabel: 'Image URL',
+      noUrl: 'This response returned base64, so there is no URL the client can fetch.',
+    },
+
+    lock: {
+      label: 'Lock product',
+      hint: 'When on, only background, lighting, layout and text change — the product itself stays identical, so the image matches the item shown in the client.',
+      on: 'Locked',
+      off: 'Not locked',
+      needsReference: 'Product lock only takes effect once a reference image is uploaded.',
+    },
+
+    script: {
+      title: 'Image set',
+      toggle: 'Expand / collapse',
+      product: 'Product name',
+      productPlaceholder: 'e.g. 316 stainless steel thermos',
+      sp1: 'Selling point 1',
+      sp2: 'Selling point 2',
+      sp3: 'Selling point 3',
+      pain: 'Customer pain',
+      diff: 'Differentiator',
+      scene: 'Auto-matched scene',
+      scenePlaceholder: 'Filled automatically from the product name',
+      build: 'Build the 8 prompts',
+      built: 'Built {count} prompts. Click any one below to load it.',
+      applyAll: 'Load all (newline separated)',
+      fillOne: 'Load into prompt',
+      aiExtract: 'AI extract selling points',
+      aiExtracting: 'Extracting…',
+      aiExtracted: 'AI filled the fields automatically — please review and adjust.',
+      printedRu: 'Russian copy that will be printed on the image:',
+      printedRuNone:
+        'No Russian selling points yet: AI extraction creates them; if you type Chinese by hand, the image will show Chinese.',
+      aiNeedsImage: 'Upload a product image before asking the AI to extract selling points.',
+      aiFailed: 'AI extraction failed',
+      clear: 'Clear',
+    },
+
+    errors: {
+      missingKey: 'Please enter and save an image key first.',
+      missingPrompt: 'Please enter a prompt.',
+      badKey: 'The key is invalid or disabled.',
+      noImagePermission: 'This key is not an image-generation model: its group has image generation disabled.',
+      rateLimited: 'Too many requests. Please retry later.',
+      insufficient: 'Insufficient balance or quota. Please top up first.',
+      timeout: 'Generation timed out. Please retry later.',
+      network: 'Network error. Please check your connection and retry.',
+      unknown: 'Generation failed. Please retry later.',
+    },
+  },
+}

@@ -530,6 +530,20 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // AI生图：目前**只给管理员**。这个模块是新做的，要先由管理员在真机上跑通、
+    // 看过实际出图效果之后再放给普通用户。等测试通过，把 requiresAdmin 改回 false、
+    // 并去掉侧边栏里的 adminOnly 即可（两处，见 AppSidebar.vue）。
+    path: '/ai-image',
+    name: 'AIImage',
+    component: () => import('@/views/user/AIImageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'AI Image',
+      titleKey: 'nav.aiImage'
+    }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),

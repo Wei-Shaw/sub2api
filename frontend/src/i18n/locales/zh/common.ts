@@ -210,6 +210,7 @@ export default {
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
     intelligenceCheck: '智力检测',
+    aiImage: 'AI生图',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     securityAudit: '安全审计',
