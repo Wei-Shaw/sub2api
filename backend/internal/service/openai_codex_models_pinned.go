@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,13 @@ func mergeCodexModelsManifestBodies(bodies [][]byte) ([]byte, error) {
 		}
 	}
 
+	if len(bodies) == 1 {
+		_, original, err := modelCatalogEntries(bodies[0], "models")
+		if err == nil && slices.EqualFunc(original, mergedModels, func(a, b json.RawMessage) bool { return bytes.Equal(a, b) }) {
+			return bodies[0], nil
+		}
+	}
+
 	encodedModels, err := json.Marshal(mergedModels)
 	if err != nil {
 		return nil, fmt.Errorf("encode merged codex models: %w", err)
@@ -138,6 +146,9 @@ func (s *OpenAIGatewayService) FetchPinnedCodexModelsManifest(ctx context.Contex
 	merged, err := mergeCodexModelsManifestBodies(bodies)
 	if err != nil {
 		return nil, nil, fmt.Errorf("merge pinned codex models manifests: %w", err)
+	}
+	if len(results) == 1 && bytes.Equal(merged, results[0].response.Body) {
+		return results[0].response, results[0].account, nil
 	}
 	return &OpenAIModelsResponse{Body: merged, ETag: codexModelsManifestBodyETag(merged)}, results[0].account, nil
 }

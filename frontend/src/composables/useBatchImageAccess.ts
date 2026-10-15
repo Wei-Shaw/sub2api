@@ -60,7 +60,7 @@ async function loadBatchImageAccess(force = false): Promise<boolean> {
   })()
     .catch(() => {
       hasAllowedBatchImageKey.value = false
-      loaded.value = true
+      loaded.value = false
       return false
     })
     .finally(() => {
