@@ -466,7 +466,7 @@
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
       :show="showBulkEdit"
-      :account-ids="selIds"
+      :account-ids="bulkEditTarget?.mode === 'selected' ? bulkEditTarget.accountIds : []"
       :selected-platforms="selPlatforms"
       :selected-types="selTypes"
       :target="bulkEditTarget ?? undefined"
@@ -2098,6 +2098,7 @@ const collectSelectionMetadata = (rows: Account[]) => {
 }
 
 const openBulkEditSelected = () => {
+  if (selIds.value.length === 0) return
   bulkEditTarget.value = {
     mode: 'selected',
     accountIds: [...selIds.value],
@@ -2108,8 +2109,13 @@ const openBulkEditSelected = () => {
 }
 
 const openBulkEditFiltered = async () => {
+  // A selection always takes precedence over the broader filter scope.
+  if (selIds.value.length > 0) return openBulkEditSelected()
+  if (pagination.total === 0 || selectingAllResults.value) return
   const filters = buildBulkEditFilterSnapshot()
   const preview = await adminAPI.accounts.list(1, 100, filters)
+  if (selIds.value.length > 0) return openBulkEditSelected()
+  if (preview.total === 0) return
   const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
   bulkEditTarget.value = {
     mode: 'filtered',

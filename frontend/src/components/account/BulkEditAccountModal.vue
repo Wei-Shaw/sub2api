@@ -17,7 +17,9 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: targetMode === 'filtered' ? targetPreviewCount : accountIds.length }) }}
+          {{ targetMode === 'filtered'
+            ? t('admin.accounts.bulkEdit.filteredInfo', { count: targetPreviewCount })
+            : t('admin.accounts.bulkEdit.selectionInfo', { count: accountIds.length }) }}
         </p>
       </div>
 
