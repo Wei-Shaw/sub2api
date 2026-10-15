@@ -715,3 +715,52 @@ func TestResponsesClientToolStreamRestorer_RestoresAllTerminalEvents(t *testing.
 		})
 	}
 }
+
+func TestResponsesClientTool_WebSearchRestoration(t *testing.T) {
+	mapping := ResponsesClientToolMapping{WebSearch: true}
+
+	t.Run("Non-streaming payload restoration", func(t *testing.T) {
+		payload := []byte(`{"id":"resp_1","output":[{"type":"function_call","id":"fc_123","call_id":"call_123","name":"web_search","arguments":"{\"query\":\"latest news\"}"}]}`)
+		restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.Equal(t, "web_search_call", gjson.GetBytes(restored, "output.0.type").String())
+		require.Equal(t, "ws_123", gjson.GetBytes(restored, "output.0.id").String())
+		require.Equal(t, "search", gjson.GetBytes(restored, "output.0.action.type").String())
+		require.Equal(t, "latest news", gjson.GetBytes(restored, "output.0.action.query").String())
+		require.Equal(t, "completed", gjson.GetBytes(restored, "output.0.status").String())
+		require.False(t, gjson.GetBytes(restored, "output.0.arguments").Exists())
+	})
+
+	t.Run("Streaming events restoration", func(t *testing.T) {
+		restorer := NewResponsesClientToolStreamRestorer(mapping)
+
+		// 1. output_item.added
+		addEvt := []byte(`{"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","id":"fc_ws1","call_id":"call_ws1","name":"web_search","arguments":""}}`)
+		res, changed, err := restorer.RestoreEvent(addEvt)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.Len(t, res, 1)
+		require.Equal(t, "web_search_call", gjson.GetBytes(res[0], "item.type").String())
+		require.Equal(t, "ws_ws1", gjson.GetBytes(res[0], "item.id").String())
+		require.Equal(t, "search", gjson.GetBytes(res[0], "item.action.type").String())
+
+		// 2. function_call_arguments.delta should be suppressed
+		deltaEvt := []byte(`{"type":"response.function_call_arguments.delta","sequence_number":2,"output_index":0,"item_id":"fc_ws1","delta":"{\"query\":\"hello\"}"}`)
+		resDelta, _, err := restorer.RestoreEvent(deltaEvt)
+		require.NoError(t, err)
+		require.Empty(t, resDelta)
+
+		// 3. output_item.done
+		doneEvt := []byte(`{"type":"response.output_item.done","sequence_number":3,"output_index":0,"item":{"type":"function_call","id":"fc_ws1","call_id":"call_ws1","name":"web_search","arguments":"{\"query\":\"hello\"}"}}`)
+		resDone, changed, err := restorer.RestoreEvent(doneEvt)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.Len(t, resDone, 1)
+		require.Equal(t, "web_search_call", gjson.GetBytes(resDone[0], "item.type").String())
+		require.Equal(t, "ws_ws1", gjson.GetBytes(resDone[0], "item.id").String())
+		require.Equal(t, "search", gjson.GetBytes(resDone[0], "item.action.type").String())
+		require.Equal(t, "hello", gjson.GetBytes(resDone[0], "item.action.query").String())
+		require.Equal(t, "completed", gjson.GetBytes(resDone[0], "item.status").String())
+	})
+}
