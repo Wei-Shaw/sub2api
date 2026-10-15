@@ -23,6 +23,7 @@ func TestAccountRepository_SetTempUnschedulable_NoRowsAffectedDoesNotWriteOutbox
 	require.NoError(t, err)
 	require.Len(t, exec.execQueries, 1)
 	require.Contains(t, exec.execQueries[0], "UPDATE accounts")
+	require.Contains(t, exec.execQueries[0], "(credentials->'temp_unschedulable_disabled') IS DISTINCT FROM 'true'::jsonb", "the current database setting must reject a cooldown from an old request snapshot")
 	require.NotContains(t, strings.Join(exec.execQueries, "\n"), "scheduler_outbox")
 }
 
@@ -89,6 +90,7 @@ func TestAccountRepository_GrokCredentialConditionalMutationsAreEligibleAndAtomi
 		require.Contains(t, normalized, "a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW()")
 		require.Contains(t, normalized, "a.overload_until IS NULL OR a.overload_until <= NOW()")
 		require.Contains(t, normalized, "a.credentials = $7::jsonb")
+		require.Contains(t, normalized, "(a.credentials->'temp_unschedulable_disabled') IS DISTINCT FROM 'true'::jsonb")
 		require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $8")
 		require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
 		require.Len(t, exec.execArgs[0], 9)

@@ -159,6 +159,7 @@ type AdminAccountRepository interface {
 type AccountBulkUpdate struct {
 	Name           *string
 	ProxyID        *int64
+	ProxyGroupID   *int64
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64
@@ -182,6 +183,7 @@ type CreateAccountRequest struct {
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra"`
 	ProxyID            *int64         `json:"proxy_id"`
+	ProxyGroupID       *int64         `json:"proxy_group_id"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
 	GroupIDs           []int64        `json:"group_ids"`
@@ -196,6 +198,7 @@ type UpdateAccountRequest struct {
 	Credentials        *map[string]any `json:"credentials"`
 	Extra              *map[string]any `json:"extra"`
 	ProxyID            *int64          `json:"proxy_id"`
+	ProxyGroupID       *int64          `json:"proxy_group_id"`
 	Concurrency        *int            `json:"concurrency"`
 	Priority           *int            `json:"priority"`
 	Status             *string         `json:"status"`
@@ -224,6 +227,15 @@ func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository)
 
 // Create 创建账号
 func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
+	if req.ProxyID != nil && *req.ProxyID <= 0 {
+		req.ProxyID = nil
+	}
+	if req.ProxyGroupID != nil && *req.ProxyGroupID <= 0 {
+		req.ProxyGroupID = nil
+	}
+	if req.ProxyID != nil && req.ProxyGroupID != nil {
+		return nil, infraerrors.BadRequest("ACCOUNT_PROXY_BINDING_CONFLICT", "proxy_id and proxy_group_id cannot be set together")
+	}
 	if req.Platform == PlatformTypeSafe && req.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -236,17 +248,18 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 
 	// 创建账号
 	account := &Account{
-		Name:        req.Name,
-		Notes:       normalizeAccountNotes(req.Notes),
-		Platform:    req.Platform,
-		Type:        req.Type,
-		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		Status:      StatusActive,
-		ExpiresAt:   req.ExpiresAt,
+		Name:         req.Name,
+		Notes:        normalizeAccountNotes(req.Notes),
+		Platform:     req.Platform,
+		Type:         req.Type,
+		Credentials:  SanitizeStoredCredentials(req.Platform, req.Credentials),
+		Extra:        prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, DefaultOpenAIFirstServeExtra(req.Platform, req.Type, req.Extra)),
+		ProxyID:      req.ProxyID,
+		ProxyGroupID: req.ProxyGroupID,
+		Concurrency:  req.Concurrency,
+		Priority:     req.Priority,
+		Status:       StatusActive,
+		ExpiresAt:    req.ExpiresAt,
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
@@ -254,6 +267,15 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		account.AutoPauseOnExpired = true
 	}
 
+	if err := validateOpenAIFirstServe(account); err != nil {
+		return nil, err
+	}
+	if err := assignDefaultFirstServeProxyGroup(ctx, account); err != nil {
+		return nil, err
+	}
+	if err := validateOpenAIFirstServeProxies(ctx, account); err != nil {
+		return nil, err
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)
 	}
@@ -319,6 +341,9 @@ func (s *AccountService) ListByGroup(ctx context.Context, groupID int64) ([]Acco
 
 // Update 更新账号
 func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccountRequest) (*Account, error) {
+	if req.ProxyID != nil && req.ProxyGroupID != nil {
+		return nil, infraerrors.BadRequest("ACCOUNT_PROXY_BINDING_CONFLICT", "proxy_id and proxy_group_id cannot be set together")
+	}
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get account: %w", err)
@@ -350,7 +375,20 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.ProxyID != nil {
-		account.ProxyID = req.ProxyID
+		if *req.ProxyID <= 0 {
+			account.ProxyID = nil
+		} else {
+			account.ProxyID = req.ProxyID
+		}
+		account.ProxyGroupID = nil
+	}
+	if req.ProxyGroupID != nil {
+		if *req.ProxyGroupID <= 0 {
+			account.ProxyGroupID = nil
+		} else {
+			account.ProxyGroupID = req.ProxyGroupID
+		}
+		account.ProxyID = nil
 	}
 
 	if req.Concurrency != nil {

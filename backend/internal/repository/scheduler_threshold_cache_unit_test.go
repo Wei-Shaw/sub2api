@@ -42,7 +42,9 @@ func TestSchedulerCacheAnthropicThresholdAdmission(t *testing.T) {
 		threshold                  int
 		expired                    bool
 		accountPaused, fablePaused bool
+		tempDisabled               bool
 	}{
+		{name: "temporary scheduling disabled", fiveHour: .90, sevenDay: .95, fable: .99, threshold: 60, tempDisabled: true},
 		{name: "shared 5h", fiveHour: .60, threshold: 60, accountPaused: true},
 		{name: "shared 7d", sevenDay: .66, threshold: 60, accountPaused: true},
 		{name: "Fable only", sevenDay: .40, fable: .75, threshold: 60, fablePaused: true},
@@ -60,7 +62,7 @@ func TestSchedulerCacheAnthropicThresholdAdmission(t *testing.T) {
 			account := service.Account{
 				ID: 3, Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
 				Status: service.StatusActive, Schedulable: true, SessionWindowEnd: &end,
-				Credentials: map[string]any{"account_scheduling_threshold": tc.threshold, "access_token": "test-only-token"},
+				Credentials: map[string]any{"account_scheduling_threshold": tc.threshold, "access_token": "test-only-token", "temp_unschedulable_disabled": tc.tempDisabled},
 				Extra: map[string]any{
 					"session_window_utilization":   tc.fiveHour,
 					"passive_usage_7d_utilization": tc.sevenDay, "passive_usage_7d_reset": end.Unix(),
@@ -83,6 +85,7 @@ func TestSchedulerCacheAnthropicThresholdAdmission(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, full)
 			for _, candidate := range []*service.Account{candidates[0], full} {
+				require.Equal(t, tc.tempDisabled, candidate.IsTempUnschedulableDisabled())
 				repo := &snapshotThresholdRepo{}
 				limiter := service.NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 				// Default platform thresholds are disabled, so the per-account override

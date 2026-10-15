@@ -1,0 +1,33 @@
+export default {
+  modelEvaluation: {
+    title: 'Model reasoning evaluation', action: 'Evaluate', account: 'Account', group: 'Group',
+    model: 'Model', modelPlaceholder: 'Select or enter a model', effort: 'Reasoning effort', rounds: 'Rounds (1–20)',
+    accountHint: 'Tests this account without switching accounts. Supports standard OpenAI OAuth / API Key text models.',
+    groupHint: 'Samples through group model restrictions, channel mappings, effort policies and scheduling. Shows the selected account. Each round has no account failover and does not cover every account or simulate user billing, sessions or profit admission.',
+    hint: 'Inspired by the codex-candy-eval candy puzzle, with explicit shape selection. Only the final FINAL_ANSWER line is graded; mentioning 21 elsewhere does not pass. One puzzle only provides evidence of possible variation.',
+    costHint: 'Each independent request may take up to 180 seconds and consumes upstream quota. Defaults to 5 rounds. Canceling or closing stops remaining requests. Results are saved after each round and remain available in history after refreshing. Reports can also be exported.',
+    history: 'History', historyHint: 'Reports are retained on the server and currently visible only to administrators. Planned and completed rounds are recorded separately; unfinished rounds are not incorrect answers.',
+    historyPage: 'Page {page}', refresh: 'Refresh', previous: 'Previous', next: 'Next', loadingHistory: 'Loading history…', emptyHistory: 'No reports yet',
+    historySummary: 'Final results saved: {completed} / {total}; correct {correct} / graded {graded}', viewReport: 'View results',
+    reportId: 'Report ID', privateReport: 'Administrators only', creating: 'Saving evaluation report…',
+    loadedReport: 'Loaded report {id}. Final results saved: {completed} / {total} rounds.',
+    historyFailed: 'Could not load history. Refresh to retry.', createFailed: 'Could not create the report. Refresh history to check before retrying.',
+    saveFailed: 'Report {id}, round {round}: saving could not be confirmed. Export the results, then refresh history to check.',
+    pendingHint: '{count} rounds have no final result. Refresh history to check; start a new evaluation if interrupted.',
+    progress: 'Running round {current} / {total}…', finished: 'Finished. Recorded {completed} / {total} rounds.', canceled: 'Canceled. Recorded {completed} / {total} rounds. Sent requests may have consumed quota.',
+    start: 'Start evaluation', cancel: 'Cancel evaluation', export: 'Export report',
+    round: 'Round', result: 'Result', tokens: 'Input / output / reasoning tokens', time: 'Duration',
+    summary: 'Correct {correct} / graded {graded}; recorded {total}; request errors {errors}; ungraded {ungraded}.',
+    accuracy: 'Graded accuracy', noData: 'No graded results',
+    checkAgain: 'Some answers were incorrect. Compare under matching models and effort settings; this alone does not establish degradation.',
+    noConclusion: 'These results describe this sample. Compare history, control accounts and multiple puzzles to assess changes.',
+    missingTokens: '— means unavailable from the upstream or current protocol, not zero. Reasoning token counts are not an intelligence score.',
+    detail: 'Round {round}: answer and request details', mapping: 'Requested → upstream model', reportedModel: 'Upstream-reported model (not identity verification)',
+    modelsFailed: 'Could not load models. Reopen or enter a model manually.',
+    invalid: 'Enter a model and an integer from 1 to 20 for rounds.', retryHint: 'Check target availability and network, then retry.',
+    roundFailed: '{target}, round {round}: {detail}',
+    ungradedHint: 'Final answer format is invalid. Inspect the answer and rerun.',
+    incorrectHint: 'The final answer differs from the expected answer. Inspect the reasoning and compare with another run.',
+    status: { correct: 'Correct', incorrect: 'Incorrect', ungraded: 'Ungraded', error: 'Request failed', running: 'Running', interrupted: 'Incomplete / interrupted' }
+  }
+}

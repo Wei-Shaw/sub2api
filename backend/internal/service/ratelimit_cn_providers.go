@@ -137,6 +137,9 @@ func (s *RateLimitService) handleCNProviderInsufficientBalance(
 		slog.Warn("cn_balance_low_mark_failed", "account_id", account.ID, "error", err)
 	}
 
+	if account.IsTempUnschedulableDisabled() {
+		return
+	}
 	until := time.Now().Add(s.cnBalanceCooldownDuration())
 	s.notifyAccountSchedulingBlocked(account, until, "cn_insufficient_balance")
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
@@ -240,6 +243,9 @@ func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Co
 // 各分支（并发限制、配额耗尽兜底）共用。告警 key 由 notifyReason 派生，保持
 // 各分支既有日志 key 稳定（<prefix>_set_temp_unschedulable_failed）。
 func (s *RateLimitService) setCNProviderTempUnschedulable(ctx context.Context, account *Account, until time.Time, notifyReason, storeReason, logEvent string) {
+	if account.IsTempUnschedulableDisabled() {
+		return
+	}
 	s.notifyAccountSchedulingBlocked(account, until, notifyReason)
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, storeReason); err != nil {
 		slog.Warn(notifyReason+"_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)

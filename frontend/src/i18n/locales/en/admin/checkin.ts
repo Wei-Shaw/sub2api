@@ -1,0 +1,31 @@
+export default {
+  checkIn: {
+    title: 'Check-in System',
+    enabled: 'Check-in enabled',
+    reset: 'Reset cycle totals',
+    todayUsers: 'Check-ins today',
+    todayReward: 'Credits granted today',
+    totalUsers: 'Users checked in',
+    totalReward: 'Credits granted',
+    reducedUsers: 'Reduced-range users',
+    trend: 'Check-in trend',
+    lastDays: 'Last {days} calendar days',
+    days: 'days',
+    checkInUsers: 'Check-ins',
+    grantedReward: 'Credits granted',
+    standardRule: 'Standard range',
+    reducedRule: 'Reduced range',
+    rewardRange: 'Random credits',
+    threshold: 'Switch threshold',
+    currentUsers: 'Current users',
+    resetTitle: 'Reset all cycle totals',
+    resetMessage: 'Every cycle total will return to zero. Granted balances, check-in history, and today’s check-in state remain unchanged.',
+    resetConfirm: 'Reset totals',
+    resetSuccess: 'Reset cycle totals for {count} users',
+    resetFailed: 'Reset failed',
+    enabledSuccess: 'Check-in system enabled',
+    disabledSuccess: 'Check-in system disabled',
+    saveFailed: 'Failed to save check-in setting',
+    loadFailed: 'Failed to load check-in statistics'
+  }
+}

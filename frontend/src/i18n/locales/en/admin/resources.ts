@@ -238,6 +238,47 @@ export default {
       backupProxy: 'Backup proxy',
     },
 
+    proxyGroups: {
+      title: 'Proxy Groups',
+      description: 'Randomly select a member proxy for each request',
+      create: 'Create Proxy Group',
+      edit: 'Edit Proxy Group',
+      delete: 'Delete Proxy Group',
+      name: 'Name',
+      namePlaceholder: 'Enter proxy group name',
+      descriptionLabel: 'Description',
+      descriptionPlaceholder: 'Optional description',
+      status: 'Status',
+      active: 'Active',
+      inactive: 'Inactive',
+      members: 'Members',
+      availableMembers: 'Available',
+      accounts: 'Accounts',
+      proxies: 'Proxy members',
+      selectProxies: 'Select proxy members',
+      noGroups: 'No proxy groups yet',
+      createFirst: 'Create a proxy group to distribute account requests across its members.',
+      save: 'Save',
+      createSuccess: 'Proxy group created',
+      updateSuccess: 'Proxy group updated',
+      deleteSuccess: 'Proxy group deleted',
+      deleteConfirm: 'Delete proxy group “{name}”?',
+      deleteInUse: 'Proxy group “{name}” is still bound to {count} accounts. Unbind those accounts before deleting it.',
+      failedToLoad: 'Failed to load proxy groups',
+      failedToSave: 'Failed to save proxy group',
+      failedToDelete: 'Failed to delete proxy group',
+      nameRequired: 'Please enter a proxy group name',
+      memberRequired: 'Select at least one proxy member',
+      binding: {
+        none: 'No proxy',
+        proxy: 'Single IP',
+        group: 'IP proxy group',
+        chooseProxy: 'Choose a proxy IP',
+        chooseGroup: 'Choose a proxy group',
+        groupHint: 'Each request randomly selects from {available}/{total} available members.'
+      }
+    },
+
     // Redeem Codes
     redeem: {
       title: 'Redeem Code Management',

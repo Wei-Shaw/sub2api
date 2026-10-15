@@ -42,6 +42,8 @@ type ChannelMonitorRepository interface {
 
 	// 批量聚合（admin/user list 用，避免 N+1）
 	ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*ChannelMonitorLatest, error)
+	// ListRecentForMonitorIDs 批量取每个 monitor/model 最近的历史，按时间倒序。
+	ListRecentForMonitorIDs(ctx context.Context, ids []int64, perModelLimit int) (map[int64][]*ChannelMonitorHistoryEntry, error)
 	ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*ChannelMonitorAvailability, error)
 	// ListRecentHistoryForMonitors 批量取多个 monitor 各自主模型（primaryModels[monitorID]）最近 perMonitorLimit 条历史。
 	// 返回的 entry 已按 checked_at DESC 排序（最新在前），不含 message 字段。

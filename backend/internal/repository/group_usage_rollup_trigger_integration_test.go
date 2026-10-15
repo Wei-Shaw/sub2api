@@ -209,6 +209,7 @@ func TestGroupUsageRollupTriggerKeepsWatermarkForTodayInsert(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 	_, err := tx.ExecContext(ctx, `
+		SET LOCAL TIME ZONE 'Asia/Shanghai';
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
 		UPDATE usage_group_rollup_state

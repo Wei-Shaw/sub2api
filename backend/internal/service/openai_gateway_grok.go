@@ -2106,6 +2106,9 @@ func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *
 	if s == nil || account == nil {
 		return
 	}
+	if account.IsTempUnschedulableDisabled() {
+		return
+	}
 	until := time.Now().Add(cooldown)
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
 		until = *account.TempUnschedulableUntil

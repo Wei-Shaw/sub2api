@@ -907,13 +907,14 @@ func (s *codexImportMemoryAdminService) CreateAccount(ctx context.Context, input
 		return nil, s.createAccountErr
 	}
 	account := service.Account{
-		ID:          s.nextID,
-		Name:        input.Name,
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Status:      service.StatusActive,
-		Credentials: cloneCodexImportTestMap(input.Credentials),
-		Extra:       cloneCodexImportTestMap(input.Extra),
+		ID:           s.nextID,
+		Name:         input.Name,
+		Platform:     input.Platform,
+		Type:         input.Type,
+		Status:       service.StatusActive,
+		Credentials:  cloneCodexImportTestMap(input.Credentials),
+		Extra:        cloneCodexImportTestMap(input.Extra),
+		ProxyGroupID: input.ProxyGroupID,
 	}
 	s.nextID++
 	s.accounts = append(s.accounts, account)
@@ -932,6 +933,9 @@ func (s *codexImportMemoryAdminService) UpdateAccount(ctx context.Context, id in
 		if s.accounts[idx].ID == id {
 			s.accounts[idx].Credentials = cloneCodexImportTestMap(input.Credentials)
 			s.accounts[idx].Extra = cloneCodexImportTestMap(input.Extra)
+			if input.ProxyGroupID != nil {
+				s.accounts[idx].ProxyGroupID = input.ProxyGroupID
+			}
 			return &s.accounts[idx], nil
 		}
 	}
@@ -1020,4 +1024,40 @@ func buildCodexImportTestJWT(t *testing.T, exp time.Time, extraClaims map[string
 		t.Fatalf("marshal claims: %v", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(headerBytes) + "." + base64.RawURLEncoding.EncodeToString(claimBytes) + "."
+}
+
+func TestImportCodexSessionsFirstServeDefaultsAndProxyGroup(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		t.Run(fmt.Sprint(passthrough), func(t *testing.T) {
+			svc := newCodexImportMemoryAdminService(nil)
+			handler := &AccountHandler{adminService: svc}
+			group := int64(17)
+			req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true), ProxyGroupID: &group, Extra: map[string]any{"openai_passthrough": passthrough}}
+			entries := []codexImportEntry{{Index: 1, Value: buildCodexAccessOnlyImportValue(t, "workspace-1", "user-1")}}
+			for i := 0; i < 2; i++ {
+				result, err := handler.importCodexSessions(context.Background(), req, entries)
+				if err != nil || result.Failed != 0 {
+					t.Fatalf("import failed: %+v %v", result, err)
+				}
+				if i == 0 && result.Created != 1 || i == 1 && result.Updated != 1 {
+					t.Fatalf("unexpected result: %+v", result)
+				}
+				account := svc.accounts[0]
+				if !account.IsOpenAIFirstServe() || account.Extra["codex_fingerprint_mode"] != "full" {
+					t.Fatalf("missing first serve defaults: %+v", account.Extra)
+				}
+				if account.Extra["openai_passthrough"] != passthrough {
+					t.Fatal("passthrough setting changed")
+				}
+				if account.ProxyGroupID == nil || *account.ProxyGroupID != group {
+					t.Fatal("proxy group not persisted")
+				}
+				for _, warning := range result.Warnings {
+					if strings.Contains(warning.Message, "绑定至少两个") {
+						t.Fatalf("unexpected pending group warning: %+v", warning)
+					}
+				}
+			}
+		})
+	}
 }

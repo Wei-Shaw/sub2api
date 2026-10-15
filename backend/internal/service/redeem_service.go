@@ -142,6 +142,7 @@ type RedeemService struct {
 	redeemRepo           RedeemCodeRepository
 	userRepo             UserRepository
 	redeemUserRepo       RedeemUserAdjustmentRepository
+	checkInCycleResetter CheckInCycleResetter
 	subscriptionService  *SubscriptionService
 	cache                RedeemCache
 	billingCacheService  *BillingCacheService
@@ -162,10 +163,12 @@ func NewRedeemService(
 	affiliateService *AffiliateService,
 ) *RedeemService {
 	redeemUserRepo, _ := userRepo.(RedeemUserAdjustmentRepository)
+	checkInCycleResetter, _ := userRepo.(CheckInCycleResetter)
 	return &RedeemService{
 		redeemRepo:           redeemRepo,
 		userRepo:             userRepo,
 		redeemUserRepo:       redeemUserRepo,
+		checkInCycleResetter: checkInCycleResetter,
 		subscriptionService:  subscriptionService,
 		cache:                cache,
 		billingCacheService:  billingCacheService,
@@ -541,6 +544,12 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
+	if shouldResetCheckInCycle(redeemCode) && s.checkInCycleResetter != nil {
+		if err := s.checkInCycleResetter.ResetCheckInCycle(txCtx, userID, time.Now()); err != nil {
+			return nil, fmt.Errorf("reset user check-in cycle: %w", err)
+		}
+	}
+
 	// 提交事务
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
@@ -561,6 +570,16 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	}
 
 	return redeemCode, nil
+}
+
+func shouldResetCheckInCycle(code *RedeemCode) bool {
+	if code == nil {
+		return false
+	}
+	if code.Type == RedeemTypeSubscription {
+		return code.ValidityDays >= 0
+	}
+	return code.Value > 0
 }
 
 // invalidateRedeemCaches 失效兑换相关的缓存

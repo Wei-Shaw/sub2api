@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Least-privilege GitHub OIDC role for gptplusch-sub2api production deployment
+
+Parameters:
+  GitHubOrganization:
+    Type: String
+    Default: DomenLee
+  GitHubRepository:
+    Type: String
+    Default: gptplusch-sub2api
+  GitHubBranch:
+    Type: String
+    Default: custom-ui
+  ProductionInstanceId:
+    Type: String
+    Default: i-0e54fc7a3f3d399d5
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: gptplusch-sub2api-github-deploy
+      Description: Deploy gptplusch-sub2api to the production EC2 instance through SSM
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}
+      Policies:
+        - PolicyName: production-ssm-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SendCommandToProductionInstance
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstanceId}
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - Sid: ReadCommandResult
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: '*'
+
+Outputs:
+  GitHubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  GitHubOidcProviderArn:
+    Value: !Ref GitHubOidcProvider

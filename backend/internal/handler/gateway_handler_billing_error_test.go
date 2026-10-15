@@ -52,7 +52,12 @@ func TestBillingErrorDetails_UnknownErrorFallsBackTo403(t *testing.T) {
 	status, code, msg, _ := billingErrorDetails(service.ErrInsufficientBalance)
 	require.Equal(t, http.StatusForbidden, status)
 	require.Equal(t, "billing_error", code)
-	require.NotEmpty(t, msg)
+	require.Equal(t, service.InsufficientBalanceClientMessage, msg)
+	require.Contains(t, msg, "Insufficient account balance")
+	require.Contains(t, msg, "账户余额不足")
+	require.Contains(t, msg, "商店")
+	require.Contains(t, msg, "卡密")
+	require.Contains(t, msg, "充值额度")
 }
 
 func TestExtractQuotaResetSeconds_T19_HappyPath(t *testing.T) {

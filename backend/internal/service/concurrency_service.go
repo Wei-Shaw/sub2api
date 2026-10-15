@@ -55,6 +55,55 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+// AutoRouteGroupSlotCache atomically tracks short-lived pending auto-route
+// decisions. The reservation is released as soon as the downstream scheduler
+// acquires a real account slot, closing the race where many requests observe
+// the same remaining group capacity at once.
+type AutoRouteGroupSlotCache interface {
+	AcquireAutoRouteGroupSlot(ctx context.Context, groupID int64, maxPending int, requestID string) (bool, error)
+	ReleaseAutoRouteGroupSlot(ctx context.Context, groupID int64, requestID string) error
+}
+
+type autoRouteCapacityReservationContextKey struct{}
+
+// AutoRouteCapacityReservation represents one pending group-capacity decision.
+// Release is idempotent; handler defer provides the fallback release path.
+type AutoRouteCapacityReservation struct {
+	once    sync.Once
+	release func()
+}
+
+func (r *AutoRouteCapacityReservation) Release() {
+	if r == nil {
+		return
+	}
+	r.once.Do(func() {
+		if r.release != nil {
+			r.release()
+		}
+	})
+}
+
+// WithAutoRouteCapacityReservation carries a pending route reservation until
+// the account scheduler successfully acquires the real account slot.
+func WithAutoRouteCapacityReservation(ctx context.Context, reservation *AutoRouteCapacityReservation) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if reservation == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, autoRouteCapacityReservationContextKey{}, reservation)
+}
+
+func releaseAutoRouteCapacityReservation(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	reservation, _ := ctx.Value(autoRouteCapacityReservationContextKey{}).(*AutoRouteCapacityReservation)
+	reservation.Release()
+}
+
 type APIKeyConcurrencyCache interface {
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
@@ -342,6 +391,7 @@ type UserLoadInfo struct {
 func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
 	// If maxConcurrency is 0 or negative, no limit
 	if maxConcurrency <= 0 {
+		releaseAutoRouteCapacityReservation(ctx)
 		return &AcquireResult{
 			Acquired:    true,
 			ReleaseFunc: func() {}, // no-op
@@ -357,6 +407,7 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	}
 
 	if acquired {
+		releaseAutoRouteCapacityReservation(ctx)
 		return &AcquireResult{
 			Acquired: true,
 			ReleaseFunc: func() {
@@ -373,6 +424,38 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 		Acquired:    false,
 		ReleaseFunc: nil,
 	}, nil
+}
+
+// AcquireAutoRouteGroupSlot atomically reserves one pending decision against
+// the currently remaining capacity of a target group. Unsupported caches are
+// fail-open so Redis capability differences do not break request routing.
+func (s *ConcurrencyService) AcquireAutoRouteGroupSlot(ctx context.Context, groupID int64, maxPending int) (*AutoRouteCapacityReservation, bool, error) {
+	if maxPending <= 0 {
+		return nil, false, nil
+	}
+	if s == nil || s.cache == nil {
+		return nil, true, nil
+	}
+	cache, ok := s.cache.(AutoRouteGroupSlotCache)
+	if !ok {
+		return nil, true, nil
+	}
+
+	requestID := generateRequestID()
+	acquired, err := cache.AcquireAutoRouteGroupSlot(ctx, groupID, maxPending, requestID)
+	if err != nil || !acquired {
+		return nil, acquired, err
+	}
+	reservation := &AutoRouteCapacityReservation{
+		release: func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if releaseErr := cache.ReleaseAutoRouteGroupSlot(bgCtx, groupID, requestID); releaseErr != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: failed to release auto route group slot for %d (req=%s): %v", groupID, requestID, releaseErr)
+			}
+		},
+	}
+	return reservation, true, nil
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.

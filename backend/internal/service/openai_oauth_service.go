@@ -343,6 +343,9 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if account.Type != AccountTypeOAuth {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 
 	var proxyURL string
 	if account.ProxyID != nil && s.proxyRepo != nil {

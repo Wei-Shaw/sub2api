@@ -128,6 +128,7 @@ type CreateAccountRequest struct {
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
+	ProxyGroupID            *int64         `json:"proxy_group_id"`
 	Concurrency             int            `json:"concurrency"`
 	Priority                int            `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
@@ -148,6 +149,7 @@ type UpdateAccountRequest struct {
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
+	ProxyGroupID            *int64         `json:"proxy_group_id"`
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
@@ -167,6 +169,7 @@ type BulkUpdateAccountsRequest struct {
 	Filters                 *BulkUpdateAccountFilters `json:"filters"`
 	Name                    string                    `json:"name"`
 	ProxyID                 *int64                    `json:"proxy_id"`
+	ProxyGroupID            *int64                    `json:"proxy_group_id"`
 	Concurrency             *int                      `json:"concurrency"`
 	Priority                *int                      `json:"priority"`
 	RateMultiplier          *float64                  `json:"rate_multiplier"`
@@ -1050,6 +1053,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			Credentials:           req.Credentials,
 			Extra:                 req.Extra,
 			ProxyID:               req.ProxyID,
+			ProxyGroupID:          req.ProxyGroupID,
 			Concurrency:           req.Concurrency,
 			Priority:              req.Priority,
 			RateMultiplier:        req.RateMultiplier,
@@ -1181,6 +1185,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		ProxyID:               req.ProxyID,
+		ProxyGroupID:          req.ProxyGroupID,
 		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
 		Priority:              req.Priority,    // 指针类型，nil 表示未提供
 		RateMultiplier:        req.RateMultiplier,
@@ -2327,6 +2332,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 
 	hasUpdates := req.Name != "" ||
 		req.ProxyID != nil ||
+		req.ProxyGroupID != nil ||
 		req.Concurrency != nil ||
 		req.Priority != nil ||
 		req.RateMultiplier != nil ||
@@ -2348,6 +2354,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
+		ProxyGroupID:          req.ProxyGroupID,
 		Concurrency:           req.Concurrency,
 		Priority:              req.Priority,
 		RateMultiplier:        req.RateMultiplier,

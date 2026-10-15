@@ -148,7 +148,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		// Key 状态检查（状态字段可能因后台异步刷新而滞后，故显式拦截）。
 		switch apiKey.Status {
 		case service.StatusAPIKeyQuotaExhausted:
-			abortWithGoogleError(c, 429, "API key 额度已用完")
+			markBillingExhausted(c, IngressRejectAPIKeyQuotaExhausted)
+			abortWithGoogleError(c, 429, apiKeyQuotaExhaustedMessage)
 			return
 		case service.StatusAPIKeyExpired:
 			abortWithGoogleError(c, 403, "API key 已过期")
@@ -161,7 +162,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 		if apiKey.IsQuotaExhausted() {
-			abortWithGoogleError(c, 429, "API key 额度已用完")
+			markBillingExhausted(c, IngressRejectAPIKeyQuotaExhausted)
+			abortWithGoogleError(c, 429, apiKeyQuotaExhaustedMessage)
 			return
 		}
 
@@ -201,7 +203,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			c.Set(string(ContextKeySubscription), subscription)
 		} else {
 			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
-				abortWithGoogleError(c, 403, "Insufficient account balance")
+				markBillingExhausted(c, IngressRejectInsufficientBalance)
+				abortWithGoogleError(c, 403, billingBalanceExhaustedMessage())
 				return
 			}
 		}

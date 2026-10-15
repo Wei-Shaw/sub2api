@@ -23,7 +23,7 @@ describe('ccswitchImport utils', () => {
 
   const baseInput = {
     baseUrl: 'https://api.example.com',
-    providerName: 'Sub2API',
+    providerName: 'gptplusch',
     apiKey: 'sk-test',
     usageScript: 'return true'
   }

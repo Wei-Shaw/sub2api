@@ -31,6 +31,11 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 		slog.Warn("channel_monitor: batch load latest failed", "error", err)
 		latestMap = map[int64][]*ChannelMonitorLatest{}
 	}
+	recentMap, err := s.repo.ListRecentForMonitorIDs(ctx, ids, 2)
+	if err != nil {
+		slog.Warn("channel_monitor: batch load recent status failed", "error", err)
+		recentMap = map[int64][]*ChannelMonitorHistoryEntry{}
+	}
 	availMap, err := s.repo.ComputeAvailabilityForMonitors(ctx, ids, monitorAvailability7Days)
 	if err != nil {
 		slog.Warn("channel_monitor: batch compute availability failed", "error", err)
@@ -40,6 +45,7 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 	for _, id := range ids {
 		out[id] = buildStatusSummary(
 			indexLatestByModel(latestMap[id]),
+			indexRecentByModel(recentMap[id]),
 			indexAvailabilityByModel(availMap[id]),
 			primaryByID[id],
 			extrasByID[id],
@@ -182,6 +188,14 @@ func indexLatestByModel(rows []*ChannelMonitorLatest) map[string]*ChannelMonitor
 	return m
 }
 
+func indexRecentByModel(rows []*ChannelMonitorHistoryEntry) map[string][]*ChannelMonitorHistoryEntry {
+	m := make(map[string][]*ChannelMonitorHistoryEntry)
+	for _, r := range rows {
+		m[r.Model] = append(m[r.Model], r)
+	}
+	return m
+}
+
 // indexAvailabilityByModel 把 availability 切片按 model 索引。
 func indexAvailabilityByModel(rows []*ChannelMonitorAvailability) map[string]*ChannelMonitorAvailability {
 	m := make(map[string]*ChannelMonitorAvailability, len(rows))
@@ -195,6 +209,7 @@ func indexAvailabilityByModel(rows []*ChannelMonitorAvailability) map[string]*Ch
 // 不做任何 IO，纯组装，便于在 batch 与单 monitor 路径复用。
 func buildStatusSummary(
 	latestByModel map[string]*ChannelMonitorLatest,
+	recentByModel map[string][]*ChannelMonitorHistoryEntry,
 	availByModel map[string]*ChannelMonitorAvailability,
 	primary string,
 	extras []string,
@@ -202,7 +217,7 @@ func buildStatusSummary(
 	summary := MonitorStatusSummary{ExtraModels: make([]ExtraModelStatus, 0, len(extras))}
 	if primary != "" {
 		if l, ok := latestByModel[primary]; ok {
-			summary.PrimaryStatus = l.Status
+			summary.PrimaryStatus = stabilizeMonitorStatus(l.Status, recentByModel[primary])
 			summary.PrimaryLatencyMs = l.LatencyMs
 			// 配额快照只挂主模型行（quota 模式唯一行 / quota_probe 的主行）。
 			summary.LatestQuota = l.Quota
@@ -214,12 +229,28 @@ func buildStatusSummary(
 	for _, model := range extras {
 		entry := ExtraModelStatus{Model: model}
 		if l, ok := latestByModel[model]; ok {
-			entry.Status = l.Status
+			entry.Status = stabilizeMonitorStatus(l.Status, recentByModel[model])
 			entry.LatencyMs = l.LatencyMs
 		}
 		summary.ExtraModels = append(summary.ExtraModels, entry)
 	}
 	return summary
+}
+
+// stabilizeMonitorStatus filters one-off failures without changing raw history.
+func stabilizeMonitorStatus(latest string, recent []*ChannelMonitorHistoryEntry) string {
+	if latest == "" || len(recent) < 2 {
+		return latest
+	}
+	currentFailure := latest == MonitorStatusFailed || latest == MonitorStatusError
+	previousFailure := recent[1].Status == MonitorStatusFailed || recent[1].Status == MonitorStatusError
+	if currentFailure && !previousFailure {
+		return MonitorStatusDegraded
+	}
+	if !currentFailure && previousFailure && latest == MonitorStatusOperational {
+		return MonitorStatusDegraded
+	}
+	return latest
 }
 
 // buildUserViewFromSummary 用预聚合好的 MonitorStatusSummary + 主模型 latest + timeline 装填 UserMonitorView（无 IO）。
@@ -252,9 +283,13 @@ func buildUserViewFromSummary(
 // buildTimelinePoints 把 history entry 裁剪为 timeline 点（去除 message/ID/Model，减小响应体）。
 func buildTimelinePoints(entries []*ChannelMonitorHistoryEntry) []UserMonitorTimelinePoint {
 	out := make([]UserMonitorTimelinePoint, 0, len(entries))
-	for _, e := range entries {
+	for i, e := range entries {
+		status := e.Status
+		if i+1 < len(entries) {
+			status = stabilizeMonitorStatus(e.Status, []*ChannelMonitorHistoryEntry{e, entries[i+1]})
+		}
 		out = append(out, UserMonitorTimelinePoint{
-			Status:        e.Status,
+			Status:        status,
 			LatencyMs:     e.LatencyMs,
 			PingLatencyMs: e.PingLatencyMs,
 			CheckedAt:     e.CheckedAt,

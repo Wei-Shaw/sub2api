@@ -185,7 +185,7 @@ func (s *TokenRefreshService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlo
 }
 
 func (s *TokenRefreshService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
-	if s == nil || s.runtimeBlocker == nil || account == nil {
+	if s == nil || s.runtimeBlocker == nil || account == nil || account.IsTempUnschedulableDisabled() {
 		return
 	}
 	s.runtimeBlocker.BlockAccountScheduling(account, until, reason)
@@ -1080,6 +1080,10 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 		"max_retries", maxRetries,
 		"error", logredact.RedactText(lastErr.Error()),
 	)
+
+	if account.IsTempUnschedulableDisabled() {
+		return lastErr
+	}
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)

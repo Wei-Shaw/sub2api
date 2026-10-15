@@ -182,7 +182,7 @@ export default {
       billingHoldFailed: 'The cost hold failed, so the batch job was not submitted. Contact an administrator to check billing or balance hold service.',
       groupDisabled: 'Batch image generation is not enabled for this key’s group. Choose another enabled key or contact an administrator.',
       pricingMissing: 'The selected model does not have batch image pricing configured. Contact an administrator to add pricing first.',
-      insufficientBalance: 'Insufficient balance to hold the estimated batch image cost.',
+      insufficientBalance: 'Insufficient balance to hold the estimated batch image cost. Please visit the store to purchase a redemption code and redeem it for balance, then try again.',
       invalidModel: 'Select a batch image model available for the current key.',
       invalidItems: 'The prompt list is invalid. Check that it is not empty, within the item limit, and still using 1K image size.',
       duplicateCustomId: 'Custom IDs in the prompt list must be unique.',

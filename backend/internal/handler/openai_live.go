@@ -34,7 +34,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live is not supported for this platform")
 		return
 	}
-	if !liveEnabledForAPIKey(apiKey) {
+	if !apiKey.IsAutoRouteRequest() && !liveEnabledForAPIKey(apiKey) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
 		return
 	}
@@ -81,21 +81,6 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Billing service unavailable")
 		return
 	}
-	if err := h.billingCacheService.CheckBillingEligibility(
-		c.Request.Context(),
-		apiKey.User,
-		apiKey,
-		apiKey.Group,
-		subscription,
-		service.QuotaPlatform(c.Request.Context(), apiKey),
-	); err != nil {
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.errorResponse(c, status, code, message)
-		return
-	}
 
 	userRelease, acquired, err := h.concurrencyHelper.TryAcquireUserSlot(
 		c.Request.Context(),
@@ -111,6 +96,34 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		return
 	}
 	defer userRelease()
+	routeReservation, err := h.finalizeAutoRoute(c, apiKey, model, service.OpenAIEndpointCapabilityLive, false)
+	if err != nil {
+		reqLog.Warn("openai.live.auto_route_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No auto-route group supports the requested model with available capacity")
+		return
+	}
+	if routeReservation != nil {
+		defer routeReservation.Release()
+	}
+	if !liveEnabledForAPIKey(apiKey) {
+		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
+		return
+	}
+	if err := h.billingCacheService.CheckBillingEligibility(
+		c.Request.Context(),
+		apiKey.User,
+		apiKey,
+		apiKey.Group,
+		subscription,
+		service.QuotaPlatform(c.Request.Context(), apiKey),
+	); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
 
 	identity := liveCallIdentity(c, apiKey, subject.UserID, subscription)
 	created, err := h.gatewayService.CreateLiveCall(c.Request.Context(), request, identity, subject.Concurrency)

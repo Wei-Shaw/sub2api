@@ -145,7 +145,7 @@ func (s *RateLimitService) IsOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx co
 }
 
 func (s *RateLimitService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
-	if s == nil || s.runtimeBlocker == nil || account == nil {
+	if s == nil || s.runtimeBlocker == nil || account == nil || account.IsTempUnschedulableDisabled() {
 		return
 	}
 	s.runtimeBlocker.BlockAccountScheduling(account, until, reason)
@@ -164,6 +164,9 @@ func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) 
 // is blocked (either newly or already paused for the same threshold reason).
 func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, account *Account) bool {
 	if s == nil || s.settingService == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if account.IsTempUnschedulableDisabled() {
 		return false
 	}
 	if !account.IsActive() || !account.Schedulable {
@@ -491,6 +494,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 				s.handleAuthError(ctx, authAccount, msg)
 				shouldDisable = true
 				break
+			}
+			if authAccount.IsTempUnschedulableDisabled() {
+				return true
 			}
 			// 2. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
 			// 注意：此处不再写回 account.Credentials/expires_at。
@@ -1072,6 +1078,10 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 			"upstream_message", upstreamMsg,
 		)
 		return false
+	}
+
+	if account.IsTempUnschedulableDisabled() {
+		return true
 	}
 
 	msg := buildForbiddenErrorMessage(
@@ -2252,7 +2262,21 @@ func hasNonEmptyMapValue(extra map[string]any, key string) bool {
 }
 
 func (s *RateLimitService) GetTempUnschedStatus(ctx context.Context, accountID int64) (*TempUnschedState, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.IsTempUnschedulableDisabled() {
+		return nil, nil
+	}
 	now := time.Now().Unix()
+	if account.TempUnschedulableUntil == nil {
+		return nil, nil
+	}
+	if account.TempUnschedulableUntil.Unix() <= now {
+		return nil, nil
+	}
+
 	if s.tempUnschedCache != nil {
 		state, err := s.tempUnschedCache.GetTempUnsched(ctx, accountID)
 		if err != nil {
@@ -2261,17 +2285,6 @@ func (s *RateLimitService) GetTempUnschedStatus(ctx context.Context, accountID i
 		if state != nil && state.UntilUnix > now {
 			return state, nil
 		}
-	}
-
-	account, err := s.accountRepo.GetByID(ctx, accountID)
-	if err != nil {
-		return nil, err
-	}
-	if account.TempUnschedulableUntil == nil {
-		return nil, nil
-	}
-	if account.TempUnschedulableUntil.Unix() <= now {
-		return nil, nil
 	}
 
 	state := &TempUnschedState{
@@ -2718,7 +2731,7 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 	// 若历史上已因 401 进入过临时不可调度，则本次应升级为 error（返回 false 交由默认错误逻辑处理）。
 	// Antigravity 跳过：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制，无需升级逻辑。
 	// 模型级命中只冷却模型、不写账号级状态，不参与升级。
-	if statusCode == http.StatusUnauthorized && account.Platform != PlatformAntigravity &&
+	if statusCode == http.StatusUnauthorized && account.Platform != PlatformAntigravity && !account.IsTempUnschedulableDisabled() &&
 		!tempUnschedHitUsesModelScope(account, matches[0].rule, modelKey, statusCode, responseBody) {
 		reason := account.TempUnschedulableReason
 		// 缓存可能没有 reason，从 DB 回退读取
@@ -2777,6 +2790,9 @@ func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
 func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
+	}
+	if account.IsTempUnschedulableDisabled() {
+		return true
 	}
 	if rule.DurationMinutes <= 0 {
 		return false
@@ -2875,6 +2891,9 @@ func (s *RateLimitService) HandleStreamTimeout(ctx context.Context, account *Acc
 	if settings.Action == StreamTimeoutActionNone {
 		return false
 	}
+	if settings.Action == StreamTimeoutActionTempUnsched && account.IsTempUnschedulableDisabled() {
+		return false
+	}
 
 	// 增加超时计数
 	var count int64 = 1
@@ -2907,6 +2926,9 @@ func (s *RateLimitService) HandleStreamTimeout(ctx context.Context, account *Acc
 
 // triggerStreamTimeoutTempUnsched 触发流超时临时不可调度
 func (s *RateLimitService) triggerStreamTimeoutTempUnsched(ctx context.Context, account *Account, settings *StreamTimeoutSettings, model string) bool {
+	if account.IsTempUnschedulableDisabled() {
+		return false
+	}
 	now := time.Now()
 	until := now.Add(time.Duration(settings.TempUnschedMinutes) * time.Minute)
 

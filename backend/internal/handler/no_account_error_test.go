@@ -4,6 +4,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -128,6 +129,42 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, fd.calls[0].Platform)
 	require.NotNil(t, fd.calls[0].GroupID)
 	require.Equal(t, int64(42), *fd.calls[0].GroupID)
+	require.True(t, service.HasOpsClientBusinessLimited(c))
+	require.Equal(t, service.OpsClientBusinessLimitedReasonLocalModelConfiguration, service.OpsClientBusinessLimitedReason(c))
+}
+
+func TestClassifyNoAccountError_ModelDisabledForGroup_Returns403(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	groupID := int64(42)
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Name: "Plus 1.5x"},
+	}
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
+	selectionErr := fmt.Errorf("select account: %w", service.ErrModelNotAllowed)
+
+	cls := classifyNoAccountErrorFromGin(
+		c,
+		fd,
+		apiKey,
+		"gpt-5.6-luna",
+		"gpt-5.6-luna",
+		service.PlatformOpenAI,
+		selectionErr,
+	)
+
+	require.Equal(t, http.StatusForbidden, cls.Status)
+	require.Equal(t, "invalid_request_error", cls.ErrType)
+	require.True(t, cls.ModelNotAllowed)
+	require.False(t, cls.ModelNotFound)
+	require.Contains(t, cls.Message, "gpt-5.6-luna")
+	require.Contains(t, cls.Message, "Plus 1.5x")
+	require.Contains(t, cls.Message, "已在分组")
+	require.Contains(t, cls.Message, "请选择已启用的模型")
+	require.Contains(t, cls.Message, "disabled")
+	require.Contains(t, cls.Message, "Choose an enabled model")
+	require.Empty(t, fd.calls, "explicit channel rejection must not run availability diagnosis")
+	require.True(t, errors.Is(selectionErr, service.ErrModelNotAllowed))
 	require.True(t, service.HasOpsClientBusinessLimited(c))
 	require.Equal(t, service.OpsClientBusinessLimitedReasonLocalModelConfiguration, service.OpsClientBusinessLimitedReason(c))
 }

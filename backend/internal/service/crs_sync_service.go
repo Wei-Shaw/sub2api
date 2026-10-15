@@ -426,6 +426,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
@@ -555,6 +556,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
@@ -705,6 +707,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
@@ -862,6 +865,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
@@ -994,6 +998,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = 3
 		existing.Priority = clampPriority(src.Priority)
@@ -1121,6 +1126,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Credentials = credentials
 		if proxyID != nil {
 			existing.ProxyID = proxyID
+			existing.ProxyGroupID = nil
 		}
 		existing.Concurrency = 3
 		existing.Priority = clampPriority(src.Priority)

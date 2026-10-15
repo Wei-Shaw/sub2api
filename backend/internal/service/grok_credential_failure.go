@@ -389,6 +389,9 @@ func (s *OpenAIGatewayService) applyGrokCredentialAccountFailure(ctx context.Con
 	}
 
 	if class.transient {
+		if account.IsTempUnschedulableDisabled() {
+			return "", nil
+		}
 		until := time.Now().Add(tokenRefreshTempUnschedDuration)
 		if ctx.Err() != nil {
 			return "", ctx.Err()

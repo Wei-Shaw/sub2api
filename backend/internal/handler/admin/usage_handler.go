@@ -215,7 +215,8 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		row := dto.UsageLogFromServiceAdmin(&records[i])
+		out = append(out, *row)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }

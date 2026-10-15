@@ -315,6 +315,9 @@ func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 	if account.Type != AccountTypeOAuth {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 
 	proxyURL, err := s.proxyURL(ctx, account.ProxyID)
 	if err != nil {

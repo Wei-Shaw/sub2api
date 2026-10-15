@@ -98,6 +98,9 @@ func tempUnscheduleAccountForTransportError(ctx context.Context, repo AccountRep
 	if account == nil || repo == nil {
 		return
 	}
+	if account.IsTempUnschedulableDisabled() {
+		return
+	}
 	until := time.Now().Add(gatewayTransportErrorTempUnschedDuration)
 	reason := "upstream transport error (proxy/network): " + safeErr
 

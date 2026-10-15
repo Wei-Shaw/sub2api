@@ -530,6 +530,9 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 }
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
@@ -1065,6 +1068,9 @@ func isGeminiSignatureRelatedError(respBody []byte) bool {
 }
 
 func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()

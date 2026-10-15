@@ -163,6 +163,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
 	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
+	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
 	}
@@ -547,6 +550,12 @@ func (r *accountRepository) updateLockedAccount(
 		SetSchedulable(schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
 
+	if account.IsTempUnschedulableDisabled() {
+		builder.ClearTempUnschedulableUntil().ClearTempUnschedulableReason()
+		account.TempUnschedulableUntil = nil
+		account.TempUnschedulableReason = ""
+	}
+
 	if explicitRateMultiplier != nil {
 		builder.SetRateMultiplier(*explicitRateMultiplier)
 	}
@@ -560,6 +569,11 @@ func (r *accountRepository) updateLockedAccount(
 		builder.SetProxyID(*account.ProxyID)
 	} else {
 		builder.ClearProxyID()
+	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
+	} else {
+		builder.ClearProxyGroupID()
 	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
@@ -867,6 +881,8 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		UPDATE accounts
 		SET
 			credentials = $1::jsonb,
+            temp_unschedulable_until = CASE WHEN $1::jsonb->'temp_unschedulable_disabled' = 'true'::jsonb THEN NULL ELSE temp_unschedulable_until END,
+            temp_unschedulable_reason = CASE WHEN $1::jsonb->'temp_unschedulable_disabled' = 'true'::jsonb THEN NULL ELSE temp_unschedulable_reason END,
 			extra = CASE
 				-- 正确性依赖（非防御）：OpenCode 分支必须先于 Ollama 分支求值。两分支
 				-- 的 WHEN 并不互斥：Ollama 分支的守卫是宽谓词——NOT(ollamaMatch(old)
@@ -1024,7 +1040,11 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
+					disabled := s.C("credentials")
 					s.Where(entsql.Or(
+						entsql.P(func(b *entsql.Builder) {
+							b.Ident(disabled).WriteString("->'temp_unschedulable_disabled' = 'true'::jsonb")
+						}),
 						entsql.IsNull(col),
 						entsql.LTE(col, entsql.Expr("NOW()")),
 					))
@@ -1036,7 +1056,11 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 				dbaccount.RateLimitResetAtGT(time.Now()),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
+					disabled := s.C("credentials")
 					s.Where(entsql.Or(
+						entsql.P(func(b *entsql.Builder) {
+							b.Ident(disabled).WriteString("->'temp_unschedulable_disabled' = 'true'::jsonb")
+						}),
 						entsql.IsNull(col),
 						entsql.LTE(col, entsql.Expr("NOW()")),
 					))
@@ -1047,7 +1071,11 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 				dbaccount.StatusEQ(service.StatusActive),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
+					disabled := s.C("credentials")
 					s.Where(entsql.And(
+						entsql.P(func(b *entsql.Builder) {
+							b.Ident(disabled).WriteString("->'temp_unschedulable_disabled' IS DISTINCT FROM 'true'::jsonb")
+						}),
 						entsql.Not(entsql.IsNull(col)),
 						entsql.GT(col, entsql.Expr("NOW()")),
 					))
@@ -1063,7 +1091,11 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
+					disabled := s.C("credentials")
 					s.Where(entsql.Or(
+						entsql.P(func(b *entsql.Builder) {
+							b.Ident(disabled).WriteString("->'temp_unschedulable_disabled' = 'true'::jsonb")
+						}),
 						entsql.IsNull(col),
 						entsql.LTE(col, entsql.Expr("NOW()")),
 					))
@@ -1732,6 +1764,7 @@ func (r *accountRepository) SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnc
 			updated_at = NOW()
 		WHERE a.id = $3
 			AND a.deleted_at IS NULL
+			AND (a.credentials->'temp_unschedulable_disabled') IS DISTINCT FROM 'true'::jsonb
 			AND a.platform = $4
 			AND a.type = $5
 			AND a.status = $6
@@ -2085,7 +2118,7 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 			AND a.deleted_at IS NULL
 			AND a.status = $2
 			AND a.schedulable = TRUE
-			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= $3)
+			AND (a.credentials->'temp_unschedulable_disabled' = 'true'::jsonb OR a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= $3)
 			AND (a.expires_at IS NULL OR a.expires_at > $3 OR a.auto_pause_on_expired = FALSE)
 			AND (a.overload_until IS NULL OR a.overload_until <= $3)
 			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= $3)
@@ -2486,6 +2519,7 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 			updated_at = NOW()
 		WHERE id = $3
 			AND deleted_at IS NULL
+			AND (credentials->'temp_unschedulable_disabled') IS DISTINCT FROM 'true'::jsonb
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
 	`, until, reason, id)
 	if err != nil {
@@ -2523,6 +2557,7 @@ func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 			updated_at = NOW()
 		WHERE a.id = $3
 			AND a.deleted_at IS NULL
+			AND (a.credentials->'temp_unschedulable_disabled') IS DISTINCT FROM 'true'::jsonb
 			AND a.status = $4
 			AND a.platform = $5
 			AND a.type = $6
@@ -3032,6 +3067,19 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			args = append(args, *updates.ProxyID)
 			idx++
 		}
+		// A single proxy and a proxy group are mutually exclusive.
+		setClauses = append(setClauses, "proxy_group_id = NULL")
+	}
+	if updates.ProxyGroupID != nil {
+		if *updates.ProxyGroupID == 0 {
+			setClauses = append(setClauses, "proxy_group_id = NULL")
+		} else {
+			setClauses = append(setClauses, "proxy_group_id = $"+itoa(idx))
+			args = append(args, *updates.ProxyGroupID)
+			idx++
+		}
+		// A proxy group and a single proxy are mutually exclusive.
+		setClauses = append(setClauses, "proxy_id = NULL")
 	}
 	if updates.Concurrency != nil {
 		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
@@ -3074,6 +3122,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
 	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
+	if account := (&service.Account{Credentials: updates.Credentials}); account.IsTempUnschedulableDisabled() {
+		setClauses = append(setClauses, "temp_unschedulable_until = NULL", "temp_unschedulable_reason = NULL")
+	}
 	credentialPlaceholder := ""
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)
@@ -3430,6 +3481,9 @@ func tempUnschedulablePredicate() dbpredicate.Account {
 	return dbpredicate.Account(func(s *entsql.Selector) {
 		col := s.C("temp_unschedulable_until")
 		s.Where(entsql.Or(
+			entsql.P(func(b *entsql.Builder) {
+				b.Ident(s.C("credentials")).WriteString("->'temp_unschedulable_disabled' = 'true'::jsonb")
+			}),
 			entsql.IsNull(col),
 			entsql.LTE(col, entsql.Expr("NOW()")),
 		))
@@ -3628,6 +3682,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		Credentials:             copyJSONMap(m.Credentials),
 		Extra:                   copyJSONMap(m.Extra),
 		ProxyID:                 m.ProxyID,
+		ProxyGroupID:            m.ProxyGroupID,
 		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,

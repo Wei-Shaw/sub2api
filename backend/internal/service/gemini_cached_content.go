@@ -1046,6 +1046,9 @@ func (s *GeminiCachedContentService) doUpstream(ctx context.Context, account *Ac
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, geminiCachedContentNotSent(err)
+	}
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)

@@ -1,0 +1,31 @@
+export default {
+  checkIn: {
+    title: '签到系统',
+    enabled: '签到开关',
+    reset: '重置累计状态',
+    todayUsers: '今日签到人数',
+    todayReward: '今日赠送额度',
+    totalUsers: '累计签到用户',
+    totalReward: '累计赠送额度',
+    reducedUsers: '低额区间用户',
+    trend: '签到趋势',
+    lastDays: '最近 {days} 个自然日',
+    days: '天',
+    checkInUsers: '签到人数',
+    grantedReward: '赠送额度',
+    standardRule: '标准区间',
+    reducedRule: '低额区间',
+    rewardRange: '随机额度',
+    threshold: '切换阈值',
+    currentUsers: '当前用户数',
+    resetTitle: '重置所有累计状态',
+    resetMessage: '所有用户的本轮累计将归零；已赠送余额、历史签到记录和今日签到状态保持不变。',
+    resetConfirm: '确认重置',
+    resetSuccess: '已重置 {count} 位用户的累计状态',
+    resetFailed: '重置失败',
+    enabledSuccess: '签到系统已开启',
+    disabledSuccess: '签到系统已关闭',
+    saveFailed: '保存签到开关失败',
+    loadFailed: '加载签到统计失败'
+  }
+}

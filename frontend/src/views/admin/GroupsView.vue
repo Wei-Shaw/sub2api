@@ -382,6 +382,15 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button
+                v-if="row.platform === 'openai'"
+                data-testid="group-evaluate"
+                @click="evaluationTarget = { id: row.id, name: row.name, type: 'group' }"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:hover:bg-dark-700 dark:hover:text-purple-400"
+              >
+                <Icon name="chart" size="sm" />
+                <span class="text-xs">{{ t('admin.modelEvaluation.action') }}</span>
+              </button>
+              <button
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
@@ -1613,6 +1622,32 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiLive.hint") }}
           </p>
+        </div>
+
+        <div
+          v-if="createForm.platform === 'openai' && createForm.subscription_type === 'standard'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.autoRoute.title") }}
+              </h4>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.autoRoute.hint") }}
+              </p>
+            </div>
+            <Toggle v-model="createForm.auto_route_enabled" />
+          </div>
+          <div v-if="createForm.auto_route_enabled" class="mt-3">
+            <label class="input-label">{{ t("admin.groups.autoRoute.targets") }}</label>
+            <select v-model="createForm.auto_route_group_ids" multiple class="input min-h-28">
+              <option v-for="option in autoRouteGroupOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="input-hint">{{ t("admin.groups.autoRoute.targetsHint") }}</p>
+          </div>
         </div>
 
         <!-- OpenAI Messages 调度配置（OpenAI 与 Composite 平台） -->
@@ -3265,6 +3300,32 @@
           </p>
         </div>
 
+        <div
+          v-if="editForm.platform === 'openai' && editForm.subscription_type === 'standard'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.autoRoute.title") }}
+              </h4>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.autoRoute.hint") }}
+              </p>
+            </div>
+            <Toggle v-model="editForm.auto_route_enabled" />
+          </div>
+          <div v-if="editForm.auto_route_enabled" class="mt-3">
+            <label class="input-label">{{ t("admin.groups.autoRoute.targets") }}</label>
+            <select v-model="editForm.auto_route_group_ids" multiple class="input min-h-28">
+              <option v-for="option in autoRouteGroupOptionsForEdit" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="input-hint">{{ t("admin.groups.autoRoute.targetsHint") }}</p>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsMessagesDispatchPlatform(editForm.platform)"
@@ -4246,6 +4307,7 @@
       </template>
     </BaseDialog>
 
+    <ModelEvaluationModal v-if="evaluationTarget" :target="evaluationTarget" @close="evaluationTarget = null" />
     <!-- Group Rate Multipliers Modal -->
     <GroupRateMultipliersModal
       :show="showRateMultipliersModal"
@@ -4271,6 +4333,8 @@ import { useAppStore } from "@/stores/app";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import ModelEvaluationModal from "@/components/admin/ModelEvaluationModal.vue";
+import type { EvaluationTarget } from "@/api/admin/modelEvaluation";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
@@ -4670,6 +4734,39 @@ const subscriptionTypeOptions = computed(() => [
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
 
+const autoRouteCandidates = computed(() =>
+  (autoRouteGroups.value.length > 0 ? autoRouteGroups.value : groups.value).filter(
+    (group) =>
+      group.platform === "openai" &&
+      group.status === "active" &&
+      group.subscription_type === "standard" &&
+      !group.auto_route_enabled,
+  ),
+);
+
+const autoRouteGroupOptions = computed(() =>
+  autoRouteCandidates.value
+    .filter((group) => createForm.is_exclusive || !group.is_exclusive)
+    .map((group) => ({
+      value: group.id,
+      label: `${group.name} · ${group.rate_multiplier}x`,
+    })),
+);
+
+const autoRouteGroupOptionsForEdit = computed(() => {
+  const currentID = editingGroup.value?.id;
+  return autoRouteCandidates.value
+    .filter(
+      (group) =>
+        group.id !== currentID &&
+        (editForm.is_exclusive || !group.is_exclusive),
+    )
+    .map((group) => ({
+      value: group.id,
+      label: `${group.name} · ${group.rate_multiplier}x`,
+    }));
+});
+
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
 const fallbackGroupOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -4782,6 +4879,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
+const autoRouteGroups = ref<AdminGroup[]>([]);
 const loading = ref(false);
 type GroupUsageSummary = {
   today_cost: number;
@@ -4824,6 +4922,7 @@ const sortState = reactive({
 let abortController: AbortController | null = null;
 
 const showCreateModal = ref(false);
+const evaluationTarget = ref<EvaluationTarget | null>(null);
 const showEditModal = ref(false);
 const showDeleteDialog = ref(false);
 const pendingLiveForm = ref<"create" | "edit" | null>(null);
@@ -4946,6 +5045,8 @@ const createForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  auto_route_enabled: false,
+  auto_route_group_ids: [] as number[],
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5311,6 +5412,8 @@ const editForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  auto_route_enabled: false,
+  auto_route_group_ids: [] as number[],
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5759,7 +5862,16 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadGroups();
 };
 
-const openCreateModal = () => {
+const loadAutoRouteGroups = async () => {
+  try {
+    autoRouteGroups.value = await adminAPI.groups.getAll("openai");
+  } catch (error) {
+    console.error("Error loading auto route groups:", error);
+  }
+};
+
+const openCreateModal = async () => {
+  await loadAutoRouteGroups();
   showCreateModal.value = true;
   loadModelAllowlistCandidates("create", 0, createForm.platform);
 };
@@ -5814,6 +5926,8 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.auto_route_enabled = false;
+  createForm.auto_route_group_ids = [];
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
@@ -5886,6 +6000,10 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
+    return;
+  }
+  if (createForm.auto_route_enabled && createForm.auto_route_group_ids.length === 0) {
+    appStore.showError(t("admin.groups.autoRoute.targetsRequired"));
     return;
   }
   if (
@@ -6052,6 +6170,7 @@ const handleCreateGroup = async () => {
 };
 
 const handleEdit = async (group: AdminGroup) => {
+  await loadAutoRouteGroups();
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
@@ -6113,6 +6232,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.auto_route_enabled = group.auto_route_enabled ?? false;
+  editForm.auto_route_group_ids = [...(group.auto_route_group_ids ?? [])];
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -6223,6 +6344,11 @@ const closeEditModal = () => {
 
 const handleUpdateGroup = async () => {
   if (!editingGroup.value) return;
+
+  if (editForm.auto_route_enabled && editForm.auto_route_group_ids.length === 0) {
+    appStore.showError(t("admin.groups.autoRoute.targetsRequired"));
+    return;
+  }
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
@@ -6667,6 +6793,8 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+      createForm.auto_route_enabled = false;
+      createForm.auto_route_group_ids = [];
     } else {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
@@ -6680,7 +6808,10 @@ watch(
 watch(
   () => editForm.subscription_type,
   (newVal) => {
-    if (newVal !== "subscription") {
+    if (newVal === "subscription") {
+      editForm.auto_route_enabled = false;
+      editForm.auto_route_group_ids = [];
+    } else {
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
       editForm.peak_end = "";
@@ -6697,6 +6828,8 @@ watch(
     }
     if (!supportsMessagesDispatchPlatform(newVal)) {
       resetMessagesDispatchFormState(createForm);
+      createForm.auto_route_enabled = false;
+      createForm.auto_route_group_ids = [];
     }
     if (!supportsLivePlatform(newVal)) {
       createForm.allow_live = false;
@@ -6754,6 +6887,8 @@ watch(
     }
     if (!supportsMessagesDispatchPlatform(newVal)) {
       resetMessagesDispatchFormState(editForm);
+      editForm.auto_route_enabled = false;
+      editForm.auto_route_group_ids = [];
     }
     if (!supportsLivePlatform(newVal)) {
       editForm.allow_live = false;

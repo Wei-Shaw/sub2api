@@ -30,6 +30,7 @@ type Account struct {
 	Credentials             map[string]any
 	Extra                   map[string]any
 	ProxyID                 *int64
+	ProxyGroupID            *int64
 	ProxyFallbackOriginID   *int64
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int
@@ -62,10 +63,11 @@ type Account struct {
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
 
-	Proxy         *Proxy
-	AccountGroups []AccountGroup
-	GroupIDs      []int64
-	Groups        []*Group
+	Proxy              *Proxy
+	proxyGroupResolved bool
+	AccountGroups      []AccountGroup
+	GroupIDs           []int64
+	Groups             []*Group
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
@@ -202,13 +204,23 @@ func (a *Account) IsSchedulable() bool {
 	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
 		return false
 	}
-	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
+	if !a.IsTempUnschedulableDisabled() && a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 	}
 	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
 		return false
 	}
 	return true
+}
+
+// IsTempUnschedulableDisabled reports whether this account opts out of
+// account-level temporary scheduling blocks.
+func (a *Account) IsTempUnschedulableDisabled() bool {
+	if a == nil || a.Credentials == nil {
+		return false
+	}
+	enabled, ok := a.Credentials["temp_unschedulable_disabled"].(bool)
+	return ok && enabled
 }
 
 // IsCredentialUsableForShadow 报告本账号(作为某 spark 影子的母账号)的凭据/传输是否可被影子透传使用。
@@ -231,7 +243,7 @@ func (a *Account) IsCredentialUsableForShadow() bool {
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
 	}
-	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
+	if !a.IsTempUnschedulableDisabled() && a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 	}
 	return true
@@ -2145,6 +2157,7 @@ const (
 	OpenAIWSIngressModeShared      = "shared"
 	OpenAIWSIngressModeDedicated   = "dedicated"
 	OpenAIWSIngressModeCtxPool     = "ctx_pool"
+	OpenAIWSIngressModeFirstServe  = "first_serve"
 	OpenAIWSIngressModePassthrough = "passthrough"
 	OpenAIWSIngressModeHTTPBridge  = "http_bridge"
 )
@@ -2153,6 +2166,8 @@ func normalizeOpenAIWSIngressMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case OpenAIWSIngressModeOff:
 		return OpenAIWSIngressModeOff
+	case OpenAIWSIngressModeFirstServe:
+		return OpenAIWSIngressModeFirstServe
 	case OpenAIWSIngressModeCtxPool:
 		return OpenAIWSIngressModeCtxPool
 	case OpenAIWSIngressModePassthrough:

@@ -119,7 +119,7 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	created, err := service.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
 		SDP:     "v=offer\r\n",
 		Session: session,
-	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	}, `{"v":1,"s":0,"t":"v1.test"}`, "test-call")
 	require.NoError(t, err)
 	require.Equal(t, "call_test", created.CallID)
 	require.Equal(t, []byte("v=0\r\n"), created.SDP)

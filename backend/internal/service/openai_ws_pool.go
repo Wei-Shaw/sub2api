@@ -68,9 +68,10 @@ func (e *openAIWSDialError) Unwrap() error {
 }
 
 type openAIWSAcquireRequest struct {
-	Account *Account
-	WSURL   string
-	Headers http.Header
+	FirstServeScope string
+	Account         *Account
+	WSURL           string
+	Headers         http.Header
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
@@ -84,6 +85,7 @@ type openAIWSAcquireRequest struct {
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
+	firstServeScope     string
 	betaFeatures        string
 	codexInstallationID string
 	sessionIDHyphen     string
@@ -279,8 +281,10 @@ func (l *openAIWSConnLease) Release() {
 }
 
 type openAIWSConn struct {
-	id string
-	ws openAIWSClientConn
+	// firstServe is read/written only by the exclusive lease owner.
+	firstServe *openAIFirstServeState
+	id         string
+	ws         openAIWSClientConn
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -772,6 +776,18 @@ func (c *openAIWSConn) matchesHandshakeCompatibility(compatibility openAIWSHands
 	return c != nil && c.handshakeCompatibility == compatibility
 }
 
+// A preferred first-serve connection can supply its private replay history
+// after fingerprint rotation. Ingress must replace it before sending a turn.
+// All other handshake fields and the tenant/session scope still have to match.
+func (c *openAIWSConn) matchesFirstServeResume(compatibility openAIWSHandshakeCompatibilityKey) bool {
+	if c == nil || compatibility.firstServeScope == "" {
+		return false
+	}
+	previous := c.handshakeCompatibility
+	previous.codexInstallationID = compatibility.codexInstallationID
+	return previous == compatibility
+}
+
 func (c *openAIWSConn) matchesRoutingAffinity(routingAffinity string) bool {
 	return c != nil && c.routingAffinity == routingAffinity
 }
@@ -1146,6 +1162,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 retryAcquire:
 	accountID := req.Account.ID
 	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	compatibility.firstServeScope = req.FirstServeScope
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -1266,7 +1283,7 @@ retryAcquire:
 		}
 
 		if preferredConnID != "" {
-			if conn, ok := ap.conns[preferredConnID]; ok && conn.matchesHandshakeCompatibility(compatibility) && conn.tryAcquire() {
+			if conn, ok := ap.conns[preferredConnID]; ok && (conn.matchesHandshakeCompatibility(compatibility) || conn.matchesFirstServeResume(compatibility)) && conn.tryAcquire() {
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
 				ap.mu.Unlock()
@@ -1844,7 +1861,7 @@ func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
 	}
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
-	if ap.lastAcquire == nil {
+	if ap.lastAcquire == nil || ap.lastAcquire.FirstServeScope != "" {
 		return
 	}
 	if ap.prewarmActive {
@@ -2153,6 +2170,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
 	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	pooledConn.handshakeCompatibility.firstServeScope = req.FirstServeScope
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2331,7 +2349,7 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 }
 
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
-	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
+	return a.FirstServeScope == b.FirstServeScope && stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
 		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
 }

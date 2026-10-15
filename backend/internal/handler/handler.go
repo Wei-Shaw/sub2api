@@ -21,6 +21,7 @@ type AdminHandlers struct {
 	GrokOAuth              *admin.GrokOAuthHandler
 	CNProvider             *admin.CNProviderHandler
 	Proxy                  *admin.ProxyHandler
+	ProxyGroup             *admin.ProxyGroupHandler
 	Redeem                 *admin.RedeemHandler
 	Promo                  *admin.PromoHandler
 	Setting                *admin.SettingHandler
@@ -32,6 +33,7 @@ type AdminHandlers struct {
 	ErrorPassthrough       *admin.ErrorPassthroughHandler
 	TLSFingerprintProfile  *admin.TLSFingerprintProfileHandler
 	Plugin                 *admin.PluginHandler
+	ModelEvaluation        *admin.ModelEvaluationHandler
 	APIKey                 *admin.AdminAPIKeyHandler
 	ScheduledTest          *admin.ScheduledTestHandler
 	Channel                *admin.ChannelHandler
@@ -41,6 +43,7 @@ type AdminHandlers struct {
 	PromptAudit            *securityaudit.PromptAdminHandler
 	Payment                *admin.PaymentHandler
 	Affiliate              *admin.AffiliateHandler
+	CheckIn                *admin.CheckInHandler
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
 }
@@ -68,6 +71,7 @@ type Handlers struct {
 	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
+	CheckIn          *CheckInHandler
 }
 
 // BuildInfo contains build-time information
