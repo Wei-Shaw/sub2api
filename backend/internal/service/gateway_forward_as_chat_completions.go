@@ -43,15 +43,9 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	originalModel := ccReq.Model
 	clientStream := ccReq.Stream
 
-	// 2. Convert CC → Responses → Anthropic (chained conversion)
-	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
-	}
-
 	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
-	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount || account.IsAnthropicOAuthOrSetupToken() {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
@@ -59,16 +53,24 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		if normalized != originalModel {
 			mappedModel = normalized
 		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		normalized := claude.NormalizeModelID(originalModel)
-		if normalized != originalModel {
-			mappedModel = normalized
-		}
+	} else if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && account.Type != AccountTypeServiceAccount {
+		mappedModel = claude.NormalizeModelID(mappedModel)
 	}
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
+	// OAuth aliases must use the target model even during the initial CC conversion,
+	// which validates reasoning effort and filters sampling parameters by model.
+	if account.IsAnthropicOAuthOrSetupToken() {
+		ccReq.Model = mappedModel
+	}
+	// 2. Convert CC → Responses → Anthropic (chained conversion)
+	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
+	if err != nil {
+		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+	}
+
 	responsesReq.Model = mappedModel
 	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
 	if err != nil {
