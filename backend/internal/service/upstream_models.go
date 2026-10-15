@@ -1434,10 +1434,7 @@ func buildVertexPublisherModelsURL(location, pageToken string) (string, error) {
 	if !vertexLocationPattern.MatchString(location) {
 		return "", fmt.Errorf("invalid vertex location: %s", location)
 	}
-	host := location + "-aiplatform.googleapis.com"
-	if location == "global" {
-		host = vertexGlobalHost
-	}
+	host := vertexAPIHost(location)
 	query := url.Values{"pageSize": []string{strconv.Itoa(vertexPublisherModelsPageSize)}}
 	if pageToken != "" {
 		query.Set("pageToken", pageToken)

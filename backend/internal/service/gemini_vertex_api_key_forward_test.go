@@ -163,3 +163,71 @@ func TestGeminiForwardNative_VertexSharedCapacity429RetriesSameAccountWithoutCoo
 		})
 	}
 }
+
+// Scenario: 多区域账号按模型支持的区域发送，不支持的模型走 global；引用显式缓存时按缓存所在区域发送；
+// 无 project_id 的 API Key 账号始终走 Express 全局端点。
+func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const contents = `"contents":[{"role":"user","parts":[{"text":"hi"}]}]`
+	cases := []struct {
+		name      string
+		projectID string
+		location  string
+		model     string
+		body      string
+		want      string
+	}{
+		{
+			name:      "supported model uses multi-region endpoint",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{` + contents + `}`,
+			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+		},
+		{
+			name:      "unsupported model falls back to global",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.1-pro-preview",
+			body:      `{` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent",
+		},
+		{
+			name:      "global cached content on multi-region account stays on global",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/global/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.7-flash:generateContent",
+		},
+		{
+			name:      "multi-region cached content on global account uses its region",
+			projectID: "my-project",
+			location:  "global",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+		},
+		{
+			name:     "express mode ignores cached content region",
+			location: "us",
+			model:    "gemini-3.7-flash",
+			body:     `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
+			want:     "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.7-flash:generateContent",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, httpStub := newGeminiVertexAPIKeyTestService()
+			c, _ := newGeminiNativeTestContext(t)
+			account := geminiVertexAPIKeyTestAccount(tc.projectID)
+			account.Credentials["location"] = tc.location
+
+			_, err := svc.ForwardNative(context.Background(), c, account, tc.model, "generateContent", false, []byte(tc.body))
+			require.NoError(t, err)
+			require.Equal(t, 1, httpStub.calls)
+			require.Equal(t, tc.want, httpStub.lastReq.URL.String())
+		})
+	}
+}
