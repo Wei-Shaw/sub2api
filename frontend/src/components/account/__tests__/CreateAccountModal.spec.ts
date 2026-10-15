@@ -74,6 +74,8 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import { adminAPI } from '@/api/admin'
+import { accountWorkspaceKey, type AccountWorkspace } from '@/composables/useAccountWorkspace'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -91,7 +93,7 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  emits: ['import-codex-session', 'import-codex-pat', 'generate-url'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
@@ -138,10 +140,11 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = []) {
+function mountModal(groups: any[] = [], workspace?: AccountWorkspace) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
     global: {
+      provide: workspace ? { [accountWorkspaceKey as symbol]: workspace } : {},
       stubs: {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
@@ -218,6 +221,43 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('reuses the creation form in a relay scope without Admin-only fields or Admin writes', async () => {
+    const relayCreate = vi.fn().mockResolvedValue({ id: 7, platform: 'openai', type: 'apikey' })
+    const wrapper = mountModal([], {
+      api: { ...adminAPI, accounts: { ...adminAPI.accounts, create: relayCreate } },
+      isRelay: true, basePath: '/relay'
+    })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('private upstream')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('own-key')
+    expect(wrapper.find('[data-tour="account-form-priority"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="upstream-billing-auto-probe"]').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'ProxySelector' }).exists()).toBe(false)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(relayCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'private upstream', credentials: expect.objectContaining({ api_key: 'own-key' }) }))
+    expect(createAccountMock).not.toHaveBeenCalled()
+    expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('uses the injected OAuth API for the same OpenAI authorization flow', async () => {
+    const generateAuthUrl = vi.fn().mockResolvedValue({ auth_url: 'https://auth.openai.com/authorize', session_id: 'user-session' })
+    const wrapper = mountModal([], {
+      api: { ...adminAPI, accounts: { ...adminAPI.accounts, generateAuthUrl } },
+      isRelay: true, basePath: '/relay'
+    })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('My Codex')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    wrapper.findComponent(OAuthAuthorizationFlowStub).vm.$emit('generate-url')
+    await flushPromises()
+    expect(generateAuthUrl).toHaveBeenCalledWith('/admin/openai/generate-auth-url', {})
+    expect(createAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })

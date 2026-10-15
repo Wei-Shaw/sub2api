@@ -106,6 +106,7 @@ func (s *OAuthService) generateAuthURLWithScope(ctx context.Context, scope strin
 
 	// Store session
 	session := &oauth.OAuthSession{
+		OwnerUserID:  RelayOwnerFromContext(ctx),
 		State:        state,
 		CodeVerifier: codeVerifier,
 		Scope:        scope,
@@ -149,6 +150,9 @@ func (s *OAuthService) ExchangeCode(ctx context.Context, input *ExchangeCodeInpu
 	session, ok := s.sessionStore.Get(input.SessionID)
 	if !ok {
 		return nil, fmt.Errorf("session not found or expired")
+	}
+	if session.OwnerUserID != RelayOwnerFromContext(ctx) {
+		return nil, ErrGroupNotAllowed
 	}
 
 	// Get proxy URL

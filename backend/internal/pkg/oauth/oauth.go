@@ -37,6 +37,7 @@ const (
 // OAuthSession stores OAuth flow state
 
 type OAuthSession struct {
+	OwnerUserID  int64     `json:"owner_user_id,omitempty"`
 	State        string    `json:"state"`
 	CodeVerifier string    `json:"code_verifier"`
 	Scope        string    `json:"scope"`

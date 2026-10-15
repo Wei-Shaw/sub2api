@@ -142,6 +142,9 @@ func vertexServiceAccountCacheKey(account *Account, key *vertexServiceAccountKey
 	if fingerprint == "" && account != nil {
 		fingerprint = fmt.Sprintf("account:%d", account.ID)
 	}
+	if account != nil && account.OwnerUserID != nil {
+		return fmt.Sprintf("vertex:user:%d:service_account:%s", *account.OwnerUserID, fingerprint)
+	}
 	return "vertex:service_account:" + fingerprint
 }
 

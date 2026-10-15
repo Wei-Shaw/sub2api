@@ -1,8 +1,8 @@
-import type { AdminGroup } from '@/types'
+import type { Group } from '@/types'
 
 export function allSelectedGroupsEnableLongContextPricing(
   groupIds: number[],
-  groups: AdminGroup[]
+  groups: Group[]
 ): boolean {
   if (groupIds.length === 0) return false
   const selectedGroups = groups.filter(group => groupIds.includes(group.id))

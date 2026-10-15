@@ -1198,7 +1198,7 @@
           <p class="input-hint">{{ t('admin.accounts.upstream.apiKeyHint') }}</p>
         </div>
         <!-- 上游倍率自动探测：antigravity upstream 也是 API-key 账号 -->
-        <div class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="!isRelay" class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.upstreamBilling.autoProbe') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1486,6 +1486,7 @@
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
+          v-if="!isRelay"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -2929,7 +2930,7 @@
         </div>
 
         <!-- TLS Fingerprint -->
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+        <div v-if="!isRelay" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</label>
@@ -3066,7 +3067,7 @@
         </div>
       </div>
 
-      <div>
+      <div v-if="!isRelay">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
@@ -3093,7 +3094,7 @@
             @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isRelay">
           <label class="input-label">{{ t('admin.accounts.priority') }}</label>
           <input
             v-model.number="form.priority"
@@ -3104,7 +3105,7 @@
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isRelay">
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
           <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
@@ -3280,7 +3281,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="!isRelay && form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3967,7 +3968,8 @@ import {
   fetchAntigravityDefaultMappings,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
-import { adminAPI } from '@/api/admin'
+import { adminAPI as adminSettingsAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3980,7 +3982,7 @@ import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import type {
   Proxy,
-  AdminGroup,
+  Group,
   AccountPlatform,
   AccountType,
   CheckMixedChannelResponse,
@@ -4153,11 +4155,13 @@ const apiKeyValuePlaceholder = computed(() => {
 
 interface Props {
   show: boolean
+  initialGroupIds?: number[]
   proxies: Proxy[]
-  groups: AdminGroup[]
+  groups: Group[]
 }
 
 const props = defineProps<Props>()
+const { api: adminAPI, isRelay } = useAccountWorkspace()
 const emit = defineEmits<{
   close: []
   created: []
@@ -4575,7 +4579,7 @@ const {
 } = useQuotaNotifyState()
 
 // Load global feature states once
-adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
+if (!isRelay) adminSettingsAPI.settings.getWebSearchEmulationConfig().then(cfg => {
   webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
 }).catch(() => { webSearchGlobalEnabled.value = false })
 
@@ -4890,8 +4894,9 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      form.group_ids = [...(props.initialGroupIds || [])]
       // Load TLS fingerprint profiles
-      adminAPI.tlsFingerprintProfiles.list()
+      void (isRelay ? Promise.resolve([]) : adminSettingsAPI.tlsFingerprintProfiles.list())
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
@@ -4899,7 +4904,7 @@ watch(
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
-        fetchAntigravityDefaultMappings().then(mappings => {
+        fetchAntigravityDefaultMappings(adminAPI.accounts.getAntigravityDefaultModelMapping).then(mappings => {
           antigravityModelMappings.value = [...mappings]
         })
         antigravityWhitelistModels.value = []
@@ -4972,7 +4977,7 @@ watch(
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
-      fetchAntigravityDefaultMappings().then(mappings => {
+      fetchAntigravityDefaultMappings(adminAPI.accounts.getAntigravityDefaultModelMapping).then(mappings => {
         antigravityModelMappings.value = [...mappings]
       })
       antigravityWhitelistModels.value = []
@@ -5381,7 +5386,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       }
     }
     if (
-      payload.type === 'apikey' &&
+      !isRelay && payload.type === 'apikey' &&
       payload.upstream_billing_probe_enabled === true
     ) {
       try {
@@ -5452,7 +5457,7 @@ const resetForm = () => {
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
-  fetchAntigravityDefaultMappings().then(mappings => {
+  fetchAntigravityDefaultMappings(adminAPI.accounts.getAntigravityDefaultModelMapping).then(mappings => {
     antigravityModelMappings.value = [...mappings]
   })
   poolModeEnabled.value = false

@@ -1,10 +1,11 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { adminAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 import type { AntigravityTokenInfo } from '@/api/admin/antigravity'
 
 export function useAntigravityOAuth() {
+  const { api: adminAPI } = useAccountWorkspace()
   const appStore = useAppStore()
   const { t } = useI18n()
 

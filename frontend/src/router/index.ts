@@ -433,18 +433,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/cpa',
-    name: 'AdminCpa',
-    component: () => import('@/views/admin/CpaView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'CPA Panel',
-      titleKey: 'admin.cpa.title',
-      descriptionKey: 'admin.cpa.description'
-    }
-  },
-  {
     path: '/admin/audit-logs',
     name: 'AdminAuditLogs',
     component: () => import('@/views/admin/AuditLogView.vue'),

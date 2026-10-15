@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { adminAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 
 export interface OpenAITokenInfo {
@@ -28,6 +28,7 @@ export interface OpenAITokenInfo {
 export type OpenAIOAuthPlatform = 'openai'
 
 export function useOpenAIOAuth() {
+  const { api: adminAPI } = useAccountWorkspace()
   const appStore = useAppStore()
   const { t } = useI18n()
   const endpointPrefix = '/admin/openai'

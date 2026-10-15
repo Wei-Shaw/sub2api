@@ -137,6 +137,7 @@ func (s *GeminiOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 	}
 
 	session := &geminicli.OAuthSession{
+		OwnerUserID:  RelayOwnerFromContext(ctx),
 		State:        state,
 		CodeVerifier: codeVerifier,
 		ProxyURL:     proxyURL,
@@ -450,6 +451,9 @@ func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExch
 	if !ok {
 		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Session not found or expired")
 		return nil, fmt.Errorf("session not found or expired")
+	}
+	if session.OwnerUserID != RelayOwnerFromContext(ctx) {
+		return nil, ErrGroupNotAllowed
 	}
 	if strings.TrimSpace(input.State) == "" || input.State != session.State {
 		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Invalid state")

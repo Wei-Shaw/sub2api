@@ -1664,7 +1664,7 @@
         </div>
       </div>
 
-      <div v-if="!isSparkShadow">
+      <div v-if="!isRelay && !isSparkShadow">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
@@ -1691,7 +1691,7 @@
             @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isRelay">
           <label class="input-label">{{ t('admin.accounts.priority') }}</label>
           <input
             v-model.number="form.priority"
@@ -1702,7 +1702,7 @@
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isRelay">
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
           <input
             v-model.number="form.rate_multiplier"
@@ -1990,7 +1990,7 @@
       </div>
 
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="!isRelay && account?.type === 'apikey'"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -2008,7 +2008,7 @@
       </div>
 
       <OllamaCloudUsageSettings
-        v-if="account?.ollama_cloud_usage?.eligible"
+        v-if="!isRelay && account?.ollama_cloud_usage?.eligible"
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
@@ -2271,7 +2271,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="!isRelay && account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2558,7 +2558,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        v-if="!isRelay && account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         data-testid="auto-reset-credit-settings"
       >
@@ -2860,7 +2860,7 @@
         </div>
 
         <!-- TLS Fingerprint -->
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+        <div v-if="!isRelay" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</label>
@@ -3129,12 +3129,12 @@ import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
-import { adminAPI } from '@/api/admin'
+import { adminAPI as adminSettingsAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
   Proxy,
-  AdminGroup,
   Group,
   CheckMixedChannelResponse,
   OpenAICompactMode,
@@ -3233,10 +3233,11 @@ interface Props {
   show: boolean
   account: Account | null
   proxies: Proxy[]
-  groups: AdminGroup[]
+  groups: Group[]
 }
 
 const props = defineProps<Props>()
+const { api: adminAPI, isRelay } = useAccountWorkspace()
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -3759,7 +3760,7 @@ const {
 } = useQuotaNotifyState()
 
 // Load global feature states once
-adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
+if (!isRelay) adminSettingsAPI.settings.getWebSearchEmulationConfig().then(cfg => {
   webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
 }).catch(() => { webSearchGlobalEnabled.value = false })
 
@@ -4581,7 +4582,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
 async function loadTLSProfiles() {
   try {
-    const profiles = await adminAPI.tlsFingerprintProfiles.list()
+    const profiles = await (isRelay ? Promise.resolve([]) : adminSettingsAPI.tlsFingerprintProfiles.list())
     tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name }))
   } catch {
     tlsFingerprintProfiles.value = []

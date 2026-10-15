@@ -43,11 +43,11 @@ vi.mock('@/stores/app', () => ({
   })
 }))
 
-vi.mock('@/api/admin/accounts', () => ({
-  accountsAPI: {
+vi.mock('@/api/admin', () => ({
+  adminAPI: { accounts: {
     syncUpstreamModels,
     syncUpstreamModelsPreview
-  }
+  } }
 }))
 
 vi.mock('@/composables/useClipboard', () => ({

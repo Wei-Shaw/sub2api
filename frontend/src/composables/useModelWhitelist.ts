@@ -414,12 +414,12 @@ import { getAntigravityDefaultModelMapping } from '@/api/admin/accounts'
 
 let _antigravityDefaultMappingsCache: { from: string; to: string }[] | null = null
 
-export async function fetchAntigravityDefaultMappings(): Promise<{ from: string; to: string }[]> {
+export async function fetchAntigravityDefaultMappings(loadMapping = getAntigravityDefaultModelMapping): Promise<{ from: string; to: string }[]> {
   if (_antigravityDefaultMappingsCache !== null) {
     return _antigravityDefaultMappingsCache
   }
   try {
-    const mapping = await getAntigravityDefaultModelMapping()
+    const mapping = await loadMapping()
     _antigravityDefaultMappingsCache = Object.entries(mapping).map(([from, to]) => ({ from, to }))
   } catch (e) {
     console.warn('[fetchAntigravityDefaultMappings] API failed, using empty fallback', e)

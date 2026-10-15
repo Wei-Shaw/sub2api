@@ -83,6 +83,7 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 
 	// Store session
 	session := &openai.OAuthSession{
+		OwnerUserID:  RelayOwnerFromContext(ctx),
 		State:        state,
 		CodeVerifier: codeVerifier,
 		ClientID:     clientID,
@@ -135,6 +136,9 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 	session, ok := s.sessionStore.Get(input.SessionID)
 	if !ok {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_SESSION_NOT_FOUND", "session not found or expired")
+	}
+	if session.OwnerUserID != RelayOwnerFromContext(ctx) {
+		return nil, ErrGroupNotAllowed
 	}
 	if input.State == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_STATE_REQUIRED", "oauth state is required")

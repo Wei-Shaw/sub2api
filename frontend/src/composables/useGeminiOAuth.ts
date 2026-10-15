@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { adminAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 import type { GeminiOAuthCapabilities } from '@/api/admin/gemini'
 
 export interface GeminiTokenInfo {
@@ -18,6 +18,7 @@ export interface GeminiTokenInfo {
 }
 
 export function useGeminiOAuth() {
+  const { api: adminAPI } = useAccountWorkspace()
   const appStore = useAppStore()
   const { t } = useI18n()
 

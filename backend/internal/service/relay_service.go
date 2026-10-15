@@ -176,12 +176,22 @@ func (s *RelayService) validateGroups(ctx context.Context, userID int64, platfor
 }
 
 func ValidateRelayCredentials(kind string, credentials map[string]any) error {
-	if kind != AccountTypeAPIKey && kind != AccountTypeOAuth && kind != AccountTypeSetupToken {
+	if kind != AccountTypeAPIKey && kind != AccountTypeOAuth && kind != AccountTypeSetupToken && kind != AccountTypeUpstream && kind != AccountTypeBedrock && kind != AccountTypeServiceAccount {
 		return infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_TYPE", "unsupported account credential type")
 	}
-	allowed := map[string]bool{"api_key": true, "base_url": true, "api_base_urls": true, "access_token": true, "refresh_token": true,
-		"expires_at": true, "token_type": true, "scope": true, "email": true, "organization_id": true, "organization_uuid": true,
-		"project_id": true, "model_mapping": true, "account_mode": true, "upstream_protocol": true, "auth_mode": true}
+	allowed := make(map[string]bool)
+	for _, key := range strings.Fields(`api_key base_url api_base_urls access_token refresh_token expires_at
+		token_type scope email expires_in org_uuid account_uuid email_address organization_id organization_uuid project_id model_mapping compact_model_mapping
+		account_mode upstream_protocol auth_mode api_protocol protocol_rules header_override_enabled header_overrides intercept_warmup_requests
+		id_token client_id chatgpt_account_id chatgpt_user_id chatgpt_account_is_fedramp plan_type subscription_expires_at
+		tier_id oauth_type sub team_id subscription_tier entitlement_status
+		openai_capabilities pool_mode pool_mode_retry_count pool_mode_retry_status_codes
+		custom_error_codes_enabled custom_error_codes temp_unschedulable_enabled temp_unschedulable_rules
+		zhipu_organization zhipu_project account_scheduling_threshold agent_identity agent_runtime_id agent_private_key task_id
+		aws_region aws_access_key_id aws_secret_access_key aws_session_token aws_force_global
+		service_account_json project_id client_email location vertex_location`) {
+		allowed[key] = true
+	}
 	for key := range credentials {
 		if !allowed[key] {
 			return infraerrors.BadRequest("INVALID_RELAY_CREDENTIAL_FIELD", "unsupported credential field: "+key)
@@ -228,33 +238,118 @@ func validateRelayURL(raw string) error {
 	return nil
 }
 
-func (s *RelayService) CreateAccount(ctx context.Context, userID int64, input *CreateAccountInput) (*Account, error) {
+func (s *RelayService) prepareCreateAccount(ctx context.Context, userID int64, input *CreateAccountInput) error {
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" || len(input.Name) > 100 {
-		return nil, infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_NAME", "account name is missing or too long")
+		return infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_NAME", "account name is missing or too long")
+	}
+	if input.Concurrency < 1 || input.Concurrency > 100 {
+		return infraerrors.BadRequest("INVALID_RELAY_CONCURRENCY", "concurrency must be between 1 and 100")
 	}
 	if !domain.IsConcretePlatform(input.Platform) {
-		return nil, infraerrors.BadRequest("INVALID_RELAY_PLATFORM", "unsupported platform")
+		return infraerrors.BadRequest("INVALID_RELAY_PLATFORM", "unsupported platform")
 	}
 	if err := ValidateRelayCredentials(input.Type, input.Credentials); err != nil {
-		return nil, err
+		return err
 	}
 	credentialKey := "access_token"
-	if input.Type == AccountTypeAPIKey {
+	if input.Credentials["auth_mode"] == OpenAIAuthModeAgentIdentity {
+		credentialKey = "agent_private_key"
+	}
+	if input.Type == AccountTypeAPIKey || input.Type == AccountTypeUpstream {
 		credentialKey = "api_key"
+	}
+	if input.Type == AccountTypeBedrock && input.Credentials["auth_mode"] != "apikey" {
+		credentialKey = "aws_secret_access_key"
+		if key, _ := input.Credentials["aws_access_key_id"].(string); strings.TrimSpace(key) == "" {
+			return infraerrors.BadRequest("RELAY_CREDENTIAL_REQUIRED", "aws_access_key_id is required")
+		}
+	} else if input.Type == AccountTypeBedrock {
+		credentialKey = "api_key"
+	}
+	if input.Type == AccountTypeServiceAccount {
+		if _, err := parseVertexServiceAccountKey(&Account{Credentials: input.Credentials}); err != nil {
+			return infraerrors.BadRequest("INVALID_RELAY_SERVICE_ACCOUNT", "service account JSON requires project_id, client_email and private_key")
+		}
+		credentialKey = "service_account_json"
 	}
 	value, _ := input.Credentials[credentialKey].(string)
 	if strings.TrimSpace(value) == "" {
-		return nil, infraerrors.BadRequest("RELAY_CREDENTIAL_REQUIRED", credentialKey+" is required")
+		return infraerrors.BadRequest("RELAY_CREDENTIAL_REQUIRED", credentialKey+" is required")
 	}
 	if err := s.validateGroups(ctx, userID, input.Platform, input.Type, input.GroupIDs); err != nil {
-		return nil, err
+		return err
 	}
 	input.OwnerUserID = &userID
 	input.ProxyID = nil
-	input.Extra = nil
+	var err error
+	input.Extra, err = SanitizeRelayAccountExtra(input.Extra)
+	if err != nil {
+		return err
+	}
+	input.RateMultiplier = nil
+	input.ProbeEnabled = nil
 	input.Priority = 50
 	input.SkipDefaultGroupBind = true
+	return nil
+}
+
+func (s *RelayService) prepareUpdateAccount(ctx context.Context, userID int64, a *Account, input *UpdateAccountInput) error {
+	if input.Status != "" && input.Status != StatusActive && input.Status != StatusDisabled && input.Status != "inactive" && input.Status != "error" && input.Status != a.Status {
+		return infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_STATUS", "invalid account status")
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	if len(input.Name) > 100 {
+		return infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_NAME", "account name is missing or too long")
+	}
+	if input.Credentials != nil {
+		if err := ValidateRelayCredentials(a.Type, input.Credentials); err != nil {
+			return err
+		}
+		input.Credentials = MergePreservingSensitiveCreds(a.Credentials, input.Credentials)
+	}
+	if input.GroupIDs != nil {
+		if err := s.validateGroups(ctx, userID, a.Platform, a.Type, *input.GroupIDs); err != nil {
+			return err
+		}
+	}
+	if !a.IsOAuth() || (input.Type != AccountTypeOAuth && input.Type != AccountTypeSetupToken) {
+		input.Type = ""
+	}
+	if input.Concurrency != nil && (*input.Concurrency < 1 || *input.Concurrency > 100) {
+		return infraerrors.BadRequest("INVALID_RELAY_CONCURRENCY", "concurrency must be between 1 and 100")
+	}
+	input.ProxyID = nil
+	var err error
+	input.Extra, err = SanitizeRelayAccountExtra(input.Extra)
+	if err != nil {
+		return err
+	}
+	if input.Extra != nil {
+		// A user may remove editable controls, never the backend's runtime state.
+		managed := make(map[string]any, len(a.Extra))
+		for key, value := range a.Extra {
+			managed[key] = value
+		}
+		for _, key := range relayEditableExtraKeys {
+			delete(managed, key)
+		}
+		for key, value := range input.Extra {
+			managed[key] = value
+		}
+		input.Extra = managed
+	}
+	input.ProbeEnabled = nil
+	input.RateSyncEnabled = nil
+	input.Priority = nil
+	input.RateMultiplier = nil
+	return nil
+}
+
+func (s *RelayService) CreateAccount(ctx context.Context, userID int64, input *CreateAccountInput) (*Account, error) {
+	if err := s.prepareCreateAccount(ctx, userID, input); err != nil {
+		return nil, err
+	}
 	return s.admin.CreateAccount(ctx, input)
 }
 
@@ -263,37 +358,24 @@ func (s *RelayService) UpdateAccount(ctx context.Context, userID, id int64, inpu
 	if err != nil {
 		return nil, err
 	}
-	if input.Status != "" && input.Status != StatusActive && input.Status != StatusDisabled && input.Status != a.Status {
-		return nil, infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_STATUS", "invalid account status")
+	if err := s.prepareUpdateAccount(ctx, userID, a, input); err != nil {
+		return nil, err
 	}
-	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" || len(input.Name) > 100 {
-		return nil, infraerrors.BadRequest("INVALID_RELAY_ACCOUNT_NAME", "account name is missing or too long")
-	}
-	if input.Credentials != nil {
-		if err = ValidateRelayCredentials(a.Type, input.Credentials); err != nil {
-			return nil, err
-		}
-		merged := make(map[string]any, len(a.Credentials)+len(input.Credentials))
-		for key, value := range a.Credentials {
-			merged[key] = value
-		}
-		for key, value := range input.Credentials {
-			merged[key] = value
-		}
-		input.Credentials = merged
-	}
-	if input.GroupIDs != nil {
-		if err = s.validateGroups(ctx, userID, a.Platform, a.Type, *input.GroupIDs); err != nil {
-			return nil, err
-		}
-	}
-	input.Type = ""
-	input.ProxyID = nil
-	input.Extra = nil
-	input.Priority = nil
-	input.RateMultiplier = nil
 	return s.admin.UpdateAccount(ctx, id, input)
+}
+
+func (s *RelayService) CheckMixedChannel(ctx context.Context, userID, accountID int64, platform string, groupIDs []int64) error {
+	if accountID > 0 {
+		if _, err := s.OwnedAccount(ctx, userID, accountID); err != nil {
+			return err
+		}
+	}
+	if len(groupIDs) > 0 {
+		if err := s.validateGroups(ctx, userID, platform, AccountTypeOAuth, groupIDs); err != nil {
+			return err
+		}
+	}
+	return s.admin.CheckMixedChannelRisk(ctx, accountID, platform, groupIDs)
 }
 
 func (s *RelayService) DeleteAccount(ctx context.Context, userID, id int64) error {

@@ -1,6 +1,11 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -162,13 +167,19 @@ func (h *RelayHandler) Accounts(c *gin.Context) {
 }
 
 type relayAccountRequest struct {
-	Name        string         `json:"name" binding:"required,max=100"`
-	Platform    string         `json:"platform"`
-	Type        string         `json:"type"`
-	Credentials map[string]any `json:"credentials"`
-	Concurrency int            `json:"concurrency" binding:"gte=1,lte=100"`
-	Status      string         `json:"status"`
-	GroupIDs    []int64        `json:"group_ids" binding:"required,min=1,max=50"`
+	Name                    string         `json:"name" binding:"max=100"`
+	Platform                string         `json:"platform"`
+	Type                    string         `json:"type"`
+	Credentials             map[string]any `json:"credentials"`
+	Concurrency             *int           `json:"concurrency" binding:"omitempty,gte=1,lte=100"`
+	Notes                   *string        `json:"notes"`
+	Extra                   map[string]any `json:"extra"`
+	LoadFactor              *int           `json:"load_factor"`
+	ExpiresAt               *int64         `json:"expires_at"`
+	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	ConfirmMixedChannelRisk bool           `json:"confirm_mixed_channel_risk"`
+	Status                  string         `json:"status"`
+	GroupIDs                *[]int64       `json:"group_ids" binding:"omitempty,min=1,max=50"`
 }
 
 func (h *RelayHandler) CreateAccount(c *gin.Context) {
@@ -181,8 +192,18 @@ func (h *RelayHandler) CreateAccount(c *gin.Context) {
 		response.BadRequest(c, "Invalid account settings")
 		return
 	}
+	if req.GroupIDs == nil {
+		response.BadRequest(c, "Select at least one group")
+		return
+	}
+	concurrency := 3
+	if req.Concurrency != nil {
+		concurrency = *req.Concurrency
+	}
 	a, err := h.relay.CreateAccount(c.Request.Context(), userID, &service.CreateAccountInput{Name: req.Name, Platform: req.Platform,
-		Type: req.Type, Credentials: req.Credentials, Status: req.Status, Concurrency: req.Concurrency, GroupIDs: req.GroupIDs})
+		Type: req.Type, Credentials: req.Credentials, Status: req.Status, Concurrency: concurrency, GroupIDs: *req.GroupIDs,
+		Notes: req.Notes, Extra: req.Extra, LoadFactor: req.LoadFactor, ExpiresAt: req.ExpiresAt,
+		AutoPauseOnExpired: req.AutoPauseOnExpired, SkipMixedChannelCheck: req.ConfirmMixedChannelRisk})
 	if response.ErrorFrom(c, err) {
 		return
 	}
@@ -204,7 +225,9 @@ func (h *RelayHandler) UpdateAccount(c *gin.Context) {
 		return
 	}
 	a, err := h.relay.UpdateAccount(c.Request.Context(), userID, id, &service.UpdateAccountInput{Name: req.Name,
-		Credentials: req.Credentials, Concurrency: &req.Concurrency, Status: req.Status, GroupIDs: &req.GroupIDs})
+		Credentials: req.Credentials, Concurrency: req.Concurrency, Status: req.Status, GroupIDs: req.GroupIDs,
+		Notes: req.Notes, Extra: req.Extra, LoadFactor: req.LoadFactor, ExpiresAt: req.ExpiresAt,
+		AutoPauseOnExpired: req.AutoPauseOnExpired, SkipMixedChannelCheck: req.ConfirmMixedChannelRisk})
 	if response.ErrorFrom(c, err) {
 		return
 	}
@@ -224,6 +247,94 @@ func (h *RelayHandler) DeleteAccount(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})
+}
+
+func (h *RelayHandler) CheckMixedChannel(c *gin.Context) {
+	userID, ok := relayUser(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Platform  string  `json:"platform" binding:"required"`
+		GroupIDs  []int64 `json:"group_ids" binding:"max=50"`
+		AccountID int64   `json:"account_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid group settings")
+		return
+	}
+	err := h.relay.CheckMixedChannel(c.Request.Context(), userID, req.AccountID, req.Platform, req.GroupIDs)
+	var mixed *service.MixedChannelError
+	if errors.As(err, &mixed) {
+		response.Success(c, gin.H{"has_risk": true, "message": mixed.Error(), "details": gin.H{
+			"group_id": mixed.GroupID, "group_name": mixed.GroupName,
+			"current_platform": mixed.CurrentPlatform, "other_platform": mixed.OtherPlatform,
+		}})
+		return
+	}
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, gin.H{"has_risk": false})
+}
+
+// AccountScope is used only by authenticated relay routes, including shared OAuth handlers.
+func (h *RelayHandler) AccountScope(c *gin.Context) {
+	userID, ok := relayUser(c)
+	if !ok {
+		c.Abort()
+		return
+	}
+	c.Request = c.Request.WithContext(service.WithRelayOwner(c.Request.Context(), userID))
+	if c.Request.Body == nil || c.Request.ContentLength == 0 {
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 8<<20))
+	if err != nil {
+		response.BadRequest(c, "Account request is too large")
+		c.Abort()
+		return
+	}
+	if len(body) == 0 {
+		return
+	}
+	var input map[string]json.RawMessage
+	if err := json.Unmarshal(body, &input); err != nil || input == nil {
+		response.BadRequest(c, "Invalid account request")
+		c.Abort()
+		return
+	}
+	if raw, ok := input["proxy_id"]; ok && string(raw) != "null" && string(raw) != "0" {
+		response.BadRequest(c, "Platform proxies are not available to user accounts")
+		c.Abort()
+		return
+	}
+	delete(input, "proxy_id")
+	body, err = json.Marshal(input)
+	if err != nil {
+		response.BadRequest(c, "Invalid account request")
+		c.Abort()
+		return
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.ContentLength = int64(len(body))
+}
+
+// Shared handlers never run before ownership is checked, including read/test endpoints.
+func (h *RelayHandler) RequireOwnedAccount(c *gin.Context) {
+	userID, ok := relayUser(c)
+	if !ok {
+		c.Abort()
+		return
+	}
+	id, ok := relayID(c)
+	if !ok {
+		c.Abort()
+		return
+	}
+	if _, err := h.relay.OwnedAccount(c.Request.Context(), userID, id); response.ErrorFrom(c, err) {
+		c.Abort()
+	}
 }
 
 func (h *RelayHandler) Earnings(c *gin.Context) {

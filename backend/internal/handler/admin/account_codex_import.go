@@ -167,6 +167,15 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 	if err != nil {
 		return result, err
 	}
+	if owner := service.RelayOwnerFromContext(ctx); owner > 0 {
+		owned := make([]service.Account, 0, len(existingAccounts))
+		for _, account := range existingAccounts {
+			if account.OwnerUserID != nil && *account.OwnerUserID == owner {
+				owned = append(owned, account)
+			}
+		}
+		existingAccounts = owned
+	}
 	index := buildCodexAccountIndex(existingAccounts)
 
 	updateExisting := true

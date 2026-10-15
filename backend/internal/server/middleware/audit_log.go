@@ -149,6 +149,7 @@ var auditActionOverrides = map[string]string{
 var auditBodyOmittedRoutes = map[string]struct{}{
 	"POST /api/v1/auth/passkey/login/finish":                    {},
 	"POST /api/v1/user/passkeys/register/finish":                {},
+	"POST /api/v1/relay/accounts/import/codex-session":          {},
 	"POST /api/v1/admin/accounts/import/codex-session":          {},
 	"PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session": {},
 	"PUT /api/v1/admin/prompt-audit/config":                     {},

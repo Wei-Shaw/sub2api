@@ -53,7 +53,11 @@ func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx co
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
-	return s.accountRepo.GetByID(ctx, id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err == nil && RelayOwnerFromContext(ctx) > 0 && (account.OwnerUserID == nil || *account.OwnerUserID != RelayOwnerFromContext(ctx)) {
+		return nil, ErrAccountNotFound
+	}
+	return account, err
 }
 
 func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
@@ -487,6 +491,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if owner := RelayOwnerFromContext(ctx); owner > 0 {
+		relay := &RelayService{groups: s.groupRepo, users: s.userRepo}
+		if err := relay.prepareCreateAccount(ctx, owner, input); err != nil {
+			return nil, err
+		}
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -583,9 +593,15 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
-	account, err := s.accountRepo.GetByID(ctx, id)
+	account, err := s.GetAccount(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if owner := RelayOwnerFromContext(ctx); owner > 0 {
+		relay := &RelayService{groups: s.groupRepo, users: s.userRepo}
+		if err := relay.prepareUpdateAccount(ctx, owner, account, input); err != nil {
+			return nil, err
+		}
 	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")

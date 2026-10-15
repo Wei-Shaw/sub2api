@@ -1,5 +1,6 @@
 import { reactive, ref } from 'vue'
 import { adminAPI } from '@/api/admin'
+import { useAccountWorkspace } from './useAccountWorkspace'
 import { QUOTA_THRESHOLD_TYPE_FIXED, type QuotaThresholdType } from '@/constants/account'
 
 export const QUOTA_NOTIFY_DIMS = ['daily', 'weekly', 'total'] as const
@@ -12,6 +13,7 @@ interface DimState {
 }
 
 export function useQuotaNotifyState() {
+  const { isRelay } = useAccountWorkspace()
   const globalEnabled = ref(false)
   const state = reactive<Record<QuotaNotifyDim, DimState>>({
     daily: { enabled: null, threshold: null, thresholdType: null },
@@ -20,6 +22,7 @@ export function useQuotaNotifyState() {
   })
 
   function loadGlobalState() {
+    if (isRelay) return
     adminAPI.settings
       .getSettings()
       .then((settings) => {

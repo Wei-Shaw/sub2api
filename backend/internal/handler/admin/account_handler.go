@@ -1621,6 +1621,15 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("NOT_OAUTH", "cannot apply oauth credentials to non-OAuth account"))
 		return
 	}
+	if service.RelayOwnerFromContext(ctx) > 0 {
+		if err := service.ValidateRelayCredentials(existing.Type, req.Credentials); response.ErrorFrom(c, err) {
+			return
+		}
+		req.Extra, err = service.SanitizeRelayAccountExtra(req.Extra)
+		if response.ErrorFrom(c, err) {
+			return
+		}
+	}
 	if err := service.ValidateOpenAILongContextBillingExtra(existing.Platform, req.Extra); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -3110,6 +3119,12 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 			"base_url":      req.BaseURL,
 			"model_mapping": modelMapping,
 		},
+	}
+	if owner := service.RelayOwnerFromContext(c.Request.Context()); owner > 0 {
+		tempAccount.OwnerUserID = &owner
+		if err := service.ValidateRelayCredentials(req.Type, tempAccount.Credentials); response.ErrorFrom(c, err) {
+			return
+		}
 	}
 
 	if h.accountTestService == nil {

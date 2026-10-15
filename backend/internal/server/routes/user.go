@@ -26,6 +26,7 @@ func RegisterUserRoutes(
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
 		relay := authenticated.Group("/relay")
+		registerRelayAccountRoutes(relay, h)
 		{
 			relay.GET("/groups", h.Relay.Groups)
 			relay.POST("/groups", h.Relay.CreateGroup)

@@ -59,8 +59,15 @@
                   <p>{{ (account.group_ids || []).map(groupLabel).join(', ') }}</p>
                   <p class="text-xs text-gray-500">{{ isShared(account) ? t('relay.shared') : t('relay.privateOnly') }}</p>
                 </td>
-                <td class="p-3"><p>{{ account.status === 'active' ? t('relay.active') : t('relay.disabled') }}</p><p v-if="account.error_message" class="max-w-xs break-words text-xs text-red-500">{{ account.error_message }}</p></td>
-                <td class="p-3"><div class="flex gap-2"><button class="btn btn-secondary btn-sm" @click="openAccount(account)">{{ t('common.edit') }}</button><button class="btn btn-secondary btn-sm" @click="pendingDelete = { kind: 'account', id: account.id }">{{ t('common.delete') }}</button></div></td>
+                <td class="p-3"><AccountStatusIndicator :account="account" /></td>
+                <td class="p-3"><div class="flex flex-wrap gap-2">
+                  <button class="btn btn-secondary btn-sm" @click="openAccount(account)">{{ t('common.edit') }}</button>
+                  <button class="btn btn-secondary btn-sm" @click="openAction(account, 'test')">{{ t('admin.accounts.testConnection') }}</button>
+                  <button class="btn btn-secondary btn-sm" @click="openAction(account, 'stats')">{{ t('admin.accounts.viewStats') }}</button>
+                  <button v-if="account.type === 'oauth' || account.type === 'setup-token'" class="btn btn-secondary btn-sm" @click="openAction(account, 'reauth')">{{ t('admin.accounts.reAuthorizeAccount') }}</button>
+                  <button v-if="account.type === 'oauth' || account.type === 'setup-token'" class="btn btn-secondary btn-sm" :disabled="refreshingID !== null" @click="refreshAccount(account)">{{ t('admin.accounts.refreshToken') }}</button>
+                  <button class="btn btn-secondary btn-sm" @click="pendingDelete = { kind: 'account', id: account.id }">{{ t('common.delete') }}</button>
+                </div></td>
               </tr>
             </tbody>
           </table>
@@ -85,22 +92,11 @@
       </section>
     </div>
 
-    <BaseDialog :show="showAccount" :title="editingAccount ? t('relay.editAccount') : t('relay.addAccount')" @close="showAccount = false">
-      <form id="relay-account-form" class="space-y-4" @submit.prevent="saveAccount">
-        <div><label for="relay-account-name" class="input-label">{{ t('relay.name') }}</label><input id="relay-account-name" v-model="accountForm.name" class="input" required maxlength="100" /></div>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div><label for="relay-platform" class="input-label">{{ t('relay.platform') }}</label><select id="relay-platform" v-model="accountForm.platform" class="input" :disabled="!!editingAccount"><option v-for="platform in platformOptions" :key="platform.value" :value="platform.value">{{ platform.label }}</option></select></div>
-          <div><label for="relay-type" class="input-label">{{ t('relay.type') }}</label><select id="relay-type" v-model="accountForm.type" class="input" :disabled="!!editingAccount"><option value="apikey">{{ t('relay.apiKey') }}</option><option value="oauth">{{ t('relay.oauth') }}</option></select></div>
-        </div>
-        <div><label for="relay-base-url" class="input-label">{{ t('relay.baseUrl') }}</label><input id="relay-base-url" v-model="accountForm.baseUrl" class="input" type="url" placeholder="https://api.example.com" /><p class="input-hint">{{ t('relay.baseUrlHint') }}</p></div>
-        <div v-if="accountForm.type === 'apikey'"><label for="relay-secret" class="input-label">{{ t('relay.secret') }}</label><input id="relay-secret" v-model="accountForm.secret" type="password" class="input" autocomplete="new-password" :required="!editingAccount" /><p class="input-hint">{{ t('relay.secretHint') }}</p></div>
-        <div><label for="relay-credentials" class="input-label">{{ t('relay.credentialJson') }}</label><textarea id="relay-credentials" v-model="accountForm.json" class="input font-mono" rows="4" spellcheck="false" placeholder="{}" /><p class="input-hint">{{ t('relay.credentialHint') }}</p></div>
-        <div class="grid gap-4 sm:grid-cols-2"><div><label for="relay-concurrency" class="input-label">{{ t('relay.concurrency') }}</label><input id="relay-concurrency" v-model.number="accountForm.concurrency" type="number" min="1" max="100" required class="input" /></div><div><label for="relay-status" class="input-label">{{ t('relay.status') }}</label><select id="relay-status" v-model="accountForm.status" class="input"><option v-if="editingAccount && !['active', 'disabled'].includes(String(editingAccount.status))" :value="editingAccount.status">{{ t('relay.keepStatus') }}</option><option value="active">{{ t('relay.active') }}</option><option value="disabled">{{ t('relay.disabled') }}</option></select></div></div>
-        <fieldset><legend class="input-label">{{ t('relay.privateSelection') }}</legend><label v-for="group in eligiblePrivateGroups" :key="group.id" class="mb-2 flex items-center gap-2"><input v-model="accountForm.groupIds" type="checkbox" :value="group.id" /><span>{{ displayName(group) }}</span></label></fieldset>
-        <fieldset><legend class="input-label">{{ t('relay.publicSelection') }}</legend><p class="input-hint mb-3">{{ t('relay.publicSelectionHint') }}</p><label v-for="group in eligiblePublicGroups" :key="group.id" class="mb-2 flex items-center gap-2"><input v-model="accountForm.groupIds" type="checkbox" :value="group.id" /><span>{{ group.name }} · {{ Math.round((group.supplier_rate ?? 0.9) * 100) }}%</span></label></fieldset>
-      </form>
-      <template #footer><button class="btn btn-secondary" @click="showAccount = false">{{ t('common.cancel') }}</button><button class="btn btn-primary" type="submit" form="relay-account-form" :disabled="saving">{{ t('common.save') }}</button></template>
-    </BaseDialog>
+    <CreateAccountModal :show="showCreate" :proxies="[]" :groups="accountGroups" :initial-group-ids="privateGroups.slice(0, 1).map(group => group.id)" @close="showCreate = false" @created="load" />
+    <EditAccountModal :show="showAccount" :account="editingAccount" :proxies="[]" :groups="accountGroups" @close="showAccount = false" @updated="load" />
+    <ReAuthAccountModal :show="showReAuth" :account="actionAccount" @close="showReAuth = false" @reauthorized="load" />
+    <AccountTestModal :show="showTest" :account="actionAccount" @close="showTest = false" />
+    <AccountStatsModal :show="showStats" :account="actionAccount" @close="showStats = false" />
 
     <BaseDialog :show="showGroup" :title="editingGroup ? t('relay.editGroup') : t('relay.addGroup')" @close="showGroup = false">
       <form id="relay-group-form" class="space-y-4" @submit.prevent="saveGroup">
@@ -116,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, provide, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -125,6 +121,16 @@ import { relayApi, type RelayEarnings } from '@/api/relay'
 import { useAppStore } from '@/stores/app'
 import type { Account, Group } from '@/types'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
+import CreateAccountModal from '@/components/account/CreateAccountModal.vue'
+import EditAccountModal from '@/components/account/EditAccountModal.vue'
+import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
+import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
+import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
+import { accountWorkspaceKey } from '@/composables/useAccountWorkspace'
+import { relayAccountWorkspace } from '@/api/relayAccountWorkspace'
+
+provide(accountWorkspaceKey, relayAccountWorkspace)
 
 const { t } = useI18n()
 const app = useAppStore()
@@ -140,14 +146,17 @@ const earnings = ref<RelayEarnings>({ items: [], total: 0, total_earned: 0, toda
 const editingAccount = ref<Account | null>(null)
 const editingGroup = ref<Group | null>(null)
 const showAccount = ref(false)
+const showCreate = ref(false)
+const showReAuth = ref(false)
+const showTest = ref(false)
+const showStats = ref(false)
+const actionAccount = ref<Account | null>(null)
+const refreshingID = ref<number | null>(null)
+const accountGroups = computed(() => [...privateGroups.value, ...publicGroups.value])
 const showGroup = ref(false)
 const pendingDelete = ref<{ kind: 'account' | 'group'; id: number } | null>(null)
-const accountForm = reactive({ name: '', platform: 'openai', type: 'apikey', baseUrl: '', secret: '', json: '', concurrency: 3, status: 'active', groupIds: [] as number[] })
 const groupForm = reactive({ name: '', platform: 'composite', description: '', status: 'active' })
 const platformOptions = CONCRETE_PLATFORM_OPTIONS
-const compatible = (group: Group) => group.platform === 'composite' || group.platform === accountForm.platform
-const eligiblePrivateGroups = computed(() => privateGroups.value.filter(compatible))
-const eligiblePublicGroups = computed(() => publicGroups.value.filter(group => compatible(group) && (!group.require_oauth_only || accountForm.type === 'oauth')))
 const money = (value: number) => `$${value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '.00')}`
 const displayName = (group: Group) => {
   const name = group.name.replace(/^u\d+: /, '')
@@ -173,35 +182,28 @@ async function load() {
 }
 
 function openAccount(account?: Account) {
-  editingAccount.value = account || null
-  const editable = new Set(['api_base_urls', 'model_mapping', 'account_mode', 'upstream_protocol', 'auth_mode', 'organization_id', 'organization_uuid', 'project_id', 'scope', 'email', 'expires_at', 'token_type'])
-  const extra = Object.fromEntries(Object.entries(account?.credentials || {}).filter(([key]) => editable.has(key)))
-
-  Object.assign(accountForm, { name: account?.name || '', platform: account?.platform || 'openai', type: account?.type || 'apikey',
-    baseUrl: String(account?.credentials?.base_url || ''), secret: '', json: Object.keys(extra).length ? JSON.stringify(extra, null, 2) : '', concurrency: account?.concurrency || 3,
-    status: account ? String(account.status) : 'active', groupIds: account ? [...(account.group_ids || [])] : privateGroups.value.slice(0, 1).map(group => group.id) })
+  if (!account) { showCreate.value = true; return }
+  editingAccount.value = account
   showAccount.value = true
 }
 
-async function saveAccount() {
-  let credentials: Record<string, unknown>
+function openAction(account: Account, action: 'test' | 'stats' | 'reauth') {
+  actionAccount.value = account
+  if (action === 'test') showTest.value = true
+  else if (action === 'stats') showStats.value = true
+  else showReAuth.value = true
+}
+
+async function refreshAccount(account: Account) {
+  if (refreshingID.value !== null) return
+  refreshingID.value = account.id
   try {
-    const extra: unknown = JSON.parse(accountForm.json.trim() || '{}')
-    if (!extra || typeof extra !== 'object' || Array.isArray(extra)) throw new Error('invalid')
-    credentials = { ...extra as Record<string, unknown>, base_url: accountForm.baseUrl.trim() }
-    if (accountForm.secret.trim()) credentials.api_key = accountForm.secret.trim()
-  } catch { app.showError(t('relay.invalidJson')); return }
-  if (!accountForm.groupIds.length) { app.showError(t('relay.groupRequired')); return }
-  saving.value = true
-  try {
-    const input = { name: accountForm.name.trim(), platform: accountForm.platform, type: accountForm.type,
-      credentials, concurrency: accountForm.concurrency, status: accountForm.status, group_ids: accountForm.groupIds }
-    if (editingAccount.value) await relayApi.updateAccount(editingAccount.value.id, input)
-    else await relayApi.createAccount(input)
-    accountForm.secret = ''; accountForm.json = ''; showAccount.value = false
-    app.showSuccess(t('relay.saved')); await load()
-  } catch (error) { app.showError((error as { message?: string }).message || t('relay.saveFailed')) }
-  finally { saving.value = false }
+    await relayAccountWorkspace.api.accounts.refreshCredentials(account.id)
+    app.showSuccess(t('relay.saved'))
+    await load()
+  } catch (error) {
+    app.showError((error as { message?: string }).message || t('relay.saveFailed'))
+  } finally { refreshingID.value = null }
 }
 
 function openGroup(group?: Group) {

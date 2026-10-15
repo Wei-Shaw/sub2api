@@ -148,7 +148,8 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { accountsAPI } from '@/api/admin/accounts'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
+const { api: { accounts: accountsAPI } } = useAccountWorkspace()
 import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'

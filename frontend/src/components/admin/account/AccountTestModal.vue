@@ -373,8 +373,9 @@ import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
-import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
-import { adminAPI } from '@/api/admin'
+import { ADMIN_UI_REQUEST_HEADER, USER_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
+const { api: adminAPI, isRelay, basePath } = useAccountWorkspace()
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -878,7 +879,7 @@ const startTest = async () => {
     }
 
     // Use the configured API base; EventSource does not support POST.
-    const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
+    const url = buildApiUrl(`${basePath}/accounts/${props.account.id}/test`)
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
@@ -886,7 +887,7 @@ const startTest = async () => {
       headers: {
         Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json',
-        [ADMIN_UI_REQUEST_HEADER]: '1'
+        [isRelay ? USER_UI_REQUEST_HEADER : ADMIN_UI_REQUEST_HEADER]: '1'
       },
       body: JSON.stringify(requestBody),
       signal: abortController.signal

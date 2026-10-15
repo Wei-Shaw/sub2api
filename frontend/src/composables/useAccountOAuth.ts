@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { adminAPI } from '@/api/admin'
+import { useAccountWorkspace } from '@/composables/useAccountWorkspace'
 
 export type AddMethod = 'oauth' | 'setup-token'
 export type AuthInputMethod =
@@ -33,6 +33,7 @@ export interface TokenInfo {
 }
 
 export function useAccountOAuth() {
+  const { api: adminAPI } = useAccountWorkspace()
   const appStore = useAppStore()
 
   // State

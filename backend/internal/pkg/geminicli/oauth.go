@@ -23,6 +23,7 @@ type OAuthConfig struct {
 }
 
 type OAuthSession struct {
+	OwnerUserID  int64  `json:"owner_user_id,omitempty"`
 	State        string `json:"state"`
 	CodeVerifier string `json:"code_verifier"`
 	ProxyURL     string `json:"proxy_url,omitempty"`

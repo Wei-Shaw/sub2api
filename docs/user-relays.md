@@ -19,9 +19,10 @@
 ## 凭证与分组
 
 - API Key：选择平台，填写上游 API Key。官方地址可以留空，外部中转站填写公网 HTTP(S) 地址。
-- OAuth：选择 OAuth 并导入 `access_token`，可同时导入 `refresh_token`、`expires_at` 和平台所需的组织、项目等信息。复用原有的自动刷新逻辑。本页不提供交互式 OAuth 授权向导。
-- 高级 JSON：支持 `model_mapping`、`api_base_urls`、`account_mode`、`upstream_protocol` 等凭证字段。更新时未提交的原有凭证会保留。
-- 用户不能设置平台代理、账单倍率、其他人的资源归属等管理员字段。
+- OAuth：复用 Admin 账号管理的授权表单与平台 OAuth 流程，包括授权链接/授权码、Claude Cookie/Setup Token、OpenAI Refresh Token/Codex 会话/PAT、Gemini、Antigravity 和 Grok 登录方式。也可导入 Token；重新授权、刷新令牌、连接测试、模型同步与用量统计使用同一套组件和服务。
+- 用户界面不提供平台代理、调度优先级、账单倍率、全站 TLS 指纹配置及付费额度自动重置设置。Bedrock / Vertex Service Account 同样复用原有凭证表单；用户必须提供自己的密钥，Vertex Token 缓存按用户隔离。
+- 高级 JSON：支持 `model_mapping`、`api_base_urls`、`account_mode`、`upstream_protocol` 等凭证字段。编辑时未提交的敏感凭证会保留，其余配置遵循 Admin 表单的更新语义；重新授权会保留已有模型映射等非授权配置。
+- 用户不能设置平台代理、账单倍率、其他人的资源归属等管理员字段。用户流程使用 `/api/v1/relay/...`，每个账号接口先验证归属；OAuth 会话也绑定发起用户，不能跨用户或与 Admin 会话混用。Codex 导入只在本人账号中去重，不覆盖其他用户的相同上游凭证。
 - 上游地址拒绝私网、回环地址、URL 中的用户名密码等；用户账号的转发限制公共地址并禁用凭证跨重定向传播。
 - 删除资源停止后续分配，历史收益保留。删除私有组后，仍绑定该组的密钥会因分组已删除而拒绝请求。
 
@@ -43,7 +44,7 @@
 
 ```bash
 cd backend
-go test -tags=unit ./internal/service ./internal/repository ./internal/server/middleware ./internal/handler ./internal/util/urlvalidator -run 'Relay|UsageBilling|BatchImage'
+go test -tags=unit ./internal/service ./internal/repository ./internal/server/middleware ./internal/handler ./internal/handler/admin ./internal/util/urlvalidator -run 'Relay|UsageBilling|BatchImage'
 go test -tags=integration ./internal/repository -run '^TestRelay' -count=1
 ```
 
