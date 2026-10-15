@@ -40,6 +40,12 @@ import (
 // ResponsesToChatCompletionsRequest but avoids materializing the intermediate
 // ResponsesRequest and the extra marshal/unmarshal cycle.
 func AnthropicToChatCompletionsRequest(req *AnthropicRequest) (*ChatCompletionsRequest, error) {
+	return AnthropicToChatCompletionsRequestWithMinOutputTokens(req, DefaultMinMaxOutputTokens)
+}
+
+// AnthropicToChatCompletionsRequestWithMinOutputTokens converts an Anthropic
+// Messages request using the supplied max_completion_tokens floor.
+func AnthropicToChatCompletionsRequestWithMinOutputTokens(req *AnthropicRequest, minOutputTokens int) (*ChatCompletionsRequest, error) {
 	if req == nil {
 		return nil, fmt.Errorf("anthropic request is nil")
 	}
@@ -63,8 +69,8 @@ func AnthropicToChatCompletionsRequest(req *AnthropicRequest) (*ChatCompletionsR
 
 	if req.MaxTokens > 0 {
 		v := req.MaxTokens
-		if v < minMaxOutputTokens {
-			v = minMaxOutputTokens
+		if v < minOutputTokens {
+			v = minOutputTokens
 		}
 		out.MaxCompletionTokens = &v
 	}

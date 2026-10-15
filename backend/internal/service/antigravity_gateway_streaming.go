@@ -350,8 +350,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedImageParts []map[string]any // 收集所有包含图片的 parts
-	var collectedTextParts []string          // 收集所有文本片段
+	var collectedParts []map[string]any // 收集所有 parts（text、thinking、functionCall、inlineData 等）
 
 	type scanEvent struct {
 		line string
@@ -467,19 +466,10 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 				}
 			}
 
-			// 保留最后一个有 parts 的响应
+			// 保留最后一个有 parts 的响应，并收集所有 parts
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
-				// 收集包含图片和文本的 parts
-				for _, part := range parts {
-					if inlineData, ok := part["inlineData"].(map[string]any); ok {
-						collectedImageParts = append(collectedImageParts, part)
-						_ = inlineData // 避免 unused 警告
-					}
-					if text, ok := part["text"].(string); ok && text != "" {
-						collectedTextParts = append(collectedTextParts, text)
-					}
-				}
+				collectedParts = append(collectedParts, parts...)
 			}
 
 		case <-intervalCh:
@@ -506,14 +496,9 @@ returnResponse:
 		}
 	}
 
-	// 如果收集到了图片 parts，需要合并到最终响应中
-	if len(collectedImageParts) > 0 {
-		finalResponse = mergeImagePartsToResponse(finalResponse, collectedImageParts)
-	}
-
-	// 如果收集到了文本，需要合并到最终响应中
-	if len(collectedTextParts) > 0 {
-		finalResponse = mergeTextPartsToResponse(finalResponse, collectedTextParts)
+	// 将收集的所有 parts 合并到最终响应中
+	if len(collectedParts) > 0 {
+		finalResponse = mergeCollectedPartsToResponse(finalResponse, collectedParts)
 	}
 
 	respBody, err := json.Marshal(finalResponse)
@@ -576,21 +561,27 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 		return response
 	}
 
-	result, _, setParts := getOrCreateGeminiParts(response)
+	result, existingParts, setParts := getOrCreateGeminiParts(response)
 
 	// 合并策略：
 	// 1. 保持原始顺序
-	// 2. 连续的普通 text parts 合并为一个
+	// 2. 连续的普通 text parts 合并为一个，并保留关联的 thoughtSignature
 	// 3. thinking、functionCall、inlineData 等保持原样
 	var mergedParts []any
 	var textBuffer strings.Builder
+	var textSignature string
 
 	flushTextBuffer := func() {
-		if textBuffer.Len() > 0 {
-			mergedParts = append(mergedParts, map[string]any{
+		if textBuffer.Len() > 0 || textSignature != "" {
+			part := map[string]any{
 				"text": textBuffer.String(),
-			})
+			}
+			if textSignature != "" {
+				part["thoughtSignature"] = textSignature
+			}
+			mergedParts = append(mergedParts, part)
 			textBuffer.Reset()
+			textSignature = ""
 		}
 	}
 
@@ -605,6 +596,9 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 			} else {
 				// 普通 text，累积到 buffer
 				_, _ = textBuffer.WriteString(text)
+				if sig, ok := part["thoughtSignature"].(string); ok && sig != "" {
+					textSignature = sig
+				}
 			}
 		} else {
 			// 非 text part（functionCall、inlineData 等），先刷新 text buffer，然后保留原样
@@ -616,73 +610,11 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 	// 刷新剩余的 text
 	flushTextBuffer()
 
+	if len(mergedParts) == 0 {
+		mergedParts = existingParts
+	}
+
 	setParts(mergedParts)
-	return result
-}
-
-// mergeImagePartsToResponse 将收集到的图片 parts 合并到 Gemini 响应中
-func mergeImagePartsToResponse(response map[string]any, imageParts []map[string]any) map[string]any {
-	if len(imageParts) == 0 {
-		return response
-	}
-
-	result, existingParts, setParts := getOrCreateGeminiParts(response)
-
-	// 检查现有 parts 中是否已经有图片
-	for _, p := range existingParts {
-		if pm, ok := p.(map[string]any); ok {
-			if _, hasInline := pm["inlineData"]; hasInline {
-				return result // 已有图片，不重复添加
-			}
-		}
-	}
-
-	// 添加收集到的图片 parts
-	for _, imgPart := range imageParts {
-		existingParts = append(existingParts, imgPart)
-	}
-	setParts(existingParts)
-	return result
-}
-
-// mergeTextPartsToResponse 将收集到的文本合并到 Gemini 响应中
-func mergeTextPartsToResponse(response map[string]any, textParts []string) map[string]any {
-	if len(textParts) == 0 {
-		return response
-	}
-
-	mergedText := strings.Join(textParts, "")
-	result, existingParts, setParts := getOrCreateGeminiParts(response)
-
-	// 查找并更新第一个 text part，或创建新的
-	newParts := make([]any, 0, len(existingParts)+1)
-	textUpdated := false
-
-	for _, p := range existingParts {
-		pm, ok := p.(map[string]any)
-		if !ok {
-			newParts = append(newParts, p)
-			continue
-		}
-		if _, hasText := pm["text"]; hasText && !textUpdated {
-			// 用累积的文本替换
-			newPart := make(map[string]any)
-			for k, v := range pm {
-				newPart[k] = v
-			}
-			newPart["text"] = mergedText
-			newParts = append(newParts, newPart)
-			textUpdated = true
-		} else {
-			newParts = append(newParts, pm)
-		}
-	}
-
-	if !textUpdated {
-		newParts = append([]any{map[string]any{"text": mergedText}}, newParts...)
-	}
-
-	setParts(newParts)
 	return result
 }
 
