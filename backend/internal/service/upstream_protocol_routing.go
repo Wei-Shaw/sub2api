@@ -58,6 +58,9 @@ func (a *Account) resolveModelRoutedProtocol(model string) string {
 // 协议直接生效；否则取该模型支持的协议集合，入站协议在其中时同协议直通（省去一次
 // 协议转换），不在时走首选协议。
 func (a *Account) resolveModelRoutedProtocolFor(model, inbound string, catalog []string) string {
+	if a.IsOpenCodeFreeTier() {
+		return APIProtocolChatCompletions
+	}
 	switch proto := a.GetAPIProtocol(); proto {
 	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
 		return proto

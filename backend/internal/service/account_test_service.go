@@ -2132,7 +2132,12 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	var payload map[string]any
+	if account != nil && account.IsOpenCodeGo() {
+		payload = createOpenCodeChatCompletionsTestPayload(testModelID, prompt)
+	} else {
+		payload = createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2817,6 +2822,41 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 			},
 		},
 		"stream": true,
+	}
+}
+
+var openCodeBuiltinTools = []map[string]any{
+	{"type": "function", "function": map[string]any{"name": "bash", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "edit", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "glob", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "grep", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "question", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "read", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "skill", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "task", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "todowrite", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "webfetch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "websearch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "write", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+}
+
+func createOpenCodeChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "hi"
+	}
+
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": testPrompt,
+			},
+		},
+		"stream":      true,
+		"tool_choice": "auto",
+		"tools":       openCodeBuiltinTools,
 	}
 }
 
