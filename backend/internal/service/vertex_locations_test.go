@@ -127,3 +127,33 @@ func TestBuildVertexBatchPredictionJobsEndpointMultiRegionHost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/batchPredictionJobs", got)
 }
+
+func TestVertexUpstreamPriceMultiplier(t *testing.T) {
+	gemini := func(creds map[string]any) *Account {
+		return &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: creds}
+	}
+	us := gemini(map[string]any{"project_id": "p1", "location": "us"})
+	require.InDelta(t, 1.1, VertexUpstreamPriceMultiplier(us, "gemini-3.7-flash", ""), 1e-12)
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(us, "gemini-3.1-pro-preview", ""), 1e-12)
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(us, "gemini-3.7-flash", "global"), 1e-12)
+
+	eu := gemini(map[string]any{"project_id": "p1", "location": "eu"})
+	require.InDelta(t, 1.1, VertexUpstreamPriceMultiplier(eu, "gemini-3.5-flash-lite", ""), 1e-12)
+
+	global := gemini(map[string]any{"project_id": "p1", "location": "global"})
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(global, "gemini-3.7-flash", ""), 1e-12)
+	require.InDelta(t, 1.1, VertexUpstreamPriceMultiplier(global, "gemini-3.7-flash", "us"), 1e-12)
+
+	regional := gemini(map[string]any{"project_id": "p1", "location": "us-central1"})
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(regional, "gemini-3.7-flash", ""), 1e-12)
+
+	express := gemini(map[string]any{"auth_mode": "apikey", "api_key": "k", "location": "us"})
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(express, "gemini-3.7-flash", ""), 1e-12)
+
+	aiStudio := &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{"location": "us"}}
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(aiStudio, "gemini-3.7-flash", ""), 1e-12)
+
+	anthropic := &Account{Platform: PlatformAnthropic, Type: AccountTypeServiceAccount, Credentials: map[string]any{"location": "us"}}
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(anthropic, "gemini-3.7-flash", ""), 1e-12)
+	require.InDelta(t, 1.0, VertexUpstreamPriceMultiplier(nil, "gemini-3.7-flash", ""), 1e-12)
+}

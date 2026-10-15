@@ -176,6 +176,7 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 		model     string
 		body      string
 		want      string
+		wantPrice float64
 	}{
 		{
 			name:      "supported model uses multi-region endpoint",
@@ -184,6 +185,7 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 			model:     "gemini-3.7-flash",
 			body:      `{` + contents + `}`,
 			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1.1,
 		},
 		{
 			name:      "unsupported model falls back to global",
@@ -192,6 +194,7 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 			model:     "gemini-3.1-pro-preview",
 			body:      `{` + contents + `}`,
 			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent",
+			wantPrice: 1,
 		},
 		{
 			name:      "global cached content on multi-region account stays on global",
@@ -200,6 +203,7 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 			model:     "gemini-3.7-flash",
 			body:      `{"cachedContent":"projects/my-project/locations/global/cachedContents/42",` + contents + `}`,
 			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1,
 		},
 		{
 			name:      "multi-region cached content on global account uses its region",
@@ -208,13 +212,15 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 			model:     "gemini-3.7-flash",
 			body:      `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
 			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1.1,
 		},
 		{
-			name:     "express mode ignores cached content region",
-			location: "us",
-			model:    "gemini-3.7-flash",
-			body:     `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
-			want:     "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.7-flash:generateContent",
+			name:      "express mode ignores cached content region",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1,
 		},
 	}
 	for _, tc := range cases {
@@ -224,10 +230,40 @@ func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedConte
 			account := geminiVertexAPIKeyTestAccount(tc.projectID)
 			account.Credentials["location"] = tc.location
 
-			_, err := svc.ForwardNative(context.Background(), c, account, tc.model, "generateContent", false, []byte(tc.body))
+			result, err := svc.ForwardNative(context.Background(), c, account, tc.model, "generateContent", false, []byte(tc.body))
 			require.NoError(t, err)
 			require.Equal(t, 1, httpStub.calls)
 			require.Equal(t, tc.want, httpStub.lastReq.URL.String())
+			require.InDelta(t, tc.wantPrice, result.UpstreamPriceMultiplier, 1e-12)
 		})
 	}
+}
+
+// Scenario: Claude 兼容与 Chat 兼容入口经多区域账号发往 us 端点时，转发结果带多区域价格倍数。
+func TestGeminiCompatForwards_VertexMultiRegionSetsUpstreamPriceMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const want = "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent"
+	usAccount := func() *Account {
+		account := geminiVertexAPIKeyTestAccount("my-project")
+		account.Credentials["location"] = "us"
+		return account
+	}
+
+	svc, httpStub := newGeminiVertexAPIKeyTestService()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	result, err := svc.Forward(context.Background(), c, usAccount(),
+		[]byte(`{"model":"gemini-3.7-flash","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, want, httpStub.lastReq.URL.String())
+	require.InDelta(t, 1.1, result.UpstreamPriceMultiplier, 1e-12)
+
+	svc, httpStub = newGeminiVertexAPIKeyTestService()
+	body := []byte(`{"model":"gemini-3.7-flash","messages":[{"role":"user","content":"hi"}]}`)
+	c, _ = gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	result, err = svc.ForwardAsChatCompletions(context.Background(), c, usAccount(), body)
+	require.NoError(t, err)
+	require.Equal(t, want, httpStub.lastReq.URL.String())
+	require.InDelta(t, 1.1, result.UpstreamPriceMultiplier, 1e-12)
 }

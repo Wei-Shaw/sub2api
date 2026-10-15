@@ -345,10 +345,7 @@ func buildVertexGeminiAccountURL(account *Account, model, action string, stream 
 	if account.IsVertexAPIKey() && account.VertexProjectID() == "" {
 		return buildVertexGeminiExpressURL(model, action, stream)
 	}
-	location := cachedContentLocation
-	if location == "" {
-		location = account.VertexLocation(model)
-	}
+	location := vertexGeminiRequestLocation(account, model, cachedContentLocation)
 	return buildVertexGeminiURL(account.VertexProjectID(), location, model, action, stream)
 }
 
