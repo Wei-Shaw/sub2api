@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
@@ -19,7 +20,8 @@ import (
 //   - thinkingBudget: -1（动态）→ high；0 → low；1..1024 → low；1025..8192 → medium；>8192 → high
 //   - 未携带 thinkingConfig → high（与 Gemini 3 系列默认开启动态思考一致）
 // 选中的后缀在映射表里不存在时按 high → medium → low → tiered 的顺序降级到存在的变体。
-// 显式映射（裸名本身在 model_mapping 里）始终优先，行为与现在完全一致。
+// 显式映射（裸名映射到其他模型）始终优先；默认 tiered 家族的裸名自映射
+// （无论 runtime 默认表还是 UI 保存的默认表）都会继续推导，其余自映射保持透传。
 
 var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-tiered"}
 
@@ -125,6 +127,22 @@ func resolveGeminiThinkingVariant(account *Account, requestedModel string, body 
 	return resolveGeminiThinkingVariantForLevel(account, requestedModel, geminiThinkingLevelFromBody(body))
 }
 
+// isDefaultAntigravityTieredBareModel 判断裸模型名是否属于默认目录中登记了
+// tier 变体家族的模型（当前为 gemini-3.6/3.7/3.8-flash）。这类裸名在
+// domain.DefaultAntigravityModelMapping 中是自映射，而上游目录只登记带
+// -low/-medium/-high/-tiered 后缀的变体，裸名透传会被 404 拒绝。
+func isDefaultAntigravityTieredBareModel(model string) bool {
+	if domain.DefaultAntigravityModelMapping[model] != model {
+		return false
+	}
+	for _, suffix := range geminiThinkingVariantSuffixes {
+		if _, ok := domain.DefaultAntigravityModelMapping[model+suffix]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveGeminiThinkingVariantForLevel 是 resolveGeminiThinkingVariant 的协议无关内核：
 // 调用方负责按自身协议推导 preferred 档位（Gemini 原生读 generationConfig.thinkingConfig，
 // Claude/OpenAI 兼容层读 thinking.budget_tokens），此处只做映射查找与降级。
@@ -142,12 +160,21 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 	}
 	// 裸名本身已有"真正的"映射 → 尊重现有配置，不做推导。判定分两层：
 	//   1. 映射目标不是自己（如 gemini-3.8-flash → gemini-3.8-flash-tiered）：用户明确指定了目标；
-	//   2. 映射目标是自己（原样透传）：仅当这条是用户亲手写进 credentials.model_mapping 的才尊重。
-	//      resolveModelMapping 会给每个 Antigravity 账号自动补 gemini-3.x-flash 裸名自映射
-	//      （ensureAntigravityDefaultPassthroughs），而上游目录里并没有裸名模型，那条自映射
-	//      正是导致 404 的来源，不能算作用户意图。
+	//   2. 映射目标是自己（原样透传）：仅当这条自映射表达的是用户意图时才尊重。
+	//      默认 tiered 家族（isDefaultAntigravityTieredBareModel）的裸名自映射
+	//      有两种来源，都不算用户意图：
+	//      a) 运行时默认表（空映射时 GetModelMapping 整表返回
+	//         domain.DefaultAntigravityModelMapping；ensureAntigravityDefaultPassthroughs
+	//         也会补带后缀的变体，但不含裸名）；
+	//      b) 新建账号 UI 把 domain.DefaultAntigravityModelMapping 整表保存进
+	//         credentials.model_mapping —— 裸名自映射只是目录登记，不是手写意图。
+	//      家族外模型（如 gemini-2.5-flash、未知自定义裸名）的上游目录存在裸名
+	//      或行为未知，用户显式写成自映射仍视为意图、原样尊重。
 	if mapped, matched := resolveRequestedModelInMapping(mapping, model); matched {
-		if strings.TrimSpace(mapped) != model || accountRawModelMappingHasKey(account, model) {
+		if strings.TrimSpace(mapped) != model {
+			return "", false
+		}
+		if accountRawModelMappingHasKey(account, model) && !isDefaultAntigravityTieredBareModel(model) {
 			return "", false
 		}
 	}
