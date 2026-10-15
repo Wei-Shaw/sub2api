@@ -711,6 +711,8 @@ func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
 		"/contents/generations/tasks/task-123",
 		"/v3/contents/generations/tasks",
 		"/v3/contents/generations/tasks/task-123",
+		"/inference/v1/chat/completions",
+		"/inference/v1/models",
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}

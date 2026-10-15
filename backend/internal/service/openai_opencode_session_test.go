@@ -428,7 +428,7 @@ func TestParseOpenCodeClientVersion(t *testing.T) {
 		{
 			name:      "抓包真实 UA 带额外后缀段",
 			userAgent: openCodeUpstreamUserAgent,
-			want:      [3]int{1, 18, 34},
+			want:      [3]int{1, 18, 35},
 			wantOK:    true,
 		},
 		{name: "仅版本号", userAgent: "opencode/1.18.0", want: [3]int{1, 18, 0}, wantOK: true},
@@ -449,6 +449,21 @@ func TestParseOpenCodeClientVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateOpenCodeID(t *testing.T) {
+	ses := generateOpenCodeID("ses", true)
+	require.True(t, strings.HasPrefix(ses, "ses_"))
+	require.Len(t, ses, 4+12+14)
+
+	msg := generateOpenCodeID("msg", false)
+	require.True(t, strings.HasPrefix(msg, "msg_"))
+	require.Len(t, msg, 4+12+14)
+
+	// 验证降序 session 前缀格式与真实客户端一致 (0xec... ~ 0xed...)
+	require.True(t, strings.HasPrefix(ses, "ses_ec") || strings.HasPrefix(ses, "ses_eb") || strings.HasPrefix(ses, "ses_ed"))
+	// 验证升序 message 前缀格式与真实客户端一致 (0x13... ~ 0x14...)
+	require.True(t, strings.HasPrefix(msg, "msg_13") || strings.HasPrefix(msg, "msg_14"))
 }
 
 func TestMeetsOpenCodeFreeTierMinVersion(t *testing.T) {

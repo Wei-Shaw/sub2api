@@ -1,13 +1,16 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -25,7 +28,7 @@ const (
 	// Zen 以 426 UpgradeRequired 拒绝（"OpenCode 1.18.0 or newer is required to
 	// use the free tier"），该文案来自真实 Zen 响应。格式沿用真实 opencode 客户端
 	// 的完整 UA（opencode/<ver> ai-sdk/provider-utils/<ver> runtime/bun/<ver>）。
-	openCodeUpstreamUserAgent = "opencode/1.18.34 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+	openCodeUpstreamUserAgent = "opencode/1.18.35 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 
 	// openCodeUpstreamUserAgentPrefix 标识真实 opencode 客户端 UA。命中该前缀的
 	// 客户端自带版本号信息，可判定是否已满足 Zen 的1.18.0 版本下限。
@@ -62,6 +65,52 @@ func openCodeInboundBodies(c *gin.Context) [][]byte {
 	return [][]byte{body}
 }
 
+const openCodeBase62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+var (
+	openCodeIDMu    sync.Mutex
+	openCodeLastMS  int64
+	openCodeCounter int64
+)
+
+// generateOpenCodeID generates OpenCode client IDs using the official algorithm.
+// Sessions use descending (descending=true) order; Messages use ascending order.
+func generateOpenCodeID(prefix string, descending bool) string {
+	openCodeIDMu.Lock()
+	nowMS := time.Now().UnixMilli()
+	if nowMS != openCodeLastMS {
+		openCodeLastMS = nowMS
+		openCodeCounter = 0
+	}
+	openCodeCounter++
+	counter := openCodeCounter
+	openCodeIDMu.Unlock()
+
+	val := (uint64(nowMS) * 4096) + uint64(counter)
+	if descending {
+		val = ^val
+	}
+
+	buf := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		buf[i] = byte((val >> (40 - 8*i)) & 0xFF)
+	}
+	hexPart := hex.EncodeToString(buf)
+
+	randBytes := make([]byte, 14)
+	if _, err := rand.Read(randBytes); err != nil {
+		for i := range randBytes {
+			randBytes[i] = byte(i)
+		}
+	}
+	randStr := make([]byte, 14)
+	for i, b := range randBytes {
+		randStr[i] = openCodeBase62Chars[b%62]
+	}
+
+	return prefix + "_" + hexPart + string(randStr)
+}
+
 // applyOpenCodeSessionHeader sets x-opencode-session on outbound inference
 // requests. OpenCode Go requires a per-conversation value from 2026-09-05
 // (MissingSessionID). Prefer caller headers, then the documented body session
@@ -79,15 +128,46 @@ func applyOpenCodeSessionHeader(c *gin.Context, account *Account, targetURL stri
 
 	payloads := append(openCodeInboundBodies(c), bodies...)
 	sessionID := resolveOpenCodeSessionID(c, headers, shouldGenerateOpenCodeSession(account, targetURL), payloads...)
-	if sessionID == "" {
-		return
+	if account.IsOpenCodeFreeTier() && (sessionID == "" || !strings.HasPrefix(sessionID, "ses_")) {
+		sessionID = generateOpenCodeID("ses", true)
 	}
-	for key := range headers {
-		if strings.EqualFold(key, openCodeSessionHeader) {
-			delete(headers, key)
+	if sessionID != "" {
+		for key := range headers {
+			if strings.EqualFold(key, openCodeSessionHeader) || strings.EqualFold(key, "X-OpenCode-Session-ID") {
+				delete(headers, key)
+			}
+		}
+		headers.Set(openCodeSessionHeader, sessionID)
+		headers.Set("X-OpenCode-Session-ID", sessionID)
+	}
+
+	if account.IsOpenCodeFreeTier() {
+		if headers.Get("x-opencode-client") == "" {
+			headers.Set("x-opencode-client", "cli")
+		}
+		if headers.Get("x-opencode-request") == "" {
+			headers.Set("x-opencode-request", generateOpenCodeID("msg", false))
 		}
 	}
-	headers.Set(openCodeSessionHeader, sessionID)
+
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			lowerKey := strings.ToLower(key)
+			if strings.HasPrefix(lowerKey, "x-opencode-") {
+				if strings.EqualFold(lowerKey, strings.ToLower(openCodeSessionHeader)) || strings.EqualFold(lowerKey, "x-opencode-session-id") {
+					continue
+				}
+				for k := range headers {
+					if strings.EqualFold(k, key) {
+						delete(headers, k)
+					}
+				}
+				for _, v := range values {
+					headers.Add(key, v)
+				}
+			}
+		}
+	}
 }
 
 func shouldSendOpenCodeSessionHeader(account *Account, targetURL string) bool {
@@ -98,7 +178,7 @@ func shouldSendOpenCodeSessionHeader(account *Account, targetURL string) bool {
 }
 
 func shouldGenerateOpenCodeSession(account *Account, targetURL string) bool {
-	if account != nil && account.IsOpenCodeGoPlan() {
+	if account != nil && (account.IsOpenCodeGoPlan() || account.IsOpenCodeFreeTier()) {
 		return true
 	}
 	parsed, err := url.Parse(targetURL)
@@ -247,6 +327,9 @@ func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool
 		if sessionID := sanitizeSessionID(c.GetHeader(openCodeSessionHeader)); sessionID != "" {
 			return sessionID
 		}
+		if sessionID := sanitizeSessionID(c.GetHeader("X-OpenCode-Session-ID")); sessionID != "" {
+			return sessionID
+		}
 		if sessionID := sanitizeSessionID(explicitOpenAIHeaderSessionID(c)); sessionID != "" {
 			return sessionID
 		}
@@ -263,7 +346,7 @@ func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool
 		return sessionID
 	}
 	if generate {
-		return uuid.NewString()
+		return generateOpenCodeID("ses", true)
 	}
 	return ""
 }
@@ -309,7 +392,7 @@ func existingOpenCodeSessionHeader(headers http.Header) string {
 		return ""
 	}
 	for key, values := range headers {
-		if strings.EqualFold(key, openCodeSessionHeader) && len(values) > 0 {
+		if (strings.EqualFold(key, openCodeSessionHeader) || strings.EqualFold(key, "X-OpenCode-Session-ID")) && len(values) > 0 {
 			return values[0]
 		}
 	}

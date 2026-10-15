@@ -397,6 +397,21 @@ func RegisterGatewayRoutes(
 		})
 		codexDirect.GET("/models", codexModelsHandler)
 	}
+
+	// OpenCode 官方客户端直连推理路径别名 /inference/v1
+	openCodeInference := r.Group("/inference/v1")
+	openCodeInference.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)
+	{
+		openCodeInference.POST("/chat/completions", func(c *gin.Context) {
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.ChatCompletions(c)
+				return
+			}
+			h.Gateway.ChatCompletions(c)
+		})
+		openCodeInference.GET("/models", modelsHandler)
+		openCodeInference.GET("/models/:model", h.Gateway.Models)
+	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {

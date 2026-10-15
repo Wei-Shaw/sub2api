@@ -223,7 +223,7 @@ func modelProtocolCatalogHeaders(account *Account, url string) http.Header {
 	if apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey()); apiKey != "" {
 		headers.Set("Authorization", "Bearer "+apiKey)
 	}
-	applyOpenCodeUpstreamUserAgent(account, url, headers)
+	applyOpenCodeUpstreamUserAgent(nil, account, url, headers)
 	account.ApplyHeaderOverrides(headers)
 	return headers
 }
