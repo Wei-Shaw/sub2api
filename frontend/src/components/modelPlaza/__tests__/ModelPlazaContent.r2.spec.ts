@@ -114,7 +114,19 @@ describe('ModelPlazaContent R2', () => {
       ]
     })
     const filter = wrapper.findComponent(PlazaFilterBar)
-    expect(filter.props('platforms')).toEqual(['anthropic', 'deepseek', 'zhipu', 'openai'])
+    expect(filter.props('platforms')).toEqual([
+      'anthropic',
+      'openai',
+      'gemini',
+      'antigravity',
+      'grok',
+      'kimi',
+      'zhipu',
+      'deepseek',
+      'minimax',
+      'opencode_go',
+      'composite'
+    ])
     expect(filter.props('rates')).toEqual([0.1, 0.5])
 
     await filter.vm.$emit('update:platform', 'anthropic')
@@ -130,5 +142,27 @@ describe('ModelPlazaContent R2', () => {
 
     await filter.vm.$emit('update:search', 'openai')
     expect(wrapper.findAll('.model-card')).toHaveLength(0)
+  })
+
+  it('derives platform filters from every platform returned by the API', () => {
+    const wrapper = mountContent({
+      description: '',
+      groups: [group(1, [model('custom-model', '2026-01-01', ['文本'])], 'new-platform')]
+    })
+
+    expect(wrapper.findComponent(PlazaFilterBar).props('platforms')).toEqual([
+      'anthropic',
+      'openai',
+      'gemini',
+      'antigravity',
+      'grok',
+      'kimi',
+      'zhipu',
+      'deepseek',
+      'minimax',
+      'opencode_go',
+      'composite',
+      'new-platform'
+    ])
   })
 })

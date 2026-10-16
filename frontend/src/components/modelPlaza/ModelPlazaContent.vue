@@ -104,17 +104,28 @@ function effectiveRate(group: ModelPlazaGroup): number {
 }
 
 const platforms = computed(() => {
-  const values = new Set((props.response?.groups ?? []).map((group) => group.platform).filter(Boolean))
-  // 平台筛选项固定展示，避免某个平台暂时没有已授权模型时整项消失。
-  // 有数据的平台可正常点击；暂无数据的平台由筛选栏置灰。
-  const preferredOrder = ['anthropic', 'deepseek', 'zhipu', 'openai']
-  const excludedPlatforms = new Set(['gemini', 'grok'])
-  return [
-    ...preferredOrder,
-    ...[...values]
-      .filter((platform) => !preferredOrder.includes(platform) && !excludedPlatforms.has(platform))
-      .sort()
+  // 所有内置平台始终展示；没有对应分组时由筛选栏置灰。
+  // 后端若新增未知平台，也追加到列表，避免前端升级前无法筛选。
+  const builtInPlatforms = [
+    'anthropic',
+    'openai',
+    'gemini',
+    'antigravity',
+    'grok',
+    'kimi',
+    'zhipu',
+    'deepseek',
+    'minimax',
+    'opencode_go',
+    'composite'
   ]
+  const configuredPlatforms = (props.response?.groups ?? [])
+    .map((group) => group.platform.trim())
+    .filter(Boolean)
+  const unknownPlatforms = [...new Set(configuredPlatforms)]
+    .filter((platform) => !builtInPlatforms.includes(platform))
+    .sort()
+  return [...builtInPlatforms, ...unknownPlatforms]
 })
 
 const groupOptions = computed(() =>

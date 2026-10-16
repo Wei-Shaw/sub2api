@@ -10,10 +10,12 @@
         :aria-label="platformName"
       >
         <PlatformIcon
-          platform="openai"
+          v-if="useSharedPlatformIcon"
+          :platform="model.platform as GroupPlatform"
           size="lg"
-          class="text-gray-900 dark:text-white"
+          :class="platformIconClass"
         />
+        <ModelPlazaPlatformIcon v-else :platform="model.platform" />
       </div>
       <div class="min-w-0 flex-1">
         <h2 class="truncate pr-24 text-xl font-semibold leading-tight text-gray-900 dark:text-white">
@@ -129,9 +131,11 @@ import { useI18n } from 'vue-i18n'
 import type { PlazaModel } from '@/api/modelPlaza'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import ModelPlazaPlatformIcon from './ModelPlazaPlatformIcon.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useAppStore } from '@/stores/app'
-import { platformLabel } from '@/utils/platformColors'
+import type { GroupPlatform } from '@/types'
+import { platformLabel, platformTextClass } from '@/utils/platformColors'
 
 const props = defineProps<{ model: PlazaModel }>()
 const { t } = useI18n()
@@ -139,6 +143,11 @@ const appStore = useAppStore()
 const detailsOpen = ref(false)
 const pricingOpen = ref(false)
 const platformName = computed(() => platformLabel(props.model.platform))
+const sharedPlatformIcons = new Set(['openai', 'gemini', 'antigravity', 'grok', 'kimi', 'minimax', 'opencode_go'])
+const useSharedPlatformIcon = computed(() => sharedPlatformIcons.has(props.model.platform))
+const platformIconClass = computed(() =>
+  props.model.platform === 'openai' ? 'text-gray-900 dark:text-white' : platformTextClass(props.model.platform)
+)
 
 function displayMetadata(value: string | null | undefined): string {
   const normalized = value?.trim()
