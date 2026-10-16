@@ -555,3 +555,110 @@ func TestExtractValidationURL(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchQuota_MergesRetrieveUserQuotaSummaryAndSkipsDisabledBucket(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1internal:fetchAvailableModels":
+			_, _ = w.Write([]byte(`{
+				"models": {
+					"gemini-4-argon-high": {"quotaInfo": {"remainingFraction": 0.1328875, "resetTime": "2026-10-21T00:29:07Z"}},
+					"claude-opus-5-5-high": {"quotaInfo": {"resetTime": "2026-10-21T00:38:06Z"}}
+				}
+			}`))
+		case "/v1internal:retrieveUserQuotaSummary":
+			_, _ = w.Write([]byte(`{
+				"groups": [
+					{
+						"displayName": "Gemini Models",
+						"buckets": [
+							{"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.1328875, "resetTime": "2026-10-21T00:29:07Z"},
+							{"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.8336412, "resetTime": "2026-10-16T08:59:40Z"}
+						]
+					},
+					{
+						"displayName": "Claude and GPT models",
+						"buckets": [
+							{"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0, "resetTime": "2026-10-21T00:38:06Z"},
+							{"bucketId": "3p-5h", "window": "5h", "disabled": true, "remainingFraction": 1, "resetTime": "2026-10-16T13:50:47Z"}
+						]
+					}
+				]
+			}`))
+		case "/v1internal:loadCodeAssist":
+			_, _ = w.Write([]byte(`{"paidTier":{"id":"g1-ultra-tier"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{server.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	fetcher := NewAntigravityQuotaFetcher(nil, &config.Config{})
+	res, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+		},
+	}, "")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.UsageInfo)
+
+	// Active summary buckets are recorded with used-percentage utilization.
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["gemini-5h"])
+	require.Equal(t, 16, res.UsageInfo.AntigravityQuota["gemini-5h"].Utilization)
+	require.Equal(t, "2026-10-16T08:59:40Z", res.UsageInfo.AntigravityQuota["gemini-5h"].ResetTime)
+
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["gemini-weekly"])
+	require.Equal(t, 86, res.UsageInfo.AntigravityQuota["gemini-weekly"].Utilization)
+	require.Equal(t, "2026-10-21T00:29:07Z", res.UsageInfo.AntigravityQuota["gemini-weekly"].ResetTime)
+
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["3p-weekly"])
+	require.Equal(t, 100, res.UsageInfo.AntigravityQuota["3p-weekly"].Utilization)
+	require.Equal(t, "2026-10-21T00:38:06Z", res.UsageInfo.AntigravityQuota["3p-weekly"].ResetTime)
+
+	// Disabled 3p-5h bucket must not be recorded as a misleading 0% used bar.
+	require.Nil(t, res.UsageInfo.AntigravityQuota["3p-5h"])
+
+	// Model-level entries remain available for capability sync and fallback.
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["gemini-4-argon-high"])
+	require.Equal(t, 86, res.UsageInfo.AntigravityQuota["gemini-4-argon-high"].Utilization)
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["claude-opus-5-5-high"])
+	require.Equal(t, 100, res.UsageInfo.AntigravityQuota["claude-opus-5-5-high"].Utilization)
+
+	// FiveHour and SevenDay progress are populated from active summary buckets.
+	require.NotNil(t, res.UsageInfo.FiveHour)
+	require.InDelta(t, 16.63588, res.UsageInfo.FiveHour.Utilization, 0.01)
+	require.NotNil(t, res.UsageInfo.SevenDay)
+	require.InDelta(t, 100.0, res.UsageInfo.SevenDay.Utilization, 0.01)
+}
+
+func TestBuildUsageInfo_FiveHourPriorityIncludesClaude55AndGemini4Argon(t *testing.T) {
+	fetcher := &AntigravityQuotaFetcher{}
+	modelsResp := &antigravity.FetchAvailableModelsResponse{
+		Models: map[string]antigravity.ModelInfo{
+			"gemini-4-argon-high": {
+				QuotaInfo: &antigravity.ModelQuotaInfo{
+					RemainingFraction: 0.25,
+					ResetTime:         "2026-10-21T00:29:07Z",
+				},
+			},
+		},
+	}
+
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
+	require.NotNil(t, info.FiveHour)
+	require.InDelta(t, 75.0, info.FiveHour.Utilization, 0.01)
+}
