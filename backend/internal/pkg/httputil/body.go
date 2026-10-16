@@ -20,6 +20,9 @@ const (
 	// maxDecompressedBodySize limits the decompressed request body to 64 MB
 	// to prevent decompression bomb attacks.
 	maxDecompressedBodySize = 64 << 20
+	// zstdRequestMaxExpansion bounds the buffer sized from an untrusted zstd
+	// frame header to this many times the compressed body.
+	zstdRequestMaxExpansion = 32
 )
 
 // PrereadBody 回填已读取完成的请求体：作为 io.ReadCloser 可被再次顺序消费
@@ -168,6 +171,9 @@ func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedByte
 func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 	switch encoding {
 	case "zstd":
+		if decoded, ok := decodeZstdRequestBodyOfDeclaredSize(raw); ok {
+			return decoded, nil
+		}
 		dec, err := zstd.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
@@ -191,6 +197,79 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 	default:
 		return nil, errors.New("unsupported Content-Encoding")
 	}
+}
+
+// decodeZstdRequestBodyOfDeclaredSize decodes a body that is a single zstd
+// frame declaring its content size into a buffer of exactly that size, instead
+// of growing the result through io.ReadAll behind a concurrent streaming
+// decoder. The decoder is synchronous and belongs to this call only: a decoder
+// kept across requests holds on to the last body it decoded. ok is false when
+// the body is not such a frame or decoding fails; the caller then decodes with
+// the streaming reader, which keeps the existing limit and error behavior.
+func decodeZstdRequestBodyOfDeclaredSize(raw []byte) ([]byte, bool) {
+	size, ok := zstdSingleFrameContentSize(raw)
+	if !ok {
+		return nil, false
+	}
+	dec, err := zstd.NewReader(nil,
+		zstd.WithDecoderConcurrency(1),
+		zstd.WithDecoderMaxMemory(maxDecompressedBodySize),
+		zstd.WithDecodeAllCapLimit(true))
+	if err != nil {
+		return nil, false
+	}
+	defer dec.Close()
+	decoded, err := dec.DecodeAll(raw, make([]byte, 0, size))
+	if err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+// zstdSingleFrameContentSize returns the content size declared by raw when raw
+// is exactly one complete zstd frame whose size is non-zero, within the limit
+// and at most zstdRequestMaxExpansion times the compressed body. Anything after
+// the frame, a skippable frame included, disqualifies the body: when DecodeAll
+// moves on to another frame it hands the previous frame's Huffman state, which
+// still points into raw, to a package-level pool of the zstd library.
+func zstdSingleFrameContentSize(raw []byte) (int, bool) {
+	var header zstd.Header
+	if err := header.Decode(raw); err != nil || !header.HasFCS || header.FrameContentSize == 0 ||
+		header.FrameContentSize > maxDecompressedBodySize ||
+		header.FrameContentSize > uint64(len(raw))*zstdRequestMaxExpansion {
+		return 0, false
+	}
+	// Walk the block headers (RFC 8878 section 3.1.1.2) to find where the
+	// frame ends.
+	i := header.HeaderSize
+	for {
+		if i+3 > len(raw) {
+			return 0, false
+		}
+		blockHeader := uint32(raw[i]) | uint32(raw[i+1])<<8 | uint32(raw[i+2])<<16
+		i += 3
+		switch (blockHeader >> 1) & 3 {
+		case 0, 2: // raw and compressed blocks carry Block_Size bytes
+			i += int(blockHeader >> 3)
+		case 1: // an RLE block carries the single byte to repeat
+			i++
+		default:
+			return 0, false
+		}
+		if i > len(raw) {
+			return 0, false
+		}
+		if blockHeader&1 != 0 {
+			break
+		}
+	}
+	if header.HasCheckSum {
+		i += 4
+	}
+	if i != len(raw) {
+		return 0, false
+	}
+	return int(header.FrameContentSize), true
 }
 
 // NormalizeLenientJSONRequestBody escapes raw control bytes that broken
