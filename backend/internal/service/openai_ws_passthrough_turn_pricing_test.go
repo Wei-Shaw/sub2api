@@ -285,8 +285,13 @@ func testPassthroughIngressFreezesSubsequentTurnBeforeRequestPolicy(t *testing.T
 }
 
 func TestOpenAIWSIngressOAuthDefaultEchoMatchesCurrentTurnBilling(t *testing.T) {
-	for _, mode := range []string{OpenAIWSIngressModePassthrough, OpenAIWSIngressModeCtxPool} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct{ mode, observed string }{
+		{OpenAIWSIngressModePassthrough, "default"},
+		{OpenAIWSIngressModeCtxPool, "default"},
+		{OpenAIWSIngressModePassthrough, ""},
+		{OpenAIWSIngressModeCtxPool, ""},
+	} {
+		t.Run(tc.mode+"/observed="+tc.observed, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			ctx, cancel := context.WithCancelCause(context.Background())
 			defer cancel(context.Canceled)
@@ -296,7 +301,7 @@ func TestOpenAIWSIngressOAuthDefaultEchoMatchesCurrentTurnBilling(t *testing.T) 
 			account := passthroughLifecycleAccount()
 			account.Type = AccountTypeOAuth
 			account.Credentials = map[string]any{"access_token": "fixture-token", "chatgpt_account_id": "fixture-account"}
-			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": mode}
+			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": tc.mode}
 			results := make(chan *OpenAIForwardResult, 3)
 			hooks := &OpenAIWSIngressHooks{AfterTurn: func(_ int, result *OpenAIForwardResult, err error) {
 				if err == nil {
@@ -309,7 +314,7 @@ func TestOpenAIWSIngressOAuthDefaultEchoMatchesCurrentTurnBilling(t *testing.T) 
 			server, _ := startPassthroughHookRecordingServer(t, ctx, svc, account, hooks)
 			defer server.Close()
 			client := dialPassthroughLifecycleClientWithPayload(t, server, `{"type":"response.create","model":"gpt-5.1","service_tier":"priority"}`)
-			defer client.CloseNow()
+			defer func() { _ = client.CloseNow() }()
 			for i, want := range []string{"priority", "default", "ultrafast"} {
 				if i > 0 {
 					payload := `{"type":"response.create","model":"gpt-5.1"}`
@@ -327,13 +332,21 @@ func TestOpenAIWSIngressOAuthDefaultEchoMatchesCurrentTurnBilling(t *testing.T) 
 				} else {
 					require.Equal(t, want, gjson.GetBytes(sent, "service_tier").String())
 				}
-				upstream.Send(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_tier_%d","model":"gpt-5.1","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`, i))
+				tierField := ""
+				if tc.observed != "" {
+					tierField = fmt.Sprintf(`,"service_tier":%q`, tc.observed)
+				}
+				upstream.Send(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_tier_%d","model":"gpt-5.1","status":"completed"%s,"usage":{"input_tokens":1,"output_tokens":1}}}`, i, tierField))
 				frame, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
 				require.NoError(t, err)
-				require.Equal(t, want, gjson.GetBytes(frame, "response.service_tier").String())
+				clientTier := want
+				if want == "default" {
+					clientTier = tc.observed
+				}
+				require.Equal(t, clientTier, gjson.GetBytes(frame, "response.service_tier").String())
 				select {
 				case result := <-results:
-					require.Equal(t, "default", result.UpstreamResponseServiceTier)
+					require.Equal(t, tc.observed, result.UpstreamResponseServiceTier)
 					expected := want
 					if want == "default" {
 						expected = ""

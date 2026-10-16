@@ -49,11 +49,10 @@ func TestNormalizeOpenAIResponseServiceTier(t *testing.T) {
 func TestNormalizeOpenAIResponseServiceTierOnlyResponseDeclarations(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	for _, raw := range []string{
-		`{"type":"response.created","response":{"model":"m","service_tier":"default"}}`,
 		`{"type":"response.output_text.delta","delta":"service_tier: default"}`,
+		`{"delta":"header-only SSE event without a response declaration"}`,
+		`{"type":"response.created"}`,
 		`{"type":"response.completed","response":{"model":"m","service_tier":null}}`,
-		`{"type":"response.completed","response":{"model":"m","output":[{"service_tier":"default"}]}}`,
-		`{"type":"response.completed","response":{"model":"m"}}`,
 		`[DONE]`,
 	} {
 		require.Equal(t, raw, string(normalizeOpenAIResponseServiceTier(account, "priority", []byte(raw))))
@@ -64,6 +63,45 @@ func TestNormalizeOpenAIResponseServiceTierOnlyResponseDeclarations(t *testing.T
 	require.Equal(t, int64(2), gjson.GetBytes(got, "usage.output_tokens").Int())
 	require.Equal(t, raw, normalizeOpenAIResponseServiceTier(nil, "priority", raw))
 	require.Equal(t, raw, normalizeOpenAIResponseServiceTier(&Account{Platform: PlatformGrok, Type: AccountTypeOAuth}, "priority", raw))
+	nested := normalizeOpenAIResponseServiceTier(account, "priority", []byte(`{"type":"response.completed","response":{"model":"m","output":[{"service_tier":"default"}]}}`))
+	require.Equal(t, "priority", gjson.GetBytes(nested, "response.service_tier").String())
+	require.Equal(t, "default", gjson.GetBytes(nested, "response.output.0.service_tier").String())
+}
+
+func TestNormalizeOpenAIResponseServiceTierMissingAndLifecycleDeclarations(t *testing.T) {
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken, AccountTypeAPIKey} {
+		for _, requested := range []string{"priority", "fast", "ultrafast", "flex", "", "default"} {
+			for _, eventType := range []string{"", "response.created", "response.in_progress", "response.completed"} {
+				for _, missing := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/%s/missing=%t", accountType, requested, eventType, missing), func(t *testing.T) {
+						body := `{"model":"m","output":[],"sequence":900719925474099312345`
+						if !missing {
+							body += `,"service_tier":"default"`
+						}
+						body += `}`
+						path := "service_tier"
+						if eventType != "" {
+							body = fmt.Sprintf(`{"type":%q,"response":%s}`, eventType, body)
+							path = "response.service_tier"
+						}
+						raw := []byte(body)
+						got := normalizeOpenAIResponseServiceTier(&Account{Platform: PlatformOpenAI, Type: accountType}, requested, raw)
+						require.Equal(t, body, string(raw), "observer source bytes must not change")
+						if accountType == AccountTypeAPIKey || requested == "" || requested == "default" {
+							require.Equal(t, body, string(got))
+							return
+						}
+						want := requested
+						if want == "fast" {
+							want = "priority"
+						}
+						require.Equal(t, want, gjson.GetBytes(got, path).String())
+						require.Contains(t, string(got), `"sequence":900719925474099312345`)
+					})
+				}
+			}
+		}
+	}
 }
 
 func TestOpenAIResponseServiceTierAttemptReset(t *testing.T) {

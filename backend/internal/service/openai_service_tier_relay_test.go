@@ -15,12 +15,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func forwardServiceTierRelayFixture(t *testing.T, accountType string, passthrough, stream bool, requested string, upstreamResponse *http.Response) (*Account, *OpenAIForwardResult, *httptest.ResponseRecorder) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	body := []byte(fmt.Sprintf(`{"model":"gpt-5.5","stream":%t,"service_tier":%q,"input":"hello"}`, stream, requested))
+	if requested == "" {
+		var err error
+		body, err = sjson.DeleteBytes(body, "service_tier")
+		require.NoError(t, err)
+	}
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
@@ -54,13 +60,22 @@ func TestOpenAIServiceTierRelayHTTP(t *testing.T) {
 			for _, tc := range []struct{ name, accountType, requested, observed, billed string }{
 				{"oauth_fast_default_echo", AccountTypeOAuth, "fast", "default", "priority"},
 				{"oauth_priority_default_echo", AccountTypeOAuth, "priority", "default", "priority"},
+				{"oauth_priority_missing_echo", AccountTypeOAuth, "priority", "", "priority"},
+				{"oauth_fast_missing_echo", AccountTypeOAuth, "fast", "", "priority"},
 				{"oauth_ultrafast_default_echo", AccountTypeOAuth, "ultrafast", "default", "ultrafast"},
 				{"oauth_explicit_flex_downgrade", AccountTypeOAuth, "priority", "flex", "flex"},
 				{"public_api_real_downgrade", AccountTypeAPIKey, "priority", "default", "default"},
+				{"public_api_missing_echo", AccountTypeAPIKey, "priority", "", "priority"},
+				{"no_outbound_tier", AccountTypeOAuth, "", "default", ""},
 				{"standard", AccountTypeOAuth, "default", "default", "default"},
 			} {
 				t.Run(fmt.Sprintf("%s/stream=%t/passthrough=%t", tc.name, stream, passthrough), func(t *testing.T) {
 					terminal := fmt.Sprintf(`{"id":"resp_relay","object":"response","model":"gpt-5.5","status":"completed","service_tier":%q,"output":[],"usage":{"input_tokens":82497,"output_tokens":2176,"input_tokens_details":{"cached_tokens":81152}}}`, tc.observed)
+					if tc.observed == "" {
+						var err error
+						terminal, err = sjson.Delete(terminal, "service_tier")
+						require.NoError(t, err)
+					}
 					wire := "data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\ndata: [DONE]\n\n"
 					native := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(wire))}
 					innerAccount, inner, innerRec := forwardServiceTierRelayFixture(t, tc.accountType, passthrough, stream, tc.requested, native)
@@ -102,7 +117,8 @@ func TestOpenAIServiceTierRelayChatCompatibility(t *testing.T) {
 func TestOpenAIServiceTierRelayUsesFilteredOutboundTier(t *testing.T) {
 	for _, passthrough := range []bool{false, true} {
 		t.Run(fmt.Sprint(passthrough), func(t *testing.T) {
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
 			body := []byte(`{"model":"gpt-5.5","service_tier":"priority","stream":true,"input":"hello"}`)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 			policy, _ := json.Marshal(OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{ServiceTier: OpenAIFastTierPriority, Action: BetaPolicyActionFilter, Scope: BetaPolicyScopeAll}}})
@@ -120,6 +136,8 @@ func TestOpenAIServiceTierRelayUsesFilteredOutboundTier(t *testing.T) {
 			require.Nil(t, result.ServiceTier)
 			require.Empty(t, openAIResponseServiceTier(c))
 			require.Equal(t, "default", result.UpstreamResponseServiceTier)
+			require.NotContains(t, rec.Body.String(), `"service_tier":"priority"`)
+			require.Contains(t, rec.Body.String(), `"service_tier":"default"`)
 		})
 	}
 }

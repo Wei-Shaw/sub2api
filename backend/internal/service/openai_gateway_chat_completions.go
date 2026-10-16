@@ -1018,6 +1018,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				chunk.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), chunk.ServiceTier)
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
@@ -1075,6 +1076,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
+				chunk.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), chunk.ServiceTier)
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
