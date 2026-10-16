@@ -17,6 +17,47 @@ describe('ccswitchImport utils', () => {
     expect(OPENAI_CC_SWITCH_CODEX_MODEL).toBe('gpt-5.5')
   })
 
+  it.each(['gpt-6.1-sol', 'provider/model:latest'])('exports the configured OpenAI model %s', (model) => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
+      baseUrl: 'https://api.example.com',
+      providerName: 'Sub2API',
+      apiKey: 'sk-test',
+      usageScript: 'return true',
+      platform: 'openai',
+      clientType: 'claude',
+      codexDefaultModel: ` ${model} `
+    }))
+    expect(params.get('model')).toBe(model)
+  })
+
+  it.each([undefined, '', '   '])('preserves the legacy default for an unset preference %s', (model) => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
+      baseUrl: 'https://api.example.com',
+      providerName: 'Sub2API',
+      apiKey: 'sk-test',
+      usageScript: 'return true',
+      platform: 'openai',
+      clientType: 'claude',
+      codexDefaultModel: model
+    }))
+    expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+  })
+
+  it.each(['grok', 'anthropic', 'gemini', 'antigravity'] as const)(
+    'does not apply the OpenAI model preference to %s', (platform) => {
+      const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
+        baseUrl: 'https://api.example.com',
+        providerName: 'Sub2API',
+        apiKey: 'sk-test',
+        usageScript: 'return true',
+        platform,
+        clientType: 'claude',
+        codexDefaultModel: 'gpt-6.1-sol'
+      }))
+      expect(params.get('model')).toBe(platform === 'grok' ? GROK_CC_SWITCH_MODEL : null)
+    }
+  )
+
   it('defaults Grok Build imports to the current Grok model', () => {
     expect(GROK_CC_SWITCH_MODEL).toBe('grok-4.5')
   })
