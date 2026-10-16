@@ -339,7 +339,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = litePayload
 		}
 		apiKey := getAPIKeyFromContext(c)
-		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+		imageGenerationAllowed := GroupAllowsImageGeneration(s.cfg, apiKeyGroup(apiKey))
 		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
 		if isCodexCLI {
 			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
