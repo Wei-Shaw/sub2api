@@ -641,7 +641,8 @@ export default {
         selectingAll: '正在选择全部结果...',
         selectAllFailed: '获取全部账号失败，原有选择未改变',
         clear: '清除选择',
-        edit: '批量编辑账号',
+        edit: '编辑已选 {count} 个账号',
+        editFiltered: '编辑全部筛选结果（{count} 个）',
         delete: '批量删除',
         confirmDelete: '确认删除选中的 {count} 个账号吗？此操作不可恢复。',
         deleteSuccess: '已成功删除 {count} 个账号',
@@ -657,6 +658,7 @@ export default {
       bulkEdit: {
         title: '批量编辑账号',
         selectionInfo: '已选择 {count} 个账号。只更新您勾选或填写的字段，未勾选的字段保持不变。',
+        filteredInfo: '将更新当前筛选条件下的全部账号（包含其他分页），当前预览为 {count} 个，实际范围以提交时匹配的结果为准。只更新您勾选或填写的字段，未勾选的字段保持不变。',
         baseUrlPlaceholder: 'https://api.anthropic.com 或 https://api.openai.com',
         baseUrlNotice: '适用于 API Key 账号及 Grok OAuth 账号的转发端点，留空则不修改',
         submit: '批量更新',
