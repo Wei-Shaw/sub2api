@@ -749,6 +749,27 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("loads, saves, and clears the Codex export model preference", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, codex_default_model: "saved-model" });
+    const wrapper = mountView();
+    await flushPromises();
+    const input = wrapper.get('[data-testid="codex-default-model"]');
+    expect((input.element as HTMLInputElement).value).toBe("saved-model");
+    await input.setValue("gpt-6.1-sol");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ codex_default_model: "gpt-6.1-sol" }),
+    );
+    await input.setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ codex_default_model: "" }),
+    );
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();
