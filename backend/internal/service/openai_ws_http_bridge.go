@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -255,6 +256,37 @@ func prepareOpenAIWSHTTPBridgeBody(account *Account, payload []byte) ([]byte, er
 	deleteOpenAIResponsesNoneReasoningEffortFromObject(account, body)
 	body["stream"] = true
 	return json.Marshal(body)
+}
+
+// isOpenAIWSHTTPBridgePrewarmPayload 识别 Codex 的 WSv2 预热（response.create + generate=false）。
+// HTTP Responses 没有 generate 语义：删掉字段后转上游，要么是一次空 input 请求被拒（400/403），
+// 要么变成一次真实生成。预热本身只用于建连和锚定 previous_response_id，由 bridge 本地应答即可。
+func isOpenAIWSHTTPBridgePrewarmPayload(payload []byte) bool {
+	return gjson.GetBytes(payload, "generate").Type == gjson.False
+}
+
+// buildOpenAIWSHTTPBridgePrewarmEvents 生成本地预热应答：response.created + 空输出的
+// response.completed。Codex 只等 completed 并记下 response.id，下一轮带它作为 previous_response_id。
+func buildOpenAIWSHTTPBridgePrewarmEvents(model string) (string, [][]byte, error) {
+	responseID := "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	response := map[string]any{
+		"id": responseID, "object": "response", "created_at": time.Now().Unix(),
+		"status": "in_progress", "output": []any{},
+	}
+	if model = strings.TrimSpace(model); model != "" {
+		response["model"] = model
+	}
+	created, err := json.Marshal(map[string]any{"type": "response.created", "sequence_number": 0, "response": response})
+	if err != nil {
+		return "", nil, err
+	}
+	response["status"] = "completed"
+	response["usage"] = map[string]any{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+	completed, err := json.Marshal(map[string]any{"type": "response.completed", "sequence_number": 1, "response": response})
+	if err != nil {
+		return "", nil, err
+	}
+	return responseID, [][]byte{created, completed}, nil
 }
 
 type openAIWSToolCallReplayCollector struct {
