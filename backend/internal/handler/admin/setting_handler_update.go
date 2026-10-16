@@ -323,18 +323,21 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Telegram bot notifications
-	TelegramBotToken             *string `json:"telegram_bot_token"`
-	TelegramChatID               *string `json:"telegram_chat_id"`
-	TelegramNotifyNewUser        *bool   `json:"telegram_notify_new_user"`
-	TelegramNotifyAccountError   *bool   `json:"telegram_notify_account_error"`
-	TelegramNotifyAccountExpired *bool   `json:"telegram_notify_account_expired"`
-	TelegramNotifyPaymentSuccess *bool   `json:"telegram_notify_payment_success"`
-	TelegramNotifyPaymentFailed  *bool   `json:"telegram_notify_payment_failed"`
-	TelegramNotifyRefund         *bool   `json:"telegram_notify_refund"`
-	TelegramNotifySubExpired     *bool   `json:"telegram_notify_sub_expired"`
-	TelegramNotifyBalanceLow     *bool   `json:"telegram_notify_balance_low"`
-	TelegramNotifyOpsAlert       *bool   `json:"telegram_notify_ops_alert"`
-	TelegramNotifyProxyExpired   *bool   `json:"telegram_notify_proxy_expired"`
+	TelegramBotToken              *string `json:"telegram_bot_token"`
+	TelegramCustomerBotToken      *string `json:"telegram_customer_bot_token"`
+	TelegramChatID                *string `json:"telegram_chat_id"`
+	TelegramNotifyNewUser         *bool   `json:"telegram_notify_new_user"`
+	TelegramNotifyAccountError    *bool   `json:"telegram_notify_account_error"`
+	TelegramNotifyAccountExpired  *bool   `json:"telegram_notify_account_expired"`
+	TelegramNotifyPaymentSuccess  *bool   `json:"telegram_notify_payment_success"`
+	TelegramNotifyPaymentFailed   *bool   `json:"telegram_notify_payment_failed"`
+	TelegramNotifyRefund          *bool   `json:"telegram_notify_refund"`
+	TelegramNotifySubExpired      *bool   `json:"telegram_notify_sub_expired"`
+	TelegramNotifyBalanceLow      *bool   `json:"telegram_notify_balance_low"`
+	TelegramNotifyOpsAlert        *bool   `json:"telegram_notify_ops_alert"`
+	TelegramNotifyCustomerBalance *bool   `json:"telegram_notify_customer_balance"`
+	TelegramNotifyProviderBalance *bool   `json:"telegram_notify_provider_balance"`
+	TelegramNotifyProxyExpired    *bool   `json:"telegram_notify_proxy_expired"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
@@ -2107,6 +2110,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.TelegramBotTokenConfigured
 		}(),
+		TelegramCustomerBotToken: func() string {
+			if req.TelegramCustomerBotToken != nil {
+				return strings.TrimSpace(*req.TelegramCustomerBotToken)
+			}
+			return previousSettings.TelegramCustomerBotToken
+		}(),
+		TelegramCustomerBotTokenConfigured: func() bool {
+			if req.TelegramCustomerBotToken != nil {
+				return strings.TrimSpace(*req.TelegramCustomerBotToken) != ""
+			}
+			return previousSettings.TelegramCustomerBotTokenConfigured
+		}(),
 		TelegramChatID: func() string {
 			if req.TelegramChatID != nil {
 				return strings.TrimSpace(*req.TelegramChatID)
@@ -2166,6 +2181,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.TelegramNotifyOpsAlert
 			}
 			return previousSettings.TelegramNotifyOpsAlert
+		}(),
+		TelegramNotifyCustomerBalance: func() bool {
+			if req.TelegramNotifyCustomerBalance != nil {
+				return *req.TelegramNotifyCustomerBalance
+			}
+			return previousSettings.TelegramNotifyCustomerBalance
+		}(),
+		TelegramNotifyProviderBalance: func() bool {
+			if req.TelegramNotifyProviderBalance != nil {
+				return *req.TelegramNotifyProviderBalance
+			}
+			return previousSettings.TelegramNotifyProviderBalance
 		}(),
 		TelegramNotifyProxyExpired: func() bool {
 			if req.TelegramNotifyProxyExpired != nil {
@@ -2678,6 +2705,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AccountQuotaNotifyEnabled:                              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
 		TelegramBotTokenConfigured:                             updatedSettings.TelegramBotTokenConfigured,
+		TelegramCustomerBotTokenConfigured:                     updatedSettings.TelegramCustomerBotTokenConfigured,
 		TelegramChatID:                                         updatedSettings.TelegramChatID,
 		TelegramNotifyNewUser:                                  updatedSettings.TelegramNotifyNewUser,
 		TelegramNotifyAccountError:                             updatedSettings.TelegramNotifyAccountError,
@@ -2688,6 +2716,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TelegramNotifySubExpired:                               updatedSettings.TelegramNotifySubExpired,
 		TelegramNotifyBalanceLow:                               updatedSettings.TelegramNotifyBalanceLow,
 		TelegramNotifyOpsAlert:                                 updatedSettings.TelegramNotifyOpsAlert,
+		TelegramNotifyCustomerBalance:                          updatedSettings.TelegramNotifyCustomerBalance,
+		TelegramNotifyProviderBalance:                          updatedSettings.TelegramNotifyProviderBalance,
 		TelegramNotifyProxyExpired:                             updatedSettings.TelegramNotifyProxyExpired,
 		PaymentEnabled:                                         updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                                       updatedPaymentCfg.MinAmount,

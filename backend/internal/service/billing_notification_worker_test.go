@@ -61,7 +61,7 @@ func TestBalanceNotifyStopCancelsSettingsReads(t *testing.T) {
 	settings := &notificationCancellationSettings{started: make(chan context.Context, 1)}
 	s := NewBalanceNotifyService(NewEmailService(settings, nil), settings, nil)
 	t.Cleanup(s.Stop)
-	s.submitUsageNotifications(&postUsageBillingParams{
+	s.submitUsageNotifications("notification-test", &postUsageBillingParams{
 		Cost: &CostBreakdown{ActualCost: 1},
 		User: &User{ID: 1, BalanceNotifyEnabled: true},
 	}, &billingDeps{balanceNotifyService: s}, nil)

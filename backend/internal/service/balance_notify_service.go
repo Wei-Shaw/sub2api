@@ -45,7 +45,11 @@ type BalanceNotifyService struct {
 	notificationEmailService *NotificationEmailService
 	usageNotifications       *usageNotificationWorker
 	telegramNotifySvc        *TelegramNotifyService
+	userAttributeSvc         *UserAttributeService
+	idempotencySvc           *IdempotencyCoordinator
 }
+
+const customerTelegramChatIDAttributeKey = "telegram_chat_id"
 
 // NewBalanceNotifyService creates a new BalanceNotifyService.
 func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountQuotaReader) *BalanceNotifyService {
@@ -65,6 +69,35 @@ func (s *BalanceNotifyService) SetTelegramNotifyService(svc *TelegramNotifyServi
 	s.telegramNotifySvc = svc
 }
 
+func (s *BalanceNotifyService) SetUserAttributeService(svc *UserAttributeService) {
+	s.userAttributeSvc = svc
+}
+
+func (s *BalanceNotifyService) SetIdempotencyService(svc *IdempotencyCoordinator) {
+	s.idempotencySvc = svc
+}
+
+// resolveCustomerTelegramChatID is kept pure so recipient selection can be
+// tested without a database. It only accepts the explicitly named attribute.
+func resolveCustomerTelegramChatID(values []UserAttributeValue, definitions []UserAttributeDefinition) string {
+	var attributeID int64
+	for _, definition := range definitions {
+		if definition.Key == customerTelegramChatIDAttributeKey {
+			attributeID = definition.ID
+			break
+		}
+	}
+	if attributeID == 0 {
+		return ""
+	}
+	for _, value := range values {
+		if value.AttributeID == attributeID {
+			return strings.TrimSpace(value.Value)
+		}
+	}
+	return ""
+}
+
 // resolveBalanceThreshold returns the effective balance threshold.
 // For percentage type, it computes threshold = totalRecharged * percentage / 100.
 func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecharged float64) float64 {
@@ -77,6 +110,18 @@ func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecha
 // CheckBalanceAfterDeduction checks if balance crossed below threshold after deduction.
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
 func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64) {
+	s.checkBalanceAfterDeduction(ctx, user, oldBalance, cost, "")
+}
+
+// CheckBalanceAfterDeductionWithEvent is the usage-billing entry point when a
+// stable billing request ID is available. The event ID makes replay
+// deduplication precise without suppressing a later real threshold crossing
+// that happens to produce the same numeric balance.
+func (s *BalanceNotifyService) CheckBalanceAfterDeductionWithEvent(ctx context.Context, user *User, oldBalance, cost float64, eventID string) {
+	s.checkBalanceAfterDeduction(ctx, user, oldBalance, cost, eventID)
+}
+
+func (s *BalanceNotifyService) checkBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64, eventID string) {
 	if !s.canNotifyBalance(user) {
 		return
 	}
@@ -88,12 +133,20 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 	if !crossedDownward(oldBalance, newBalance, effectiveThreshold) {
 		return
 	}
-	s.dispatchBalanceLowEmail(ctx, user, newBalance, effectiveThreshold, rechargeURL)
+	s.dispatchBalanceLowNotifications(ctx, user, newBalance, effectiveThreshold, rechargeURL, eventID)
+}
+
+func customerBalanceNotificationIdempotencyKey(userID int64, eventID string, newBalance, threshold float64) string {
+	if eventID = strings.TrimSpace(eventID); eventID != "" {
+		return fmt.Sprintf("user:%d:event:%s", userID, HashIdempotencyKey(eventID))
+	}
+	fallback := fmt.Sprintf("%.8f:%.8f", newBalance, threshold)
+	return fmt.Sprintf("user:%d:balance:%s", userID, HashIdempotencyKey(fallback))
 }
 
 // canNotifyBalance checks nil guards and user-level toggle.
 func (s *BalanceNotifyService) canNotifyBalance(user *User) bool {
-	if user == nil || s.emailService == nil || s.settingRepo == nil {
+	if user == nil || s.settingRepo == nil {
 		return false
 	}
 	return user.BalanceNotifyEnabled
@@ -125,16 +178,80 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 	return oldV >= threshold && newV < threshold
 }
 
-// dispatchBalanceLowEmail sends within the bounded notification task.
-func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
+// dispatchBalanceLowNotifications sends email within the bounded notification task
+// and dispatches customer Telegram alerts separately.
+func (s *BalanceNotifyService) dispatchBalanceLowNotifications(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL, eventID string) {
 	siteName := s.getSiteName(ctx)
 	recipients := s.collectBalanceNotifyRecipients(user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
 		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold)
-	s.sendBalanceLowEmails(ctx, recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
-	if s.telegramNotifySvc != nil {
-		go s.telegramNotifySvc.NotifyBalanceLow(context.Background(), user.Email, newBalance, threshold)
+	if s.emailService != nil || s.notificationEmailService != nil {
+		s.sendBalanceLowEmails(ctx, recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
 	}
+
+	s.dispatchCustomerTelegramBalanceNotification(ctx, user, newBalance, threshold, eventID, false)
+}
+
+func (s *BalanceNotifyService) RetryCustomerTelegramBalanceNotification(ctx context.Context, user *User, eventID string) {
+	if !s.canNotifyBalance(user) {
+		return
+	}
+	threshold, _, ok := s.resolveUserEffectiveThreshold(ctx, user)
+	if !ok {
+		return
+	}
+	s.dispatchCustomerTelegramBalanceNotification(ctx, user, user.Balance, threshold, eventID, true)
+}
+
+func (s *BalanceNotifyService) dispatchCustomerTelegramBalanceNotification(ctx context.Context, user *User, balance, threshold float64, eventID string, retryExisting bool) {
+	if s.telegramNotifySvc == nil || s.userAttributeSvc == nil || s.idempotencySvc == nil {
+		return
+	}
+	if !s.telegramNotifySvc.isEnabled(ctx, SettingTelegramNotifyCustomerBalance) {
+		return
+	}
+	chatID, err := s.userAttributeSvc.GetUserAttributeValueByKey(ctx, user.ID, customerTelegramChatIDAttributeKey)
+	if err != nil {
+		slog.Warn("customer telegram recipient lookup failed", "user_id", user.ID, "error", err)
+		return
+	}
+	if strings.TrimSpace(chatID) == "" {
+		// Never fall back to the admin recipient: a missing customer mapping is
+		// an explicit delivery skip, not permission to cross notification lanes.
+		slog.Info("customer telegram balance notification skipped: no chat mapping", "user_id", user.ID)
+		return
+	}
+
+	key := customerBalanceNotificationIdempotencyKey(user.ID, eventID, balance, threshold)
+	opts := IdempotencyExecuteOptions{
+		Scope:            "telegram_customer_balance_notification",
+		ActorScope:       fmt.Sprintf("user:%d", user.ID),
+		Method:           "POST",
+		Route:            "telegram/customer/balance-low",
+		IdempotencyKey:   key,
+		Payload:          map[string]any{"chat_id": chatID, "event_id": eventID},
+		TTL:              24 * time.Hour,
+		RequireKey:       true,
+		ExecutionTimeout: 35 * time.Second,
+	}
+	deliver := func(deliveryCtx context.Context) (any, error) {
+		if err := s.telegramNotifySvc.NotifyBalanceLow(deliveryCtx, chatID, user.Email, balance, threshold); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	go func() {
+		var err error
+		if retryExisting {
+			_, err = s.idempotencySvc.ExecuteExisting(context.Background(), opts, deliver)
+		} else {
+			_, err = s.idempotencySvc.Execute(context.Background(), opts, deliver)
+		}
+		if err != nil {
+			slog.Warn("customer telegram balance notification dedupe/delivery failed", "user_id", user.ID, "error", err)
+		}
+	}()
 }
 
 // quotaDim describes one quota dimension for notification checking.

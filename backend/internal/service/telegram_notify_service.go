@@ -17,29 +17,35 @@ const (
 	telegramSendMethod = "/sendMessage"
 
 	// Setting keys for Telegram notifications
-	SettingTelegramBotToken             = "telegram_bot_token"
-	SettingTelegramChatID               = "telegram_chat_id"
-	SettingTelegramNotifyNewUser        = "telegram_notify_new_user"
-	SettingTelegramNotifyAccountError   = "telegram_notify_account_error"
-	SettingTelegramNotifyAccountExpired = "telegram_notify_account_expired"
-	SettingTelegramNotifyPaymentSuccess = "telegram_notify_payment_success"
-	SettingTelegramNotifyPaymentFailed  = "telegram_notify_payment_failed"
-	SettingTelegramNotifyRefund         = "telegram_notify_refund"
-	SettingTelegramNotifySubExpired     = "telegram_notify_sub_expired"
-	SettingTelegramNotifyBalanceLow     = "telegram_notify_balance_low"
-	SettingTelegramNotifyOpsAlert       = "telegram_notify_ops_alert"
-	SettingTelegramNotifyProxyExpired   = "telegram_notify_proxy_expired"
+	// Legacy/admin bot settings. Existing operational notifications remain on this lane.
+	SettingTelegramBotToken = "telegram_bot_token"
+	SettingTelegramChatID   = "telegram_chat_id"
+	// Split lanes: provider/influence alerts use the admin bot; user wallet alerts
+	// use the customer bot and the recipient's own Telegram chat ID.
+	SettingTelegramAdminBotToken         = "telegram_admin_bot_token"
+	SettingTelegramAdminChatID           = "telegram_admin_chat_id"
+	SettingTelegramCustomerBotToken      = "telegram_customer_bot_token"
+	SettingTelegramNotifyCustomerBalance = "telegram_notify_customer_balance"
+	SettingTelegramNotifyProviderBalance = "telegram_notify_provider_balance"
+	SettingTelegramNotifyNewUser         = "telegram_notify_new_user"
+	SettingTelegramNotifyAccountError    = "telegram_notify_account_error"
+	SettingTelegramNotifyAccountExpired  = "telegram_notify_account_expired"
+	SettingTelegramNotifyPaymentSuccess  = "telegram_notify_payment_success"
+	SettingTelegramNotifyPaymentFailed   = "telegram_notify_payment_failed"
+	SettingTelegramNotifyRefund          = "telegram_notify_refund"
+	SettingTelegramNotifySubExpired      = "telegram_notify_sub_expired"
+	SettingTelegramNotifyBalanceLow      = "telegram_notify_balance_low"
+	SettingTelegramNotifyOpsAlert        = "telegram_notify_ops_alert"
+	SettingTelegramNotifyProxyExpired    = "telegram_notify_proxy_expired"
 )
 
 // TelegramNotifyService sends notifications via Telegram Bot API.
 type TelegramNotifyService struct {
-	settingRepo  SettingRepository
-	httpClient   *http.Client
-	apiBaseURL   string
-	mu           sync.RWMutex
-	cachedToken  string
-	cachedChatID string
-	cacheExpiry  time.Time
+	settingRepo SettingRepository
+	httpClient  *http.Client
+	apiBaseURL  string
+	mu          sync.RWMutex
+	cached      map[string]telegramConfigCache
 }
 
 // NewTelegramNotifyService creates a new TelegramNotifyService.
@@ -50,6 +56,7 @@ func NewTelegramNotifyService(settingRepo SettingRepository) *TelegramNotifyServ
 			Timeout: 10 * time.Second,
 		},
 		apiBaseURL: telegramAPIBase,
+		cached:     make(map[string]telegramConfigCache),
 	}
 }
 
@@ -58,40 +65,74 @@ type telegramConfig struct {
 	ChatID string
 }
 
+type telegramConfigCache struct {
+	config  telegramConfig
+	expires time.Time
+}
+
+const (
+	telegramAdminLane    = "admin"
+	telegramCustomerLane = "customer"
+)
+
+// getConfig returns the admin configuration. The legacy keys remain a
+// deliberate compatibility fallback for existing operational notifications;
+// customer balance notifications never use this method.
 func (s *TelegramNotifyService) getConfig(ctx context.Context) (*telegramConfig, error) {
+	return s.getLaneConfig(ctx, telegramAdminLane)
+}
+
+func (s *TelegramNotifyService) getCustomerConfig(ctx context.Context) (*telegramConfig, error) {
+	return s.getLaneConfig(ctx, telegramCustomerLane)
+}
+
+func (s *TelegramNotifyService) getLaneConfig(ctx context.Context, lane string) (*telegramConfig, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, nil
 	}
 	s.mu.RLock()
-	if time.Now().Before(s.cacheExpiry) && s.cachedToken != "" {
-		cfg := &telegramConfig{Token: s.cachedToken, ChatID: s.cachedChatID}
+	if cached, ok := s.cached[lane]; ok && time.Now().Before(cached.expires) && cached.config.Token != "" {
+		cfg := cached.config
 		s.mu.RUnlock()
-		return cfg, nil
+		return &cfg, nil
 	}
 	s.mu.RUnlock()
 
-	settings, err := s.settingRepo.GetMultiple(ctx, []string{
-		SettingTelegramBotToken,
-		SettingTelegramChatID,
-	})
+	keys := []string{SettingTelegramAdminBotToken, SettingTelegramAdminChatID, SettingTelegramBotToken, SettingTelegramChatID}
+	if lane == telegramCustomerLane {
+		keys = []string{SettingTelegramCustomerBotToken}
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get telegram settings: %w", err)
 	}
 
-	token := strings.TrimSpace(settings[SettingTelegramBotToken])
-	chatID := strings.TrimSpace(settings[SettingTelegramChatID])
-
-	if token == "" || chatID == "" {
+	var token, chatID string
+	if lane == telegramCustomerLane {
+		// There is intentionally no fallback to the admin/legacy token.
+		token = strings.TrimSpace(settings[SettingTelegramCustomerBotToken])
+	} else {
+		token = strings.TrimSpace(settings[SettingTelegramAdminBotToken])
+		chatID = strings.TrimSpace(settings[SettingTelegramAdminChatID])
+		if token == "" {
+			token = strings.TrimSpace(settings[SettingTelegramBotToken])
+		}
+		if chatID == "" {
+			chatID = strings.TrimSpace(settings[SettingTelegramChatID])
+		}
+	}
+	if token == "" || (lane == telegramAdminLane && chatID == "") {
 		return nil, nil
 	}
 
+	cfg := telegramConfig{Token: token, ChatID: chatID}
 	s.mu.Lock()
-	s.cachedToken = token
-	s.cachedChatID = chatID
-	s.cacheExpiry = time.Now().Add(60 * time.Second)
+	if s.cached == nil {
+		s.cached = make(map[string]telegramConfigCache)
+	}
+	s.cached[lane] = telegramConfigCache{config: cfg, expires: time.Now().Add(60 * time.Second)}
 	s.mu.Unlock()
-
-	return &telegramConfig{Token: token, ChatID: chatID}, nil
+	return &cfg, nil
 }
 
 func (s *TelegramNotifyService) isEnabled(ctx context.Context, settingKey string) bool {
@@ -113,23 +154,59 @@ func (s *TelegramNotifyService) sendMessage(ctx context.Context, text string) er
 	if cfg == nil {
 		return nil
 	}
+	return s.sendWithConfig(ctx, cfg, cfg.ChatID, text)
+}
 
+func (s *TelegramNotifyService) sendAdminMessage(ctx context.Context, text string) error {
+	return s.sendMessage(ctx, text)
+}
+
+// sendCustomerMessage deliberately accepts the recipient separately from the
+// saved customer-bot configuration. A missing customer token never falls back
+// to the admin token.
+func (s *TelegramNotifyService) sendCustomerMessage(ctx context.Context, chatID, text string) error {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return fmt.Errorf("customer telegram chat ID is empty")
+	}
+	cfg, err := s.getCustomerConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return fmt.Errorf("customer telegram bot token is not configured")
+	}
+	return s.sendWithConfig(ctx, cfg, chatID, text)
+}
+
+func sanitizeTelegramTransportError(err error, token string) string {
+	if err == nil {
+		return "unknown transport error"
+	}
+	message := err.Error()
+	if token != "" {
+		message = strings.ReplaceAll(message, token, "[REDACTED]")
+	}
+	return message
+}
+
+func (s *TelegramNotifyService) sendWithConfig(ctx context.Context, cfg *telegramConfig, chatID, text string) error {
 	apiURL := s.apiBaseURL + cfg.Token + telegramSendMethod
 
 	form := url.Values{}
-	form.Set("chat_id", cfg.ChatID)
+	form.Set("chat_id", chatID)
 	form.Set("text", text)
 	form.Set("parse_mode", "HTML")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return fmt.Errorf("failed to create telegram request: %w", err)
+		return fmt.Errorf("failed to create telegram request (%s)", sanitizeTelegramTransportError(err, cfg.Token))
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send telegram message: %w", err)
+		return fmt.Errorf("failed to send telegram message (%s)", sanitizeTelegramTransportError(err, cfg.Token))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -146,7 +223,6 @@ func (s *TelegramNotifyService) sendMessage(ctx context.Context, text string) er
 	if !result.OK {
 		return fmt.Errorf("telegram API rejected message: %s", result.Description)
 	}
-
 	return nil
 }
 
@@ -164,7 +240,7 @@ func (s *TelegramNotifyService) SendTestMessage(ctx context.Context) error {
 // InvalidateCache clears the cached config.
 func (s *TelegramNotifyService) InvalidateCache() {
 	s.mu.Lock()
-	s.cacheExpiry = time.Time{}
+	s.cached = make(map[string]telegramConfigCache)
 	s.mu.Unlock()
 }
 
@@ -195,13 +271,13 @@ func (s *TelegramNotifyService) SendTestMessageWithChatID(ctx context.Context, c
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return fmt.Errorf("failed to create telegram request: %w", err)
+		return fmt.Errorf("failed to create telegram request (%s)", sanitizeTelegramTransportError(err, cfg.Token))
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send telegram message: %w", err)
+		return fmt.Errorf("failed to send telegram message (%s)", sanitizeTelegramTransportError(err, cfg.Token))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -372,25 +448,56 @@ func (s *TelegramNotifyService) NotifySubscriptionExpired(ctx context.Context, c
 	}
 }
 
-// NotifyBalanceLow sends a notification when a user balance drops below threshold.
-func (s *TelegramNotifyService) NotifyBalanceLow(ctx context.Context, userEmail string, balance, threshold float64) {
-	if !s.isEnabled(ctx, SettingTelegramNotifyBalanceLow) {
-		return
+// NotifyBalanceLow sends a user wallet notification through the customer bot.
+// chatID is resolved from the user's Telegram attribute; it is never replaced
+// with the admin chat ID. The delivery error is returned so callers can apply
+// their own retry/deduplication policy without marking a failed send as done.
+func (s *TelegramNotifyService) NotifyBalanceLow(ctx context.Context, chatID, userEmail string, balance, threshold float64) error {
+	if !s.isEnabled(ctx, SettingTelegramNotifyCustomerBalance) {
+		return fmt.Errorf("customer telegram balance notifications are disabled")
 	}
 	text := fmt.Sprintf(
 		" <b>Balance Low</b>\n\n"+
-			" User: <code>%s</code>\n"+
 			" Balance: <b>%.4f</b>\n"+
 			" Threshold: %.4f\n"+
 			" Time: %s",
-		escapeHTML(userEmail),
 		balance,
 		threshold,
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
-	if err := s.sendMessage(ctx, text); err != nil {
-		slog.Error("telegram notify balance low failed", "error", err, "email", userEmail)
+	if err := s.sendCustomerMessage(ctx, chatID, text); err != nil {
+		slog.Warn("telegram notify customer balance failed", "error", err, "user_id", userEmail)
+		return err
 	}
+	return nil
+}
+
+// NotifyProviderBalance sends provider/influence balance alerts to the admin
+// lane. The account name/id are local identifiers only; secrets are excluded.
+func (s *TelegramNotifyService) NotifyProviderBalance(ctx context.Context, accountID int64, accountName, platform string, status providerBalanceAlertStatus, balance, threshold float64, reason string) error {
+	if !s.isEnabled(ctx, SettingTelegramNotifyProviderBalance) {
+		return fmt.Errorf("provider telegram balance notifications are disabled")
+	}
+	label := string(status)
+	if status == providerBalanceAlertHealthy {
+		label = "recovered"
+	}
+	text := fmt.Sprintf(
+		"<b>Provider Balance %s</b>\n\n"+
+			"Account: <code>%d</code> %s\n"+
+			"Provider: <b>%s</b>\n"+
+			"Balance: <b>%.4f</b>\n"+
+			"Threshold: %.4f\n"+
+			"Reason: %s\n"+
+			"Time: %s",
+		escapeHTML(label), accountID, escapeHTML(accountName), escapeHTML(platform),
+		balance, threshold, escapeHTML(truncateTelegram(reason, 200)), time.Now().Format("2006-01-02 15:04:05"),
+	)
+	if err := s.sendAdminMessage(ctx, text); err != nil {
+		slog.Warn("telegram notify provider balance failed", "error", err, "account_id", accountID, "platform", platform)
+		return err
+	}
+	return nil
 }
 
 // NotifyOpsAlert sends a notification when an ops alert fires.

@@ -159,8 +159,26 @@ func (s *UserAttributeService) GetUserAttributes(ctx context.Context, userID int
 	return s.valueRepo.GetByUserID(ctx, userID)
 }
 
-// GetBatchUserAttributes retrieves attribute values for multiple users
-// Returns a map of userID -> map of attributeID -> value
+// GetUserAttributeValueByKey retrieves a single user attribute by its stable key.
+// It keeps recipient mapping out of the user table so Telegram identity remains
+// an explicit, user-scoped attribute.
+func (s *UserAttributeService) GetUserAttributeValueByKey(ctx context.Context, userID int64, key string) (string, error) {
+	definition, err := s.defRepo.GetByKey(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	values, err := s.valueRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	for _, value := range values {
+		if value.AttributeID == definition.ID {
+			return strings.TrimSpace(value.Value), nil
+		}
+	}
+	return "", nil
+}
+
 func (s *UserAttributeService) GetBatchUserAttributes(ctx context.Context, userIDs []int64) (map[int64]map[int64]string, error) {
 	values, err := s.valueRepo.GetByUserIDs(ctx, userIDs)
 	if err != nil {

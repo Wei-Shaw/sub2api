@@ -11,9 +11,51 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
+type providerBalanceAlertClaimer interface {
+	TryClaimProviderBalanceAlert(ctx context.Context, accountID int64, platform string, status ProviderBalanceAlertStatus) (bool, string, error)
+}
+
 // cnQuotaProber 抽象额度探测（*CNProviderQuotaService 实现，测试可替换）。
 type cnQuotaProber interface {
 	QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error)
+}
+
+// providerBalanceAlertStatus is the persisted observation state for one
+// provider account. It is separate from Schedulable: an account can be paused
+// by another subsystem while its provider balance still needs monitoring.
+type providerBalanceAlertStatus string
+
+// ProviderBalanceAlertStatus is the persisted provider balance alert state.
+type ProviderBalanceAlertStatus = providerBalanceAlertStatus
+
+const (
+	providerBalanceAlertHealthy     providerBalanceAlertStatus = "healthy"
+	providerBalanceAlertLow         providerBalanceAlertStatus = "low"
+	providerBalanceAlertExhausted   providerBalanceAlertStatus = "exhausted"
+	providerBalanceAlertUnavailable providerBalanceAlertStatus = "unavailable"
+)
+
+func classifyProviderBalanceAlert(result *CNProviderBalanceResult, threshold float64) providerBalanceAlertStatus {
+	if result == nil || !result.Success || !result.Available {
+		return providerBalanceAlertUnavailable
+	}
+	if result.Balance <= 0 && len(result.Balances) == 0 {
+		return providerBalanceAlertExhausted
+	}
+	if allCNBalancesBelowThreshold(result, threshold) {
+		if result.Balance <= 0 {
+			return providerBalanceAlertExhausted
+		}
+		return providerBalanceAlertLow
+	}
+	return providerBalanceAlertHealthy
+}
+
+func providerBalanceAlertTransition(previous, current providerBalanceAlertStatus) bool {
+	if previous == "" {
+		return current != providerBalanceAlertHealthy
+	}
+	return previous != current
 }
 
 // cnQuotaProbeConcurrency 周期任务并发探测额度账号的并发度。
@@ -30,14 +72,16 @@ const cnQuotaProbeConcurrency = 4
 // Command Code 账号一次探测同时刷新窗口快照与积分余额，积分低于阈值时同样临时停调。
 // Cline 账号同样一次探测刷新 ClinePass 窗口与积分，只冷却用完的一边（见 cline_usage.go）。
 type CNProviderBalanceCheckService struct {
-	accountRepo    AccountRepository
-	balanceService *CNProviderBalanceService
-	quotaService   cnQuotaProber
-	cfg            *config.Config
-	interval       time.Duration
-	stopCh         chan struct{}
-	stopOnce       sync.Once
-	wg             sync.WaitGroup
+	accountRepo       AccountRepository
+	balanceService    *CNProviderBalanceService
+	quotaService      cnQuotaProber
+	telegramNotifySvc *TelegramNotifyService
+	idempotencySvc    *IdempotencyCoordinator
+	cfg               *config.Config
+	interval          time.Duration
+	stopCh            chan struct{}
+	stopOnce          sync.Once
+	wg                sync.WaitGroup
 }
 
 // NewCNProviderBalanceCheckService 构造周期余额/额度检测服务。
@@ -46,16 +90,20 @@ func NewCNProviderBalanceCheckService(
 	accountRepo AccountRepository,
 	balanceService *CNProviderBalanceService,
 	quotaService *CNProviderQuotaService,
+	telegramNotifySvc *TelegramNotifyService,
 	cfg *config.Config,
 	interval time.Duration,
+	idempotencySvc *IdempotencyCoordinator,
 ) *CNProviderBalanceCheckService {
 	return &CNProviderBalanceCheckService{
-		accountRepo:    accountRepo,
-		balanceService: balanceService,
-		quotaService:   quotaService,
-		cfg:            cfg,
-		interval:       interval,
-		stopCh:         make(chan struct{}),
+		accountRepo:       accountRepo,
+		balanceService:    balanceService,
+		quotaService:      quotaService,
+		telegramNotifySvc: telegramNotifySvc,
+		idempotencySvc:    idempotencySvc,
+		cfg:               cfg,
+		interval:          interval,
+		stopCh:            make(chan struct{}),
 	}
 }
 
@@ -130,7 +178,7 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 			}
 			// payg 余额探测仅 kimi/deepseek（智谱 / MiniMax 无公开余额端点，
 			// payg 账号依赖响应式 402/429 处理）。
-			if platform != PlatformZhipu && platform != PlatformMiniMax && account.Schedulable {
+			if platform != PlatformZhipu && platform != PlatformMiniMax {
 				paygTargets = append(paygTargets, account)
 			}
 		}
@@ -316,9 +364,17 @@ const (
 )
 
 // checkOne 探测单账号余额并决定停调/恢复。探测失败时不动现状（避免瞬时网络抖动
-// 误解除或误停调）。
+// 误解除或误停调），但仍会向 admin Telegram lane 发出一次 unavailable 状态告警。
 func (s *CNProviderBalanceCheckService) checkOne(ctx context.Context, account *Account, threshold float64) cnBalanceCheckOutcome {
+	if account == nil {
+		return cnBalanceNoChange
+	}
 	result, err := s.balanceService.QueryBalance(ctx, account.ID)
+	observed := result
+	if err != nil || result == nil {
+		observed = &CNProviderBalanceResult{Provider: account.Platform, Success: false}
+	}
+	s.publishProviderBalanceAlert(ctx, account, observed, threshold)
 	if err != nil || result == nil || !result.Success {
 		return cnBalanceNoChange
 	}
@@ -354,6 +410,111 @@ func (s *CNProviderBalanceCheckService) applyBalanceResult(ctx context.Context, 
 		return cnBalanceCleared
 	}
 	return cnBalanceNoChange
+}
+
+func (s *CNProviderBalanceCheckService) publishProviderBalanceAlert(ctx context.Context, account *Account, result *CNProviderBalanceResult, threshold float64) {
+	status := classifyProviderBalanceAlert(result, threshold)
+	if s.telegramNotifySvc != nil && !s.telegramNotifySvc.isEnabled(ctx, SettingTelegramNotifyProviderBalance) {
+		return
+	}
+	previous := providerBalanceAlertStatus("")
+	if account.Extra != nil {
+		if raw, ok := account.Extra[cnExtraKey(account.Platform, cnBalanceExtraSuffixAlertStatus)].(string); ok {
+			previous = providerBalanceAlertStatus(strings.TrimSpace(raw))
+		}
+	}
+	if !providerBalanceAlertTransition(previous, status) {
+		return
+	}
+	if s.accountRepo != nil {
+		claimer, ok := s.accountRepo.(providerBalanceAlertClaimer)
+		if !ok {
+			log.Printf("[CNBalance] account repository has no provider alert claim support for account %d; suppressing Telegram dispatch", account.ID)
+			return
+		}
+		claimed, _, err := claimer.TryClaimProviderBalanceAlert(ctx, account.ID, account.Platform, ProviderBalanceAlertStatus(status))
+		if err != nil {
+			log.Printf("[CNBalance] claim provider alert for account %d failed; suppressing Telegram dispatch: %v", account.ID, err)
+			return
+		}
+		if !claimed {
+			return
+		}
+	}
+	if s.telegramNotifySvc == nil {
+		return
+	}
+	deliver := func(deliveryCtx context.Context) (any, error) {
+		if err := s.publishProviderBalance(deliveryCtx, account.ID, account.Name, account.Platform, status, providerBalanceValue(result), threshold, providerBalanceAlertReason(status)); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	var deliveryErr error
+	if s.idempotencySvc != nil {
+		_, deliveryErr = s.idempotencySvc.Execute(ctx, IdempotencyExecuteOptions{
+			Scope:            "telegram_provider_balance_notification",
+			ActorScope:       "system:cn-provider-balance",
+			Method:           "POST",
+			Route:            "telegram/provider/balance",
+			IdempotencyKey:   ProviderBalanceAlertNotificationKey(account.ID, account.Platform, string(status)),
+			Payload:          map[string]any{"account_id": account.ID, "platform": account.Platform, "status": status},
+			TTL:              24 * time.Hour,
+			RequireKey:       true,
+			ExecutionTimeout: 35 * time.Second,
+		}, deliver)
+	} else {
+		_, deliveryErr = deliver(ctx)
+	}
+	if deliveryErr != nil {
+		log.Printf("[CNBalance] provider alert delivery for account %d failed; will retry: %v", account.ID, deliveryErr)
+		return
+	}
+	if s.accountRepo != nil {
+		deliveryStatusKey := account.Platform + "_balance_alert_delivery_status"
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{deliveryStatusKey: "delivered:" + string(status)})
+	}
+}
+
+func ProviderBalanceAlertStatusExtraKey(platform string) string {
+	return cnExtraKey(platform, cnBalanceExtraSuffixAlertStatus)
+}
+func ProviderBalanceAlertDeliveryKeyExtraKey(platform string) string {
+	return cnExtraKey(platform, "balance_alert_delivery_key")
+}
+func ProviderBalanceAlertClaimUntilExtraKey(platform string) string {
+	return cnExtraKey(platform, "balance_alert_claim_until")
+}
+func ProviderBalanceAlertNotificationKey(accountID int64, platform, status string) string {
+	return fmt.Sprintf("%d:%s:%s", accountID, platform, status)
+}
+
+func (s *CNProviderBalanceCheckService) publishProviderBalance(ctx context.Context, accountID int64, accountName, platform string, status providerBalanceAlertStatus, balance, threshold float64, reason string) error {
+	if s.telegramNotifySvc == nil {
+		return nil
+	}
+	return s.telegramNotifySvc.NotifyProviderBalance(ctx, accountID, accountName, platform, status, balance, threshold, reason)
+}
+func providerBalanceValue(result *CNProviderBalanceResult) float64 {
+	if result == nil {
+		return 0
+	}
+	return result.Balance
+}
+
+func providerBalanceAlertReason(status providerBalanceAlertStatus) string {
+	switch status {
+	case providerBalanceAlertLow:
+		return "provider balance is below the configured threshold"
+	case providerBalanceAlertExhausted:
+		return "provider balance is exhausted"
+	case providerBalanceAlertUnavailable:
+		return "provider balance endpoint is unavailable or returned an error"
+	case providerBalanceAlertHealthy:
+		return "provider balance is above the configured threshold"
+	default:
+		return "provider balance status changed"
+	}
 }
 
 func (s *CNProviderBalanceCheckService) platforms() []string {

@@ -52,19 +52,23 @@ type SystemSettings struct {
 	DatasetBufferMaxItems                   int
 
 	// Telegram Bot Monitor
-	TelegramBotToken             string
-	TelegramBotTokenConfigured   bool
-	TelegramChatID               string
-	TelegramNotifyNewUser        bool
-	TelegramNotifyAccountError   bool
-	TelegramNotifyAccountExpired bool
-	TelegramNotifyPaymentSuccess bool
-	TelegramNotifyPaymentFailed  bool
-	TelegramNotifyRefund         bool
-	TelegramNotifySubExpired     bool
-	TelegramNotifyBalanceLow     bool
-	TelegramNotifyOpsAlert       bool
-	TelegramNotifyProxyExpired   bool
+	TelegramBotToken                   string
+	TelegramBotTokenConfigured         bool
+	TelegramChatID                     string
+	TelegramCustomerBotToken           string
+	TelegramCustomerBotTokenConfigured bool
+	TelegramNotifyNewUser              bool
+	TelegramNotifyAccountError         bool
+	TelegramNotifyAccountExpired       bool
+	TelegramNotifyPaymentSuccess       bool
+	TelegramNotifyPaymentFailed        bool
+	TelegramNotifyRefund               bool
+	TelegramNotifySubExpired           bool
+	TelegramNotifyBalanceLow           bool
+	TelegramNotifyOpsAlert             bool
+	TelegramNotifyCustomerBalance      bool
+	TelegramNotifyProviderBalance      bool
+	TelegramNotifyProxyExpired         bool
 
 	TurnstileEnabled                       bool
 	TurnstileSiteKey                       string

@@ -77,7 +77,7 @@ func (w *usageNotificationWorker) stop() {
 	})
 }
 
-func (s *BalanceNotifyService) submitUsageNotifications(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+func (s *BalanceNotifyService) submitUsageNotifications(eventID string, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
 	if s == nil || s.usageNotifications == nil || p == nil || p.Cost == nil {
 		return
 	}
@@ -87,7 +87,7 @@ func (s *BalanceNotifyService) submitUsageNotifications(p *postUsageBillingParam
 		return
 	}
 	s.usageNotifications.submit(func(ctx context.Context) {
-		notifyBalanceLow(ctx, p, deps, result)
+		notifyBalanceLow(ctx, eventID, p, deps, result)
 		if ctx.Err() == nil {
 			notifyAccountQuota(ctx, p, deps, result)
 		}

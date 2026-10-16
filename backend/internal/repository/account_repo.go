@@ -2808,6 +2808,74 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 	return int64(len(accountIDs)), nil
 }
 
+func (r *accountRepository) TryClaimProviderBalanceAlert(
+	ctx context.Context,
+	accountID int64,
+	platform string,
+	status service.ProviderBalanceAlertStatus,
+) (bool, string, error) {
+	statusKey := service.ProviderBalanceAlertStatusExtraKey(platform)
+	deliveryKeyKey := service.ProviderBalanceAlertDeliveryKeyExtraKey(platform)
+	claimUntilKey := service.ProviderBalanceAlertClaimUntilExtraKey(platform)
+	deliveryStatusKey := platform + "_balance_alert_delivery_status"
+	claimUntil := time.Now().UTC().Add(2 * time.Minute).Format(time.RFC3339Nano)
+	query := `
+		WITH current AS (
+			SELECT id,
+				COALESCE(extra ->> $2, '') AS alert_status,
+				COALESCE(extra ->> $3, '') AS delivery_key
+			FROM accounts
+			WHERE id = $1 AND deleted_at IS NULL
+		), candidate AS (
+			SELECT id,
+				CASE
+					WHEN alert_status = $6 AND delivery_key <> '' THEN delivery_key
+					ELSE gen_random_uuid()::text
+				END AS next_delivery_key
+			FROM current
+		), updated AS (
+			UPDATE accounts AS account
+			SET extra = COALESCE(account.extra, '{}'::jsonb) || jsonb_build_object(
+				$2, $6,
+				$3, candidate.next_delivery_key,
+				$4, 'processing:' || candidate.next_delivery_key,
+				$5, $7
+			), updated_at = NOW()
+			FROM candidate
+			WHERE account.id = candidate.id
+				AND NOT (
+					COALESCE(account.extra ->> $2, '') = $6
+					AND (
+						COALESCE(account.extra ->> $4, '') = 'delivered:' || $6
+						OR (
+							COALESCE(account.extra ->> $5, '') <> ''
+							AND (account.extra ->> $5)::timestamptz > NOW()
+						)
+					)
+				)
+			RETURNING candidate.next_delivery_key
+		)
+		SELECT next_delivery_key FROM updated
+	`
+	var deliveryKey string
+	err := scanSingleRow(ctx, r.sql, query, []any{
+		accountID,
+		statusKey,
+		deliveryKeyKey,
+		deliveryStatusKey,
+		claimUntilKey,
+		string(status),
+		claimUntil,
+	}, &deliveryKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, "", nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	return true, deliveryKey, nil
+}
+
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.UpdateExtra(ctx, id, updates)

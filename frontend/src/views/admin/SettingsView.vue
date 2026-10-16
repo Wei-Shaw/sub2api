@@ -8815,6 +8815,21 @@
                   </p>
                 </div>
                 <div>
+                  <label class="input-label">{{ t("admin.settings.telegramNotifications.customerBotToken") }}</label>
+                  <input
+                    v-model="form.telegram_customer_bot_token"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    :placeholder="form.telegram_customer_bot_token_configured
+                      ? t('admin.settings.telegramNotifications.botTokenConfiguredPlaceholder')
+                      : t('admin.settings.telegramNotifications.botTokenPlaceholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.customerBotTokenHint") }}
+                  </p>
+                </div>
+                <div>
                   <label class="input-label">{{ t("admin.settings.telegramNotifications.chatId") }}</label>
                   <input
                     v-model="form.telegram_chat_id"
@@ -10052,6 +10067,8 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   telegram_bot_token: string;
+  telegram_customer_bot_token: string;
+  telegram_customer_bot_token_configured: boolean;
   openai_low_upstream_rate_priority_enabled: boolean;
   openai_oauth_scheduling_rate_multiplier: number | "" | null;
   openai_auto_provision_enabled: boolean;
@@ -10420,6 +10437,8 @@ const form = reactive<SettingsForm>({
   // Telegram Bot Notifications
   telegram_bot_token: "",
   telegram_bot_token_configured: false,
+  telegram_customer_bot_token: "",
+  telegram_customer_bot_token_configured: false,
   telegram_chat_id: "",
   telegram_notify_new_user: false,
   telegram_notify_account_error: false,
@@ -10430,6 +10449,8 @@ const form = reactive<SettingsForm>({
   telegram_notify_sub_expired: false,
   telegram_notify_balance_low: false,
   telegram_notify_ops_alert: false,
+  telegram_notify_customer_balance: false,
+  telegram_notify_provider_balance: false,
   telegram_notify_proxy_expired: false,
 });
 
@@ -10443,6 +10464,8 @@ type TelegramNotificationKey =
   | "telegram_notify_sub_expired"
   | "telegram_notify_balance_low"
   | "telegram_notify_ops_alert"
+  | "telegram_notify_customer_balance"
+  | "telegram_notify_provider_balance"
   | "telegram_notify_proxy_expired";
 
 const telegramNotificationOptions: Array<{
@@ -10457,8 +10480,9 @@ const telegramNotificationOptions: Array<{
   ["paymentFailed", "PaymentFailed"],
   ["refund", "Refund"],
   ["subExpired", "SubExpired"],
-  ["balanceLow", "BalanceLow"],
   ["opsAlert", "OpsAlert"],
+  ["customerBalance", "CustomerBalance"],
+  ["providerBalance", "ProviderBalance"],
   ["proxyExpired", "ProxyExpired"],
 ].map(([name, suffix]) => ({
   key: `telegram_notify_${name}` as TelegramNotificationKey,
@@ -12281,6 +12305,7 @@ async function saveSettings() {
       allow_user_view_error_requests: form.allow_user_view_error_requests,
       // Telegram Bot Notifications
       telegram_bot_token: form.telegram_bot_token || undefined,
+      telegram_customer_bot_token: form.telegram_customer_bot_token || undefined,
       telegram_chat_id: form.telegram_chat_id,
       telegram_notify_new_user: form.telegram_notify_new_user,
       telegram_notify_account_error: form.telegram_notify_account_error,
@@ -12291,6 +12316,8 @@ async function saveSettings() {
       telegram_notify_sub_expired: form.telegram_notify_sub_expired,
       telegram_notify_balance_low: form.telegram_notify_balance_low,
       telegram_notify_ops_alert: form.telegram_notify_ops_alert,
+      telegram_notify_customer_balance: form.telegram_notify_customer_balance,
+      telegram_notify_provider_balance: form.telegram_notify_provider_balance,
       telegram_notify_proxy_expired: form.telegram_notify_proxy_expired,
     };
 

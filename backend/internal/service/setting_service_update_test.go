@@ -53,6 +53,18 @@ func (s *settingUpdateRepoStub) Delete(ctx context.Context, key string) error {
 	panic("unexpected Delete call")
 }
 
+type settingRoundTripRepoStub struct {
+	settingUpdateRepoStub
+}
+
+func (s *settingRoundTripRepoStub) GetAll(context.Context) (map[string]string, error) {
+	values := make(map[string]string, len(s.updates))
+	for key, value := range s.updates {
+		values[key] = value
+	}
+	return values, nil
+}
+
 type settingGetAllRepoStub struct {
 	values map[string]string
 }
@@ -676,6 +688,35 @@ func TestSettingService_ParseSettings_ForwardedClientIPHeaders(t *testing.T) {
 		require.False(t, got.APIKeyACLTrustForwardedIP)
 		require.Empty(t, got.ForwardedClientIPHeaders)
 	})
+}
+
+func TestSettingService_UpdateSettings_TelegramBalanceLaneRoundTrip(t *testing.T) {
+	repo := &settingRoundTripRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	update := &SystemSettings{
+		TelegramNotifyCustomerBalance: true,
+		TelegramNotifyProviderBalance: true,
+	}
+	err := svc.UpdateSettings(context.Background(), update)
+	require.NoError(t, err)
+
+	settings, err := svc.GetAllSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.TelegramNotifyCustomerBalance)
+	require.True(t, settings.TelegramNotifyProviderBalance)
+}
+
+func TestSettingService_ParseSettings_TelegramBalanceLaneToggles(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	settings := svc.parseSettings(map[string]string{
+		SettingTelegramNotifyCustomerBalance: "true",
+		SettingTelegramNotifyProviderBalance: "true",
+	})
+
+	require.True(t, settings.TelegramNotifyCustomerBalance)
+	require.True(t, settings.TelegramNotifyProviderBalance)
 }
 
 func TestSettingService_LoadForwardedClientIPSettingsMigration(t *testing.T) {

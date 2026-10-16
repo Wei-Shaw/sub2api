@@ -629,13 +629,23 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
-	// Telegram Bot Monitor. Keep the token when the admin submits the masked/empty value.
+	// Telegram Bot Monitor. The existing telegram_bot_token/chat_id keys are
+	// retained as admin-lane compatibility aliases during migration.
 	if settings.TelegramBotTokenConfigured && strings.TrimSpace(settings.TelegramBotToken) != "" {
-		updates[SettingTelegramBotToken] = settings.TelegramBotToken
+		adminToken := strings.TrimSpace(settings.TelegramBotToken)
+		updates[SettingTelegramAdminBotToken] = adminToken
+		updates[SettingTelegramBotToken] = adminToken
 	} else if !settings.TelegramBotTokenConfigured {
+		updates[SettingTelegramAdminBotToken] = ""
 		updates[SettingTelegramBotToken] = ""
 	}
+	updates[SettingTelegramAdminChatID] = strings.TrimSpace(settings.TelegramChatID)
 	updates[SettingTelegramChatID] = strings.TrimSpace(settings.TelegramChatID)
+	if settings.TelegramCustomerBotTokenConfigured && strings.TrimSpace(settings.TelegramCustomerBotToken) != "" {
+		updates[SettingTelegramCustomerBotToken] = strings.TrimSpace(settings.TelegramCustomerBotToken)
+	} else if !settings.TelegramCustomerBotTokenConfigured {
+		updates[SettingTelegramCustomerBotToken] = ""
+	}
 	updates[SettingTelegramNotifyNewUser] = strconv.FormatBool(settings.TelegramNotifyNewUser)
 	updates[SettingTelegramNotifyAccountError] = strconv.FormatBool(settings.TelegramNotifyAccountError)
 	updates[SettingTelegramNotifyAccountExpired] = strconv.FormatBool(settings.TelegramNotifyAccountExpired)
@@ -644,6 +654,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingTelegramNotifyRefund] = strconv.FormatBool(settings.TelegramNotifyRefund)
 	updates[SettingTelegramNotifySubExpired] = strconv.FormatBool(settings.TelegramNotifySubExpired)
 	updates[SettingTelegramNotifyBalanceLow] = strconv.FormatBool(settings.TelegramNotifyBalanceLow)
+	updates[SettingTelegramNotifyCustomerBalance] = strconv.FormatBool(settings.TelegramNotifyCustomerBalance)
+	updates[SettingTelegramNotifyProviderBalance] = strconv.FormatBool(settings.TelegramNotifyProviderBalance)
 	updates[SettingTelegramNotifyOpsAlert] = strconv.FormatBool(settings.TelegramNotifyOpsAlert)
 	updates[SettingTelegramNotifyProxyExpired] = strconv.FormatBool(settings.TelegramNotifyProxyExpired)
 

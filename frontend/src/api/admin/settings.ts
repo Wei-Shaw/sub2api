@@ -776,6 +776,7 @@ export interface SystemSettings {
 
   // Telegram Bot Notifications
   telegram_bot_token_configured: boolean;
+  telegram_customer_bot_token_configured: boolean;
   telegram_chat_id: string;
   telegram_notify_new_user: boolean;
   telegram_notify_account_error: boolean;
@@ -786,6 +787,8 @@ export interface SystemSettings {
   telegram_notify_sub_expired: boolean;
   telegram_notify_balance_low: boolean;
   telegram_notify_ops_alert: boolean;
+  telegram_notify_customer_balance: boolean;
+  telegram_notify_provider_balance: boolean;
   telegram_notify_proxy_expired: boolean;
 
   // OpenAI fast/flex policy
@@ -1147,6 +1150,7 @@ export interface UpdateSettingsRequest {
 
   // Telegram Bot Notifications
   telegram_bot_token?: string;
+  telegram_customer_bot_token?: string;
   telegram_chat_id?: string;
   telegram_notify_new_user?: boolean;
   telegram_notify_account_error?: boolean;
@@ -1157,6 +1161,8 @@ export interface UpdateSettingsRequest {
   telegram_notify_sub_expired?: boolean;
   telegram_notify_balance_low?: boolean;
   telegram_notify_ops_alert?: boolean;
+  telegram_notify_customer_balance?: boolean;
+  telegram_notify_provider_balance?: boolean;
   telegram_notify_proxy_expired?: boolean;
 
   // OpenAI fast/flex policy

@@ -131,7 +131,7 @@ func TestFinalizeSimpleModePreservesLastUsedWithoutFinancialCacheWrites(t *testi
 				Account: &Account{ID: 9}, IsSubscriptionBill: subscription,
 				SimpleModeKeyRateLimitOnly: true,
 			}
-			finalizePostUsageBilling(context.Background(), p, &billingDeps{
+			finalizePostUsageBilling(context.Background(), "simple-mode-request", p, &billingDeps{
 				billingCacheService: &BillingCacheService{cache: cache, cacheWriteChan: writes},
 				deferredService:     deferred,
 			}, &UsageBillingApplyResult{Applied: true})

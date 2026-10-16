@@ -29,11 +29,13 @@ const (
 	cnBalanceMaxBodyBytes    = 256 * 1024
 
 	// Extra 余额快照键后缀（加 provider 前缀）。
-	cnBalanceExtraSuffixBalance   = "balance"
-	cnBalanceExtraSuffixCurrency  = "balance_currency"
-	cnBalanceExtraSuffixAvailable = "balance_available" // deepseek is_available 健康标记
-	cnBalanceExtraSuffixUpdated   = "balance_updated_at"
-	cnBalanceExtraSuffixBalances  = "balances" // 多币种明细（deepseek USD+CNY）
+	cnBalanceExtraSuffixBalance             = "balance"
+	cnBalanceExtraSuffixCurrency            = "balance_currency"
+	cnBalanceExtraSuffixAvailable           = "balance_available" // deepseek is_available 健康标记
+	cnBalanceExtraSuffixUpdated             = "balance_updated_at"
+	cnBalanceExtraSuffixBalances            = "balances" // 多币种明细（deepseek USD+CNY）
+	cnBalanceExtraSuffixAlertStatus         = "balance_alert_status"
+	cnBalanceExtraSuffixAlertDeliveryStatus = "balance_alert_delivery_status"
 )
 
 // CNProviderBalanceEntry 是单一币种的余额明细。

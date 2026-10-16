@@ -34,7 +34,7 @@ func TestPostUsageQuotaPersistenceStaysInUsageWorker(t *testing.T) {
 	t.Cleanup(pool.Stop)
 	t.Cleanup(func() { close(repo.release) })
 	pool.Submit(func(ctx context.Context) {
-		finalizePostUsageBilling(ctx, &postUsageBillingParams{
+		finalizePostUsageBilling(ctx, "quota-worker-test", &postUsageBillingParams{
 			Cost: &CostBreakdown{ActualCost: 1}, User: &User{ID: 1}, Account: &Account{ID: 2}, Platform: PlatformOpenAI,
 		}, &billingDeps{
 			userPlatformQuotaRepo: repo,

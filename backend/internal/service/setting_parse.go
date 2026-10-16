@@ -74,6 +74,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		if err := s.ensureOpenAIAutoProvisionDefaults(ctx); err != nil {
 			return err
 		}
+		if err := s.ensureTelegramLaneDefaults(ctx); err != nil {
+			return err
+		}
 		return nil
 	}
 	if !errors.Is(err, ErrSettingNotFound) {
@@ -228,6 +231,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDatasetBufferMaxItems:                     "1000",
 		SettingTelegramBotToken:                             "",
 		SettingTelegramChatID:                               "",
+		SettingTelegramAdminBotToken:                        "",
+		SettingTelegramAdminChatID:                          "",
+		SettingTelegramCustomerBotToken:                     "",
+		SettingTelegramNotifyCustomerBalance:                "false",
+		SettingTelegramNotifyProviderBalance:                "false",
 		SettingTelegramNotifyNewUser:                        "false",
 		SettingTelegramNotifyAccountError:                   "false",
 		SettingTelegramNotifyAccountExpired:                 "false",
@@ -391,6 +399,33 @@ func (s *SettingService) ensureOpenAIAutoProvisionDefaults(ctx context.Context) 
 	return s.settingRepo.SetMultiple(ctx, missing)
 }
 
+func (s *SettingService) ensureTelegramLaneDefaults(ctx context.Context) error {
+	keys := []string{
+		SettingTelegramNotifyCustomerBalance,
+		SettingTelegramNotifyBalanceLow,
+		SettingTelegramNotifyProviderBalance,
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return fmt.Errorf("load Telegram lane defaults: %w", err)
+	}
+	missing := make(map[string]string)
+	if _, ok := values[SettingTelegramNotifyCustomerBalance]; !ok {
+		legacy := values[SettingTelegramNotifyBalanceLow]
+		if legacy != "true" {
+			legacy = "false"
+		}
+		missing[SettingTelegramNotifyCustomerBalance] = legacy
+	}
+	if _, ok := values[SettingTelegramNotifyProviderBalance]; !ok {
+		missing[SettingTelegramNotifyProviderBalance] = "false"
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return s.settingRepo.SetMultiple(ctx, missing)
+}
+
 func parseForwardedClientIPHeadersSetting(value string) ([]string, error) {
 	var headers []string
 	if err := json.Unmarshal([]byte(value), &headers); err != nil {
@@ -463,9 +498,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		DatasetBatchMaxMB:                      datasetIntSetting(s, settings, SettingKeyDatasetBatchMaxMB, func(cfg *config.Config) int { return cfg.Dataset.BatchMaxMB }),
 		DatasetBatchIntervalSec:                datasetIntSetting(s, settings, SettingKeyDatasetBatchIntervalSec, func(cfg *config.Config) int { return cfg.Dataset.BatchIntervalSec }),
 		DatasetBufferMaxItems:                  datasetIntSetting(s, settings, SettingKeyDatasetBufferMaxItems, func(cfg *config.Config) int { return cfg.Dataset.BufferMaxItems }),
-		TelegramBotToken:                       settings[SettingTelegramBotToken],
-		TelegramBotTokenConfigured:             settings[SettingTelegramBotToken] != "",
-		TelegramChatID:                         settings[SettingTelegramChatID],
+		TelegramBotToken:                       firstNonEmpty(settings[SettingTelegramAdminBotToken], settings[SettingTelegramBotToken]),
+		TelegramBotTokenConfigured:             strings.TrimSpace(settings[SettingTelegramAdminBotToken]) != "" || strings.TrimSpace(settings[SettingTelegramBotToken]) != "",
+		TelegramChatID:                         firstNonEmpty(settings[SettingTelegramAdminChatID], settings[SettingTelegramChatID]),
+		TelegramCustomerBotToken:               settings[SettingTelegramCustomerBotToken],
+		TelegramCustomerBotTokenConfigured:     strings.TrimSpace(settings[SettingTelegramCustomerBotToken]) != "",
 		TelegramNotifyNewUser:                  settings[SettingTelegramNotifyNewUser] == "true",
 		TelegramNotifyAccountError:             settings[SettingTelegramNotifyAccountError] == "true",
 		TelegramNotifyAccountExpired:           settings[SettingTelegramNotifyAccountExpired] == "true",
@@ -1120,9 +1157,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.SubscriptionExpiryNotifyEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionExpiryNotifyEnabled])
 
 	// Telegram Bot Monitor
-	result.TelegramBotToken = settings[SettingTelegramBotToken]
-	result.TelegramBotTokenConfigured = strings.TrimSpace(settings[SettingTelegramBotToken]) != ""
-	result.TelegramChatID = strings.TrimSpace(settings[SettingTelegramChatID])
+	result.TelegramBotToken = firstNonEmpty(settings[SettingTelegramAdminBotToken], settings[SettingTelegramBotToken])
+	result.TelegramBotTokenConfigured = strings.TrimSpace(result.TelegramBotToken) != ""
+	result.TelegramChatID = firstNonEmpty(settings[SettingTelegramAdminChatID], settings[SettingTelegramChatID])
+	result.TelegramCustomerBotToken = settings[SettingTelegramCustomerBotToken]
+	result.TelegramCustomerBotTokenConfigured = strings.TrimSpace(result.TelegramCustomerBotToken) != ""
 	result.TelegramNotifyNewUser = settings[SettingTelegramNotifyNewUser] == "true"
 	result.TelegramNotifyAccountError = settings[SettingTelegramNotifyAccountError] == "true"
 	result.TelegramNotifyAccountExpired = settings[SettingTelegramNotifyAccountExpired] == "true"
@@ -1132,6 +1171,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.TelegramNotifySubExpired = settings[SettingTelegramNotifySubExpired] == "true"
 	result.TelegramNotifyBalanceLow = settings[SettingTelegramNotifyBalanceLow] == "true"
 	result.TelegramNotifyOpsAlert = settings[SettingTelegramNotifyOpsAlert] == "true"
+	result.TelegramNotifyCustomerBalance = settings[SettingTelegramNotifyCustomerBalance] == "true"
+	result.TelegramNotifyProviderBalance = settings[SettingTelegramNotifyProviderBalance] == "true"
 	result.TelegramNotifyProxyExpired = settings[SettingTelegramNotifyProxyExpired] == "true"
 
 	// 账号限额通知

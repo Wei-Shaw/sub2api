@@ -459,6 +459,43 @@ func (c *IdempotencyCoordinator) Execute(
 	return &IdempotencyExecuteResult{Data: data}, nil
 }
 
+// ExecuteExisting only executes work for an already-persisted retryable record.
+// It is used by replay paths that must not create a new side effect for an event
+// whose original notification did not need delivery.
+func (c *IdempotencyCoordinator) ExecuteExisting(
+	ctx context.Context,
+	opts IdempotencyExecuteOptions,
+	execute func(context.Context) (any, error),
+) (*IdempotencyExecuteResult, error) {
+	if c == nil || c.repo == nil {
+		return nil, ErrIdempotencyStoreUnavail
+	}
+	key, err := NormalizeIdempotencyKey(opts.IdempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	if key == "" || opts.Scope == "" {
+		return nil, nil
+	}
+	record, err := c.repo.GetByScopeAndKeyHash(ctx, opts.Scope, HashIdempotencyKey(key))
+	if err != nil {
+		return nil, ErrIdempotencyStoreUnavail.WithCause(err)
+	}
+	if record == nil || record.Status != IdempotencyStatusFailedRetryable {
+		return nil, nil
+	}
+	if record.LockedUntil != nil && record.LockedUntil.After(time.Now()) {
+		timer := time.NewTimer(time.Until(*record.LockedUntil))
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return c.Execute(ctx, opts, execute)
+}
+
 // renewProcessingLease uses the same repository lease primitive as system
 // operations. Renewal continues through slow batches and stops before Execute exits.
 func (c *IdempotencyCoordinator) renewProcessingLease(ctx context.Context, record *IdempotencyRecord, ttl time.Duration) func() {

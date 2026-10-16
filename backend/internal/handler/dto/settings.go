@@ -330,18 +330,21 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Telegram bot notifications
-	TelegramBotTokenConfigured   bool   `json:"telegram_bot_token_configured"`
-	TelegramChatID               string `json:"telegram_chat_id"`
-	TelegramNotifyNewUser        bool   `json:"telegram_notify_new_user"`
-	TelegramNotifyAccountError   bool   `json:"telegram_notify_account_error"`
-	TelegramNotifyAccountExpired bool   `json:"telegram_notify_account_expired"`
-	TelegramNotifyPaymentSuccess bool   `json:"telegram_notify_payment_success"`
-	TelegramNotifyPaymentFailed  bool   `json:"telegram_notify_payment_failed"`
-	TelegramNotifyRefund         bool   `json:"telegram_notify_refund"`
-	TelegramNotifySubExpired     bool   `json:"telegram_notify_sub_expired"`
-	TelegramNotifyBalanceLow     bool   `json:"telegram_notify_balance_low"`
-	TelegramNotifyOpsAlert       bool   `json:"telegram_notify_ops_alert"`
-	TelegramNotifyProxyExpired   bool   `json:"telegram_notify_proxy_expired"`
+	TelegramBotTokenConfigured         bool   `json:"telegram_bot_token_configured"`
+	TelegramCustomerBotTokenConfigured bool   `json:"telegram_customer_bot_token_configured"`
+	TelegramChatID                     string `json:"telegram_chat_id"`
+	TelegramNotifyNewUser              bool   `json:"telegram_notify_new_user"`
+	TelegramNotifyAccountError         bool   `json:"telegram_notify_account_error"`
+	TelegramNotifyAccountExpired       bool   `json:"telegram_notify_account_expired"`
+	TelegramNotifyPaymentSuccess       bool   `json:"telegram_notify_payment_success"`
+	TelegramNotifyPaymentFailed        bool   `json:"telegram_notify_payment_failed"`
+	TelegramNotifyRefund               bool   `json:"telegram_notify_refund"`
+	TelegramNotifySubExpired           bool   `json:"telegram_notify_sub_expired"`
+	TelegramNotifyBalanceLow           bool   `json:"telegram_notify_balance_low"`
+	TelegramNotifyOpsAlert             bool   `json:"telegram_notify_ops_alert"`
+	TelegramNotifyCustomerBalance      bool   `json:"telegram_notify_customer_balance"`
+	TelegramNotifyProviderBalance      bool   `json:"telegram_notify_provider_balance"`
+	TelegramNotifyProxyExpired         bool   `json:"telegram_notify_proxy_expired"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
