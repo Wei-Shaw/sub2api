@@ -691,7 +691,7 @@ func buildDingTalkAuthorizeURL(cfg config.DingTalkConnectConfig, state string) (
 // ─── Complete Registration ─────────────────────────────────────────────────
 
 type completeDingTalkOAuthRequest struct {
-	InvitationCode   string `json:"invitation_code" binding:"required"`
+	InvitationCode   string `json:"invitation_code"`
 	AffCode          string `json:"aff_code,omitempty"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
@@ -732,6 +732,12 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 		clearOAuthPendingSessionCookie(c, secureCookie)
 		clearOAuthPendingBrowserCookie(c, secureCookie)
 		response.ErrorFrom(c, err)
+		return
+	}
+	// This endpoint applies DingTalk's registration policy, never another provider's.
+	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), "dingtalk") ||
+		!strings.EqualFold(strings.TrimSpace(session.ProviderKey), "dingtalk") {
+		response.ErrorFrom(c, infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth provider is not dingtalk"))
 		return
 	}
 	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
