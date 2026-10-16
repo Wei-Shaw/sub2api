@@ -398,6 +398,17 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+		// Keep the transport heartbeat alive: the upstream ping carries no model
+		// output, so forward it as an SSE comment and flush it right away, before
+		// it can be mistaken for the first token (same contract as the chat
+		// completions bridge, #7854).
+		if event.Type == "ping" {
+			if _, err := fmt.Fprint(c.Writer, ": ping\n\n"); err != nil {
+				return true
+			}
+			c.Writer.Flush()
+			return false
+		}
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
