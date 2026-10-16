@@ -833,6 +833,10 @@ curl https://your-sub2api.example.com/v1/systemone \
   --data '{"model":"jev-latest","state":"Text to evaluate","questions":{"safety":{"type":"noul","instructions":"Evaluate whether the text is unsafe"}}}'
 ```
 
+Images are experimental in TypeSafe and require `TypeSafe-Danger-Zone-Images: true` on every request that contains an image. Sub2API forwards this header when supplied by the client; it does not enable images automatically. TypeSafe returns `400` when an image request is missing the opt-in header.
+
+For this endpoint, send images in the JSON `assets` map using `format` (`png`, `jpg`, or `jpeg`) and `data_base64`, and reference each asset from `state`, a question's `instructions`, or its `criteria`. The base64 value must not contain a `data:` prefix, whitespace, or line breaks. This route accepts JSON only; TypeSafe's multipart image uploads are not supported here. See the [official TypeSafe image documentation](https://docs.typesafe.ai/images) for the request format, image preparation requirements, and size limits.
+
 The built-in `jev-latest` price is `$0.042` per million input tokens and `$0` for output tokens. Channel pricing can override both values. Credential, billing, permission, rate-limit, overload, server, and network failures (`401`, `402`, `403`, `429`, `529`, `5xx`, transport errors) use the existing account error policy (including custom error codes and temporary-unschedulable rules) and fail over to another account; request errors (`400`, `413`, and `422`) are returned without retrying another account and never change account state. TypeSafe groups (and Composite requests routed to TypeSafe) reject Messages, Chat Completions, Responses, and count_tokens requests with `404`.
 
 ---

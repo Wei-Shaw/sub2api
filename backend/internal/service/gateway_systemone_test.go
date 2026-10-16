@@ -116,6 +116,63 @@ func TestForwardSystemOneAllowsSuccessfulResponseWithoutModel(t *testing.T) {
 	require.Equal(t, 12, result.Usage.InputTokens)
 }
 
+func TestForwardSystemOneForwardsImageOptInHeader(t *testing.T) {
+	const imageHeader = "TypeSafe-Danger-Zone-Images"
+	requestBody := []byte(`{"model":"jev-latest","state":{"image":"photo-7d13"},"assets":{"photo-7d13":{"type":"image","format":"png","data_base64":"aW1hZ2U="}},"questions":{"q":{"type":"noul","instructions":"Is there a person in the image?"}}}`)
+	responseBody := `{"model":"jev-1.13.0","answers":{"q":{"type":"noul","noul":1}},"usage":{"input_tokens":123,"output_tokens":7}}`
+
+	for _, tc := range []struct {
+		name        string
+		headerName  string
+		headerValue string
+		wantStatus  int
+	}{
+		{name: "enabled", headerName: imageHeader, headerValue: "true", wantStatus: http.StatusOK},
+		{name: "lowercase header name", headerName: "typesafe-danger-zone-images", headerValue: "true", wantStatus: http.StatusOK},
+		{name: "missing opt-in", wantStatus: http.StatusBadRequest},
+		{name: "explicitly disabled", headerName: imageHeader, headerValue: "false", wantStatus: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newSystemOneTestContext()
+			c.Request.Header.Set("Authorization", "Bearer client-key")
+			c.Request.Header.Set("X-Client-Header", "private-client-value")
+			if tc.headerName != "" {
+				c.Request.Header.Set(tc.headerName, tc.headerValue)
+			}
+
+			upstream := &systemOneHTTPUpstream{do: func(req *http.Request) (*http.Response, error) {
+				require.Equal(t, tc.headerValue, req.Header.Get(imageHeader))
+				require.Equal(t, "Bearer ts-secret", req.Header.Get("Authorization"))
+				require.Equal(t, "application/json", req.Header.Get("Content-Type"))
+				require.Empty(t, req.Header.Get("X-Client-Header"))
+				body, err := io.ReadAll(req.Body)
+				require.NoError(t, err)
+				require.Equal(t, requestBody, body)
+
+				// Model only TypeSafe's opt-in rule, not image decoding or inference.
+				status, bodyText := http.StatusOK, responseBody
+				if req.Header.Get(imageHeader) != "true" {
+					status, bodyText = http.StatusBadRequest, `{"error":"images are not turned on"}`
+				}
+				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(bodyText))}, nil
+			}}
+			svc := newSystemOneTestService(upstream)
+			account := &Account{ID: 28, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "http://typesafe.test", "api_key": "ts-secret"}}
+			result, err := svc.ForwardSystemOne(context.Background(), c, account, requestBody)
+			if tc.wantStatus == http.StatusBadRequest {
+				var upstreamErr *SystemOneUpstreamError
+				require.ErrorAs(t, err, &upstreamErr)
+				require.Equal(t, tc.wantStatus, upstreamErr.StatusCode)
+				require.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, result.StatusCode)
+			require.Equal(t, responseBody, string(result.Body))
+		})
+	}
+}
+
 const typesafeSystemOnePathForTest = "/v1/systemone"
 
 func TestForwardSystemOneSchemaConformancePassthrough(t *testing.T) {
