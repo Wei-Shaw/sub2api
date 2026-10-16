@@ -11,6 +11,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCodexDefaultModelPartialUpdate covers round-trip, omission, clearing, and rejected writes.
+func TestCodexDefaultModelPartialUpdate(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCodexDefaultModel: "old-model",
+		service.SettingKeySiteName:          "Example Gateway",
+	})
+	rec := doUpdateSettings(t, h, map[string]any{"codex_default_model": " gpt-6.1-sol "}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gpt-6.1-sol", repo.values[service.SettingKeyCodexDefaultModel])
+	require.Contains(t, rec.Body.String(), `"codex_default_model":"gpt-6.1-sol"`)
+	require.Equal(t, "Example Gateway", repo.values[service.SettingKeySiteName])
+
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "Renamed Gateway"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gpt-6.1-sol", repo.values[service.SettingKeyCodexDefaultModel])
+
+	rec = doUpdateSettings(t, h, map[string]any{"codex_default_model": "invalid\nmodel"}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "gpt-6.1-sol", repo.values[service.SettingKeyCodexDefaultModel])
+
+	rec = doUpdateSettings(t, h, map[string]any{"codex_default_model": ""}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "", repo.values[service.SettingKeyCodexDefaultModel])
+}
+
 // Saving settings is a whole-document PUT. A client that sends only the field it
 // cares about must not reset everything else: a payload as small as
 // `{"risk_control_enabled":true}` used to clear site_name, after which
