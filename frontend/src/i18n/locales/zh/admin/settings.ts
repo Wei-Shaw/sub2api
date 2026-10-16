@@ -683,7 +683,8 @@ export default {
         compactHome: '简洁首页',
         compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
-        hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
+        hideCcsImportButtonHint:
+          '启用后将在 API Keys 页面隐藏"导入 CCS"和"导入到 ThinkWatch Lite"按钮'
       },
       purchase: {
         title: '充值/订阅页面',

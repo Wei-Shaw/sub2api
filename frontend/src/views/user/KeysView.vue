@@ -409,6 +409,16 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <!-- Import to ThinkWatch Lite Button -->
+              <button
+                v-if="!publicSettings?.hide_ccs_import_button"
+                @click="importToThinkWatchLite(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                :title="t('keys.importToThinkWatchLiteHint')"
+              >
+                <Icon name="externalLink" size="sm" />
+                <span class="text-xs">{{ t('keys.importToThinkWatchLite') }}</span>
+              </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -1236,6 +1246,7 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import { buildThinkWatchImportLink, openThinkWatchImportLink } from '@/utils/thinkwatchImport'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -2064,6 +2075,15 @@ const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
 const closeCcsClientSelect = () => {
   showCcsClientSelect.value = false
   pendingCcsRow.value = null
+}
+
+const importToThinkWatchLite = (row: ApiKey) => {
+  const link = buildThinkWatchImportLink({
+    baseUrl: publicSettings.value?.api_base_url || window.location.origin,
+    platform: row.group?.platform,
+    apiKey: row.key
+  })
+  openThinkWatchImportLink(link, () => appStore.showError(t('keys.thinkWatchLiteNotInstalled')))
 }
 
 function formatResetTime(resetAt: string | null): string {
