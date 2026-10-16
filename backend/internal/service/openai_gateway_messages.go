@@ -626,6 +626,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
+		s.observeCodexCapabilityRejection(account, payload)
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
 			MarkOpsCyberPolicy(c, CyberPolicyMark{
 				Code:           code,
@@ -762,9 +763,14 @@ func openAICompatTerminalResponse(event *apicompat.ResponsesStreamEvent, payload
 		if message == "" {
 			message = "Upstream response failed"
 		}
+		// 保留 param：访问项目拒绝（param=access_programs.cyber）需据此触发重探测。
+		param := strings.TrimSpace(gjson.GetBytes(payload, "error.param").String())
+		if param == "" {
+			param = strings.TrimSpace(gjson.GetBytes(payload, "param").String())
+		}
 		return &apicompat.ResponsesResponse{
 			Status: "failed",
-			Error:  &apicompat.ResponsesError{Code: event.Code, Message: message},
+			Error:  &apicompat.ResponsesError{Code: event.Code, Message: message, Param: param},
 		}
 	default:
 		return nil
@@ -1050,6 +1056,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
 			if eventType == "response.failed" || isBareErrorEvent {
 				payloadBytes := []byte(payload)
+				s.observeCodexCapabilityRejection(account, payloadBytes)
 				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,

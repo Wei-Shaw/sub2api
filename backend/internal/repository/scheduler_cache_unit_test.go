@@ -329,6 +329,32 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+// Codex 能力路由的候选过滤读本投影；裁掉该键会让每个 OAuth 账号在候选阶段被视为
+// 无能力，带 Daybreak / Ultrafast 需求的请求全部报无可用账号。
+func TestBuildSchedulerMetadataAccount_KeepsCodexCapabilities(t *testing.T) {
+	caps := map[string]any{
+		"models":         map[string]any{"gpt-6-sol": map[string]any{"service_tiers": []any{"priority"}, "cyber_programs": []any{"standard", "daybreak_blue"}}},
+		"service_tiers":  []any{"priority"},
+		"cyber_programs": []any{"daybreak_blue"},
+		"synced_at":      "2026-10-16T00:00:00Z",
+	}
+	account := service.Account{
+		ID:       44,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			service.CodexCapabilitiesExtraKey: caps,
+			"unused_large_field":              "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, caps, got.Extra[service.CodexCapabilitiesExtraKey])
+	require.Nil(t, got.Extra["unused_large_field"])
+	require.True(t, got.CodexCapabilities().SupportsCyberProgram("daybreak_blue"))
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 	t.Run("explicit override", func(t *testing.T) {
 		account := service.Account{

@@ -1952,3 +1952,21 @@ func TestBufferedResponseAccumulator_IgnoresNonFunctionCallItems(t *testing.T) {
 
 	assert.False(t, acc.HasContent())
 }
+
+func TestChatCompletionsToResponses_PreservesAccessPrograms(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:          "gpt-6-sol",
+		Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		AccessPrograms: json.RawMessage(`{"cyber":"daybreak_blue"}`),
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	encoded, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"cyber":"daybreak_blue"}`, string(resp.AccessPrograms))
+	assert.Contains(t, string(encoded), `"access_programs":{"cyber":"daybreak_blue"}`)
+
+	var decoded ChatCompletionsRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"model":"gpt-6-sol","messages":[],"access_programs":{"cyber":"daybreak_red"}}`), &decoded))
+	assert.JSONEq(t, `{"cyber":"daybreak_red"}`, string(decoded.AccessPrograms))
+}

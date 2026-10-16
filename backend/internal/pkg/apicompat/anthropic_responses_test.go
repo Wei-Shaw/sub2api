@@ -2058,3 +2058,23 @@ func TestGPT61SolCacheOptionsAndBreakpointsSurviveChatBridge(t *testing.T) {
 		require.Contains(t, string(out.Input), "prompt_cache_breakpoint")
 	}
 }
+
+func TestAnthropicToResponses_PreservesAccessPrograms(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:          "gpt-6-sol",
+		MaxTokens:      1024,
+		Messages:       []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		AccessPrograms: json.RawMessage(`{"cyber":"daybreak_blue"}`),
+	}
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	encoded, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"access_programs":{"cyber":"daybreak_blue"}`)
+
+	plain, err := AnthropicToResponses(&AnthropicRequest{Model: "gpt-6-sol", MaxTokens: 8, Messages: req.Messages})
+	require.NoError(t, err)
+	encoded, err = json.Marshal(plain)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "access_programs")
+}

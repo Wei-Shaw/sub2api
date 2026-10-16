@@ -1957,6 +1957,11 @@ type openAIResponsesWSUsageLogCase struct {
 	accountRateMultiplier *float64
 	// firstFrameCloseExpected：首帧即被拒（连接被 1008 关闭），不期待任何响应帧。
 	firstFrameCloseExpected bool
+	// firstFrameErrorEventCode 非空时，首帧关闭前客户端先收到一条 error 事件（断言其 error.code）。
+	firstFrameErrorEventCode string
+	// accountType 覆盖账号类型（能力路由测试用 OAuth 账号）；accountExtra 合并进账号 Extra。
+	accountType  string
+	accountExtra map[string]any
 	// secondTurnCloseExpected：第二个 turn 被拒（连接被 1008 关闭）。
 	secondTurnCloseExpected bool
 }
@@ -1991,6 +1996,15 @@ func (s *openAIWSUsageHandlerAccountRepoStub) GetByID(ctx context.Context, id in
 	}
 	account := s.account
 	return &account, nil
+}
+
+func (s *openAIWSUsageHandlerAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, _ *int64, platforms []string, _ bool) ([]service.Account, error) {
+	for _, platform := range platforms {
+		if s.account.Platform == platform {
+			return []service.Account{s.account}, nil
+		}
+	}
+	return nil, nil
 }
 
 type openAIWSFailoverHandlerAccountRepoStub struct {
@@ -2969,6 +2983,12 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if tc.accountPlatform != "" {
 		account.Platform = tc.accountPlatform
 	}
+	if tc.accountType != "" {
+		account.Type = tc.accountType
+	}
+	for key, value := range tc.accountExtra {
+		account.Extra[key] = value
+	}
 	account.RateMultiplier = tc.accountRateMultiplier
 	if strings.TrimSpace(tc.ingressMode) != "" {
 		account.Extra["openai_apikey_responses_websockets_v2_mode"] = tc.ingressMode
@@ -3111,6 +3131,14 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		tc.closeStatus = coderws.StatusPolicyViolation
 	}
 	if tc.firstFrameCloseExpected {
+		if tc.firstFrameErrorEventCode != "" {
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, event, readErr := clientConn.Read(readCtx)
+			cancelRead()
+			require.NoError(t, readErr, "an error event must precede the close")
+			require.Equal(t, "error", gjson.GetBytes(event, "type").String())
+			require.Equal(t, tc.firstFrameErrorEventCode, gjson.GetBytes(event, "error.code").String())
+		}
 		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
 		_, _, readErr := clientConn.Read(readCtx)
 		cancelRead()

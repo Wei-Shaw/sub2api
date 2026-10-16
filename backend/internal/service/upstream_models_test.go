@@ -205,6 +205,19 @@ func TestBuildUpstreamModelsRequestSupportsOpenAIOAuth(t *testing.T) {
 	require.NotEmpty(t, req.Header.Get("Version"))
 }
 
+// setup_token 与 oauth 共用 Codex 能力探测的账号范围谓词：模型同步同样走 ChatGPT Codex 目录，
+// 否则「同步上游模型」拿到的是 /v1/models 形态，能力记录无法回写。
+func TestBuildUpstreamModelsRequestSetupTokenUsesCodexManifest(t *testing.T) {
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
+	req, err := svc.buildUpstreamModelsRequest(context.Background(), &Account{
+		ID: 13, Platform: PlatformOpenAI, Type: AccountTypeSetupToken,
+		Credentials: map[string]any{"access_token": "setup-token-access"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, chatgptCodexModelsURL, req.URL.Scheme+"://"+req.URL.Host+req.URL.Path)
+	require.Equal(t, "Bearer setup-token-access", req.Header.Get("Authorization"))
+}
+
 func TestFetchUpstreamSupportedModelsParsesOpenAIOAuthManifest(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,

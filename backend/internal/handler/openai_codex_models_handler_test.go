@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type codexModelsFailoverAccountRepo struct {
@@ -57,6 +58,10 @@ func (r codexModelsFailoverAccountRepo) ListByGroup(_ context.Context, _ int64) 
 
 func (r codexModelsFailoverAccountRepo) ListModelAvailabilityCandidates(_ context.Context, _ *int64, _ []string, _ bool) ([]service.Account, error) {
 	return append([]service.Account(nil), r.accounts...), nil
+}
+
+func (r codexModelsFailoverAccountRepo) UpdateExtra(_ context.Context, _ int64, _ map[string]any) error {
+	return nil
 }
 
 type codexModelsFailoverHTTPUpstream struct {
@@ -1029,4 +1034,148 @@ func TestCodexModelsDiscoveryProjectsWildcardMappingWithoutAllowlist(t *testing.
 			require.Equal(t, http.StatusNotModified, second.Code)
 		})
 	}
+}
+
+// --- Codex 能力投影（三条路径） ---
+
+const codexHandlerBlueManifest = `{"models":[{"slug":"gpt-6-sol","service_tiers":[{"id":"priority","name":"Fast"}],"available_access_programs":{"cyber":["standard","daybreak_blue"]}},{"slug":"gpt-5.6-sol","service_tiers":[{"id":"priority","name":"Fast"}],"available_access_programs":{"cyber":["standard"]}}]}`
+const codexHandlerStandardManifest = `{"models":[{"slug":"gpt-6-sol","service_tiers":[{"id":"priority","name":"Fast"}],"available_access_programs":{"cyber":["standard"]}},{"slug":"gpt-5.6-sol","service_tiers":[{"id":"priority","name":"Fast"}],"available_access_programs":{"cyber":["standard"]}}]}`
+
+func codexHandlerCyberPrograms(t *testing.T, recorder *httptest.ResponseRecorder, slug string) []string {
+	t.Helper()
+	for _, model := range gjson.GetBytes(recorder.Body.Bytes(), "models").Array() {
+		if model.Get("slug").String() != slug {
+			continue
+		}
+		out := make([]string, 0)
+		for _, program := range model.Get("available_access_programs.cyber").Array() {
+			out = append(out, program.String())
+		}
+		return out
+	}
+	t.Fatalf("model %q not in body %s", slug, recorder.Body.String())
+	return nil
+}
+
+func codexHandlerTierIDs(t *testing.T, recorder *httptest.ResponseRecorder, slug string) []string {
+	t.Helper()
+	for _, model := range gjson.GetBytes(recorder.Body.Bytes(), "models").Array() {
+		if model.Get("slug").String() != slug {
+			continue
+		}
+		out := make([]string, 0)
+		for _, tier := range model.Get("service_tiers").Array() {
+			out = append(out, tier.Get("id").String())
+		}
+		return out
+	}
+	t.Fatalf("model %q not in body %s", slug, recorder.Body.String())
+	return nil
+}
+
+func newCodexHandlerOAuthAccount(id int64, priority int, manifest string) service.Account {
+	account := service.Account{
+		ID: id, Name: fmt.Sprintf("oauth-%d", id), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true, Priority: priority, Concurrency: 1,
+		Credentials: map[string]any{"access_token": fmt.Sprintf("tok-%d", id)},
+		Extra:       map[string]any{},
+	}
+	if manifest != "" {
+		caps, _ := service.DeriveCodexAccountCapabilities([]byte(manifest))
+		account.Extra[service.CodexCapabilitiesExtraKey] = caps
+	}
+	return account
+}
+
+// 固定账号路径：首账号无 Daybreak、第二账号有 Blue → 合并后 cyber 列表包含 daybreak_blue，
+// ETag 随能力变化。
+func TestCodexModelsPinnedPathProjectsCapabilityUnion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(codexHandlerStandardManifest))
+	}))
+	defer server.Close()
+	restore := service.SetChatGPTCodexModelsURLForTest(server.URL)
+	defer restore()
+	first := newCodexHandlerOAuthAccount(2, 0, codexHandlerStandardManifest)
+	second := newCodexHandlerOAuthAccount(3, 1, codexHandlerBlueManifest)
+	upstream := &codexModelsPinnedHTTPUpstream{}
+	handler := newPinnedCodexTestHandler([]service.Account{first, second}, upstream, 3)
+	group := &service.Group{ID: 101, Platform: service.PlatformOpenAI, CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{2, 3}}}
+
+	rec := performPinnedCodexModelsRequest(t, handler, group, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"standard", "daybreak_blue"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"))
+	require.Equal(t, []string{"standard"}, codexHandlerCyberPrograms(t, rec, "gpt-5.6-sol"))
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Equal(t, http.StatusNotModified, performPinnedCodexModelsRequest(t, handler, group, etag).Code)
+
+	// 第二账号的 Blue 被撤销 → ETag 变化，旧 ETag 不再 304。
+	revoked := newCodexHandlerOAuthAccount(3, 1, codexHandlerStandardManifest)
+	handler = newPinnedCodexTestHandler([]service.Account{first, revoked}, upstream, 3)
+	rec = performPinnedCodexModelsRequest(t, handler, group, etag)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"standard"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"))
+	require.NotEqual(t, etag, rec.Header().Get("ETag"))
+}
+
+// 本地生成路径：模板为 gpt-5.6-sol 硬编码 ultrafast，记录不含 → 下发不含 ultrafast；
+// 白名单裁剪同样生效。
+func TestCodexModelsLocalPathProjectsRecordsAndAllowlist(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := newCodexHandlerOAuthAccount(1, 0, codexHandlerBlueManifest)
+	account.Credentials["model_mapping"] = map[string]any{"gpt-5.6-sol": "gpt-5.6-sol", "gpt-6-sol": "gpt-6-sol"}
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{account}}
+	gatewayService := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil, &codexModelsFailoverHTTPUpstream{}, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+	group := &service.Group{ID: 102, Platform: service.PlatformOpenAI}
+
+	rec := performCodexModelsRequestForGroup(t, handler, group, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"priority"}, codexHandlerTierIDs(t, rec, "gpt-5.6-sol"), "模板硬编码的 ultrafast 被记录覆盖")
+	require.Equal(t, []string{"standard", "daybreak_blue"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"))
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Equal(t, http.StatusNotModified, performCodexModelsRequestForGroup(t, handler, group, etag).Code)
+
+	group.CapabilityAllowlist = service.GroupCapabilityAllowlist{Enabled: true, ServiceTiers: []string{"priority"}}
+	rec = performCodexModelsRequestForGroup(t, handler, group, etag)
+	require.Equal(t, http.StatusOK, rec.Code, "白名单变化导致 ETag 变化")
+	require.Equal(t, []string{"standard"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"))
+	require.NotEqual(t, etag, rec.Header().Get("ETag"))
+}
+
+// 调度拉取路径：manifest 由无项目账号拉取，分组内另一账号记录带 Blue → 并集；
+// Composite 分组只裁剪不并集。
+func TestCodexModelsSchedulerPathProjectsCapabilitiesAndCompositeOnlyPrunes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	standard := newCodexHandlerOAuthAccount(1, 0, codexHandlerStandardManifest)
+	blue := newCodexHandlerOAuthAccount(2, 5, codexHandlerBlueManifest)
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{standard, blue}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", `W/"upstream-etag"`)
+		_, _ = w.Write([]byte(codexHandlerStandardManifest))
+	}))
+	defer server.Close()
+	restore := service.SetChatGPTCodexModelsURLForTest(server.URL)
+	defer restore()
+	gatewayService := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil, &codexModelsFailoverHTTPUpstream{}, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+
+	group := &service.Group{ID: 103, Platform: service.PlatformOpenAI}
+	rec := performCodexModelsRequestForGroup(t, handler, group, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"standard", "daybreak_blue"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"))
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.NotEqual(t, `W/"upstream-etag"`, etag, "ETag 基于投影后的 body")
+	require.Equal(t, http.StatusNotModified, performCodexModelsRequestForGroup(t, handler, group, etag).Code)
+
+	composite := &service.Group{ID: 104, Platform: service.PlatformComposite, CapabilityAllowlist: service.GroupCapabilityAllowlist{Enabled: true, ServiceTiers: []string{"ultrafast"}}}
+	rec = performCodexModelsRequestForGroup(t, handler, composite, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"standard"}, codexHandlerCyberPrograms(t, rec, "gpt-6-sol"), "Composite 不并集")
+	require.Equal(t, []string{}, codexHandlerTierIDs(t, rec, "gpt-6-sol"), "Composite 仍裁剪")
 }
