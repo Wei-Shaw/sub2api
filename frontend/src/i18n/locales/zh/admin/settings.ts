@@ -155,6 +155,9 @@ export default {
         enableRegistrationHint: '允许新用户注册',
         emailVerification: '邮箱验证',
         emailVerificationHint: '新用户注册时需要验证邮箱',
+        reviewEnabled: '注册审核',
+        reviewEnabledHint:
+          '开启后新注册用户需填写申请理由，管理员在用户列表中审核（通过/拒绝）后方可登录',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
           "仅允许使用指定域名的邮箱注册账号；留空则不限制（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",

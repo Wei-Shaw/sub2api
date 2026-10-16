@@ -109,12 +109,18 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	verifyCode string,
 	invitationCode string,
 	signupSource string,
+	registrationReason ...string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
 	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
+	}
+
+	status, reason, err := s.resolveRegistrationStatus(ctx, firstRegistrationReason(registrationReason))
+	if err != nil {
+		return nil, nil, err
 	}
 
 	email = strings.TrimSpace(strings.ToLower(email))
@@ -154,13 +160,14 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:              email,
+		PasswordHash:       hashedPassword,
+		Role:               RoleUser,
+		Balance:            grantPlan.Balance,
+		Concurrency:        grantPlan.Concurrency,
+		Status:             status,
+		RegistrationReason: reason,
+		SignupSource:       signupSource,
 	}
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
@@ -175,6 +182,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		}
 	}
 
+	if user.Status == StatusPending {
+		return nil, user, nil
+	}
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
@@ -191,12 +201,18 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	password string,
 	invitationCode string,
 	signupSource string,
+	registrationReason ...string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
 	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
+	}
+
+	status, reason, err := s.resolveRegistrationStatus(ctx, firstRegistrationReason(registrationReason))
+	if err != nil {
+		return nil, nil, err
 	}
 
 	email = strings.TrimSpace(strings.ToLower(email))
@@ -240,14 +256,15 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		RPMLimit:     defaultRPMLimit,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:              email,
+		PasswordHash:       hashedPassword,
+		Role:               RoleUser,
+		Balance:            grantPlan.Balance,
+		Concurrency:        grantPlan.Concurrency,
+		RPMLimit:           defaultRPMLimit,
+		Status:             status,
+		RegistrationReason: reason,
+		SignupSource:       signupSource,
 	}
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
@@ -261,6 +278,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		}
 	}
 
+	if user.Status == StatusPending {
+		return nil, user, nil
+	}
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")

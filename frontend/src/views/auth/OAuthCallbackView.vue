@@ -65,6 +65,11 @@
               @keyup.enter="handleSubmitRegistration"
             />
           </div>
+          <RegistrationReasonField
+            v-if="registrationReviewEnabled"
+            v-model="registrationReason"
+            :disabled="isSubmitting"
+          />
           <p v-if="registrationError" class="text-sm text-red-600 dark:text-red-400">
             {{ registrationError }}
           </p>
@@ -147,6 +152,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import RegistrationReasonField from '@/components/auth/RegistrationReasonField.vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useClipboard } from '@/composables/useClipboard'
@@ -155,6 +161,8 @@ import { apiClient } from '@/api/client'
 import { buildApiUrl } from '@/api/url'
 import {
   exchangePendingOAuthCompletion,
+  throwIfRegistrationPendingReview,
+  RegistrationPendingReviewError,
   persistOAuthTokenContext,
   type OAuthTokenResponse
 } from '@/api/auth'
@@ -178,6 +186,9 @@ const registrationEmail = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const invitationCode = ref('')
+const registrationReason = ref('')
+const completionReviewEnabled = ref(false)
+const registrationReviewEnabled = computed(() => completionReviewEnabled.value || appStore.cachedPublicSettings?.registration_review_enabled === true)
 const registrationError = ref('')
 const pendingProvider = ref<'github' | 'google'>('github')
 const redirectTo = ref('/dashboard')
@@ -190,6 +201,7 @@ type EmailOAuthPendingCompletion = Partial<OAuthTokenResponse> & {
   redirect?: string
   email?: string
   resolved_email?: string
+  registration_review_enabled?: boolean
   invitation_required?: boolean
 }
 
@@ -216,6 +228,7 @@ const canSubmitRegistration = computed(() => {
   if (password.value.length < 6) return false
   if (password.value !== confirmPassword.value) return false
   if (invitationRequired.value && !invitationCode.value.trim()) return false
+  if (registrationReviewEnabled.value && (!registrationReason.value.trim() || registrationReason.value.trim().length > 500)) return false
   return true
 })
 
@@ -286,10 +299,21 @@ function hasOAuthTokenResponse(value: Partial<OAuthTokenResponse>): value is OAu
   return typeof value.access_token === 'string' && value.access_token.trim() !== ''
 }
 
+async function handleRegistrationPending(error: unknown): Promise<boolean> {
+  if (!(error instanceof RegistrationPendingReviewError)) return false
+  window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY)
+  authStore.clearPendingAuthSession?.()
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.registrationPendingReviewSuccess'))
+  await router.replace('/login')
+  return true
+}
+
 async function resumePendingEmailOAuth() {
   isProcessing.value = true
   try {
     const completion = await exchangePendingOAuthCompletion() as EmailOAuthPendingCompletion
+    completionReviewEnabled.value = completion.registration_review_enabled === true
     const completionRedirect = completion.redirect || '/dashboard'
     if (hasOAuthTokenResponse(completion)) {
       await finalizeTokenResponse(completion, completionRedirect)
@@ -312,6 +336,7 @@ async function resumePendingEmailOAuth() {
 
     appStore.showError(completion.error || t('auth.loginFailed'))
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     const message = err.response?.data?.message || err.message || t('auth.loginFailed')
     appStore.showError(message)
@@ -337,13 +362,18 @@ async function handleSubmitRegistration() {
     registrationError.value = t('auth.passwordsDoNotMatch')
     return
   }
+  if (registrationReviewEnabled.value && (!registrationReason.value.trim() || registrationReason.value.trim().length > 500)) {
+    registrationError.value = t(registrationReason.value.trim() ? 'auth.registrationReasonTooLong' : 'auth.registrationReasonRequired')
+    return
+  }
   const code = invitationCode.value.trim()
   if (invitationRequired.value && !code) return
 
   isSubmitting.value = true
   try {
-    const payload: { password: string; invitation_code?: string; aff_code?: string } = {
+    const payload: { password: string; invitation_code?: string; aff_code?: string; registration_reason?: string } = {
       password: password.value,
+      ...(registrationReviewEnabled.value ? { registration_reason: registrationReason.value.trim() } : {}),
       ...oauthAffiliatePayload(loadOAuthAffiliateCode())
     }
     if (invitationRequired.value) {
@@ -353,8 +383,11 @@ async function handleSubmitRegistration() {
       `/auth/oauth/${pendingProvider.value}/complete-registration`,
       payload
     )
+    throwIfRegistrationPendingReview(data)
+    if (!hasOAuthTokenResponse(data)) throw new Error(t('auth.loginFailed'))
     await finalizeTokenResponse(data, redirectTo.value)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     registrationError.value =
       err.response?.data?.message || err.message || t('auth.oidc.completeRegistrationFailed')

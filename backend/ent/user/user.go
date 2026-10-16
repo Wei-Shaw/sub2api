@@ -65,6 +65,8 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldRegistrationReason holds the string denoting the registration_reason field in the database.
+	FieldRegistrationReason = "registration_reason"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -221,6 +223,7 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldRegistrationReason,
 }
 
 var (
@@ -295,6 +298,8 @@ var (
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultRegistrationReason holds the default value on creation for the "registration_reason" field.
+	DefaultRegistrationReason string
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -428,6 +433,11 @@ func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByRegistrationReason orders the results by the registration_reason field.
+func ByRegistrationReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistrationReason, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

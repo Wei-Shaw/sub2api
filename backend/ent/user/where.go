@@ -180,6 +180,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// RegistrationReason applies equality check predicate on the "registration_reason" field. It's identical to RegistrationReasonEQ.
+func RegistrationReason(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegistrationReason, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1398,6 +1403,71 @@ func RpmLimitLT(v int) predicate.User {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// RegistrationReasonEQ applies the EQ predicate on the "registration_reason" field.
+func RegistrationReasonEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonNEQ applies the NEQ predicate on the "registration_reason" field.
+func RegistrationReasonNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonIn applies the In predicate on the "registration_reason" field.
+func RegistrationReasonIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRegistrationReason, vs...))
+}
+
+// RegistrationReasonNotIn applies the NotIn predicate on the "registration_reason" field.
+func RegistrationReasonNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRegistrationReason, vs...))
+}
+
+// RegistrationReasonGT applies the GT predicate on the "registration_reason" field.
+func RegistrationReasonGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonGTE applies the GTE predicate on the "registration_reason" field.
+func RegistrationReasonGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonLT applies the LT predicate on the "registration_reason" field.
+func RegistrationReasonLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonLTE applies the LTE predicate on the "registration_reason" field.
+func RegistrationReasonLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonContains applies the Contains predicate on the "registration_reason" field.
+func RegistrationReasonContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonHasPrefix applies the HasPrefix predicate on the "registration_reason" field.
+func RegistrationReasonHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonHasSuffix applies the HasSuffix predicate on the "registration_reason" field.
+func RegistrationReasonHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonEqualFold applies the EqualFold predicate on the "registration_reason" field.
+func RegistrationReasonEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRegistrationReason, v))
+}
+
+// RegistrationReasonContainsFold applies the ContainsFold predicate on the "registration_reason" field.
+func RegistrationReasonContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRegistrationReason, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

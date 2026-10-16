@@ -209,9 +209,24 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, err
 	}
 
-	// Protect admin users: cannot disable admin accounts
-	if user.Role == "admin" && input.Status == "disabled" {
-		return nil, errors.New("cannot disable admin user")
+	// Protect admin accounts from any explicit non-active status.
+	if user.Role == RoleAdmin && input.Status != "" && input.Status != StatusActive {
+		return nil, errors.New("cannot make admin user inactive")
+	}
+	// Check the resulting role and status before mutating the loaded account.
+	finalRole := user.Role
+	if input.Role != "" {
+		finalRole, err = normalizeUserRole(input.Role, user.Role)
+		if err != nil {
+			return nil, err
+		}
+	}
+	finalStatus := user.Status
+	if input.Status != "" {
+		finalStatus = input.Status
+	}
+	if finalRole == RoleAdmin && finalStatus != StatusActive {
+		return nil, errors.New("admin user must be active")
 	}
 
 	oldConcurrency := user.Concurrency
@@ -251,18 +266,14 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	// 角色变更(admin/user);空字符串表示不修改。
 	if input.Role != "" {
-		role, err := normalizeUserRole(input.Role, user.Role)
-		if err != nil {
-			return nil, err
-		}
 		// 防锁死保护：不允许降级系统中最后一个管理员（自我降级已在 handler 层拦截，
 		// 此处兜底覆盖跨管理员互降导致零 admin 的场景）。
-		if user.Role == RoleAdmin && role == RoleUser {
+		if user.Role == RoleAdmin && finalRole == RoleUser {
 			if err := s.ensureNotLastAdmin(ctx); err != nil {
 				return nil, err
 			}
 		}
-		user.Role = role
+		user.Role = finalRole
 		fields.Role = true
 	}
 
@@ -295,6 +306,12 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if user.Role != oldRole {
 		logger.LegacyPrintf("service.admin", "audit: user role changed actor_admin_id=%d target_user_id=%d old_role=%s new_role=%s",
 			input.ActorAdminID, user.ID, oldRole, user.Role)
+	}
+
+	// 注册审核：状态从 pending 变为 active/disabled 即管理员审核结论，落审计日志。
+	if oldStatus == StatusPending && user.Status != oldStatus {
+		logger.LegacyPrintf("service.admin", "audit: registration review actor_admin_id=%d target_user_id=%d review_result=%s",
+			input.ActorAdminID, user.ID, user.Status)
 	}
 
 	// 同步用户专属分组倍率

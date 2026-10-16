@@ -440,7 +440,12 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 	}
 
 	// ─── Level 1：auth_identities hit ───
-	if existing, _ := h.findOAuthIdentityUser(c.Request.Context(), identityKey); existing != nil {
+	existing, err := h.findOAuthIdentityUser(c.Request.Context(), identityKey)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+	}
+	if existing != nil {
 		// 身份同步：已登录用户，直接同步（user_id 已知）。
 		// 异步执行避免上游钉钉接口（GetStaffInfoByUserId / 部门递归）阻塞登录跳转。
 		runDingTalkSyncAsync(c.Request.Context(), func(ctx context.Context) {
@@ -462,7 +467,7 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 	signupBlocked := h.isDingTalkSignupBlocked(c.Request.Context(), cfg)
 
 	// ─── 非命中：require_email=false 走 synthetic email 直接登录 ───
-	if !cfg.RequireEmail {
+	if !cfg.RequireEmail && !h.isOAuthRegistrationReviewEnabled(c.Request.Context()) {
 		if signupBlocked {
 			// 注册被拦 + 无邮箱可输：唯一出路是绑定已有账户
 			if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
@@ -690,18 +695,11 @@ func buildDingTalkAuthorizeURL(cfg config.DingTalkConnectConfig, state string) (
 
 // ─── Complete Registration ─────────────────────────────────────────────────
 
-type completeDingTalkOAuthRequest struct {
-	InvitationCode   string `json:"invitation_code" binding:"required"`
-	AffCode          string `json:"aff_code,omitempty"`
-	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
-}
-
 // CompleteDingTalkOAuthRegistration completes a pending OAuth registration by validating
 // the invitation code and creating the user account.
 // POST /api/v1/auth/oauth/dingtalk/complete-registration
 func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
-	var req completeDingTalkOAuthRequest
+	var req completeOAuthRegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
 		return
@@ -792,12 +790,16 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 		req.AffCode,
 		pendingOAuthPromoCode(session),
 		"dingtalk",
+		req.RegistrationReason,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := applyPendingOAuthAdoptionAndConsumeSession(c.Request.Context(), client, h.authService, h.userService, session, decision, user.ID); err != nil {
+	if err := applyPendingOAuthAdoptionAndConsumeSession(c.Request.Context(), client, h.authService, h.userService, session, decision, user.ID, tokenPair == nil && user.Status == service.StatusPending); err != nil {
+		if h.rollbackPendingOAuthRegistration(c, user, req.InvitationCode, err) {
+			return
+		}
 		respondPendingOAuthBindingApplyError(c, err)
 		return
 	}
@@ -810,16 +812,15 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 			h.syncDingTalkIdentityFromClaims(ctx, completionCfg, dtClient, user.ID, claims, true)
 		})
 	}
-	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  tokenPair.AccessToken,
-		"refresh_token": tokenPair.RefreshToken,
-		"expires_in":    tokenPair.ExpiresIn,
-		"token_type":    "Bearer",
-	})
+	if writeOAuthPendingReviewResponse(c, user) {
+		return
+	}
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
 // CreateDingTalkOAuthAccount creates a new user account from a pending DingTalk OAuth session.

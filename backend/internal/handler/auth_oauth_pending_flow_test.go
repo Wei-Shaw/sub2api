@@ -2513,6 +2513,7 @@ func newOAuthPendingFlowTestHandlerWithOptions(
 }
 
 type oauthPendingFlowTestHandlerOptions struct {
+	driverWrapper      func(dialect.Driver) dialect.Driver
 	invitationEnabled  bool
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
@@ -2577,7 +2578,11 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 	require.NoError(t, err)
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
-	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	var clientDriver dialect.Driver = drv
+	if options.driverWrapper != nil {
+		clientDriver = options.driverWrapper(clientDriver)
+	}
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(clientDriver)))
 
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -3117,6 +3122,7 @@ func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.Use
 		SetNillableTotpEnabledAt(user.TotpEnabledAt).
 		SetTotalRecharged(user.TotalRecharged).
 		SetSignupSource(user.SignupSource).
+		SetRegistrationReason(user.RegistrationReason).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
 		Save(ctx)
@@ -3485,6 +3491,7 @@ func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 		Concurrency:         entity.Concurrency,
 		Status:              entity.Status,
 		SignupSource:        entity.SignupSource,
+		RegistrationReason:  entity.RegistrationReason,
 		LastLoginAt:         entity.LastLoginAt,
 		LastActiveAt:        entity.LastActiveAt,
 		TotpSecretEncrypted: entity.TotpSecretEncrypted,

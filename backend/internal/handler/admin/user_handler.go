@@ -82,7 +82,7 @@ type UpdateUserRequest struct {
 	Balance              *float64 `json:"balance"`
 	Concurrency          *int     `json:"concurrency"`
 	RPMLimit             *int     `json:"rpm_limit"`
-	Status               string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	Status               string   `json:"status" binding:"omitempty,oneof=active disabled pending"`
 	AllowedGroups        *[]int64 `json:"allowed_groups"`
 	RestrictPublicGroups *bool    `json:"restrict_public_groups"`
 	// GroupRates 用户专属分组倍率配置

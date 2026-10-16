@@ -604,18 +604,11 @@ func (h *AuthHandler) createOIDCOAuthChoicePendingSession(
 	})
 }
 
-type completeOIDCOAuthRequest struct {
-	InvitationCode   string `json:"invitation_code" binding:"required"`
-	AffCode          string `json:"aff_code,omitempty"`
-	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
-}
-
 // CompleteOIDCOAuthRegistration completes a pending OAuth registration by validating
 // the invitation code and creating the user account.
 // POST /api/v1/auth/oauth/oidc/complete-registration
 func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
-	var req completeOIDCOAuthRequest
+	var req completeOAuthRegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
 		return
@@ -698,25 +691,28 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		req.AffCode,
 		pendingOAuthPromoCode(session),
 		"oidc",
+		req.RegistrationReason,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := applyPendingOAuthAdoptionAndConsumeSession(c.Request.Context(), client, h.authService, h.userService, session, decision, user.ID); err != nil {
+	if err := applyPendingOAuthAdoptionAndConsumeSession(c.Request.Context(), client, h.authService, h.userService, session, decision, user.ID, tokenPair == nil && user.Status == service.StatusPending); err != nil {
+		if h.rollbackPendingOAuthRegistration(c, user, req.InvitationCode, err) {
+			return
+		}
 		respondPendingOAuthBindingApplyError(c, err)
 		return
 	}
-	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  tokenPair.AccessToken,
-		"refresh_token": tokenPair.RefreshToken,
-		"expires_in":    tokenPair.ExpiresIn,
-		"token_type":    "Bearer",
-	})
+	if writeOAuthPendingReviewResponse(c, user) {
+		return
+	}
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
 func (h *AuthHandler) getOIDCOAuthConfig(ctx context.Context) (config.OIDCConnectConfig, error) {

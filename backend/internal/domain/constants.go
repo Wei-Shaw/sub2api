@@ -8,6 +8,8 @@ const (
 	StatusUnused   = "unused"
 	StatusUsed     = "used"
 	StatusExpired  = "expired"
+	// StatusPending 用户待审核：注册审核开启时新用户进入该状态，管理员通过后变为 active。
+	StatusPending = "pending"
 )
 
 // Role constants

@@ -89,7 +89,9 @@ export interface User {
   frozen_balance?: number // Balance currently held by async batch jobs
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
-  status: 'active' | 'disabled' // Account status
+  // 注册审核：用户注册时提交的申请理由（仅管理端返回）
+  registration_reason?: string
+  status: 'active' | 'disabled' | 'pending' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
@@ -143,6 +145,7 @@ export interface RegisterRequest {
   promo_code?: string
   invitation_code?: string
   aff_code?: string
+  registration_reason?: string
 }
 
 export interface AffiliateInvitee {
@@ -211,6 +214,7 @@ export interface LoginAgreementDocument {
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
+  registration_review_enabled: boolean
   force_email_on_third_party_signup: boolean
   registration_email_suffix_whitelist: string[]
   registration_email_domain_quota_enabled?: boolean
@@ -2109,7 +2113,7 @@ export interface UpdateUserRequest {
   balance?: number
   concurrency?: number
   rpm_limit?: number
-  status?: 'active' | 'disabled'
+  status?: 'active' | 'disabled' | 'pending'
   allowed_groups?: number[] | null
   restrict_public_groups?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)

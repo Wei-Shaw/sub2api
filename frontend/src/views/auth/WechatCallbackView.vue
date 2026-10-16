@@ -78,6 +78,11 @@
           </div>
 
           <template v-if="needsInvitation">
+            <RegistrationReasonField
+              v-if="registrationReviewEnabled"
+              v-model="registrationReason"
+              :disabled="isSubmitting"
+            />
             <p class="text-sm text-gray-700 dark:text-gray-300">
               {{ t('auth.oidc.invitationRequired', { providerName }) }}
             </p>
@@ -93,7 +98,7 @@
             </div>
             <button
               class="btn btn-primary w-full"
-              :disabled="isSubmitting || !invitationCode.trim()"
+              :disabled="isSubmitting || !invitationCode.trim() || (registrationReviewEnabled && (!registrationReason.trim() || registrationReason.trim().length > 500))"
               @click="handleSubmitInvitation"
             >
               {{
@@ -194,6 +199,7 @@
               {{ t('auth.oauthFlow.createAccountHint') }}
             </p>
             <PendingOAuthCreateAccountForm
+              :registration-review-enabled="registrationReviewEnabled"
               test-id-prefix="wechat"
               :initial-email="pendingAccountEmail"
               :is-submitting="isSubmitting"
@@ -317,6 +323,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import RegistrationReasonField from '@/components/auth/RegistrationReasonField.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
@@ -328,6 +335,9 @@ import { useAuthStore, useAppStore } from '@/stores'
 import {
   completeWeChatOAuthRegistration,
   exchangePendingOAuthCompletion,
+  throwIfRegistrationPendingReview,
+  RegistrationPendingReviewError,
+  getPublicSettings,
   getAuthToken,
   hasExplicitWeChatOAuthCapabilities,
   getOAuthCompletionKind,
@@ -358,6 +368,9 @@ const errorMessage = ref('')
 const needsInvitation = ref(false)
 const needsChooser = ref(false)
 const invitationCode = ref('')
+const registrationReason = ref('')
+const completionReviewEnabled = ref(false)
+const registrationReviewEnabled = computed(() => completionReviewEnabled.value || appStore.cachedPublicSettings?.registration_review_enabled === true)
 const isSubmitting = ref(false)
 const invitationError = ref('')
 const redirectTo = ref('/dashboard')
@@ -649,6 +662,7 @@ async function handleExistingAccountBinding() {
 }
 
 function applyAdoptionSuggestionState(completion: PendingOAuthExchangeResponse) {
+  completionReviewEnabled.value = completion.registration_review_enabled === true || completionReviewEnabled.value
   adoptionRequired.value = completion.adoption_required === true
   suggestedDisplayName.value = completion.suggested_display_name || ''
   suggestedAvatarUrl.value = completion.suggested_avatar_url || ''
@@ -803,7 +817,17 @@ function isCreateAccountRecoveryError(error: unknown): boolean {
     states.includes('existing_account_binding_required')
 }
 
+async function handleRegistrationPending(error: unknown): Promise<boolean> {
+  if (!(error instanceof RegistrationPendingReviewError)) return false
+  clearPendingAuthSession()
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.registrationPendingReviewSuccess'))
+  await router.replace('/login')
+  return true
+}
+
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
+  throwIfRegistrationPendingReview(completion)
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
     clearPendingAuthSession()
@@ -825,6 +849,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
 }
 
 async function finalizePendingAccountResponse(completion: PendingWeChatCompletion) {
+  throwIfRegistrationPendingReview(completion)
   applyAdoptionSuggestionState(completion)
   const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
 
@@ -865,6 +890,10 @@ async function finalizePendingAccountResponse(completion: PendingWeChatCompletio
 async function handleSubmitInvitation() {
   invitationError.value = ''
   if (!invitationCode.value.trim()) return
+  if (registrationReviewEnabled.value && (!registrationReason.value.trim() || registrationReason.value.trim().length > 500)) {
+    invitationError.value = t(registrationReason.value.trim() ? 'auth.registrationReasonTooLong' : 'auth.registrationReasonRequired')
+    return
+  }
 
   isSubmitting.value = true
   try {
@@ -875,15 +904,18 @@ async function handleSubmitInvitation() {
           await apiClient.post<PendingWeChatCompletion>('/auth/oauth/wechat/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
+            ...(registrationReviewEnabled.value ? { registration_reason: registrationReason.value.trim() } : {}),
             ...oauthAffiliatePayload(affCode),
             ...serializeAdoptionDecision(decision)
           })
         ).data
-      : affCode
-        ? await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision, affCode)
-        : await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision)
+      : await completeWeChatOAuthRegistration(
+          invitationCode.value.trim(), decision, affCode || undefined,
+          registrationReviewEnabled.value ? registrationReason.value.trim() : undefined
+        )
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     invitationError.value =
       err.response?.data?.message || err.message || t('auth.oidc.completeRegistrationFailed')
@@ -898,6 +930,7 @@ async function handleContinueLogin() {
     const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision()) as PendingWeChatCompletion
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     needsAdoptionConfirmation.value = false
   } finally {
@@ -923,11 +956,13 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
         }
         : {}),
       invitation_code: payload.invitationCode || undefined,
+      ...(payload.registrationReason ? { registration_reason: payload.registrationReason } : {}),
       ...oauthAffiliatePayload(loadOAuthAffiliateCode()),
       ...serializeAdoptionDecision(currentAdoptionDecision())
     })
     await finalizePendingAccountResponse(data)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     if (isCreateAccountRecoveryError(e)) {
       switchToBindLoginMode(payload.email.trim())
       return
@@ -953,6 +988,7 @@ async function handleBindLogin() {
     })
     await finalizePendingAccountResponse(data)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     accountActionError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
   } finally {
     isSubmitting.value = false
@@ -1040,6 +1076,10 @@ onMounted(async () => {
     }
 
     if (error === 'invitation_required' && legacyPendingToken) {
+      try {
+        const settings = await getPublicSettings()
+        completionReviewEnabled.value = settings.registration_review_enabled === true
+      } catch { /* Backend validates the reason if public settings are unavailable. */ }
       legacyPendingOAuthToken.value = legacyPendingToken
       redirectTo.value = redirect
       needsInvitation.value = true
@@ -1088,6 +1128,7 @@ onMounted(async () => {
 
     await finalizeCompletion(completion, completionRedirect)
   } catch (e: unknown) {
+    if (await handleRegistrationPending(e)) return
     clearPendingAuthSession()
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     isProcessing.value = false

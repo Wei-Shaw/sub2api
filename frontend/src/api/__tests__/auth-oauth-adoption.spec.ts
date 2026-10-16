@@ -16,6 +16,29 @@ describe('oauth adoption auth api', () => {
     document.cookie = 'oauth_bind_access_token=; Max-Age=0; path=/'
   })
 
+  it.each(['linuxdo', 'oidc', 'wechat', 'dingtalk'])('submits review reason and rejects pending %s completion without storing tokens', async (provider) => {
+    const auth = await import('@/api/auth')
+    const create = {
+      linuxdo: auth.createPendingLinuxDoOAuthAccount,
+      oidc: auth.createPendingOIDCOAuthAccount,
+      wechat: auth.createPendingWeChatOAuthAccount,
+      dingtalk: auth.createPendingDingTalkOAuthAccount
+    }[provider]!
+    post.mockResolvedValue({ data: { pending_review: true, message: 'Awaiting approval' } })
+    await expect(create('', undefined, undefined, ' Team research ')).rejects.toBeInstanceOf(auth.RegistrationPendingReviewError)
+    expect(post).toHaveBeenCalledWith(`/auth/oauth/${provider}/complete-registration`, {
+      invitation_code: '', registration_reason: 'Team research'
+    })
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
+  })
+
+  it('rejects pending exchange responses before they can be classified as binding success', async () => {
+    const { exchangePendingOAuthCompletion, RegistrationPendingReviewError } = await import('@/api/auth')
+    post.mockResolvedValue({ data: { pending_review: true } })
+    await expect(exchangePendingOAuthCompletion()).rejects.toBeInstanceOf(RegistrationPendingReviewError)
+  })
+
   it('posts adoption decisions when exchanging pending oauth completion', async () => {
     const { exchangePendingOAuthCompletion } = await import('@/api/auth')
 

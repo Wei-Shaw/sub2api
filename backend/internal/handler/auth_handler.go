@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -57,6 +58,7 @@ type RegisterRequest struct {
 	PromoCode             string `json:"promo_code"`      // 注册优惠码
 	InvitationCode        string `json:"invitation_code"` // 邀请码
 	AffCode               string `json:"aff_code"`        // 邀请返利码
+	RegistrationReason    string `json:"registration_reason"` // 注册审核：申请理由
 }
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -198,8 +200,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.PromoCode,
 		req.InvitationCode,
 		req.AffCode,
+		req.RegistrationReason,
 	)
 	if err != nil {
+		// 注册审核开启时，注册已提交但需等待管理员审核，返回明确的 pending 语义。
+		if errors.Is(err, service.ErrRegistrationPending) {
+			response.Success(c, gin.H{
+				"pending_review": true,
+				"message":        "Registration submitted. Your account requires admin approval before login.",
+			})
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}

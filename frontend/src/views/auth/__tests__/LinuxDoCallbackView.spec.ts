@@ -434,7 +434,7 @@ describe('LinuxDoCallbackView', () => {
     expect(completeLinuxDoOAuthRegistration).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: false,
       adoptAvatar: true
-    })
+    }, undefined, undefined)
   })
 
   it('keeps the oauth flow active when complete-registration returns another pending step', async () => {
@@ -474,7 +474,7 @@ describe('LinuxDoCallbackView', () => {
     expect(completeLinuxDoOAuthRegistration).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: true,
       adoptAvatar: true
-    })
+    }, undefined, undefined)
     expect(setToken).not.toHaveBeenCalled()
     expect(replace).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('auth.oauthFlow.bindExistingAccount')
@@ -567,6 +567,7 @@ describe('LinuxDoCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('existing@example.com')
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
     await flushPromises()
 
@@ -596,6 +597,7 @@ describe('LinuxDoCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('new@example.com')
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
     await flushPromises()
 

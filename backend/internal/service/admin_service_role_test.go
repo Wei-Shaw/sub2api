@@ -49,7 +49,7 @@ func TestAdminService_CreateUser_InvalidRoleRejected(t *testing.T) {
 }
 
 func TestAdminService_UpdateUser_PromoteToAdmin(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser, Status: StatusActive}}
 	repo := &rpmUserRepoStub{userRepoStub: base}
 	invalidator := &authCacheInvalidatorStub{}
 	svc := &adminServiceImpl{
@@ -65,7 +65,7 @@ func TestAdminService_UpdateUser_PromoteToAdmin(t *testing.T) {
 }
 
 func TestAdminService_UpdateUser_RoleOmittedKeepsExisting(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleAdmin}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleAdmin, Status: StatusActive}}
 	repo := &rpmUserRepoStub{userRepoStub: base}
 	svc := &adminServiceImpl{userRepo: repo, redeemCodeRepo: &redeemRepoStub{}}
 
@@ -76,7 +76,7 @@ func TestAdminService_UpdateUser_RoleOmittedKeepsExisting(t *testing.T) {
 }
 
 func TestAdminService_UpdateUser_InvalidRoleRejected(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser, Status: StatusActive}}
 	repo := &rpmUserRepoStub{userRepoStub: base}
 	svc := &adminServiceImpl{userRepo: repo, redeemCodeRepo: &redeemRepoStub{}}
 
@@ -99,7 +99,7 @@ func (s *roleGuardUserRepoStub) ListWithFilters(_ context.Context, _ pagination.
 }
 
 func TestAdminService_UpdateUser_DemoteLastAdminRejected(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "a@example.com", Role: RoleAdmin}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "a@example.com", Role: RoleAdmin, Status: StatusActive}}
 	repo := &roleGuardUserRepoStub{rpmUserRepoStub: &rpmUserRepoStub{userRepoStub: base}, adminTotal: 1}
 	svc := &adminServiceImpl{userRepo: repo, redeemCodeRepo: &redeemRepoStub{}}
 
@@ -111,7 +111,7 @@ func TestAdminService_UpdateUser_DemoteLastAdminRejected(t *testing.T) {
 }
 
 func TestAdminService_UpdateUser_DemoteAdminAllowedWhenOthersExist(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "a@example.com", Role: RoleAdmin}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "a@example.com", Role: RoleAdmin, Status: StatusActive}}
 	repo := &roleGuardUserRepoStub{rpmUserRepoStub: &rpmUserRepoStub{userRepoStub: base}, adminTotal: 2}
 	invalidator := &authCacheInvalidatorStub{}
 	svc := &adminServiceImpl{
@@ -128,7 +128,7 @@ func TestAdminService_UpdateUser_DemoteAdminAllowedWhenOthersExist(t *testing.T)
 }
 
 func TestAdminService_UpdateUser_PromoteDoesNotCountAdmins(t *testing.T) {
-	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser}}
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser, Status: StatusActive}}
 	repo := &roleGuardUserRepoStub{rpmUserRepoStub: &rpmUserRepoStub{userRepoStub: base}, adminTotal: 1}
 	svc := &adminServiceImpl{
 		userRepo:             repo,

@@ -53,6 +53,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
+			Status:       service.StatusActive,
 			TokenVersion: admin.TokenVersion - 1,
 		})
 		require.NoError(t, err)
@@ -71,6 +72,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
+			Status:       service.StatusActive,
 			TokenVersion: admin.TokenVersion,
 		})
 		require.NoError(t, err)
@@ -88,6 +90,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
+			Status:       service.StatusActive,
 			TokenVersion: admin.TokenVersion - 1,
 		})
 		require.NoError(t, err)
@@ -108,6 +111,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 			ID:           admin.ID,
 			Email:        admin.Email,
 			Role:         admin.Role,
+			Status:       service.StatusActive,
 			TokenVersion: admin.TokenVersion,
 		})
 		require.NoError(t, err)

@@ -236,7 +236,7 @@ func TestJWTAuth_UserLookupErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
 	authSvc := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
-	token, err := authSvc.GenerateToken(context.Background(), &service.User{ID: 1, Role: service.RoleAdmin})
+	token, err := authSvc.GenerateToken(context.Background(), &service.User{ID: 1, Role: service.RoleAdmin, Status: service.StatusActive})
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -324,13 +324,15 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 		ID:           1,
 		Email:        "disabled@example.com",
 		Role:         "user",
-		Status:       service.StatusDisabled,
+		Status:       service.StatusActive,
 		TokenVersion: 1,
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
 	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
+	// A previously issued token must stop working after the account is disabled.
+	user.Status = service.StatusDisabled
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
