@@ -133,14 +133,34 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	require.True(t, changed)
 	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(bound))
 
-	omittedCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	omittedCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
-	omittedCtx.Request = omittedCtx.Request.WithContext(service.WithResolvedTargetPlatform(omittedCtx.Request.Context(), service.PlatformOpenAI))
-	bindOpenAIReasoningEffortPolicyForMessagesRequest(omittedCtx, apiKey, []byte(`{"model":"gpt-5"}`))
-	omitted, changed, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(omittedCtx.Request.Context(), body)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, body, omitted)
+	synthesizedGroup := &service.Group{
+		Platform: service.PlatformComposite,
+		ReasoningEffortMappings: []service.ReasoningEffortMapping{
+			{From: "medium", To: "low"},
+			{From: "none", To: "low"},
+		},
+	}
+	synthesizedAPIKey := &service.APIKey{Group: synthesizedGroup}
+	for _, tc := range []struct {
+		name     string
+		request  string
+		response string
+		want     string
+	}{
+		{name: "default medium", request: `{"model":"gpt-5"}`, response: `{"reasoning":{"effort":"medium"}}`, want: "low"},
+		{name: "disabled thinking none", request: `{"model":"gpt-5","thinking":{"type":"disabled"}}`, response: `{"reasoning":{"effort":"none"}}`, want: "low"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			omittedCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			omittedCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+			omittedCtx.Request = omittedCtx.Request.WithContext(service.WithResolvedTargetPlatform(omittedCtx.Request.Context(), service.PlatformOpenAI))
+			bindOpenAIReasoningEffortPolicyForMessagesRequest(omittedCtx, synthesizedAPIKey, []byte(tc.request))
+			got, changed, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(omittedCtx.Request.Context(), []byte(tc.response))
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.Equal(t, tc.want, gjson.GetBytes(got, "reasoning.effort").String())
+		})
+	}
 
 	denyGroup := *group
 	denyGroup.MaxReasoningEffortOverLimit = service.ReasoningEffortOverLimitDeny
