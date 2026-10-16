@@ -1221,6 +1221,8 @@ func anthropicMessageContentHasBody(content gjson.Result) bool {
 // This performs everything in FilterThinkingBlocksForRetry, plus:
 //   - Convert `tool_use` blocks to text (name/id/input) so we stop sending structured tool calls.
 //   - Convert `tool_result` blocks to text so we keep tool results visible without tool semantics.
+//     Nested image/document blocks are kept as standalone blocks right after that text, so their
+//     base64 data is not counted as text tokens.
 //
 // Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
 // risk of prompt injection (tool output becomes plain conversation text).
@@ -1347,8 +1349,8 @@ func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []b
 				modifiedThisMsg = true
 				toolUseID, _ := blockMap["tool_use_id"].(string)
 				isError, _ := blockMap["is_error"].(bool)
-				content := blockMap["content"]
-				contentJSON, _ := json.Marshal(content)
+				// image/document 块原样提到 text 之后，避免 base64 被序列化进 text 按文字计 token。
+				content, mediaBlocks := splitToolResultMediaBlocks(blockMap["content"])
 				text := "(tool_result)"
 				if toolUseID != "" {
 					text += " tool_use_id=" + toolUseID
@@ -1356,10 +1358,14 @@ func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []b
 				if isError {
 					text += " is_error=true"
 				}
-				if len(contentJSON) > 0 && string(contentJSON) != "null" {
-					text += "\n" + string(contentJSON)
+				if content != nil {
+					contentJSON, _ := json.Marshal(content)
+					if len(contentJSON) > 0 && string(contentJSON) != "null" {
+						text += "\n" + string(contentJSON)
+					}
 				}
 				newContent = append(newContent, map[string]any{"type": "text", "text": text})
+				newContent = append(newContent, mediaBlocks...)
 				continue
 			}
 
@@ -1408,6 +1414,32 @@ func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []b
 		return body
 	}
 	return newBody
+}
+
+// splitToolResultMediaBlocks 从 tool_result.content 中拆出 image/document 块。
+// 返回剩余内容（无剩余时为 nil）和按原顺序排列的媒体块；非数组 content 原样返回。
+func splitToolResultMediaBlocks(content any) (any, []any) {
+	items, ok := content.([]any)
+	if !ok {
+		return content, nil
+	}
+	var rest, media []any
+	for _, item := range items {
+		if itemMap, ok := item.(map[string]any); ok {
+			if itemType, _ := itemMap["type"].(string); itemType == "image" || itemType == "document" {
+				media = append(media, itemMap)
+				continue
+			}
+		}
+		rest = append(rest, item)
+	}
+	if len(media) == 0 {
+		return content, nil
+	}
+	if len(rest) == 0 {
+		return nil, media
+	}
+	return rest, media
 }
 
 // filterThinkingBlocksInternal removes invalid thinking blocks from request
