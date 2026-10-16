@@ -639,7 +639,8 @@ type ForwardResult struct {
 	// service_tier; Anthropic speed=fast is normalized to "fast". Usage recording
 	// lowers it to UpstreamResponseServiceTier when the upstream reports a
 	// cheaper tier (see ResolveBillingServiceTier).
-	ServiceTier *string
+	ServiceTier        *string
+	NativeCompactionV2 bool
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量

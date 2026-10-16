@@ -45,6 +45,35 @@ func (s *GatewayService) ForwardAsResponses(
 		body = normalizedBody
 	}
 
+	restoredBody, restored, err := restoreGatewayCompactInput(ctx, s.cfg, body)
+	if err != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+	if restored {
+		body = restoredBody
+	}
+
+	hasCompactionTrigger := HasCompactionTriggerInInput(body)
+	isCompactPath := isOpenAIResponsesCompactPath(c)
+	isCompaction := isCompactPath || hasCompactionTrigger
+	if isCompaction {
+		if _, err := gatewayCompactUserAAD(ctx); err != nil {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return nil, err
+		}
+		if _, err := gatewayCompactAEAD(s.cfg); err != nil {
+			writeResponsesError(c, http.StatusInternalServerError, "server_error", err.Error())
+			return nil, err
+		}
+		rewritten, rewriteErr := rewriteGatewayResponsesCompactionRequest(body)
+		if rewriteErr != nil {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", rewriteErr.Error())
+			return nil, rewriteErr
+		}
+		body = rewritten
+	}
+
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.
 	adaptedBody, clientToolMapping, err := adaptResponsesClientToolsForAnthropic(body)
 	if err != nil {
@@ -58,6 +87,10 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 	originalModel := responsesReq.Model
 	clientStream := responsesReq.Stream
+	if isCompaction && isCompactPath {
+		clientStream = false
+	}
+	nativeCompactionV2 := !isCompactPath && clientStream && hasCompactionTrigger
 
 	// 3. Convert Responses → Anthropic
 	// Resolve the final upstream model before model-specific conversion.
@@ -197,7 +230,9 @@ func (s *GatewayService) ForwardAsResponses(
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
-	if clientStream {
+	if isCompaction {
+		result, handleErr = s.handleResponsesCompactionResponse(ctx, resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientStream, nativeCompactionV2)
+	} else if clientStream {
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
@@ -716,4 +751,90 @@ func mapUpstreamStatusCode(code int) int {
 		return http.StatusBadGateway
 	}
 	return code
+}
+
+func (s *GatewayService) handleResponsesCompactionResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	originalModel string,
+	mappedModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	clientStream bool,
+	nativeCompactionV2 bool,
+) (*ForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+
+	scanner := bufio.NewScanner(resp.Body)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+	}
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+
+	var finalResp *apicompat.AnthropicResponse
+	var usage ClaudeUsage
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		_, ok := parseAnthropicSSEField(line, "event")
+		if !ok {
+			continue
+		}
+		if !scanner.Scan() {
+			break
+		}
+		dataLine := scanner.Text()
+		payload, ok := parseAnthropicSSEField(dataLine, "data")
+		if !ok {
+			continue
+		}
+		var event apicompat.AnthropicStreamEvent
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			continue
+		}
+		if event.Type == "message_start" && event.Message != nil {
+			finalResp = event.Message
+			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+		if event.Type == "message_delta" && event.Usage != nil {
+			mergeAnthropicUsage(&usage, *event.Usage)
+		}
+		if event.Type == "content_block_start" && event.ContentBlock != nil && finalResp != nil {
+			finalResp.Content = append(finalResp.Content, *event.ContentBlock)
+		}
+		if event.Type == "content_block_delta" && event.Delta != nil && finalResp != nil && event.Index != nil {
+			idx := *event.Index
+			if idx >= 0 && idx < len(finalResp.Content) && event.Delta.Type == "text_delta" {
+				finalResp.Content[idx].Text += event.Delta.Text
+			}
+		}
+	}
+
+	summary := extractAnthropicResponseSummaryText(finalResp)
+	if summary == "" {
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream compaction returned empty summary")
+		return nil, fmt.Errorf("upstream compaction returned empty summary")
+	}
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	if err := writeGatewayCompactResponse(ctx, c, s.cfg, originalModel, summary, usage, clientStream); err != nil {
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Failed to synthesize compaction response")
+		return nil, err
+	}
+
+	return &ForwardResult{
+		RequestID:          requestID,
+		UpstreamHeaders:    resp.Header,
+		Usage:              usage,
+		Model:              originalModel,
+		UpstreamModel:      mappedModel,
+		ReasoningEffort:    reasoningEffort,
+		NativeCompactionV2: nativeCompactionV2,
+		Stream:             clientStream,
+		Duration:           time.Since(startTime),
+	}, nil
 }
