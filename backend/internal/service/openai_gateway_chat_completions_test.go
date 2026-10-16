@@ -1793,6 +1793,23 @@ func TestGPT6MappedCompatibilityBridgesKeepReasoningAndTools(t *testing.T) {
 	}
 }
 
+func TestGPT61SolValidatorAliasInteractions(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"public-none"}`,
+		`{"model":"public-minimal"}`,
+		`{"model":"public-none","reasoning_effort":"high"}`,
+	} {
+		require.NoError(t, validateGPT61SolCompatRequest([]byte(body), "gpt-6.1-sol"), body)
+	}
+	for _, body := range []string{
+		`{"model":"gpt-6.1-sol-none"}`,
+		`{"model":"openai/GPT-6.1-SOL-minimal"}`,
+	} {
+		require.Error(t, validateGPT61SolCompatRequest([]byte(body), "gpt-6.1-sol"), body)
+	}
+	require.Error(t, validateGPT61SolCompatRequest([]byte(`{"model":"gpt-6.1-sol-none","reasoning_effort":"high","output_config":{"effort":"none"}}`), "gpt-6.1-sol"))
+}
+
 func TestGPT61SolRejectsDisabledReasoningBeforeForwarding(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"public","reasoning_effort":"none"}`,
