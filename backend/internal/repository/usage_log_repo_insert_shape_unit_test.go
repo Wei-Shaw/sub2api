@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,6 +21,18 @@ var (
 	usageLogStaticInsertShapeRe = regexp.MustCompile(`(?s)INSERT INTO usage_logs \((.*?)\) VALUES \((.*?)\)`)
 	usageLogPlaceholderRe       = regexp.MustCompile(`\$(\d+)`)
 )
+
+func TestPrepareUsageLogInsert_RequestResult(t *testing.T) {
+	result := &service.UsageRequestResult{Outcome: "failed", UsageStatus: "unavailable", StatusCode: 503, HTTPStatusCode: 200, ErrorCode: "server_is_overloaded"}
+	prepared := prepareUsageLogInsert(&service.UsageLog{RequestResult: result})
+	idx := len(usageLogInsertArgTypes) - 1
+	require.Equal(t, "jsonb", usageLogInsertArgTypes[idx])
+	var decoded service.UsageRequestResult
+	require.NoError(t, json.Unmarshal([]byte(prepared.args[idx].(string)), &decoded))
+	require.Equal(t, *result, decoded)
+	absent := prepareUsageLogInsert(&service.UsageLog{})
+	require.Nil(t, absent.args[idx], "legacy/other providers must remain unknown")
+}
 
 // newSQLCapturingMock 返回把实际下发 SQL 记录到 captured 的 sqlmock；语句一律视为匹配，
 // 参数仍由 WithArgs 校验。
@@ -129,7 +142,7 @@ func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
 	})
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 
-	idx := len(prepared.args) - 4
+	idx := len(prepared.args) - 5
 	arg, ok := prepared.args[idx].(sql.NullString)
 	require.True(t, ok, "upstream_request_id arg should be sql.NullString, got %T", prepared.args[idx])
 	require.True(t, arg.Valid)

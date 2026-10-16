@@ -37,7 +37,10 @@ export default {
       maxResultsTooltipExample: '例如填写 100，表示最多保存最近 100 次测试结果；第 101 次结果写入后，最早的一条会被清理。',
       maxResultsTooltipRange: '推荐填写范围：一般可填 20 到 200。只关注近期可用性时可填 20-50；需要回看较长时间的波动趋势时可填 100-200。',
       autoRecover: '自动恢复',
-      autoRecoverHelp: '测试成功后自动恢复异常状态的账号'
+      autoRecoverHelp: '测试成功后自动恢复异常状态的账号',
+      includeInHealthSamples: '纳入健康样本',
+      includeInHealthSamplesHelp: '仅在高可用策略下，以低权重参与账号健康评分',
+      healthSample: '健康样本'
     },
 
     // Proxies Management

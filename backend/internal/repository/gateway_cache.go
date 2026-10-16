@@ -14,6 +14,93 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// OpenAI account health methods are intentionally implemented as an optional
+// extension of GatewayCache so existing cache fakes and persistent keys remain
+// source-compatible.
+func (c *gatewayCache) openAIAccountHealthKey(accountID int64) string {
+	return fmt.Sprintf("openai_ha_health:{%d}", accountID)
+}
+
+var openAIAccountHealthFailureScript = redis.NewScript(`
+local key = KEYS[1]
+local sequence_key = key .. ':sequence'
+local circuit_key = key .. ':circuit'
+local now = redis.call('TIME')
+local now_s = tonumber(now[1])
+local window_s = tonumber(ARGV[1])
+local threshold = tonumber(ARGV[2])
+local cooldown_s = tonumber(ARGV[3])
+local sequence = redis.call('INCR', sequence_key)
+redis.call('ZREMRANGEBYSCORE', key, '-inf', now_s - window_s)
+redis.call('ZADD', key, now_s, tostring(now_s) .. ':' .. tostring(sequence))
+local count = redis.call('ZCARD', key)
+local ttl = math.max(60, window_s + cooldown_s + 60)
+redis.call('EXPIRE', key, ttl)
+redis.call('EXPIRE', sequence_key, ttl)
+local tripped = 0
+local until_s = 0
+if count >= threshold then
+  local was_open = redis.call('EXISTS', circuit_key)
+  until_s = now_s + cooldown_s
+  redis.call('SET', circuit_key, until_s, 'EX', cooldown_s)
+  if was_open == 0 then
+    tripped = 1
+  end
+end
+return {count, tripped, until_s}
+`)
+
+func (c *gatewayCache) RecordOpenAIAccountFailure(ctx context.Context, accountID int64, window, cooldown time.Duration, threshold int) (int64, time.Time, bool, error) {
+	if c == nil || c.rdb == nil {
+		return 0, time.Time{}, false, errors.New("gateway cache unavailable")
+	}
+	if window <= 0 {
+		window = time.Minute
+	}
+	if cooldown <= 0 {
+		cooldown = 30 * time.Second
+	}
+	if threshold <= 0 {
+		threshold = 1
+	}
+	result, err := openAIAccountHealthFailureScript.Run(ctx, c.rdb, []string{c.openAIAccountHealthKey(accountID)}, window.Seconds(), threshold, cooldown.Seconds()).Slice()
+	if err != nil {
+		return 0, time.Time{}, false, err
+	}
+	if len(result) != 3 {
+		return 0, time.Time{}, false, fmt.Errorf("unexpected OpenAI account health result length %d", len(result))
+	}
+	count, countOK := result[0].(int64)
+	tripped, tripOK := result[1].(int64)
+	untilUnix, untilOK := result[2].(int64)
+	if !countOK || !tripOK || !untilOK {
+		return 0, time.Time{}, false, fmt.Errorf("unexpected OpenAI account health result")
+	}
+	return count, time.Unix(untilUnix, 0), tripped == 1, nil
+}
+
+func (c *gatewayCache) ClearOpenAIAccountFailure(ctx context.Context, accountID int64) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key := c.openAIAccountHealthKey(accountID)
+	return c.rdb.Del(ctx, key, key+":circuit", key+":sequence").Err()
+}
+
+func (c *gatewayCache) GetOpenAIAccountCircuit(ctx context.Context, accountID int64) (time.Time, error) {
+	if c == nil || c.rdb == nil {
+		return time.Time{}, errors.New("gateway cache unavailable")
+	}
+	value, err := c.rdb.Get(ctx, c.openAIAccountHealthKey(accountID)+":circuit").Int64()
+	if errors.Is(err, redis.Nil) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(value, 0), nil
+}
+
 const stickySessionPrefix = "sticky_session:"
 const openAIResponsesSessionWindowPrefix = "openai_responses_session_window:"
 const liveCallPrefix = "live:call:"
@@ -25,6 +112,8 @@ type gatewayCache struct {
 func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
+
+var _ service.OpenAIAccountHealthCache = (*gatewayCache)(nil)
 
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
 // 格式: sticky_session:{groupID}:{sessionHash}
