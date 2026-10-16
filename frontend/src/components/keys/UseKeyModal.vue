@@ -275,6 +275,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildCodexModelCatalogUrl, fetchCodexModelsManifest } from '@/api/codex'
 import type { GroupPlatform } from '@/types'
+import { resolveCodexDefaultModel } from '@/utils/ccswitchImport'
 import {
   findCodexCatalogModel,
   formatCodexReasoningEffortTomlLine,
@@ -289,6 +290,7 @@ interface Props {
   platform: GroupPlatform | null
   claudeCodeOnly?: boolean
   allowMessagesDispatch?: boolean
+  codexDefaultModel?: string
 }
 
 interface Emits {
@@ -1023,11 +1025,12 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
   return { path, content, highlighted }
 }
 
+/** Generate OpenAI Codex files using the site preference and available catalog fallback. */
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
-  const model = selectCodexCatalogModel('gpt-5.5')
+  const model = selectCodexCatalogModel(resolveCodexDefaultModel(props.codexDefaultModel))
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content
@@ -1372,10 +1375,11 @@ supports_websockets = false${codexModelCatalogMode.value === 'remote' ? '\n\n[fe
   ]
 }
 
+/** Generate WebSocket Codex files with the same model preference as the HTTP template. */
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
-  const model = selectCodexCatalogModel('gpt-5.5')
+  const model = selectCodexCatalogModel(resolveCodexDefaultModel(props.codexDefaultModel))
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content with WebSocket v2
