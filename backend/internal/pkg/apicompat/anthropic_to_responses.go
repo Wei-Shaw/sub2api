@@ -22,7 +22,7 @@ func AnthropicToResponsesWithMinOutputTokens(req *AnthropicRequest, minOutputTok
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
 		return nil, err
 	}
-	input, err := convertAnthropicToResponsesInput(req.System, req.Messages)
+	input, err := convertAnthropicToResponsesInput(req.System, req.Messages, req.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 
 // convertAnthropicToResponsesInput builds the Responses API input items array
 // from the Anthropic system field and message list.
-func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
+func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage, model string) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 
 	// System prompt → developer role input item. ChatGPT Codex SSE behaves like
@@ -147,7 +147,7 @@ func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMe
 	}
 
 	for _, m := range msgs {
-		items, err := anthropicMsgToResponsesItems(m)
+		items, err := anthropicMsgToResponsesItems(m, model)
 		if err != nil {
 			return nil, err
 		}
@@ -186,12 +186,12 @@ func isAnthropicBillingHeaderText(text string) bool {
 
 // anthropicMsgToResponsesItems converts a single Anthropic message into one
 // or more Responses API input items.
-func anthropicMsgToResponsesItems(m AnthropicMessage) ([]ResponsesInputItem, error) {
+func anthropicMsgToResponsesItems(m AnthropicMessage, model string) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "user":
 		return anthropicUserToResponses(m.Content)
 	case "assistant":
-		return anthropicAssistantToResponses(m.Content)
+		return anthropicAssistantToResponses(m.Content, model)
 	default:
 		return anthropicUserToResponses(m.Content)
 	}
@@ -270,7 +270,7 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 // thinking blocks with signature → reasoning items (encrypted_content) so
 // multi-turn Grok/Codex prompt cache can reuse prior reasoning prefixes.
 // thinking without signature remains ignored (not accepted as plain text input).
-func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
+func anthropicAssistantToResponses(raw json.RawMessage, model string) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -297,14 +297,23 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 			continue
 		}
 		sig := strings.TrimSpace(b.Signature)
-		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
-		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
-		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
+		// GPT/Codex ciphertext is required for stateless reasoning replay on
+		// recognized GPT reasoning targets. Preserve the existing foreign-signature
+		// filter for other providers and unknown model aliases.
+		if sig == "" || (strings.HasPrefix(sig, "gAAAA") && !isGPTReasoningResponsesTarget(model)) {
 			continue
+		}
+		// The Responses wire format requires a summary array even when the
+		// provider returned only ciphertext. This visible summary supplements
+		// encrypted_content; it is not a substitute for the reasoning state.
+		summary := []ResponsesSummary{}
+		if b.Thinking != "" {
+			summary = append(summary, ResponsesSummary{Type: "summary_text", Text: b.Thinking})
 		}
 		items = append(items, ResponsesInputItem{
 			Type:             "reasoning",
 			EncryptedContent: sig,
+			Summary:          &summary,
 		})
 	}
 
@@ -547,4 +556,13 @@ func normalizeToolParameters(schema json.RawMessage) json.RawMessage {
 		return schema
 	}
 	return out
+}
+
+// Model names may be provider-qualified (for example openai/gpt-6-luna).
+func isGPTReasoningResponsesTarget(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if i := strings.LastIndexByte(model, '/'); i >= 0 {
+		model = model[i+1:]
+	}
+	return isReasoningModel(model)
 }
