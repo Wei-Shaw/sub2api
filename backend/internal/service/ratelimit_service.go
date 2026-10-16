@@ -2511,19 +2511,8 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	if s == nil || account == nil || s.accountRepo == nil {
 		return false
 	}
-	if !account.ShouldHandleErrorCode(statusCode) {
-		return false
-	}
-	var cooldown time.Duration
-	var reason string
-	switch {
-	case isUpstreamModelNotFoundError(statusCode, responseBody):
-		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
-	case statusCode == http.StatusUnauthorized && account.Type == AccountTypeAPIKey && account.IsOpenAICompatible() && isOpenAICompatibleModelNotFoundBody(responseBody):
-		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason
-	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
-		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
-	default:
+	cooldown, reason, ok := upstreamModelUnavailableCooldown(account, statusCode, responseBody)
+	if !ok {
 		return false
 	}
 	modelKey := modelRateLimitKeyForUpstreamModelNotFound(ctx, account, requestedModel)
@@ -2540,6 +2529,26 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	}
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+// upstreamModelUnavailableCooldown classifies the deterministic upstream
+// refusals HandleUpstreamModelNotFound cools down per (account, model): the
+// account cannot serve the requested model, which says nothing about how it
+// serves other models.
+func upstreamModelUnavailableCooldown(account *Account, statusCode int, responseBody []byte) (time.Duration, string, bool) {
+	if account == nil || !account.ShouldHandleErrorCode(statusCode) {
+		return 0, "", false
+	}
+	switch {
+	case isUpstreamModelNotFoundError(statusCode, responseBody):
+		return upstreamModelNotFoundCooldown, upstreamModelNotFoundReason, true
+	case statusCode == http.StatusUnauthorized && account.Type == AccountTypeAPIKey && account.IsOpenAICompatible() && isOpenAICompatibleModelNotFoundBody(responseBody):
+		return upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason, true
+	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
+		return upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason, true
+	default:
+		return 0, "", false
+	}
 }
 
 // shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否
