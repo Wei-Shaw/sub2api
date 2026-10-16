@@ -33,6 +33,8 @@ func (Group) Mixin() []ent.Mixin {
 	}
 }
 
+// Fields defines persisted group policies, including typed JSON client defaults
+// whose empty value preserves the existing native export templates.
 func (Group) Fields() []ent.Field {
 	return []ent.Field{
 		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重用
@@ -267,6 +269,11 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
+		// Export preferences are independent from gateway mapping and admission.
+		field.JSON("client_export_config", domain.GroupClientExportConfig{}).
+			Default(domain.GroupClientExportConfig{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Per-group defaults for native client export templates"),
 		field.JSON("model_allowlist", domain.GroupModelAllowlist{}).
 			Default(domain.GroupModelAllowlist{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).

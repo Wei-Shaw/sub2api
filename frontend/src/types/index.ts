@@ -575,6 +575,7 @@ export type GroupI18n = Record<string, GroupLocaleText>
 
 // 用户侧接口返回的 name / description 已由后端按请求语言（Accept-Language）选好
 export interface Group {
+  client_export_config?: import('@/utils/groupClientExport').ClientExportConfig
   id: number
   name: string
   description: string | null
@@ -803,6 +804,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+  client_export_config?: import('@/utils/groupClientExport').ClientExportConfig
   name: string
   description?: string | null
   i18n?: GroupI18n
@@ -869,6 +871,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+  client_export_config?: import('@/utils/groupClientExport').ClientExportConfig
   name?: string
   description?: string | null
   i18n?: GroupI18n

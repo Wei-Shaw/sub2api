@@ -86,6 +86,8 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	return nil
 }
 
+// createGroupRecord persists a group, including its typed client defaults, using
+// the supplied Ent client so callers can include it in their existing transaction.
 func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *service.Group) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
@@ -143,6 +145,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
+		SetClientExportConfig(groupIn.ClientExportConfig).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
@@ -281,6 +284,8 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	return groupEntityToService(m), nil
 }
 
+// Update persists the supplied group policies and client defaults and enqueues
+// the existing scheduler refresh event after a successful database update.
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
@@ -327,6 +332,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
+		SetClientExportConfig(groupIn.ClientExportConfig).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
