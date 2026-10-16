@@ -281,6 +281,7 @@
                 <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
                 <span>{{ getOpenAICompactMeta(row)?.label }}</span>
               </div>
+              <CodexCapabilityBadges :account="row" />
             </div>
           </template>
           <template #cell-capacity="{ row }">
@@ -526,6 +527,7 @@ import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import AccountPriorityCell from '@/components/account/AccountPriorityCell.vue'
+import CodexCapabilityBadges from '@/components/account/CodexCapabilityBadges.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'

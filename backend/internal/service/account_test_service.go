@@ -17,6 +17,7 @@ import (
 	_ "image/png"
 	"io"
 	"log"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -157,6 +158,15 @@ type AccountTestService struct {
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+	// codexCapabilityProber 账号测试成功后与「同步上游模型」时刷新 Codex 能力记录；nil 跳过
+	codexCapabilityProber CodexCapabilityProber
+}
+
+// SetCodexCapabilityProber 注入 Codex 能力探测器。
+func (s *AccountTestService) SetCodexCapabilityProber(prober CodexCapabilityProber) {
+	if s != nil {
+		s.codexCapabilityProber = prober
+	}
 }
 
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
@@ -987,7 +997,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	if err := s.processOpenAIStream(c, resp.Body); err != nil {
+		return err
+	}
+	// 账号测试成功说明凭据可用：顺手刷新 Codex 能力记录（失败只记日志）。
+	if s.codexCapabilityProber != nil && isCodexCapabilityProbeAccount(account) {
+		if err := s.codexCapabilityProber.Probe(ctx, account); err != nil {
+			slog.Warn("account_test.codex_capability_probe_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	return nil
 }
 
 // testGrokAccountConnection routes Grok admin connectivity tests by explicit mode first,

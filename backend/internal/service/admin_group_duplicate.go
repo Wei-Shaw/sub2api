@@ -157,7 +157,12 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Models:  append([]string(nil), source.ModelAllowlist.Models...),
 		},
 		// 固定账号 manifest 配置指向源分组的账号 ID，复制后成员关系可能变化，重置为关闭且列表为空。
-		CodexModelsManifestConfig:   GroupCodexModelsManifestConfig{},
+		CodexModelsManifestConfig: GroupCodexModelsManifestConfig{},
+		CapabilityAllowlist: GroupCapabilityAllowlist{
+			Enabled:       source.CapabilityAllowlist.Enabled,
+			CyberPrograms: append([]string(nil), source.CapabilityAllowlist.CyberPrograms...),
+			ServiceTiers:  append([]string(nil), source.CapabilityAllowlist.ServiceTiers...),
+		},
 		RPMLimit:                    source.RPMLimit,
 		MaxReasoningEffort:          source.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit: source.MaxReasoningEffortOverLimit,

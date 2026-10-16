@@ -113,20 +113,22 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"quota_daily_reset_at":  {},
 	"quota_weekly_reset_at": {},
 	// Provider observations, capability probes, and transient scheduling state.
-	"model_rate_limits":                      {},
-	"session_window_utilization":             {},
-	"passive_usage_7d_utilization":           {},
-	"passive_usage_7d_reset":                 {},
-	"passive_usage_7d_oi_utilization":        {},
-	"passive_usage_7d_oi_reset":              {},
-	"passive_usage_sampled_at":               {},
-	"grok_usage_snapshot":                    {},
-	"grok_billing_snapshot":                  {},
-	"openai_responses_supported":             {},
-	"openai_compact_supported":               {},
-	"openai_compact_checked_at":              {},
-	"openai_compact_last_status":             {},
-	"openai_compact_last_error":              {},
+	"model_rate_limits":               {},
+	"session_window_utilization":      {},
+	"passive_usage_7d_utilization":    {},
+	"passive_usage_7d_reset":          {},
+	"passive_usage_7d_oi_utilization": {},
+	"passive_usage_7d_oi_reset":       {},
+	"passive_usage_sampled_at":        {},
+	"grok_usage_snapshot":             {},
+	"grok_billing_snapshot":           {},
+	"openai_responses_supported":      {},
+	"openai_compact_supported":        {},
+	"openai_compact_checked_at":       {},
+	"openai_compact_last_status":      {},
+	"openai_compact_last_error":       {},
+	// 能力记录属于被复制账号的上游权益观测；副本创建后由探测重新建立。
+	CodexCapabilitiesExtraKey:                {},
 	"antigravity_credits_overages":           {},
 	"antigravity_force_token_refresh":        {},
 	"antigravity_force_token_refresh_at":     {},
@@ -423,6 +425,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
+	// 能力记录只能来自上游目录探测，客户端提交的值一律丢弃。
+	delete(accountExtra, CodexCapabilitiesExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
@@ -547,6 +551,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 
 	AfterAccountCommit(ctx, func(_ context.Context) {
+		// OpenAI OAuth-like 账号：事务提交后再异步探测 Codex 能力。
+		// ProbeAsync 用独立上下文 GetByID，提交前账号还不可见。
+		if isCodexCapabilityProbeAccount(account) && s.codexCapabilityProber != nil {
+			s.codexCapabilityProber.ProbeAsync(account.ID, codexCapabilityProbeReasonAccountCreated)
+		}
+
 		// OAuth 账号：创建后异步设置隐私。
 		// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
 		if account.Type == AccountTypeOAuth {
@@ -637,6 +647,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 	wasOveragesEnabled := account.IsOveragesEnabled()
+	previousCredentials := maps.Clone(account.Credentials)
 
 	if input.Name != "" {
 		account.Name = input.Name
@@ -687,6 +698,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
 		delete(normalizedExtra, OpenCodeGoUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OpenCodeGoUsageSnapshotExtraKey)
+		delete(normalizedExtra, CodexCapabilitiesExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -704,6 +716,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OpenAIAutoResetCreditStateExtraKey,
 			OpenCodeGoUsageAutoRefreshExtraKey,
 			OpenCodeGoUsageSnapshotExtraKey,
+			CodexCapabilitiesExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
@@ -922,6 +935,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	// 重新授权（ApplyOAuthCredentials 同样经本路径落库）或凭据变更可能换了底层 ChatGPT 账号，
+	// 异步重新探测 Codex 能力；仅改名称、并发等字段不触发。
+	// 探测在事务提交成功后启动：ProbeAsync 用独立上下文 GetByID，提交前读不到新凭据。
+	if len(input.Credentials) > 0 && !reflect.DeepEqual(previousCredentials, account.Credentials) &&
+		isCodexCapabilityProbeAccount(updated) && s.codexCapabilityProber != nil {
+		accountID := updated.ID
+		prober := s.codexCapabilityProber
+		AfterAccountCommit(ctx, func(context.Context) {
+			prober.ProbeAsync(accountID, codexCapabilityProbeReasonCredentialsUpdated)
+		})
+	}
 	return updated, nil
 }
 
@@ -938,6 +962,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
 	delete(updates, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(updates, OpenCodeGoUsageSnapshotExtraKey)
+	delete(updates, CodexCapabilitiesExtraKey)
 	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -967,6 +992,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
 	delete(input.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(input.Extra, OpenCodeGoUsageSnapshotExtraKey)
+	delete(input.Extra, CodexCapabilitiesExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)

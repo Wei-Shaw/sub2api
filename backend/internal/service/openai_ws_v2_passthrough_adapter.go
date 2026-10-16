@@ -1283,6 +1283,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
+				if eventType == "error" || eventType == "response.failed" {
+					s.observeCodexCapabilityRejection(account, payload)
+				}
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}

@@ -1258,7 +1258,7 @@ export default {
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI 实验调度策略',
-        description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',
+        description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。注意：该策略不支持 Codex 能力路由（Daybreak / Ultrafast 需求不会按账号能力过滤）。',
         lowRatePriorityTitle: '低倍率优先',
         lowRatePriorityDescription: '开启后优先选择计费倍率较低的账号；倍率相同时，再比较账号优先级和当前负载等。启用实验调度策略后，此开关不生效。',
         oauthRateTitle: 'OAuth 调度参考倍率',

@@ -1264,7 +1264,7 @@ export default {
       },
       openaiExperimentalScheduler: {
         title: 'OpenAI experimental scheduler policy',
-        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
+        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability. Note: this policy does not support Codex capability routing (Daybreak / Ultrafast requirements are not filtered by account capability).",
         lowRatePriorityTitle: 'Prefer lower rates',
         lowRatePriorityDescription: 'When enabled, accounts with lower billing rates are preferred. If rates are equal, account priority, current load, and other scheduling factors are considered. This switch is ignored when the experimental scheduler is enabled.',
         oauthRateTitle: 'OAuth scheduling reference rate',

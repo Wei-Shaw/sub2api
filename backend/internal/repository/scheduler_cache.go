@@ -1338,6 +1338,9 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.OpenAIAutoResetCredit7dThresholdExtraKey,
 		service.OpenAIAutoResetCreditStateExtraKey,
 		"model_rate_limits",
+		// Codex 能力路由：候选过滤按本投影上的能力记录排除无 Daybreak / Ultrafast 的
+		// OAuth 账号；缺键时 OAuth 账号一律视为无能力，带需求的请求将报无可用账号。
+		service.CodexCapabilitiesExtraKey,
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",

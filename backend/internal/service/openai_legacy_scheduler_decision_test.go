@@ -60,7 +60,7 @@ func TestLegacySchedulerDecision_StickySessionLayer(t *testing.T) {
 
 			selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 				ctx, &groupID, "", sessionHash, "gpt-5.1", nil,
-				OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+				OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true, OpenAIAccountRequirement{},
 			)
 			require.NoError(t, err)
 			require.NotNil(t, selection)
@@ -75,7 +75,7 @@ func TestLegacySchedulerDecision_StickySessionLayer(t *testing.T) {
 
 			selection, decision, err = svc.SelectAccountWithSchedulerForCapability(
 				ctx, &groupID, "", "", "gpt-5.1", nil,
-				OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+				OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true, OpenAIAccountRequirement{},
 			)
 			require.NoError(t, err)
 			require.NotNil(t, selection)
@@ -101,7 +101,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "legacy-prev-session", "gpt-5.1", nil,
-			OpenAIUpstreamTransportResponsesWebsocketV2Ingress, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportResponsesWebsocketV2Ingress, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -120,7 +120,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", map[int64]struct{}{38102: {}},
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -138,7 +138,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportResponsesWebsocketV2Ingress, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportResponsesWebsocketV2Ingress, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -166,7 +166,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
 		require.Contains(t, err.Error(), "channel pricing restriction")
@@ -191,7 +191,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -222,7 +222,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -252,7 +252,7 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 
 		selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, responseID, "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, true, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err, "quarantine must fail open instead of returning no available accounts")
 		require.NotNil(t, selection)

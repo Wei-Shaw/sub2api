@@ -33,6 +33,9 @@ type AnthropicRequest struct {
 	// user_id，进而导致请求被归类为第三方 app。
 	Metadata     json.RawMessage        `json:"metadata,omitempty"`
 	OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
+	// AccessPrograms is a Codex extension forwarded verbatim to the Responses
+	// request so Daybreak admission and routing cannot be bypassed on this path.
+	AccessPrograms json.RawMessage `json:"access_programs,omitempty"`
 }
 
 // AnthropicOutputConfig controls output generation parameters.
@@ -249,6 +252,10 @@ type ResponsesRequest struct {
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	// AccessPrograms carries Codex access programs (e.g. {"cyber":"daybreak_blue"})
+	// verbatim: the gateway routes on it before conversion, so the rebuilt body
+	// must still deliver it upstream.
+	AccessPrograms json.RawMessage `json:"access_programs,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -390,6 +397,9 @@ type ResponsesResponse struct {
 type ResponsesError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Param names the offending request field (e.g. "access_programs.cyber");
+	// kept so buffered compat paths can recognize Codex access-program rejections.
+	Param string `json:"param,omitempty"`
 }
 
 // ResponsesIncompleteDetails explains why a response is incomplete.
@@ -680,6 +690,8 @@ type ChatCompletionsRequest struct {
 	ServiceTier         string             `json:"service_tier,omitempty"`
 	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
 	ResponseFormat      json.RawMessage    `json:"response_format,omitempty"`
+	// AccessPrograms is forwarded verbatim to the Responses request (Codex Daybreak).
+	AccessPrograms json.RawMessage `json:"access_programs,omitempty"`
 
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
