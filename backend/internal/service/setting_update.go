@@ -98,7 +98,13 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 	s.refreshCachedSettings(stored)
 }
 
+// buildSystemSettingsUpdates validates settings before preparing the atomic repository write.
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	codexDefaultModel, err := normalizeCodexDefaultModel(settings.CodexDefaultModel)
+	if err != nil {
+		return nil, err
+	}
+	settings.CodexDefaultModel = codexDefaultModel
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -345,6 +351,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	updates[SettingKeyCompactHomeEnabled] = strconv.FormatBool(settings.CompactHomeEnabled)
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
+	updates[SettingKeyCodexDefaultModel] = settings.CodexDefaultModel
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
 	tableDefaultPageSize, tablePageSizeOptions := normalizeTablePreferences(

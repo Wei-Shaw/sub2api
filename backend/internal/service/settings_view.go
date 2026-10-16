@@ -158,6 +158,7 @@ type SystemSettings struct {
 	HomeContent                 string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
+	CodexDefaultModel           string // OpenAI Codex export preference; does not alter request routing.
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
 	TableDefaultPageSize        int
@@ -360,6 +361,7 @@ type PublicSettings struct {
 	HomeContent                         string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
+	CodexDefaultModel                   string // OpenAI Codex export preference; does not alter request routing.
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
