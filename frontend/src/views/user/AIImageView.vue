@@ -335,6 +335,54 @@
         <!-- 第 2 步：填自己的产品信息（这一步是独立的，不用先去把 Ozon 脚本那张表） -->
         <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
           <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step2') }}</p>
+
+          <!-- 我自己的商品图。
+               【2026-10-16 主人说明的流程】爆款复刻是「用我的商品主体套同行的版式」，
+               所以这一页必须能放我自己的商品图 —— 以前没有这个入口，
+               得先切到「单张生图」或「套图」页设好参考图再切回来。
+               和那两个页面共用同一份 referenceImage（生成时用的就是它）。 -->
+          <div
+            class="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-900"
+            data-testid="hot-product-image"
+          >
+            <input ref="hotProductInputRef" type="file" accept="image/*" class="hidden" @change="onReferencePicked" />
+            <button type="button" class="btn btn-secondary btn-sm" @click="hotProductInputRef?.click()">
+              <Icon name="upload" size="sm" class="mr-1.5" />
+              {{ referenceImage ? t('aiImage.hot.replaceProductImage') : t('aiImage.hot.pickProductImage') }}
+            </button>
+            <button v-if="referenceImage" type="button" class="btn btn-secondary btn-sm" @click="clearReference">
+              {{ t('aiImage.reference.clear') }}
+            </button>
+            <span class="max-w-[22rem] truncate text-xs text-gray-500 dark:text-gray-400">
+              {{ referenceImage ? referenceImage.name : t('aiImage.hot.noProductImage') }}
+            </span>
+            <img
+              v-if="referencePreviewUrl"
+              :src="referencePreviewUrl"
+              alt=""
+              class="h-10 w-10 rounded border border-gray-200 object-cover dark:border-dark-600"
+            />
+
+            <!-- 卖点 / 痛点 / 差异化交给视觉模型：主人要的是
+                 「卖点由 Gemini 生成，痛点和差异化靠跟我的商品图对比得出」。 -->
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              data-testid="hot-extract"
+              :disabled="hotExtracting || !referenceImage"
+              @click="aiExtractHot"
+            >
+              <Icon
+                :name="hotExtracting ? 'refresh' : 'brain'"
+                size="sm"
+                class="mr-1.5"
+                :class="hotExtracting ? 'animate-spin' : ''"
+              />
+              {{ hotExtracting ? t('aiImage.hot.extracting') : t('aiImage.hot.extract') }}
+            </button>
+          </div>
+          <p class="mb-3 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.extractHint') }}</p>
+
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div class="flex flex-col gap-1">
               <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.product') }}</label>
@@ -1068,6 +1116,7 @@ import {
 import {
   HOT_ANALYZE_PROMPT,
   HOT_ANALYZE_TEMPERATURE,
+  HOT_EXTRACT_PROMPT,
   buildHotExtraCards,
   HOT_VISION_TIMEOUT_MS,
   buildHotScript,
@@ -1222,6 +1271,10 @@ function isPanelOpen(id: PanelId): boolean {
 const hotRefFiles = ref<File[]>([])
 const hotRefInputRef = ref<HTMLInputElement | null>(null)
 const hotAnalyzing = ref(false)
+/** 爆款复刻页里那个「我的商品图」选择框（和别的页面共用同一份 referenceImage）。 */
+const hotProductInputRef = ref<HTMLInputElement | null>(null)
+/** 正在让视觉模型识别卖点/痛点/差异化。 */
+const hotExtracting = ref(false)
 const hotProgress = ref({ done: 0, total: 0 })
 const hotStyleDesc = ref('')
 const hotNotice = ref('')
@@ -1513,6 +1566,7 @@ function clearReference() {
   referencePreviewUrl.value = ''
   if (fileInputRef.value) fileInputRef.value.value = ''
   if (scriptFileInputRef.value) scriptFileInputRef.value.value = ''
+  if (hotProductInputRef.value) hotProductInputRef.value.value = ''
 }
 
 function onReferencePicked(event: Event) {
@@ -1884,6 +1938,59 @@ function clearHotRef() {
   hotNotice.value = ''
   hotError.value = ''
   hotProgress.value = { done: 0, total: 0 }
+}
+
+/**
+ * 让视觉模型看**我自己的商品图**，自动填卖点 / 痛点 / 差异化。
+ *
+ * 【2026-10-16 主人说明的流程】爆款复刻里：
+ *   - **卖点**由 Gemini 生成；
+ *   - **痛点 / 差异化**靠「跟我放的商品图做对比」得出。
+ * 所以这里传的是爆款复刻专用的 `HOT_EXTRACT_PROMPT`（要求模型做对比），
+ * 而不是套图那份只描述照片内容的提示词。
+ *
+ * 填完仍留在输入框里，用户可以自己改 —— 识别只是省打字，不是不可改。
+ */
+async function aiExtractHot() {
+  if (!ensureVisionKey('hot')) return
+  const source = referenceImage.value
+  if (!source) {
+    hotError.value = t('aiImage.hot.needProductImage')
+    return
+  }
+  hotExtracting.value = true
+  hotError.value = ''
+  hotNotice.value = ''
+  try {
+    const result = await extractSellingPoints({
+      apiKey: effectiveVisionKey.value,
+      image: source,
+      model: visionModel.value,
+      prompt: HOT_EXTRACT_PROMPT,
+      hints: { 产品名称: hotForm.value.product },
+    })
+    if (result.product) hotForm.value.product = result.product
+    // 中文进界面，俄语留给图用。
+    if (result.sp1) hotForm.value.sp1 = result.sp1
+    if (result.sp2) hotForm.value.sp2 = result.sp2
+    if (result.sp3) hotForm.value.sp3 = result.sp3
+    if (result.sp1_ru) hotForm.value.sp1Ru = result.sp1_ru
+    if (result.sp2_ru) hotForm.value.sp2Ru = result.sp2_ru
+    if (result.sp3_ru) hotForm.value.sp3Ru = result.sp3_ru
+    if (result.pain) hotForm.value.pain = result.pain
+    if (result.diff) hotForm.value.diff = result.diff
+    hotNotice.value = t('aiImage.hot.extracted')
+  } catch (error) {
+    const reason = errorMessage(error)
+    if (isVisionRoutingFailure(reason)) {
+      hotError.value = t('aiImage.visionKey.failedRouting')
+      showKeyPanel.value = true
+    } else {
+      hotError.value = `${t('aiImage.hot.extractFailed')}：${reason}`
+    }
+  } finally {
+    hotExtracting.value = false
+  }
 }
 
 /**

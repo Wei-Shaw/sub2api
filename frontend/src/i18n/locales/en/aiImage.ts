@@ -128,7 +128,19 @@ export default {
       templateReady: 'Ready: the template for this clone is set. Fill in the product name and you can generate.',
       noResult: 'None of these images produced a result. Try different images, or check the vision model.',
       oneFailed: 'One image failed and was skipped (the rest continued): {reason}',
-      step2: 'Step 2: fill in your own product details (independent of the "Image set" panel)',
+      step2: 'Step 2: add your own product photo and fill in the details (independent of the "Image set" panel)',
+      // Your own product photo: cloning means "apply the reference layout to MY product".
+      pickProductImage: 'Pick my product photo',
+      replaceProductImage: 'Replace my product photo',
+      noProductImage: 'No product photo yet (it becomes the product in the generated images)',
+      // Selling points come from the vision model; pain/differentiation come from comparing this photo.
+      extract: 'AI-detect selling points / pain / differentiation',
+      extracting: 'Detecting\u2026',
+      extractHint:
+        'With a product photo in place, hit detect: the vision model writes the selling points, and pain/differentiation come from comparing this item against ordinary ones in the same category. You can still edit everything afterwards.',
+      extracted: 'Selling points, pain and differentiation detected and filled in (editable).',
+      extractFailed: 'Detection failed',
+      needProductImage: 'Pick your own product photo first \u2014 detection needs it.',
     },
 
     composite: {
@@ -262,7 +274,7 @@ export default {
       diff: 'Differentiator',
       scene: 'Auto-matched scene',
       scenePlaceholder: 'Filled automatically from the product name',
-      build: 'Build the 8 prompts',
+      build: 'Build the 9 prompts',
       built: 'Built {count} prompts. Click any one below to load it.',
       applyAll: 'Load all (newline separated)',
       fillOne: 'Load into prompt',

@@ -124,7 +124,19 @@ export default {
       templateReady: '已就绪：本次复刻用的模板已确定，填好产品名就能生成。',
       noResult: '这几张图都没能拆解出结果，换几张试试，或确认视觉模型可用。',
       oneFailed: '有一张拆解失败（已跳过，其余继续）：{reason}',
-      step2: '第 2 步：填你自己商品的信息（这一步是独立的，不用先去填「套图」）',
+      step2: '第 2 步：放你自己商品的图，并填商品信息（这一步是独立的，不用先去填「套图」）',
+      // 我自己的商品图：爆款复刻是「用我的商品主体套同行的版式」，必须有这个入口。
+      pickProductImage: '选择我的商品图',
+      replaceProductImage: '更换我的商品图',
+      noProductImage: '还没选商品图（生成时会用它当商品主体）',
+      // 卖点/痛点/差异化交给视觉模型；痛点和差异化是「跟这张商品图对比」得出的。
+      extract: 'AI 识别卖点 / 痛点 / 差异化',
+      extracting: '正在识别…',
+      extractHint:
+        '放上商品图后点识别：卖点由视觉模型生成，痛点和差异化是拿这件商品跟同类普通款对比得出的。识别完仍可手动修改。',
+      extracted: '已识别并填入卖点、痛点、差异化（可直接修改）。',
+      extractFailed: '识别失败',
+      needProductImage: '请先选一张你自己的商品图，识别要用它。',
     },
 
     composite: {
@@ -206,7 +218,7 @@ export default {
       diff: '差异化',
       scene: '自动匹配场景',
       scenePlaceholder: '填产品名称后自动匹配',
-      build: '生成 8 张脚本',
+      build: '生成 9 张脚本',
       built: '已生成 {count} 张，点下面任意一张填入提示词。',
       applyAll: '全部填入（换行分隔）',
       fillOne: '填入提示词',

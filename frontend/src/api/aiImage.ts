@@ -178,11 +178,6 @@ async function generateOnce(
  * 这正是「让客户端识别到图片」需要的东西。
  * 但代价是请求会被要求走 images-native 能力，如果这个分组的账号不具备该能力，
  * 网关会以「没有可用账号」拒绝。这种情况退一步要 base64，至少先把图生成出来。
- *
- * 注意（不要改）：这里刻意**不使用** `/v1/images/generations/async` 那套异步任务接口。
- * 异步任务会把结果转存到平台的对象存储，图片就落到我们服务器上了；
- * 而主人明确要求「图片不能在服务器那里，会增多成本」。
- * 所以图片一律由上游直接给地址、客户端自己去下载，平台不落地、不保存。
  */
 function shouldFallbackToBase64(error: unknown): boolean {
   if (!(error instanceof AIImageError)) return false
@@ -197,13 +192,182 @@ function shouldFallbackToBase64(error: unknown): boolean {
   )
 }
 
-export async function generateAIImage(request: AIImageRequest): Promise<AIImageGenerationResponse> {
+/** 同步生图（老路子）：图片直接由上游交回，平台不落地。 */
+async function generateSync(request: AIImageRequest): Promise<AIImageGenerationResponse> {
   try {
     return await generateOnce(request, 'url')
   } catch (error) {
     if (!shouldFallbackToBase64(error)) throw error
     return generateOnce(request, 'b64_json')
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * 异步生图（图片转存到平台对象存储，返回真网址）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 【2026-10-16 主人改主意了】原来这里刻意不用异步接口，理由是
+ * 「图片不能放服务器，会增多成本」。主人现在明确要求：
+ * **图片要能存在平台、并且存一天**，所以改成优先走异步。
+ *
+ * 为什么必须走异步才能「存一天」：
+ *   这条通道只给得出 base64，**没有可以回头再访问的网址**。
+ *   同步返回的 url 字段其实是网关现造的 `data:...;base64,...`（不是真网址），
+ *   前端为了不撑爆 localStorage 必须把它丢掉，于是刷新后图就没了。
+ *   异步通道会把每张图**转存进对象存储**，返回 `https://img.chenshuapi.com/...`
+ *   这种真网址，刷新后自然还在。
+ *
+ * 「存一天」是平台侧已经定好的：任务记录的 TTL 就是 24 小时
+ *   （`backend/internal/service/image_task.go` 的 defaultImageTaskTTL）。
+ *
+ * 兜底：服务端没开对象存储时，异步接口会回 404「async image tasks are not enabled」，
+ *   这时自动退回同步通道，功能不会因此整个不可用。
+ */
+export interface AIImageAsyncSubmit {
+  taskId: string
+  pollUrl: string
+  expiresAt?: number
+}
+
+/** 轮询间隔：服务端在 202 响应里给了 Retry-After: 3，照它来。 */
+const ASYNC_POLL_INTERVAL_MS = 3000
+/**
+ * 轮询总时长上限。
+ * 上游实测最慢 232 秒，加上转存对象存储还要一会儿；15 分钟足够宽裕。
+ * 超时只是**客户端**不再等，服务端的任务照跑，图也已经存进桶里了。
+ */
+const ASYNC_POLL_TIMEOUT_MS = 15 * 60 * 1000
+
+interface AIImageAsyncTask {
+  task_id?: string
+  status?: string
+  http_status?: number
+  image_url?: string
+  result?: AIImageGenerationResponse
+  error?: { type?: string; code?: string; message?: string } | string
+  expires_at?: number
+}
+
+/** 服务端没开对象存储时的固定话术，用来判断「该退回同步」。 */
+const ASYNC_DISABLED_MESSAGE = 'async image tasks are not enabled'
+
+function isAsyncUnsupported(error: unknown): boolean {
+  if (!(error instanceof AIImageError)) return false
+  if (error.status !== 404) return false
+  const text = `${error.code} ${error.message}`.toLowerCase()
+  return text.includes('not enabled') || text.includes('not_enabled') || text.includes(ASYNC_DISABLED_MESSAGE)
+}
+
+function asyncTaskError(task: AIImageAsyncTask): AIImageError {
+  const raw = task.error
+  const message =
+    typeof raw === 'string'
+      ? raw
+      : String(raw?.message || raw?.code || raw?.type || '') || '异步生图任务失败'
+  const code = typeof raw === 'string' ? 'api_error' : String(raw?.code || raw?.type || 'api_error')
+  return new AIImageError(message, code, task.http_status && task.http_status >= 400 ? task.http_status : 502)
+}
+
+/** 提交异步生图任务，返回任务号。 */
+async function submitAsyncImage(request: AIImageRequest): Promise<AIImageAsyncSubmit> {
+  const isEdit = Boolean(request.referenceImage)
+  const path = isEdit ? '/v1/images/edits/async' : '/v1/images/generations/async'
+
+  // 异步通道下 response_format 不影响最终结果：无论上游给的是 base64 还是网址，
+  // 平台都会先把图转存进对象存储、再把结果改写成对象存储的网址。
+  // 这里固定要 b64_json，少一次「网关现造 data: 网址」的中间态。
+  let response: Response
+  if (isEdit) {
+    const form = new FormData()
+    form.append('model', request.model || AI_IMAGE_DEFAULT_MODEL)
+    form.append('prompt', request.prompt)
+    form.append('n', String(request.n ?? 1))
+    form.append('size', request.size || AI_IMAGE_DEFAULT_SIZE)
+    form.append('response_format', 'b64_json')
+    const file = request.referenceImage as File
+    form.append('image', file, file.name || 'image.png')
+    response = await fetch(buildGatewayUrl(path), {
+      method: 'POST',
+      headers: authHeaders(request.apiKey),
+      body: form,
+    })
+  } else {
+    response = await fetch(buildGatewayUrl(path), {
+      method: 'POST',
+      headers: authHeaders(request.apiKey, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        model: request.model || AI_IMAGE_DEFAULT_MODEL,
+        prompt: request.prompt,
+        n: request.n ?? 1,
+        size: request.size || AI_IMAGE_DEFAULT_SIZE,
+        response_format: 'b64_json',
+      }),
+    })
+  }
+  if (!response.ok) throw await parseError(response)
+
+  const body = (await response.json()) as AIImageAsyncTask & { id?: string; poll_url?: string }
+  const taskId = String(body.task_id || body.id || '').trim()
+  if (!taskId) throw new AIImageError('异步生图没有返回任务号', 'parse_error', 202)
+  return {
+    taskId,
+    pollUrl: String(body.poll_url || `/v1/images/tasks/${taskId}`),
+    expiresAt: body.expires_at,
+  }
+}
+
+/** 轮询任务直到出结果。 */
+async function pollAsyncImage(submit: AIImageAsyncSubmit, apiKey: string): Promise<AIImageGenerationResponse> {
+  const deadline = Date.now() + ASYNC_POLL_TIMEOUT_MS
+  const path = submit.pollUrl.startsWith('/') ? submit.pollUrl : `/v1/images/tasks/${submit.taskId}`
+
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+
+    const response = await fetch(buildGatewayUrl(path), {
+      method: 'GET',
+      headers: authHeaders(apiKey),
+    })
+    if (!response.ok) throw await parseError(response)
+
+    const task = (await response.json()) as AIImageAsyncTask
+    const status = String(task.status || '').trim()
+
+    if (status === 'completed') {
+      const result = task.result
+      if (result && Array.isArray(result.data) && result.data.length) return result
+      // 结果里没有 data（结构不符）时，至少用 image_url 兜一张，别让用户白等。
+      if (task.image_url) return { data: [{ url: task.image_url }] }
+      throw new AIImageError('异步生图完成了，但结果里没有图片', 'parse_error', 200)
+    }
+    if (status === 'failed') throw asyncTaskError(task)
+
+    if (Date.now() > deadline) {
+      throw new AIImageError(
+        `等了 ${Math.round(ASYNC_POLL_TIMEOUT_MS / 60000)} 分钟还没出图。任务可能还在跑，过一会儿可以重试。`,
+        'timeout_error',
+        504,
+      )
+    }
+  }
+}
+
+/**
+ * 生成图片。
+ *
+ * 优先走**异步**通道（图片会转存到平台对象存储，返回真网址，刷新后还在）；
+ * 服务端没开对象存储时自动退回**同步**通道，保证功能始终可用。
+ */
+export async function generateAIImage(request: AIImageRequest): Promise<AIImageGenerationResponse> {
+  let submit: AIImageAsyncSubmit
+  try {
+    submit = await submitAsyncImage(request)
+  } catch (error) {
+    if (!isAsyncUnsupported(error)) throw error
+    return generateSync(request)
+  }
+  return pollAsyncImage(submit, request.apiKey)
 }
 
 /**
@@ -218,6 +382,12 @@ export async function extractSellingPoints(request: {
   apiBase?: string
   /** 已经填过的产品名等资料，一并交给模型参考 */
   hints?: Record<string, string>
+  /**
+   * 自定义提示词。留空用套图那份 `VISION_EXTRACT_PROMPT`。
+   * 爆款复刻要的是「跟同类普通款做对比」那一套，所以传它自己的
+   * `HOT_EXTRACT_PROMPT` 进来，不去动套图这条链路。
+   */
+  prompt?: string
 }): Promise<SellingPoints> {
   const base64 = await fileToBase64(request.image)
   const hintText = Object.entries(request.hints || {})
@@ -225,8 +395,9 @@ export async function extractSellingPoints(request: {
     .map(([key, value]) => `${key}: ${value}`)
     .join('\n')
 
+  const instruction = request.prompt?.trim() || VISION_EXTRACT_PROMPT
   const content: Array<Record<string, unknown>> = [
-    { type: 'text', text: hintText ? `${VISION_EXTRACT_PROMPT}\n\n补充资料：\n${hintText}` : VISION_EXTRACT_PROMPT },
+    { type: 'text', text: hintText ? `${instruction}\n\n补充资料：\n${hintText}` : instruction },
     { type: 'image_url', image_url: { url: base64 } },
   ]
 
