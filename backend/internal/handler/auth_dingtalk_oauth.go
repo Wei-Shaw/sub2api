@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
@@ -61,8 +62,6 @@ const (
 	dingTalkOAuthCookieMaxAgeSec    = 600 // 10 分钟
 	dingTalkOAuthDefaultRedirectTo  = "/dashboard"
 	dingTalkOAuthDefaultFrontendCB  = "/auth/dingtalk/callback"
-
-	dingTalkLevelThreeEnabled = true
 )
 
 // ─── Config helper ─────────────────────────────────────────────────────────
@@ -116,7 +115,8 @@ func (h *AuthHandler) DingTalkOAuthStart(c *gin.Context) {
 	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 	}
-	cfg, err := h.getDingTalkOAuthConfig(c.Request.Context())
+	appID := strings.TrimSpace(c.Query("app_id"))
+	cfg, err := h.getDingTalkOAuthConfigForApp(c.Request.Context(), appID)
 	if err != nil {
 		frontendCB := dingTalkOAuthDefaultFrontendCB
 		redirectOAuthError(c, frontendCB, "dingtalk_not_enabled", "", "")
@@ -127,6 +127,10 @@ func (h *AuthHandler) DingTalkOAuthStart(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_STATE_GEN_FAILED", "failed to generate oauth state").WithCause(err))
 		return
+	}
+
+	if appID != "" && appID != "default" {
+		state += "." + appID
 	}
 
 	redirectTo := sanitizeFrontendRedirectPath(c.Query("redirect"))
@@ -171,129 +175,13 @@ func (h *AuthHandler) DingTalkOAuthStart(c *gin.Context) {
 	respondOAuthStart(c, authURL)
 }
 
-// ─── buildDingTalkAuthorizeURL ─────────────────────────────────────────────
-
-// ─── findDingTalkCompatEmailUser ───────────────────────────────────────────
-
-// findDingTalkCompatEmailUser 通过真实邮箱查找可与 DingTalk 账号兼容绑定的现有用户。
-func (h *AuthHandler) findDingTalkCompatEmailUser(ctx context.Context, email string) (*dbent.User, error) {
-	if !dingTalkLevelThreeEnabled {
-		return nil, nil
-	}
-
-	client := h.entClient()
-	if client == nil {
-		return nil, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
-	}
-
-	email = strings.TrimSpace(strings.ToLower(email))
-	if email == "" ||
-		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
-		return nil, nil
-	}
-
-	userEntities, err := client.User.Query().
-		Where(userNormalizedEmailPredicate(email)).
-		Order(dbent.Asc(dbuser.FieldID)).
-		All(ctx)
-	if err != nil {
-		return nil, infraerrors.InternalServer("COMPAT_EMAIL_LOOKUP_FAILED", "failed to look up compat email user").WithCause(err)
-	}
-	switch len(userEntities) {
-	case 0:
-		return nil, nil
-	case 1:
-		return userEntities[0], nil
-	default:
-		return nil, infraerrors.Conflict("USER_EMAIL_CONFLICT", "normalized email matched multiple users")
-	}
-}
-
-// ─── createDingTalkOAuthChoicePendingSession ───────────────────────────────
-
-// createDingTalkOAuthChoicePendingSession 创建 DingTalk OAuth 三方注册/绑定的 choice pending session。
-// signupBlocked=true 时关闭"创建新账户"出口；若同时没有 compat email 匹配的已有账户，
-// 直接把 step 切到 bind_login_required，避免前端展示一个没有实际可点选项的 choice 界面。
-func (h *AuthHandler) createDingTalkOAuthChoicePendingSession(
-	c *gin.Context,
-	identity service.PendingAuthIdentityKey,
-	suggestedEmail string,
-	resolvedEmail string,
-	redirectTo string,
-	browserSessionKey string,
-	upstreamClaims map[string]any,
-	compatEmail string,
-	compatEmailUser *dbent.User,
-	forceEmailOnSignup bool,
-	signupBlocked bool,
-) error {
-	suggestionEmail := strings.TrimSpace(suggestedEmail)
-	canonicalEmail := strings.TrimSpace(resolvedEmail)
-	if suggestionEmail == "" {
-		suggestionEmail = canonicalEmail
-	}
-
-	completionResponse := map[string]any{
-		"step":                      oauthPendingChoiceStep,
-		"adoption_required":         true,
-		"redirect":                  strings.TrimSpace(redirectTo),
-		"email":                     suggestionEmail,
-		"resolved_email":            canonicalEmail,
-		"existing_account_email":    "",
-		"existing_account_bindable": false,
-		"create_account_allowed":    !signupBlocked,
-		"force_email_on_signup":     forceEmailOnSignup,
-		"choice_reason":             "third_party_signup",
-	}
-	if strings.TrimSpace(compatEmail) != "" {
-		completionResponse["compat_email"] = strings.TrimSpace(compatEmail)
-	}
-	resolvedChoiceEmail := suggestionEmail
-	if compatEmailUser != nil {
-		completionResponse["email"] = strings.TrimSpace(compatEmailUser.Email)
-		completionResponse["existing_account_email"] = strings.TrimSpace(compatEmailUser.Email)
-		completionResponse["existing_account_bindable"] = true
-		completionResponse["choice_reason"] = "compat_email_match"
-		resolvedChoiceEmail = strings.TrimSpace(compatEmailUser.Email)
-	}
-	if forceEmailOnSignup && compatEmailUser == nil {
-		completionResponse["choice_reason"] = "force_email_on_signup"
-	}
-	// 注册被拦：无论是否匹配到 compat email user，都跳过 choice，直接进 bind_login。
-	// "开放注册" 关闭 且 "钉钉企业模式豁免" 也关闭时，唯一合法出口是绑定已有账户，
-	// 不应该让用户看到"创建新账户"按钮；compat user 命中只是让 bind_login 的邮箱字段预填得更准。
-	if signupBlocked {
-		completionResponse["step"] = "bind_login_required"
-		completionResponse["existing_account_bindable"] = true
-		completionResponse["choice_reason"] = "signup_blocked_redirect_to_bind"
-	}
-
-	var targetUserID *int64
-	if compatEmailUser != nil && compatEmailUser.ID > 0 {
-		targetUserID = &compatEmailUser.ID
-	}
-
-	return h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-		Intent:                 oauthIntentLogin,
-		Identity:               identity,
-		TargetUserID:           targetUserID,
-		ResolvedEmail:          resolvedChoiceEmail,
-		RedirectTo:             redirectTo,
-		BrowserSessionKey:      browserSessionKey,
-		UpstreamIdentityClaims: upstreamClaims,
-		CompletionResponse:     completionResponse,
-	})
-}
-
 // ─── DingTalkOAuthCallback ─────────────────────────────────────────────────
 
 // DingTalkOAuthCallback 处理钉钉授权回调。
 // GET /api/v1/auth/oauth/dingtalk/callback?code=...&state=...
 func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
-	cfg, cfgErr := h.getDingTalkOAuthConfig(c.Request.Context())
+	appID := dingTalkAppFromState(c.Query("state"))
+	cfg, cfgErr := h.getDingTalkOAuthConfigForApp(c.Request.Context(), appID)
 	if cfgErr != nil {
 		response.ErrorFrom(c, cfgErr)
 		return
@@ -337,9 +225,8 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "missing_browser_session", "missing browser session cookie", "")
 		return
 	}
-	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
 
-	// ─── 4 步链（Step 1 + Step 2 必须；Step 3/4 按需 + 跨组织降级）───
+	// Verify OAuth authorization and live corporate membership before any account lookup.
 	client := h.dingTalkClient(cfg)
 	userToken, err := client.ExchangeCodeForUserToken(c.Request.Context(), code)
 	if err != nil {
@@ -362,47 +249,13 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	identityKey := service.PendingAuthIdentityKey{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: unionID}
+	identityKey := service.PendingAuthIdentityKey{ProviderType: "dingtalk", ProviderKey: service.DingTalkProviderKey(appID), ProviderSubject: unionID}
 
-	// Step 3/4 调用策略由 policy 决定，与 require_email 解耦。
-	// policy=internal_only → 必须成功（hard fail），因为 AppType=internal 已保证用户在应用企业。
-	// policy=none / "" → 尝试，失败降级（公网场景跨组织用户属正常预期）。
-	// require_email 只影响 Step 3/4 结果后的邮箱处理路径，不影响是否调用。
-	var staff *DingTalkStaffInfo
-	switch cfg.CorpRestrictionPolicy {
-	case "internal_only":
-		// AppType=internal 已保证用户在应用企业，Step 3/4 必须成功。
-		// 失败 = 钉钉 OAPI 故障或应用配置错误，应 hard fail。
-		upstreamUserID, errStep3 := client.GetUserIdByUnionId(c.Request.Context(), unionID)
-		if errStep3 != nil {
-			dingTalkUpstreamRedirect(c, frontendCallback, "get_user_id", errStep3)
-			return
-		}
-		staffInfo, errStep4 := client.GetStaffInfoByUserId(c.Request.Context(), upstreamUserID)
-		if errStep4 != nil {
-			dingTalkUpstreamRedirect(c, frontendCallback, "get_staff_info", errStep4)
-			return
-		}
-		staff = staffInfo
-
-	default: // "none" or ""
-		// 公网登录，跨组织用户 Step 3/4 可能失败（设计预期），尝试调用，失败降级。
-		// 即使 require_email=false 也尝试拿 name（用于 upstreamClaims.username），失败就空着。
-		upstreamUserID, errStep3 := client.GetUserIdByUnionId(c.Request.Context(), unionID)
-		if errStep3 != nil {
-			slog.Debug("dingtalk step3 fallback (none/cross-org)",
-				"corp_id", corpID, "union_id", unionID, "err", errStep3.Error())
-			staff = &DingTalkStaffInfo{}
-			break
-		}
-		staffInfo, errStep4 := client.GetStaffInfoByUserId(c.Request.Context(), upstreamUserID)
-		if errStep4 != nil {
-			slog.Debug("dingtalk step4 fallback (none/cross-org)",
-				"corp_id", corpID, "union_id", unionID, "err", errStep4.Error())
-			staff = &DingTalkStaffInfo{}
-			break
-		}
-		staff = staffInfo
+	// Always verify current membership, even when legacy policy was "none".
+	staff, err := client.GetCurrentStaff(c.Request.Context(), unionID)
+	if err != nil {
+		dingTalkUpstreamRedirect(c, frontendCallback, "verify_membership", err)
+		return
 	}
 
 	// nick 来自 OIDC /contact/users/me，优先作为钉钉昵称（user/get.nickname 多数为空）。
@@ -411,6 +264,7 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 	}
 
 	upstreamClaims := buildDingTalkUpstreamClaims(staff, unionID, corpID)
+	upstreamClaims["dingtalk_app_id"] = appID
 
 	// ─── S1 主动绑定分支（PR-3 才走到这里）───
 	if intent == oauthIntentBindCurrentUser {
@@ -422,7 +276,7 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 		// policy=none 跨组织用户绑定时 staff.Email=""，用合成邮箱占位（用于 audit log，不用于注册）
 		bindResolvedEmail := staff.Email
 		if bindResolvedEmail == "" {
-			bindResolvedEmail = buildDingTalkSyntheticEmail(unionID)
+			bindResolvedEmail = buildDingTalkAppSyntheticEmail(appID, unionID)
 		}
 		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
 			Intent: oauthIntentBindCurrentUser, Identity: identityKey,
@@ -439,127 +293,90 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// ─── Level 1：auth_identities hit ───
-	if existing, _ := h.findOAuthIdentityUser(c.Request.Context(), identityKey); existing != nil {
-		// 身份同步：已登录用户，直接同步（user_id 已知）。
-		// 异步执行避免上游钉钉接口（GetStaffInfoByUserId / 部门递归）阻塞登录跳转。
-		runDingTalkSyncAsync(c.Request.Context(), func(ctx context.Context) {
-			h.syncDingTalkIdentity(ctx, cfg, client, existing.ID, staff, false)
-		})
-		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-			Intent: oauthIntentLogin, Identity: identityKey, TargetUserID: &existing.ID,
-			ResolvedEmail: existing.Email, RedirectTo: redirectTo, BrowserSessionKey: browserSessionKey,
-			UpstreamIdentityClaims: upstreamClaims,
-			CompletionResponse:     map[string]any{"redirect": redirectTo},
-		}); err != nil {
-			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
-			return
-		}
-		redirectToFrontendCallback(c, frontendCallback)
+	// Resolve by immutable DingTalk identity, never by an unverified staff email.
+	existing, err := h.findOAuthIdentityUser(c.Request.Context(), identityKey)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "account_unavailable", infraerrors.Message(err), "")
 		return
 	}
-
-	signupBlocked := h.isDingTalkSignupBlocked(c.Request.Context(), cfg)
-
-	// ─── 非命中：require_email=false 走 synthetic email 直接登录 ───
-	if !cfg.RequireEmail {
-		if signupBlocked {
-			// 注册被拦 + 无邮箱可输：唯一出路是绑定已有账户
-			if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-				Intent: oauthIntentLogin, Identity: identityKey, TargetUserID: nil,
-				ResolvedEmail: "", RedirectTo: redirectTo, BrowserSessionKey: browserSessionKey,
-				UpstreamIdentityClaims: upstreamClaims,
-				CompletionResponse:     dingTalkBindLoginCompletionResponse(redirectTo),
-			}); err != nil {
-				redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
-				return
-			}
-			redirectToFrontendCallback(c, frontendCallback)
+	var userID int64
+	var email string
+	created := existing == nil
+	if existing != nil {
+		userID, email = existing.ID, existing.Email
+	} else {
+		if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+			redirectOAuthError(c, frontendCallback, "account_unavailable", infraerrors.Message(err), "")
 			return
 		}
-		syntheticEmail := buildDingTalkSyntheticEmail(unionID)
-		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-			Intent: oauthIntentLogin, Identity: identityKey, TargetUserID: nil,
-			ResolvedEmail: syntheticEmail, RedirectTo: redirectTo, BrowserSessionKey: browserSessionKey,
-			UpstreamIdentityClaims: upstreamClaims,
-			CompletionResponse:     map[string]any{"redirect": redirectTo, "synthetic_email": syntheticEmail},
-		}); err != nil {
-			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		username := strings.TrimSpace(staff.Name)
+		if username == "" {
+			username = strings.TrimSpace(staff.Nickname)
+		}
+		if username == "" {
+			username = staff.UserID
+		}
+		user, err := h.authService.ProvisionDingTalkUser(c.Request.Context(), buildDingTalkAppSyntheticEmail(appID, unionID), username)
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "account_unavailable", infraerrors.Message(err), "")
 			return
 		}
-		redirectToFrontendCallback(c, frontendCallback)
+		userID, email = user.ID, user.Email
+	}
+	// Persist the binding before creating a token-exchange session. A failed write
+	// never issues a token; a retry reuses the same reserved identity key.
+	session := &dbent.PendingAuthSession{
+		ProviderType: identityKey.ProviderType, ProviderKey: identityKey.ProviderKey,
+		ProviderSubject: identityKey.ProviderSubject, UpstreamIdentityClaims: upstreamClaims,
+	}
+	if err := applyPendingOAuthBinding(c.Request.Context(), h.entClient(), h.authService, h.userService, session, nil, &userID, true, false); err != nil {
+		redirectOAuthError(c, frontendCallback, "account_unavailable", infraerrors.Message(err), "")
 		return
 	}
-
-	// ─── require_email=true 且 staff.Email 空 → 补邮箱（默认）或直接 bind_login（注册被拦时） ───
-	if staff.Email == "" {
-		completionResponse := map[string]any{
-			"step":                      "email_completion",
-			"requires_email_completion": true,
-			"redirect":                  redirectTo,
-		}
-		if signupBlocked {
-			// 注册被全局关闭且未豁免：跳过补邮箱页，直接进 bind_login 让用户输入已有账户
-			completionResponse = dingTalkBindLoginCompletionResponse(redirectTo)
-		}
-		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-			Intent: oauthIntentLogin, Identity: identityKey, TargetUserID: nil,
-			ResolvedEmail: "", RedirectTo: redirectTo, BrowserSessionKey: browserSessionKey,
-			UpstreamIdentityClaims: upstreamClaims,
-			CompletionResponse:     completionResponse,
-		}); err != nil {
-			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
-			return
-		}
-		redirectToFrontendCallback(c, frontendCallback)
-		return
-	}
-
-	// ─── L3/L4 有邮箱：统一 choice pending session ───
-	var compatEmailUser *dbent.User
-	if dingTalkLevelThreeEnabled && staff.Email != "" {
-		compatEmailUser, _ = h.findDingTalkCompatEmailUser(c.Request.Context(), staff.Email)
-	}
-	if err := h.createDingTalkOAuthChoicePendingSession(
-		c, identityKey, staff.Email, staff.Email,
-		redirectTo, browserSessionKey, upstreamClaims,
-		staff.Email, compatEmailUser, forceEmailOnSignup,
-		signupBlocked,
-	); err != nil {
+	if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+		Intent: oauthIntentLogin, Identity: identityKey, TargetUserID: &userID,
+		ResolvedEmail: email, RedirectTo: redirectTo, BrowserSessionKey: browserSessionKey,
+		UpstreamIdentityClaims: upstreamClaims,
+		CompletionResponse:     map[string]any{"redirect": redirectTo},
+	}); err != nil {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 	}
+	runDingTalkSyncAsync(c.Request.Context(), func(ctx context.Context) {
+		h.syncDingTalkIdentity(ctx, cfg, client, userID, staff, created)
+	})
 	redirectToFrontendCallback(c, frontendCallback)
+}
+
+// validateDingTalkUserMembership also protects passkey/other-provider login and
+// refresh-token rotation for accounts with a DingTalk identity.
+func (h *AuthHandler) validateDingTalkUserMembership(ctx context.Context, userID int64) error {
+	client := h.entClient()
+	if client == nil {
+		return service.ErrServiceUnavailable
+	}
+	identities, err := client.AuthIdentity.Query().Where(authidentity.UserIDEQ(userID), authidentity.ProviderTypeEQ("dingtalk")).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, identity := range identities {
+		app := strings.TrimPrefix(identity.ProviderKey, "dingtalk:")
+		if identity.ProviderKey == "dingtalk" {
+			app = ""
+		}
+		cfg, err := h.getDingTalkOAuthConfigForApp(ctx, app)
+		if err != nil {
+			return err
+		}
+		if _, err := h.dingTalkClient(cfg).GetCurrentStaff(ctx, identity.ProviderSubject); err != nil {
+			return infraerrors.Forbidden("DINGTALK_MEMBERSHIP_REQUIRED", "无法确认钉钉在职状态，已离职或不在企业通讯录的账号不能登录").WithCause(err)
+		}
+	}
+	return nil
 }
 
 func buildDingTalkSyntheticEmail(userID string) string {
 	return "dingtalk-" + strings.ToLower(strings.TrimSpace(userID)) + service.DingTalkConnectSyntheticEmailDomain
-}
-
-// isDingTalkSignupBlocked 当注册总开关关闭且未开启钉钉企业模式豁免
-// （policy=internal_only + dingtalk_connect_bypass_registration=true）时返回 true。
-// 镜像 service.AuthService.canBypassRegistrationDisabledForOAuth 用于 OAuth callback
-// 早期路由决策：注册被拦 → 跳过补邮箱页直接进 bind_login，避免用户填完表单才报错。
-func (h *AuthHandler) isDingTalkSignupBlocked(ctx context.Context, cfg config.DingTalkConnectConfig) bool {
-	if h.settingSvc == nil {
-		return false
-	}
-	if h.settingSvc.IsRegistrationEnabled(ctx) {
-		return false
-	}
-	if cfg.BypassRegistration && cfg.CorpRestrictionPolicy == "internal_only" {
-		return false
-	}
-	return true
-}
-
-func dingTalkBindLoginCompletionResponse(redirectTo string) map[string]any {
-	return map[string]any{
-		"step":                      "bind_login_required",
-		"existing_account_bindable": true,
-		"create_account_allowed":    false,
-		"redirect":                  redirectTo,
-	}
 }
 
 func buildDingTalkUpstreamClaims(staff *DingTalkStaffInfo, unionID, corpID string) map[string]any {
@@ -595,26 +412,6 @@ func checkDingTalkCorpAllowed(cfg config.DingTalkConnectConfig, corpID string) b
 	}
 }
 
-// decideDingTalkStep34Strategy 根据 policy 和 Step 3/4 运行时错误决定处理方式。
-// 返回 (proceed bool, fatal bool)：
-//   - proceed=true：继续处理（step 成功或降级）
-//   - fatal=true：应 hard fail（upstream_error）
-//
-// 此 helper 从主链中提取，便于 unit test 独立验证策略决策逻辑。
-func decideDingTalkStep34Strategy(policy string, stepErr error) (shouldFallback bool, isFatal bool) {
-	if stepErr == nil {
-		return false, false // 成功，不需要降级
-	}
-	switch policy {
-	case "internal_only":
-		return false, true // hard fail：同企业 Step 3/4 必须成功
-	case "none", "":
-		return true, false // 降级：公网场景跨组织用户失败属正常预期
-	default:
-		return false, true // 未知 policy，视为 hard fail
-	}
-}
-
 // mapDingTalkErrorCode 把 DingTalkAPIError 映射到 redirectOAuthError 用的字符串 code
 func mapDingTalkErrorCode(err error) string {
 	var apiErr *DingTalkAPIError
@@ -622,7 +419,7 @@ func mapDingTalkErrorCode(err error) string {
 		return "upstream_error"
 	}
 	switch apiErr.Code {
-	case "60011", "60121":
+	case "60011", "60121", "60111", "60103", "MEMBERSHIP_REQUIRED":
 		return "corp_rejected"
 	case "40014", "50015", "88":
 		return "upstream_error"
@@ -734,6 +531,14 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	app := pendingSessionStringValue(session.UpstreamIdentityClaims, "dingtalk_app_id")
+	if app != "" && app != "default" {
+		if _, err := h.getDingTalkOAuthConfigForApp(c.Request.Context(), app); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		c.Request = c.Request.WithContext(service.WithDingTalkApplication(c.Request.Context(), app))
+	}
 	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -803,7 +608,7 @@ func (h *AuthHandler) CompleteDingTalkOAuthRegistration(c *gin.Context) {
 	}
 	// 新用户注册完成后执行身份同步（user_id 现在已知）。
 	// 异步执行避免阻塞 token 响应。
-	if completionCfg, cfgErr := h.getDingTalkOAuthConfig(c.Request.Context()); cfgErr == nil {
+	if completionCfg, cfgErr := h.getDingTalkOAuthConfigForApp(c.Request.Context(), pendingSessionStringValue(session.UpstreamIdentityClaims, "dingtalk_app_id")); cfgErr == nil {
 		dtClient := h.dingTalkClient(completionCfg)
 		claims := session.UpstreamIdentityClaims
 		runDingTalkSyncAsync(c.Request.Context(), func(ctx context.Context) {
@@ -977,7 +782,7 @@ func (h *AuthHandler) dispatchDingTalkPendingSync(ctx context.Context, session *
 	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), "dingtalk") {
 		return
 	}
-	cfg, err := h.getDingTalkOAuthConfig(ctx)
+	cfg, err := h.getDingTalkOAuthConfigForApp(ctx, pendingSessionStringValue(session.UpstreamIdentityClaims, "dingtalk_app_id"))
 	if err != nil {
 		slog.Debug("dingtalk sync: skip post-login sync, config unavailable", "user_id", userID, "err", err.Error())
 		return
@@ -1076,4 +881,27 @@ func (h *AuthHandler) resolveDingTalkDeptPath(ctx context.Context, client *DingT
 	}
 
 	return strings.Join(parts, "/"), nil
+}
+
+// The application selector is bound to the random state cookie, not accepted
+// independently from a callback query parameter.
+func dingTalkAppFromState(state string) string {
+	if i := strings.LastIndexByte(state, '.'); i >= 0 {
+		return state[i+1:]
+	}
+	return ""
+}
+func (h *AuthHandler) getDingTalkOAuthConfigForApp(ctx context.Context, id string) (config.DingTalkConnectConfig, error) {
+	if id == "" || id == "default" {
+		return h.getDingTalkOAuthConfig(ctx)
+	}
+	if h.settingSvc == nil {
+		return config.DingTalkConnectConfig{}, infraerrors.NotFound("DINGTALK_APP_DISABLED", "DingTalk application unavailable")
+	}
+	return h.settingSvc.GetDingTalkOAuthConfigForApp(ctx, id)
+}
+func buildDingTalkAppSyntheticEmail(app, subject string) string {
+	// Hash the case-sensitive subject so email normalization cannot merge identities.
+	sum := sha256.Sum256([]byte(service.DingTalkProviderKey(app) + ":" + subject))
+	return buildDingTalkSyntheticEmail(fmt.Sprintf("%x", sum))
 }

@@ -97,11 +97,14 @@ describe('LoginView registration entry', () => {
     getPublicSettingsMock.mockResolvedValue(publicSettings)
   })
 
-  it('shows the registration entry when registration is enabled', async () => {
+  it('removes email login and registration even when legacy settings enable them', async () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('auth.signUp')
+    expect(wrapper.text()).not.toContain('auth.signUp')
+    expect(wrapper.find('input[type="email"]').exists()).toBe(false)
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('auth.forgotPassword')
   })
 
   it('hides the registration entry when registration is disabled', async () => {
@@ -115,4 +118,11 @@ describe('LoginView registration entry', () => {
 
     expect(wrapper.text()).not.toContain('auth.signUp')
   })
+  it('keeps DingTalk login available in backend mode', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({ ...publicSettings, dingtalk_oauth_enabled: true, backend_mode_enabled: true })
+    const wrapper = mountLogin()
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'DingTalkOAuthSection' }).exists()).toBe(true)
+  })
+
 })

@@ -163,11 +163,17 @@ export default {
 
   // Navigation
   nav: {
+    organizationQuota: '组织额度分配',
+    organizationStatistics: '组织部门额度统计',
+    dingtalkManagers: '项目负责人',
+    dingtalkManagement: '钉钉组织管理',
+    dingtalkOrganization: '钉钉组织',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
     batchImage: '批量生图',
     usage: '使用记录',
+    statistics: '统计',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -207,6 +213,7 @@ export default {
     paymentPlans: '订阅套餐',
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
+    modelManagement: '模型批量管理',
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
@@ -334,7 +341,7 @@ export default {
       error: {
         title: '钉钉登录失败',
         csrf: '登录会话已过期，请重新扫码登录',
-        corp_rejected: '您的钉钉账号不属于本企业，请联系管理员',
+        corp_rejected: '您的钉钉账号已离职或不在本企业通讯录中，无法登录',
         dingtalk_not_enabled: '钉钉登录暂未启用',
         upstream_error: '钉钉服务暂时不可用，请稍后重试',
         missing_browser_session: '浏览器会话丢失，请重新登录',
