@@ -1074,6 +1074,7 @@
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
       :base-url="publicSettings?.api_base_url || ''"
+      :client-export-config="selectedKey?.group?.client_export_config"
       :platform="selectedKey?.group?.platform || null"
       :claude-code-only="selectedKey?.group?.claude_code_only || false"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
@@ -1231,6 +1232,8 @@ import { maskApiKey } from '@/utils/maskApiKey'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { platformBadgeLightClass } from '@/utils/platformColors'
 import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
+import { fetchCodexModelsManifest } from '@/api/codex'
+import { parseCodexCatalogModels } from '@/utils/codexCatalogConfig'
 import {
   CC_SWITCH_USAGE_SCRIPT,
   buildCcSwitchImportDeeplink,
@@ -2023,13 +2026,29 @@ const importToCcswitch = (row: ApiKey) => {
   executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
 }
 
-const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
+/** Validate explicit defaults against the key's current catalog before opening CC Switch. */
+const executeCcsImport = async (row: ApiKey, clientType: CcSwitchClientType) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
   const usageScript = CC_SWITCH_USAGE_SCRIPT
   const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const config = row.group?.client_export_config
+  const selectedModel = platform === 'openai' ? config?.codex_model : platform === 'grok' ? config?.grok_model : undefined
+  if (selectedModel) {
+    try {
+      const catalog = await fetchCodexModelsManifest(baseUrl, row.key)
+      if (!parseCodexCatalogModels(catalog.content).some(model => model.slug === selectedModel)) {
+        appStore.showError(t('admin.clientExport.exportUnavailable'))
+        return
+      }
+    } catch {
+      appStore.showError(t('admin.clientExport.loadFailed'))
+      return
+    }
+  }
   const deeplink = buildCcSwitchImportDeeplink({
+    clientExportConfig: config,
     baseUrl,
     platform,
     clientType,

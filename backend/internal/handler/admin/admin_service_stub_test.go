@@ -833,3 +833,8 @@ func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opt
 
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)
+
+// GetGroupClientExportOptions supplies an empty catalog unless a test exercises the real service.
+func (s *stubAdminService) GetGroupClientExportOptions(ctx context.Context, id int64, platform string) (*service.GroupClientExportOptions, error) {
+	return &service.GroupClientExportOptions{}, nil
+}

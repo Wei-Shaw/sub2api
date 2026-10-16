@@ -768,6 +768,18 @@
           </div>
         </div>
 
+        <ClientExportConfigFields
+          v-if="showCreateModal"
+          v-model="createForm.client_export_config"
+          :group-id="0"
+          :platform="createForm.platform"
+          :allowlist="buildModelAllowlistConfig(createModelAllowlistState)"
+          :supported-model-scopes="createForm.supported_model_scopes"
+          :allow-messages-dispatch="createForm.allow_messages_dispatch"
+          id-prefix="create-client-export"
+          @valid="createClientExportValid = $event"
+        />
+
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -2407,6 +2419,18 @@
             </div>
           </div>
         </div>
+
+        <ClientExportConfigFields
+          v-if="showEditModal"
+          v-model="editForm.client_export_config"
+          :group-id="editingGroup?.id || 0"
+          :platform="editForm.platform"
+          :allowlist="buildModelAllowlistConfig(editModelAllowlistState)"
+          :supported-model-scopes="editForm.supported_model_scopes"
+          :allow-messages-dispatch="editForm.allow_messages_dispatch"
+          id-prefix="edit-client-export"
+          @valid="editClientExportValid = $event"
+        />
 
         <div class="border-t pt-4">
           <div class="mb-3 flex items-center justify-between gap-3">
@@ -4345,6 +4369,8 @@ import {
   selectAllModelAllowlistItems,
   setModelAllowlistCandidates,
 } from "./groupModelAllowlist";
+import ClientExportConfigFields from '@/components/admin/group/ClientExportConfigFields.vue';
+import type { ClientExportConfig } from '@/utils/groupClientExport';
 import { createModelAllowlistCandidatesTracker } from "./modelAllowlistCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
@@ -4940,7 +4966,10 @@ const submitEditAllowlistCustomEntry = () => {
   }
 };
 
+const createClientExportValid = ref(true);
+const editClientExportValid = ref(true);
 const createForm = reactive({
+  client_export_config: {} as ClientExportConfig,
   name: "",
   description: "",
   i18n: {} as GroupI18n,
@@ -5306,6 +5335,7 @@ const convertApiFormatToRoutingRules = async (
 };
 
 const editForm = reactive({
+  client_export_config: {} as ClientExportConfig,
   name: "",
   description: "",
   i18n: {} as GroupI18n,
@@ -5764,6 +5794,7 @@ const openCreateModal = () => {
   loadModelAllowlistCandidates("create", 0, createForm.platform);
 };
 
+/** Close creation and clear draft settings, including client model selections. */
 const closeCreateModal = () => {
   showCreateModal.value = false;
   createModelRoutingRules.value.forEach((rule) => {
@@ -5773,6 +5804,7 @@ const closeCreateModal = () => {
   createForm.name = "";
   createForm.description = "";
   createForm.i18n = {};
+  createForm.client_export_config = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
@@ -5883,7 +5915,12 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
   return true;
 };
 
+// Validate export selections together with existing group settings before creating a group.
 const handleCreateGroup = async () => {
+  if (!createClientExportValid.value) {
+    appStore.showError(t('admin.clientExport.invalid'));
+    return;
+  }
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
@@ -5946,6 +5983,7 @@ const handleCreateGroup = async () => {
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
+      client_export_config: createForm.client_export_config,
       model_allowlist: buildModelAllowlistConfig(createModelAllowlistState),
       // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
       codex_models_manifest_config: createCodexManifestDefaults(),
@@ -6051,10 +6089,12 @@ const handleCreateGroup = async () => {
   }
 };
 
+/** Hydrate the selected group's editor without sharing its client-default object. */
 const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
+  editForm.client_export_config = { ...group.client_export_config };
   editForm.i18n = Object.fromEntries(
     Object.entries(group.i18n ?? {}).map(([locale, text]) => [
       locale,
@@ -6221,7 +6261,12 @@ const closeEditModal = () => {
   editCodexManifestRef.value?.resetValidation?.();
 };
 
+// Persist selected client defaults only after the current group catalog validates them.
 const handleUpdateGroup = async () => {
+  if (!editClientExportValid.value) {
+    appStore.showError(t('admin.clientExport.invalid'));
+    return;
+  }
   if (!editingGroup.value) return;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -6295,6 +6340,7 @@ const handleUpdateGroup = async () => {
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
+      client_export_config: editForm.client_export_config,
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
       // 非 openai 平台提交关闭状态，与后端归一化一致
       codex_models_manifest_config:
@@ -6727,6 +6773,7 @@ watch(
       createForm.require_privacy_set = false;
     }
     resetDisabledBatchImagePricing(createForm);
+    createForm.client_export_config = {};
     resetModelAllowlistState(createModelAllowlistState);
     loadModelAllowlistCandidates("create", 0, newVal);
   },
@@ -6784,6 +6831,7 @@ watch(
       editForm.require_privacy_set = false;
     }
     resetDisabledBatchImagePricing(editForm);
+    if (editingGroup.value && newVal !== editingGroup.value.platform) editForm.client_export_config = {};
     if (editingGroup.value) {
       resetModelAllowlistState(editModelAllowlistState, editForm.platform === editingGroup.value.platform ? editingGroup.value.model_allowlist : undefined);
       loadModelAllowlistCandidates("edit", editingGroup.value.id, newVal);

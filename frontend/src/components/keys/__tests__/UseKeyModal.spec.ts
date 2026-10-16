@@ -25,6 +25,64 @@ vi.mock('file-saver', () => ({
 
 import UseKeyModal from '../UseKeyModal.vue'
 
+describe('group-specific native export defaults', () => {
+  it.each(['gemini', 'grok', 'anthropic'] as const)('applies Codex presets without rewriting the native %s provider authentication', async platform => {
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-local', baseUrl: 'https://example.com', platform, clientExportConfig: { codex_reasoning_effort: 'medium', codex_catalog_mode: 'file' } },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await wrapper.findAll('button').find(button => button.text().trim() === 'keys.useKeyModal.cliTabs.codexCli')!.trigger('click')
+    const config = wrapper.findAll('pre code').map(code => code.text()).join('\n')
+    expect(config).toContain('model_reasoning_effort = "medium"')
+    expect(config).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(config).not.toContain('model_catalog_url')
+    expect(config).toContain('env_key = "SUB2API_API_KEY"')
+    expect(config).toContain('wire_api = "responses"')
+    expect(config).toContain('supports_websockets = false')
+    // Grok's native guidance mentions this key in a comment; reject actual assignments.
+    expect(config).not.toMatch(/^\s*experimental_bearer_token\s*=/m)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('shares the selected OpenAI model across HTTP and WebSocket templates', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-local', baseUrl: 'https://example.com', platform: 'openai', clientExportConfig: { codex_model: 'gpt-5.6-sol' } },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } }
+    })
+    expect(wrapper.findAll('pre code').map(code => code.text()).join('\n')).toContain('model = "gpt-5.6-sol"')
+    const ws = wrapper.get('nav[aria-label="Client"]').findAll('button').find(button => button.text().includes('codexCliWs'))!
+    await ws.trigger('click')
+    const content = wrapper.findAll('pre code').map(code => code.text()).join('\n')
+    expect(content).toContain('review_model = "gpt-5.6-sol"')
+    expect(content).toContain('supports_websockets = true')
+    expect(content).toContain('wire_api = "responses"')
+    wrapper.unmount()
+  })
+
+  it('uses the Gemini choice only in its native CLI template', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-local', baseUrl: 'https://example.com', platform: 'gemini', clientExportConfig: { codex_model: 'other-client-model', gemini_model: 'gemini-2.5-pro' } },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } }
+    })
+    expect(wrapper.get('pre code').text()).toContain('GEMINI_MODEL="gemini-2.5-pro"')
+    expect(wrapper.get('pre code').text()).not.toContain('other-client-model')
+    wrapper.unmount()
+  })
+
+  it('blocks a missing explicit model instead of exporting the first catalog model', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => JSON.stringify({ models: [{ slug: 'replacement-model' }] }) }))
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-local', baseUrl: 'https://example.com', platform: 'openai', clientExportConfig: { codex_model: 'removed-model' } },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } }
+    })
+    await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="client-export-error"]').text()).toBe('admin.clientExport.exportUnavailable')
+    expect(wrapper.findAll('pre code')).toHaveLength(0)
+    wrapper.unmount()
+  })
+})
+
 function readBlobAsText(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -482,14 +540,13 @@ describe('UseKeyModal', () => {
       }
     })
 
-    const apiKeyMode = wrapper.get('[data-testid="codex-auth-mode-api-key"]')
-    await apiKeyMode.trigger('click')
+    await wrapper.setProps({ clientExportConfig: { codex_auth_mode: 'api-key' } })
     await nextTick()
 
     const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
     const configToml = codeBlocks.find((content) => content.includes('model_provider = "OpenAI"'))
 
-    expect(apiKeyMode.attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[role=radio]').exists()).toBe(false)
     expect(configToml).toBeDefined()
     expect(configToml).toContain('requires_openai_auth = false')
     expect(configToml).toContain('experimental_bearer_token = "sk-test"')
@@ -506,7 +563,7 @@ describe('UseKeyModal', () => {
       'keys.useKeyModal.openai.authModeApiKeyRestartNotice'
     )
 
-    await wrapper.get('[data-testid="codex-auth-mode-legacy"]').trigger('click')
+    await wrapper.setProps({ clientExportConfig: { codex_auth_mode: 'legacy' } })
     await nextTick()
 
     expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
@@ -585,8 +642,7 @@ describe('UseKeyModal', () => {
       }
     })
 
-    const apiKeyMode = wrapper.get('[data-testid="codex-auth-mode-api-key"]')
-    await apiKeyMode.trigger('click')
+    await wrapper.setProps({ clientExportConfig: { codex_auth_mode: 'api-key' } })
 
     const wsTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.codexCliWs')
@@ -600,7 +656,7 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('model_catalog_url = "https://example.com/v1/models"')
     expect(configToml).not.toContain('model_catalog_json')
 
-    expect(wrapper.get('[data-testid="codex-auth-mode-api-key"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[role=radio]').exists()).toBe(false)
     expect(configToml).toBeDefined()
     expect(configToml).toContain('requires_openai_auth = false')
     expect(configToml).toContain('experimental_bearer_token = "sk-test"')
@@ -615,7 +671,7 @@ describe('UseKeyModal', () => {
     expect(wrapper.text()).not.toContain('auth.json')
   })
 
-  it('resets Codex authentication mode when the modal reopens or platform changes', async () => {
+  it('preserves administrator authentication policy when reopening or switching client contexts', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -635,21 +691,21 @@ describe('UseKeyModal', () => {
       }
     })
 
-    await wrapper.get('[data-testid="codex-auth-mode-api-key"]').trigger('click')
+    await wrapper.setProps({ clientExportConfig: { codex_auth_mode: 'api-key' } })
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
     await nextTick()
 
-    expect(wrapper.get('[data-testid="codex-auth-mode-legacy"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).toContain('requires_openai_auth = true')
+    expect(wrapper.find('[role=radio]').exists()).toBe(false)
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).toContain('requires_openai_auth = false')
 
-    await wrapper.get('[data-testid="codex-auth-mode-api-key"]').trigger('click')
+    await wrapper.setProps({ clientExportConfig: { codex_auth_mode: 'api-key' } })
     await wrapper.setProps({ platform: 'gemini' })
     await wrapper.setProps({ platform: 'openai' })
     await nextTick()
 
-    expect(wrapper.get('[data-testid="codex-auth-mode-legacy"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).not.toContain('x-openai-actor-authorization')
+    expect(wrapper.find('[role=radio]').exists()).toBe(false)
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).toContain('x-openai-actor-authorization')
   })
 
   it('renders GPT-5.4 mini entry in OpenCode config', async () => {
@@ -866,7 +922,7 @@ describe('UseKeyModal', () => {
     expect(unixConfig).toContain('env_key = "SUB2API_API_KEY"')
     expect(fetchMock).not.toHaveBeenCalled()
 
-    await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('file')
+    await wrapper.setProps({ clientExportConfig: { codex_catalog_mode: 'file' } })
 
     await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
     await flushPromises()
@@ -1036,17 +1092,31 @@ describe('UseKeyModal', () => {
         expect(configToml).not.toContain('client_version')
         expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
 
-        await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('file')
+        await wrapper.setProps({ clientExportConfig: { codex_catalog_mode: 'file' } })
         const fileConfig = wrapper.findAll('pre code')
           .map((code) => code.text())
           .find((content) => content.includes('model_provider = "OpenAI"'))!
         expect(fileConfig).toContain('model_catalog_json = "~/.codex/codex-models.json"')
         expect(fileConfig).not.toContain('model_catalog_url')
         expect(fileConfig.indexOf('model_catalog_json')).toBeLessThan(fileConfig.indexOf('[model_providers.OpenAI]'))
-        await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('remote')
+        await wrapper.setProps({ clientExportConfig: { codex_catalog_mode: 'remote' } })
       }
     }
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('applies admin reasoning and Claude traffic presets with no user configuration controls', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-test', baseUrl: 'https://example.com', platform: 'openai', allowMessagesDispatch: true, clientExportConfig: { codex_reasoning_effort: 'high', codex_auth_mode: 'api-key', claude_traffic: 'enabled' } },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: { template: '<span />' } } }
+    })
+    expect(wrapper.findAll('pre code').map(code => code.text()).join('\n')).toContain('model_reasoning_effort = "high"')
+    expect(wrapper.find('[role=radio]').exists()).toBe(false)
+    expect(wrapper.find('select').exists()).toBe(false)
+    await wrapper.findAll('button').find(button => button.text().includes('cliTabs.claudeCode'))!.trigger('click')
+    expect(wrapper.findAll('pre code').map(code => code.text()).join('\n')).toContain('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0')
+    const settings = wrapper.findAll('pre code').map(code => code.text()).find(content => content.startsWith('{'))!
+    expect(JSON.parse(settings).env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('0')
   })
 
   it.each([1024 * 1024 - 1, 1024 * 1024, 1024 * 1024 + 1])(
@@ -1080,8 +1150,8 @@ describe('UseKeyModal', () => {
 
       const oversized = responseBytes > 1024 * 1024
       const mode = wrapper.get('[data-testid="codex-model-catalog-mode"]')
-      expect((mode.element as HTMLSelectElement).value).toBe(oversized ? 'file' : 'remote')
-      expect((mode.get('option[value="remote"]').element as HTMLOptionElement).disabled).toBe(oversized)
+      expect(mode.text()).toContain(oversized ? 'codexModelCatalog.local' : 'codexModelCatalog.remote')
+      expect(wrapper.find('select[data-testid=codex-model-catalog-mode]').exists()).toBe(false)
       const config = wrapper.findAll('pre code').map((code) => code.text())
         .find((content) => content.includes('model_provider = "OpenAI"'))!
       if (oversized) {
@@ -1095,7 +1165,7 @@ describe('UseKeyModal', () => {
         expect(JSON.parse(await readBlobAsText(downloaded))).toEqual(manifest)
 
         await wrapper.setProps({ apiKey: 'sk-new-group' })
-        expect((mode.get('option[value="remote"]').element as HTMLOptionElement).disabled).toBe(false)
+        expect(mode.text()).toContain('codexModelCatalog.remote')
         expect(wrapper.text()).not.toContain('keys.useKeyModal.codexModelCatalog.oversized')
       } else {
         expect(config).toContain('model_catalog_url = "https://example.com/v1/models"')

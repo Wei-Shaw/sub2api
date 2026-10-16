@@ -794,6 +794,20 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
+// SetClientExportConfig sets the "client_export_config" field.
+func (_c *GroupCreate) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupCreate {
+	_c.mutation.SetClientExportConfig(v)
+	return _c
+}
+
+// SetNillableClientExportConfig sets the "client_export_config" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableClientExportConfig(v *domain.GroupClientExportConfig) *GroupCreate {
+	if v != nil {
+		_c.SetClientExportConfig(*v)
+	}
+	return _c
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_c *GroupCreate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupCreate {
 	_c.mutation.SetModelAllowlist(v)
@@ -1185,6 +1199,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
 	}
+	if _, ok := _c.mutation.ClientExportConfig(); !ok {
+		v := group.DefaultClientExportConfig
+		_c.mutation.SetClientExportConfig(v)
+	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		v := group.DefaultModelAllowlist
 		_c.mutation.SetModelAllowlist(v)
@@ -1393,6 +1411,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "Group.messages_dispatch_model_config"`)}
+	}
+	if _, ok := _c.mutation.ClientExportConfig(); !ok {
+		return &ValidationError{Name: "client_export_config", err: errors.New(`ent: missing required field "Group.client_export_config"`)}
 	}
 	if _, ok := _c.mutation.ModelAllowlist(); !ok {
 		return &ValidationError{Name: "model_allowlist", err: errors.New(`ent: missing required field "Group.model_allowlist"`)}
@@ -1689,6 +1710,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
+	}
+	if value, ok := _c.mutation.ClientExportConfig(); ok {
+		_spec.SetField(group.FieldClientExportConfig, field.TypeJSON, value)
+		_node.ClientExportConfig = value
 	}
 	if value, ok := _c.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
@@ -2821,6 +2846,18 @@ func (u *GroupUpsert) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDisp
 // UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldMessagesDispatchModelConfig)
+	return u
+}
+
+// SetClientExportConfig sets the "client_export_config" field.
+func (u *GroupUpsert) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupUpsert {
+	u.Set(group.FieldClientExportConfig, v)
+	return u
+}
+
+// UpdateClientExportConfig sets the "client_export_config" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateClientExportConfig() *GroupUpsert {
+	u.SetExcluded(group.FieldClientExportConfig)
 	return u
 }
 
@@ -4094,6 +4131,20 @@ func (u *GroupUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesD
 func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetClientExportConfig sets the "client_export_config" field.
+func (u *GroupUpsertOne) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClientExportConfig(v)
+	})
+}
+
+// UpdateClientExportConfig sets the "client_export_config" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateClientExportConfig() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClientExportConfig()
 	})
 }
 
@@ -5554,6 +5605,20 @@ func (u *GroupUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessages
 func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetClientExportConfig sets the "client_export_config" field.
+func (u *GroupUpsertBulk) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClientExportConfig(v)
+	})
+}
+
+// UpdateClientExportConfig sets the "client_export_config" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateClientExportConfig() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClientExportConfig()
 	})
 }
 
