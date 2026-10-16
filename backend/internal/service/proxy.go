@@ -50,9 +50,28 @@ func (p *Proxy) URL() string {
 	return u.String()
 }
 
+// ProxyPlatformAccountCount 是某个 proxy 下单个平台的账号统计
+type ProxyPlatformAccountCount struct {
+	Platform   string
+	Count      int64
+	ErrorCount int64
+}
+
+// ProxyAccountStats 是单个 proxy 的账号聚合结果（repo -> service 内部传递用）
+type ProxyAccountStats struct {
+	Total      int64
+	ErrorCount int64
+	Platforms  []ProxyPlatformAccountCount
+}
+
 type ProxyWithAccountCount struct {
 	Proxy
-	AccountCount   int64
+	AccountCount int64
+	// ErrorAccountCount 只统计 status == StatusError 的账号，
+	// 与 ops_account_availability.go 的 hasError 口径保持一致
+	ErrorAccountCount int64
+	// PlatformCounts 按 platform 升序排列，只包含 Count > 0 的平台
+	PlatformCounts []ProxyPlatformAccountCount
 	LatencyMs      *int64
 	LatencyStatus  string
 	LatencyMessage string
