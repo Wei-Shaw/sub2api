@@ -86,6 +86,17 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	// 转换为 UsageInfo
 	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
 
+	// 周额度来自独立的聚合接口。该接口失败时保留原有模型级 5h 数据，避免影响账号可用性。
+	summaryResp, summaryRaw, summaryErr := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	if summaryErr != nil {
+		slog.Warn("failed to fetch antigravity quota summary", "error", summaryErr)
+	} else {
+		applyAntigravityQuotaSummary(usageInfo, summaryResp)
+		if summaryRaw != nil && modelsRaw != nil {
+			modelsRaw["quotaSummary"] = summaryRaw
+		}
+	}
+
 	return &QuotaResult{
 		UsageInfo: usageInfo,
 		Raw:       modelsRaw,
@@ -204,6 +215,78 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 	}
 
 	return info
+}
+
+func applyAntigravityQuotaSummary(info *UsageInfo, summary *antigravity.RetrieveUserQuotaSummaryResponse) {
+	if info == nil || summary == nil {
+		return
+	}
+
+	windows := make(map[string]*AntigravityQuotaWindow)
+	for _, group := range summary.GetGroups() {
+		for i := range group.Buckets {
+			bucket := &group.Buckets[i]
+			if bucket.BucketID == "" {
+				continue
+			}
+			remainingFraction, ok := bucket.GetRemainingFraction()
+			if !ok {
+				continue
+			}
+			if remainingFraction < 0 {
+				remainingFraction = 0
+			} else if remainingFraction > 1 {
+				remainingFraction = 1
+			}
+
+			window := &AntigravityQuotaWindow{
+				GroupName:         group.DisplayName,
+				DisplayName:       bucket.DisplayName,
+				Window:            bucket.Window,
+				RemainingFraction: remainingFraction,
+				Utilization:       (1 - remainingFraction) * 100,
+				Description:       bucket.Description,
+			}
+			if resetTime, err := parseAntigravityQuotaSummaryTime(bucket.GetResetTime()); err == nil {
+				window.ResetsAt = &resetTime
+			} else if bucket.GetResetTime() != "" {
+				slog.Warn("failed to parse antigravity quota summary reset time", "bucket_id", bucket.BucketID, "reset_time", bucket.GetResetTime(), "error", err)
+			}
+			windows[bucket.BucketID] = window
+		}
+	}
+	if len(windows) == 0 {
+		return
+	}
+
+	info.AntigravityQuotaSummary = windows
+	// five_hour 是旧客户端兼容字段；优先使用 Gemini 聚合窗口的精确值。
+	if geminiFiveHour := windows["gemini-5h"]; geminiFiveHour != nil {
+		info.FiveHour = &UsageProgress{
+			Utilization: geminiFiveHour.Utilization,
+			ResetsAt:    geminiFiveHour.ResetsAt,
+		}
+		if geminiFiveHour.ResetsAt != nil {
+			info.FiveHour.RemainingSeconds = max(0, int(time.Until(*geminiFiveHour.ResetsAt).Seconds()))
+		}
+	}
+}
+
+func parseAntigravityQuotaSummaryTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New("empty reset time")
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	// retrieveUserQuotaSummary 当前返回无时区的 UTC 时间，例如 08/29/2026 14:25:41。
+	if parsed, err := time.ParseInLocation("01/02/2006 15:04:05", value, time.UTC); err == nil {
+		return parsed, nil
+	}
+	return time.Time{}, fmt.Errorf("unsupported reset time format: %q", value)
 }
 
 // GetProxyURL 获取账户的代理 URL
