@@ -276,14 +276,17 @@ type ResponsesInputItem struct {
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
 
-	// type=function_call
+	// type=function_call / custom_tool_call / tool_search_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 	ID        string `json:"id,omitempty"`
 
-	// type=function_call_output
-	Output    string `json:"output,omitempty"`
+	// type=function_call_output / custom_tool_call_output / tool_search_output
+	Output    string          `json:"output,omitempty"`
+	Tools     json.RawMessage `json:"tools,omitempty"`
 	outputRaw json.RawMessage
 }
 

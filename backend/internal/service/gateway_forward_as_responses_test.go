@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -637,4 +638,112 @@ func TestClaude55BridgeUsesMappedModelBeforeThinkingConversion(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestGatewayForwardAsResponsesRemoteCompactionV2AndRestore(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	summaryStream := strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_compact","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":"","usage":{"input_tokens":50}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Summary of prior context."}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":0}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":12}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(summaryStream)),
+		},
+	}
+	svc := &GatewayService{cfg: &config.Config{JWT: config.JWTConfig{Secret: "test-gateway-compact-jwt-secret-key-32b"}}, httpUpstream: upstream}
+	userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	account := &Account{
+		ID:       1,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "fixture-key",
+		},
+	}
+
+	compactBody := []byte(`{
+		"model":"claude-sonnet-4-6",
+		"stream":true,
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Do X"}]},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done X."}]},
+			{"type":"compaction_trigger"}
+		],
+		"tools":[{"type":"function","name":"shell","parameters":{"type":"object","properties":{}}}]
+	}`)
+
+	rec1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(rec1)
+	c1.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(compactBody)))
+
+	res1, err := svc.ForwardAsResponses(userCtx, c1, account, compactBody, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res1)
+	require.True(t, res1.NativeCompactionV2)
+
+	// Upstream Anthropic request must end with a user message containing the compaction instruction and omit tools.
+	messages := gjson.GetBytes(upstream.lastBody, "messages").Array()
+	require.Len(t, messages, 3)
+	require.Equal(t, "user", messages[len(messages)-1].Get("role").String())
+	require.Contains(t, messages[len(messages)-1].Get("content").Raw, "CONTEXT CHECKPOINT COMPACTION")
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tools").Exists())
+
+	var encryptedContent string
+	for _, line := range strings.Split(rec1.Body.String(), "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if gjson.Get(payload, "type").String() == "response.completed" {
+			outputs := gjson.Get(payload, "response.output").Array()
+			require.Len(t, outputs, 1)
+			require.Equal(t, "compaction", outputs[0].Get("type").String())
+			encryptedContent = outputs[0].Get("encrypted_content").String()
+		}
+	}
+	require.NotEmpty(t, encryptedContent)
+
+	// Follow-up request restores the encrypted compaction checkpoint.
+	upstream.resp = &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(summaryStream)),
+	}
+	followUpBody, err := json.Marshal(map[string]any{
+		"model":  "claude-sonnet-4-6",
+		"stream": false,
+		"input": []any{
+			map[string]any{"type": "compaction", "encrypted_content": encryptedContent},
+			map[string]any{"type": "message", "role": "user", "content": "Next step"},
+		},
+	})
+	require.NoError(t, err)
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(followUpBody)))
+
+	_, err = svc.ForwardAsResponses(userCtx, c2, account, followUpBody, nil)
+	require.NoError(t, err)
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String(), "<compacted-summary>Summary of prior context.</compacted-summary>")
 }

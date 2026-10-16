@@ -331,6 +331,7 @@ const (
 	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
+	configuredCodexGeminiContext       = 1_048_576
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
 	configuredCodexGPT56MaxContext     = 872_000
@@ -450,6 +451,12 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		EffectiveContextWindowPercent:     95,
 		ExperimentalSupportedTools:        []string{},
 		InputModalities:                   []string{"text"},
+	}
+
+	if isGeminiCodexModel(modelID) {
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = configuredCodexGeminiContext
+		descriptor.MaxContextWindow = configuredCodexGeminiContext
 	}
 
 	if isDeepSeekCodexModel(modelID) {
@@ -761,6 +768,10 @@ func deepSeekCodexDisplayName(modelID string) string {
 	default:
 		return modelID
 	}
+}
+
+func isGeminiCodexModel(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(codexProviderQualifiedModelID(modelID)), "gemini-")
 }
 
 func isDeepSeekCodexModel(modelID string) bool {
