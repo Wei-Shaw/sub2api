@@ -6912,6 +6912,32 @@
                     </span>
                   </label>
 
+                  <div class="space-y-2 sm:col-span-2">
+                    <label class="flex items-center gap-2">
+                      <input
+                        v-model="item.pass_user_id"
+                        type="checkbox"
+                        data-testid="custom-menu-pass-user-id"
+                      />
+                      <span class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.customMenu.passUserId") }}
+                      </span>
+                    </label>
+                    <label class="flex items-center gap-2">
+                      <input
+                        v-model="item.pass_auth_token"
+                        type="checkbox"
+                        data-testid="custom-menu-pass-auth-token"
+                      />
+                      <span class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.customMenu.passAuthToken") }}
+                      </span>
+                    </label>
+                    <p class="text-xs text-amber-700 dark:text-amber-400">
+                      {{ t("admin.settings.customMenu.authContextHint") }}
+                    </p>
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -9856,6 +9882,8 @@ const form = reactive<SettingsForm>({
     visibility: "user" | "admin";
     sort_order: number;
     hide_open_button?: boolean;
+    pass_user_id?: boolean;
+    pass_auth_token?: boolean;
   }>,
   custom_endpoints: [] as Array<{
     name: string;
@@ -10849,6 +10877,8 @@ function addMenuItem() {
     url: "",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    pass_user_id: false,
+    pass_auth_token: false,
   });
 }
 
