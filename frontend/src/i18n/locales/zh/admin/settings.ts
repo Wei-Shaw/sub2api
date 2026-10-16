@@ -682,6 +682,8 @@ export default {
           '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
         compactHome: '简洁首页',
         compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
+        codexDefaultModel: 'Codex 导出默认模型',
+        codexDefaultModelHint: '用于 OpenAI 分组的 CC Switch 导入及 Codex CLI / WebSocket 配置模板。留空使用内置默认值；已加载模型目录时会按可用模型回退。不修改分组权限或客户端已有配置。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },
