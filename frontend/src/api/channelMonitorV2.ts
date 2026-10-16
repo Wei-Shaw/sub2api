@@ -106,6 +106,7 @@ export interface MonitorConfig {
   group_ids: number[]
   health_thresholds: {
     minimum_sample: number
+    minimum_sample_by_range?: Partial<Record<'90m' | '24h' | '7d' | '30d', number>>
     warning_error_rate: number
     critical_error_rate: number
     target_ttft_ms: number

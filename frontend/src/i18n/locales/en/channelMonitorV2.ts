@@ -115,8 +115,15 @@ export default {
       healthTitle: 'Health thresholds',
       healthHint:
         'Controls user-facing color bands and overall score. Defaults are tolerant so small error rates or low cache do not immediately show as unhealthy.',
+      minimumSampleByRangeHint: 'Override the minimum requests per bucket for each view. Leave blank to use the common minimum.',
       fields: {
         minimumSample: 'Minimum samples',
+        minimumSampleByRange: {
+          '90m': '90 minutes · requests per 5 minutes',
+          '24h': '24 hours · requests per hour',
+          '7d': '7 days · requests per 12 hours',
+          '30d': '30 days · requests per day',
+        },
         warningError: 'Error rate watch %',
         criticalError: 'Error rate critical %',
         targetTtft: 'TTFT target ms',
