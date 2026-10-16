@@ -5,10 +5,21 @@ export default {
 
     modules: {
       title: 'Modules',
-      hint: 'Click to expand, click again to collapse.',
+      hint: 'Click to expand, click again to collapse. Only one opens at a time.',
       primary: 'Main',
       primaryHint: 'Drop in one image and generate — just write the prompt below.',
       secondary: 'Secondary',
+    },
+
+    /**
+     * Single image.
+     * The owner asked for it to be a toggled page too, no longer an always-on
+     * form, because "no two feature pages may be open at the same time,
+     * single-image generation included".
+     */
+    single: {
+      title: 'Single image',
+      hint: 'Write a prompt; a reference image is optional.',
     },
 
     key: {
@@ -34,6 +45,38 @@ export default {
       loadFailed: 'Failed to load your key list. Please retry later.',
     },
 
+    /**
+     * Vision-model key.
+     *
+     * The platform isolates models per group: an image group usually only binds
+     * image channels, so it has no vision model at all. Calling a vision model
+     * with an image key gets rejected at the gateway's routing stage (503) and
+     * never reaches the upstream. So selling-point extraction and hot-style
+     * breakdown each need a key from a group that can reach a vision model.
+     */
+    visionKey: {
+      sectionTitle: 'Vision model key',
+      // Must differ from the image key's "Save key": two identical save buttons
+      // on one page leave the user unsure which one they clicked.
+      save: 'Save vision key',
+      placeholder: 'Paste a key that can call a vision model (Gemini, …)',
+      // Owner asked for this single line only; all extra explanation removed.
+      hint: 'Use a key whose group includes a vision-model channel such as Gemini.',
+      valid: 'Vision key works: {group}',
+      validNoGroup: 'Vision key works',
+      usingImageKey: 'Empty — using the image key',
+      missing: 'Empty',
+      invalidTitle: 'Vision key is invalid',
+      invalid: 'This key is invalid or disabled. Please check and retry.',
+      modelLabel: 'Vision model',
+      // Hint the owner explicitly asked for: pick a model the Gemini channel serves.
+      modelHint:
+        'Pick a model the Gemini channel serves (gemini-3.5-flash / gemini-3.8-flash / gemini-3.1-pro-preview, …). Vision and image models live in different groups — the right model with a key from the wrong group still cannot be routed.',
+      needed: 'Please fill in the "Vision model key" first — selling-point extraction and hot-style breakdown need it.',
+      failedRouting:
+        'Vision call failed: the group this key belongs to cannot reach a vision model (the request was rejected at the platform routing stage and never reached the upstream). Switch to a key whose group includes a vision model such as Gemini — changing the model or retrying later will not help.',
+    },
+
     prompt: {
       label: 'Prompt',
       placeholder:
@@ -47,6 +90,8 @@ export default {
       title: 'Prompt templates',
       label: 'Prompt templates',
       placeholder: 'Pick a saved template\u2026',
+      promptLabel: 'Prompt (used both for saving and for applying)',
+      generateHint: 'To generate, open Single image and hit generate — the prompt is already there.',
       save: 'Save as template',
       delete: 'Delete template',
       namePlaceholder: 'Name this template',
@@ -94,6 +139,8 @@ export default {
       done: 'Combined {count} images into one reference.',
       tooMany: 'At most {max} images; the rest were ignored (too wide gets rejected by the image API).',
       failed: 'Combine failed: {reason}',
+      // The combined image is the reference for Single image; say where to go next.
+      nextStep: 'Once combined, open Single image — it is already in the reference slot, just hit generate.',
     },
 
     watermark: {
@@ -107,6 +154,7 @@ export default {
       done: 'Watermarked and downloading.',
       corsBlocked:
         'The upstream image does not allow cross-origin reads, so it cannot be watermarked in the browser. Opened the original instead.',
+      hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image.',
       note:
         'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
     },
@@ -161,6 +209,9 @@ export default {
       history: 'History',
       empty: 'Generated images will appear here',
       emptyHint: 'Use the status filter on the left to narrow the history.',
+      // Title of the per-feature result area: only this feature's images.
+      thisPanel: 'This feature’s results',
+      panelEmpty: 'This feature has not generated any images yet',
       failedReason: 'Failure reason',
       imageNotRetained:
         'This image only lived in the current session (the API returned base64), so it must be regenerated after a refresh.',

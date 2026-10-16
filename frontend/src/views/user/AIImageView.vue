@@ -86,6 +86,90 @@
             </div>
           </div>
         </div>
+
+        <!-- ============ 视觉模型密钥 ============
+             为什么需要单独一把：平台按分组隔离模型。生图分组只绑生图渠道，
+             分组里没有视觉模型，拿生图密钥去调视觉模型时网关会在**路由阶段**
+             就返回 503（请求根本到不了上游）。「AI 识别卖点」「拆解爆款版式」
+             都需要视觉模型，所以要么填这把密钥，要么把生图分组也绑上视觉渠道。
+        -->
+        <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+          <div class="mb-2 flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Icon name="sparkles" size="sm" />
+            {{ t('aiImage.visionKey.sectionTitle') }}
+            <span
+              v-if="visionKeySource === 'dedicated'"
+              class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+            >
+              <Icon name="checkCircle" size="sm" />
+              {{ visionKeyGroupName ? t('aiImage.visionKey.valid', { group: visionKeyGroupName }) : t('aiImage.visionKey.validNoGroup') }}
+            </span>
+            <span
+              v-else-if="visionKeySource === 'shared'"
+              class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            >
+              {{ t('aiImage.visionKey.usingImageKey') }}
+            </span>
+            <span
+              v-else
+              class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+            >
+              {{ t('aiImage.visionKey.missing') }}
+            </span>
+          </div>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              v-model="visionKeyInput"
+              type="password"
+              autocomplete="off"
+              class="input flex-1 font-mono text-sm"
+              :placeholder="t('aiImage.visionKey.placeholder')"
+              @keyup.enter="saveVisionKey"
+            />
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-primary" :disabled="visionKeyChecking" @click="saveVisionKey">
+                <Icon
+                  :name="visionKeyChecking ? 'refresh' : 'check'"
+                  size="sm"
+                  class="mr-1.5"
+                  :class="visionKeyChecking ? 'animate-spin' : ''"
+                />
+                {{ visionKeyChecking ? t('aiImage.key.checking') : t('aiImage.visionKey.save') }}
+              </button>
+              <button v-if="visionKeyState === 'valid'" type="button" class="btn btn-secondary" @click="clearVisionKey">
+                {{ t('aiImage.key.clear') }}
+              </button>
+            </div>
+          </div>
+          <!-- 主人要求：这个框里要明确告诉用户「去选 Gemini 渠道的密钥」 -->
+          <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            {{ t('aiImage.visionKey.hint') }}
+          </p>
+
+          <div
+            v-if="visionKeyState === 'invalid' || visionKeyState === 'not-owned' || visionKeyState === 'load-failed'"
+            class="mt-3 rounded-lg border px-3 py-2 text-sm"
+            :class="
+              visionKeyState === 'invalid'
+                ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400'
+                : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400'
+            "
+          >
+            <div class="flex items-start gap-2">
+              <Icon name="exclamationTriangle" size="sm" class="mt-0.5 flex-shrink-0" />
+              <div class="min-w-0">
+                <p class="font-medium">{{ t('aiImage.visionKey.invalidTitle') }}</p>
+                <p v-if="visionKeyState === 'not-owned'" class="mt-1 text-xs leading-relaxed">
+                  {{ t('aiImage.key.notOwned') }}
+                </p>
+                <p v-else-if="visionKeyState === 'load-failed'" class="mt-1 text-xs leading-relaxed">
+                  {{ t('aiImage.key.loadFailed') }}
+                </p>
+                <p v-else class="mt-1 text-xs leading-relaxed">{{ t('aiImage.visionKey.invalid') }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ============ 功能模块 ============
@@ -114,9 +198,19 @@
           <button
             type="button"
             class="btn btn-secondary btn-sm"
+            data-testid="toggle-single-panel"
+            :class="isPanelOpen('single') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('single')"
+          >
+            <Icon name="sparkles" size="sm" class="mr-1.5" />
+            {{ t('aiImage.single.title') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
             data-testid="toggle-hot-panel"
-            :class="showHotPanel ? 'ring-2 ring-primary-400' : ''"
-            @click="showHotPanel = !showHotPanel"
+            :class="isPanelOpen('hot') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('hot')"
           >
             <Icon name="sparkles" size="sm" class="mr-1.5" />
             {{ t('aiImage.hot.title') }}
@@ -125,15 +219,12 @@
             type="button"
             class="btn btn-secondary btn-sm"
             data-testid="toggle-script-panel"
-            :class="showScriptPanel ? 'ring-2 ring-primary-400' : ''"
-            @click="showScriptPanel = !showScriptPanel"
+            :class="isPanelOpen('script') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('script')"
           >
             <Icon name="document" size="sm" class="mr-1.5" />
             {{ t('aiImage.script.title') }}
           </button>
-          <!-- 这句是「单张生图就写在下面」的指路话，不是哪个按钮的说明。
-               用 ml-auto 推到行尾，免得紧跟按钮后面被当成「套图」的解释。 -->
-          <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.modules.primaryHint') }}</span>
         </div>
 
         <!-- 次要功能 -->
@@ -148,8 +239,8 @@
             type="button"
             class="btn btn-secondary btn-sm"
             data-testid="toggle-template-panel"
-            :class="showTemplatePanel ? 'ring-2 ring-primary-400' : ''"
-            @click="showTemplatePanel = !showTemplatePanel"
+            :class="isPanelOpen('template') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('template')"
           >
             <Icon name="edit" size="sm" class="mr-1.5" />
             {{ t('aiImage.template.title') }}
@@ -158,8 +249,8 @@
             type="button"
             class="btn btn-secondary btn-sm"
             data-testid="toggle-composite-panel"
-            :class="showCompositePanel ? 'ring-2 ring-primary-400' : ''"
-            @click="showCompositePanel = !showCompositePanel"
+            :class="isPanelOpen('composite') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('composite')"
           >
             <Icon name="grid" size="sm" class="mr-1.5" />
             {{ t('aiImage.composite.title') }}
@@ -168,8 +259,8 @@
             type="button"
             class="btn btn-secondary btn-sm"
             data-testid="toggle-enhance-panel"
-            :class="showEnhancePanel ? 'ring-2 ring-primary-400' : ''"
-            @click="showEnhancePanel = !showEnhancePanel"
+            :class="isPanelOpen('watermark') ? 'ring-2 ring-primary-400' : ''"
+            @click="togglePanel('watermark')"
           >
             <Icon name="shield" size="sm" class="mr-1.5" />
             {{ t('aiImage.watermark.title') }}
@@ -182,7 +273,7 @@
            只要有版式（拆出来的，或套用的已存模板），填上产品名就能直接生成。
       -->
       <div
-        v-if="showHotPanel"
+        v-if="isPanelOpen('hot')"
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
         data-testid="hot-panel"
       >
@@ -294,15 +385,51 @@
 
         <p v-if="hotNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ hotNotice }}</p>
         <p v-if="hotError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ hotError }}</p>
+
+        <!-- 这个功能自己的结果区：只显示「爆款复刻」做出来的图。
+             全部功能的图在最下面的「生图结果」里汇总。 -->
+        <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700">
+          <h3 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('aiImage.result.thisPanel') }}
+          </h3>
+          <AIImageResultGrid
+            :sections="hotSections"
+            :empty-title="t('aiImage.result.panelEmpty')"
+            :watermark-enabled="watermark.enabled"
+            :watermarking="watermarking"
+            @retry="retryRecord"
+            @copy-url="copyImageUrl"
+            @download="downloadRecord"
+            @download-watermark="downloadWithWatermark"
+            @remove="removeRecord"
+          />
+        </div>
       </div>
 
       <!-- 提示词模板 -->
       <div
-        v-if="showTemplatePanel"
+        v-if="isPanelOpen('template')"
         data-testid="template-panel"
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
       >
         <h2 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.template.title') }}</h2>
+
+        <!-- 模板自己的提示词输入框。
+             以前没有这个框 —— 模板存的一直是「单张生图」页里那个输入框的内容。
+             功能页面互斥之后那个框收了起来，模板页就变成了死胡同：
+             想存模板没地方写提示词，套用模板的结果又在另一个页面上。
+             所以这里放一个直接绑 prompt 的编辑区，两个页面的内容始终是同一份。 -->
+        <div class="mb-3 flex flex-col gap-1">
+          <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.template.promptLabel') }}</label>
+          <textarea
+            v-model="prompt"
+            rows="5"
+            class="input w-full resize-y text-sm leading-relaxed"
+            :placeholder="t('aiImage.prompt.placeholder')"
+            data-testid="template-prompt"
+          ></textarea>
+        </div>
+
         <div class="flex flex-wrap items-center gap-2">
           <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.template.label') }}</label>
           <select
@@ -329,6 +456,10 @@
           <span v-if="templateNotice" class="text-xs text-gray-500 dark:text-gray-400">{{ templateNotice }}</span>
         </div>
 
+        <!-- 说清楚「去哪生成」：模板页只负责写和存，真正的生成动作在单张生图页。
+             两边的提示词是同一份，所以切过去就能直接点生成。 -->
+        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.template.generateHint') }}</p>
+
         <!-- 存模板时填名字 -->
         <div v-if="showTemplateSave" class="mt-2 flex flex-wrap items-center gap-2">
           <input
@@ -350,7 +481,7 @@
 
       <!-- 一图多视：把多张商品图拼成一张参考图 -->
       <div
-        v-if="showCompositePanel"
+        v-if="isPanelOpen('composite')"
         data-testid="composite-panel"
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
       >
@@ -377,11 +508,13 @@
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.composite.hint') }}</span>
         </div>
         <p v-if="compositeNotice" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ compositeNotice }}</p>
+        <!-- 拼完图之后说清楚下一步去哪：拼图本身不生成，生成在「单张生图」页。 -->
+        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.composite.nextStep') }}</p>
       </div>
 
       <!-- 水印 -->
       <div
-        v-if="showEnhancePanel"
+        v-if="isPanelOpen('watermark')"
         data-testid="enhance-panel"
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
       >
@@ -416,7 +549,11 @@
           </div>
         </div>
 
-        <!-- 说清楚两个刻意的改动，免得以后有人「顺手改回桌面程序那样」 -->
+        <!-- 说清楚「水印只在下载时叠加」，免得用户以为要在这里生成一次 -->
+        <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          {{ t('aiImage.watermark.hint') }}
+        </p>
+        <!-- 两个刻意的改动，免得以后有人「顺手改回桌面程序那样」 -->
         <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
           {{ t('aiImage.watermark.note') }}
         </p>
@@ -425,7 +562,7 @@
 
       <!-- 套图（原「Ozon 八张主图脚本」） -->
       <div
-        v-if="showScriptPanel"
+        v-if="isPanelOpen('script')"
         data-testid="script-panel"
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
       >
@@ -436,6 +573,32 @@
               {{ t('aiImage.script.clear') }}
             </button>
           </div>
+        </div>
+
+        <!-- 产品参考图。以前这个按钮长在常驻的「单张生图」卡片里，
+             现在那个卡片可以收起了，套图页就必须自带一个 ——
+             否则在这个页面里根本没法把产品图放进去，AI 识别和生成都会没输入。 -->
+        <div
+          class="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-900"
+          data-testid="script-reference"
+        >
+          <input ref="scriptFileInputRef" type="file" accept="image/*" class="hidden" @change="onReferencePicked" />
+          <button type="button" class="btn btn-secondary btn-sm" @click="scriptFileInputRef?.click()">
+            <Icon name="upload" size="sm" class="mr-1.5" />
+            {{ referenceImage ? t('aiImage.reference.replace') : t('aiImage.reference.pick') }}
+          </button>
+          <button v-if="referenceImage" type="button" class="btn btn-secondary btn-sm" @click="clearReference">
+            {{ t('aiImage.reference.clear') }}
+          </button>
+          <span class="max-w-[22rem] truncate text-xs text-gray-500 dark:text-gray-400">
+            {{ referenceImage ? referenceImage.name : t('aiImage.reference.none') }}
+          </span>
+          <img
+            v-if="referencePreviewUrl"
+            :src="referencePreviewUrl"
+            alt=""
+            class="h-10 w-10 rounded border border-gray-200 object-cover dark:border-dark-600"
+          />
         </div>
 
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -483,42 +646,67 @@
         </div>
 
         <!-- 视觉模型 + AI 识别 -->
-        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-dark-700">
-          <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.options.model') }}</label>
-          <select v-model="visionModel" class="input w-48 text-sm">
-            <option v-for="item in VISION_MODEL_OPTIONS" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="aiExtracting" @click="aiExtract">
-            <Icon :name="aiExtracting ? 'refresh' : 'brain'" size="sm" class="mr-1.5" :class="aiExtracting ? 'animate-spin' : ''" />
-            {{ aiExtracting ? t('aiImage.script.aiExtracting') : t('aiImage.script.aiExtract') }}
-          </button>
-          <button type="button" class="btn btn-primary btn-sm" @click="buildScript">
-            {{ t('aiImage.script.build') }}
-          </button>
+        <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.visionKey.modelLabel') }}</label>
+            <select v-model="visionModel" class="input w-48 text-sm">
+              <option v-for="item in VISION_MODEL_OPTIONS" :key="item" :value="item">{{ item }}</option>
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="aiExtracting" @click="aiExtract">
+              <Icon :name="aiExtracting ? 'refresh' : 'brain'" size="sm" class="mr-1.5" :class="aiExtracting ? 'animate-spin' : ''" />
+              {{ aiExtracting ? t('aiImage.script.aiExtracting') : t('aiImage.script.aiExtract') }}
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" @click="buildScript">
+              {{ t('aiImage.script.build') }}
+            </button>
+          </div>
+          <!-- 主人要求：这个框里要明确提示「选 Gemini 渠道」。
+              视觉模型和生图模型不在一个分组，模型选对了但密钥分组不对照样调不通。 -->
+          <p class="mt-1.5 text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+            {{ t('aiImage.visionKey.modelHint') }}
+          </p>
         </div>
 
         <p v-if="scriptNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ scriptNotice }}</p>
         <p v-if="scriptError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ scriptError }}</p>
+
+        <!-- 这个功能自己的结果区：只显示「套图」做出来的图。
+             全部功能的图在最下面的「生图结果」里汇总。 -->
+        <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700">
+          <h3 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('aiImage.result.thisPanel') }}
+          </h3>
+          <AIImageResultGrid
+            :sections="scriptSections"
+            :empty-title="t('aiImage.result.panelEmpty')"
+            :watermark-enabled="watermark.enabled"
+            :watermarking="watermarking"
+            @retry="retryRecord"
+            @copy-url="copyImageUrl"
+            @download="downloadRecord"
+            @download-watermark="downloadWithWatermark"
+            @remove="removeRecord"
+          />
+        </div>
 
         <!-- 脚本卡片不在这里显示。放在下面常驻的那一条里。
              爆款复刻也会产出卡片，卡片藏在这个折叠面板里的话，
              用爆款复刻的人就看不到自己刚生成的东西。 -->
       </div>
 
-      <!-- 提示词：模块入口都提到上面去了，这里就是纯粹的「写提示词 + 生成」 -->
-      <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+      <!-- 单张生图：点「单张生图」按钮才展开，和其它功能互斥。
+           以前它是常驻显示的，主人要求「点击每个功能按钮都会展示出他的页面，
+           不可以两个及以上的功能页面同时出现，单张图片生成也不行」。 -->
+      <div
+        v-if="isPanelOpen('single')"
+        class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+        data-testid="single-panel"
+      >
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.single.title') }}</h2>
+          <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.single.hint') }}</span>
+        </div>
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
-          <!-- 输入框左侧的状态筛选 -->
-          <div class="flex flex-shrink-0 flex-col gap-1">
-            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.filter.label') }}</label>
-            <select v-model="statusFilter" class="input w-full lg:w-32">
-              <option value="all">{{ t('aiImage.filter.all') }}</option>
-              <option value="completed">{{ t('aiImage.filter.completed') }}</option>
-              <option value="generating">{{ t('aiImage.filter.generating') }}</option>
-              <option value="failed">{{ t('aiImage.filter.failed') }}</option>
-            </select>
-          </div>
-
           <!-- 提示词输入框 -->
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.prompt.label') }}</label>
@@ -633,6 +821,25 @@
             {{ t('aiImage.lock.needsReference') }}
           </span>
         </p>
+
+        <!-- 这个功能自己的结果区。默认是空的，只显示「单张生图」做出来的图；
+             全部功能的图在最下面的「生图结果」里汇总。 -->
+        <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700">
+          <h3 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('aiImage.result.thisPanel') }}
+          </h3>
+          <AIImageResultGrid
+            :sections="singleSections"
+            :empty-title="t('aiImage.result.panelEmpty')"
+            :watermark-enabled="watermark.enabled"
+            :watermarking="watermarking"
+            @retry="retryRecord"
+            @copy-url="copyImageUrl"
+            @download="downloadRecord"
+            @download-watermark="downloadWithWatermark"
+            @remove="removeRecord"
+          />
+        </div>
       </div>
 
       <!-- 批量进度 + 并发 + 一键生成全部 + 暂停 / 停止。
@@ -743,172 +950,62 @@
 
 
       <!-- 中间：结果区 -->
-      <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+      <!-- 中间：结果区（汇总所有功能做出来的图） -->
+      <div
+        class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+        data-testid="all-results"
+      >
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.result.sectionTitle') }}</h2>
-          <!--
-            客户端是按「images/<商品编号>/<序号>.png」存图的，序号就是粘贴顺序。
-            所以这里按生成先后（早→晚）导出地址，粘进去正好落在第 1、2、3 张的位置。
-          -->
-          <button
-            v-if="copyableUrls.length"
-            type="button"
-            class="btn btn-secondary btn-sm"
-            @click="copyAllImageUrls"
-          >
-            <Icon name="link" size="sm" class="mr-1" />
-            {{ t('aiImage.product.copyAll', { count: copyableUrls.length }) }}
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- 状态筛选挪到这里：它筛的是这张汇总表，不是某一个功能的结果。
+                 以前它长在「单张生图」那张卡片里，而单张生图现在是可以收起的，
+                 筛选跟着一起藏起来就不合理了。 -->
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.filter.label') }}</label>
+            <select v-model="statusFilter" class="input w-32 text-sm">
+              <option value="all">{{ t('aiImage.filter.all') }}</option>
+              <option value="completed">{{ t('aiImage.filter.completed') }}</option>
+              <option value="generating">{{ t('aiImage.filter.generating') }}</option>
+              <option value="failed">{{ t('aiImage.filter.failed') }}</option>
+            </select>
+            <!--
+              客户端是按「images/<商品编号>/<序号>.png」存图的，序号就是粘贴顺序。
+              所以这里按生成先后（早→晚）导出地址，粘进去正好落在第 1、2、3 张的位置。
+            -->
+            <button
+              v-if="copyableUrls.length"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              @click="copyAllImageUrls"
+            >
+              <Icon name="link" size="sm" class="mr-1" />
+              {{ t('aiImage.product.copyAll', { count: copyableUrls.length }) }}
+            </button>
+          </div>
         </div>
-        <p v-if="copyNotice" class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+        <p
+          v-if="copyNotice"
+          class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+        >
           {{ copyNotice }}
         </p>
-        <div v-if="filteredRecords.length === 0" class="flex min-h-[22rem] flex-col items-center justify-center gap-2 text-center">
-          <Icon name="sparkles" size="xl" class="text-gray-300 dark:text-dark-600" />
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('aiImage.result.empty') }}</p>
-          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.result.emptyHint') }}</p>
-        </div>
-
         <!-- 结果区：段（本轮 / 历史）→ 行（每一轮）→ 卡片。
              主人要求「图片横向排列、一次生成之后下一次单开一行」，
              所以不再用固定列数的网格，改成：每轮一个横向容器，
              卡片在里面横向流动、排满自动换行，轮与轮之间各自另起一行。
              卡片用 flex-basis + grow：一轮只有一张时它会撑宽一点，不会缩成细条。 -->
-        <div v-else class="flex flex-col gap-5">
-          <section v-for="section in recordSections" :key="section.key" class="flex flex-col gap-3">
-            <h3
-              v-if="section.title"
-              class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500"
-              :data-testid="`result-group-${section.key}`"
-            >
-              {{ section.title }}
-            </h3>
-            <div
-              v-for="row in section.rows"
-              :key="`${section.key}-${row.key}`"
-              class="flex flex-wrap items-stretch gap-4"
-              :data-testid="`result-round-${section.key}-${row.key}`"
-            >
-              <div
-                v-for="record in row.records"
-                :key="record.id"
-                class="flex max-w-[26rem] grow basis-[20rem] flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900"
-              >
-                <!-- 状态条 -->
-                <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-dark-700">
-                  <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="statusClass(record.status)">
-                    <Icon :name="statusIcon(record.status)" size="sm" :class="record.status === 'generating' ? 'animate-spin' : ''" />
-                    {{ statusLabel(record.status) }}
-                  </span>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">{{ formatTime(record.createdAt) }}</span>
-                </div>
-
-                <!-- 图片 / 失败原因 -->
-                <div class="flex min-h-[16rem] items-center justify-center p-2">
-                  <!-- 一张卡片里有多张图时也横向排：主人明确要求不要竖着排。
-                       外面这层是卡片，本来就窄，所以允许换行，避免挤成一条。 -->
-                  <div v-if="record.images.length" class="flex w-full flex-wrap justify-center gap-2">
-                    <img
-                      v-for="(url, index) in record.images"
-                      :key="index"
-                      :src="url"
-                      :alt="record.prompt"
-                      class="max-h-[34rem] min-w-0 flex-1 rounded object-contain"
-                      :data-testid="`result-image-${index}`"
-                    />
-                  </div>
-                <div v-else-if="record.status === 'failed'" class="px-2 text-center">
-                  <Icon name="xCircle" size="lg" class="mx-auto text-red-400" />
-                  <p class="mt-2 text-xs font-medium text-red-600 dark:text-red-400">{{ t('aiImage.result.failedReason') }}</p>
-                  <p class="mt-1 break-words text-xs text-gray-600 dark:text-gray-300">{{ record.error }}</p>
-                </div>
-                <div v-else-if="record.status === 'completed'" class="px-3 text-center">
-                  <Icon name="clock" size="lg" class="mx-auto text-gray-300 dark:text-dark-600" />
-                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.result.imageNotRetained') }}</p>
-                </div>
-                <div v-else class="text-center">
-                  <Icon name="refresh" size="lg" class="mx-auto animate-spin text-gray-300 dark:text-dark-600" />
-                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.filter.generating') }}</p>
-                </div>
-                </div>
-
-                <!-- 提示词与操作 -->
-                <div class="mt-auto border-t border-gray-200 px-3 py-2 dark:border-dark-700">
-                  <p
-                    v-if="record.productId"
-                    class="mb-1 truncate text-xs font-medium text-primary-600 dark:text-primary-400"
-                    :title="record.productId"
-                  >
-                    {{ t('aiImage.product.label') }}：{{ record.productId }}
-                  </p>
-                  <!-- 提示词完整显示（原来截成 2 行，看不全就得靠悬停提示）。 -->
-                  <p
-                    class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-600 dark:text-gray-300"
-                    data-testid="record-prompt"
-                  >
-                    {{ record.prompt }}
-                  </p>
-                  <div class="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      v-if="record.status === 'failed'"
-                      type="button"
-                      class="btn btn-secondary btn-sm"
-                      @click="retryRecord(record)"
-                    >
-                      <Icon name="refresh" size="sm" class="mr-1" />
-                      {{ t('aiImage.result.retry') }}
-                    </button>
-                    <template v-if="record.images.length">
-                      <!-- 图片地址是给客户端用的：客户端拿它下载到 images/<商品编号>/<序号>.jpg -->
-                      <button
-                        v-if="isPersistableImageUrl(record.images[0])"
-                        type="button"
-                        class="btn btn-primary btn-sm"
-                        @click="copyImageUrl(record)"
-                      >
-                        <Icon name="link" size="sm" class="mr-1" />
-                        {{ t('aiImage.product.copyUrl') }}
-                      </button>
-                      <button type="button" class="btn btn-secondary btn-sm" @click="downloadRecord(record)">
-                        <Icon name="download" size="sm" class="mr-1" />
-                        {{ t('aiImage.result.download') }}
-                      </button>
-                      <!-- 水印只在下载时叠加，成图上只有这一层水印。 -->
-                      <button
-                        v-if="watermark.enabled"
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        :disabled="watermarking"
-                        @click="downloadWithWatermark(record)"
-                      >
-                        <Icon name="download" size="sm" class="mr-1" />
-                        {{ t('aiImage.watermark.download') }}
-                      </button>
-                      <a
-                        :href="record.images[0]"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="btn btn-secondary btn-sm"
-                      >
-                        {{ t('aiImage.result.openInNewTab') }}
-                      </a>
-                    </template>
-                    <button type="button" class="btn btn-secondary btn-sm" @click="removeRecord(record)">
-                      <Icon name="trash" size="sm" class="mr-1" />
-                      {{ t('aiImage.result.remove') }}
-                    </button>
-                  </div>
-                  <p
-                    v-if="record.images.length && !isPersistableImageUrl(record.images[0])"
-                    class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-                  >
-                    {{ t('aiImage.product.noUrl') }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
+        <AIImageResultGrid
+          :sections="recordSections"
+          :empty-title="t('aiImage.result.empty')"
+          :empty-hint="t('aiImage.result.emptyHint')"
+          :watermark-enabled="watermark.enabled"
+          :watermarking="watermarking"
+          @retry="retryRecord"
+          @copy-url="copyImageUrl"
+          @download="downloadRecord"
+          @download-watermark="downloadWithWatermark"
+          @remove="removeRecord"
+        />
       </div>
     </div>
   </AppLayout>
@@ -919,6 +1016,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AIImageResultGrid from '@/components/aiImage/AIImageResultGrid.vue'
+import type { AIImageRecord, RecordSource, RecordStatus, ResultRow, ResultSection } from '@/api/aiImageRecord'
 import {
   AI_IMAGE_DEFAULT_MODEL,
   AI_IMAGE_DEFAULT_SIZE,
@@ -933,6 +1032,7 @@ import {
   toBlob,
   toDisplayUrl,
   validateAIImageKey,
+  validateVisionKey,
 } from '@/api/aiImage'
 import {
   DEFAULT_SCENE,
@@ -988,43 +1088,19 @@ const SIZE_CHOICES = [
   { label: '1536 × 1024（3:2 横版）', value: '1536x1024' },
 ]
 
-type RecordStatus = 'generating' | 'completed' | 'failed'
 type KeyState = 'empty' | 'valid' | 'invalid' | 'not-image-model' | 'not-owned' | 'load-failed'
+/**
+ * 视觉密钥的状态。
+ * 注意这里**没有** 'not-image-model' —— 视觉模型走对话接口，
+ * 所在分组本来就不该开生图能力，拿生图能力去校验它会误报。
+ */
+type VisionKeyState = 'empty' | 'valid' | 'invalid' | 'not-owned' | 'load-failed'
 
-interface AIImageRecord {
-  id: string
-  prompt: string
-  model: string
-  size: string
-  status: RecordStatus
-  images: string[]
-  error: string
-  createdAt: number
-  /** 生成时是否开启了商品一致性锁定（重试时要还原成同样的输入）。 */
-  locked?: boolean
-  /** 对应的商品编号；客户端按 images/<product_id>/<index>.jpg 认图 */
-  productId?: string
-  /**
-   * 提交顺序，单调递增。
-   *
-   * 为什么不能只用 createdAt：批量生成时几个请求是并发发出去的，
-   * createdAt 可能撞在同一毫秒，排序就不稳定了。
-   * 而客户端是按地址的先后顺序落成第 1、2、3 张的。
-   * 顺序一乱，上架时主图顺序就错了。所以用这个字段兜住顺序。
-   */
-  seq?: number
-  /**
-   * 第几轮生成。
-   *
-   * 主人要求「进行下一个图片处理的时候，不要显示之前进行的图片」，
-   * 定的做法是：**旧图保留，但当前这轮排在最前面**。
-   * 一次批量（或一次单张生成）= 一轮，同一轮的记录共享同一个 roundId。
-   * 结果区据此分成「本轮生成」和「历史记录」两段。
-   */
-  roundId?: number
-}
+// AIImageRecord / RecordStatus / RecordSource / ResultSection 现在放在
+// @/api/aiImageRecord —— 结果网格抽成了子组件，两边都要用同一个类型。
 
 const KEY_STORAGE = 'sub2api_ai_image_key'
+const VISION_KEY_STORAGE = 'sub2api_ai_image_vision_key'
 const MODEL_STORAGE = 'sub2api_ai_image_model'
 const SIZE_STORAGE = 'sub2api_ai_image_size'
 const RECORDS_STORAGE = 'sub2api_ai_image_records'
@@ -1038,6 +1114,32 @@ const keyState = ref<KeyState>('empty')
 const keyGroupName = ref('')
 const keyChecking = ref(false)
 const showKeyPanel = ref(false)
+
+/**
+ * 视觉模型密钥。
+ *
+ * 为什么要单独一把：平台按分组隔离模型。生图分组只绑生图渠道，
+ * 分组里没有视觉模型，拿生图密钥去调视觉模型时网关会在**路由阶段**
+ * 就返回 503（请求根本到不了上游）。所以「AI 识别卖点」「拆解爆款版式」
+ * 需要一把**所在分组能调用视觉模型**（例如 Gemini 渠道所在的分组）的密钥。
+ *
+ * 留空时会退回用生图密钥（保持旧行为）；填了就用填的这把。
+ */
+const visionKeyInput = ref('')
+const visionApiKey = ref('')
+const visionKeyState = ref<VisionKeyState>('empty')
+const visionKeyGroupName = ref('')
+const visionKeyChecking = ref(false)
+
+/** AI 识别/拆解实际使用的密钥：优先视觉密钥，没填就用生图密钥。 */
+const effectiveVisionKey = computed(() => visionApiKey.value || apiKey.value)
+
+/** 视觉密钥的来源，用于界面提示：填了 / 借用生图密钥。 */
+const visionKeySource = computed<'dedicated' | 'shared' | 'none'>(() => {
+  if (visionApiKey.value) return 'dedicated'
+  if (apiKey.value) return 'shared'
+  return 'none'
+})
 
 const prompt = ref('')
 const model = ref(AI_IMAGE_DEFAULT_MODEL)
@@ -1059,6 +1161,8 @@ const templateNotice = ref('')
 const referenceImage = ref<File | null>(null)
 const referencePreviewUrl = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
+/** 套图面板里那个参考图选择框（和单张生图共用同一份 referenceImage）。 */
+const scriptFileInputRef = ref<HTMLInputElement | null>(null)
 
 /**
  * 一图多视（桌面程序的「拼接」）。
@@ -1080,16 +1184,32 @@ const compositeNotice = ref('')
  * 水印只在最后产物上打一次 —— 这样成图上只有一层水印。
  */
 const watermark = ref<WatermarkOptions>({ ...DEFAULT_WATERMARK })
-const showEnhancePanel = ref(false)
 const watermarking = ref(false)
 const watermarkNotice = ref('')
 
 /**
- * 功能模块面板的开关。这些都放在页面最上面一排，点一下就展开对应面板。
- * 放在顶部是因为它们是「先决定怎么干」的入口，比提示词输入框更该先看到。
+ * 功能模块：一次只展开一个。
+ *
+ * 主人要求「点击每个功能按钮都会展示出他的页面，不可以两个及以上的功能页面同时出现，
+ * 单张图片生成也不行」。所以从「5 个独立开关」改成**手风琴**：
+ * 存的是当前展开的是哪一个，点同一个按钮就收起。
+ *
+ * 为什么用数组而不是联合类型：模板里要做 `activePanel === 'hot'` 这种判断，
+ * 类型窄一点编译期就能发现拼错的 id。
  */
-const showTemplatePanel = ref(false)
-const showCompositePanel = ref(false)
+const PANEL_IDS = ['single', 'hot', 'script', 'template', 'composite', 'watermark'] as const
+type PanelId = (typeof PANEL_IDS)[number]
+const activePanel = ref<PanelId | null>(null)
+
+/** 点功能按钮：展开它；已经展开的就收起。保证同时最多只有一个。 */
+function togglePanel(id: PanelId) {
+  activePanel.value = activePanel.value === id ? null : id
+}
+
+/** 某个功能页是否正在显示。 */
+function isPanelOpen(id: PanelId): boolean {
+  return activePanel.value === id
+}
 
 /**
  * 爆款复刻（桌面程序的「爆款复刻模式」）。
@@ -1099,7 +1219,6 @@ const showCompositePanel = ref(false)
  * 只要拆出了版式（或者套了一个已存的模板），填上产品名就能直接生成，
  * 不需要先去把 Ozon 脚本那一步做一遍。
  */
-const showHotPanel = ref(false)
 const hotRefFiles = ref<File[]>([])
 const hotRefInputRef = ref<HTMLInputElement | null>(null)
 const hotAnalyzing = ref(false)
@@ -1138,8 +1257,6 @@ const copyNotice = ref('')
  */
 const productLock = ref(true)
 
-/** 套图面板的开关。界面叫「套图」，产出的是 Ozon 八张主图脚本。 */
-const showScriptPanel = ref(false)
 /**
  * 产品信息表单。
  *
@@ -1258,49 +1375,49 @@ const filteredRecords = computed(() => {
 })
 
 /**
- * 结果区按「本轮 / 历史」分两段。
+ * 把一组记录切成「段 → 行 → 卡片」。
  *
- * 主人要求：进行下一个图片处理时不要把之前那批图混在一起看。
+ * 段：本轮生成 / 历史记录。主人要求「进行下一个图片处理时不要把之前那批图混在一起看」，
  * 做法是旧图**保留**（不删数据），但当前这轮单独拎出来放最前面。
- * 一眼就能分清哪几张是刚生成的。
+ * 只有一段时不给标题，免得一行内容顶着个多余的分组名。
+ *
+ * 行：一轮一行 —— 主人要求「图片横向排列，一次生成之后下一次单开一行」。
  */
-const currentRoundRecords = computed(() =>
-  filteredRecords.value.filter((record) => record.roundId !== undefined && record.roundId === currentRoundId.value),
-)
+function buildSections(list: AIImageRecord[]): ResultSection[] {
+  // 没有记录时必须返回空数组：返回「一个空段」的话，
+  // 子组件会以为有内容、去渲染一个空的 section，空状态提示就永远不出现。
+  if (!list.length) return []
 
-const historyRecords = computed(() => {
-  const current = currentRoundRecords.value
-  if (!current.length) return filteredRecords.value
+  const current = list.filter(
+    (record) => record.roundId !== undefined && record.roundId === currentRoundId.value,
+  )
   const currentIds = new Set(current.map((record) => record.id))
-  return filteredRecords.value.filter((record) => !currentIds.has(record.id))
-})
+  const history = current.length ? list.filter((record) => !currentIds.has(record.id)) : list
 
-/** 有没有「本轮」和「历史」两段同时存在（只有一段时不用显示分组标题）。 */
-const hasBothRounds = computed(() => currentRoundRecords.value.length > 0 && historyRecords.value.length > 0)
+  const groups =
+    current.length && history.length
+      ? [
+          { key: 'current', title: t('aiImage.result.currentRound'), records: current },
+          { key: 'history', title: t('aiImage.result.history'), records: history },
+        ]
+      : [{ key: 'all', title: '', records: list }]
 
-/** 结果区分组：两段都在时分「本轮生成 / 历史记录」，否则就一段不分组。 */
-const recordGroups = computed(() => {
-  if (!hasBothRounds.value) {
-    return [{ key: 'all', title: '', records: filteredRecords.value }]
-  }
-  return [
-    { key: 'current', title: t('aiImage.result.currentRound'), records: currentRoundRecords.value },
-    { key: 'history', title: t('aiImage.result.history'), records: historyRecords.value },
-  ]
-})
+  return groups.map((group) => ({
+    key: group.key,
+    title: group.title,
+    rows: groupIntoRoundRows(group.records),
+  }))
+}
 
 /**
  * 把一组记录按「轮次」切成若干行。
- *
- * 主人要求：图片横向排列，一次生成之后下一次单开一行。
- * 所以**一轮 = 一行**：一轮的卡片排在同一个横向容器里，排满自动换行。
  *
  * 记录本来就是按轮次相邻排列的（新的在前），所以只要顺序扫一遍、
  * 遇到轮次变了就换行即可，不需要排序。没有 roundId 的旧记录归到同一行——
  * 它们本来就没有轮次的概念，硬拆反而会拆出一堆孤零零的行。
  */
-function groupIntoRoundRows(records: AIImageRecord[]): Array<{ key: string; records: AIImageRecord[] }> {
-  const rows: Array<{ key: string; records: AIImageRecord[] }> = []
+function groupIntoRoundRows(records: AIImageRecord[]): ResultRow[] {
+  const rows: ResultRow[] = []
   for (const record of records) {
     const key = record.roundId === undefined ? 'legacy' : `round-${record.roundId}`
     const last = rows[rows.length - 1]
@@ -1310,40 +1427,21 @@ function groupIntoRoundRows(records: AIImageRecord[]): Array<{ key: string; reco
   return rows
 }
 
-/** 结果区最终结构：段（本轮/历史）→ 行（每一轮）→ 卡片。 */
-const recordSections = computed(() =>
-  recordGroups.value.map((group) => ({
-    key: group.key,
-    title: group.title,
-    rows: groupIntoRoundRows(group.records),
-  })),
-)
+/** 最下面的汇总区：**所有功能**做出来的图都在这里（状态筛选也只作用于它）。 */
+const recordSections = computed(() => buildSections(filteredRecords.value))
 
-function statusLabel(status: RecordStatus): string {
-  if (status === 'completed') return t('aiImage.filter.completed')
-  if (status === 'failed') return t('aiImage.filter.failed')
-  return t('aiImage.filter.generating')
-}
-
-function statusIcon(status: RecordStatus): 'checkCircle' | 'xCircle' | 'refresh' {
-  if (status === 'completed') return 'checkCircle'
-  if (status === 'failed') return 'xCircle'
-  return 'refresh'
-}
-
-function statusClass(status: RecordStatus): string {
-  if (status === 'completed') return 'text-emerald-600 dark:text-emerald-400'
-  if (status === 'failed') return 'text-red-600 dark:text-red-400'
-  return 'text-primary-600 dark:text-primary-400'
-}
-
-function formatTime(timestamp: number): string {
-  try {
-    return new Date(timestamp).toLocaleString()
-  } catch {
-    return ''
-  }
-}
+/**
+ * 各功能页自己的结果区：只显示**这个功能**做出来的图。
+ *
+ * 注意这里用 `records`（不过滤状态）：状态筛选是给最下面的汇总表用的，
+ * 各功能页不该被它影响。
+ *
+ * 老记录没有 source 字段（升级前存下来的），推断不出出处，
+ * 所以它们**只出现在汇总区**，不会误入任何一个功能页 —— 宁可少显示，也不要显示错的。
+ */
+const singleSections = computed(() => buildSections(records.value.filter((r) => r.source === 'single')))
+const hotSections = computed(() => buildSections(records.value.filter((r) => r.source === 'hot')))
+const scriptSections = computed(() => buildSections(records.value.filter((r) => r.source === 'script')))
 
 /**
  * 单次生成的张数上限。
@@ -1414,6 +1512,7 @@ function clearReference() {
   }
   referencePreviewUrl.value = ''
   if (fileInputRef.value) fileInputRef.value.value = ''
+  if (scriptFileInputRef.value) scriptFileInputRef.value.value = ''
 }
 
 function onReferencePicked(event: Event) {
@@ -1546,6 +1645,68 @@ function clearKey() {
   }
 }
 
+/**
+ * 保存视觉模型密钥。
+ *
+ * 校验方式和生图密钥不同：**不检查分组有没有生图能力**——
+ * 视觉模型挂在对话渠道上，那个分组本来就不开生图。
+ * 只确认「是当前账号的、且启用中」，并把分组名显示出来让用户自己核对。
+ */
+async function saveVisionKey() {
+  const value = visionKeyInput.value.trim()
+  if (!value) {
+    visionKeyState.value = 'invalid'
+    return
+  }
+  visionKeyChecking.value = true
+  try {
+    const result = await validateVisionKey(value)
+    if (result.ok) {
+      visionApiKey.value = value
+      visionKeyGroupName.value = result.groupName || ''
+      visionKeyState.value = 'valid'
+      try {
+        window.localStorage.setItem(VISION_KEY_STORAGE, value)
+      } catch {
+        // 忽略存储失败
+      }
+      return
+    }
+    visionApiKey.value = ''
+    visionKeyGroupName.value = result.groupName || ''
+    visionKeyState.value = (result.reason as VisionKeyState) || 'invalid'
+  } finally {
+    visionKeyChecking.value = false
+  }
+}
+
+function clearVisionKey() {
+  visionApiKey.value = ''
+  visionKeyInput.value = ''
+  visionKeyGroupName.value = ''
+  visionKeyState.value = 'empty'
+  try {
+    window.localStorage.removeItem(VISION_KEY_STORAGE)
+  } catch {
+    // 忽略
+  }
+}
+
+/**
+ * AI 识别 / 拆解前的守卫。
+ *
+ * 返回 true 表示可以继续。没有可用密钥时给出**具体**指引，
+ * 而不是让用户去点一个不会有反应的按钮。
+ */
+function ensureVisionKey(target: 'script' | 'hot'): boolean {
+  if (effectiveVisionKey.value) return true
+  const message = t('aiImage.visionKey.needed')
+  if (target === 'script') scriptError.value = message
+  else hotError.value = message
+  showKeyPanel.value = true
+  return false
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof AIImageError) {
     if (isImagePermissionError(error)) return t('aiImage.errors.noImagePermission')
@@ -1557,6 +1718,23 @@ function errorMessage(error: unknown): string {
   if (error instanceof TypeError) return t('aiImage.errors.network')
   if (error instanceof Error && error.message) return error.message
   return t('aiImage.errors.unknown')
+}
+
+/**
+ * 判断一次视觉调用失败是不是「路由阶段就失败了」。
+ *
+ * 平台按分组隔离模型：密钥所在分组里没有视觉模型时，网关在**选渠道**这一步
+ * 就返回 503，响应体只有一句 "Service temporarily unavailable"，请求根本
+ * 没到上游。这种失败换模型、等一会儿都没用，**必须换一把所在分组能调
+ * 视觉模型的密钥**，所以要给出和普通失败不同的话术。
+ */
+function isVisionRoutingFailure(message: string): boolean {
+  const text = (message || '').toLowerCase()
+  return (
+    text.includes('temporarily unavailable') ||
+    text.includes('no available') ||
+    text.includes('503')
+  )
 }
 
 /**
@@ -1606,7 +1784,7 @@ async function runGeneration(record: AIImageRecord, reference: File | null, imag
 }
 
 /** 建一条待生成的记录。批量与单张共用，保证字段完全一致。 */
-function newRecord(text: string, roundId?: number): AIImageRecord {
+function newRecord(text: string, roundId: number, source: RecordSource): AIImageRecord {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     prompt: text,
@@ -1619,13 +1797,21 @@ function newRecord(text: string, roundId?: number): AIImageRecord {
     locked: productLock.value,
     productId: productId.value.trim(),
     seq: nextSeq(),
-    roundId: roundId ?? currentRoundId.value,
+    roundId,
+    // 记下出处：每个功能页据此只显示自己做出来的图。
+    source,
   }
 }
 
 // ==================== 提示词模板 ====================
 
-/** 把选中的模板套用进提示词输入框。 */
+/**
+ * 把选中的模板套用进提示词。
+ *
+ * **不跳页面**：模板页现在自带提示词输入框（和单张生图页绑定同一份 `prompt`），
+ * 套用的结果就在眼前这个框里，跳走反而让人以为没生效。
+ * （这个框是后加的；在那之前模板页没有输入框，所以当时只能跳到单张生图页去。）
+ */
 function applyTemplate() {
   const found = findTemplate(templates.value, selectedTemplateId.value)
   if (!found) return
@@ -1707,10 +1893,7 @@ function clearHotRef() {
  * 并发打视觉模型容易被限流，而且这里本来就慢，串行更好排查是哪张出的问题。
  */
 async function runHotAnalyze() {
-  if (!apiKey.value || keyState.value !== 'valid') {
-    showKeyPanel.value = true
-    return
-  }
+  if (!ensureVisionKey('hot')) return
   if (!hotRefFiles.value.length) {
     hotError.value = t('aiImage.hot.needRef')
     return
@@ -1723,6 +1906,7 @@ async function runHotAnalyze() {
   hotProgress.value = { done: 0, total: hotRefFiles.value.length }
 
   const samples: Array<Partial<Record<HotStyleDimensionKey, string>>> = []
+  let lastError = ''
   try {
     for (const file of hotRefFiles.value) {
       try {
@@ -1731,9 +1915,8 @@ async function runHotAnalyze() {
         if (Object.keys(sample).length) samples.push(sample)
       } catch (error) {
         // 单张失败不中断整批：其余几张照样能投票出结果。
-        hotError.value = t('aiImage.hot.oneFailed', {
-          reason: error instanceof Error ? error.message : String(error),
-        })
+        lastError = error instanceof Error ? error.message : String(error)
+        hotError.value = t('aiImage.hot.oneFailed', { reason: lastError })
       }
       hotProgress.value = { ...hotProgress.value, done: hotProgress.value.done + 1 }
       // 每张之间歇一下，别把视觉接口打急。
@@ -1742,7 +1925,16 @@ async function runHotAnalyze() {
 
     const merged = mergeStyleSamples(samples)
     if (!merged.description) {
-      hotError.value = t('aiImage.hot.noResult')
+      // 路由阶段失败（分组里没有视觉模型）要给专门的话术，
+      // 否则用户只会看到 "Service temporarily unavailable" 然后反复重试。
+      if (isVisionRoutingFailure(lastError)) {
+        hotError.value = t('aiImage.visionKey.failedRouting')
+        // 话术和修复入口放在同一个视野里：直接把密钥面板摊开，
+        // 否则用户读完提示还得自己去找「更换密钥」。
+        showKeyPanel.value = true
+      } else {
+        hotError.value = t('aiImage.hot.noResult')
+      }
       return
     }
     hotStyleDesc.value = merged.description
@@ -1755,7 +1947,7 @@ async function runHotAnalyze() {
 /** 抽出来单独一层，方便测试替换。 */
 async function analyzeHotStyleRequest(file: File): Promise<string> {
   return analyzeHotStyle({
-    apiKey: apiKey.value,
+    apiKey: effectiveVisionKey.value,
     image: file,
     model: visionModel.value,
     prompt: HOT_ANALYZE_PROMPT,
@@ -1829,7 +2021,7 @@ async function startGenerate() {
   const text = prompt.value.trim()
   if (!text) return
 
-  const record = newRecord(text, nextRound())
+  const record = newRecord(text, nextRound(), 'single')
   records.value = [record, ...records.value]
   persistRecords()
 
@@ -1907,9 +2099,13 @@ async function runBatch(prompts: string[]) {
   // 先把所有记录按顺序建好，这样列表里的顺序和提示词顺序一致，
   // 复制地址时的顺序也就和「第 1、2、3 张」对得上。
   // 整批共用同一个 roundId：这一批就是「本轮」，一起排在结果区最前面。
+  //
+  // 这一批是谁发起的要记下来：脚本卡片带出处，
+  // 「套图」产出的归套图页，「爆款复刻」产出的归爆款复刻页。
+  const batchSource: RecordSource = scriptSource.value === 'ozon' ? 'script' : 'hot'
   const roundId = nextRound()
   const queue = texts.map((text) => {
-    const record = newRecord(text, roundId)
+    const record = newRecord(text, roundId, batchSource)
     if (reference) referenceByRecord.set(record.id, reference)
     return record
   })
@@ -1984,22 +2180,26 @@ function buildScript() {
   scriptNotice.value = t('aiImage.script.built', { count: scriptCards.value.length })
 }
 
-/** 把某一张脚本填进提示词框。 */
+/**
+ * 把某一张脚本填进提示词框。
+ *
+ * 顺带展开「单张生图」面板：提示词框现在收在那个面板里，
+ * 不展开的话用户点了卡片会「什么都没发生」。
+ */
 function applyScriptCard(card: OzonScriptCard) {
   prompt.value = card.prompt
+  activePanel.value = 'single'
 }
 
 /** 把八张脚本全部填进提示词框（换行分隔，可配合批量生成）。 */
 function applyAllScriptCards() {
   prompt.value = scriptCards.value.map((card) => card.prompt).join('\n')
+  activePanel.value = 'single'
 }
 
 /** 让视觉模型看产品图，自动填产品名/卖点/痛点/差异化。 */
 async function aiExtract() {
-  if (!apiKey.value || keyState.value !== 'valid') {
-    showKeyPanel.value = true
-    return
-  }
+  if (!ensureVisionKey('script')) return
   const source = referenceImage.value
   if (!source) {
     scriptError.value = t('aiImage.script.aiNeedsImage')
@@ -2010,7 +2210,7 @@ async function aiExtract() {
   scriptNotice.value = ''
   try {
     const result = await extractSellingPoints({
-      apiKey: apiKey.value,
+      apiKey: effectiveVisionKey.value,
       image: source,
       model: visionModel.value,
       hints: { 产品名称: scriptForm.value.product },
@@ -2027,7 +2227,14 @@ async function aiExtract() {
     if (result.diff) scriptForm.value.diff = result.diff
     scriptNotice.value = t('aiImage.script.aiExtracted')
   } catch (error) {
-    scriptError.value = `${t('aiImage.script.aiFailed')}：${errorMessage(error)}`
+    const reason = errorMessage(error)
+    if (isVisionRoutingFailure(reason)) {
+      scriptError.value = t('aiImage.visionKey.failedRouting')
+      // 同上：话术和修复入口放一起。
+      showKeyPanel.value = true
+    } else {
+      scriptError.value = `${t('aiImage.script.aiFailed')}：${reason}`
+    }
   } finally {
     aiExtracting.value = false
   }
@@ -2150,6 +2357,14 @@ onMounted(() => {
     if (storedKey) {
       keyInput.value = storedKey
       void saveKey()
+    }
+    // 视觉密钥单独恢复：它可能是另一个分组的密钥，不能和生图密钥混在一起。
+    // 这里只回填、不自动校验——自动校验会多打一次密钥列表接口，
+    // 而视觉密钥本来就可以留空（留空时退回用生图密钥）。
+    const storedVisionKey = window.localStorage.getItem(VISION_KEY_STORAGE)
+    if (storedVisionKey) {
+      visionKeyInput.value = storedVisionKey
+      void saveVisionKey()
     }
   } catch {
     // 忽略存储读取失败

@@ -393,3 +393,54 @@ export async function validateAIImageKey(rawKey: string): Promise<KeyValidationR
   }
   return { ok: true, groupName: matched.group?.name }
 }
+
+/**
+ * 视觉模型密钥的校验结果。
+ *
+ * 和生图密钥的区别：**不要求分组开启生图能力**。
+ * 视觉模型（Gemini 等）走的是对话接口，通常挂在另一个分组上，
+ * 那个分组本来就不会开 allow_image_generation。所以这里只校验
+ * 「是当前账号的、并且是启用状态的密钥」。
+ */
+export interface VisionKeyValidationResult {
+  ok: boolean
+  /** 命中的密钥所属分组名，用于让用户确认自己选对了分组 */
+  groupName?: string
+  reason?: 'not-owned' | 'invalid' | 'load-failed'
+}
+
+/**
+ * 校验用户填入的**视觉模型密钥**。
+ *
+ * 为什么需要单独的密钥：平台按分组隔离模型。生图分组（例如「生图-0.05/张」）
+ * 通常只绑了生图渠道，分组里根本没有视觉模型；拿生图密钥去调视觉模型，
+ * 网关会在**路由阶段**就返回 503（"Service temporarily unavailable"），
+ * 请求压根到不了上游。所以「AI 识别卖点」「拆解爆款版式」必须用一把
+ * 所在分组能调用视觉模型的密钥。
+ */
+export async function validateVisionKey(rawKey: string): Promise<VisionKeyValidationResult> {
+  const key = rawKey.trim()
+  if (!key) return { ok: false, reason: 'invalid' }
+
+  let items: ApiKey[] = []
+  try {
+    const pageSize = 100
+    let page = 1
+    while (true) {
+      const response = await keysAPI.list(page, pageSize)
+      items = items.concat(response.items || [])
+      if (page >= (response.pages || 1) || (response.items || []).length === 0) break
+      page += 1
+      if (page > 20) break
+    }
+  } catch {
+    return { ok: false, reason: 'load-failed' }
+  }
+
+  const matched = items.find((item) => item.key === key)
+  if (!matched) return { ok: false, reason: 'not-owned' }
+  if (matched.status && matched.status !== 'active') {
+    return { ok: false, reason: 'invalid', groupName: matched.group?.name }
+  }
+  return { ok: true, groupName: matched.group?.name }
+}
