@@ -554,6 +554,38 @@
           <div class="h-3 w-8 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
           <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
+        <!-- Vertex：账号累计费用（quota_used），不设上限也始终显示 -->
+        <div v-if="showAccumulatedCost" class="mb-0.5 flex items-center">
+          <span
+            class="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+            :title="t('admin.accounts.usageWindow.accumulatedCostTooltip')"
+          >
+            {{ t('admin.accounts.usageWindow.accumulatedCost') }} A ${{ formatAccumulatedCost }}
+          </span>
+        </div>
+        <!-- Vertex 设置了配额上限：显示配额进度条 -->
+        <template v-if="isGeminiVertex">
+          <UsageProgressBar
+            v-if="quotaDailyBar"
+            label="1d"
+            :utilization="quotaDailyBar.utilization"
+            :resets-at="quotaDailyBar.resetsAt"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="quotaWeeklyBar"
+            label="7d"
+            :utilization="quotaWeeklyBar.utilization"
+            :resets-at="quotaWeeklyBar.resetsAt"
+            color="emerald"
+          />
+          <UsageProgressBar
+            v-if="quotaTotalBar"
+            label="total"
+            :utilization="quotaTotalBar.utilization"
+            color="purple"
+          />
+        </template>
         <div v-if="loading" class="space-y-1">
           <div class="flex items-center gap-1">
             <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -643,6 +675,15 @@
         <div class="h-3 w-8 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
+      <!-- Vertex（service_account）：账号累计费用（quota_used），不设上限也始终显示 -->
+      <div v-if="showAccumulatedCost" class="mb-0.5 flex items-center">
+        <span
+          class="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+          :title="t('admin.accounts.usageWindow.accumulatedCostTooltip')"
+        >
+          {{ t('admin.accounts.usageWindow.accumulatedCost') }} A ${{ formatAccumulatedCost }}
+        </span>
+      </div>
 
       <!-- API Key accounts with quota limits: show progress bars -->
       <UsageProgressBar
@@ -668,7 +709,7 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible && !account.opencode_go_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !showAccumulatedCost && !account.ollama_cloud_usage?.eligible && !account.opencode_go_usage?.eligible"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -1572,7 +1613,7 @@ const makeQuotaBar = (
 }
 
 const hasApiKeyQuota = computed(() => {
-  if (props.account.type !== 'apikey' && props.account.type !== 'bedrock') return false
+  if (props.account.type !== 'apikey' && props.account.type !== 'bedrock' && props.account.type !== 'service_account') return false
   return (
     (props.account.quota_daily_limit ?? 0) > 0 ||
     (props.account.quota_weekly_limit ?? 0) > 0 ||
@@ -1597,6 +1638,11 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
   if (limit <= 0) return null
   return makeQuotaBar(props.account.quota_used ?? 0, limit)
 })
+
+// service_account（Vertex）不设上限也累加 quota_used，始终展示账号累计费用
+const showAccumulatedCost = computed(() => props.account.type === 'service_account')
+
+const formatAccumulatedCost = computed(() => (props.account.quota_used ?? 0).toFixed(2))
 
 const handleQuotaResetAccountUpdated = (account: Account) => {
   emit('account-updated', account)

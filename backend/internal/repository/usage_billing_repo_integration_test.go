@@ -254,6 +254,57 @@ func TestUsageBillingRepositoryApply_UpdatesAccountQuota(t *testing.T) {
 	require.InDelta(t, 3.5, quotaUsed, 0.000001)
 }
 
+// service_account 不设上限也累加 quota_used；日/周用量仍只在设置了对应 limit 时累加，且不入队调度 outbox。
+func TestUsageBillingRepositoryApply_UpdatesServiceAccountQuotaWithoutLimit(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-sa-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-usage-billing-sa-" + uuid.NewString(),
+		Name:   "billing-sa",
+	})
+	account := mustCreateAccount(t, client, &service.Account{
+		Name:     "usage-billing-sa-quota-" + uuid.NewString(),
+		Platform: service.PlatformGemini,
+		Type:     service.AccountTypeServiceAccount,
+	})
+
+	for _, cost := range []float64{2.25, 1.5} {
+		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKey.ID,
+			UserID:           user.ID,
+			AccountID:        account.ID,
+			AccountType:      service.AccountTypeServiceAccount,
+			AccountQuotaCost: cost,
+		})
+		require.NoError(t, err)
+	}
+
+	var quotaUsed float64
+	var hasDailyUsed, hasWeeklyUsed bool
+	require.NoError(t, integrationDB.QueryRowContext(ctx,
+		"SELECT COALESCE((extra->>'quota_used')::numeric, 0), extra ? 'quota_daily_used', extra ? 'quota_weekly_used' FROM accounts WHERE id = $1",
+		account.ID,
+	).Scan(&quotaUsed, &hasDailyUsed, &hasWeeklyUsed))
+	require.InDelta(t, 3.75, quotaUsed, 0.000001)
+	require.False(t, hasDailyUsed)
+	require.False(t, hasWeeklyUsed)
+
+	var outboxCount int
+	require.NoError(t, integrationDB.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		service.SchedulerOutboxEventAccountChanged, account.ID,
+	).Scan(&outboxCount))
+	require.Zero(t, outboxCount, "service_account without limit must not enqueue scheduler outbox")
+}
+
 func TestUsageBillingRepositoryApply_EnqueuesSchedulerOutboxOnQuotaCrossing(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)

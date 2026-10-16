@@ -543,7 +543,9 @@ export default {
         passiveSampled: '被动采样',
         activeQuery: '查询',
         estimatedTotalCost: '预计总费用 ${cost}',
-        estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
+        estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用',
+        accumulatedCost: '累计',
+        accumulatedCostTooltip: '账号计费累计费用（配额已用额度 quota_used），重置配额后从 0 重新累计'
       },
       openaiReferral: {
         available: '可邀请',
