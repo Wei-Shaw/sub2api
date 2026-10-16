@@ -319,3 +319,140 @@ func TestAnthropicOAuthCompatAliasUsesTargetDuringInitialConversion(t *testing.T
 		}
 	}
 }
+
+// Scheduling must inspect the same request name as forwarding. Only the resolved
+// upstream target may be normalized; short and dated request IDs are distinct keys.
+func TestAnthropicOAuthSchedulingAndForwardingUseRequestModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name, requested, target string
+		mapping                 map[string]any
+		allowed                 bool
+	}{
+		{
+			name: "short_id_whitelist", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-opus-4-5": "claude-opus-4-5"},
+			allowed: true, target: "claude-opus-4-5-20251101",
+		},
+		{
+			name: "short_id_mapping", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-opus-4-5": "claude-sonnet-4-5"},
+			allowed: true, target: "claude-sonnet-4-5-20250929",
+		},
+		{
+			name: "long_id_mapping", requested: "claude-opus-4-5-20251101",
+			mapping: map[string]any{"claude-opus-4-5-20251101": "claude-haiku-4-5"},
+			allowed: true, target: "claude-haiku-4-5-20251001",
+		},
+		{
+			name: "long_id_key_does_not_allow_short_request", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-opus-4-5-20251101": "claude-sonnet-4-6"},
+		},
+		{
+			name: "short_id_key_does_not_allow_long_request", requested: "claude-opus-4-5-20251101",
+			mapping: map[string]any{"claude-opus-4-5": "claude-sonnet-4-6"},
+		},
+		{
+			name: "short_and_long_keys_are_independent", requested: "claude-opus-4-5",
+			mapping: map[string]any{
+				"claude-opus-4-5": "claude-sonnet-4-6", "claude-opus-4-5-20251101": "claude-opus-4-8",
+			},
+			allowed: true, target: "claude-sonnet-4-6",
+		},
+		{
+			name: "exact_request_wins_over_wildcard", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-opus-4-5": "claude-sonnet-4-6", "claude-opus-*": "claude-opus-4-8"},
+			allowed: true, target: "claude-sonnet-4-6",
+		},
+		{
+			name: "longest_request_wildcard_wins", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-*": "claude-opus-4-8", "claude-opus-*": "claude-haiku-4-5"},
+			allowed: true, target: "claude-haiku-4-5-20251001",
+		},
+		{
+			name: "wildcard_cannot_match_normalized_request", requested: "claude-opus-4-5",
+			mapping: map[string]any{"claude-opus-4-5-2025*": "claude-sonnet-4-6"},
+		},
+		{
+			name: "target_is_not_automatically_allowed", requested: "claude-sonnet-4-6",
+			mapping: map[string]any{"public-claude": "claude-sonnet-4-6"},
+		},
+		{
+			name: "normalized_target_is_not_remapped", requested: "public-claude",
+			mapping: map[string]any{
+				"public-claude": "claude-opus-4-5", "claude-opus-4-5": "claude-sonnet-4-6",
+				"claude-opus-4-5-20251101": "claude-opus-4-8",
+			},
+			allowed: true, target: "claude-opus-4-5-20251101",
+		},
+		{
+			name: "unrestricted_short_id", requested: "claude-opus-4-5",
+			allowed: true, target: "claude-opus-4-5-20251101",
+		},
+		{
+			name: "empty_mapping_is_unrestricted", requested: "claude-sonnet-4-6",
+			mapping: map[string]any{}, allowed: true, target: "claude-sonnet-4-6",
+		},
+	}
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		for _, endpoint := range []string{"/v1/messages", "/v1/messages/count_tokens", "/v1/chat/completions", "/v1/responses"} {
+			for _, tc := range cases {
+				t.Run(accountType+endpoint+"/"+tc.name, func(t *testing.T) {
+					body := []byte(`{"model":"` + tc.requested + `","messages":[{"role":"user","content":"hello"}]}`)
+					response := `{"id":"msg_1","type":"message","role":"assistant","model":"` + tc.target + `","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`
+					contentType := "application/json"
+					switch endpoint {
+					case "/v1/messages/count_tokens":
+						response = `{"input_tokens":1}`
+					case "/v1/responses":
+						body = []byte(`{"model":"` + tc.requested + `","input":"hello"}`)
+						fallthrough
+					case "/v1/chat/completions":
+						response = namespaceToolAnthropicStream()
+						contentType = "text/event-stream"
+					}
+					upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+						StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{contentType}},
+						Body: io.NopCloser(strings.NewReader(response)),
+					}}
+					svc := newForwardPartialUsageServiceForTest(upstream)
+					account := newAnthropicOAuthAccountForPartialUsageTest()
+					account.Type = accountType
+					if tc.mapping != nil {
+						account.Credentials["model_mapping"] = tc.mapping
+					}
+					ctx := context.Background()
+					require.Equal(t, tc.allowed, svc.isModelSupportedByAccountWithContext(ctx, account, tc.requested))
+					if !tc.allowed {
+						return
+					}
+
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(string(body)))
+					parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+					require.NoError(t, err)
+					var result *ForwardResult
+					switch endpoint {
+					case "/v1/messages":
+						result, err = svc.Forward(ctx, c, account, parsed)
+					case "/v1/messages/count_tokens":
+						err = svc.ForwardCountTokens(ctx, c, account, parsed)
+					case "/v1/chat/completions":
+						result, err = svc.ForwardAsChatCompletions(ctx, c, account, body, parsed)
+					case "/v1/responses":
+						result, err = svc.ForwardAsResponses(ctx, c, account, body, parsed)
+					}
+					require.NoError(t, err)
+					require.Equal(t, http.StatusOK, rec.Code)
+					require.Equal(t, tc.target, gjson.GetBytes(upstream.lastBody, "model").String())
+					if endpoint != "/v1/messages/count_tokens" {
+						require.NotNil(t, result)
+						require.Equal(t, tc.requested, result.Model, "billing retains the request model")
+						require.Equal(t, tc.target, result.UpstreamModel)
+					}
+				})
+			}
+		}
+	}
+}
