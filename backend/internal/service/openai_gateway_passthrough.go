@@ -1579,6 +1579,12 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	if errType == "" {
 		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
 	}
+	// invalid_encrypted_content is request/context-bound, not an account
+	// capability failure. Once the one sanitization retry is exhausted, keep
+	// the upstream terminal event instead of rotating accounts and replaying it.
+	if code == "invalid_encrypted_content" {
+		return false
+	}
 	combined := strings.ToLower(strings.TrimSpace(message + " " + code + " " + errType))
 	if combined == "" {
 		return true
@@ -1605,6 +1611,11 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(payload, "code").String()), "invalid_encrypted_content") ||
+		strings.EqualFold(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()), "invalid_encrypted_content") ||
+		strings.EqualFold(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()), "invalid_encrypted_content") {
 		return false
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
