@@ -787,6 +787,49 @@ func sanitizeGrokUnsupportedFields(body []byte) ([]byte, error) {
 	return marshalOpenAIUpstreamJSON(payload)
 }
 
+// sanitizeGrokRawChatCompatFields removes fields that the Grok raw Chat
+// Completions route rejects. It is intentionally not part of Responses bridge
+// eligibility or body conversion: presence penalties stay unknown there, and
+// user message names are preserved.
+func sanitizeGrokRawChatCompatFields(body []byte) ([]byte, error) {
+	out := body
+	var err error
+	for _, field := range []string{"presence_penalty", "presencePenalty"} {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, fmt.Errorf("remove Grok raw chat %s: %w", field, err)
+		}
+	}
+
+	messages := gjson.GetBytes(out, "messages")
+	if !messages.IsArray() {
+		return out, nil
+	}
+	for index, message := range messages.Array() {
+		if message.Get("role").String() == "user" || !message.Get("name").Exists() {
+			continue
+		}
+		out, err = sjson.DeleteBytes(out, fmt.Sprintf("messages.%d.name", index))
+		if err != nil {
+			return nil, fmt.Errorf("remove Grok raw chat message name: %w", err)
+		}
+	}
+	return out, nil
+}
+func (s *OpenAIGatewayService) grokUpstreamErrorBodyForOps(body []byte) string {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.LogUpstreamErrorBody || len(body) == 0 {
+		return ""
+	}
+	maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = 2048
+	}
+	return truncateString(string(body), maxBytes)
+}
+
 // sanitizeGrokResponsesUnsupportedFields 保留旧函数名作为别名，向后兼容
 var sanitizeGrokResponsesUnsupportedFields = sanitizeGrokUnsupportedFields
 

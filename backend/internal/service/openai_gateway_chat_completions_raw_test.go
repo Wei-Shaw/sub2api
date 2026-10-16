@@ -124,6 +124,37 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestForwardAsRawChatCompletions_LogsGrokUpstreamErrorBodyWhenConfigured(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok-4.7","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	upstreamBody := `{"error":{"message":"forbidden"}}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	cfg := rawChatCompletionsTestConfig()
+	cfg.Gateway.LogUpstreamErrorBody = true
+	cfg.Gateway.LogUpstreamErrorBodyMaxBytes = 12
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformGrok
+	account.Credentials["base_url"] = "https://cli-chat-proxy.grok.com/v1"
+
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.Error(t, err)
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, upstreamBody[:12], events[0].UpstreamResponseBody)
+}
+
 func TestForwardAsChatCompletions_OpenAICompatibleGrokRawMissingUsageFailsBeforeWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1279,4 +1310,74 @@ func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestForwardAsRawChatCompletions_StripsGrokRawChatPresencePenaltyBeforeUpstreamSend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok-4.7","presence_penalty":0,"presencePenalty":0.2,"frequency_penalty":0.3,"frequencyPenalty":0.4,"temperature":0.1,"stop":["END"],"messages":[{"role":"system","name":"rules","content":"be brief"},{"role":"user","name":"alice","content":"hello"},{"role":"assistant","name":"bot","content":"ok","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	upstream := rawChatCompletionsOKUpstream("rid-grok-raw-presence")
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawGrokChatCompletionsTestAccount(), body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, upstream.lastReq.URL.String(), "/chat/completions")
+	require.NotContains(t, upstream.lastReq.URL.String(), "/responses")
+	require.False(t, gjson.GetBytes(upstream.lastBody, "presence_penalty").Exists(), string(upstream.lastBody))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "presencePenalty").Exists(), string(upstream.lastBody))
+	require.Equal(t, 0.3, gjson.GetBytes(upstream.lastBody, "frequency_penalty").Float())
+	require.Equal(t, 0.4, gjson.GetBytes(upstream.lastBody, "frequencyPenalty").Float())
+	require.Equal(t, 0.1, gjson.GetBytes(upstream.lastBody, "temperature").Float())
+	require.Equal(t, "END", gjson.GetBytes(upstream.lastBody, "stop.0").String())
+	require.Equal(t, "be brief", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages.0.name").Exists(), string(upstream.lastBody))
+	require.Equal(t, "alice", gjson.GetBytes(upstream.lastBody, "messages.1.name").String())
+	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "messages.1.content").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages.2.name").Exists(), string(upstream.lastBody))
+	require.Equal(t, "lookup", gjson.GetBytes(upstream.lastBody, "messages.2.tool_calls.0.function.name").String())
+	require.Equal(t, "lookup", gjson.GetBytes(upstream.lastBody, "tools.0.function.name").String())
+	require.Equal(t, "grok-4.7", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
+func TestForwardAsRawChatCompletions_KeepsPresencePenaltyForNonGrok(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","presence_penalty":0,"presencePenalty":0.2,"messages":[{"role":"system","name":"rules","content":"be brief"},{"role":"user","name":"alice","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	upstream := rawChatCompletionsOKUpstream("rid-nongrok-presence")
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "0", gjson.GetBytes(upstream.lastBody, "presence_penalty").Raw)
+	require.Equal(t, 0.2, gjson.GetBytes(upstream.lastBody, "presencePenalty").Float())
+	require.Equal(t, "rules", gjson.GetBytes(upstream.lastBody, "messages.0.name").String())
+	require.Equal(t, "alice", gjson.GetBytes(upstream.lastBody, "messages.1.name").String())
+	require.Equal(t, "be brief", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+}
+
+func rawGrokChatCompletionsTestAccount() *Account {
+	account := rawChatCompletionsTestAccount()
+	account.Platform = PlatformGrok
+	account.Credentials["base_url"] = "https://cli-chat-proxy.grok.com/v1"
+	return account
+}
+
+func rawChatCompletionsOKUpstream(requestID string) *httpUpstreamRecorder {
+	return &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{requestID}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_raw","object":"chat.completion","model":"echo","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
 }
