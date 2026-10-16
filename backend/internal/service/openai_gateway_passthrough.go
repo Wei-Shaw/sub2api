@@ -49,9 +49,16 @@ func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesCl
 		}
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode OpenAI Responses client tools trailing data: %w", err)
 	}
+	additionalToolsChanged, err := liftResponsesAdditionalTools(requestBody)
+	if err != nil {
+		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("lift OpenAI Responses Lite tools: %w", err)
+	}
 	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
 	if err != nil || !changed {
-		return body, mapping, err
+		if err != nil || !additionalToolsChanged {
+			return body, mapping, err
+		}
+		changed = true
 	}
 	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
 	if err != nil {
@@ -65,7 +72,12 @@ func needsOpenAIResponsesClientToolAdaptation(body []byte) bool {
 	var visit func(gjson.Result) bool
 	visit = func(value gjson.Result) bool {
 		if value.IsObject() {
-			switch strings.TrimSpace(value.Get("type").String()) {
+			typ := strings.TrimSpace(value.Get("type").String())
+			if typ == "additional_tools" {
+				needsAdaptation = true
+				return false
+			}
+			switch typ {
 			case "custom", "custom_tool_call", "custom_tool_call_output",
 				"tool_search", "tool_search_call", "tool_search_output":
 				needsAdaptation = true
