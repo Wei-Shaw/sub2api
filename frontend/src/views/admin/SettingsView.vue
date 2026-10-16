@@ -6736,6 +6736,25 @@
                 <Toggle v-model="form.compact_home_enabled" data-testid="compact-home-toggle" />
               </div>
 
+              <!-- Default model for OpenAI Codex exports -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label for="codex-default-model" class="font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.site.codexDefaultModel") }}
+                </label>
+                <input
+                  id="codex-default-model"
+                  v-model="form.codex_default_model"
+                  type="text"
+                  maxlength="200"
+                  class="input mt-2"
+                  placeholder="gpt-6.1-sol"
+                  data-testid="codex-default-model"
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.codexDefaultModelHint") }}
+                </p>
+              </div>
+
               <!-- Hide CCS Import Button -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -9816,6 +9835,7 @@ const form = reactive<SettingsForm>({
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
+  codex_default_model: "",
   payment_enabled: false,
   risk_control_enabled: false,
   cyber_policy_user_allowlist: "",
@@ -11042,6 +11062,7 @@ const claudeSyncedVersionLabel = computed(() => {
   });
 });
 
+/** Load persisted settings into the admin form, retaining defaults for missing fields. */
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11316,6 +11337,7 @@ const siteBillingModeHint = computed(() =>
   t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
 );
 
+/** Validate and save the admin form through the settings API. */
 async function saveSettings() {
   saving.value = true;
   try {
@@ -11523,6 +11545,7 @@ async function saveSettings() {
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
+      codex_default_model: form.codex_default_model,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
