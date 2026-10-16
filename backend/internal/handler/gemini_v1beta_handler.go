@@ -39,9 +39,11 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 	}
-	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组（composite 分组允许路由到 antigravity）
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
+	if !hasForcePlatform && effectivePlatform != service.PlatformGemini &&
+		!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -223,9 +225,11 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 	}
-	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组（composite 分组允许路由到 antigravity）
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
+	if !hasForcePlatform && effectivePlatform != service.PlatformGemini &&
+		!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -244,9 +248,13 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
 		modelName = strings.TrimSpace(resolvedModel)
 	}
+	if !hasForcePlatform && servesCompositeAntigravityGemini(apiKey, effectivePlatform) && !isAntigravityGeminiModel(modelName) {
+		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+		return
+	}
 
-	// 强制 antigravity 模式：返回 antigravity 模型信息
-	if forcePlatform == service.PlatformAntigravity {
+	// 强制 antigravity 模式或 composite 路由到 antigravity：返回 antigravity 模型信息
+	if forcePlatform == service.PlatformAntigravity || effectivePlatform == service.PlatformAntigravity {
 		c.JSON(http.StatusOK, antigravity.FallbackGeminiModel(modelName))
 		return
 	}
@@ -299,9 +307,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
-	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
+	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组（composite 分组允许路由到 antigravity）
+	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
 	if !middleware.HasForcePlatform(c) {
-		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+		if effectivePlatform != service.PlatformGemini &&
+			!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}
@@ -320,6 +330,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
 		modelName = strings.TrimSpace(resolvedModel)
+	}
+	if !middleware.HasForcePlatform(c) && servesCompositeAntigravityGemini(apiKey, effectivePlatform) && !isAntigravityGeminiModel(modelName) {
+		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+		return
 	}
 
 	stream := action == "streamGenerateContent"
@@ -567,7 +581,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				return
 			}
 			if len(fs.FailedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, modelName, modelName, service.PlatformGemini)
+				diagPlatform := service.PlatformGemini
+				if p := effectiveAPIKeyPlatform(c, apiKey); p == service.PlatformAntigravity {
+					diagPlatform = service.PlatformAntigravity
+				}
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, modelName, modelName, diagPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -1052,4 +1070,17 @@ func derefGroupID(groupID *int64) int64 {
 		return 0
 	}
 	return *groupID
+}
+
+func servesCompositeAntigravityGemini(apiKey *service.APIKey, effectivePlatform string) bool {
+	return apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity
+}
+
+func isAntigravityGeminiModel(model string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(model, "models/")))
+	if trimmed == "" || strings.HasPrefix(trimmed, "claude-") {
+		return false
+	}
+	detected, ok := service.DetectModelPlatform(trimmed)
+	return ok && detected == service.PlatformGemini
 }

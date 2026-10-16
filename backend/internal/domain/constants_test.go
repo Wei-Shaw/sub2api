@@ -105,6 +105,28 @@ func TestDefaultAntigravityModelMapping_Gemini38FlashModels(t *testing.T) {
 	}
 }
 
+func TestDefaultAntigravityModelMapping_Gemini4ArgonAndClaude55Models(t *testing.T) {
+	cases := map[string]string{
+		"gemini-4-argon":           "gemini-4-argon-high",
+		"gemini-4-argon-high":      "gemini-4-argon-high",
+		"gemini-4-argon-low":       "gemini-4-argon-low",
+		"gemini-4-argon-medium":    "gemini-4-argon-medium",
+		"claude-opus-5-5":          "claude-opus-5-5-high",
+		"claude-opus-5-5-high":     "claude-opus-5-5-high",
+		"claude-opus-5-5-low":      "claude-opus-5-5-low",
+		"claude-opus-5-5-medium":   "claude-opus-5-5-medium",
+		"claude-sonnet-5-5":        "claude-sonnet-5-5-high",
+		"claude-sonnet-5-5-high":   "claude-sonnet-5-5-high",
+		"claude-sonnet-5-5-low":    "claude-sonnet-5-5-low",
+		"claude-sonnet-5-5-medium": "claude-sonnet-5-5-medium",
+	}
+	for from, want := range cases {
+		if got := DefaultAntigravityModelMapping[from]; got != want {
+			t.Fatalf("expected %s to map to %q, got %q", from, want, got)
+		}
+	}
+}
+
 func TestDefaultBedrockModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
