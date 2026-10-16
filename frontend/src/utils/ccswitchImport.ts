@@ -18,6 +18,7 @@ export interface CcSwitchImportDeeplinkInput {
   providerName: string
   apiKey: string
   usageScript: string
+  codexDefaultModel?: string
 }
 
 /**
@@ -54,10 +55,17 @@ function withoutTrailingSlashes(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '')
 }
 
+/** Resolve an optional administrator preference, retaining the legacy default when unset. */
+export function resolveCodexDefaultModel(model?: string | null): string {
+  return model?.trim() || OPENAI_CC_SWITCH_CODEX_MODEL
+}
+
+/** Resolve the client endpoint and export model without changing gateway routing. */
 export function resolveCcSwitchImportConfig(
   platform: GroupPlatform | undefined | null,
   clientType: CcSwitchClientType,
-  baseUrl: string
+  baseUrl: string,
+  codexDefaultModel?: string
 ): CcSwitchImportConfig {
   switch (platform || 'anthropic') {
     case 'antigravity':
@@ -71,7 +79,7 @@ export function resolveCcSwitchImportConfig(
         // CC Switch's Codex provider appends the OpenAI-compatible path itself.
         // Passing /v1 here can make the client request /v1/v1/....
         endpoint: withoutTrailingSlashes(baseUrl),
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: resolveCodexDefaultModel(codexDefaultModel)
       }
     case 'gemini':
       return {
@@ -92,8 +100,9 @@ export function resolveCcSwitchImportConfig(
   }
 }
 
+/** Build the import link, carrying the configured model only for OpenAI Codex providers. */
 export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput): string {
-  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl)
+  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl, input.codexDefaultModel)
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],
