@@ -158,6 +158,9 @@ func (userSubRepoNoop) UpdateStatus(context.Context, int64, string) error {
 func (userSubRepoNoop) UpdateNotes(context.Context, int64, string) error {
 	panic("unexpected UpdateNotes call")
 }
+func (userSubRepoNoop) UpdateLimits(context.Context, int64, *float64, *float64, *float64) error {
+	panic("unexpected UpdateLimits call")
+}
 func (userSubRepoNoop) ActivateWindows(context.Context, int64, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows call")
 }
@@ -273,6 +276,26 @@ func (s *subscriptionUserSubRepoStub) Update(_ context.Context, sub *UserSubscri
 	}
 	s.byUserGroup[s.key(cp.UserID, cp.GroupID)] = &cp
 	return nil
+}
+
+func (s *subscriptionUserSubRepoStub) UpdateLimits(_ context.Context, id int64, daily, weekly, monthly *float64) error {
+	sub := s.byID[id]
+	if sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	sub.DailyLimitUSD = copySubscriptionLimit(daily)
+	sub.WeeklyLimitUSD = copySubscriptionLimit(weekly)
+	sub.MonthlyLimitUSD = copySubscriptionLimit(monthly)
+	s.byUserGroup[s.key(sub.UserID, sub.GroupID)] = sub
+	return nil
+}
+
+func copySubscriptionLimit(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {

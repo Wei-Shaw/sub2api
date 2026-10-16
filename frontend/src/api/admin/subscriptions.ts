@@ -10,6 +10,7 @@ import type {
   AssignSubscriptionRequest,
   BulkAssignSubscriptionRequest,
   ExtendSubscriptionRequest,
+  UpdateSubscriptionLimitsRequest,
   PaginatedResponse
 } from '@/types'
 
@@ -187,6 +188,17 @@ export async function resetQuota(
   return data
 }
 
+export async function updateLimits(
+  id: number,
+  request: UpdateSubscriptionLimitsRequest
+): Promise<UserSubscription> {
+  const { data } = await apiClient.patch<UserSubscription>(
+    `/admin/subscriptions/${id}/limits`,
+    request
+  )
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -240,6 +252,7 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  updateLimits,
   listByGroup,
   listByUser
 }
