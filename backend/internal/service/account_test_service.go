@@ -384,7 +384,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return nil
 	}
 
-	// Route to platform-specific test method
+	// Route to platform-specific test method.
+	if account.IsDimAgent() {
+		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	}
 	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
 	if account.RoutesProtocolByInbound() {
 		switch account.GetAPIProtocol() {
@@ -487,8 +490,19 @@ func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Cont
 	testModelID = account.GetMappedModel(testModelID)
 
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if account.IsDimAgent() {
+		if s.openaiGatewayService != nil {
+			refreshedToken, _, tokenErr := s.openaiGatewayService.GetAccessToken(c.Request.Context(), account)
+			if tokenErr != nil {
+				return s.sendErrorAndEnd(c, "DimAgent OAuth token refresh failed")
+			}
+			authToken = strings.TrimSpace(refreshedToken)
+		} else {
+			authToken = strings.TrimSpace(account.DimAgentAccessToken())
+		}
+	}
 	if authToken == "" {
-		return s.sendErrorAndEnd(c, "No API key available")
+		return s.sendErrorAndEnd(c, "No upstream access token available")
 	}
 
 	baseURL := account.GetOpenAIBaseURL()
@@ -2152,6 +2166,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyDimAgentSubscriptionHeaders(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	proxyURL := ""

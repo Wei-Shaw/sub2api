@@ -1009,7 +1009,11 @@ func decodeUpstreamBillingProbeSnapshot(extra map[string]any) *UpstreamBillingPr
 // type=apikey by the admin form, so only pre-existing type=upstream rows
 // cannot turn the probe on.
 func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
-	return accountType == AccountTypeAPIKey && domain.IsConcretePlatform(platform)
+	// DimAgent's subscription token must only be sent to the documented
+	// inference/model endpoints. Its upstream quota endpoint is not yet part of
+	// the verified contract, so it is deliberately excluded from the generic
+	// sub2api relay probe.
+	return accountType == AccountTypeAPIKey && platform != PlatformDimAgent && domain.IsConcretePlatform(platform)
 }
 
 func isUpstreamBillingProbeAccount(account *Account) bool {
