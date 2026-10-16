@@ -131,9 +131,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	}
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
-	if result.Status == "success" && plan.AutoRecover {
-		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
-	}
+	s.recoverAfterTest(ctx, plan, result)
 
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
@@ -166,5 +164,16 @@ func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, acco
 	}
 	if recovery.ClearedRateLimit {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover: account=%d cleared rate-limit/runtime state", planID, accountID)
+	}
+}
+
+// A web image success establishes only that capability, not Codex chat health.
+func scheduledTestAllowsRecovery(result *ScheduledTestResult, autoRecover bool) bool {
+	return autoRecover && result != nil && result.Status == "success" && !result.capabilityOnly
+}
+
+func (s *ScheduledTestRunnerService) recoverAfterTest(ctx context.Context, plan *ScheduledTestPlan, result *ScheduledTestResult) {
+	if plan != nil && scheduledTestAllowsRecovery(result, plan.AutoRecover) {
+		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 }
