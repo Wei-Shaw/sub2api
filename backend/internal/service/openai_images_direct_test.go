@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -111,15 +112,132 @@ func TestCodexDirectImagesHTTPErrorFallbacksOnlyWhenEndpointUnavailable(t *testi
 	}
 }
 
-func TestCodexDirectImagesStreamRejectsPlainJSON(t *testing.T) {
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw","stream":true}`)
-	c, _ := newOpenAIImagesTestContext(t, body)
-	svc := newOpenAIImagesTestService(&httpUpstreamRecorder{resp: openAIImagesJSONResponse()})
+// The native edits endpoint ignores stream=true and answers with one JSON
+// document; it must reach the client as the stream it asked for.
+func TestCodexDirectImagesStreamConvertsPlainJSON(t *testing.T) {
+	for _, test := range []struct {
+		name, path, body, wantEvent, wantEndpoint string
+	}{
+		{"generations", "/v1/images/generations", `{"model":"gpt-image-2","prompt":"draw","stream":true}`, "image_generation.completed", "/backend-api/codex/images/generations"},
+		{"edits", "/v1/images/edits", `{"model":"gpt-image-2","prompt":"edit","images":[{"image_url":"data:image/png;base64,AA=="}],"stream":true,"response_format":"url"}`, "image_edit.completed", "/backend-api/codex/images/edits"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c, rec := newOpenAIImagesTestContext(t, []byte(test.body))
+			c.Request.URL.Path = test.path
+			// The live endpoint pretty-prints its JSON; every SSE data payload
+			// must still fit on a single line.
+			resp := openAIImagesJSONResponse()
+			resp.Body = io.NopCloser(strings.NewReader("{\n  \"created\": 1710000000,\n  \"data\": [\n    {\n      \"b64_json\": \"aGVsbG8=\"\n    }\n  ],\n  \"usage\": {\n    \"input_tokens\": 10,\n    \"output_tokens\": 20,\n    \"total_tokens\": 30\n  }\n}\n"))
+			upstream := &httpUpstreamRecorder{resp: resp}
+			svc := newOpenAIImagesTestService(upstream)
+			parsed, err := svc.ParseOpenAIImagesRequest(c, []byte(test.body))
+			require.NoError(t, err)
+			result, err := svc.ForwardImages(context.Background(), c, directImagesTestAccount(), []byte(test.body), parsed, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, 1, result.ImageCount)
+			require.Equal(t, 20, result.Usage.ImageOutputTokens)
+			require.NotNil(t, result.FirstTokenMs)
+			require.Equal(t, test.wantEndpoint, upstream.lastReq.URL.Path)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
+			out := rec.Body.String()
+			require.Contains(t, out, "event: "+test.wantEvent+"\n")
+			for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+				require.True(t, line == "" || strings.HasPrefix(line, "event: ") || strings.HasPrefix(line, "data: "), "SSE line split mid-payload: %q", line)
+			}
+			dataLine := out[strings.Index(out, "data: ")+len("data: "):]
+			dataLine = dataLine[:strings.Index(dataLine, "\n")]
+			require.Equal(t, test.wantEvent, gjson.Get(dataLine, "type").String())
+			require.Equal(t, "aGVsbG8=", gjson.Get(dataLine, "b64_json").String())
+			require.Equal(t, "gpt-image-2", gjson.Get(dataLine, "model").String())
+			require.Equal(t, int64(1710000000), gjson.Get(dataLine, "created_at").Int())
+			require.Equal(t, int64(20), gjson.Get(dataLine, "usage.output_tokens").Int())
+			if parsed.ResponseFormat == "url" {
+				require.Equal(t, "data:image/png;base64,aGVsbG8=", gjson.Get(dataLine, "url").String())
+			}
+		})
+	}
+}
+
+// A JSON error body must stay retryable: nothing may reach the client before
+// the failover decision is made.
+func TestCodexDirectImagesStreamPlainJSONErrorWritesNothing(t *testing.T) {
+	for _, test := range []struct {
+		name, response string
+		limit          int64
+		wantFailover   bool
+	}{
+		{"empty data", `{"data":[]}`, 0, true},
+		{"upstream error with image", `{"error":{"type":"server_error","message":"temporary failure"},"data":[{"b64_json":"aGVsbG8="}]}`, 0, true},
+		{"malformed after image", `{"data":[{"b64_json":"aGVsbG8="}],`, 0, false},
+		{"read error after image", `{"data":[{"b64_json":"aGVsbG8="}]}`, 0, true},
+		{"oversized", `{"data":[{"b64_json":"aGVsbG8="}]}`, 8, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-image-2","prompt":"draw","stream":true}`)
+			c, rec := newOpenAIImagesTestContext(t, body)
+			resp := openAIImagesJSONResponse()
+			resp.Body = io.NopCloser(strings.NewReader(test.response))
+			if test.name == "read error after image" {
+				resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(test.response), &openAIImagesReadErrorBody{err: io.ErrUnexpectedEOF}))
+			}
+			upstream := &httpUpstreamRecorder{resp: resp}
+			svc := newOpenAIImagesTestService(upstream)
+			svc.cfg.Gateway.UpstreamResponseReadMaxBytes = test.limit
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			result, err := svc.ForwardImages(context.Background(), c, directImagesTestAccount(), body, parsed, "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Empty(t, rec.Body.String())
+			require.False(t, c.Writer.Written(), "even headers must remain uncommitted")
+			require.Equal(t, -1, c.Writer.Size())
+			require.False(t, rec.Flushed)
+			var failover *UpstreamFailoverError
+			if test.wantFailover {
+				require.ErrorAs(t, err, &failover)
+				require.Equal(t, http.StatusBadGateway, failover.StatusCode)
+				// Reuse the same client writer, as the handler does on failover.
+				upstream.resp = openAIImagesJSONResponse()
+				result, err = svc.ForwardImages(context.Background(), c, directImagesTestAccount(), body, parsed, "")
+				require.NoError(t, err)
+				require.Equal(t, 1, result.ImageCount)
+				require.Equal(t, 1, strings.Count(rec.Body.String(), "event: image_generation.completed\n"))
+			} else {
+				require.False(t, errors.As(err, &failover))
+			}
+		})
+	}
+}
+
+func TestCodexDirectImagesStreamMultipleOutputs(t *testing.T) {
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw","stream":true,"n":2}`)
+	c, rec := newOpenAIImagesTestContext(t, body)
+	resp := openAIImagesJSONResponse()
+	resp.Header.Set("Content-Length", "999")
+	resp.Body = io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"aGVsbG8="},{"b64_json":"d29ybGQ="}],"usage":{"output_tokens":20}}`))
+	svc := newOpenAIImagesTestService(&httpUpstreamRecorder{resp: resp})
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 	result, err := svc.ForwardImages(context.Background(), c, directImagesTestAccount(), body, parsed, "")
-	require.Error(t, err, "未收到 SSE 完成事件，不能把未转发的 JSON 当作成功")
-	require.Nil(t, result)
+	require.NoError(t, err)
+	require.Equal(t, 2, result.ImageCount)
+	require.Equal(t, 20, result.Usage.ImageOutputTokens)
+	require.Empty(t, rec.Header().Get("Content-Length"))
+	frames := strings.Split(strings.TrimSuffix(rec.Body.String(), "\n\n"), "\n\n")
+	require.Len(t, frames, 2)
+	for i, frame := range frames {
+		lines := strings.Split(frame, "\n")
+		require.Len(t, lines, 2)
+		require.Equal(t, "event: image_generation.completed", lines[0])
+		require.True(t, strings.HasPrefix(lines[1], "data: "))
+		payload := strings.TrimPrefix(lines[1], "data: ")
+		require.True(t, gjson.Valid(payload))
+		require.Equal(t, "image_generation.completed", gjson.Get(payload, "type").String())
+		require.Equal(t, []string{"aGVsbG8=", "d29ybGQ="}[i], gjson.Get(payload, "b64_json").String())
+	}
 }
 
 func TestCodexDirectImagesMultipleOutputs(t *testing.T) {
