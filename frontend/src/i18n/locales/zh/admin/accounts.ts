@@ -1681,6 +1681,9 @@ export default {
       startingTestForAccount: '开始测试账号：{name}',
       testAccountTypeLabel: '账号类型：{type}',
       selectTestModel: '选择测试模型',
+      plainAPIKeyTest: '朴素请求（不伪装官方客户端）',
+      plainAPIKeyTestHint:
+        '仅 API Key 账号的测试连接可用。发送最小化 JSON 请求：不带官方 CLI 请求头与内置 prompt，适合验证 Key 本身可用性。',
       testModel: '测试模型',
       testPrompt: '提示词："hi"',
       imagePromptLabel: '生图提示词',
