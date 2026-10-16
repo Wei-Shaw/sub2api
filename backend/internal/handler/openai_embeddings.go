@@ -147,6 +147,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			false,
 			false,
 			true,
+			service.OpenAIAccountRequirement{},
 		)
 		if err != nil {
 			if failoverClientGone(c) {

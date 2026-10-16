@@ -1593,6 +1593,14 @@
           </p>
         </div>
 
+        <!-- Codex 能力白名单（OpenAI 与 Composite 平台） -->
+        <CapabilityAllowlistField
+          v-if="supportsCapabilityAllowlist(createForm.platform)"
+          :config="createCapabilityAllowlist"
+          :platform="createForm.platform"
+          @update:config="createCapabilityAllowlist = $event"
+        />
+
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsLivePlatform(createForm.platform)"
@@ -3243,6 +3251,14 @@
           </p>
         </div>
 
+        <!-- Codex 能力白名单（OpenAI 与 Composite 平台） -->
+        <CapabilityAllowlistField
+          v-if="supportsCapabilityAllowlist(editForm.platform)"
+          :config="editCapabilityAllowlist"
+          :platform="editForm.platform"
+          @update:config="editCapabilityAllowlist = $event"
+        />
+
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsLivePlatform(editForm.platform)"
@@ -4274,6 +4290,7 @@ import { adminAPI } from "@/api/admin";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
+  CapabilityAllowlist,
   CompositeModelRoute,
   CompositeModelRouteInput,
   CompositeRouteDecision,
@@ -4306,6 +4323,13 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import CapabilityAllowlistField from "@/components/admin/group/CapabilityAllowlistField.vue";
+import {
+  cloneCapabilityAllowlist,
+  createCapabilityAllowlistDefaults,
+  normalizeCapabilityAllowlistForPlatform,
+  supportsCapabilityAllowlist,
+} from "./groupsCapabilityAllowlist";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -4904,6 +4928,9 @@ const createCodexManifestDefaults = (): CodexModelsManifestConfig => ({
 });
 const editCodexManifestConfig = ref<CodexModelsManifestConfig>(createCodexManifestDefaults());
 const editCodexManifestAccountNames = ref<Record<number, string>>({});
+// Codex 能力白名单（openai / composite 分组创建与编辑表单）
+const createCapabilityAllowlist = ref<CapabilityAllowlist>(createCapabilityAllowlistDefaults());
+const editCapabilityAllowlist = ref<CapabilityAllowlist>(createCapabilityAllowlistDefaults());
 const modelAllowlistCandidatesTracker = createModelAllowlistCandidatesTracker();
 const createModelAllowlistSelectedCount = computed(
   () => createModelAllowlistState.items.filter((item) => item.selected).length,
@@ -5798,6 +5825,7 @@ const closeCreateModal = () => {
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
+  createCapabilityAllowlist.value = createCapabilityAllowlistDefaults();
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
@@ -5949,6 +5977,10 @@ const handleCreateGroup = async () => {
       model_allowlist: buildModelAllowlistConfig(createModelAllowlistState),
       // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
       codex_models_manifest_config: createCodexManifestDefaults(),
+      capability_allowlist: normalizeCapabilityAllowlistForPlatform(
+        createForm.platform,
+        createCapabilityAllowlist.value,
+      ),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         createForm.platform,
         createForm.supported_model_scopes,
@@ -6073,6 +6105,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
+  editCapabilityAllowlist.value = cloneCapabilityAllowlist(group.capability_allowlist);
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
@@ -6207,6 +6240,7 @@ const closeEditModal = () => {
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
+  editCapabilityAllowlist.value = createCapabilityAllowlistDefaults();
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
@@ -6305,6 +6339,10 @@ const handleUpdateGroup = async () => {
               fallback_to_scheduler: editCodexManifestConfig.value.fallback_to_scheduler,
             }
           : createCodexManifestDefaults(),
+      capability_allowlist: normalizeCapabilityAllowlistForPlatform(
+        editForm.platform,
+        editCapabilityAllowlist.value,
+      ),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         editForm.platform,
         editForm.supported_model_scopes,
@@ -6695,6 +6733,9 @@ watch(
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
+    if (!supportsCapabilityAllowlist(newVal)) {
+      createCapabilityAllowlist.value = createCapabilityAllowlistDefaults();
+    }
     if (!supportsMessagesDispatchPlatform(newVal)) {
       resetMessagesDispatchFormState(createForm);
     }
@@ -6751,6 +6792,9 @@ watch(
   (newVal) => {
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
+    }
+    if (!supportsCapabilityAllowlist(newVal)) {
+      editCapabilityAllowlist.value = createCapabilityAllowlistDefaults();
     }
     if (!supportsMessagesDispatchPlatform(newVal)) {
       resetMessagesDispatchFormState(editForm);

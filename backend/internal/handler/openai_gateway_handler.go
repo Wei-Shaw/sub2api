@@ -502,6 +502,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	// Codex 能力需求：分组白名单按客户端原始需求准入，选号按分组改写后的需求过滤。
+	requestedRequirement, routingRequirement := service.ParseOpenAIAccountRequirement(body, apiKey.Group)
+	if blocked := apiKey.Group.CapabilityAllows(requestedRequirement); blocked != "" {
+		h.rejectOpenAICapabilityNotAllowed(c, blocked, streamStarted)
+		return
+	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if previousResponseID != "" {
@@ -685,6 +691,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			requireCompact,
 			false,
 			!imageIntent,
+			routingRequirement,
 			requestPlatform,
 		)
 		if err != nil {
@@ -700,6 +707,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
+					return
+				}
+				if capErr, ok := openAICapabilityUnavailable(err); ok {
+					h.rejectOpenAICapabilityUnavailable(c, capErr, streamStarted)
 					return
 				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
@@ -1218,6 +1229,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	bindOpenAIReasoningEffortPolicyForMessagesRequest(c, apiKey, body)
+	// Codex 能力需求：Messages 路径的 Fast 来自 anthropic-beta fast-mode 头（转换层不携带请求体
+	// service_tier），access_programs 照常解析；准入与路由与实际转发一致。
+	requestedRequirement, routingRequirement := service.ParseOpenAIMessagesAccountRequirement(body, c.GetHeader("anthropic-beta"), apiKey.Group)
+	if blocked := apiKey.Group.CapabilityAllows(requestedRequirement); blocked != "" {
+		h.rejectAnthropicCapabilityNotAllowed(c, blocked, streamStarted)
+		return
+	}
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
@@ -1318,6 +1336,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			false,
 			false,
 			true,
+			routingRequirement,
 			requestPlatform,
 		)
 		if err != nil {
@@ -1331,6 +1350,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			)
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
+					if capErr, ok := openAICapabilityUnavailable(err); ok {
+						h.rejectAnthropicCapabilityUnavailable(c, capErr, streamStarted)
+						return
+					}
 					cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -2530,6 +2553,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
 		return
 	}
+	// Codex 能力需求：首帧按分组白名单准入，选号按改写后的需求过滤；连接内不重选账号。
+	requestedRequirement, routingRequirement := service.ParseOpenAIAccountRequirement(firstMessage, apiKey.Group)
+	if blocked := apiKey.Group.CapabilityAllows(requestedRequirement); blocked != "" {
+		markOpenAICapabilityNotAllowed(c)
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, capabilityNotAllowedMessage(blocked))
+		return
+	}
 	// Keep the client model in the frame for admission, response identity and usage.
 	// Apply the resolved upstream model through MapRequestModel on every turn.
 	wsRouteModel := reqModel
@@ -2809,6 +2839,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			false,
 			previousResponseCanMove,
 			!imageIntent,
+			routingRequirement,
 			requestPlatform,
 		)
 		if err != nil {
@@ -2816,6 +2847,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if capErr, ok := openAICapabilityUnavailable(err); ok {
+				// 连接已升级：先写 error 事件再以策略违规关闭，客户端能看到缺失的能力。
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				writeOpenAICapabilityUnavailableWSError(ctx, wsConn, capErr)
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, capabilityUnavailableMessage(capErr.Requirement))
+				return
+			}
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
 			} else {
@@ -3006,6 +3044,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
+				}
+				// 后续帧只做能力白名单准入，不重选账号：超出已绑定账号能力的需求原样转发，上游错误透传。
+				if turnRequested, _ := service.ParseOpenAIAccountRequirement(payload, apiKey.Group); turnRequested != (service.OpenAIAccountRequirement{}) {
+					if blocked := apiKey.Group.CapabilityAllows(turnRequested); blocked != "" {
+						markOpenAICapabilityNotAllowed(c)
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, capabilityNotAllowedMessage(blocked), nil)
+					}
 				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)

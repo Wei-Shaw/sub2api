@@ -625,6 +625,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
+		CapabilityAllowlist:         normalizeGroupCapabilityAllowlist(platform, input.CapabilityAllowlist),
 		RPMLimit:                    input.RPMLimit,
 		MaxReasoningEffort:          maxReasoningEffort,
 		MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
@@ -636,6 +637,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		group.AllowLive = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
+	if err := validateGroupCapabilityAllowlist(group.CapabilityAllowlist, group.ForceOpenAIFast); err != nil {
+		return nil, err
+	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -1028,6 +1032,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig
 	}
+	if input.CapabilityAllowlist != nil {
+		group.CapabilityAllowlist = *input.CapabilityAllowlist
+	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
@@ -1066,6 +1073,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		if err := s.validateCodexModelsManifestConfig(ctx, id, group.CodexModelsManifestConfig); err != nil {
 			return nil, err
 		}
+	}
+	// 能力白名单：按最终平台归一化，并对合并后的白名单与强制 Fast 无条件校验冲突，
+	// 避免「先设白名单、再单独开启强制 Fast」两次独立请求绕过检查。
+	group.CapabilityAllowlist = normalizeGroupCapabilityAllowlist(group.Platform, group.CapabilityAllowlist)
+	if err := validateGroupCapabilityAllowlist(group.CapabilityAllowlist, group.ForceOpenAIFast); err != nil {
+		return nil, err
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

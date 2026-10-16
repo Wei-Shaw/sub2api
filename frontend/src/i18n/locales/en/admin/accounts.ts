@@ -372,6 +372,19 @@ export default {
         batchCompleted: 'Probed {count} account(s)',
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
       },
+      codexCapabilities: {
+        title: 'Codex capabilities',
+        unprobed: 'Capabilities not probed',
+        unprobedHint: 'Daybreak / service tier capabilities have not been probed from the upstream model catalog yet; run an account test or "Sync upstream models" to trigger it.',
+        none: 'No Daybreak / Fast capability',
+        syncedAt: 'Synced at',
+        badges: {
+          daybreak_blue: 'Daybreak Blue',
+          daybreak_red: 'Daybreak Red',
+          priority: 'Fast',
+          ultrafast: 'Ultrafast'
+        }
+      },
       allPrivacyModes: 'All Privacy States',
       privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',

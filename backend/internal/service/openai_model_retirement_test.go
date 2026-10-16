@@ -68,7 +68,8 @@ func TestGPT55RetirementCatalogs(t *testing.T) {
 			etag := CodexModelsManifestETag(original)
 			manifest := &OpenAIModelsResponse{Body: original, ETag: etag}
 			service := &OpenAIGatewayService{accountRepo: repo}
-			require.NoError(t, service.MergeGroupConfiguredCodexModels(context.Background(), group, manifest, etag))
+			require.NoError(t, service.MergeGroupConfiguredCodexModels(context.Background(), group, manifest))
+			require.NoError(t, service.FinalizeCodexModelsManifest(context.Background(), group, manifest, etag))
 			if !tc.wantGPT55 {
 				require.False(t, manifest.NotModified)
 				require.NotEqual(t, etag, manifest.ETag)
@@ -166,10 +167,11 @@ func TestGPT55RetirementProjectionUsesPublicNames(t *testing.T) {
 					group.ID = 1
 					group.CodexModelsManifestConfig.Enabled = true
 					service := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{1: {*account}}}}
-					require.NoError(t, service.MergeGroupConfiguredCodexModels(context.Background(), group, response, CodexModelsManifestETag(body)))
+					require.NoError(t, service.MergeGroupConfiguredCodexModels(context.Background(), group, response))
+					require.NoError(t, service.FinalizeCodexModelsManifest(context.Background(), group, response, CodexModelsManifestETag(body)))
 					require.False(t, response.NotModified, "an upstream ETag must not hide the projected catalog")
 					require.Equal(t, codexModelsManifestBodyETag(response.Body), response.ETag)
-					require.NoError(t, service.MergeGroupConfiguredCodexModels(context.Background(), group, response, response.ETag))
+					require.NoError(t, service.FinalizeCodexModelsManifest(context.Background(), group, response, response.ETag))
 					require.True(t, response.NotModified, "the final public ETag must support conditional requests")
 				}
 			})
@@ -204,7 +206,7 @@ func TestGPT55RetirementSchedulerAndDiagnosis(t *testing.T) {
 		scheduler := &defaultOpenAIAccountScheduler{}
 		ok, _ := scheduler.isAccountRequestCompatibleReason(ctx, &account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5"})
 		require.Equal(t, typ == AccountTypeAPIKey, ok)
-		reason := openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, &account, PlatformOpenAI, "gpt-5.5", false, "")
+		reason := openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, &account, PlatformOpenAI, "gpt-5.5", false, "", OpenAIAccountRequirement{})
 		require.Equal(t, typ == AccountTypeAPIKey, reason == "")
 	}
 	oauth.Credentials = map[string]any{"compact_model_mapping": map[string]any{"gpt-6.1-sol": "gpt-5.5"}}

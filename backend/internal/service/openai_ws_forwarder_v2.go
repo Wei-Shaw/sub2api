@@ -667,6 +667,7 @@ readLoop:
 		imageCounter.AddSSEData(message)
 
 		if eventType == "error" || eventType == "response.failed" {
+			s.observeCodexCapabilityRejection(account, message)
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
 		}
 

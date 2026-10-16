@@ -1273,6 +1273,25 @@ export default {
         free: '免费 Fast',
         freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },
+      capabilityAllowlist: {
+        title: 'Codex 能力白名单',
+        hint: '限制此分组可使用的 Daybreak 等级与 Service Tier：携带被禁用能力的请求返回 404 capability_not_allowed，下发给 Codex 客户端的模型目录也不再广告这些能力。Standard 始终允许。',
+        enable: '启用能力白名单',
+        enabledHint: '未勾选的能力一律禁用；若同时开启强制 Fast，则必须允许 Fast（priority），否则无法保存。',
+        disabledHint: '未启用：按账号实际能力放行全部 Daybreak 等级与 Service Tier。',
+        daybreak: '允许的 Daybreak 等级',
+        daybreakHint: '同一模型同时广告 Blue 与 Red 时，Codex 客户端只会发送 Blue；需要 Red 时请取消勾选 Blue。',
+        serviceTier: '允许的 Service Tier',
+        serviceTierHint: 'Fast 即线上值 priority；Ultrafast 按请求层级计费且上游不会报错，请只在分组内有 Ultrafast 账号时允许。',
+        programs: {
+          daybreak_blue: 'Daybreak Blue',
+          daybreak_red: 'Daybreak Red'
+        },
+        tiers: {
+          priority: 'Fast（priority）',
+          ultrafast: 'Ultrafast'
+        }
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

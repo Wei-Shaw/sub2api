@@ -126,10 +126,10 @@ func TestProfitControl_ResponsesCapabilityUsesTextGateAtScheduler(t *testing.T) 
 	groupID := int64(77)
 	ctx := profitControlTestCtx(profitControlTestGroup(groupID, 0.5, 0))
 
-	_, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true)
+	_, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true, OpenAIAccountRequirement{})
 	require.ErrorIs(t, err, ErrNoAvailableAccounts, "文本能力必须过利润门")
 
-	selection, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, true)
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, true, OpenAIAccountRequirement{})
 	require.ErrorIs(t, err, ErrNoAvailableAccounts, "Responses 文本能力不得绕过利润门")
 	require.Nil(t, selection)
 }

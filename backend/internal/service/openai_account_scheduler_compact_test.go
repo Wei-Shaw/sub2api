@@ -145,6 +145,7 @@ func selectOpenAICompactionSchedulerTestAccount(t *testing.T, svc *OpenAIGateway
 		requireCompact,
 		false,
 		false,
+		OpenAIAccountRequirement{},
 	)
 	return selection, err
 }
@@ -305,6 +306,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRequiresResponse
 		true,
 		false,
 		false,
+		OpenAIAccountRequirement{},
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoAvailableAccounts))
@@ -365,6 +367,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactSkipsChatOnlyAcc
 		true,
 		false,
 		false,
+		OpenAIAccountRequirement{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -468,6 +471,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactAllowsGrok(t *te
 		true,
 		false,
 		true,
+		OpenAIAccountRequirement{},
 		PlatformGrok,
 	)
 	require.NoError(t, err)
