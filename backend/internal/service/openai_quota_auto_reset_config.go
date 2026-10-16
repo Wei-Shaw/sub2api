@@ -14,6 +14,8 @@ const (
 	OpenAIAutoResetCreditEnabledExtraKey     = "auto_reset_credit_enabled"
 	OpenAIAutoResetCredit5hThresholdExtraKey = "auto_reset_credit_5h_threshold"
 	OpenAIAutoResetCredit7dThresholdExtraKey = "auto_reset_credit_7d_threshold"
+	OpenAIAutoResetCredit5hDisabledExtraKey  = "auto_reset_credit_5h_disabled"
+	OpenAIAutoResetCredit7dDisabledExtraKey  = "auto_reset_credit_7d_disabled"
 	OpenAIAutoResetCreditStateExtraKey       = "codex_auto_reset_credit_state"
 
 	openAIAutoResetCreditDefaultThreshold = 1.0
@@ -26,6 +28,8 @@ type OpenAIAutoResetCreditConfig struct {
 	Enabled     bool
 	Threshold5h float64
 	Threshold7d float64
+	Disabled5h  bool
+	Disabled7d  bool
 }
 
 // ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号；历史账号未配置时
@@ -39,6 +43,8 @@ func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditC
 		return config
 	}
 	config.Enabled = resolveAccountExtraBool(account.Extra, OpenAIAutoResetCreditEnabledExtraKey)
+	config.Disabled5h = resolveAccountExtraBool(account.Extra, OpenAIAutoResetCredit5hDisabledExtraKey)
+	config.Disabled7d = resolveAccountExtraBool(account.Extra, OpenAIAutoResetCredit7dDisabledExtraKey)
 	if value, ok := resolveAccountExtraNumber(account.Extra, OpenAIAutoResetCredit5hThresholdExtraKey); ok && isValidOpenAIAutoResetThreshold(value) {
 		config.Threshold5h = value
 	}
@@ -53,7 +59,7 @@ func isOpenAIAutoResetCreditAccount(account *Account) bool {
 }
 
 // normalizeOpenAIAutoResetCreditExtra 校验管理请求中的配置并剥离服务运行态。
-// enabled=true 时补齐两个 100% 默认阈值；关闭时保留已设置阈值，方便再次开启。
+// enabled=true 时补齐两个 100% 默认阈值；未配置条件的旧账号默认启用两个窗口。
 func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow bool, extra map[string]any) (map[string]any, error) {
 	if extra == nil {
 		return nil, nil
@@ -64,7 +70,9 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	_, hasEnabled := normalized[OpenAIAutoResetCreditEnabledExtraKey]
 	_, has5h := normalized[OpenAIAutoResetCredit5hThresholdExtraKey]
 	_, has7d := normalized[OpenAIAutoResetCredit7dThresholdExtraKey]
-	if !hasEnabled && !has5h && !has7d {
+	_, hasDisabled5h := normalized[OpenAIAutoResetCredit5hDisabledExtraKey]
+	_, hasDisabled7d := normalized[OpenAIAutoResetCredit7dDisabledExtraKey]
+	if !hasEnabled && !has5h && !has7d && !hasDisabled5h && !hasDisabled7d {
 		return normalized, nil
 	}
 	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || isShadow {
@@ -78,6 +86,19 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 			return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ENABLED_INVALID", "auto_reset_credit_enabled must be a boolean")
 		}
 		enabled = value
+	}
+	for key, present := range map[string]bool{
+		OpenAIAutoResetCredit5hDisabledExtraKey: hasDisabled5h,
+		OpenAIAutoResetCredit7dDisabledExtraKey: hasDisabled7d,
+	} {
+		if present {
+			if _, ok := normalized[key].(bool); !ok {
+				return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_CONDITION_INVALID", "%s must be a boolean", key)
+			}
+		}
+	}
+	if enabled && normalized[OpenAIAutoResetCredit5hDisabledExtraKey] == true && normalized[OpenAIAutoResetCredit7dDisabledExtraKey] == true {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_CONDITION_REQUIRED", "at least one automatic reset credit condition must be selected")
 	}
 	for key, present := range map[string]bool{
 		OpenAIAutoResetCredit5hThresholdExtraKey: has5h,
@@ -107,6 +128,8 @@ func stripOpenAIAutoResetCreditManagedExtra(extra map[string]any, stripConfig bo
 		delete(extra, OpenAIAutoResetCreditEnabledExtraKey)
 		delete(extra, OpenAIAutoResetCredit5hThresholdExtraKey)
 		delete(extra, OpenAIAutoResetCredit7dThresholdExtraKey)
+		delete(extra, OpenAIAutoResetCredit5hDisabledExtraKey)
+		delete(extra, OpenAIAutoResetCredit7dDisabledExtraKey)
 	}
 	return extra
 }

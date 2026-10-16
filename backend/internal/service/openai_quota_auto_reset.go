@@ -532,8 +532,8 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		threshold5h:   config.Threshold5h,
 		threshold7d:   config.Threshold7d,
 	}
-	reset5h := utilization5h >= config.Threshold5h
-	reset7d := utilization7d >= config.Threshold7d
+	reset5h := !config.Disabled5h && utilization5h >= config.Threshold5h
+	reset7d := !config.Disabled7d && utilization7d >= config.Threshold7d
 	assessment.resetReached = reset5h || reset7d
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
 
@@ -544,8 +544,8 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 			account,
 		)
 	}
-	pauseReached5h := !resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled") && pause5h > 0 && utilization5h >= pause5h
-	pauseReached7d := !resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled") && pause7d > 0 && utilization7d >= pause7d
+	pauseReached5h := !config.Disabled5h && !resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled") && pause5h > 0 && utilization5h >= pause5h
+	pauseReached7d := !config.Disabled7d && !resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled") && pause7d > 0 && utilization7d >= pause7d
 	assessment.pauseReached = pauseReached5h || pauseReached7d || assessment.resetReached
 	if assessment.triggerWindow == "" {
 		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
