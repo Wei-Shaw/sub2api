@@ -27,11 +27,22 @@ func openAIResponseServiceTier(c *gin.Context) string {
 }
 
 // Codex's default echo is not authoritative for OAuth billing. Reuse that
-// existing decision for the client response, so an API-key relay does not
-// reinterpret it as a public-API downgrade. This never changes public API
-// responses, a real flex downgrade, missing outbound tiers, or free-Fast pricing.
+// existing decision for the client response. Its auto echo is also a placeholder
+// at this client boundary only; billing must still see the original declaration.
+// Public API responses, real flex downgrades and missing outbound tiers stay intact.
 func codexClientResponseServiceTier(account *Account, requested, observed string) string {
-	if account == nil || !account.IsOpenAIOAuthLike() || (strings.TrimSpace(observed) != "" && !codexOAuthResponseTierIsNonAuthoritative(observed)) {
+	if account == nil || !account.IsOpenAIOAuthLike() {
+		return observed
+	}
+	if normalizeBillingServiceTier(observed) == "auto" {
+		switch tier := normalizedOpenAIServiceTierValue(requested); tier {
+		case OpenAIFastTierPriority, OpenAIFastTierUltrafast, OpenAIFastTierFlex:
+			return tier
+		default:
+			return observed
+		}
+	}
+	if strings.TrimSpace(observed) != "" && !codexOAuthResponseTierIsNonAuthoritative(observed) {
 		return observed
 	}
 	resolution := ResolveOpenAIServiceTierBilling(account, normalizedOpenAIServiceTierValue(requested), observed)

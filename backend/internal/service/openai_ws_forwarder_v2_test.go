@@ -28,6 +28,7 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 		{name: "fast_stream", requestTier: "fast", stream: true},
 		{name: "oauth_priority_nonstream", requestTier: "priority", stream: false, oauth: true},
 		{name: "oauth_fast_stream", requestTier: "fast", stream: true, oauth: true},
+		{name: "oauth_priority_stream", requestTier: "priority", stream: true, oauth: true},
 	}
 
 	for _, tc := range cases {
@@ -54,6 +55,8 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 
 			captureConn := &openAIWSCaptureConn{
 				events: [][]byte{
+					[]byte(`{"type":"response.created","response":{"id":"resp_tier_v2","model":"gpt-5.5","service_tier":"auto"}}`),
+					[]byte(`{"type":"response.in_progress","response":{"id":"resp_tier_v2","model":"gpt-5.5","service_tier":"auto"}}`),
 					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`),
 				},
 			}
@@ -103,6 +106,17 @@ func TestForwardOpenAIWSV2_KeepsOutboundAndObservedServiceTiersSeparate(t *testi
 				clientTier = "priority"
 			}
 			require.Contains(t, rec.Body.String(), `"service_tier":"`+clientTier+`"`)
+			if tc.stream {
+				frames := relayTierSSEData(t, rec.Body.String())
+				require.Len(t, frames, 3)
+				for i, frame := range frames {
+					want := clientTier
+					if !tc.oauth && i < 2 {
+						want = "auto"
+					}
+					require.Contains(t, string(frame), `"service_tier":"`+want+`"`)
+				}
+			}
 			require.Equal(t, "priority", captureConn.lastWrite["service_tier"],
 				"outbound WS payload still carries the requested Fast tier")
 		})
