@@ -46,6 +46,40 @@ func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedMo
 	return false
 }
 
+// isModelRateLimitedForFinalKeyWithContext 直接按「实际会发往上游的最终模型名」查
+// model_rate_limits，不再做任何账号级映射。
+//
+// 为什么要有这条不映射的路径：调用方（WS 每轮账号资格复核）拿到的已经是最终上游
+// 模型名，再走一次 modelRateLimitKeysForRequest 会被 GetMappedModel 二次映射——
+// 账号配了 `*` 通配或链式映射时，最终模型名会被映回别的名字，记在最终模型名上的
+// 限流直接漏检，反过来也可能误拦正常模型。
+//
+// HTTP 调度路径拿到的是「客户端请求模型」，必须保留那一次映射，所以
+// modelRateLimitKeysForRequest 的行为不动，这里只补一条平行入口。
+func (a *Account) isModelRateLimitedForFinalKeyWithContext(ctx context.Context, finalKey string) bool {
+	for _, key := range a.modelRateLimitKeysForFinalKey(ctx, finalKey) {
+		if a.isRateLimitActiveForKey(key) {
+			return true
+		}
+	}
+	return false
+}
+
+// modelRateLimitKeysForFinalKey 返回「最终模型键本身 + 平台家族级 key」。
+// 家族 key 的判定规则与 modelRateLimitKeysForRequest 共用 modelRateLimitFamilyKeys，
+// 唯一的差别是这里不做 GetMappedModel / Antigravity thinking 后缀等任何映射。
+func (a *Account) modelRateLimitKeysForFinalKey(ctx context.Context, finalKey string) []string {
+	if a == nil {
+		return nil
+	}
+	finalKey = strings.TrimSpace(finalKey)
+	if finalKey == "" {
+		return nil
+	}
+	// requestedModel 传最终键本身：家族判定只看这一个键，不引入映射前的模型名。
+	return a.modelRateLimitFamilyKeys(ctx, finalKey, finalKey)
+}
+
 // GetModelRateLimitRemainingTime 获取模型限流剩余时间
 // 返回 0 表示未限流或已过期
 func (a *Account) GetModelRateLimitRemainingTime(requestedModel string) time.Duration {
@@ -76,6 +110,12 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 		return nil
 	}
 
+	return a.modelRateLimitFamilyKeys(ctx, requestedModel, modelKey)
+}
+
+// modelRateLimitFamilyKeys 在已经定好的 modelKey 之上补平台家族级 scope。
+// requestedModel 只参与 OpenAI 生图家族的入站意图判定，不影响 modelKey 本身。
+func (a *Account) modelRateLimitFamilyKeys(ctx context.Context, requestedModel, modelKey string) []string {
 	keys := []string{modelKey}
 	switch a.Platform {
 	case PlatformAntigravity:
