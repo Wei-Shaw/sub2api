@@ -520,6 +520,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 				}
 			}
 			cooldownMinutes := s.cfg.RateLimit.OAuth401CooldownMinutes
+			if cooldownMinutes == 0 && authAccount.Platform == PlatformAnthropic {
+				slog.Info("anthropic_oauth_401_cooldown_disabled", "account_id", authAccount.ID)
+				return false
+			}
 			if cooldownMinutes <= 0 {
 				cooldownMinutes = 10
 			}
