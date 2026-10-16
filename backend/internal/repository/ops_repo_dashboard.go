@@ -838,7 +838,7 @@ func (r *opsRepository) queryUsageCounts(ctx context.Context, filter *service.Op
 
 	q := `
 SELECT
-  COALESCE(COUNT(*), 0) AS success_count,
+  COALESCE(COUNT(*) FILTER (WHERE ` + usageLogResponseDeliveredUL + `), 0) AS success_count,
   COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
 FROM usage_logs ul
 ` + join + `
@@ -873,7 +873,8 @@ SELECT
   COUNT(first_token_ms) AS ttft_sample_count
 FROM usage_logs ul
 ` + join + `
-` + where
+` + where + `
+  AND ` + usageLogResponseDeliveredUL
 
 	var dP50, dP90, dP95, dP99 sql.NullFloat64
 	var dAvg sql.NullFloat64
@@ -972,7 +973,7 @@ func (r *opsRepository) queryPeakRates(ctx context.Context, filter *service.OpsD
 WITH usage_buckets AS (
   SELECT
     date_trunc('minute', ul.created_at) AS bucket,
-    COUNT(*) AS req_cnt,
+    COUNT(*) FILTER (WHERE ` + usageLogResponseDeliveredUL + `) AS req_cnt,
     COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_cnt
   FROM usage_logs ul
   ` + usageJoin + `
