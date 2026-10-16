@@ -247,6 +247,10 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
 
+	if c != nil {
+		c.Set("antigravity_tool_progress_fallback", allowGeminiToolProgressFallback(request.originalBody, geminiBody, claudeRequest.Messages))
+	}
+
 	request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
 	return &antigravityCompatUpstreamCall{
 		request:      request,
