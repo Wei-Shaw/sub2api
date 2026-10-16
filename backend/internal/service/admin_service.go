@@ -152,7 +152,7 @@ const (
 )
 
 func ValidateSimpleModeGroupOperation(cfg *config.Config, operation AdminGroupOperation) error {
-	if cfg != nil && cfg.RunMode == config.RunModeSimple && operation != AdminGroupOperationBasic {
+	if cfg != nil && cfg.RunMode == config.RunModeSimple && operation != AdminGroupOperationBasic && operation != AdminGroupOperationCompositeRoute {
 		return infraerrors.New(http.StatusForbidden, "SIMPLE_MODE_OPERATION_UNSUPPORTED", "This operation is not supported in simple mode")
 	}
 	return nil
