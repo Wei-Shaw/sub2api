@@ -93,7 +93,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
-	// API-key mappings and OAuth native IDs are resolved before mimicry.
+	// Resolve the actual upstream target before model-specific validation.
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {
@@ -102,6 +102,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		} else if account.Type == AccountTypeAPIKey {
 			validationModel = account.GetMappedModel(validationModel)
+		} else if account.IsAnthropicOAuthOrSetupToken() {
+			validationModel = claude.NormalizeModelID(account.GetMappedModel(validationModel))
 		}
 	}
 	if account != nil && account.Platform == PlatformAnthropic {
@@ -185,6 +187,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			"model":        reqModel,
 			"stream":       strconv.FormatBool(reqStream),
 		})
+	}
+
+	// Reuse the validated OAuth target before mimicry chooses model-specific
+	// defaults or normalizes short IDs. Account mappings apply exactly once.
+	if account.IsAnthropicOAuthOrSetupToken() && reqModel != validationModel {
+		if err := replaceBody(s.replaceModelInBody(body, validationModel)); err != nil {
+			return nil, err
+		}
+		reqModel = validationModel
+		parsed.Model = validationModel
+		logger.LegacyPrintf("service.gateway", "OAuth model mapping applied: %s -> %s (account: %s)", originalModel, reqModel, account.Name)
 	}
 
 	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
