@@ -90,6 +90,11 @@ func (c *RPMCacheImpl) IncrementRPM(ctx context.Context, accountID int64) (int, 
 
 // GetRPM 获取当前分钟的 RPM 计数
 func (c *RPMCacheImpl) GetRPM(ctx context.Context, accountID int64) (int, error) {
+	if count, exists, err := c.reservedRPM(ctx, accountID); err != nil {
+		return 0, fmt.Errorf("rpm reservation read: %w", err)
+	} else if exists {
+		return count, nil
+	}
 	key, err := c.currentMinuteKey(ctx, accountID)
 	if err != nil {
 		return 0, fmt.Errorf("rpm get: %w", err)
@@ -120,9 +125,11 @@ func (c *RPMCacheImpl) GetRPMBatch(ctx context.Context, accountIDs []int64) (map
 	// 使用 Pipeline 批量 GET
 	pipe := c.rdb.Pipeline()
 	cmds := make(map[int64]*redis.StringCmd, len(accountIDs))
+	reserved := make(map[int64]*redis.Cmd, len(accountIDs))
 	for _, id := range accountIDs {
 		key := fmt.Sprintf("%s%d:%s", rpmKeyPrefix, id, minuteSuffix)
 		cmds[id] = pipe.Get(ctx, key)
+		reserved[id] = reservedRPMReadScript.Eval(ctx, pipe, []string{rpmReservationKey(id)})
 	}
 
 	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
@@ -131,6 +138,14 @@ func (c *RPMCacheImpl) GetRPMBatch(ctx context.Context, accountIDs []int64) (map
 
 	result := make(map[int64]int, len(accountIDs))
 	for id, cmd := range cmds {
+		if raw, err := reserved[id].Result(); err != nil {
+			return nil, fmt.Errorf("rpm reservation batch read: %w", err)
+		} else if count, exists, err := reservedRPMResult(raw); err != nil {
+			return nil, err
+		} else if exists {
+			result[id] = count
+			continue
+		}
 		if val, err := cmd.Int(); err == nil {
 			result[id] = val
 		} else {
