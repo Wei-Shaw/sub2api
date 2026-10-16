@@ -40,6 +40,69 @@ describe('UseKeyModal', () => {
     saveAsMock.mockClear()
   })
 
+  it.each([
+    ['gpt-6.1-sol', 'gpt-6.1-sol'],
+    ['  provider/model:latest  ', 'provider/model:latest'],
+    ['', 'gpt-5.5']
+  ])('uses the configured OpenAI export model %s in both transports', async (preference, expected) => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai',
+        codexDefaultModel: preference
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+    for (const key of ['codexCli', 'codexCliWs']) {
+      const tab = wrapper.findAll('nav[aria-label="Client"] button').find((button) =>
+        button.text().trim() === `keys.useKeyModal.cliTabs.${key}`
+      )
+      expect(tab).toBeDefined()
+      await tab!.trigger('click')
+      const config = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+      expect(config).toContain(`model = "${expected}"`)
+      expect(config).toContain(`review_model = "${expected}"`)
+      expect(config).toContain('base_url = "https://example.com/v1"')
+    }
+    wrapper.unmount()
+  })
+
+  it('falls back to an available catalog model when the site preference is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ models: [{ slug: 'available-model' }] })
+    }))
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai',
+        codexDefaultModel: 'unavailable-model'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+    await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
+    await flushPromises()
+    const config = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+    expect(config).toContain('model = "available-model"')
+    expect(config).toContain('review_model = "available-model"')
+    wrapper.unmount()
+  })
+
   it('shows only Claude Code for Claude Code-only groups', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
