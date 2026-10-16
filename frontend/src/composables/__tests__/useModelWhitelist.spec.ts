@@ -100,6 +100,16 @@ describe('useModelWhitelist', () => {
     ]))
   })
 
+  it('Claude 默认白名单保存后允许 Haiku 5.5，预设使用同一模型 ID', () => {
+    const models: string[] = getModelsByPlatform('anthropic')
+    const mapping: Record<string, string> | null = buildModelMappingObject('whitelist', models, [])
+
+    expect(mapping?.['claude-haiku-5-5']).toBe('claude-haiku-5-5')
+    expect(getPresetMappingsByPlatform('anthropic')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5-5' })
+    ]))
+  })
+
   it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {
     const models = getModelsByPlatform('grok')
 
@@ -159,6 +169,21 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('antigravity')
 
     expect(models).toContain('gemini-3.1-pro')
+  })
+
+  it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {
+    expect(getModelsByPlatform('gemini')).toContain('gemini-4-argon')
+    const agModels = getModelsByPlatform('antigravity')
+    expect(agModels).not.toContain('gemini-4-argon')
+    expect(agModels).toContain('gemini-4-argon-high')
+    expect(agModels).toContain('gemini-4-argon-medium')
+    expect(agModels).toContain('gemini-4-argon-low')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-argon', to: 'gemini-4-argon-high' }),
+      expect.objectContaining({ from: 'gemini-4-argon-high', to: 'gemini-4-argon-high' }),
+      expect.objectContaining({ from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium' }),
+      expect.objectContaining({ from: 'gemini-4-argon-low', to: 'gemini-4-argon-low' })
+    ]))
   })
 
   it('whitelist 模式会忽略通配符条目', () => {

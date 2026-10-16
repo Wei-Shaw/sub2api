@@ -137,7 +137,7 @@ func TestGeminiNativeReasoningPricingUsesExplicitForwardedLevel(t *testing.T) {
 	}
 }
 
-func TestGeminiChatCompatReasoningPricingIgnoresUnforwardedEffort(t *testing.T) {
+func TestGeminiChatCompatReasoningPricingUsesForwardedEffort(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, stream := range []bool{false, true} {
 		mode := "buffered"
@@ -168,8 +168,9 @@ func TestGeminiChatCompatReasoningPricingIgnoresUnforwardedEffort(t *testing.T) 
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, recorder.Code)
 			require.Len(t, upstream.requestBodies, 1)
-			require.False(t, gjson.GetBytes(upstream.requestBodies[0], "generationConfig.thinkingConfig").Exists())
-			require.Nil(t, result.ReasoningEffort)
+			require.Equal(t, "high", gjson.GetBytes(upstream.requestBodies[0], "generationConfig.thinkingConfig.thinkingLevel").String())
+			require.Equal(t, stream, gjson.GetBytes(upstream.requestBodies[0], "generationConfig.thinkingConfig.includeThoughts").Bool())
+			require.Equal(t, "high", optionalStringValue(result.ReasoningEffort))
 
 			billing := NewBillingService(&config.Config{}, nil)
 			cost, err := billing.CalculateTokenCostForRequest(TokenCostRequest{
@@ -184,7 +185,7 @@ func TestGeminiChatCompatReasoningPricingIgnoresUnforwardedEffort(t *testing.T) 
 				Resolver: NewModelPricingResolver(nil, billing),
 			})
 			require.NoError(t, err)
-			require.InDelta(t, 1, cost.TotalCost, 1e-12)
+			require.InDelta(t, 2, cost.TotalCost, 1e-12)
 		})
 	}
 }

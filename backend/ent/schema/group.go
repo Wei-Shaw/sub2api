@@ -44,6 +44,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		// 名称与描述的界面语言译文 (added by migration 242)
+		field.JSON("i18n", domain.GroupI18n{}).
+			Default(domain.GroupI18n{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("名称与描述的界面语言译文：语言代码 -> {name, description}；缺失的语言沿用 name/description"),
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),

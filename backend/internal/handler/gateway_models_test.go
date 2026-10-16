@@ -324,6 +324,12 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 			Credentials: map[string]any{"model_mapping": map[string]any{alias: "gpt-5.6-sol"}},
 		},
 	}
+	subscriptionDefaults := make([]string, 0)
+	for _, model := range openai.DefaultModelIDs() {
+		if model != "gpt-5.5" {
+			subscriptionDefaults = append(subscriptionDefaults, model)
+		}
+	}
 	tests := []struct {
 		name     string
 		accounts []service.Account
@@ -333,7 +339,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 		{
 			name:     "unmapped parent and Spark shadow retain defaults and aliases",
 			accounts: accounts,
-			want:     append(openai.DefaultModelIDs(), alias),
+			want:     append(append([]string{}, subscriptionDefaults...), alias),
 		},
 		{
 			name:     "unmapped API key account also contributes defaults",
@@ -343,7 +349,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 		{
 			name:     "unmapped accounts alone retain default response shape",
 			accounts: accounts[:1],
-			want:     openai.DefaultModelIDs(),
+			want:     subscriptionDefaults,
 		},
 		{
 			name:     "custom list can select defaults and aliases",
@@ -372,7 +378,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 				Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "stale-model"}},
 				Extra:       map[string]any{"openai_passthrough": true},
 			}}, accounts[1:]...),
-			want: append(openai.DefaultModelIDs(), alias),
+			want: append(append([]string{}, subscriptionDefaults...), alias),
 		},
 		{
 			name:     "unmapped accounts from another platform do not add defaults",
@@ -1406,6 +1412,60 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 		ids = append(ids, model.ID)
 	}
 	return ids
+}
+
+func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 93
+	mapping := map[string]any{
+		"gemini-3.8-flash":         "gemini-3.8-flash-high",
+		"gemini-3.8-flash-high":    "gemini-3.8-flash-high",
+		"claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
+		"gemini-pro-agent":         "gemini-pro-agent",
+	}
+	for _, platform := range []string{service.PlatformAntigravity, service.PlatformComposite, service.PlatformGemini} {
+		t.Run(platform, func(t *testing.T) {
+			h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+				byGroup: map[int64][]service.Account{groupID: {{
+					ID: 25, Platform: service.PlatformAntigravity,
+					Extra:       map[string]any{"mixed_scheduling": true},
+					Credentials: map[string]any{"model_mapping": mapping},
+				}}},
+			})
+			want := []string{"gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-pro-agent", "claude-opus-4-6-thinking"}
+			if platform == service.PlatformGemini {
+				want = want[:3]
+			}
+			for _, codex := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+				c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+					Group: &service.Group{ID: groupID, Platform: platform},
+				})
+				var ids []string
+				if codex {
+					h.CodexModels(c)
+					var got codexModelsResponseForTest
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+					for _, model := range got.Models {
+						ids = append(ids, model.Slug)
+					}
+				} else {
+					h.Models(c)
+					var got gatewayModelsResponseForTest
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+					ids = modelIDsForTest(got.Data)
+				}
+				require.Equal(t, http.StatusOK, rec.Code)
+				// 显式条目必须同时出现在两种目录；默认透传补齐的条目不锁定。
+				require.Subset(t, ids, want, "codex=%t", codex)
+				if platform == service.PlatformGemini {
+					require.NotContains(t, ids, "claude-opus-4-6-thinking", "codex=%t", codex)
+				}
+			}
+		})
+	}
 }
 
 // gemini 分组混合调度：组内 antigravity 账号的 gemini-* 映射也应出现在 /v1/models，

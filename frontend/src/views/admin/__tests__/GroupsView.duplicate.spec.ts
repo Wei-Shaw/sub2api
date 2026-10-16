@@ -478,9 +478,11 @@ describe('GroupsView duplicate action', () => {
     wrapper.unmount()
   })
 
-  it('hides HA controls in simple mode and submits only basic group fields', async () => {
+  it.each([{}, { en: { name: 'Primary translated' } }])('hides HA controls in simple mode and preserves group translations (%j)', async (i18n) => {
     authState.isSimpleMode = true
-    updateGroup.mockResolvedValue(sourceGroup)
+    const localizedGroup = { ...sourceGroup, i18n }
+    listGroups.mockResolvedValue({ items: [localizedGroup], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(localizedGroup)
     const wrapper = mountView()
     await flushPromises()
     const createButton = wrapper.findAll('button').find((button) => button.text() === 'admin.groups.createGroup')!
@@ -493,7 +495,7 @@ describe('GroupsView duplicate action', () => {
     expect(wrapper.find('#edit-group-form button[aria-pressed]').exists()).toBe(false)
     await wrapper.get('#edit-group-form').trigger('submit')
     await flushPromises()
-    expect(updateGroup).toHaveBeenCalledWith(42, { name: 'Primary', description: '' })
+    expect(updateGroup).toHaveBeenCalledWith(42, { name: 'Primary', description: '', i18n })
     expect(showError).not.toHaveBeenCalled()
     wrapper.unmount()
   })
