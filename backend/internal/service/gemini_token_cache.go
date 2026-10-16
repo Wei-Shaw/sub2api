@@ -8,6 +8,7 @@ import (
 // GeminiTokenCache stores short-lived access tokens and coordinates refresh to avoid stampedes.
 type GeminiTokenCache interface {
 	// cacheKey should be stable for the token scope; for GeminiCli OAuth we primarily use project_id.
+	// A cache miss returns an empty token and no error.
 	GetAccessToken(ctx context.Context, cacheKey string) (string, error)
 	SetAccessToken(ctx context.Context, cacheKey string, token string, ttl time.Duration) error
 	DeleteAccessToken(ctx context.Context, cacheKey string) error
