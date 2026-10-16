@@ -2484,9 +2484,9 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Anthropic OAuth model restrictions (outside the API-key container) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'anthropic') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -4117,7 +4117,6 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
 import {
-  claudeModels,
   getPresetMappingsByPlatform,
   getModelsByPlatform,
   commonErrorCodes,
@@ -5085,8 +5084,10 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
-      // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Anthropic subscriptions default to unrestricted; other types keep their presets.
+      allowedModels.value = form.platform === 'anthropic' && isOAuthFlow.value
+        ? []
+        : [...getModelsByPlatform(form.platform)]
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -5282,7 +5283,8 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
 watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
-    if (newMode === 'whitelist') {
+    // Subscription accounts remain unrestricted until the user selects models.
+    if (newMode === 'whitelist' && !(form.platform === 'anthropic' && isOAuthFlow.value)) {
       allowedModels.value = [...getModelsByPlatform(form.platform)]
     }
   }
@@ -5644,7 +5646,7 @@ const resetForm = () => {
   modelMappings.value = []
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
-  allowedModels.value = [...claudeModels] // Default fill related models
+  allowedModels.value = [] // Anthropic subscriptions default to no model restriction
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -6272,6 +6274,16 @@ const handleValidateSessionToken = (_sessionToken: string) => {
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
+// Both authorization-code and cookie imports must persist the selected restrictions.
+const applyAnthropicOAuthModelRestriction = (credentials: Record<string, unknown>) => {
+  const mapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (mapping) {
+    credentials.model_mapping = mapping
+  } else {
+    delete credentials.model_mapping
+  }
+}
+
 // Create account and handle success/failure
 const createAccountAndFinish = async (
   platform: AccountPlatform,
@@ -6281,6 +6293,9 @@ const createAccountAndFinish = async (
 ) => {
   if (!applyTempUnschedConfig(credentials)) {
     return
+  }
+  if (platform === 'anthropic' && (type === 'oauth' || type === 'setup-token')) {
+    applyAnthropicOAuthModelRestriction(credentials)
   }
   // Inject quota limits for apikey/bedrock accounts
   let finalExtra = withUpstreamRequestIdHeader(extra)
@@ -7434,6 +7449,7 @@ const handleCookieAuth = async (sessionKey: string) => {
         const accountName = keys.length > 1 ? `${form.name} #${i + 1}` : form.name
 
         const credentials: Record<string, unknown> = { ...tokenInfo }
+        applyAnthropicOAuthModelRestriction(credentials)
         applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
         if (tempUnschedEnabled.value) {
           credentials.temp_unschedulable_enabled = true

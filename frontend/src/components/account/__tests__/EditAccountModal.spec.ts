@@ -871,6 +871,47 @@ describe('EditAccountModal', () => {
     })
   })
 
+  for (const type of ['oauth', 'setup-token']) {
+    it.each(['preserve', 'edit', 'clear'])(`Anthropic ${type} %s model restrictions without losing credentials`, async (action) => {
+      const account = buildAccount()
+      account.platform = 'anthropic'
+      account.type = type
+      account.credentials = {
+        access_token: 'fixture-token', refresh_token: 'fixture-refresh',
+        model_mapping: { 'claude-sonnet-4-6': 'claude-sonnet-4-6', 'public-claude': 'claude-opus-4-7' }
+      }
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+      const wrapper = mountModal(account)
+      expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+      expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual(['claude-sonnet-4-6'])
+      const mappingButton = wrapper.findAll('button').find(button => button.text().trim() === 'admin.accounts.modelMapping')!
+      await mappingButton.trigger('click')
+      expect(wrapper.get<HTMLInputElement>('input[placeholder="admin.accounts.requestModel"]').element.value).toBe('public-claude')
+      if (action === 'edit') {
+        await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('claude-opus-4-8')
+      } else if (action === 'clear') {
+        await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('')
+        const whitelistButton = wrapper.findAll('button').find(button => button.text().trim() === 'admin.accounts.modelWhitelist')!
+        await whitelistButton.trigger('click')
+        wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('update:modelValue', [])
+      }
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+      expect(credentials).toMatchObject({ access_token: 'fixture-token', refresh_token: 'fixture-refresh' })
+      if (action === 'clear') {
+        expect(credentials).not.toHaveProperty('model_mapping')
+      } else {
+        expect(credentials.model_mapping).toEqual({
+          'claude-sonnet-4-6': 'claude-sonnet-4-6',
+          'public-claude': action === 'edit' ? 'claude-opus-4-8' : 'claude-opus-4-7'
+        })
+      }
+      wrapper.unmount()
+    })
+  }
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {

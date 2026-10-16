@@ -2651,7 +2651,12 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
 		return true
 	}
-	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
+	// OAuth/SetupToken restrictions match the original request name, just like
+	// forwarding. Only the mapped upstream target is normalized to a dated ID.
+	if account.IsAnthropicOAuthOrSetupToken() {
+		return account.IsModelSupported(requestedModel)
+	}
+	// Preserve model ID normalization for other non-API-key Anthropic accounts.
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		if account.Type == AccountTypeServiceAccount {
 			requestedModel = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
