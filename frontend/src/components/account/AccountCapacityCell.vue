@@ -176,7 +176,9 @@ const formatCost = (value: number | null | undefined) => {
 }
 
 // ====== 配额 ======
-const isQuotaEligible = computed(() => props.account.type === 'apikey' || props.account.type === 'bedrock')
+const isQuotaEligible = computed(() =>
+  props.account.type === 'apikey' || props.account.type === 'bedrock' || props.account.type === 'service_account'
+)
 
 const showDailyQuota = computed(() =>
   isQuotaEligible.value && props.account.quota_daily_limit != null && props.account.quota_daily_limit > 0
