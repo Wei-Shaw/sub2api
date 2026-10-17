@@ -2825,21 +2825,6 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 	}
 }
 
-var openCodeBuiltinTools = []map[string]any{
-	{"type": "function", "function": map[string]any{"name": "bash", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "edit", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "glob", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "grep", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "question", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "read", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "skill", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "task", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "todowrite", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "webfetch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "websearch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-	{"type": "function", "function": map[string]any{"name": "write", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
-}
-
 func createOpenCodeChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
 	testPrompt := strings.TrimSpace(prompt)
 	if testPrompt == "" {

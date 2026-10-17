@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func newOpenCodeSessionTestContext(t *testing.T, value string) *gin.Context {
@@ -643,3 +644,56 @@ func TestOpenCodeSessionIsNotForwardedToOtherUpstreams(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureOpenCodeFreeTierChatCompletionsBody(t *testing.T) {
+	freeAccount := &Account{
+		ID:          153,
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "public"},
+	}
+	require.True(t, freeAccount.IsOpenCodeFreeTier())
+
+	nonFreeAccount := &Account{
+		ID:          154,
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-real-key"},
+	}
+	require.False(t, nonFreeAccount.IsOpenCodeFreeTier())
+
+	t.Run("non free tier account is no-op", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(nonFreeAccount, body)
+		require.Equal(t, string(body), string(out))
+	})
+
+	t.Run("injects 12 tools and stream and tool_choice when missing", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(freeAccount, body)
+
+		require.True(t, gjson.GetBytes(out, "stream").Bool())
+		require.Equal(t, "auto", gjson.GetBytes(out, "tool_choice").String())
+		tools := gjson.GetBytes(out, "tools").Array()
+		require.Len(t, tools, 12)
+		require.Equal(t, "bash", tools[0].Get("function.name").String())
+	})
+
+	t.Run("preserves existing tools and merges missing built-in tools", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"custom_mcp_tool","parameters":{}}}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(freeAccount, body)
+
+		tools := gjson.GetBytes(out, "tools").Array()
+		require.Len(t, tools, 13)
+		require.Equal(t, "custom_mcp_tool", tools[0].Get("function.name").String())
+
+		toolNames := make([]string, 0, len(tools))
+		for _, tool := range tools {
+			toolNames = append(toolNames, tool.Get("function.name").String())
+		}
+		for _, required := range []string{"bash", "edit", "glob", "grep", "question", "read", "skill", "task", "todowrite", "webfetch", "websearch", "write"} {
+			require.Contains(t, toolNames, required)
+		}
+	})
+}
+

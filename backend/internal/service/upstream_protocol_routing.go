@@ -30,6 +30,9 @@ import (
 //
 // Grok 在 Responses / Chat Completions 入口有专属链路，须在调用本函数前分流。
 func resolveUpstreamProtocol(account *Account, inbound, model string, catalog []string) string {
+	if account.IsOpenCodeFreeTier() {
+		return APIProtocolChatCompletions
+	}
 	if account.routesByModel() {
 		return account.resolveModelRoutedProtocolFor(model, inbound, catalog)
 	}

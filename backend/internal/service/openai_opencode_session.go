@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -171,7 +172,7 @@ func applyOpenCodeSessionHeader(c *gin.Context, account *Account, targetURL stri
 }
 
 func shouldSendOpenCodeSessionHeader(account *Account, targetURL string) bool {
-	if account != nil && account.IsOpenCodeGoPlan() {
+	if account != nil && (account.IsOpenCodeGoPlan() || account.IsOpenCodeFreeTier()) {
 		return true
 	}
 	return isOfficialOpenCodeHost(targetURL)
@@ -402,4 +403,69 @@ func existingOpenCodeSessionHeader(headers http.Header) string {
 		}
 	}
 	return ""
+}
+
+// openCodeBuiltinTools 是 OpenCode 官方客户端内置的 12 个核心工具定义。
+// OpenCode 的 Free Tier 上游强校验客户端真实性：请求体中必须携带完整的 12 个内置工具，
+// 否则直接以 403 FreeTierError 拦截。
+var openCodeBuiltinTools = []map[string]any{
+	{"type": "function", "function": map[string]any{"name": "bash", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "edit", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "glob", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "grep", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "question", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "read", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "skill", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "task", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "todowrite", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "webfetch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "websearch", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+	{"type": "function", "function": map[string]any{"name": "write", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}},
+}
+
+// ensureOpenCodeFreeTierChatCompletionsBody ensures outbound Chat Completions requests
+// for OpenCode Free Tier accounts contain the 12 built-in OpenCode tools, stream=true,
+// and tool_choice=auto. OpenCode's free tier upstream strictly validates client authenticity
+// by requiring all 12 built-in tools in the request body; omitting them causes upstream to
+// immediately reject with 403 FreeTierError.
+func ensureOpenCodeFreeTierChatCompletionsBody(account *Account, body []byte) []byte {
+	if account == nil || !account.IsOpenCodeFreeTier() || len(body) == 0 {
+		return body
+	}
+
+	if !gjson.GetBytes(body, "stream").Bool() {
+		body, _ = sjson.SetBytes(body, "stream", true)
+	}
+
+	if !gjson.GetBytes(body, "tool_choice").Exists() {
+		body, _ = sjson.SetBytes(body, "tool_choice", "auto")
+	}
+
+	existingTools := gjson.GetBytes(body, "tools")
+	if !existingTools.Exists() || len(existingTools.Array()) == 0 {
+		body, _ = sjson.SetBytes(body, "tools", openCodeBuiltinTools)
+		return body
+	}
+
+	presentTools := make(map[string]bool, len(openCodeBuiltinTools))
+	for _, t := range existingTools.Array() {
+		name := t.Get("function.name").String()
+		if name != "" {
+			presentTools[name] = true
+		}
+	}
+
+	for _, tool := range openCodeBuiltinTools {
+		fn, ok := tool["function"].(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := fn["name"].(string)
+		if !presentTools[name] {
+			body, _ = sjson.SetBytes(body, "tools.-1", tool)
+			presentTools[name] = true
+		}
+	}
+
+	return body
 }
