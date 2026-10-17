@@ -70,6 +70,22 @@ func TestAnthropicChatStreamAuthoritativeUsage(t *testing.T) {
 							svc := &GatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 							account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test"}}
 							result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+							if terminal == "eof" {
+								// Without message_stop the stream is truncated: no synthetic
+								// completion, and metered usage travels with the error.
+								require.Error(t, err)
+								require.NotContains(t, rec.Body.String(), "[DONE]")
+								if tc.billableInput+tc.output+tc.cached+tc.created == 0 {
+									require.Nil(t, result)
+									return
+								}
+								require.NotNil(t, result)
+								require.Equal(t, tc.billableInput, result.Usage.InputTokens)
+								require.Equal(t, tc.output, result.Usage.OutputTokens)
+								require.Equal(t, tc.cached, result.Usage.CacheReadInputTokens)
+								require.Equal(t, tc.created, result.Usage.CacheCreationInputTokens)
+								return
+							}
 							require.NoError(t, err)
 							require.Equal(t, tc.billableInput, result.Usage.InputTokens)
 							require.Equal(t, tc.output, result.Usage.OutputTokens)
