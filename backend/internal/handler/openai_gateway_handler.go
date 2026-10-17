@@ -256,6 +256,9 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	// 线上字节累计器随请求 ctx 挂在中间件层，usage 异步落库的 ctx 由 Background
+	// 派生，必须显式复制累计器，否则落库读到的三路字节恒为 0（线上实测）。
+	base = service.GatewayWireBytesToChildCtx(parent, base)
 	return base
 }
 

@@ -63,3 +63,16 @@ func GatewayWireBytesFromContext(ctx context.Context) (inBytes, outBytes, upstre
 	}
 	return 0, 0, 0
 }
+
+// GatewayWireBytesToChildCtx 把父 ctx 的线上字节累计器复制进子 ctx。
+// usage 落库走 worker 池异步执行，任务 ctx 由 Background 派生并按白名单复制
+// 请求级值；累计器不在白名单里，必须在这里显式携带。
+func GatewayWireBytesToChildCtx(parent, child context.Context) context.Context {
+	if parent == nil {
+		return child
+	}
+	if w, ok := parent.Value(gatewayWireBytesKey{}).(*gatewayWireBytes); ok && w != nil {
+		return context.WithValue(child, gatewayWireBytesKey{}, w)
+	}
+	return child
+}
