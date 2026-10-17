@@ -970,28 +970,104 @@
           }}
         </p>
 
-        <!-- 生成出来的脚本卡片。放在这条常驻的栏里，爆款复刻和 Ozon 脚本两个入口
-             产出的卡片都在这儿，点一张就把它的提示词填进上面的输入框。 -->
+        <!-- 生成出来的脚本卡片。爆款复刻和套图两个入口产出的卡片都在这儿。
+             **每张卡片都能直接改**：以前它只是个只读按钮，点一下把提示词复制到
+             下面的输入框，改了也回不到卡片里 —— 主人报的
+             「我改完了他还是按照脚本原有的内容去改」就是这个。
+             现在改成：点标题展开编辑区，改完**存回卡片**，一键生成读的是卡片里的内容。 -->
         <div v-if="scriptCards.length" class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.script.built', { count: scriptCards.length }) }}</span>
-            <button type="button" class="btn btn-secondary btn-sm" @click="applyAllScriptCards">
-              {{ t('aiImage.script.applyAll') }}
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="scriptCards.some((card) => card.edited)"
+                type="button"
+                class="btn btn-secondary btn-sm"
+                data-testid="script-reset-edits"
+                @click="resetScriptEdits"
+              >
+                {{ t('aiImage.script.resetEdits') }}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="applyAllScriptCards">
+                {{ t('aiImage.script.applyAll') }}
+              </button>
+            </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <button
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div
               v-for="card in scriptCards"
               :key="card.key"
-              type="button"
-              class="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-left text-xs hover:border-primary-400 hover:bg-primary-50 dark:border-dark-600 dark:bg-dark-900 dark:hover:border-primary-500"
-              :title="card.prompt"
-              @click="applyScriptCard(card)"
+              class="rounded-lg border bg-gray-50 dark:bg-dark-900"
+              :class="
+                card.edited
+                  ? 'border-amber-300 dark:border-amber-500/40'
+                  : 'border-gray-200 dark:border-dark-600'
+              "
+              :data-testid="`script-card-${card.key}`"
             >
-              <span class="block font-medium text-gray-800 dark:text-gray-100">{{ card.title }}</span>
-              <span class="mt-0.5 block text-gray-400 dark:text-gray-500">{{ t('aiImage.script.fillOne') }}</span>
-            </button>
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-2 px-2 py-2 text-left text-xs"
+                :title="card.prompt"
+                :data-testid="`script-card-toggle-${card.key}`"
+                @click="toggleScriptCardEditor(card.key)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate font-medium text-gray-800 dark:text-gray-100">{{ card.title }}</span>
+                  <span class="mt-0.5 block text-gray-400 dark:text-gray-500">
+                    <template v-if="card.edited">{{ t('aiImage.script.editedTag') }}</template>
+                    <template v-else>{{ t('aiImage.script.fillOne') }}</template>
+                  </span>
+                </span>
+                <Icon
+                  :name="openScriptCardKey === card.key ? 'chevronUp' : 'chevronDown'"
+                  size="sm"
+                  class="flex-shrink-0 text-gray-400"
+                />
+              </button>
+
+              <!-- 编辑区：改的就是这一张真正会发出去的内容 -->
+              <div v-if="openScriptCardKey === card.key" class="border-t border-gray-200 px-2 py-2 dark:border-dark-600">
+                <textarea
+                  v-model="card.prompt"
+                  rows="8"
+                  class="input w-full resize-y text-xs leading-relaxed"
+                  :data-testid="`script-card-text-${card.key}`"
+                  @input="markScriptCardEdited(card)"
+                ></textarea>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :data-testid="`script-card-save-${card.key}`"
+                    @click="saveScriptCard(card)"
+                  >
+                    {{ t('aiImage.script.saveEdit') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :data-testid="`script-card-generate-${card.key}`"
+                    @click="generateOneScriptCard(card)"
+                  >
+                    {{ t('aiImage.script.generateThis') }}
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" :data-testid="`script-card-fill-${card.key}`" @click="applyScriptCard(card)">
+                    {{ t('aiImage.script.fillOne') }}
+                  </button>
+                  <button
+                    v-if="card.edited"
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    @click="restoreScriptCard(card)"
+                  >
+                    {{ t('aiImage.script.restoreCard') }}
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.script.editHint') }}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1085,6 +1161,7 @@ import {
 import {
   DEFAULT_SCENE,
   OZON_SIZE_OPTIONS,
+  OZON_SYSTEM_PROMPT_EN,
   PRODUCT_LOCK,
   VISION_DEFAULT_MODEL,
   VISION_MODEL_OPTIONS,
@@ -1329,6 +1406,13 @@ const scriptForm = ref({
   diff: '',
 })
 const scriptCards = ref<OzonScriptCard[]>([])
+/**
+ * 这一批脚本的**原始模板快照**（按 key 索引）。
+ *
+ * 用来支持「还原这一张 / 全部还原」：卡片被用户改过之后，
+ * 模板原文就没了，只能从这份快照里取回来。
+ */
+const scriptCardsOriginal = ref<Record<string, { prompt: string; promptEn: string }>>({})
 const aiExtracting = ref(false)
 const scriptNotice = ref('')
 const scriptError = ref('')
@@ -1797,8 +1881,21 @@ function isVisionRoutingFailure(message: string): boolean {
  * 这是「生成的图和客户端显示的商品是同一件」的保障。
  */
 function buildEffectivePrompt(record: AIImageRecord, reference: File | null): string {
-  if (record.locked && reference) return `${PRODUCT_LOCK}${record.prompt}`
-  return record.prompt
+  /**
+   * 决定「发给模型的正文」用哪一份：
+   *
+   *   - **用户没改过** → 直接用模板预先写好的英文版（`promptEn`）。
+   *     零额外花费、零额外等待，模型视野里全是英文。
+   *   - **用户改过** → 用改后的中文，但**前面压一段英文硬规则**（`OZON_SYSTEM_PROMPT_EN`）。
+   *     这样「不许画中文、配色≤3种」这些硬要求仍然是英文原文，
+   *     而且**不调用模型翻译**，符合主人「以最低花费进行」的要求。
+   *   - **老记录**（没有 `promptEn`）→ 只能用 `prompt`。
+   */
+  const body = record.edited || !record.promptEn ? record.prompt : record.promptEn
+  const withRules = record.edited ? `${OZON_SYSTEM_PROMPT_EN}\n${body}` : body
+  // 商品一致性锁定只在「有参考图」时才拼：纯文生图没有「参考图里的商品」可锁。
+  if (record.locked && reference) return `${PRODUCT_LOCK}${withRules}`
+  return withRules
 }
 
 async function runGeneration(record: AIImageRecord, reference: File | null, imageCount?: number) {
@@ -1837,11 +1934,23 @@ async function runGeneration(record: AIImageRecord, reference: File | null, imag
   }
 }
 
-/** 建一条待生成的记录。批量与单张共用，保证字段完全一致。 */
-function newRecord(text: string, roundId: number, source: RecordSource): AIImageRecord {
+/**
+ * 建一条待生成的记录。批量与单张共用，保证字段完全一致。
+ *
+ * `extra` 用来带上脚本卡片的英文版和「改过没」：
+ * 批量生成时必须知道这两件事，否则用户改了中文也还是发模板的英文。
+ */
+function newRecord(
+  text: string,
+  roundId: number,
+  source: RecordSource,
+  extra?: { promptEn?: string; edited?: boolean },
+): AIImageRecord {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     prompt: text,
+    promptEn: extra?.promptEn,
+    edited: extra?.edited,
     model: model.value || AI_IMAGE_DEFAULT_MODEL,
     size: size.value || AI_IMAGE_DEFAULT_SIZE,
     status: 'generating',
@@ -2114,7 +2223,12 @@ function buildHotScriptCards() {
     styleDesc: style.text,
     sceneZh: matchedScene.value.zh,
   })
-  scriptCards.value = hotIncludeExtras.value ? [...cards, ...buildHotExtraCards(product)] : cards
+  setScriptCards(
+    hotIncludeExtras.value
+      ? // 补充图也要带上同行版式，否则九、十、十一、十二张又变成通用脚本。
+        [...cards, ...buildHotExtraCards(product, style.text)]
+      : cards,
+  )
   scriptSource.value = style.from === 'saved' ? 'hot-saved' : 'hot-extracted'
   hotNotice.value = t('aiImage.hot.scriptBuilt', { count: scriptCards.value.length })
 }
@@ -2186,10 +2300,16 @@ function stopBatch() {
   wakeBatch()
 }
 
-/** 把一批提示词并发跑出来，并发数上限 3。 */
-async function runBatch(prompts: string[]) {
-  const texts = prompts.map((item) => item.trim()).filter(Boolean)
-  if (!texts.length) return
+/**
+ * 把一批脚本卡片并发跑出来，并发数上限 3。
+ *
+ * 传的是**卡片**而不是纯字符串：每张卡要带上它的英文版和「改过没」，
+ * 否则用户在卡片里改了中文，生成时还是发模板的英文 —— 那就是主人反馈的
+ * 「我改完了他还是按照脚本原有的内容去改」。
+ */
+async function runBatch(cards: OzonScriptCard[]) {
+  const usable = cards.filter((card) => (card.prompt || '').trim())
+  if (!usable.length) return
   if (!apiKey.value || keyState.value !== 'valid') {
     showKeyPanel.value = true
     return
@@ -2200,8 +2320,8 @@ async function runBatch(prompts: string[]) {
   batchPaused.value = false
   batchAborted = false
   const reference = referenceImage.value
-  const workers = Math.min(batchConcurrency.value, texts.length)
-  batchProgress.value = { done: 0, total: texts.length, failed: 0 }
+  const workers = Math.min(batchConcurrency.value, usable.length)
+  batchProgress.value = { done: 0, total: usable.length, failed: 0 }
 
   // 先把所有记录按顺序建好，这样列表里的顺序和提示词顺序一致，
   // 复制地址时的顺序也就和「第 1、2、3 张」对得上。
@@ -2211,12 +2331,19 @@ async function runBatch(prompts: string[]) {
   // 「套图」产出的归套图页，「爆款复刻」产出的归爆款复刻页。
   const batchSource: RecordSource = scriptSource.value === 'ozon' ? 'script' : 'hot'
   const roundId = nextRound()
-  const queue = texts.map((text) => {
-    const record = newRecord(text, roundId, batchSource)
+  const queue = usable.map((card) => {
+    const record = newRecord(card.prompt, roundId, batchSource, {
+      promptEn: card.promptEn,
+      edited: card.edited,
+    })
     if (reference) referenceByRecord.set(record.id, reference)
     return record
   })
-  records.value = [...queue.slice().reverse(), ...records.value]
+  // ⚠️ **不要倒序**。以前这里是 `[...queue.slice().reverse(), ...records]`，
+  // 结果一轮之内的显示顺序是反的（第 10 张在最前、第 1 张在最后），
+  // 而「复制全部地址」是按提交顺序正序排的 —— 两边对不上，
+  // 主人报的「第二次任务第一次的图片位置不对」就是这个。
+  records.value = [...queue, ...records.value]
   persistRecords()
 
   let cursor = 0
@@ -2257,7 +2384,9 @@ async function runBatch(prompts: string[]) {
 /** 一键把八张脚本全部生成出来。 */
 async function generateAllScriptCards() {
   if (!scriptCards.value.length) return
-  await runBatch(scriptCards.value.map((card) => card.prompt))
+  // 传卡片本体：里面带着「用户改过的中文」和「模板的英文」，
+  // 由 buildEffectivePrompt 决定发哪一份。
+  await runBatch(scriptCards.value)
 }
 
 function buildScript() {
@@ -2268,8 +2397,8 @@ function buildScript() {
     scriptError.value = t('aiImage.script.product')
     return
   }
-  scriptCards.value = buildOzonScript(
-    {
+  setScriptCards(
+    buildOzonScript({
       product,
       // 图上印俄语；没有俄语版（手填中文）才退回中文。
       sp1: printedText(scriptForm.value.sp1, scriptForm.value.sp1Ru),
@@ -2279,29 +2408,103 @@ function buildScript() {
       diff: scriptForm.value.diff,
       sceneEn: matchedScene.value.en,
       sceneZh: matchedScene.value.zh,
-    },
-    // 没有参考图就锁不住商品，不带这段前缀。
-    { lockProduct: productLock.value && Boolean(referenceImage.value) },
+    }),
   )
+  // 商品一致性锁定不在这里拼：它取决于「这次到底带没带参考图」，
+  // 由 buildEffectivePrompt 在生成时统一加。
   scriptSource.value = 'ozon'
   scriptNotice.value = t('aiImage.script.built', { count: scriptCards.value.length })
 }
 
 /**
- * 把某一张脚本填进提示词框。
+ * 把某一张脚本填进提示词框（给「单张生图」用）。
  *
  * 顺带展开「单张生图」面板：提示词框现在收在那个面板里，
- * 不展开的话用户点了卡片会「什么都没发生」。
+ * 不展开的话用户点了会「什么都没发生」。
  */
 function applyScriptCard(card: OzonScriptCard) {
   prompt.value = card.prompt
   activePanel.value = 'single'
 }
 
-/** 把八张脚本全部填进提示词框（换行分隔，可配合批量生成）。 */
+/** 把全部脚本填进提示词框（换行分隔，可配合批量生成）。 */
 function applyAllScriptCards() {
   prompt.value = scriptCards.value.map((card) => card.prompt).join('\n')
   activePanel.value = 'single'
+}
+
+/* ------------------------------------------------------------------ *
+ * 脚本卡片编辑
+ * ------------------------------------------------------------------ */
+
+/**
+ * 装入一批新脚本，并**留一份原始快照**（给「还原」用）。
+ * 换批时把编辑区收起来，免得展开的还是上一批的 key。
+ */
+function setScriptCards(cards: OzonScriptCard[]) {
+  scriptCards.value = cards
+  const snapshot: Record<string, { prompt: string; promptEn: string }> = {}
+  for (const card of cards) {
+    snapshot[card.key] = { prompt: card.prompt, promptEn: card.promptEn || '' }
+  }
+  scriptCardsOriginal.value = snapshot
+  openScriptCardKey.value = ''
+}
+
+/**
+ * 当前展开编辑区的那一张（只展开一张，避免一屏全是输入框）。
+ * 用 key 而不是对象：卡片会被整体重建，对象引用会失效。
+ */
+const openScriptCardKey = ref('')
+
+function toggleScriptCardEditor(key: string) {
+  openScriptCardKey.value = openScriptCardKey.value === key ? '' : key
+}
+
+/**
+ * 用户一改就标成「已编辑」。
+ *
+ * 为什么必须标：生成时要靠这个标记决定发哪一份 ——
+ * 没改过就发模板预写的英文（零额外花费），改过就发「英文硬规则 + 改后的中文」。
+ */
+function markScriptCardEdited(card: OzonScriptCard) {
+  card.edited = true
+}
+
+/** 保存 = 收起编辑区（内容本来就通过 v-model 实时写回卡片了）。 */
+function saveScriptCard(card: OzonScriptCard) {
+  card.edited = true
+  openScriptCardKey.value = ''
+  scriptNotice.value = t('aiImage.script.editSaved', { title: card.title })
+}
+
+/** 还原这一张：把提示词换回**模板原文**，并清掉「已编辑」。 */
+function restoreScriptCard(card: OzonScriptCard) {
+  const original = scriptCardsOriginal.value[card.key]
+  if (original) {
+    card.prompt = original.prompt
+    card.promptEn = original.promptEn
+  }
+  card.edited = false
+  scriptNotice.value = t('aiImage.script.restored', { title: card.title })
+}
+
+/** 把所有卡片都还原成模板原文。 */
+function resetScriptEdits() {
+  for (const card of scriptCards.value) {
+    const original = scriptCardsOriginal.value[card.key]
+    if (original) {
+      card.prompt = original.prompt
+      card.promptEn = original.promptEn
+    }
+    card.edited = false
+  }
+  scriptNotice.value = t('aiImage.script.editsReset')
+}
+
+/** 单独生成这一张（用户改完之后只想重出这一张时用）。 */
+async function generateOneScriptCard(card: OzonScriptCard) {
+  await runBatch([card])
 }
 
 /** 让视觉模型看产品图，自动填产品名/卖点/痛点/差异化。 */
@@ -2349,7 +2552,7 @@ async function aiExtract() {
 
 function clearScript() {
   scriptForm.value = { product: '', sp1: '', sp2: '', sp3: '', sp1Ru: '', sp2Ru: '', sp3Ru: '', pain: '', diff: '' }
-  scriptCards.value = []
+  setScriptCards([])
   scriptNotice.value = ''
   scriptError.value = ''
 }

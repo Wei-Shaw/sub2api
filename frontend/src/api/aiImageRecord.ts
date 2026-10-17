@@ -22,7 +22,19 @@ export type RecordSource = 'single' | 'hot' | 'script'
 
 export interface AIImageRecord {
   id: string
+  /** 中文提示词：界面显示用，也是用户改的那一份。 */
   prompt: string
+  /**
+   * 英文提示词：**真正发给模型的那一份**。
+   *
+   * 为什么两套：主人要求「用户输入和看到的都是中文，运行期间用英文，
+   * 且以最低花费进行」。所以模板里同时写中英两份，**不调用模型翻译**（零额外花费）。
+   *
+   * 老记录没有这个字段 → 生成时直接用 `prompt`。
+   */
+  promptEn?: string
+  /** 这张卡的提示词被用户改过。改过就不再发模板的英文版，改成「英文硬规则 + 用户的中文」。 */
+  edited?: boolean
   model: string
   size: string
   status: RecordStatus
