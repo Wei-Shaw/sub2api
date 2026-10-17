@@ -1,7 +1,9 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,12 +26,110 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 // ChatCompletionsToResponsesWithMinOutputTokens converts a Chat Completions
 // request using the supplied max_output_tokens floor.
 func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, minOutputTokens int) (*ResponsesRequest, error) {
+	return chatCompletionsToResponses(req, false, minOutputTokens)
+}
+
+var ErrUnsupportedInputAudio = errors.New("input_audio is not supported on this conversion route")
+
+func ChatCompletionsToResponsesForGemini(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
+	return ChatCompletionsToResponsesForGeminiWithMinOutputTokens(req, DefaultMinMaxOutputTokens)
+}
+
+func ChatCompletionsToResponsesForGeminiWithMinOutputTokens(req *ChatCompletionsRequest, minOutputTokens int) (*ResponsesRequest, error) {
+	return chatCompletionsToResponses(req, true, minOutputTokens)
+}
+
+func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, minOutputTokens int) (*ResponsesRequest, error) {
+	if req.ambiguousInputAudio {
+		if !allowAudio {
+			return nil, fmt.Errorf("duplicate input_audio message or content fields: %w", ErrUnsupportedInputAudio)
+		}
+		return nil, fmt.Errorf("invalid input_audio: duplicate message or content fields")
+	}
+	converted := *req
+	converted.Messages = append([]ChatMessage(nil), req.Messages...)
+	messageAudio := make(map[int]map[int]string)
+	for index, message := range converted.Messages {
+		var rawParts []json.RawMessage
+		if json.Unmarshal(message.Content, &rawParts) != nil {
+			continue
+		}
+		hasAudio, ambiguous := chatContentAudioStatus(message.Content)
+		if !hasAudio {
+			continue
+		}
+		if !allowAudio || message.Role != "user" {
+			return nil, ErrUnsupportedInputAudio
+		}
+		if ambiguous {
+			return nil, fmt.Errorf("invalid input_audio: duplicate content fields")
+		}
+		if err := validateChatAudioParts(rawParts); err != nil {
+			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+		}
+		var parts []ChatContentPart
+		if err := json.Unmarshal(message.Content, &parts); err != nil {
+			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+		}
+		changed := false
+		audioParts := make(map[int]string)
+		responsePartIndex := 0
+		for partIndex, part := range parts {
+			if part.Type != "input_audio" {
+				responsePartIndex += len(convertChatContentPartsToResponses(parts[partIndex : partIndex+1]))
+				continue
+			}
+			var audio struct {
+				Data   string `json:"data"`
+				Format string `json:"format"`
+			}
+			if err := json.Unmarshal(part.InputAudio, &audio); err != nil {
+				return nil, fmt.Errorf("invalid input_audio: expected data and format strings")
+			}
+			mimeType := map[string]string{
+				"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
+				"flac": "audio/flac", "aac": "audio/aac", "mp4": "audio/mp4", "m4a": "audio/mp4",
+			}[audio.Format]
+			if mimeType == "" {
+				return nil, fmt.Errorf("unsupported input_audio format %q", audio.Format)
+			}
+			decoded, err := base64.StdEncoding.Strict().DecodeString(audio.Data)
+			if err != nil || len(decoded) == 0 {
+				return nil, fmt.Errorf("invalid input_audio data: expected non-empty base64")
+			}
+			parts[partIndex] = ChatContentPart{
+				Type: "file", PromptCacheBreakpoint: part.PromptCacheBreakpoint,
+				File: &ChatFile{FileData: "data:" + mimeType + ";base64," + audio.Data},
+			}
+			audioParts[responsePartIndex] = parts[partIndex].File.FileData
+			responsePartIndex++
+			changed = true
+		}
+		if changed {
+			content, err := json.Marshal(parts)
+			if err != nil {
+				return nil, err
+			}
+			converted.Messages[index].Content = content
+			messageAudio[index] = audioParts
+		}
+	}
+	req = &converted
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
+	input, messageInputIndexes, err := convertChatMessagesToResponsesInputWithIndexes(req.Messages)
 	if err != nil {
 		return nil, err
+	}
+	var inputAudio map[int]map[int]string
+	for messageIndex := range req.Messages {
+		if audioParts := messageAudio[messageIndex]; len(audioParts) > 0 {
+			if inputAudio == nil {
+				inputAudio = make(map[int]map[int]string)
+			}
+			inputAudio[messageInputIndexes[messageIndex]] = audioParts
+		}
 	}
 
 	inputJSON, err := json.Marshal(input)
@@ -38,6 +138,7 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 	}
 
 	out := &ResponsesRequest{
+		chatInputAudio:     inputAudio,
 		Model:              req.Model,
 		Instructions:       req.Instructions,
 		Input:              inputJSON,
@@ -110,12 +211,12 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 	return out, nil
 }
 
-// convertChatMessagesToResponsesInput converts the Chat Completions messages
-// array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+func convertChatMessagesToResponsesInputWithIndexes(msgs []ChatMessage) ([]ResponsesInputItem, []int, error) {
 	var out []ResponsesInputItem
+	messageInputIndexes := make([]int, len(msgs))
 	legacyIDs := legacyFunctionCallIDs{msgs: msgs}
-	for _, m := range msgs {
+	for messageIndex, m := range msgs {
+		messageInputIndexes[messageIndex] = len(out)
 		switch {
 		case m.Role == "assistant" && m.FunctionCall != nil && len(m.ToolCalls) == 0:
 			m.ToolCalls = []ChatToolCall{{
@@ -128,11 +229,50 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 		}
 		items, err := chatMessageToResponsesItems(m)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, items...)
 	}
-	return out, nil
+	return out, messageInputIndexes, nil
+}
+
+func validateChatAudioParts(parts []json.RawMessage) error {
+	for _, raw := range parts {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+			return fmt.Errorf("expected content part object")
+		}
+		var part ChatContentPart
+		if err := json.Unmarshal(raw, &part); err != nil {
+			return err
+		}
+		switch part.Type {
+		case "input_audio":
+		case "text":
+			var rawText json.RawMessage
+			for name, value := range fields {
+				if strings.EqualFold(name, "text") {
+					rawText = value
+					break
+				}
+			}
+			var text *string
+			if err := json.Unmarshal(rawText, &text); err != nil || text == nil {
+				return fmt.Errorf("expected text string")
+			}
+		case "image_url":
+			if part.ImageURL == nil || part.ImageURL.URL == "" || isEmptyBase64DataURI(part.ImageURL.URL) {
+				return fmt.Errorf("expected non-empty image_url")
+			}
+		case "file":
+			if part.File == nil || (part.File.FileData == "" && part.File.FileID == "") {
+				return fmt.Errorf("expected file_data or file_id")
+			}
+		default:
+			return fmt.Errorf("unsupported content part type %q", part.Type)
+		}
+	}
+	return nil
 }
 
 // legacyFunctionCallIDs pairs legacy function calls with their results. Legacy
