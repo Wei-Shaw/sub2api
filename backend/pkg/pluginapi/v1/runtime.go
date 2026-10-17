@@ -24,6 +24,10 @@ const (
 	HostServiceAPIVersion = 2
 	// TransportPluginName 是 go-plugin 中注册的唯一能力名称。
 	TransportPluginName = "oauth_transport"
+	// RequestPatchMaxBodyBytes 限制单次请求补丁的 JSON 正文大小。
+	RequestPatchMaxBodyBytes = 64 << 20
+	// RequestPatchMaxMessageBytes 为正文之外的请求元数据保留受限空间。
+	RequestPatchMaxMessageBytes = RequestPatchMaxBodyBytes + (256 << 10)
 )
 
 // HandshakeConfig 防止普通可执行文件被误当成 Sub2API 插件启动。
@@ -44,7 +48,8 @@ type HostBrokerReceiver interface {
 // 本连接的 go-plugin broker，宿主据此把 HostService 反向暴露给插件。
 type TransportClient struct {
 	TransportPluginClient
-	Broker *hcplugin.GRPCBroker
+	Broker         *hcplugin.GRPCBroker
+	RequestPatcher RequestPatchClient
 }
 
 // GRPCPlugin 把生成的 gRPC 服务注册到 go-plugin 子进程。
@@ -55,6 +60,10 @@ type GRPCPlugin struct {
 
 func (p *GRPCPlugin) GRPCServer(broker *hcplugin.GRPCBroker, server *grpc.Server) error {
 	RegisterTransportPluginServer(server, p.Impl)
+	// 新服务按实现选择性注册，旧传输插件无需实现或重新编译。
+	if patcher, ok := p.Impl.(RequestPatchServer); ok {
+		RegisterRequestPatchServer(server, patcher)
+	}
 	// 插件侧：把 broker 交给需要反向访问宿主服务的实现（可选能力）。
 	if receiver, ok := p.Impl.(HostBrokerReceiver); ok {
 		receiver.SetHostBroker(broker)
@@ -64,7 +73,11 @@ func (p *GRPCPlugin) GRPCServer(broker *hcplugin.GRPCBroker, server *grpc.Server
 
 func (p *GRPCPlugin) GRPCClient(_ context.Context, broker *hcplugin.GRPCBroker, conn *grpc.ClientConn) (any, error) {
 	// 宿主侧：捆绑 broker，供 startPluginRuntime 反向暴露 HostService。
-	return &TransportClient{TransportPluginClient: NewTransportPluginClient(conn), Broker: broker}, nil
+	return &TransportClient{
+		TransportPluginClient: NewTransportPluginClient(conn),
+		Broker:                broker,
+		RequestPatcher:        NewRequestPatchClient(conn),
+	}, nil
 }
 
 // ClientPluginMap 返回宿主侧使用的插件声明。
@@ -81,6 +94,8 @@ func Serve(impl TransportPluginServer) {
 		Plugins: map[string]hcplugin.Plugin{
 			TransportPluginName: &GRPCPlugin{Impl: impl},
 		},
-		GRPCServer: hcplugin.DefaultGRPCServer,
+		GRPCServer: func(options []grpc.ServerOption) *grpc.Server {
+			return hcplugin.DefaultGRPCServer(append(options, grpc.MaxRecvMsgSize(RequestPatchMaxMessageBytes)))
+		},
 	})
 }
