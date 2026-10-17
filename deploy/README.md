@@ -181,9 +181,13 @@ docker compose -f docker-compose.local.yml ps      # all four services healthy
 # Confirm the domain was substituted and nginx variables survived
 docker compose -f docker-compose.local.yml exec nginx nginx -T | grep -E 'server_name|\$host'
 
-curl -I  http://your-domain.example.com            # 301 -> https
-curl -sI https://your-domain.example.com/health    # 200
-curl -sI http://<server-ip>:8080/health            # 200 (from an allowed IP)
+# Redirect check: HEAD is fine here, the 301 is returned by nginx itself
+curl -I http://your-domain.example.com                          # 301 -> https
+
+# /health is registered as GET only, so it must be probed with GET --
+# `curl -I` (HEAD) would return a misleading 404.
+curl -s -o /dev/null -w '%{http_code}\n' https://your-domain.example.com/health
+curl -s -o /dev/null -w '%{http_code}\n' http://<server-ip>:8080/health   # from an allowed IP
 ```
 
 **Renewing certificates.** Copy the new files into `nginx/certs/`, then
