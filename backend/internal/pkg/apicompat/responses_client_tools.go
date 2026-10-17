@@ -536,14 +536,15 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 }
 
 // ResponsesClientToolStreamRestorer restores client tool stream lifecycles.
-// It is intentionally stateful because custom tools need their function
-// arguments buffered until the upstream signals the call is complete.
+// It is stateful because custom tool input is decoded incrementally from
+// function arguments; tool-search arguments remain buffered.
 type ResponsesClientToolStreamRestorer struct {
 	adapter  ResponsesClientToolMapping
 	nextSeq  int
 	seenSeq  bool
 	calls    map[string]*responsesClientToolStreamCall
 	byOutput map[int]*responsesClientToolStreamCall
+	err      error
 }
 
 type responsesClientToolStreamCall struct {
@@ -556,6 +557,8 @@ type responsesClientToolStreamCall struct {
 	clientItemID string
 	outputIdx    int
 	arguments    strings.Builder
+	inputStream  customToolInputStream
+	inputDone    bool
 }
 
 func NewResponsesClientToolStreamRestorer(mapping ResponsesClientToolMapping) *ResponsesClientToolStreamRestorer {
@@ -569,6 +572,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 	if r == nil {
 		return []ResponsesStreamEvent{event}
 	}
+	if r.err != nil {
+		return nil
+	}
 	if !r.seenSeq {
 		r.nextSeq = event.SequenceNumber
 		r.seenSeq = true
@@ -578,6 +584,25 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 		event.SequenceNumber = r.nextSeq
 		r.nextSeq++
 		out = append(out, event)
+	}
+	finishCustomInput := func(call *responsesClientToolStreamCall) {
+		input := extractCustomToolCallInput(call.arguments.String())
+		sent := call.inputStream.emitted.String()
+		if !strings.HasPrefix(input, sent) || (call.inputDone && input != sent) {
+			// Deltas cannot retract text. Do not append a conflicting final
+			// value (or malformed wrapper fallback) to an already sent prefix.
+			r.err = fmt.Errorf("custom tool input changed after streamed prefix")
+			return
+		}
+		if call.inputDone {
+			return
+		}
+		if tail := input[len(sent):]; tail != "" {
+			emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: tail})
+			call.inputStream.record(tail)
+		}
+		emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.name, Input: input})
+		call.inputDone = true
 	}
 
 	switch event.Type {
@@ -602,7 +627,12 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 	case "response.function_call_arguments.delta":
 		if call := r.callFor(event); call != nil {
 			_, _ = call.arguments.WriteString(event.Delta)
-			return nil
+			if call.kind == "custom" && !call.inputDone {
+				if delta := call.inputStream.delta(call.arguments.String()); delta != "" {
+					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: delta})
+				}
+			}
+			return out
 		}
 		emit(r.restoreNamespaceEvent(event))
 	case "response.function_call_arguments.done":
@@ -612,11 +642,7 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				_, _ = call.arguments.WriteString(event.Arguments)
 			}
 			if call.kind == "custom" {
-				input := extractCustomToolCallInput(call.arguments.String())
-				if input != "" {
-					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: input})
-				}
-				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.name, Input: input})
+				finishCustomInput(call)
 			}
 			return out
 		}
@@ -624,6 +650,11 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 	case "response.output_item.done":
 		if call := r.recordItem(event); call != nil {
 			if call.kind == "custom" {
+				// Some upstreams omit arguments.done and complete the item directly.
+				finishCustomInput(call)
+				if r.err != nil {
+					return nil
+				}
 				event.Item.Type = "custom_tool_call"
 				event.Item.Input = extractCustomToolCallInput(call.arguments.String())
 				event.Item.Arguments = ""
@@ -659,6 +690,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 // completions can expand to multiple payloads and proxy argument deltas can be
 // intentionally dropped, hence the slice return value.
 func (r *ResponsesClientToolStreamRestorer) RestoreEvent(payload []byte) ([][]byte, bool, error) {
+	if r.err != nil {
+		return nil, false, r.err
+	}
 	if len(payload) == 0 {
 		return nil, false, nil
 	}
@@ -687,6 +721,9 @@ func (r *ResponsesClientToolStreamRestorer) RestoreEvent(payload []byte) ([][]by
 		return nil, false, err
 	}
 	events := r.Restore(event)
+	if r.err != nil {
+		return nil, false, r.err
+	}
 	if len(events) == 1 {
 		unchanged, err := json.Marshal(events[0])
 		if err == nil && bytes.Equal(bytes.TrimSpace(unchanged), bytes.TrimSpace(payload)) {
