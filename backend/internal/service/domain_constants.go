@@ -705,6 +705,8 @@ const (
 	// 由 OpenAICodexVersionSyncService 独占写入，面板只读展示；管理员覆写请用
 	// SettingKeyOpenAICodexClientVersion。
 	SettingKeyOpenAICodexClientVersionSynced = "openai_codex_client_version_synced"
+	// 同步任务独占写入的只读状态，包含成功检查时间和可跨重启恢复的退避时间。
+	SettingKeyOpenAICodexVersionSyncState = "openai_codex_version_sync_state"
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。

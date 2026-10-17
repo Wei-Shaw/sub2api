@@ -10,6 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetOpenAICodexVersionSyncStatus 返回只读同步快照，不触发 GitHub 请求。
+// GET /api/v1/admin/settings/openai-codex-version-sync
+func (h *SettingHandler) GetOpenAICodexVersionSyncStatus(c *gin.Context) {
+	status, err := h.settingService.GetOpenAICodexVersionSyncStatus(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 // GetAdminAPIKey 获取管理员 API Key 状态
 // GET /api/v1/admin/settings/admin-api-key
 func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {
