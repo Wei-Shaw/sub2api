@@ -124,6 +124,12 @@ func mergeCodexModelsManifestBodies(bodies [][]byte) ([]byte, error) {
 //     naming the failed account IDs is logged.
 func (s *OpenAIGatewayService) FetchPinnedCodexModelsManifest(ctx context.Context, group *Group, clientVersion string) (*OpenAIModelsResponse, *Account, error) {
 	results, err := s.fetchPinnedOpenAIModels(ctx, group, func(ctx context.Context, account *Account) (*OpenAIModelsResponse, error) {
+		// Pinned accounts skip the scheduler, so they need their own terminal
+		// client admission before the guarded upstream fetch.
+		ctx, account, err := s.admitPinnedCodexModelsAccount(ctx, account)
+		if err != nil {
+			return nil, err
+		}
 		manifest, err := s.FetchCodexModelsManifest(ctx, account, clientVersion, "")
 		if err != nil {
 			return nil, err
