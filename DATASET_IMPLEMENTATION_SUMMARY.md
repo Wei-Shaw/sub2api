@@ -29,6 +29,7 @@ JSON. Inline JSON requires the deployment-only
 DATASET_ENABLED=false  # Keep false until token and upload probe are verified
 DATASET_GOOGLE_DRIVE_CREDENTIALS=/app/backend/credentials/google_drive_credentials.json
 DATASET_GOOGLE_DRIVE_TOKEN_PATH=/app/backend/credentials/google_drive_credentials.json.token
+DATASET_GOOGLE_DRIVE_TOKEN_STATE_PATH=/app/data/google-drive.token
 DATASET_GOOGLE_DRIVE_FOLDER_ID=  # Create folder in Drive, paste ID here
 DATASET_BATCH_SIZE=100
 DATASET_BATCH_MAX_MB=10
@@ -41,16 +42,23 @@ DATASET_BUFFER_MAX_ITEMS=1000
 services:
   backend:
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Writable persistent volume for refreshed OAuth state
       - ./credentials:/app/backend/credentials:ro  # Add this line
 ```
 
 ### 3. Offline OAuth setup:
 ```bash
 # Provision the OAuth token through an approved offline operator procedure.
-# Mount the generated token read-only at DATASET_GOOGLE_DRIVE_TOKEN_PATH.
+# Mount the generated seed token read-only at DATASET_GOOGLE_DRIVE_TOKEN_PATH.
+# Keep DATASET_GOOGLE_DRIVE_TOKEN_STATE_PATH on the writable persistent
+# /app/data volume.
+# The state file is created/updated atomically and takes precedence after restart.
 # Missing tokens disable/degrade Dataset startup instead of blocking the server.
 ```
+
+The worker's failed-upload retention is process-local: queued entries are kept
+while the process is running, but the in-memory queue is not recovered after a
+process crash or restart.
 
 ### 4. Set `DATASET_ENABLED=true` and restart
 

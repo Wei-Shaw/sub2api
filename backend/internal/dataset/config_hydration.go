@@ -39,4 +39,7 @@ func preserveDeploymentConfig(base, persisted *config.DatasetConfig) {
 	if strings.TrimSpace(persisted.GoogleDriveTokenPath) == "" {
 		persisted.GoogleDriveTokenPath = strings.TrimSpace(base.GoogleDriveTokenPath)
 	}
+	if strings.TrimSpace(persisted.GoogleDriveTokenStatePath) == "" {
+		persisted.GoogleDriveTokenStatePath = strings.TrimSpace(base.GoogleDriveTokenStatePath)
+	}
 }

@@ -28,7 +28,11 @@
 
 **Runtime Activation Requirements:**
 1. Deploy the image containing the capture/runtime-config changes after CI passes.
-2. Mount the offline OAuth token file and set `DATASET_GOOGLE_DRIVE_TOKEN_PATH` when the DB credential is inline JSON.
+2. Mount the offline seed token read-only and set `DATASET_GOOGLE_DRIVE_TOKEN_PATH`
+   when the DB credential is inline JSON. Set
+   `DATASET_GOOGLE_DRIVE_TOKEN_STATE_PATH` to a writable, persistent location
+   (for example, `/app/data/google-drive.token`); refreshed state takes precedence
+   after restart.
 3. Keep `DATASET_ENABLED=false` until the token and folder are verified.
 4. Run an approved production probe and verify the uploaded JSONL file by Drive file ID.
 
@@ -52,7 +56,10 @@ docker logs -f sub2api
 ### 3. Offline OAuth Setup (before DATASET_ENABLED=true)
 ```bash
 # Provision the OAuth token through an approved offline operator procedure.
-# Mount the resulting token read-only at the configured token path.
+# Mount the resulting seed token read-only at DATASET_GOOGLE_DRIVE_TOKEN_PATH.
+# Set DATASET_GOOGLE_DRIVE_TOKEN_STATE_PATH on a writable persistent volume.
+# The application creates/atomically replaces this state file; it is not the
+# read-only seed mount.
 # The server fails fast/degrades if the token is missing; it never prompts on stdin.
 ```
 

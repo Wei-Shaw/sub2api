@@ -89,7 +89,7 @@ func startWorker(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Create Drive client with new credentials
-	driveClient, err := NewDriveClientWithTokenPath(ctx, cfg.Dataset.GoogleDriveCredentials, cfg.Dataset.GoogleDriveTokenPath, cfg.Dataset.GoogleDriveFolderID)
+	driveClient, err := NewDriveClientWithTokenPaths(ctx, cfg.Dataset.GoogleDriveCredentials, cfg.Dataset.GoogleDriveTokenPath, cfg.Dataset.GoogleDriveTokenStatePath, cfg.Dataset.GoogleDriveFolderID)
 	if err != nil {
 		return err
 	}
@@ -170,6 +170,7 @@ func watchConfigChanges(ctx context.Context, cfg *config.Config) {
 func configChanged(old, new *config.DatasetConfig) bool {
 	return old.GoogleDriveCredentials != new.GoogleDriveCredentials ||
 		old.GoogleDriveTokenPath != new.GoogleDriveTokenPath ||
+		old.GoogleDriveTokenStatePath != new.GoogleDriveTokenStatePath ||
 		old.GoogleDriveFolderID != new.GoogleDriveFolderID ||
 		old.BatchSize != new.BatchSize ||
 		old.BatchMaxMB != new.BatchMaxMB ||

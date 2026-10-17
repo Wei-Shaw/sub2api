@@ -143,6 +143,15 @@ func TestLoadDatasetTokenPathFromEnvironment(t *testing.T) {
 	require.Equal(t, "/run/secrets/google-drive.token", cfg.Dataset.GoogleDriveTokenPath)
 }
 
+func TestLoadDatasetTokenStatePathFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("DATASET_GOOGLE_DRIVE_TOKEN_STATE_PATH", "/app/data/google-drive.token")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "/app/data/google-drive.token", cfg.Dataset.GoogleDriveTokenStatePath)
+}
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

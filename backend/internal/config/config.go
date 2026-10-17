@@ -178,14 +178,15 @@ type CanvasConfig struct {
 
 // DatasetConfig configures LLM request/response dataset collection for training.
 type DatasetConfig struct {
-	Enabled                bool   `mapstructure:"enabled"`
-	GoogleDriveCredentials string `mapstructure:"google_drive_credentials"`
-	GoogleDriveTokenPath   string `mapstructure:"google_drive_token_path"`
-	GoogleDriveFolderID    string `mapstructure:"google_drive_folder_id"`
-	BatchSize              int    `mapstructure:"batch_size"`
-	BatchMaxMB             int    `mapstructure:"batch_max_mb"`
-	BatchIntervalSec       int    `mapstructure:"batch_interval_sec"`
-	BufferMaxItems         int    `mapstructure:"buffer_max_items"`
+	Enabled                   bool   `mapstructure:"enabled"`
+	GoogleDriveCredentials    string `mapstructure:"google_drive_credentials"`
+	GoogleDriveTokenPath      string `mapstructure:"google_drive_token_path"`
+	GoogleDriveTokenStatePath string `mapstructure:"google_drive_token_state_path"`
+	GoogleDriveFolderID       string `mapstructure:"google_drive_folder_id"`
+	BatchSize                 int    `mapstructure:"batch_size"`
+	BatchMaxMB                int    `mapstructure:"batch_max_mb"`
+	BatchIntervalSec          int    `mapstructure:"batch_interval_sec"`
+	BufferMaxItems            int    `mapstructure:"buffer_max_items"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -2811,6 +2812,7 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("dataset.enabled", false)
 	viper.SetDefault("dataset.google_drive_credentials", "")
 	viper.SetDefault("dataset.google_drive_token_path", "")
+	viper.SetDefault("dataset.google_drive_token_state_path", "")
 	viper.SetDefault("dataset.google_drive_folder_id", "")
 	viper.SetDefault("dataset.batch_size", 100)
 	viper.SetDefault("dataset.batch_max_mb", 10)

@@ -22,14 +22,15 @@ func (s datasetConfigReloaderStub) LoadDatasetConfig(context.Context) (*config.D
 
 func TestApplyPersistedConfigUsesDatabaseValues(t *testing.T) {
 	cfg := &config.Config{Dataset: config.DatasetConfig{
-		Enabled:                false,
-		GoogleDriveCredentials: "/run/secrets/google-drive.json",
-		GoogleDriveTokenPath:   "/run/secrets/google-drive.token",
-		GoogleDriveFolderID:    "env-folder",
-		BatchSize:              50,
-		BatchMaxMB:             5,
-		BatchIntervalSec:       60,
-		BufferMaxItems:         100,
+		Enabled:                   false,
+		GoogleDriveCredentials:    "/run/secrets/google-drive.json",
+		GoogleDriveTokenPath:      "/run/secrets/google-drive.token",
+		GoogleDriveTokenStatePath: "/app/data/google-drive.token",
+		GoogleDriveFolderID:       "env-folder",
+		BatchSize:                 50,
+		BatchMaxMB:                5,
+		BatchIntervalSec:          60,
+		BufferMaxItems:            100,
 	}}
 	persisted := &config.DatasetConfig{
 		Enabled:                true,
@@ -46,6 +47,7 @@ func TestApplyPersistedConfigUsesDatabaseValues(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, *persisted, cfg.Dataset)
 	require.Equal(t, "/run/secrets/google-drive.token", cfg.Dataset.GoogleDriveTokenPath)
+	require.Equal(t, "/app/data/google-drive.token", cfg.Dataset.GoogleDriveTokenStatePath)
 }
 
 func TestApplyPersistedConfigKeepsBootstrapValuesWhenDatabaseLoadFails(t *testing.T) {
