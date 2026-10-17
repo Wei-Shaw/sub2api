@@ -294,6 +294,13 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
+func openAIRequestRequiresCompactCapability(legacyCompact, nativeV2 bool, platform string) bool {
+	if legacyCompact {
+		return true
+	}
+	return nativeV2 && platform == service.PlatformOpenAI
+}
+
 // openAIResponsesRequiredCapabilityForRequest returns the endpoint capability
 // required by an image or Responses request. needsResponses includes both the
 // legacy /responses/compact endpoint and native remote compaction v2.
@@ -637,7 +644,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	c.Request = c.Request.WithContext(service.WithOpenAIGuardianParentAffinity(
 		c.Request.Context(), c, sessionHashBody, reqModel,
 	))
-	requireCompact := legacyCompact
+	requireCompact := openAIRequestRequiresCompactCapability(legacyCompact, nativeV2, requestPlatform)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -1042,6 +1049,7 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 			body = normalized
 		}
 		if isOpenAIRemoteCompactionV2Request(body) {
+			body = sanitizeOpenAICompactEncryptedContent(body, reqLog)
 			return body, true
 		}
 		c.Request.URL.Path = strings.TrimRight(c.Request.URL.Path, "/") + "/compact"
@@ -1055,6 +1063,7 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 	if !isCompactRequest {
 		return body, true
 	}
+	body = sanitizeOpenAICompactEncryptedContent(body, reqLog)
 	if compactSeed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); compactSeed != "" {
 		c.Set(service.OpenAICompactSessionSeedKeyForTest(), compactSeed)
 	}
@@ -1067,6 +1076,28 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 		body = normalizedCompactBody
 	}
 	return body, true
+}
+
+// sanitizeOpenAICompactEncryptedContent removes account-bound encrypted
+// reasoning/compaction items from a compact request. Account affinity is not
+// guaranteed across a compact retry or failover; forwarding one account's
+// ciphertext to another makes the upstream reject the compact turn. The visible
+// history and the compaction trigger remain intact.
+func sanitizeOpenAICompactEncryptedContent(body []byte, reqLog *zap.Logger) []byte {
+	sanitized, changed, err := service.SanitizeOpenAICompactEncryptedContent(body)
+	if err != nil {
+		if reqLog != nil {
+			reqLog.Warn("codex.remote_compact.encrypted_content_strip_failed", zap.Error(err))
+		}
+		return body
+	}
+	if changed {
+		if reqLog != nil {
+			reqLog.Info("codex.remote_compact.encrypted_content_stripped")
+		}
+		return sanitized
+	}
+	return body
 }
 
 func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {
