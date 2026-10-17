@@ -296,6 +296,21 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
 		cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
 	}
+	if src.CacheCreation != nil {
+		if src.CacheCreation.Ephemeral5mInputTokens != nil {
+			dst.CacheCreation5mTokens = max(*src.CacheCreation.Ephemeral5mInputTokens, 0)
+		}
+		if src.CacheCreation.Ephemeral1hInputTokens != nil {
+			dst.CacheCreation1hTokens = max(*src.CacheCreation.Ephemeral1hInputTokens, 0)
+		}
+		if src.CacheCreation.Ephemeral5mInputTokens != nil || src.CacheCreation.Ephemeral1hInputTokens != nil {
+			dst.CacheCreationInputTokens = dst.CacheCreation5mTokens + dst.CacheCreation1hTokens
+		}
+	}
+	cacheCreationTokens := src.CacheCreationInputTokens
+	if src.CacheCreation != nil && (src.CacheCreation.Ephemeral5mInputTokens != nil || src.CacheCreation.Ephemeral1hInputTokens != nil) {
+		cacheCreationTokens = dst.CacheCreationInputTokens
+	}
 
 	// Some Anthropic-compatible providers retain OpenAI-style prompt/cache
 	// fields. Prefer those authoritative totals or hit/miss buckets over the
@@ -305,10 +320,10 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		if src.PromptCacheMissTokens != nil {
 			dst.InputTokens = max(*src.PromptCacheMissTokens, 0)
 		} else {
-			dst.InputTokens = max(src.PromptTokens-cacheReadTokens-src.CacheCreationInputTokens, 0)
+			dst.InputTokens = max(src.PromptTokens-cacheReadTokens-cacheCreationTokens, 0)
 		}
 		dst.CacheReadInputTokens = cacheReadTokens
-		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		dst.CacheCreationInputTokens = cacheCreationTokens
 	} else {
 		// Without an authoritative prompt total or miss bucket, input_tokens is
 		// provider-specific: it may already be the uncached bucket, or it may be
@@ -321,8 +336,8 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		if cacheReadTokens > 0 {
 			dst.CacheReadInputTokens = cacheReadTokens
 		}
-		if src.CacheCreationInputTokens > 0 {
-			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		if cacheCreationTokens > 0 {
+			dst.CacheCreationInputTokens = cacheCreationTokens
 		}
 	}
 	if src.OutputTokens > 0 {
