@@ -35,10 +35,18 @@
         <div class="grid grid-cols-[minmax(4rem,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.plan') }}</span>
           <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.plan || '-' }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.five_hour) }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.seven_day) }}</span>
+          <template v-if="snapshot.data?.five_hour">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.five_hour) }}</span>
+          </template>
+          <template v-if="snapshot.data?.seven_day">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.seven_day) }}</span>
+          </template>
+          <template v-if="snapshot.data?.monthly">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.monthly') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.monthly) }}</span>
+          </template>
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.balance') }}</span>
           <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.balance || '-' }}</span>
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.models') }}</span>
@@ -145,10 +153,11 @@ import type { Account, OllamaCloudUsageState, OllamaCloudUsageWindow } from '@/t
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatOllamaResetText } from '@/utils/ollamaUsage'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 const state = ref<OllamaCloudUsageState | null>(props.account.ollama_cloud_usage ?? null)
 const session = ref('')
@@ -166,7 +175,9 @@ const statusLabel = computed(() => {
 const modelSummary = computed(() => snapshot.value?.data?.models?.map(model => {
   const window = model.window === 'five_hour'
     ? t('admin.accounts.ollamaCloud.fiveHourShort')
-    : t('admin.accounts.ollamaCloud.sevenDayShort')
+    : model.window === 'seven_day'
+      ? t('admin.accounts.ollamaCloud.sevenDayShort')
+      : t('admin.accounts.ollamaCloud.monthlyShort')
   return `${window} ${model.model}: ${model.requests}`
 }).join(', ') || '-')
 
@@ -180,7 +191,7 @@ const formatDate = (value?: string) => {
 }
 const windowSummary = (window?: OllamaCloudUsageWindow) => {
   if (!window) return '-'
-  const reset = window.reset_at ? formatDate(window.reset_at) : window.reset_text
+  const reset = window.reset_at ? formatDate(window.reset_at) : formatOllamaResetText(window.reset_text, locale?.value || 'en', t)
   return reset
     ? t('admin.accounts.ollamaCloud.windowWithReset', { percent: formatPercent(window.used_percent), reset })
     : formatPercent(window.used_percent)
@@ -244,8 +255,15 @@ const setAutoRefresh = async (enabled: boolean) => {
 const refreshUsage = async () => {
   refreshing.value = true
   try {
-    applyState(await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id))
-    appStore.showSuccess(t('admin.accounts.ollamaCloud.refreshSuccess'))
+    const next = await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id)
+    applyState(next)
+    if (next.snapshot?.status === 'ok') {
+      appStore.showSuccess(t('admin.accounts.ollamaCloud.refreshSuccess'))
+    } else {
+      appStore.showError(next.snapshot?.last_error === 'incomplete_usage'
+        ? t('admin.accounts.ollamaCloud.errors.incomplete_usage')
+        : t('admin.accounts.ollamaCloud.refreshFailed'))
+    }
   } catch (error) {
     appStore.showError(extractI18nErrorMessage(
       error,
