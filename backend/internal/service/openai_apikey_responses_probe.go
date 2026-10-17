@@ -168,6 +168,17 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		logger.LegacyPrintf("service.openai_probe", "probe_invalid_baseurl: account_id=%d base_url=%q err=%v", accountID, baseURL, err)
 		return
 	}
+	// The official endpoint supports Responses. Model mappings may include legacy
+	// completion-only models; probing one of them can return 404 for the model
+	// and incorrectly mark the entire endpoint as unsupported.
+	if isOfficialOpenAIModelsBaseURL(normalizedBaseURL) {
+		if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+		}); err != nil {
+			logger.LegacyPrintf("service.openai_probe", "probe_persist_failed: account_id=%d supported=true err=%v", accountID, err)
+		}
+		return
+	}
 
 	probeURL := buildOpenAIResponsesURL(normalizedBaseURL)
 	probeModel := selectResponsesProbeModel(account)
