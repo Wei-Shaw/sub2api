@@ -198,6 +198,35 @@ func TestAntigravityCompatOAuthUsesNativeTokenAndRoute(t *testing.T) {
 	}
 }
 
+func TestAntigravityCompatChatDropsHistoryReasoningContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+	body := []byte(`{"model":"gemini-3.1-pro-high","stream":true,"messages":[
+		{"role":"user","content":"hi"},
+		{"role":"assistant","content":"Hello","reasoning_content":"PRIOR_REASONING"},
+		{"role":"assistant","content":"Again","reasoning":"ALIAS_REASONING"},
+		{"role":"assistant","content":[{"type":"thinking","thinking":"PART_THINKING"},{"type":"reasoning","text":"PART_REASONING"},{"type":"text","text":"Third"}]},
+		{"role":"user","content":"next"}
+	]}`)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Len(t, upstream.requestBodies, 1)
+	sent := string(upstream.requestBodies[0])
+	require.NotContains(t, sent, "PRIOR_REASONING")
+	require.NotContains(t, sent, "ALIAS_REASONING")
+	require.NotContains(t, sent, "PART_THINKING")
+	require.NotContains(t, sent, "PART_REASONING")
+	require.NotContains(t, sent, "<thinking>")
+	require.Contains(t, sent, "Hello")
+	require.Contains(t, sent, "Third")
+}
+
 func TestAntigravityCompatRejectsUnsupportedAccountType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

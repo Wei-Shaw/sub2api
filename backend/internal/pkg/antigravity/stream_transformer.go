@@ -41,6 +41,16 @@ type StreamingProcessor struct {
 	cacheReadTokens   int
 	imageOutputTokens int
 	hasContent        bool
+	// malformedFunctionCall 记录上游是否以 MALFORMED_FUNCTION_CALL 结束。
+	// 这是模型/请求侧失败（同一请求换账号结果一致），调用方不应据此把账号判为不健康。
+	malformedFunctionCall bool
+	// sawUpstreamResponse 记录是否成功解析过至少一条上游响应。
+	// 用于区分「上游完全不可用」与「上游有响应但只有 thinking/签名」。
+	sawUpstreamResponse bool
+	// sawThinking 记录是否收到过 thinking 或仅签名帧。
+	sawThinking bool
+	// lastFinishReason 记录上游最后一次 finishReason，用于空流诊断。
+	lastFinishReason string
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -99,6 +109,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	}
 
 	geminiResp := &v1Resp.Response
+	p.sawUpstreamResponse = true
 
 	var result bytes.Buffer
 
@@ -133,6 +144,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
 		if finishReason == "MALFORMED_FUNCTION_CALL" {
+			p.malformedFunctionCall = true
 			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
 			if geminiResp.Candidates[0].Content != nil {
 				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
@@ -141,6 +153,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 			}
 		}
 		if finishReason != "" {
+			p.lastFinishReason = finishReason
 			_, _ = result.Write(p.emitFinish(finishReason))
 		}
 	}
@@ -179,6 +192,32 @@ func (p *StreamingProcessor) MessageStartSent() bool {
 // HasContent reports whether any substantive text, thinking, or tool calls were emitted.
 func (p *StreamingProcessor) HasContent() bool {
 	return p.hasContent
+}
+
+// MalformedFunctionCall reports whether the upstream finished the stream with
+// MALFORMED_FUNCTION_CALL. The failure belongs to the request/model, not to the account.
+func (p *StreamingProcessor) MalformedFunctionCall() bool {
+	return p.malformedFunctionCall
+}
+
+// Model returns the client-facing model name this processor was created for.
+func (p *StreamingProcessor) Model() string {
+	return p.originalModel
+}
+
+// SawUpstreamResponse reports whether at least one upstream chunk was parsed.
+func (p *StreamingProcessor) SawUpstreamResponse() bool {
+	return p.sawUpstreamResponse
+}
+
+// SawThinking reports whether the stream carried thinking text or a signature-only frame.
+func (p *StreamingProcessor) SawThinking() bool {
+	return p.sawThinking
+}
+
+// LastFinishReason returns the last non-empty upstream finishReason.
+func (p *StreamingProcessor) LastFinishReason() string {
+	return p.lastFinishReason
 }
 
 // emitMessageStart 发送 message_start 事件
@@ -249,8 +288,8 @@ func (p *StreamingProcessor) processPart(part *GeminiPart) []byte {
 		return result.Bytes()
 	}
 
-	// 2. Text 处理
-	if part.Text != "" || part.Thought {
+	// 2. Text / thinking / 仅签名帧处理
+	if part.Text != "" || part.Thought || (signature != "" && part.InlineData == nil) {
 		if part.Thought {
 			_, _ = result.Write(p.processThinking(part.Text, signature))
 		} else {
@@ -285,6 +324,7 @@ func (p *StreamingProcessor) captureGrounding(grounding *GeminiGroundingMetadata
 // processThinking 处理 thinking
 func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 	var result bytes.Buffer
+	p.sawThinking = true
 
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
@@ -321,10 +361,11 @@ func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 func (p *StreamingProcessor) processText(text, signature string) []byte {
 	var result bytes.Buffer
 
-	// 空 text 带签名 - 暂存
+	// 空 text 带签名 - 暂存（纯签名帧说明上游先输出了 thinking）
 	if text == "" {
 		if signature != "" {
 			p.trailingSignature = signature
+			p.sawThinking = true
 		}
 		return nil
 	}
@@ -387,6 +428,8 @@ func (p *StreamingProcessor) processFunctionCall(fc *GeminiFunctionCall, signatu
 
 	if signature != "" {
 		toolUse["signature"] = signature
+		// 记住真实签名，下一轮 tool_result 回放时使用。
+		CacheToolThoughtSignature(toolID, signature)
 	}
 
 	_, _ = result.Write(p.startBlock(BlockTypeFunction, toolUse))

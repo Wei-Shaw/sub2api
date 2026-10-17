@@ -71,6 +71,10 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
+	// Antigravity 上游同样是 Gemini：历史推理回传后会被模型当成自己的输出格式照抄，
+	// 思考写进可见正文（"<thinking>…</thinking>"），思考连续性由 thoughtSignature 承载。
+	stripChatHistoryReasoning(&request)
+
 	responsesRequest, err := chatCompletionsToResponses(settingServiceConfig(s.settingService), &request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -282,6 +286,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		if cleaned, cleanErr := cleanGeminiRequest(body); cleanErr == nil {
 			body = cleaned
 		}
+		body = applyAntigravityGeminiThinkingConfig(body, claudeBody, mappedModel)
 		return s.wrapV1InternalRequest(projectID, mappedModel, body)
 	}
 

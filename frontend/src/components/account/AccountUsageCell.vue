@@ -296,50 +296,162 @@
 
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
-        <!-- Gemini 3 Pro -->
-        <UsageProgressBar
-          v-if="antigravity3ProUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Pro')"
-          :utilization="antigravity3ProUsageFromAPI.utilization"
-          :resets-at="antigravity3ProUsageFromAPI.resetTime"
-          color="indigo"
-        />
+        <!-- 共享配额组（Gemini / Claude 各 5h + 7d 两条）：数据来自官方配额摘要桶 -->
+        <template v-if="hasAntigravityQuotaGroups">
+          <div
+            v-for="group in antigravityQuotaGroups"
+            :key="group.key"
+            class="space-y-1"
+            :data-test="`antigravity-quota-group-${group.key}`"
+          >
+            <div class="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+              {{ group.label }}
+            </div>
+            <UsageProgressBar
+              v-if="group.fiveHour"
+              label="5h"
+              :utilization="group.fiveHour.utilization"
+              :resets-at="group.fiveHour.resetTime"
+              :color="group.fiveHourColor"
+            />
+            <UsageProgressBar
+              v-if="group.weekly"
+              label="7d"
+              :utilization="group.weekly.utilization"
+              :resets-at="group.weekly.resetTime"
+              :color="group.weeklyColor"
+            />
+          </div>
+        </template>
 
-        <!-- Gemini 3 Flash -->
-        <UsageProgressBar
-          v-if="antigravity3FlashUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Flash')"
-          :utilization="antigravity3FlashUsageFromAPI.utilization"
-          :resets-at="antigravity3FlashUsageFromAPI.resetTime"
-          color="emerald"
-        />
+        <!-- 回退：摘要桶缺失时按模型族聚合 -->
+        <template v-else>
+          <!-- Gemini Pro / Argon -->
+          <UsageProgressBar
+            v-if="antigravity3ProUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Pro')"
+            :utilization="antigravity3ProUsageFromAPI.utilization"
+            :resets-at="antigravity3ProUsageFromAPI.resetTime"
+            color="indigo"
+          />
 
-        <!-- Gemini 3 Image -->
-        <UsageProgressBar
-          v-if="antigravity3ImageUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Image')"
-          :utilization="antigravity3ImageUsageFromAPI.utilization"
-          :resets-at="antigravity3ImageUsageFromAPI.resetTime"
-          color="purple"
-        />
+          <!-- Gemini Flash -->
+          <UsageProgressBar
+            v-if="antigravity3FlashUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Flash')"
+            :utilization="antigravity3FlashUsageFromAPI.utilization"
+            :resets-at="antigravity3FlashUsageFromAPI.resetTime"
+            color="emerald"
+          />
 
-        <!-- Claude -->
-        <UsageProgressBar
-          v-if="antigravityClaudeUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.claude')"
-          :utilization="antigravityClaudeUsageFromAPI.utilization"
-          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
-          color="amber"
-        />
+          <!-- Gemini Image -->
+          <UsageProgressBar
+            v-if="antigravity3ImageUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Image')"
+            :utilization="antigravity3ImageUsageFromAPI.utilization"
+            :resets-at="antigravity3ImageUsageFromAPI.resetTime"
+            color="purple"
+          />
+
+          <!-- Claude / GPT -->
+          <UsageProgressBar
+            v-if="antigravityClaudeUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.claude')"
+            :utilization="antigravityClaudeUsageFromAPI.utilization"
+            :resets-at="antigravityClaudeUsageFromAPI.resetTime"
+            color="amber"
+          />
+        </template>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
+
+        <!-- 主动查询按钮（仿造 OpenAI / Claude 样式） -->
+        <div class="pt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="activeQueryLoading"
+            :data-test="`antigravity-active-query-btn-${account.id}`"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
       </div>
-      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
-        💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+      <div v-else-if="aiCreditsDisplay" class="space-y-1">
+        <div class="text-[10px] text-gray-500 dark:text-gray-400">
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+        </div>
+        <div class="pt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="activeQueryLoading"
+            :data-test="`antigravity-active-query-btn-${account.id}`"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else class="space-y-1">
+        <div class="text-xs text-gray-400">-</div>
+        <div class="pt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="activeQueryLoading"
+            :data-test="`antigravity-active-query-btn-${account.id}`"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
+      </div>
     </template>
 
     <!-- Grok OAuth accounts: passive xAI quota headers + local Sub2API usage -->
@@ -868,65 +980,106 @@ const hasAntigravityQuotaFromAPI = computed(() => {
   return usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
 })
 
-// 从 API 配额数据中获取使用率（多模型取最高使用率）
-const getAntigravityUsageFromAPI = (
-  modelNames: string[]
+// ===== Antigravity 共享配额组（官方 retrieveUserQuotaSummary 桶）=====
+
+// 上游把 Antigravity 配额划分为两个共享池，每个池各含 5h / weekly 两个窗口；
+// 后端把活跃的桶记为 antigravity_quota 的合成条目（gemini-5h / gemini-weekly / 3p-5h / 3p-weekly）。
+// 这里只展示 Gemini 与 Claude 两组，未知分组不展示。
+const ANTIGRAVITY_QUOTA_GROUPS = [
+  {
+    key: 'gemini',
+    labelKey: 'admin.accounts.usageWindow.geminiQuotaGroup',
+    fiveHourBucket: 'gemini-5h',
+    weeklyBucket: 'gemini-weekly',
+    fiveHourColor: 'indigo',
+    weeklyColor: 'emerald'
+  },
+  {
+    key: 'claude',
+    labelKey: 'admin.accounts.usageWindow.claude',
+    fiveHourBucket: '3p-5h',
+    weeklyBucket: '3p-weekly',
+    fiveHourColor: 'purple',
+    weeklyColor: 'amber'
+  }
+] as const
+
+const antigravityQuotaBucketUsage = (bucketId: string): AntigravityUsageResult | null => {
+  const bucket = usageInfo.value?.antigravity_quota?.[bucketId]
+  if (!bucket) return null
+  return {
+    utilization: bucket.utilization ?? 0,
+    resetTime: bucket.reset_time ? bucket.reset_time : null
+  }
+}
+
+// 只有存在活跃摘要桶时才展示配额组视图，否则回退到模型族聚合。
+const antigravityQuotaGroups = computed(() =>
+  ANTIGRAVITY_QUOTA_GROUPS.map((group) => ({
+    key: group.key,
+    label: t(group.labelKey),
+    fiveHour: antigravityQuotaBucketUsage(group.fiveHourBucket),
+    weekly: antigravityQuotaBucketUsage(group.weeklyBucket),
+    fiveHourColor: group.fiveHourColor,
+    weeklyColor: group.weeklyColor
+  })).filter((group) => group.fiveHour !== null || group.weekly !== null)
+)
+
+const hasAntigravityQuotaGroups = computed(() => antigravityQuotaGroups.value.length > 0)
+
+// ===== 回退：摘要桶缺失时按模型族动态聚合 =====
+
+type AntigravityModelFamily = 'pro' | 'flash' | 'image' | 'claude'
+
+// 合成配额桶条目（gemini-5h / 3p-weekly 等）不是模型，回退聚合时忽略。
+const isAntigravityQuotaBucketKey = (model: string): boolean =>
+  model.endsWith('-5h') || model.endsWith('-weekly')
+
+const antigravityModelFamily = (model: string): AntigravityModelFamily | null => {
+  const name = model.toLowerCase()
+  if (isAntigravityQuotaBucketKey(name)) return null
+  if (name.startsWith('claude') || name.startsWith('gpt')) return 'claude'
+  if (!name.startsWith('gemini')) return null
+  if (name.includes('image')) return 'image'
+  if (name.includes('pro') || name.includes('argon')) return 'pro'
+  if (name.includes('flash')) return 'flash'
+  return null
+}
+
+// 按模型族取最高使用率与最早重置时间（前缀动态匹配，不再写死模型名单）。
+const getAntigravityFamilyUsage = (
+  family: AntigravityModelFamily
 ): AntigravityUsageResult | null => {
   const quota = usageInfo.value?.antigravity_quota
   if (!quota) return null
 
-  let maxUtilization = 0
+  let utilization: number | null = null
   let earliestReset: string | null = null
 
-  for (const model of modelNames) {
-    const modelQuota = quota[model]
-    if (!modelQuota) continue
-
-    if (modelQuota.utilization > maxUtilization) {
-      maxUtilization = modelQuota.utilization
-    }
-    if (modelQuota.reset_time) {
-      if (!earliestReset || modelQuota.reset_time < earliestReset) {
-        earliestReset = modelQuota.reset_time
-      }
+  for (const [model, modelQuota] of Object.entries(quota)) {
+    if (!modelQuota || antigravityModelFamily(model) !== family) continue
+    const value = modelQuota.utilization ?? 0
+    utilization = utilization === null ? value : Math.max(utilization, value)
+    if (modelQuota.reset_time && (!earliestReset || modelQuota.reset_time < earliestReset)) {
+      earliestReset = modelQuota.reset_time
     }
   }
 
-  // 如果没有找到任何匹配的模型
-  if (maxUtilization === 0 && earliestReset === null) {
-    const hasAnyData = modelNames.some((m) => quota[m])
-    if (!hasAnyData) return null
-  }
-
-  return {
-    utilization: maxUtilization,
-    resetTime: earliestReset
-  }
+  if (utilization === null) return null
+  return { utilization, resetTime: earliestReset }
 }
 
-// Gemini 3 Pro from API
-const antigravity3ProUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
-)
+// Gemini Pro / Argon 族
+const antigravity3ProUsageFromAPI = computed(() => getAntigravityFamilyUsage('pro'))
 
-// Gemini 3 Flash from API
-const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
+// Gemini Flash 族
+const antigravity3FlashUsageFromAPI = computed(() => getAntigravityFamilyUsage('flash'))
 
-// Gemini Image from API
-const antigravity3ImageUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
-)
+// Gemini 图像族
+const antigravity3ImageUsageFromAPI = computed(() => getAntigravityFamilyUsage('image'))
 
-// Claude from API (all Claude model variants)
-const antigravityClaudeUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI([
-    'claude-fable-5-1',
-    'claude-fable-5',
-    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
-    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
-    'claude-opus-4-7', 'claude-opus-4-8',
-  ])
-)
+// Claude / GPT 族
+const antigravityClaudeUsageFromAPI = computed(() => getAntigravityFamilyUsage('claude'))
 
 const aiCreditsDisplay = computed(() => {
   const credits = usageInfo.value?.ai_credits

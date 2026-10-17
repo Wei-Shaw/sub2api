@@ -136,6 +136,8 @@ func (p *NonStreamingProcessor) processPart(part *GeminiPart) {
 
 		if signature != "" {
 			item.Signature = signature
+			// 记住真实签名，下一轮 tool_result 回放时使用。
+			CacheToolThoughtSignature(toolID, signature)
 		}
 
 		p.contentBlocks = append(p.contentBlocks, item)
