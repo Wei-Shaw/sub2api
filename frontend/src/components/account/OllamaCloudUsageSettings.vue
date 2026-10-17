@@ -35,10 +35,18 @@
         <div class="grid grid-cols-[minmax(4rem,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.plan') }}</span>
           <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.plan || '-' }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.five_hour) }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.seven_day) }}</span>
+          <template v-if="snapshot.data?.five_hour">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.five_hour) }}</span>
+          </template>
+          <template v-if="snapshot.data?.seven_day">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.seven_day) }}</span>
+          </template>
+          <template v-if="snapshot.data?.monthly">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.monthly') }}</span>
+            <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data.monthly) }}</span>
+          </template>
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.balance') }}</span>
           <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.balance || '-' }}</span>
           <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.models') }}</span>
@@ -166,7 +174,9 @@ const statusLabel = computed(() => {
 const modelSummary = computed(() => snapshot.value?.data?.models?.map(model => {
   const window = model.window === 'five_hour'
     ? t('admin.accounts.ollamaCloud.fiveHourShort')
-    : t('admin.accounts.ollamaCloud.sevenDayShort')
+    : model.window === 'seven_day'
+      ? t('admin.accounts.ollamaCloud.sevenDayShort')
+      : t('admin.accounts.ollamaCloud.monthlyShort')
   return `${window} ${model.model}: ${model.requests}`
 }).join(', ') || '-')
 
