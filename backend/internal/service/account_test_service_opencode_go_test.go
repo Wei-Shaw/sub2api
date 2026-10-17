@@ -43,6 +43,10 @@ func TestAccountTestService_OpenCodeGoDeepSeekFlashUsesChatCompletions(t *testin
 	require.Equal(t, "https://opencode.ai/zen/go/v1/chat/completions", upstream.requests[0].URL.String())
 	require.Equal(t, "Bearer sk-opencode-go-test", upstream.requests[0].Header.Get("Authorization"))
 	require.NotEmpty(t, upstream.requests[0].Header.Get("X-OpenCode-Session"))
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 12)
+	require.Equal(t, "bash", gjson.GetBytes(upstream.lastBody, "tools.0.function.name").String())
 	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 	require.NotContains(t, upstream.requests[0].URL.Path, "/messages")
 }
@@ -122,3 +126,31 @@ func TestAccountTestService_OpenCodeGoEmptyModelDefaultsToChatCatalogID(t *testi
 	require.Equal(t, "https://opencode.ai/zen/go/v1/chat/completions", upstream.requests[0].URL.String())
 	require.True(t, strings.Contains(recorder.Body.String(), DefaultOpenCodeGoTestModel))
 }
+
+func TestAccountTestService_OpenCodeFreeTierUsesChatCompletionsWithTools(t *testing.T) {
+	account := openCodeGoTestAccount(407)
+	account.Credentials["api_key"] = "public"
+	account.Credentials["base_url"] = "https://opencode.ai/inference/v1"
+	account.Credentials["api_base_urls"] = map[string]any{
+		APIProtocolChatCompletions: "https://opencode.ai/inference/v1",
+	}
+	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNChatTestResponse())
+	c, recorder := newTestContext()
+
+	// 即使请求 grok 模型，Free Tier 账号也强制路由到 Chat Completions 并组装 OpenCode 客户端请求（含 12 个 tools 与 cli header）
+	err := svc.TestAccountConnection(c, account.ID, "cat-jam-free", "hi", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "https://opencode.ai/inference/v1/chat/completions", req.URL.String())
+	require.Equal(t, "Bearer public", req.Header.Get("Authorization"))
+	require.Equal(t, "cli", req.Header.Get("x-opencode-client"))
+	require.True(t, strings.HasPrefix(req.Header.Get("x-opencode-request"), "msg_"))
+	require.True(t, strings.HasPrefix(req.Header.Get("X-OpenCode-Session"), "ses_"))
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 12)
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
+}
+
