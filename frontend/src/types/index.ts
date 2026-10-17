@@ -190,8 +190,12 @@ export interface CustomMenuItem {
   label: string
   icon_svg: string
   url: string
+  /** Same-origin path opened directly instead of embedded in an iframe. */
+  uri?: string
   page_slug?: string
   hide_open_button?: boolean
+  /** Open the menu entry itself in a new browser tab. */
+  open_in_new_tab?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
