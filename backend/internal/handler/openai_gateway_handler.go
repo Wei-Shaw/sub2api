@@ -256,6 +256,16 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	// 后扣在 worker 池的 background ctx 上执行。
+	// 计费链路仍要按本次请求实际命中的具体平台查渠道定价与账号统计规则。
+	if platform, ok := service.ResolvedTargetPlatformFromContext(parent); ok {
+		base = service.WithResolvedTargetPlatform(base, platform)
+	}
+	// 强制平台路由（/antigravity）只用 ForcePlatform 表达目标平台。
+	// 不带走它，后扣会退回分组平台，composite 分组的规则同样匹配不到。
+	if forcePlatform, _ := parent.Value(ctxkey.ForcePlatform).(string); strings.TrimSpace(forcePlatform) != "" {
+		base = context.WithValue(base, ctxkey.ForcePlatform, strings.TrimSpace(forcePlatform))
+	}
 	return base
 }
 
