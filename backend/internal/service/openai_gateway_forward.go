@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -139,11 +140,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	nativeCNResponses := account.UsesNativeCNResponses()
 	nativeDeepSeekResponses := account.Platform == PlatformDeepseek && nativeCNResponses
-	if nativeDeepSeekResponses && account.Type == AccountTypeAPIKey && !compactPath &&
+	commandCodeResponses := account.IsOpenAIApiKey() && !passthroughEnabled && !compactPath &&
+		!shouldForwardOpenAIResponsesViaRawChatCompletions(account) &&
+		isOfficialCommandCodeHost(account.GetOpenAIBaseURL())
+	if ((nativeDeepSeekResponses && account.Type == AccountTypeAPIKey && !compactPath) || commandCodeResponses) &&
 		needsOpenAIResponsesClientToolAdaptation(body) {
-		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+		var adaptedBody []byte
+		var mapping apicompat.ResponsesClientToolMapping
+		var adaptErr error
+		if commandCodeResponses {
+			inherited := apicompat.ResponsesClientToolMapping{ToolSearch: true}
+			adaptedBody, mapping, adaptErr = adaptOpenAIResponsesClientToolsWithInheritedMapping(body, &inherited)
+		} else {
+			adaptedBody, mapping, adaptErr = adaptOpenAIResponsesClientTools(body)
+		}
 		if adaptErr != nil {
-			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
+			return nil, fmt.Errorf("adapt Responses client tools: %w", adaptErr)
 		}
 		body = adaptedBody
 		setOpenAIResponsesClientToolMapping(c, mapping)
