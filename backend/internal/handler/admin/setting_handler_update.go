@@ -50,6 +50,13 @@ type UpdateSettingsRequest struct {
 	SMTPFromName string `json:"smtp_from_name"`
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 
+	// 邮件发送渠道：smtp/cloudflare，留空回退 smtp
+	EmailProvider       string `json:"email_provider"`
+	CloudflareAPIToken  string `json:"cloudflare_api_token"`
+	CloudflareAccountID string `json:"cloudflare_account_id"`
+	CloudflareFromEmail string `json:"cloudflare_from_email"`
+	CloudflareFromName  string `json:"cloudflare_from_name"`
+
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
@@ -622,6 +629,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.SMTPPassword = strings.TrimSpace(req.SMTPPassword)
 	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
 	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
+	req.EmailProvider = strings.TrimSpace(strings.ToLower(req.EmailProvider))
+	req.CloudflareAPIToken = strings.TrimSpace(req.CloudflareAPIToken)
+	req.CloudflareAccountID = strings.TrimSpace(req.CloudflareAccountID)
+	req.CloudflareFromEmail = strings.TrimSpace(req.CloudflareFromEmail)
+	req.CloudflareFromName = strings.TrimSpace(req.CloudflareFromName)
 	req.TencentCaptchaAppID = strings.TrimSpace(req.TencentCaptchaAppID)
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
@@ -645,6 +657,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.SMTPFrom = previousSettings.SMTPFrom
 		req.SMTPFromName = previousSettings.SMTPFromName
 		req.SMTPUseTLS = previousSettings.SMTPUseTLS
+	}
+	if req.EmailProvider == service.EmailProviderCloudflare {
+		if req.CloudflareAPIToken == "" && previousSettings.CloudflareAPIToken == "" {
+			response.BadRequest(c, "Cloudflare API token is required when Cloudflare is selected")
+			return
+		}
+		if req.CloudflareAccountID == "" {
+			response.BadRequest(c, "Cloudflare account ID is required when Cloudflare is selected")
+			return
+		}
+		if req.CloudflareFromEmail == "" {
+			response.BadRequest(c, "Cloudflare from email is required when Cloudflare is selected")
+			return
+		}
 	}
 
 	turnstileEnabled := req.TurnstileEnabled
@@ -1550,6 +1576,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                            req.SMTPFrom,
 		SMTPFromName:                        req.SMTPFromName,
 		SMTPUseTLS:                          req.SMTPUseTLS,
+		EmailProvider:                       req.EmailProvider,
+		CloudflareAPIToken:                  req.CloudflareAPIToken,
+		CloudflareAccountID:                 req.CloudflareAccountID,
+		CloudflareFromEmail:                 req.CloudflareFromEmail,
+		CloudflareFromName:                  req.CloudflareFromName,
 		TurnstileEnabled:                    req.TurnstileEnabled,
 		TurnstileSiteKey:                    req.TurnstileSiteKey,
 		TurnstileSecretKey:                  req.TurnstileSecretKey,
@@ -2219,6 +2250,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                                               updatedSettings.SMTPFrom,
 		SMTPFromName:                                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                                             updatedSettings.SMTPUseTLS,
+		EmailProvider:                                          updatedSettings.EmailProvider,
+		CloudflareAPITokenConfigured:                           updatedSettings.CloudflareAPITokenConfigured,
+		CloudflareAccountID:                                    updatedSettings.CloudflareAccountID,
+		CloudflareFromEmail:                                    updatedSettings.CloudflareFromEmail,
+		CloudflareFromName:                                     updatedSettings.CloudflareFromName,
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,
