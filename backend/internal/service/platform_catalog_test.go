@@ -138,3 +138,32 @@ func TestFrontendBuiltinPlatformCatalogInSync(t *testing.T) {
 	require.JSONEq(t, string(want), string(got),
 		"frontend/src/constants/platformCatalog.builtin.json 与后端平台清单不一致，按测试注释重新生成")
 }
+
+func TestPlatformSubscriptionPolicyMatchesRouting(t *testing.T) {
+	catalog := BuildPlatformCatalog()
+	for _, entry := range catalog.Platforms {
+		if entry.ID != PlatformOpenAI {
+			require.Nil(t, entry.SubscriptionModels, entry.ID)
+			continue
+		}
+		policy := entry.SubscriptionModels
+		require.NotNil(t, policy)
+		require.Equal(t, []string{AccountTypeOAuth, AccountTypeSetupToken}, policy.AccountTypes)
+		require.True(t, policy.IncludeCredentialShadows)
+		require.NotEmpty(t, policy.RetiredFamilies)
+		for _, family := range policy.RetiredFamilies {
+			for _, typ := range policy.AccountTypes {
+				account := &Account{Platform: entry.ID, Type: typ}
+				require.True(t, isRetiredOpenAISubscriptionModel(account, family))
+				require.True(t, isRetiredOpenAISubscriptionModel(account, family+"-high"))
+				require.False(t, isRetiredOpenAISubscriptionModel(account, family+"0"))
+			}
+			require.False(t, isRetiredOpenAISubscriptionModel(&Account{Platform: entry.ID, Type: AccountTypeAPIKey}, family))
+		}
+		// A form/catalog consumer cannot mutate the policy used by routing.
+		policy.AccountTypes[0] = AccountTypeAPIKey
+		policy.RetiredFamilies[0] = "changed-by-caller"
+		require.Equal(t, AccountTypeOAuth, openAISubscriptionModelPolicy().AccountTypes[0])
+		require.True(t, isRetiredOpenAISubscriptionModel(&Account{Platform: entry.ID, Type: AccountTypeOAuth}, "gpt-5.5"))
+	}
+}

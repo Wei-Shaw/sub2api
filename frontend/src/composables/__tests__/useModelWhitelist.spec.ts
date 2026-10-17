@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { filterRetiredSubscriptionModels, buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
@@ -250,5 +250,48 @@ describe('useModelWhitelist', () => {
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
     })
+  })
+})
+
+
+describe('subscription model choices', () => {
+  it.each(['oauth', 'setup-token'])('filters %s defaults without removing images', type => {
+    const defaults = getModelsByPlatform('openai')
+    const eligible = getModelsByPlatform('openai', { type })
+    expect(defaults).toContain('gpt-5.5')
+    expect(eligible).not.toContain('gpt-5.5')
+    expect(eligible.filter(id => id.startsWith('gpt-image-'))).toEqual(defaults.filter(id => id.startsWith('gpt-image-')))
+    expect(eligible).toContain('gpt-6.1-sol')
+  })
+  it('distinguishes ordinary API keys, credential shadows and other providers', () => {
+    expect(getModelsByPlatform('openai', { type: 'apikey' })).toContain('gpt-5.5')
+    expect(getModelsByPlatform('openai', { type: 'apikey', parentAccountId: 12 })).not.toContain('gpt-5.5')
+    expect(filterRetiredSubscriptionModels(['gpt-5.5'], 'anthropic', { type: 'oauth' })).toEqual(['gpt-5.5'])
+  })
+  it('reads backend-generated policy data instead of fixing the retired family in the UI', () => {
+    setPlatformCatalog({
+      ...BUILTIN_PLATFORM_CATALOG,
+      platforms: BUILTIN_PLATFORM_CATALOG.platforms.map(platform => platform.id === 'openai' ? {
+        ...platform,
+        subscription_models: { account_types: ['oauth'], include_credential_shadows: false, retired_families: ['gpt-7.9'] }
+      } : platform)
+    })
+    try {
+      expect(filterRetiredSubscriptionModels(['gpt-5.5', 'gpt-7.9', 'gpt-7.9-high', 'gpt-7.90'], 'openai', { type: 'oauth' }))
+        .toEqual(['gpt-5.5', 'gpt-7.90'])
+      expect(filterRetiredSubscriptionModels(['gpt-7.9'], 'openai', { type: 'setup-token' })).toEqual(['gpt-7.9'])
+      expect(filterRetiredSubscriptionModels(['gpt-7.9'], 'openai', { type: 'apikey', parentAccountId: 12 })).toEqual(['gpt-7.9'])
+    } finally {
+      resetPlatformCatalog()
+    }
+  })
+
+  it('uses one-hop mappings and ignores stale mappings in passthrough mode', () => {
+    const models = ['gpt-5.5', 'legacy', 'openai/GPT_5.5-high', 'gpt-image-2']
+    const mappings = [{ from: 'gpt-5.5', to: 'gpt-6.1-sol' }, { from: 'legacy', to: 'gpt-5.5' }]
+    expect(filterRetiredSubscriptionModels(models, 'openai', { type: 'oauth' }, mappings)).toEqual(['gpt-5.5', 'gpt-image-2'])
+    expect(filterRetiredSubscriptionModels(models, 'openai', { type: 'oauth', passthrough: true }, mappings)).toEqual(['legacy', 'gpt-image-2'])
+    expect(filterRetiredSubscriptionModels(models, 'openai', { type: 'oauth', mappingMode: 'whitelist' }, mappings)).toEqual(['legacy', 'gpt-image-2'])
+    expect(models).toHaveLength(4)
   })
 })

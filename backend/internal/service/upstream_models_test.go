@@ -1185,3 +1185,44 @@ func TestMatchModelsDevProviderOfficialHostsWithoutAPI(t *testing.T) {
 	}}
 	require.False(t, upstreamCatalogNeedsRegistry(capabilitySyncModelIDs([]string{"gpt-6-astra", "gpt-image-2"}), metadata))
 }
+
+func TestSyncUpstreamModelCatalogFiltersRetiredSubscriptionSources(t *testing.T) {
+	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		t.Run(typ, func(t *testing.T) {
+			body := `{"models":[{"slug":"gpt-5.5","reasoning":false,"input_modalities":["text"],"context_window":128000},{"slug":"gpt-6.1-sol","reasoning":false,"input_modalities":["text"],"context_window":500000}]}`
+			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}}
+			repo := &upstreamModelMetadataRepoStub{}
+			svc := &AccountTestService{httpUpstream: upstream, accountRepo: repo, cfg: upstreamModelSyncTestConfig()}
+			account := &Account{ID: 12, Platform: PlatformOpenAI, Type: typ, Credentials: map[string]any{
+				"access_token": "test-oauth", "api_key": "test-api", "base_url": "https://provider.example/v1",
+				// Raw upstream IDs must not be interpreted as public aliases.
+				"model_mapping": map[string]any{"gpt-5.5": "gpt-6.1-sol", "legacy": "gpt-5.5"},
+			}}
+			catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
+			require.NoError(t, err)
+			if typ == AccountTypeOAuth {
+				require.Equal(t, []string{"gpt-6.1-sol"}, catalog.Models)
+				require.NotContains(t, catalog.Metadata, "gpt-5.5")
+				require.NotContains(t, account.GetUpstreamModelMetadataSnapshot().Models, "gpt-5.5")
+			} else {
+				require.Contains(t, catalog.Models, "gpt-5.5")
+				require.Contains(t, catalog.Metadata, "gpt-5.5")
+			}
+			require.NotContains(t, catalog.Models, "gpt-image-2", "upstream discovery must not synthesize image models")
+		})
+	}
+}
+
+func TestRetiredSubscriptionUpstreamIDsUseCredentialKind(t *testing.T) {
+	parentID := int64(9)
+	models := []string{"gpt-5.5", "openai/GPT_5.5-high", "gpt-6.1-sol", "gpt-image-2"}
+	for _, account := range []*Account{
+		{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		{Platform: PlatformOpenAI, Type: AccountTypeSetupToken},
+		{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, ParentAccountID: &parentID},
+	} {
+		require.Equal(t, []string{"gpt-6.1-sol", "gpt-image-2"}, filterRetiredOpenAIUpstreamModelIDs(account, models))
+	}
+	require.Equal(t, models, filterRetiredOpenAIUpstreamModelIDs(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, models))
+	require.Len(t, models, 4, "the source catalog must not be mutated")
+}

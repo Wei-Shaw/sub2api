@@ -12,7 +12,17 @@
       "display_name": "OpenAI",
       "gateway": "openai",
       "cn_provider": false,
-      "litellm_provider": "openai"
+      "litellm_provider": "openai",
+      "subscription_models": {
+        "account_types": [
+          "oauth",
+          "setup-token"
+        ],
+        "include_credential_shadows": true,
+        "retired_families": [
+          "gpt-5.5"
+        ]
+      }
     },
     {
       "id": "gemini",

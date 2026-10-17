@@ -45,6 +45,13 @@ export interface PlatformSpec {
   cn_provider: boolean
   litellm_provider?: string
   multi_protocol?: ProviderProfileInfo
+  /** Generated from the same subscription policy used by backend routing. */
+  subscription_models?: {
+    account_types: string[]
+    include_credential_shadows: boolean
+    /** Exact canonical ID and hyphen-separated variants. */
+    retired_families: string[]
+  }
 }
 
 export interface PlatformCatalog {

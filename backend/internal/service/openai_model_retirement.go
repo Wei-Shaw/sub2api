@@ -2,19 +2,46 @@ package service
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
+
+// SubscriptionModelPolicy is also included in the generated platform catalog.
+// Keep credential scope and retired families in one source for routing and forms.
+// A family includes its exact ID and variants separated by a hyphen.
+type SubscriptionModelPolicy struct {
+	AccountTypes             []string `json:"account_types"`
+	IncludeCredentialShadows bool     `json:"include_credential_shadows"`
+	RetiredFamilies          []string `json:"retired_families"`
+}
+
+func openAISubscriptionModelPolicy() *SubscriptionModelPolicy {
+	return &SubscriptionModelPolicy{
+		AccountTypes:             []string{AccountTypeOAuth, AccountTypeSetupToken},
+		IncludeCredentialShadows: true,
+		RetiredFamilies:          []string{"gpt-5.5"},
+	}
+}
 
 // GPT-5.5 retired from Codex with ChatGPT sign-in on 2026-10-14 at
 // 19:00 UTC. API-key upstreams remain supported. Do not infer upstream
 // eligibility from the API key a client uses to authenticate to this gateway.
 // https://learn.chatgpt.com/docs/models#gpt-55-retirement
 func isRetiredOpenAISubscriptionModel(account *Account, upstreamModel string) bool {
-	if account == nil || !account.IsOpenAI() || (!account.IsOpenAIOAuthLike() && !account.IsShadow()) {
+	if account == nil || !account.IsOpenAI() {
+		return false
+	}
+	policy := openAISubscriptionModelPolicy()
+	if !slices.Contains(policy.AccountTypes, account.Type) && (!policy.IncludeCredentialShadows || !account.IsShadow()) {
 		return false
 	}
 	model := canonicalizeOpenAIModelAliasSpelling(upstreamModel)
-	return model == "gpt-5.5" || strings.HasPrefix(model, "gpt-5.5-")
+	for _, family := range policy.RetiredFamilies {
+		if model == family || strings.HasPrefix(model, family+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // Only remove entries blocked by retirement. Unknown models and other platforms
@@ -41,6 +68,18 @@ func filterRetiredOpenAIModelIDs(accounts []Account, models []string) []string {
 	filtered := make([]string, 0, len(models))
 	for _, model := range models {
 		if !openAIModelRetiredForAccounts(accounts, model) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
+}
+
+// Discovery returns upstream IDs, not public aliases. Do not apply account
+// mappings here: a replacement alias must not make a retired source ID live.
+func filterRetiredOpenAIUpstreamModelIDs(account *Account, models []string) []string {
+	filtered := make([]string, 0, len(models))
+	for _, model := range models {
+		if !isRetiredOpenAISubscriptionModel(account, model) {
 			filtered = append(filtered, model)
 		}
 	}

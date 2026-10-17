@@ -1,4 +1,4 @@
-import { getProviderProfile } from '@/constants/platformCatalog'
+import { getProviderProfile, getPlatformSpec } from '@/constants/platformCatalog'
 
 // =====================
 // 模型列表（硬编码，与 new-api 一致）
@@ -493,8 +493,42 @@ export const commonErrorCodes = [
 // 辅助函数
 // =====================
 
-// 按平台获取模型
-export function getModelsByPlatform(platform: string): string[] {
+export interface ModelAccountContext {
+  type?: string
+  parentAccountId?: number | null
+  passthrough?: boolean
+  mappingMode?: ModelRestrictionMode
+}
+
+// This filters public whitelist names, so resolve only one mapping step, as
+// forwarding does. The shared API-key catalog and image choices stay intact.
+export function filterRetiredSubscriptionModels(
+  models: string[], platform: string, account: ModelAccountContext = {},
+  mappings: { from: string; to: string }[] = []
+): string[] {
+  const policy = getPlatformSpec(platform)?.subscription_models
+  if (!policy || (!policy.account_types.includes(account.type ?? '') && !(policy.include_credential_shadows && account.parentAccountId != null))) {
+    return models
+  }
+  const mapping = buildModelMappingObject(account.mappingMode ?? 'combined', models, mappings) ?? {}
+  return models.filter(model => {
+    let target = model.trim()
+    if (!account.passthrough) {
+      // Exact whitelist entries take precedence over wildcard rules.
+      const exact = mapping[target]
+      if (exact !== undefined) target = exact
+    }
+    const canonical = target.trim().split('/').pop()?.trim().toLowerCase()
+      .replace(/_/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^gpt5/, 'gpt-5') ?? ''
+    return !policy.retired_families.some(family => canonical === family || canonical.startsWith(`${family}-`))
+  })
+}
+
+export function getModelsByPlatform(platform: string, account?: ModelAccountContext): string[] {
+  return filterRetiredSubscriptionModels(getPlatformModels(platform), platform, account)
+}
+
+function getPlatformModels(platform: string): string[] {
   switch (platform) {
     case 'openai': return openaiModels
     case 'anthropic':

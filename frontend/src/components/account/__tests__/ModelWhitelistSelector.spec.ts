@@ -198,6 +198,68 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
+  it.each(['oauth', 'setup-token'])('syncs builtins for %s without retired entries and keeps images', async accountType => {
+    const wrapper = mountSelector({ accountType, modelValue: ['gpt-5.5', 'openai/GPT_5.5-high', 'custom-live'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.fillRelatedModels')!.trigger('click')
+    const models = wrapper.emitted('update:modelValue')![0][0] as string[]
+    expect(models).not.toContain('gpt-5.5')
+    expect(models).not.toContain('openai/GPT_5.5-high')
+    expect(models).toContain('gpt-image-2')
+    expect(models).toContain('custom-live')
+    expect(syncUpstreamModels).not.toHaveBeenCalled()
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    expect(wrapper.findAll('[data-testid="model-option"]').some(row => row.text() === 'gpt-5.5')).toBe(false)
+  })
+  it('preserves API-key choices and explicit replacement aliases', async () => {
+    for (const props of [{ accountType: 'apikey' }, { accountType: 'oauth', modelMappings: [{ from: 'gpt-5.5', to: 'gpt-6.1-sol' }] }]) {
+      const wrapper = mountSelector(props)
+      await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.fillRelatedModels')!.trigger('click')
+      expect(wrapper.emitted('update:modelValue')![0][0]).toContain('gpt-5.5')
+      wrapper.unmount()
+    }
+  })
+  it('cleans stale subscription selections on upstream sync and retains images', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-5.5', 'gpt-6.1-sol'] })
+    const wrapper = mountSelector({ accountType: 'oauth', accountId: 12, modelValue: ['gpt-5.5', 'gpt-image-2'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')![0][0]).toEqual(['gpt-image-2', 'gpt-6.1-sol'])
+  })
+  it('also cleans stale selections when the backend returns an empty eligible catalog', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: [] })
+    const wrapper = mountSelector({ accountType: 'oauth', accountId: 12, modelValue: ['gpt-5.5', 'gpt-image-2'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')![0][0]).toEqual(['gpt-image-2'])
+  })
+
+  it('keeps a valid replacement mapping when the retired whitelist becomes empty', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: [] })
+    const wrapper = mountSelector({ accountType: 'oauth', accountId: 12, modelValue: ['gpt-5.5'], modelMappings: [{ from: 'live-alias', to: 'gpt-6.1-sol' }] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')![0][0]).toEqual([])
+    expect(showWarning).not.toHaveBeenCalled()
+  })
+
+  it('does not broaden the restriction when an empty upstream result leaves only a retired selection', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: [] })
+    const wrapper = mountSelector({ accountType: 'oauth', accountId: 12, modelValue: ['gpt-5.5'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(showWarning).toHaveBeenCalledWith('admin.accounts.modelSyncWouldClearWhitelist')
+  })
+
+  it('does not broaden a whitelist when its last upstream model is retired', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-5.5'] })
+    const wrapper = mountSelector({ accountType: 'oauth', accountId: 12, modelValue: ['gpt-5.5'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(showWarning).toHaveBeenCalledWith('admin.accounts.modelSyncWouldClearWhitelist')
+  })
+
   it('keeps the existing model selection behavior', async () => {
     const wrapper = mountSelector()
     await wrapper.get('div.cursor-pointer').trigger('click')
