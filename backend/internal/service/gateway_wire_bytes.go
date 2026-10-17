@@ -25,11 +25,24 @@ func WithGatewayWireBytes(ctx context.Context) context.Context {
 	return context.WithValue(ctx, gatewayWireBytesKey{}, &gatewayWireBytes{})
 }
 
-// SetClientWireBytes 由 ByteCounter 中间件写回客户端侧两路字节。
-func SetClientWireBytes(ctx context.Context, in, out int64) {
+// AddClientInBytes/AddClientOutBytes 由 ByteCounter 中间件的包装器在字节实际
+// 收发时累加。累计器必须在 usage 落库前就有值——落库发生在 handler 内部
+// （流式时在流结束帧），中间件收尾时 handler 早已跑完，事后写回只会写出零。
+func AddClientInBytes(ctx context.Context, n int64) {
+	if n <= 0 {
+		return
+	}
 	if w, ok := ctx.Value(gatewayWireBytesKey{}).(*gatewayWireBytes); ok && w != nil {
-		w.in.Store(in)
-		w.out.Store(out)
+		w.in.Add(n)
+	}
+}
+
+func AddClientOutBytes(ctx context.Context, n int64) {
+	if n <= 0 {
+		return
+	}
+	if w, ok := ctx.Value(gatewayWireBytesKey{}).(*gatewayWireBytes); ok && w != nil {
+		w.out.Add(n)
 	}
 }
 

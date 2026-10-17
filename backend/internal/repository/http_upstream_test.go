@@ -23,6 +23,22 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// wireTestTransport 剥开 countingRoundTripper 包装，拿到底层 *http.Transport。
+func wireTestTransport(rt http.RoundTripper) *http.Transport {
+	for i := 0; i < 8; i++ {
+		if c, ok := rt.(countingRoundTripper); ok {
+			rt = c.base
+			continue
+		}
+		t, ok := rt.(*http.Transport)
+		if !ok {
+			return nil
+		}
+		return t
+	}
+	return nil
+}
+
 func TestHTTPUpstreamDoCanDisableRedirectsPerRequest(t *testing.T) {
 	var redirectedCalls atomic.Int64
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -582,8 +598,8 @@ func (s *HTTPUpstreamSuite) newService() *httpUpstreamService {
 func (s *HTTPUpstreamSuite) TestDefaultResponseHeaderTimeout() {
 	svc := s.newService()
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
 
@@ -593,8 +609,8 @@ func (s *HTTPUpstreamSuite) TestNilConfigResponseHeaderTimeoutFallback() {
 	svc, ok := up.(*httpUpstreamService)
 	require.True(s.T(), ok, "expected *httpUpstreamService")
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 300*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
 
@@ -604,8 +620,8 @@ func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 7}
 	svc := s.newService()
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 7*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
 
@@ -628,8 +644,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndNoHeaderTimeout()
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI profile should not inherit generic header timeout")
 	require.True(s.T(), transport.ForceAttemptHTTP2, "OpenAI profile should prefer HTTP/2")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
@@ -645,8 +661,8 @@ func (s *HTTPUpstreamSuite) TestLongStreamProfileUsesSharedHTTP2KeepAlive() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileLongStream, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 600*time.Second, transport.ResponseHeaderTimeout, "long-stream profile should retain the generic header timeout")
 	require.True(s.T(), transport.ForceAttemptHTTP2, "long-stream profile must enable HTTP/2 independently of OpenAI settings")
 	require.True(s.T(), transport.Protocols.HTTP2(), "long-stream profile must install HTTP/2 PING health checks")
@@ -664,8 +680,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
 
@@ -679,8 +695,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	svc := s.newService()
 	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
 }
 
@@ -691,8 +707,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.False(s.T(), transport.ForceAttemptHTTP2, "OpenAI HTTP/2 disabled should not force H2")
 	require.NotNil(s.T(), transport.TLSNextProto, "HTTP/1 mode should disable automatic H2 negotiation")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode)
@@ -710,8 +726,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIHeaderTimeoutChangeRebuildsClient() {
 	entry2, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
 	require.NotSame(s.T(), entry1, entry2, "OpenAI header timeout changes must rebuild cached client")
-	transport, ok := entry2.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry2.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
 
@@ -748,8 +764,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIHTTP2ProxyCompatibilityErrorActivatesFallb
 
 	entry, err := svc.getClientEntry(proxyURL, 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.False(s.T(), transport.ForceAttemptHTTP2)
 	require.NotNil(s.T(), transport.TLSNextProto)
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1Fallback, entry.protocolMode)
@@ -897,8 +913,8 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyOverridesPoolSettings() {
 	svc := s.newService()
 	// 账户并发数为 12
 	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 12)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	// 连接池参数应与并发数一致
 	require.Equal(s.T(), 12, transport.MaxConnsPerHost, "MaxConnsPerHost mismatch")
 	require.Equal(s.T(), 12, transport.MaxIdleConns, "MaxIdleConns mismatch")
@@ -917,8 +933,8 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyFallbackToDefault() {
 	svc := s.newService()
 	// 账户并发数为 0，应使用全局配置
 	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
+	transport := wireTestTransport(entry.client.Transport)
+	require.NotNil(s.T(), transport, "expected *http.Transport")
 	require.Equal(s.T(), 66, transport.MaxConnsPerHost, "MaxConnsPerHost fallback mismatch")
 	require.Equal(s.T(), 77, transport.MaxIdleConns, "MaxIdleConns fallback mismatch")
 	require.Equal(s.T(), 55, transport.MaxIdleConnsPerHost, "MaxIdleConnsPerHost fallback mismatch")

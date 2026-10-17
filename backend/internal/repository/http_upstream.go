@@ -620,7 +620,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
 	}
 
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: countingRoundTripper{base: transport}}
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}
@@ -775,7 +775,7 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build transport: %w", err)
 	}
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: countingRoundTripper{base: transport}}
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}
@@ -1608,4 +1608,35 @@ func (d *decompressedBody) Close() error {
 		_ = rc.Close()
 	}
 	return d.closer.Close()
+}
+
+// countingRoundTripper 线上字节账的上游出口：每次尝试（含重试/failover）的
+// 请求体线上字节，从 req.Context() 的累计器读出落账。挂在客户端工厂的
+// transport 外层，覆盖所有网关平台的上游发送路径。
+type countingRoundTripper struct {
+	base http.RoundTripper
+}
+
+func (t countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		if req.ContentLength >= 0 {
+			service.AddUpstreamOutBytes(req.Context(), req.ContentLength)
+		} else {
+			req.Body = &upstreamCountingBody{ReadCloser: req.Body, ctx: req.Context()}
+		}
+	}
+	return t.base.RoundTrip(req)
+}
+
+type upstreamCountingBody struct {
+	io.ReadCloser
+	ctx context.Context
+}
+
+func (b *upstreamCountingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		service.AddUpstreamOutBytes(b.ctx, int64(n))
+	}
+	return n, err
 }
