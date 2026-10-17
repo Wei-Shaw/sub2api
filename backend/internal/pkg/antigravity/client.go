@@ -44,7 +44,7 @@ func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken stri
 		return nil, err
 	}
 
-	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
+	// 基础 Headers（按官方客户端规范，只设置这 3 个）
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
@@ -336,7 +336,7 @@ func IsConnectionError(err error) bool {
 }
 
 // shouldFallbackToNextURL 判断是否应切换到下一个 URL
-// 与 Antigravity-Manager 保持一致：连接错误、429、408、404、5xx 触发 URL 降级
+// 容灾触发条件：连接错误、429、408、404、5xx 触发 URL 降级
 func shouldFallbackToNextURL(err error, statusCode int) bool {
 	if IsConnectionError(err) {
 		return true

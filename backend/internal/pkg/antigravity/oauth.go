@@ -36,6 +36,9 @@ const (
 	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
 	DefaultUserAgentVersion = "2.23.0"
 
+	// OfficialHubChangelist 是 Google 官方 Antigravity Hub 的 Piper changelist 标识
+	OfficialHubChangelist = "986210228"
+
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"
 
@@ -128,6 +131,21 @@ func BuildUserAgent(version string) string {
 	return fmt.Sprintf("antigravity/hub/%s windows/amd64", defaultUserAgentVersion)
 }
 
+// BuildOfficialHubUserAgent 使用指定版本号、操作系统类型和架构构造对齐官方 Piper CL 指纹的 Hub User-Agent。
+func BuildOfficialHubUserAgent(version, osType, arch string) string {
+	v := NormalizeUserAgentVersion(version)
+	if v == "" {
+		v = defaultUserAgentVersion
+	}
+	if osType == "" {
+		osType = "darwin"
+	}
+	if arch == "" {
+		arch = "arm64"
+	}
+	return fmt.Sprintf("antigravity/hub/%s (aidev_client; os_type=%s; arch=%s; cl=%s)", v, osType, arch, OfficialHubChangelist)
+}
+
 // GetUserAgentForContext 返回当前请求应使用的 User-Agent。
 func GetUserAgentForContext(ctx context.Context) string {
 	return BuildUserAgent(GetUserAgentVersionForContext(ctx))
@@ -145,7 +163,7 @@ func getClientSecret() (string, error) {
 	return "", infraerrors.Newf(http.StatusBadRequest, "ANTIGRAVITY_OAUTH_CLIENT_SECRET_MISSING", "missing antigravity oauth client_secret; set %s", AntigravityOAuthClientSecretEnv)
 }
 
-// BaseURLs 定义 Antigravity API 端点（与 Antigravity-Manager 保持一致）
+// BaseURLs 定义 Antigravity API 端点（与官方客户端保持一致）
 var BaseURLs = []string{
 	antigravityProdBaseURL,  // prod (优先)
 	antigravityDailyBaseURL, // daily sandbox (备用)

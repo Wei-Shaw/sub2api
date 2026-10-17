@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -180,7 +178,7 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 6. 包装为 v1internal 请求
 	v1Req := V1InternalRequest{
 		Project:     projectID,
-		RequestID:   "agent-" + uuid.New().String(),
+		RequestID:   GenerateOfficialRequestID(innerRequest.SessionID, 0),
 		UserAgent:   "antigravity", // 固定值，与官方客户端一致
 		RequestType: requestType,
 		Model:       targetModel,
@@ -262,7 +260,7 @@ func buildModelIdentityText(modelID string) string {
 	return fmt.Sprintf("You are Model %s, ModelId is %s.", info.DisplayName, info.CanonicalID)
 }
 
-// mcpXMLProtocol MCP XML 工具调用协议（与 Antigravity-Manager 保持一致）
+// mcpXMLProtocol MCP XML 工具调用协议
 const mcpXMLProtocol = `
 ==== MCP XML 工具调用协议 (Workaround) ====
 当你需要调用名称以 ` + "`mcp__`" + ` 开头的 MCP 工具时：
@@ -337,7 +335,7 @@ func stripClaudeAttribution(text string) string {
 	return rest
 }
 
-// buildSystemInstruction 构建 systemInstruction（与 Antigravity-Manager 保持一致）
+// buildSystemInstruction 构建 systemInstruction
 func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions, tools []ClaudeTool) *GeminiContent {
 	var parts []GeminiPart
 

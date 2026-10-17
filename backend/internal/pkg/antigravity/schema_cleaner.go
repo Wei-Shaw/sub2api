@@ -6,7 +6,6 @@ import (
 )
 
 // CleanJSONSchema 清理 JSON Schema，移除 Antigravity/Gemini 不支持的字段
-// 参考 Antigravity-Manager/src-tauri/src/proxy/common/json_schema.rs 实现
 // 确保 schema 符合 JSON Schema draft 2020-12 且适配 Gemini v1internal
 func CleanJSONSchema(schema map[string]any) map[string]any {
 	if schema == nil {
