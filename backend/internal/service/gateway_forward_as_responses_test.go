@@ -260,6 +260,9 @@ func TestHandleResponsesBufferedStreamingResponse_PreservesMessageStartCacheUsag
 			`event: message_delta`,
 			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}`,
 			``,
+			`event: message_stop`,
+			`data: {"type":"message_stop"}`,
+			``,
 		}, "\n"))),
 	}
 
@@ -388,6 +391,18 @@ func TestHandleResponsesStreamingResponse_NormalizesTerminalUsage(t *testing.T) 
 				resp := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Join(lines, "\n")))}
 
 				result, err := (&GatewayService{}).handleResponsesStreamingResponse(resp, c, "k3", "k3", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+				if terminal == "eof" {
+					// Without message_stop the stream is truncated: no synthetic
+					// response.completed, and metered usage travels with the error.
+					require.Error(t, err)
+					require.NotNil(t, result)
+					require.Equal(t, tt.wantInput, result.Usage.InputTokens)
+					require.Equal(t, tt.wantOutput, result.Usage.OutputTokens)
+					require.Equal(t, tt.wantCached, result.Usage.CacheReadInputTokens)
+					require.Equal(t, tt.wantCacheCreation, result.Usage.CacheCreationInputTokens)
+					require.NotContains(t, rec.Body.String(), "response.completed")
+					return
+				}
 				require.NoError(t, err)
 				require.Equal(t, tt.wantInput, result.Usage.InputTokens)
 				require.Equal(t, tt.wantCached, result.Usage.CacheReadInputTokens)
@@ -516,6 +531,9 @@ func TestHandleResponsesBufferedStreamingResponse_CompactSSEFormat(t *testing.T)
 			``,
 			`event:message_delta`,
 			`data:{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+			``,
+			`event:message_stop`,
+			`data:{"type":"message_stop"}`,
 			``,
 		}, "\n"))),
 	}
