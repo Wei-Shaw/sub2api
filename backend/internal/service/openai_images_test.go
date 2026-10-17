@@ -2231,3 +2231,32 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)
 }
+
+func TestParseOpenAIImagesRequestRejectsRepeatedModelAndPreservesMultipleImages(t *testing.T) {
+	for _, duplicate := range []bool{false, true} {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.WriteField("model", "gpt-image-1"))
+		if duplicate {
+			require.NoError(t, writer.WriteField("model", "gpt-image-1.5"))
+		}
+		require.NoError(t, writer.WriteField("prompt", "draw"))
+		for range 2 {
+			part, err := writer.CreateFormFile("image[]", "a.png")
+			require.NoError(t, err)
+			_, err = part.Write([]byte("fake-image-bytes"))
+			require.NoError(t, err)
+		}
+		require.NoError(t, writer.Close())
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+		parsed, err := (&OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body.Bytes())
+		if duplicate {
+			require.ErrorContains(t, err, "model is specified more than once")
+		} else {
+			require.NoError(t, err)
+			require.Len(t, parsed.Uploads, 2)
+		}
+	}
+}
