@@ -288,13 +288,38 @@ func attachSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult)
 // （ProfitControlVetoLatest / GatewayProfitControlVetoLatest）与准入后粘性
 // 绑定，否则这两步会因为看不到调度栈内安装的门而退化为空操作。
 func ContextWithSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult) context.Context {
-	if sel == nil || sel.profitGate == nil {
+	if sel == nil {
+		return ctx
+	}
+	// 成功偏好状态与门同源（都在选号时的调度栈 ctx 上捕获），一并重放：终检后的
+	// 准入绑定要据它判断这条（有效分组, 会话）是否已被成功偏好接管。
+	ctx = ContextWithSelectionStickySuccess(ctx, sel)
+	if sel.profitGate == nil {
 		return ctx
 	}
 	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing == sel.profitGate {
 		return ctx
 	}
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, sel.profitGate)
+}
+
+// ContextWithSelectionStickySuccess 只重放选号携带的成功偏好状态，不重放利润门。
+//
+// handler 用它把状态带到下一轮选号所用的 ctx：这样整轮 failover 共用同一份 CAS
+// expected（调度器的装配点会复用同键状态），而利润门仍只活在调度栈的局部 ctx
+// 与终检用的 admissionCtx 上，装门语义逐字不变。
+func ContextWithSelectionStickySuccess(ctx context.Context, sel *AccountSelectionResult) context.Context {
+	if sel == nil {
+		return ctx
+	}
+	state := sel.stickySuccessState()
+	if state == nil {
+		return clearGatewayStickySuccess(ctx)
+	}
+	if gatewayStickySuccessFromContext(ctx) == state {
+		return ctx
+	}
+	return context.WithValue(ctx, gatewayStickySuccessKey{}, state)
 }
 
 // openAIProfitControlVetoReason 报告利润门是否否决该账号。ctx 中没有门
