@@ -56,6 +56,12 @@ const (
 	FieldCacheCreation5mTokens = "cache_creation_5m_tokens"
 	// FieldCacheCreation1hTokens holds the string denoting the cache_creation_1h_tokens field in the database.
 	FieldCacheCreation1hTokens = "cache_creation_1h_tokens"
+	// FieldInBytes holds the string denoting the in_bytes field in the database.
+	FieldInBytes = "in_bytes"
+	// FieldOutBytes holds the string denoting the out_bytes field in the database.
+	FieldOutBytes = "out_bytes"
+	// FieldUpstreamOutBytes holds the string denoting the upstream_out_bytes field in the database.
+	FieldUpstreamOutBytes = "upstream_out_bytes"
 	// FieldInputCost holds the string denoting the input_cost field in the database.
 	FieldInputCost = "input_cost"
 	// FieldOutputCost holds the string denoting the output_cost field in the database.
@@ -181,6 +187,9 @@ var Columns = []string{
 	FieldCacheReadTokens,
 	FieldCacheCreation5mTokens,
 	FieldCacheCreation1hTokens,
+	FieldInBytes,
+	FieldOutBytes,
+	FieldUpstreamOutBytes,
 	FieldInputCost,
 	FieldOutputCost,
 	FieldCacheCreationCost,
@@ -248,6 +257,12 @@ var (
 	DefaultCacheCreation5mTokens int
 	// DefaultCacheCreation1hTokens holds the default value on creation for the "cache_creation_1h_tokens" field.
 	DefaultCacheCreation1hTokens int
+	// DefaultInBytes holds the default value on creation for the "in_bytes" field.
+	DefaultInBytes int64
+	// DefaultOutBytes holds the default value on creation for the "out_bytes" field.
+	DefaultOutBytes int64
+	// DefaultUpstreamOutBytes holds the default value on creation for the "upstream_out_bytes" field.
+	DefaultUpstreamOutBytes int64
 	// DefaultInputCost holds the default value on creation for the "input_cost" field.
 	DefaultInputCost float64
 	// DefaultOutputCost holds the default value on creation for the "output_cost" field.
@@ -403,6 +418,21 @@ func ByCacheCreation5mTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheCreation1hTokens orders the results by the cache_creation_1h_tokens field.
 func ByCacheCreation1hTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheCreation1hTokens, opts...).ToFunc()
+}
+
+// ByInBytes orders the results by the in_bytes field.
+func ByInBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInBytes, opts...).ToFunc()
+}
+
+// ByOutBytes orders the results by the out_bytes field.
+func ByOutBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutBytes, opts...).ToFunc()
+}
+
+// ByUpstreamOutBytes orders the results by the upstream_out_bytes field.
+func ByUpstreamOutBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamOutBytes, opts...).ToFunc()
 }
 
 // ByInputCost orders the results by the input_cost field.

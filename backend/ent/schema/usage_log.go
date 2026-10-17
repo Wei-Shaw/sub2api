@@ -90,6 +90,9 @@ func (UsageLog) Fields() []ent.Field {
 			Default(0),
 
 		// 成本字段
+		field.Int64("in_bytes").Default(0),
+		field.Int64("out_bytes").Default(0),
+		field.Int64("upstream_out_bytes").Default(0),
 		field.Float("input_cost").
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),

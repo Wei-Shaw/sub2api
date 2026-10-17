@@ -258,10 +258,14 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	inboundEndpoint := "/v1/images/batches"
 	upstreamEndpoint := "vertex:batchPredictionJobs"
 	imageSize := "1K"
+	wireIn, wireOut, wireUp := GatewayWireBytesFromContext(ctx)
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
 		APIKeyID:              *job.APIKeyID,
 		AccountID:             *job.AccountID,
+		InBytes:               wireIn,
+		OutBytes:              wireOut,
+		UpstreamOutBytes:      wireUp,
 		RequestID:             strings.TrimSpace(requestID),
 		Model:                 job.Model,
 		RequestedModel:        job.Model,

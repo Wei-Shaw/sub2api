@@ -160,6 +160,21 @@ func CacheCreation1hTokens(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheCreation1hTokens, v))
 }
 
+// InBytes applies equality check predicate on the "in_bytes" field. It's identical to InBytesEQ.
+func InBytes(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldInBytes, v))
+}
+
+// OutBytes applies equality check predicate on the "out_bytes" field. It's identical to OutBytesEQ.
+func OutBytes(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldOutBytes, v))
+}
+
+// UpstreamOutBytes applies equality check predicate on the "upstream_out_bytes" field. It's identical to UpstreamOutBytesEQ.
+func UpstreamOutBytes(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamOutBytes, v))
+}
+
 // InputCost applies equality check predicate on the "input_cost" field. It's identical to InputCostEQ.
 func InputCost(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldInputCost, v))
@@ -1293,6 +1308,126 @@ func CacheCreation1hTokensLT(v int) predicate.UsageLog {
 // CacheCreation1hTokensLTE applies the LTE predicate on the "cache_creation_1h_tokens" field.
 func CacheCreation1hTokensLTE(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldCacheCreation1hTokens, v))
+}
+
+// InBytesEQ applies the EQ predicate on the "in_bytes" field.
+func InBytesEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldInBytes, v))
+}
+
+// InBytesNEQ applies the NEQ predicate on the "in_bytes" field.
+func InBytesNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldInBytes, v))
+}
+
+// InBytesIn applies the In predicate on the "in_bytes" field.
+func InBytesIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldInBytes, vs...))
+}
+
+// InBytesNotIn applies the NotIn predicate on the "in_bytes" field.
+func InBytesNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldInBytes, vs...))
+}
+
+// InBytesGT applies the GT predicate on the "in_bytes" field.
+func InBytesGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldInBytes, v))
+}
+
+// InBytesGTE applies the GTE predicate on the "in_bytes" field.
+func InBytesGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldInBytes, v))
+}
+
+// InBytesLT applies the LT predicate on the "in_bytes" field.
+func InBytesLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldInBytes, v))
+}
+
+// InBytesLTE applies the LTE predicate on the "in_bytes" field.
+func InBytesLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldInBytes, v))
+}
+
+// OutBytesEQ applies the EQ predicate on the "out_bytes" field.
+func OutBytesEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldOutBytes, v))
+}
+
+// OutBytesNEQ applies the NEQ predicate on the "out_bytes" field.
+func OutBytesNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldOutBytes, v))
+}
+
+// OutBytesIn applies the In predicate on the "out_bytes" field.
+func OutBytesIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldOutBytes, vs...))
+}
+
+// OutBytesNotIn applies the NotIn predicate on the "out_bytes" field.
+func OutBytesNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldOutBytes, vs...))
+}
+
+// OutBytesGT applies the GT predicate on the "out_bytes" field.
+func OutBytesGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldOutBytes, v))
+}
+
+// OutBytesGTE applies the GTE predicate on the "out_bytes" field.
+func OutBytesGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldOutBytes, v))
+}
+
+// OutBytesLT applies the LT predicate on the "out_bytes" field.
+func OutBytesLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldOutBytes, v))
+}
+
+// OutBytesLTE applies the LTE predicate on the "out_bytes" field.
+func OutBytesLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldOutBytes, v))
+}
+
+// UpstreamOutBytesEQ applies the EQ predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamOutBytes, v))
+}
+
+// UpstreamOutBytesNEQ applies the NEQ predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUpstreamOutBytes, v))
+}
+
+// UpstreamOutBytesIn applies the In predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUpstreamOutBytes, vs...))
+}
+
+// UpstreamOutBytesNotIn applies the NotIn predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUpstreamOutBytes, vs...))
+}
+
+// UpstreamOutBytesGT applies the GT predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUpstreamOutBytes, v))
+}
+
+// UpstreamOutBytesGTE applies the GTE predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUpstreamOutBytes, v))
+}
+
+// UpstreamOutBytesLT applies the LT predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUpstreamOutBytes, v))
+}
+
+// UpstreamOutBytesLTE applies the LTE predicate on the "upstream_out_bytes" field.
+func UpstreamOutBytesLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUpstreamOutBytes, v))
 }
 
 // InputCostEQ applies the EQ predicate on the "input_cost" field.

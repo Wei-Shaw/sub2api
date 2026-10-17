@@ -153,7 +153,11 @@ type UsageLog struct {
 	CacheReadTokens     int
 
 	CacheCreation5mTokens int `gorm:"column:cache_creation_5m_tokens"`
-	CacheCreation1hTokens int `gorm:"column:cache_creation_1h_tokens"`
+
+	InBytes               int64 `gorm:"column:in_bytes"`
+	OutBytes              int64 `gorm:"column:out_bytes"`
+	UpstreamOutBytes      int64 `gorm:"column:upstream_out_bytes"`
+	CacheCreation1hTokens int   `gorm:"column:cache_creation_1h_tokens"`
 
 	ImageInputTokens  int
 	ImageInputCost    float64

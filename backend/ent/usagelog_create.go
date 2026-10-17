@@ -281,6 +281,48 @@ func (_c *UsageLogCreate) SetNillableCacheCreation1hTokens(v *int) *UsageLogCrea
 	return _c
 }
 
+// SetInBytes sets the "in_bytes" field.
+func (_c *UsageLogCreate) SetInBytes(v int64) *UsageLogCreate {
+	_c.mutation.SetInBytes(v)
+	return _c
+}
+
+// SetNillableInBytes sets the "in_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableInBytes(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetInBytes(*v)
+	}
+	return _c
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (_c *UsageLogCreate) SetOutBytes(v int64) *UsageLogCreate {
+	_c.mutation.SetOutBytes(v)
+	return _c
+}
+
+// SetNillableOutBytes sets the "out_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableOutBytes(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetOutBytes(*v)
+	}
+	return _c
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (_c *UsageLogCreate) SetUpstreamOutBytes(v int64) *UsageLogCreate {
+	_c.mutation.SetUpstreamOutBytes(v)
+	return _c
+}
+
+// SetNillableUpstreamOutBytes sets the "upstream_out_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUpstreamOutBytes(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetUpstreamOutBytes(*v)
+	}
+	return _c
+}
+
 // SetInputCost sets the "input_cost" field.
 func (_c *UsageLogCreate) SetInputCost(v float64) *UsageLogCreate {
 	_c.mutation.SetInputCost(v)
@@ -721,6 +763,18 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultCacheCreation1hTokens
 		_c.mutation.SetCacheCreation1hTokens(v)
 	}
+	if _, ok := _c.mutation.InBytes(); !ok {
+		v := usagelog.DefaultInBytes
+		_c.mutation.SetInBytes(v)
+	}
+	if _, ok := _c.mutation.OutBytes(); !ok {
+		v := usagelog.DefaultOutBytes
+		_c.mutation.SetOutBytes(v)
+	}
+	if _, ok := _c.mutation.UpstreamOutBytes(); !ok {
+		v := usagelog.DefaultUpstreamOutBytes
+		_c.mutation.SetUpstreamOutBytes(v)
+	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		v := usagelog.DefaultInputCost
 		_c.mutation.SetInputCost(v)
@@ -853,6 +907,15 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheCreation1hTokens(); !ok {
 		return &ValidationError{Name: "cache_creation_1h_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_creation_1h_tokens"`)}
+	}
+	if _, ok := _c.mutation.InBytes(); !ok {
+		return &ValidationError{Name: "in_bytes", err: errors.New(`ent: missing required field "UsageLog.in_bytes"`)}
+	}
+	if _, ok := _c.mutation.OutBytes(); !ok {
+		return &ValidationError{Name: "out_bytes", err: errors.New(`ent: missing required field "UsageLog.out_bytes"`)}
+	}
+	if _, ok := _c.mutation.UpstreamOutBytes(); !ok {
+		return &ValidationError{Name: "upstream_out_bytes", err: errors.New(`ent: missing required field "UsageLog.upstream_out_bytes"`)}
 	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		return &ValidationError{Name: "input_cost", err: errors.New(`ent: missing required field "UsageLog.input_cost"`)}
@@ -1030,6 +1093,18 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheCreation1hTokens(); ok {
 		_spec.SetField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
 		_node.CacheCreation1hTokens = value
+	}
+	if value, ok := _c.mutation.InBytes(); ok {
+		_spec.SetField(usagelog.FieldInBytes, field.TypeInt64, value)
+		_node.InBytes = value
+	}
+	if value, ok := _c.mutation.OutBytes(); ok {
+		_spec.SetField(usagelog.FieldOutBytes, field.TypeInt64, value)
+		_node.OutBytes = value
+	}
+	if value, ok := _c.mutation.UpstreamOutBytes(); ok {
+		_spec.SetField(usagelog.FieldUpstreamOutBytes, field.TypeInt64, value)
+		_node.UpstreamOutBytes = value
 	}
 	if value, ok := _c.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
@@ -1623,6 +1698,60 @@ func (u *UsageLogUpsert) UpdateCacheCreation1hTokens() *UsageLogUpsert {
 // AddCacheCreation1hTokens adds v to the "cache_creation_1h_tokens" field.
 func (u *UsageLogUpsert) AddCacheCreation1hTokens(v int) *UsageLogUpsert {
 	u.Add(usagelog.FieldCacheCreation1hTokens, v)
+	return u
+}
+
+// SetInBytes sets the "in_bytes" field.
+func (u *UsageLogUpsert) SetInBytes(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldInBytes, v)
+	return u
+}
+
+// UpdateInBytes sets the "in_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateInBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldInBytes)
+	return u
+}
+
+// AddInBytes adds v to the "in_bytes" field.
+func (u *UsageLogUpsert) AddInBytes(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldInBytes, v)
+	return u
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (u *UsageLogUpsert) SetOutBytes(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldOutBytes, v)
+	return u
+}
+
+// UpdateOutBytes sets the "out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateOutBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldOutBytes)
+	return u
+}
+
+// AddOutBytes adds v to the "out_bytes" field.
+func (u *UsageLogUpsert) AddOutBytes(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldOutBytes, v)
+	return u
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (u *UsageLogUpsert) SetUpstreamOutBytes(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldUpstreamOutBytes, v)
+	return u
+}
+
+// UpdateUpstreamOutBytes sets the "upstream_out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUpstreamOutBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUpstreamOutBytes)
+	return u
+}
+
+// AddUpstreamOutBytes adds v to the "upstream_out_bytes" field.
+func (u *UsageLogUpsert) AddUpstreamOutBytes(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldUpstreamOutBytes, v)
 	return u
 }
 
@@ -2537,6 +2666,69 @@ func (u *UsageLogUpsertOne) AddCacheCreation1hTokens(v int) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheCreation1hTokens() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetInBytes sets the "in_bytes" field.
+func (u *UsageLogUpsertOne) SetInBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetInBytes(v)
+	})
+}
+
+// AddInBytes adds v to the "in_bytes" field.
+func (u *UsageLogUpsertOne) AddInBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddInBytes(v)
+	})
+}
+
+// UpdateInBytes sets the "in_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateInBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateInBytes()
+	})
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (u *UsageLogUpsertOne) SetOutBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetOutBytes(v)
+	})
+}
+
+// AddOutBytes adds v to the "out_bytes" field.
+func (u *UsageLogUpsertOne) AddOutBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddOutBytes(v)
+	})
+}
+
+// UpdateOutBytes sets the "out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateOutBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateOutBytes()
+	})
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (u *UsageLogUpsertOne) SetUpstreamOutBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamOutBytes(v)
+	})
+}
+
+// AddUpstreamOutBytes adds v to the "upstream_out_bytes" field.
+func (u *UsageLogUpsertOne) AddUpstreamOutBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddUpstreamOutBytes(v)
+	})
+}
+
+// UpdateUpstreamOutBytes sets the "upstream_out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUpstreamOutBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamOutBytes()
 	})
 }
 
@@ -3693,6 +3885,69 @@ func (u *UsageLogUpsertBulk) AddCacheCreation1hTokens(v int) *UsageLogUpsertBulk
 func (u *UsageLogUpsertBulk) UpdateCacheCreation1hTokens() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetInBytes sets the "in_bytes" field.
+func (u *UsageLogUpsertBulk) SetInBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetInBytes(v)
+	})
+}
+
+// AddInBytes adds v to the "in_bytes" field.
+func (u *UsageLogUpsertBulk) AddInBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddInBytes(v)
+	})
+}
+
+// UpdateInBytes sets the "in_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateInBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateInBytes()
+	})
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (u *UsageLogUpsertBulk) SetOutBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetOutBytes(v)
+	})
+}
+
+// AddOutBytes adds v to the "out_bytes" field.
+func (u *UsageLogUpsertBulk) AddOutBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddOutBytes(v)
+	})
+}
+
+// UpdateOutBytes sets the "out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateOutBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateOutBytes()
+	})
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (u *UsageLogUpsertBulk) SetUpstreamOutBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamOutBytes(v)
+	})
+}
+
+// AddUpstreamOutBytes adds v to the "upstream_out_bytes" field.
+func (u *UsageLogUpsertBulk) AddUpstreamOutBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddUpstreamOutBytes(v)
+	})
+}
+
+// UpdateUpstreamOutBytes sets the "upstream_out_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUpstreamOutBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamOutBytes()
 	})
 }
 

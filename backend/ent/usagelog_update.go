@@ -435,6 +435,69 @@ func (_u *UsageLogUpdate) AddCacheCreation1hTokens(v int) *UsageLogUpdate {
 	return _u
 }
 
+// SetInBytes sets the "in_bytes" field.
+func (_u *UsageLogUpdate) SetInBytes(v int64) *UsageLogUpdate {
+	_u.mutation.ResetInBytes()
+	_u.mutation.SetInBytes(v)
+	return _u
+}
+
+// SetNillableInBytes sets the "in_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableInBytes(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetInBytes(*v)
+	}
+	return _u
+}
+
+// AddInBytes adds value to the "in_bytes" field.
+func (_u *UsageLogUpdate) AddInBytes(v int64) *UsageLogUpdate {
+	_u.mutation.AddInBytes(v)
+	return _u
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (_u *UsageLogUpdate) SetOutBytes(v int64) *UsageLogUpdate {
+	_u.mutation.ResetOutBytes()
+	_u.mutation.SetOutBytes(v)
+	return _u
+}
+
+// SetNillableOutBytes sets the "out_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableOutBytes(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetOutBytes(*v)
+	}
+	return _u
+}
+
+// AddOutBytes adds value to the "out_bytes" field.
+func (_u *UsageLogUpdate) AddOutBytes(v int64) *UsageLogUpdate {
+	_u.mutation.AddOutBytes(v)
+	return _u
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (_u *UsageLogUpdate) SetUpstreamOutBytes(v int64) *UsageLogUpdate {
+	_u.mutation.ResetUpstreamOutBytes()
+	_u.mutation.SetUpstreamOutBytes(v)
+	return _u
+}
+
+// SetNillableUpstreamOutBytes sets the "upstream_out_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamOutBytes(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamOutBytes(*v)
+	}
+	return _u
+}
+
+// AddUpstreamOutBytes adds value to the "upstream_out_bytes" field.
+func (_u *UsageLogUpdate) AddUpstreamOutBytes(v int64) *UsageLogUpdate {
+	_u.mutation.AddUpstreamOutBytes(v)
+	return _u
+}
+
 // SetInputCost sets the "input_cost" field.
 func (_u *UsageLogUpdate) SetInputCost(v float64) *UsageLogUpdate {
 	_u.mutation.ResetInputCost()
@@ -1228,6 +1291,24 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCacheCreation1hTokens(); ok {
 		_spec.AddField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.InBytes(); ok {
+		_spec.SetField(usagelog.FieldInBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedInBytes(); ok {
+		_spec.AddField(usagelog.FieldInBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OutBytes(); ok {
+		_spec.SetField(usagelog.FieldOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOutBytes(); ok {
+		_spec.AddField(usagelog.FieldOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.UpstreamOutBytes(); ok {
+		_spec.SetField(usagelog.FieldUpstreamOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamOutBytes(); ok {
+		_spec.AddField(usagelog.FieldUpstreamOutBytes, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
 	}
@@ -1946,6 +2027,69 @@ func (_u *UsageLogUpdateOne) SetNillableCacheCreation1hTokens(v *int) *UsageLogU
 // AddCacheCreation1hTokens adds value to the "cache_creation_1h_tokens" field.
 func (_u *UsageLogUpdateOne) AddCacheCreation1hTokens(v int) *UsageLogUpdateOne {
 	_u.mutation.AddCacheCreation1hTokens(v)
+	return _u
+}
+
+// SetInBytes sets the "in_bytes" field.
+func (_u *UsageLogUpdateOne) SetInBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetInBytes()
+	_u.mutation.SetInBytes(v)
+	return _u
+}
+
+// SetNillableInBytes sets the "in_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableInBytes(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetInBytes(*v)
+	}
+	return _u
+}
+
+// AddInBytes adds value to the "in_bytes" field.
+func (_u *UsageLogUpdateOne) AddInBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddInBytes(v)
+	return _u
+}
+
+// SetOutBytes sets the "out_bytes" field.
+func (_u *UsageLogUpdateOne) SetOutBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetOutBytes()
+	_u.mutation.SetOutBytes(v)
+	return _u
+}
+
+// SetNillableOutBytes sets the "out_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableOutBytes(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetOutBytes(*v)
+	}
+	return _u
+}
+
+// AddOutBytes adds value to the "out_bytes" field.
+func (_u *UsageLogUpdateOne) AddOutBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddOutBytes(v)
+	return _u
+}
+
+// SetUpstreamOutBytes sets the "upstream_out_bytes" field.
+func (_u *UsageLogUpdateOne) SetUpstreamOutBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetUpstreamOutBytes()
+	_u.mutation.SetUpstreamOutBytes(v)
+	return _u
+}
+
+// SetNillableUpstreamOutBytes sets the "upstream_out_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamOutBytes(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamOutBytes(*v)
+	}
+	return _u
+}
+
+// AddUpstreamOutBytes adds value to the "upstream_out_bytes" field.
+func (_u *UsageLogUpdateOne) AddUpstreamOutBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddUpstreamOutBytes(v)
 	return _u
 }
 
@@ -2771,6 +2915,24 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.AddedCacheCreation1hTokens(); ok {
 		_spec.AddField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.InBytes(); ok {
+		_spec.SetField(usagelog.FieldInBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedInBytes(); ok {
+		_spec.AddField(usagelog.FieldInBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.OutBytes(); ok {
+		_spec.SetField(usagelog.FieldOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOutBytes(); ok {
+		_spec.AddField(usagelog.FieldOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.UpstreamOutBytes(); ok {
+		_spec.SetField(usagelog.FieldUpstreamOutBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamOutBytes(); ok {
+		_spec.AddField(usagelog.FieldUpstreamOutBytes, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
