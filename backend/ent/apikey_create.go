@@ -99,6 +99,12 @@ func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (_c *APIKeyCreate) SetRoutingGroupIds(v []int64) *APIKeyCreate {
+	_c.mutation.SetRoutingGroupIds(v)
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *APIKeyCreate) SetStatus(v string) *APIKeyCreate {
 	_c.mutation.SetStatus(v)
@@ -531,6 +537,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
+	if value, ok := _c.mutation.RoutingGroupIds(); ok {
+		_spec.SetField(apikey.FieldRoutingGroupIds, field.TypeJSON, value)
+		_node.RoutingGroupIds = value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -778,6 +788,24 @@ func (u *APIKeyUpsert) UpdateGroupID() *APIKeyUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldGroupID)
+	return u
+}
+
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (u *APIKeyUpsert) SetRoutingGroupIds(v []int64) *APIKeyUpsert {
+	u.Set(apikey.FieldRoutingGroupIds, v)
+	return u
+}
+
+// UpdateRoutingGroupIds sets the "routing_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateRoutingGroupIds() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldRoutingGroupIds)
+	return u
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (u *APIKeyUpsert) ClearRoutingGroupIds() *APIKeyUpsert {
+	u.SetNull(apikey.FieldRoutingGroupIds)
 	return u
 }
 
@@ -1203,6 +1231,27 @@ func (u *APIKeyUpsertOne) UpdateGroupID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (u *APIKeyUpsertOne) SetRoutingGroupIds(v []int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRoutingGroupIds(v)
+	})
+}
+
+// UpdateRoutingGroupIds sets the "routing_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateRoutingGroupIds() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRoutingGroupIds()
+	})
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (u *APIKeyUpsertOne) ClearRoutingGroupIds() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearRoutingGroupIds()
 	})
 }
 
@@ -1841,6 +1890,27 @@ func (u *APIKeyUpsertBulk) UpdateGroupID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetRoutingGroupIds sets the "routing_group_ids" field.
+func (u *APIKeyUpsertBulk) SetRoutingGroupIds(v []int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRoutingGroupIds(v)
+	})
+}
+
+// UpdateRoutingGroupIds sets the "routing_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateRoutingGroupIds() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRoutingGroupIds()
+	})
+}
+
+// ClearRoutingGroupIds clears the value of the "routing_group_ids" field.
+func (u *APIKeyUpsertBulk) ClearRoutingGroupIds() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearRoutingGroupIds()
 	})
 }
 

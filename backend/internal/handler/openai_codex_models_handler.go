@@ -21,6 +21,11 @@ import (
 // otherwise ChatGPT manifests are proxied verbatim and custom API key manifests
 // receive provider-compatibility normalization plus short-lived caching.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
+	if models, ok := service.SmartRoutingModelsFromContext(c.Request.Context()); ok {
+		writeSmartRoutingCodexModels(c, models)
+		return
+	}
+
 	if c.Request.Context().Err() != nil {
 		return
 	}
@@ -150,4 +155,13 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		writeOpenAIModelsResponse(c, manifest)
 		return
 	}
+}
+
+func writeSmartRoutingCodexModels(c *gin.Context, models []string) {
+	body, err := service.BuildCodexModelsManifest(models)
+	if err != nil {
+		writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "Unable to build routing model catalog")
+		return
+	}
+	c.Data(http.StatusOK, "application/json", body)
 }

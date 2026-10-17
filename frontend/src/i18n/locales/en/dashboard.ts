@@ -66,6 +66,33 @@ export default {
 
   // API Keys
   keys: {
+    smartRouting: {
+      "title": "Smart routing",
+      "fixed": "Fixed group",
+      "mode": "Routing mode",
+      "order": "Try groups in order",
+      "description": "Match the model from top to bottom. Skip groups with no matching catalog entry or available account. Add up to 10 groups.",
+      "first": "Try first",
+      "add": "Add a group",
+      "noGroups": "No more compatible groups",
+      "limit": "10-group limit reached",
+      "empty": "Add your first routing group",
+      "emptyHint": "Choose across OpenAI-compatible platforms",
+      "billing": "Billed by the selected group, including its subscription and personal rate.",
+      "scope": "Initially supports HTTP Chat / Responses text requests. Once upstream processing starts, retries stay within the selected group. Use a fixed-group key for other endpoints.",
+      "unavailable": "Group #{id} is unavailable. Remove or replace it.",
+      "up": "Move up",
+      "down": "Move down",
+      "remove": "Remove",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "removeGroup": "Remove {name}",
+      "added": "Group added",
+      "removed": "Group removed",
+      "moved": "Moved to position {position}",
+      "required": "Choose 1–10 available OpenAI-compatible groups",
+      "edit": "Edit smart routing order"
+},
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
     searchPlaceholder: 'Search name or key...',
