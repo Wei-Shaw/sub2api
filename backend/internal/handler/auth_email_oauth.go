@@ -234,9 +234,7 @@ func (h *AuthHandler) emailOAuthShouldCreatePendingRegistration(ctx context.Cont
 	}
 	email := strings.TrimSpace(strings.ToLower(input.Email))
 	if identityUser != nil {
-		if !strings.EqualFold(strings.TrimSpace(identityUser.Email), email) {
-			return false, infraerrors.Conflict("AUTH_IDENTITY_EMAIL_MISMATCH", "oauth identity belongs to a different email")
-		}
+		// A bound identity signs in to its own user even when the provider email changed (e.g. a renamed Gmail address).
 		return false, nil
 	}
 	if _, err := findUserByNormalizedEmail(ctx, client, email); err != nil {
