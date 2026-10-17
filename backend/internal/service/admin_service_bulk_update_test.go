@@ -342,7 +342,7 @@ func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 	require.Zero(t, result.LongContextInheritedCount)
 	require.Equal(t, 1, repo.bulkUpdateCalls)
 	require.Contains(t, repo.lastBulkUpdate.Credentials, openAIEndpointCapabilitiesCredentialKey)
-	require.Nil(t, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
+	require.Equal(t, []string{"chat_completions", "embeddings"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
 	require.Equal(t, true, repo.lastBulkUpdate.Extra[openAILongContextBillingEnabledKey])
 	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
 	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
@@ -594,4 +594,19 @@ func TestAdminServiceBulkUpdateAccounts_ValidatesFilterResolvedOpenAITargets(t *
 	requireApplicationErrorReason(t, err, "OPENAI_BULK_TARGET_INVALID")
 	require.Equal(t, []int64{7}, repo.getByIDsIDs)
 	require.Zero(t, repo.bulkUpdateCalls)
+}
+
+func TestAdminServiceBulkUpdateAccounts_DecisionsProtocol(t *testing.T) {
+	for _, typ := range []string{AccountTypeAPIKey, AccountTypeUpstream, AccountTypeOAuth} {
+		repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{{ID: 1, Platform: PlatformOpenAI, Type: typ}}}
+		svc := &adminServiceImpl{accountRepo: repo}
+		_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{AccountIDs: []int64{1}, Credentials: map[string]any{"openai_decisions_protocol": "openrouter"}})
+		if typ == AccountTypeOAuth {
+			require.Error(t, err)
+			require.Zero(t, repo.bulkUpdateCalls)
+		} else {
+			require.NoError(t, err)
+			require.Equal(t, "openrouter", repo.lastBulkUpdate.Credentials["openai_decisions_protocol"])
+		}
+	}
 }

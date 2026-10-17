@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -465,4 +466,126 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+type compositeBridgeRouteRepoStub []service.CompositeModelRoute
+
+func (s compositeBridgeRouteRepoStub) ListByGroup(_ context.Context, groupID int64, includeDisabled bool) ([]service.CompositeModelRoute, error) {
+	result := make([]service.CompositeModelRoute, 0, len(s))
+	for _, route := range s {
+		if route.GroupID == groupID && (includeDisabled || route.Enabled) {
+			result = append(result, route)
+		}
+	}
+	return result, nil
+}
+func (compositeBridgeRouteRepoStub) Create(context.Context, *service.CompositeModelRoute) error {
+	return nil
+}
+func (compositeBridgeRouteRepoStub) Update(context.Context, *service.CompositeModelRoute) error {
+	return nil
+}
+func (compositeBridgeRouteRepoStub) Delete(context.Context, int64) error        { return nil }
+func (compositeBridgeRouteRepoStub) DeleteByGroup(context.Context, int64) error { return nil }
+
+func newCompositeBridgeRouteTestRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	groupID := int64(1)
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{
+			Gateway:       &handler.GatewayHandler{},
+			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
+		},
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				GroupID: &groupID,
+				Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+			})
+			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1})
+			c.Next()
+		}),
+		nil, nil, nil, nil,
+		service.NewCompositeRouteResolver(compositeBridgeRouteRepoStub{
+			{
+				GroupID:        groupID,
+				PublicModel:    "jev-latest",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformOpenAI,
+				UpstreamModel:  "jev-latest",
+				Endpoint:       service.CompositeRouteEndpointAny,
+				Enabled:        true,
+			},
+			{
+				GroupID:        groupID,
+				PublicModel:    "gpt-6-luna",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformTypeSafe,
+				UpstreamModel:  "gpt-6-luna",
+				Endpoint:       service.CompositeRouteEndpointAny,
+				Enabled:        true,
+			},
+		}),
+		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1024 * 1024, TextMaxBodySize: 1024 * 1024}},
+	)
+	return router
+}
+
+func TestGatewayRoutesCompositeDecisionBridgesUseResolvedTargetPlatform(t *testing.T) {
+	router := newCompositeBridgeRouteTestRouter()
+
+	tests := []struct {
+		name       string
+		path       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name:       "system one to openai decisions",
+			path:       "/v1/systemone",
+			body:       `{"model":"jev-latest","state":"hello","questions":{"q":{"type":"noul","instructions":"valid?"}}}`,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:       "decisions to typesafe system one",
+			path:       "/v1/decisions",
+			body:       `{"model":"gpt-6-luna","input":"hello","questions":[{"type":"predicate","instructions":"valid?"}],"safety_identifier":"synthetic-user"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tt.wantStatus, w.Code, "resolved target must select the bridge handler")
+		})
+	}
+}
+
+func TestDispatchGatewayByTargetPlatformUsesCompositeResolution(t *testing.T) {
+	for _, target := range []string{service.PlatformOpenAI, service.PlatformTypeSafe} {
+		t.Run(target, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				Group: &service.Group{Platform: service.PlatformComposite},
+			})
+			request := httptest.NewRequest(http.MethodPost, "/v1/bridge", nil)
+			request = request.WithContext(service.WithResolvedTargetPlatform(context.Background(), target))
+			c.Request = request
+
+			called := ""
+			dispatchGatewayByTargetPlatform(c, target,
+				func(*gin.Context) { called = "target" },
+				func(*gin.Context) { called = "fallback" },
+			)
+			require.Equal(t, "target", called)
+		})
+	}
 }
