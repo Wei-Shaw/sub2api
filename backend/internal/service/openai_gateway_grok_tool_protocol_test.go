@@ -294,6 +294,7 @@ func TestForwardGrokResponsesOAuthRestoresClientToolsNonStreaming(t *testing.T) 
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Zero(t, result.SearchCount, "client tools must not incur a server-side search surcharge")
 	require.False(t, result.Stream)
 	require.Equal(t, "resp_protocol_oauth", result.ResponseID)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
@@ -338,6 +339,7 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsFromSSEForNonStreamingRequ
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Zero(t, result.SearchCount, "client tools must not incur a server-side search surcharge")
 	require.False(t, result.Stream)
 	require.Equal(t, "resp_protocol_stream", result.ResponseID)
 	assertGrokProtocolRequestLowered(t, upstream.lastBody)
@@ -376,6 +378,7 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Zero(t, result.SearchCount, "client tools must not incur a server-side search surcharge")
 	require.True(t, result.Stream)
 	require.Equal(t, "resp_protocol_stream", result.ResponseID)
 	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
