@@ -217,6 +217,9 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Minimum max_output_tokens when converting Chat Completions or Anthropic requests to Responses (minimum 16, default 128)
+  # Chat Completions 或 Anthropic 请求转换为 Responses 时的最小 max_output_tokens（最小 16，默认 128）
+  min_output_tokens: 128
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
@@ -321,6 +324,8 @@ gateway:
   # OpenAI /responses/compact 上游模型（默认 gpt-5.5）。
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
+  # GPT-5.5 is API-only after its ChatGPT Codex retirement; subscription
+  # requests skip this retired fallback and keep their selected model.
   openai_compact_model: "gpt-5.5"
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:

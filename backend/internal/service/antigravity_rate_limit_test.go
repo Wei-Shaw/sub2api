@@ -1093,6 +1093,15 @@ func TestResolveAntigravityForwardBaseURL(t *testing.T) {
 			name: "ultra defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "ULTRA"}},
 			want: dailyURL,
 		},
+		{
+			name: "stored ultra tier id defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "g1-ultra-lite-tier"}},
+			want: dailyURL,
+		},
+		{
+			name: "stored pro tier id defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "g1-pro-tier"}},
+			want: dailyURL,
+		},
+		{name: "free tier id defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free-tier"}}, want: prodURL},
 		{name: "free defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: prodURL},
 		{name: "abnormal defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "Abnormal"}}, want: prodURL},
 		{name: "unknown defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "enterprise"}}, want: prodURL},

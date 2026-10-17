@@ -141,6 +141,8 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		injectedBody = reconciled
 	}
 
+	injectedBody = ensureGeminiFunctionCallThoughtSignatures(injectedBody)
+
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {
