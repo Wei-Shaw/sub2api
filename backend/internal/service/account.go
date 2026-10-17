@@ -1641,7 +1641,8 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformZhipu
 	case strings.Contains(baseURL, "minimax.io"),
 		strings.Contains(baseURL, "minimaxi.com"),
-		strings.Contains(baseURL, "minimax.com"):
+		strings.Contains(baseURL, "minimax.com"),
+		strings.Contains(baseURL, "minimax.cn"):
 		return PlatformMiniMax
 	default:
 		return ""
