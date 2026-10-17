@@ -28,15 +28,20 @@
     "capabilities": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "platform", "account_type"],
         "properties": {
-          "id": { "const": "openai.oauth.outbound_transport.v1" },
-          "platform": { "const": "openai" },
+          "id": { "enum": ["openai.oauth.outbound_transport.v1", "anthropic.oauth.request_patch.v1"] },
+          "platform": { "enum": ["openai", "anthropic"] },
           "account_type": { "const": "oauth" }
-        }
+        },
+        "oneOf": [
+          { "properties": { "id": { "const": "openai.oauth.outbound_transport.v1" }, "platform": { "const": "openai" } } },
+          { "properties": { "id": { "const": "anthropic.oauth.request_patch.v1" }, "platform": { "const": "anthropic" } } }
+        ]
       }
     },
     "runtimes": {
