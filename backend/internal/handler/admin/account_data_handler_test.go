@@ -317,3 +317,44 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
+
+func TestImportDataPreservesOpenAIOAuthWebsocketOverrides(t *testing.T) {
+	for name, extra := range map[string]map[string]any{
+		"server default":   nil,
+		"explicit off":     {"openai_oauth_responses_websockets_v2_mode": "off"},
+		"explicit enabled": {"openai_oauth_responses_websockets_v2_mode": "http_bridge"},
+		"legacy false":     {"responses_websockets_v2_enabled": false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			router, adminSvc := setupAccountDataRouter()
+			body, err := json.Marshal(map[string]any{
+				"data": map[string]any{
+					"type": dataType, "version": dataVersion, "proxies": []map[string]any{},
+					"accounts": []map[string]any{{
+						"name": "imported OAuth", "platform": service.PlatformOpenAI,
+						"type": service.AccountTypeOAuth, "credentials": map[string]any{"token": "test"},
+						"extra": extra, "concurrency": 1, "priority": 50,
+					}},
+				},
+				"skip_default_group_bind": true,
+			})
+			require.NoError(t, err)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Len(t, adminSvc.createdAccounts, 1)
+			// The service owns default resolution. Import must retain the distinction
+			// between omitted settings and an explicit mode or legacy false flag.
+			if extra == nil {
+				require.NotContains(t, adminSvc.createdAccounts[0].Extra, "openai_oauth_responses_websockets_v2_mode")
+				require.NotContains(t, adminSvc.createdAccounts[0].Extra, "openai_oauth_responses_websockets_v2_enabled")
+			} else {
+				for key, value := range extra {
+					require.Equal(t, value, adminSvc.createdAccounts[0].Extra[key])
+				}
+			}
+		})
+	}
+}
