@@ -144,3 +144,23 @@ func TestDeriveOpenAIForwardAttemptBody_SanitizationSticksAcrossBedrockRetries(t
 	require.Equal(t, 0, reasoningItemCount(t, nextAccount), "later Bedrock account must remain sanitized")
 	require.JSONEq(t, kiroReasoningCanonicalBody, string(canonical), "canonical forwardBody must never be mutated")
 }
+
+func TestDeriveOpenAIForwardAttemptBody_CrossAccountStripsAccountBoundEncryptedContent(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	canonical := []byte(`{"model":"gpt-5.1","previous_response_id":"resp_old","input":[` +
+		`{"type":"message","role":"user","content":"hello"},` +
+		`{"type":"reasoning","id":"rs_old","encrypted_content":"ENC_OLD"},` +
+		`{"type":"compaction","encrypted_content":"COMPACT_OLD"}` +
+		`]}`)
+	state := &openAIPassthroughFailoverState{}
+
+	first := h.deriveOpenAIForwardAttemptBody(nil, canonical, newOpenAIPassthroughAccount(60, false), state)
+	second := h.deriveOpenAIForwardAttemptBody(nil, canonical, newOpenAIPassthroughAccount(61, false), state)
+
+	require.Contains(t, string(first), "ENC_OLD")
+	require.NotContains(t, string(second), "ENC_OLD")
+	require.NotContains(t, string(second), "COMPACT_OLD")
+	require.Equal(t, int64(1), gjson.GetBytes(second, "input.#").Int())
+	require.JSONEq(t, string(canonical), string(first), "the first account must receive the canonical body")
+	require.Contains(t, string(canonical), "ENC_OLD", "canonical body must remain immutable")
+}
