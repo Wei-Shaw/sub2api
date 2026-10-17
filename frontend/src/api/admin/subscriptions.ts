@@ -13,7 +13,7 @@ import type {
   PaginatedResponse
 } from '@/types'
 
-export type SubscriptionBulkAction = 'extend' | 'reset_quota' | 'revoke' | 'restore'
+export type SubscriptionBulkAction = 'extend' | 'reset_quota' | 'set_quota_windows' | 'revoke' | 'restore'
 
 export interface SubscriptionBulkActionRequest {
   subscription_ids: number[]
@@ -22,6 +22,23 @@ export interface SubscriptionBulkActionRequest {
   daily?: boolean
   weekly?: boolean
   monthly?: boolean
+  daily_window_start?: string
+  weekly_window_start?: string
+  monthly_window_start?: string
+}
+
+export interface SetQuotaWindowsRequest {
+  daily_window_start?: string
+  weekly_window_start?: string
+  monthly_window_start?: string
+}
+
+export interface GroupSubscriptionBatchResult {
+  total: number
+  success: number
+  failed: number
+  failed_subscription_ids: number[]
+  errors: string[]
 }
 
 export interface SubscriptionBulkActionResult {
@@ -188,6 +205,50 @@ export async function resetQuota(
 }
 
 /**
+ * Move quota window starts without changing used amounts.
+ */
+export async function setQuotaWindows(
+  id: number,
+  request: SetQuotaWindowsRequest
+): Promise<UserSubscription> {
+  const { data } = await apiClient.post<UserSubscription>(
+    `/admin/subscriptions/${id}/quota-windows`,
+    request
+  )
+  return data
+}
+
+/**
+ * Apply the same quota window starts to every active subscription in a group.
+ * Used amounts are left unchanged.
+ */
+export async function setGroupQuotaWindows(
+  groupId: number,
+  request: SetQuotaWindowsRequest
+): Promise<GroupSubscriptionBatchResult> {
+  const { data } = await apiClient.post<GroupSubscriptionBatchResult>(
+    `/admin/groups/${groupId}/subscriptions/quota-windows`,
+    request
+  )
+  return data
+}
+
+/**
+ * Reset quota for every active subscription in a group.
+ * Same behavior as resetQuota: zero selected usage and restart those windows.
+ */
+export async function resetGroupQuota(
+  groupId: number,
+  options: { daily: boolean; weekly: boolean; monthly: boolean }
+): Promise<GroupSubscriptionBatchResult> {
+  const { data } = await apiClient.post<GroupSubscriptionBatchResult>(
+    `/admin/groups/${groupId}/subscriptions/reset-quota`,
+    options
+  )
+  return data
+}
+
+/**
  * List subscriptions by group
  * @param groupId - Group ID
  * @param page - Page number
@@ -240,6 +301,9 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  setQuotaWindows,
+  setGroupQuotaWindows,
+  resetGroupQuota,
   listByGroup,
   listByUser
 }
