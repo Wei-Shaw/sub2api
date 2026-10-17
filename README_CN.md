@@ -533,6 +533,10 @@ cp ../deploy/config.example.yaml ./config.yaml
 nano config.yaml
 ```
 
+`resolve-version.sh` 会优先读取精确的发布 tag，也能识别 GitHub 源码归档
+携带的版本元数据。因此，即使源码归档不包含 `.git` 目录，从发布源码构建
+仍会保留正确的版本号。生成自定义构建时可以显式设置 `VERSION=...`。
+
 > **注意：** `-tags embed` 参数会将前端嵌入到二进制文件中。不使用此参数编译的程序将不包含前端界面。
 
 **`config.yaml` 关键配置：**
