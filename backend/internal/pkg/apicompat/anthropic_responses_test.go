@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1852,10 +1853,81 @@ func TestOpus55ResponsesAdaptiveThinkingAndToolChoice(t *testing.T) {
 	}
 	_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "none"}})
 	require.ErrorContains(t, err, "reasoning effort")
-	old, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "xhigh"}})
+	adaptiveOnly, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "xhigh"}})
 	require.NoError(t, err)
-	require.Equal(t, "max", old.OutputConfig.Effort)
-	require.Equal(t, "enabled", old.Thinking.Type)
+	require.Equal(t, "max", adaptiveOnly.OutputConfig.Effort)
+	require.Equal(t, "adaptive", adaptiveOnly.Thinking.Type)
+	require.Zero(t, adaptiveOnly.Thinking.BudgetTokens)
+}
+
+func TestAdaptiveOnlyModelsResponsesUseAdaptiveThinkingWithoutBudget(t *testing.T) {
+	for _, model := range []string{
+		"claude-fable-5", "claude-fable-5-1", "anthropic/claude-fable-5-1",
+		"claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-opus-5-5",
+		"claude-sonnet-5", "claude-sonnet-5-5", "claude-sonnet-5-20250716",
+	} {
+		for _, effort := range []string{"medium", "high", "xhigh", "max"} {
+			out, err := ResponsesToAnthropicRequest(&ResponsesRequest{
+				Model:     model,
+				Input:     json.RawMessage(`"hello"`),
+				Reasoning: &ResponsesReasoning{Effort: effort},
+			})
+			require.NoError(t, err, model)
+			require.NotNil(t, out.Thinking, model)
+			require.Equal(t, "adaptive", out.Thinking.Type, model)
+			require.Zero(t, out.Thinking.BudgetTokens, model)
+			require.NotNil(t, out.OutputConfig, model)
+			// The 5.5 branch forwards effort verbatim; older adaptive-only
+			// families apply the xhigh → max mapping.
+			expectedEffort := mapResponsesEffortToAnthropic(effort)
+			if claude.IsOpus55(model) || claude.IsSonnet55(model) {
+				expectedEffort = effort
+			}
+			require.Equal(t, expectedEffort, out.OutputConfig.Effort, model)
+		}
+	}
+
+	// Low effort keeps the legacy behavior for non-5.5 models: no thinking field.
+	for _, model := range []string{"claude-fable-5-1", "claude-opus-4-7", "claude-sonnet-5"} {
+		out, err := ResponsesToAnthropicRequest(&ResponsesRequest{
+			Model:     model,
+			Input:     json.RawMessage(`"hello"`),
+			Reasoning: &ResponsesReasoning{Effort: "low"},
+		})
+		require.NoError(t, err, model)
+		require.Nil(t, out.Thinking, model)
+	}
+
+	// Legacy models keep the explicit enabled + budget_tokens form.
+	for _, model := range []string{"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"} {
+		other, err := ResponsesToAnthropicRequest(&ResponsesRequest{
+			Model:     model,
+			Input:     json.RawMessage(`"hello"`),
+			Reasoning: &ResponsesReasoning{Effort: "high"},
+		})
+		require.NoError(t, err, model)
+		require.NotNil(t, other.Thinking, model)
+		require.Equal(t, "enabled", other.Thinking.Type, model)
+		require.NotZero(t, other.Thinking.BudgetTokens, model)
+	}
+
+	// Production path: Chat Completions → Responses → Anthropic must not emit
+	// thinking.type="enabled" for adaptive-only models (MiMo-Code issue #1765
+	// reproduced with claude-sonnet-5).
+	for _, model := range []string{"claude-fable-5-1", "claude-sonnet-5"} {
+		ccReq := &ChatCompletionsRequest{
+			Model:           model,
+			ReasoningEffort: "high",
+			Messages:        []ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+		}
+		responsesReq, err := ChatCompletionsToResponses(ccReq)
+		require.NoError(t, err)
+		chained, err := ResponsesToAnthropicRequest(responsesReq)
+		require.NoError(t, err)
+		require.Equal(t, "adaptive", chained.Thinking.Type, model)
+		require.Zero(t, chained.Thinking.BudgetTokens, model)
+		require.Equal(t, "high", chained.OutputConfig.Effort, model)
+	}
 }
 
 func TestOpus55SignedThinkingResponsesRoundTrip(t *testing.T) {
