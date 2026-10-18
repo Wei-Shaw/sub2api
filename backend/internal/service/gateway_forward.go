@@ -253,7 +253,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
 			return nil, err
 		}
-		if rw := buildToolNameRewriteFromBody(body); rw != nil {
+		if rw := s.buildToolNameRewriteFromBody(body); rw != nil {
 			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
 				return nil, err
 			}

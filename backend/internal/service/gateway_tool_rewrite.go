@@ -2,52 +2,19 @@ package service
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"math/big"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
-// mcpServerNameWords is a built-in pool of ordinary ASCII words that can be
-// used as the synthetic MCP server name. A process selects one word once and
-// reuses it so tool names remain stable across requests handled by that process.
-var mcpServerNameWords = []string{
-	"agent", "assist", "bridge", "builder", "code", "command", "console", "context",
-	"data", "debug", "design", "dev", "editor", "engine", "files", "format",
-	"gateway", "helper", "index", "input", "kit", "memory", "model", "notes",
-	"output", "parser", "patch", "project", "query", "reader", "render", "request",
-	"response", "runner", "schema", "script", "search", "service", "shell", "store",
-	"stream", "system", "task", "text", "toolbox", "tools", "transform", "utility",
-	"view", "worker", "workflow", "writer",
-}
-
-var (
-	mcpServerNameOnce sync.Once
-	mcpServerName     string
-)
-
 // toolNameRewriteKey is the gin.Context key for the request-scoped mapping.
 const toolNameRewriteKey = "claude_tool_name_rewrite"
-
-func defaultMCPServerName() string {
-	mcpServerNameOnce.Do(func() {
-		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(mcpServerNameWords))))
-		if err != nil {
-			mcpServerName = "tools"
-			return
-		}
-		mcpServerName = mcpServerNameWords[index.Int64()]
-	})
-	return mcpServerName
-}
 
 func mcpToolPrefix(serverName string) string {
 	return "mcp__" + serverName + "__"
@@ -188,10 +155,13 @@ func shouldMimicToolName(toolType string) bool {
 	return false
 }
 
-// buildToolNameRewriteFromBody builds an MCP-style tool-name mapping using
-// the process-stable synthetic server name.
-func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
-	return buildToolNameRewriteFromBodyWithServerName(body, defaultMCPServerName())
+// buildToolNameRewriteFromBody uses the namespace loaded from persistent
+// deployment settings at startup. Request paths never generate a new identity.
+func (s *GatewayService) buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
+	if s == nil || s.cfg == nil {
+		return nil
+	}
+	return buildToolNameRewriteFromBodyWithServerName(body, s.cfg.Gateway.AnthropicMCPServerName)
 }
 
 func buildToolNameRewriteFromBodyWithServerName(body []byte, serverName string) *ToolNameRewrite {

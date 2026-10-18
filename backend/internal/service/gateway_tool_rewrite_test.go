@@ -15,13 +15,6 @@ func buildTestToolNameRewrite(body []byte) *ToolNameRewrite {
 	return buildToolNameRewriteFromBodyWithServerName(body, "tools")
 }
 
-func TestDefaultMCPServerNameIsStableAndFromWordPool(t *testing.T) {
-	name := defaultMCPServerName()
-	require.NotEmpty(t, name)
-	require.Contains(t, mcpServerNameWords, name)
-	require.Equal(t, name, defaultMCPServerName())
-}
-
 func TestBuildMCPToolMap_StableForServerName(t *testing.T) {
 	names := []string{"alpha_search", "beta_lookup", "gamma_fetch"}
 	first := buildMCPToolMap(names, "tools")

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -59,26 +60,31 @@ func TestBuildMCPToolMap_RejectsInvalidNamespace(t *testing.T) {
 	}
 }
 
-func TestDefaultMCPServerName_WordPoolAndConcurrentStability(t *testing.T) {
-	seen := make(map[string]bool)
-	for _, word := range mcpServerNameWords {
-		require.Regexp(t, `^[a-z]+$`, word)
-		require.NotEqual(t, "workspace", word)
-		require.False(t, seen[word], word)
-		seen[word] = true
-		require.True(t, isMCPToolName(mcpToolPrefix(word)+"read"))
+func TestBuildToolNameRewriteFromBody_UsesPersistentNamespace(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"read"}]}`)
+	newGateway := func(name string) *GatewayService {
+		return &GatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{AnthropicMCPServerName: name}}}
 	}
+	first := newGateway("helper")
+	restarted := newGateway("helper")
+	otherDeployment := newGateway("project")
+	require.Equal(t, "mcp__helper__read", first.buildToolNameRewriteFromBody(body).Forward["read"])
+	require.Equal(t, first.buildToolNameRewriteFromBody(body), restarted.buildToolNameRewriteFromBody(body))
+	require.Equal(t, "mcp__project__read", otherDeployment.buildToolNameRewriteFromBody(body).Forward["read"])
+	require.Nil(t, (&GatewayService{}).buildToolNameRewriteFromBody(body))
+	require.Nil(t, newGateway("").buildToolNameRewriteFromBody(body), "never draw a process-local fallback")
+
 	var wg sync.WaitGroup
 	names := make([]string, 32)
 	for i := range names {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			names[i] = defaultMCPServerName()
+			names[i] = first.buildToolNameRewriteFromBody(body).Forward["read"]
 		}()
 	}
 	wg.Wait()
 	for _, name := range names {
-		require.Equal(t, defaultMCPServerName(), name)
+		require.Equal(t, "mcp__helper__read", name)
 	}
 }
