@@ -9,6 +9,71 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCodexCatalogUsesAntigravityCapabilitiesInGeminiMixedGroup(t *testing.T) {
+	const groupID int64 = 93
+	account := Account{
+		ID: 25, Platform: PlatformAntigravity, Type: AccountTypeOAuth,
+		Extra: map[string]any{"mixed_scheduling": true},
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-custom": "gemini-3.8-flash-high",
+		}},
+	}
+	reasoning := true
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{"gemini-3.8-flash-high": {
+			ID: "gemini-3.8-flash-high", Reasoning: &reasoning,
+			DefaultReasoningLevel: "high", SupportedReasoningLevels: []string{"high"},
+			InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576,
+			MaxOutputTokens: 65_536,
+		}},
+	})
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{groupID: {account}},
+	}}
+	for _, platform := range []string{PlatformAntigravity, PlatformComposite, PlatformGemini} {
+		t.Run(platform, func(t *testing.T) {
+			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+				&Group{ID: groupID, Platform: platform}, "", []string{"gemini-custom"})
+			require.NoError(t, err)
+			model := decodeCodexManifestModels(t, body)[0]
+			require.Equal(t, "gemini-custom", model["slug"])
+			require.Equal(t, float64(1_048_576), model["context_window"])
+			require.Equal(t, []any{"text", "image"}, model["input_modalities"])
+			require.Equal(t, []string{"high"}, effortsFromManifestModel(t, model))
+		})
+	}
+}
+
+func TestCodexCatalogGeminiCapabilitiesExcludeNonMixedAntigravityAccounts(t *testing.T) {
+	const groupID int64 = 94
+	reasoning := true
+	native := Account{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gemini-custom": "gemini-3.8-flash-high"}},
+	}
+	native.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{"gemini-3.8-flash-high": {
+			ID: "gemini-3.8-flash-high", Reasoning: &reasoning,
+			SupportedReasoningLevels: []string{"high"}, InputModalities: []string{"text", "image"},
+			ContextWindow: 1_048_576,
+		}},
+	})
+	for _, extra := range []map[string]any{nil, {"mixed_scheduling": false}} {
+		// A peer lacking capabilities would narrow the catalog if included.
+		peer := Account{ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuth,
+			Extra: extra, Credentials: native.Credentials}
+		svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+			byGroup: map[int64][]Account{groupID: {native, peer}},
+		}}
+		body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+			&Group{ID: groupID, Platform: PlatformGemini}, "", []string{"gemini-custom"})
+		require.NoError(t, err)
+		model := decodeCodexManifestModels(t, body)[0]
+		require.Equal(t, float64(1_048_576), model["context_window"])
+		require.Equal(t, []any{"text", "image"}, model["input_modalities"])
+		require.Equal(t, []string{"high"}, effortsFromManifestModel(t, model))
+	}
+}
+
 func TestAstraUltraCatalogPreservesWorkflowMetadata(t *testing.T) {
 	// Ultra is a Codex workflow. Its inference effort must survive catalog sync,
 	// aliases and group generation instead of silently falling back to max.

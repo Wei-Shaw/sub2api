@@ -426,7 +426,7 @@ const updateLocalRate = (userId: number, value: string) => {
     return
   }
   const num = parseFloat(value)
-  if (isNaN(num)) return
+  if (!Number.isFinite(num) || num <= 0) return
   entry.rate_multiplier = num
 }
 

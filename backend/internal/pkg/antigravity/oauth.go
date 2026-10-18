@@ -34,7 +34,7 @@ const (
 	AntigravityUserAgentVersionEnv = "ANTIGRAVITY_USER_AGENT_VERSION"
 
 	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
-	DefaultUserAgentVersion = "2.9.1"
+	DefaultUserAgentVersion = "2.23.0"
 
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"
@@ -123,9 +123,9 @@ func GetUserAgentVersionForContext(ctx context.Context) string {
 // BuildUserAgent 使用指定版本号构造 User-Agent；版本为空或非法时回退默认值。
 func BuildUserAgent(version string) string {
 	if normalized := NormalizeUserAgentVersion(version); normalized != "" {
-		return fmt.Sprintf("antigravity/%s windows/amd64", normalized)
+		return fmt.Sprintf("antigravity/hub/%s windows/amd64", normalized)
 	}
-	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+	return fmt.Sprintf("antigravity/hub/%s windows/amd64", defaultUserAgentVersion)
 }
 
 // GetUserAgentForContext 返回当前请求应使用的 User-Agent。
