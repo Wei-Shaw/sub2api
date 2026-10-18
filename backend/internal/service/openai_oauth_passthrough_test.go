@@ -494,7 +494,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_GroupForceOpenAIFastInjectsMissin
 		RateMultiplier: f64p(1),
 	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	result, err := svc.Forward(ctx, c, account, body)
@@ -1041,7 +1041,7 @@ func TestOpenAIGatewayService_OAuthLegacy_GroupForceOpenAIFastInjectsMissingTier
 		Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	result, err := svc.Forward(ctx, c, account, inputBody)
@@ -1075,7 +1075,7 @@ func TestOpenAIGatewayService_OAuthLegacy_GroupForceStillHonorsGlobalFilter(t *t
 		Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	result, err := svc.Forward(ctx, c, account, inputBody)

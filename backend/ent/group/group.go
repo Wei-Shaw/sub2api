@@ -120,10 +120,12 @@ const (
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
 	// FieldAllowLive holds the string denoting the allow_live field in the database.
 	FieldAllowLive = "allow_live"
-	// FieldForceOpenaiFast holds the string denoting the force_openai_fast field in the database.
-	FieldForceOpenaiFast = "force_openai_fast"
+	// FieldForcedServiceTier holds the string denoting the forced_service_tier field in the database.
+	FieldForcedServiceTier = "forced_service_tier"
 	// FieldFreeOpenaiFast holds the string denoting the free_openai_fast field in the database.
 	FieldFreeOpenaiFast = "free_openai_fast"
+	// FieldFreeOpenaiUltrafast holds the string denoting the free_openai_ultrafast field in the database.
+	FieldFreeOpenaiUltrafast = "free_openai_ultrafast"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
@@ -277,8 +279,9 @@ var Columns = []string{
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
 	FieldAllowLive,
-	FieldForceOpenaiFast,
+	FieldForcedServiceTier,
 	FieldFreeOpenaiFast,
+	FieldFreeOpenaiUltrafast,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
@@ -403,10 +406,12 @@ var (
 	DefaultAllowMessagesDispatch bool
 	// DefaultAllowLive holds the default value on creation for the "allow_live" field.
 	DefaultAllowLive bool
-	// DefaultForceOpenaiFast holds the default value on creation for the "force_openai_fast" field.
-	DefaultForceOpenaiFast bool
+	// DefaultForcedServiceTier holds the default value on creation for the "forced_service_tier" field.
+	DefaultForcedServiceTier string
 	// DefaultFreeOpenaiFast holds the default value on creation for the "free_openai_fast" field.
 	DefaultFreeOpenaiFast bool
+	// DefaultFreeOpenaiUltrafast holds the default value on creation for the "free_openai_ultrafast" field.
+	DefaultFreeOpenaiUltrafast bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
@@ -684,14 +689,19 @@ func ByAllowLive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowLive, opts...).ToFunc()
 }
 
-// ByForceOpenaiFast orders the results by the force_openai_fast field.
-func ByForceOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldForceOpenaiFast, opts...).ToFunc()
+// ByForcedServiceTier orders the results by the forced_service_tier field.
+func ByForcedServiceTier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForcedServiceTier, opts...).ToFunc()
 }
 
 // ByFreeOpenaiFast orders the results by the free_openai_fast field.
 func ByFreeOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFreeOpenaiFast, opts...).ToFunc()
+}
+
+// ByFreeOpenaiUltrafast orders the results by the free_openai_ultrafast field.
+func ByFreeOpenaiUltrafast(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFreeOpenaiUltrafast, opts...).ToFunc()
 }
 
 // ByRequireOauthOnly orders the results by the require_oauth_only field.

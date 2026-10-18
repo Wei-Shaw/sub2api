@@ -290,14 +290,19 @@ func AllowLive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
 }
 
-// ForceOpenaiFast applies equality check predicate on the "force_openai_fast" field. It's identical to ForceOpenaiFastEQ.
-func ForceOpenaiFast(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
+// ForcedServiceTier applies equality check predicate on the "forced_service_tier" field. It's identical to ForcedServiceTierEQ.
+func ForcedServiceTier(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForcedServiceTier, v))
 }
 
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
+}
+
+// FreeOpenaiUltrafast applies equality check predicate on the "free_openai_ultrafast" field. It's identical to FreeOpenaiUltrafastEQ.
+func FreeOpenaiUltrafast(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiUltrafast, v))
 }
 
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
@@ -2285,14 +2290,69 @@ func AllowLiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
 }
 
-// ForceOpenaiFastEQ applies the EQ predicate on the "force_openai_fast" field.
-func ForceOpenaiFastEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
+// ForcedServiceTierEQ applies the EQ predicate on the "forced_service_tier" field.
+func ForcedServiceTierEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForcedServiceTier, v))
 }
 
-// ForceOpenaiFastNEQ applies the NEQ predicate on the "force_openai_fast" field.
-func ForceOpenaiFastNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiFast, v))
+// ForcedServiceTierNEQ applies the NEQ predicate on the "forced_service_tier" field.
+func ForcedServiceTierNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierIn applies the In predicate on the "forced_service_tier" field.
+func ForcedServiceTierIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldForcedServiceTier, vs...))
+}
+
+// ForcedServiceTierNotIn applies the NotIn predicate on the "forced_service_tier" field.
+func ForcedServiceTierNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldForcedServiceTier, vs...))
+}
+
+// ForcedServiceTierGT applies the GT predicate on the "forced_service_tier" field.
+func ForcedServiceTierGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierGTE applies the GTE predicate on the "forced_service_tier" field.
+func ForcedServiceTierGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierLT applies the LT predicate on the "forced_service_tier" field.
+func ForcedServiceTierLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierLTE applies the LTE predicate on the "forced_service_tier" field.
+func ForcedServiceTierLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierContains applies the Contains predicate on the "forced_service_tier" field.
+func ForcedServiceTierContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierHasPrefix applies the HasPrefix predicate on the "forced_service_tier" field.
+func ForcedServiceTierHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierHasSuffix applies the HasSuffix predicate on the "forced_service_tier" field.
+func ForcedServiceTierHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierEqualFold applies the EqualFold predicate on the "forced_service_tier" field.
+func ForcedServiceTierEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldForcedServiceTier, v))
+}
+
+// ForcedServiceTierContainsFold applies the ContainsFold predicate on the "forced_service_tier" field.
+func ForcedServiceTierContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldForcedServiceTier, v))
 }
 
 // FreeOpenaiFastEQ applies the EQ predicate on the "free_openai_fast" field.
@@ -2303,6 +2363,16 @@ func FreeOpenaiFastEQ(v bool) predicate.Group {
 // FreeOpenaiFastNEQ applies the NEQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiFast, v))
+}
+
+// FreeOpenaiUltrafastEQ applies the EQ predicate on the "free_openai_ultrafast" field.
+func FreeOpenaiUltrafastEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiUltrafast, v))
+}
+
+// FreeOpenaiUltrafastNEQ applies the NEQ predicate on the "free_openai_ultrafast" field.
+func FreeOpenaiUltrafastNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiUltrafast, v))
 }
 
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.

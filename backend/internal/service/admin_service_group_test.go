@@ -224,7 +224,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: true, FallbackGroupID: &fallbackID,
 		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: true,
-		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
+		AllowMessagesDispatch: true, AllowLive: true, ForcedServiceTier: OpenAIFastTierPriority, RequireOAuthOnly: true,
 		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
 		CopyAccountsFromGroupIDs: []int64{2},
 	}
@@ -262,7 +262,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: &truth, FallbackGroupID: &fallbackID,
 		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: &truth,
-		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
+		AllowMessagesDispatch: &truth, AllowLive: &truth, ForcedServiceTier: ptrString(OpenAIFastTierPriority), RequireOAuthOnly: &truth,
 		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
 		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},
 	}
@@ -1340,31 +1340,31 @@ func TestAdminService_CreateGroup_NormalizesForceOpenAIFastByPlatform(t *testing
 	for _, tt := range []struct {
 		name     string
 		platform string
-		want     bool
+		wantTier string
 	}{
-		{name: "openai", platform: PlatformOpenAI, want: true},
-		{name: "composite", platform: PlatformComposite, want: true},
-		{name: "anthropic", platform: PlatformAnthropic, want: false},
+		{name: "openai", platform: PlatformOpenAI, wantTier: OpenAIFastTierPriority},
+		{name: "composite", platform: PlatformComposite, wantTier: OpenAIFastTierPriority},
+		{name: "anthropic", platform: PlatformAnthropic, wantTier: ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &groupRepoStubForAdmin{}
 			svc := &adminServiceImpl{groupRepo: repo}
 
 			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-				Name: "fast-" + tt.name, Platform: tt.platform, RateMultiplier: 1, ForceOpenAIFast: true, FreeOpenAIFast: true,
+				Name: "fast-" + tt.name, Platform: tt.platform, RateMultiplier: 1, ForcedServiceTier: OpenAIFastTierPriority, FreeOpenAIFast: true,
 			})
 
 			require.NoError(t, err)
 			require.NotNil(t, group)
-			require.Equal(t, tt.want, repo.created.ForceOpenAIFast)
-			require.Equal(t, tt.want, repo.created.FreeOpenAIFast)
+			require.Equal(t, tt.wantTier, repo.created.ForcedServiceTier)
+			require.Equal(t, tt.wantTier == OpenAIFastTierPriority, repo.created.FreeOpenAIFast)
 		})
 	}
 }
 
 func TestAdminService_UpdateGroup_ClearsForceOpenAIFastWhenPlatformChanges(t *testing.T) {
 	existingGroup := &Group{
-		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true, FreeOpenAIFast: true,
+		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive, ForcedServiceTier: OpenAIFastTierPriority, FreeOpenAIFast: true,
 	}
 	repo := &groupRepoStubForAdmin{getByID: existingGroup}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -1375,7 +1375,7 @@ func TestAdminService_UpdateGroup_ClearsForceOpenAIFastWhenPlatformChanges(t *te
 
 	require.NoError(t, err)
 	require.NotNil(t, group)
-	require.False(t, repo.updated.ForceOpenAIFast)
+	require.Empty(t, repo.updated.ForcedServiceTier)
 	require.False(t, repo.updated.FreeOpenAIFast)
 }
 
@@ -1389,13 +1389,13 @@ func TestAdminService_UpdateGroup_ForceOpenAIFastInvalidatesAuthCache(t *testing
 	enabled := true
 
 	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
-		ForceOpenAIFast: &enabled,
-		FreeOpenAIFast:  &enabled,
+		ForcedServiceTier: ptrString(OpenAIFastTierPriority),
+		FreeOpenAIFast:    &enabled,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, group)
-	require.True(t, repo.updated.ForceOpenAIFast)
+	require.Equal(t, OpenAIFastTierPriority, repo.updated.ForcedServiceTier)
 	require.True(t, repo.updated.FreeOpenAIFast)
 	require.Equal(t, []int64{existingGroup.ID}, invalidator.groupIDs)
 }

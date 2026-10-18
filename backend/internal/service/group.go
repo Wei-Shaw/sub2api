@@ -101,10 +101,11 @@ type Group struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
-	ForceOpenAIFast             bool // 强制 OpenAI 网关请求使用 service_tier=priority
-	FreeOpenAIFast              bool // OpenAI Fast 请求按 Standard 价格向用户计费
-	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
-	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
+	ForcedServiceTier           string // 强制 OpenAI 网关请求使用的 service_tier；空字符串表示跟随请求
+	FreeOpenAIFast              bool   // OpenAI Fast 请求按 Standard 价格向用户计费
+	FreeOpenAIUltrafast         bool   // OpenAI UltraFast 请求按 Standard 价格向用户计费
+	RequireOAuthOnly            bool   // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
+	RequirePrivacySet           bool   // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelAllowlist              GroupModelAllowlist

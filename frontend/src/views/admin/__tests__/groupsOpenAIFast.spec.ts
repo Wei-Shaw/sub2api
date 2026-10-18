@@ -22,19 +22,20 @@ describe("groupsOpenAIFast", () => {
   });
 
   it("provides localized switch labels", () => {
-    expect(zh.groups.openaiFast).toMatchObject({
+    const labels = {
       title: expect.any(String),
-      force: expect.any(String),
-      hint: expect.stringContaining("service_tier=priority"),
+      tier: expect.any(String),
+      tierFollow: expect.any(String),
+      tierStandard: expect.any(String),
+      tierFast: expect.any(String),
+      tierUltrafast: expect.any(String),
+      hint: expect.stringContaining("service_tier"),
       free: expect.any(String),
       freeHint: expect.stringContaining("Standard"),
-    });
-    expect(en.groups.openaiFast).toMatchObject({
-      title: expect.any(String),
-      force: expect.any(String),
-      hint: expect.stringContaining("service_tier=priority"),
-      free: expect.any(String),
-      freeHint: expect.stringContaining("Standard"),
-    });
+      freeUltrafast: expect.any(String),
+      freeUltrafastHint: expect.stringContaining("Standard"),
+    };
+    expect(zh.groups.openaiFast).toMatchObject(labels);
+    expect(en.groups.openaiFast).toMatchObject(labels);
   });
 });
