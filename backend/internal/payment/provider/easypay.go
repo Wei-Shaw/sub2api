@@ -33,7 +33,12 @@ const (
 	tradeStatusSuccess     = "TRADE_SUCCESS"
 	signTypeMD5            = "MD5"
 	paymentModePopup       = "popup"
-	deviceMobile           = "mobile"
+	// easypayConfirmNotifyDisabled turns off the upstream order query that
+	// ConfirmNotification runs before crediting. Gateways that only implement
+	// the submit/notify half of the EasyPay protocol (no api.php?act=order),
+	// such as BEpusdt's EasyPay compatibility mode, cannot be confirmed.
+	easypayConfirmNotifyDisabled = "disabled"
+	deviceMobile                 = "mobile"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -50,7 +55,7 @@ type easyPayCustomMethod struct {
 }
 
 // NewEasyPay creates a new EasyPay provider.
-// config keys: pid, pkey, apiBase, notifyUrl, returnUrl, cid, cidAlipay, cidWxpay
+// config keys: pid, pkey, apiBase, notifyUrl, returnUrl, cid, cidAlipay, cidWxpay, confirmNotify
 func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	for _, k := range []string{"pid", "pkey", "apiBase", "notifyUrl", "returnUrl"} {
 		if strings.TrimSpace(config[k]) == "" {
@@ -341,7 +346,7 @@ func (e *EasyPay) queryOrder(ctx context.Context, outTradeNo string) (*easyPayQu
 	for k, v := range params {
 		query.Set(k, v)
 	}
-	body, err := e.post(ctx, e.apiBase()+"/api.php?"+query.Encode(), params)
+	body, httpStatus, err := e.postRaw(ctx, e.apiBase()+"/api.php?"+query.Encode(), params)
 	if err != nil {
 		// The request URL carries the merchant key; never let it reach logs
 		// or audit records through *url.Error.
@@ -350,6 +355,15 @@ func (e *EasyPay) queryOrder(ctx context.Context, outTradeNo string) (*easyPayQu
 			err = urlErr.Err
 		}
 		return nil, fmt.Errorf("easypay query: %w", err)
+	}
+	// Report HTTP failures as such instead of as a JSON decode error of the
+	// error page (e.g. "404 page not found" decodes as the number 404 followed
+	// by "invalid character 'p' after top-level value").
+	if httpStatus < http.StatusOK || httpStatus >= http.StatusMultipleChoices {
+		if httpStatus == http.StatusNotFound {
+			return nil, fmt.Errorf("easypay query: upstream returned HTTP 404 for api.php (order query not supported by this gateway?): %s", summarizeEasyPayResponse(body))
+		}
+		return nil, fmt.Errorf("easypay query: upstream returned HTTP %d: %s", httpStatus, summarizeEasyPayResponse(body))
 	}
 	// Scalars are decoded leniently: PHP deployments commonly serialize
 	// integer columns as strings ("status":"1").
@@ -414,6 +428,9 @@ func (e *EasyPay) ConfirmNotification(ctx context.Context, n *payment.PaymentNot
 	if n == nil || n.Status != payment.NotificationStatusSuccess {
 		return nil
 	}
+	if e.confirmNotifyDisabled() {
+		return nil
+	}
 	result, err := e.queryOrder(ctx, n.OrderID)
 	if err != nil {
 		return fmt.Errorf("easypay confirm: %w", err)
@@ -432,6 +449,16 @@ func (e *EasyPay) ConfirmNotification(ctx context.Context, n *payment.PaymentNot
 		n.TradeNo = result.tradeNo
 	}
 	return nil
+}
+
+// confirmNotifyDisabled reports whether the instance opted out of upstream
+// confirmation. The signed notification is still verified (signature, pid,
+// amount against the order) before fulfillment.
+func (e *EasyPay) confirmNotifyDisabled() bool {
+	if e == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(e.config["confirmNotify"]), easypayConfirmNotifyDisabled)
 }
 
 func easyPayJSONScalar(raw json.RawMessage) string {
