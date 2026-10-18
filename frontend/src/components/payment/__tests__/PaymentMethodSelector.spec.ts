@@ -48,6 +48,29 @@ describe('PaymentMethodSelector', () => {
     expect(wrapper.text()).not.toContain('payment.methods.ldc')
   })
 
+  it('uses a configured custom icon URL as the method icon', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'usdt',
+        methods: [{ type: 'usdt', display_name: 'USDT', icon: 'https://cdn.example.com/usdt.svg', fee_rate: 0, available: true }],
+      },
+    })
+
+    expect(wrapper.get('img').attributes('src')).toBe('https://cdn.example.com/usdt.svg')
+  })
+
+  it('falls back to the default icon when no custom icon is configured', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'usdt',
+        methods: [{ type: 'usdt', display_name: 'USDT', fee_rate: 0, available: true }],
+      },
+    })
+
+    // Non-built-in types with no icon resolve to the bundled default payment icon.
+    expect(wrapper.get('img').attributes('src')).not.toBe('')
+  })
+
   it('uses the generic selected style for custom methods that contain built-in names', () => {
     const wrapper = mount(PaymentMethodSelector, {
       props: {

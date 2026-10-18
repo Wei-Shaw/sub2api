@@ -863,6 +863,8 @@ export default {
         customMethodUpstreamType: 'Upstream type',
         customMethodDisplayName: 'Display name',
         customMethodDisplayNamePlaceholder: 'e.g. Credit card',
+        customMethodIcon: 'Icon URL',
+        customMethodIconPlaceholder: 'e.g. https://example.com/usdt.svg',
         stripeWebhookHint: 'Configure the following URL as a Webhook endpoint in Stripe Dashboard:',
         stripeWebhookApiVersionHint: 'Set this Webhook endpoint API version to match the integrated Stripe SDK. Recommended: {version}. A mismatch can cause webhook parsing errors.',
         airwallexWebhookHint: 'Configure the following URL as a Webhook endpoint in Airwallex. Select at least Payment Intent -> Succeeded (payment_intent.succeeded), preferably also Payment Intent -> Cancelled (payment_intent.cancelled). Use the account default or latest stable API version.',

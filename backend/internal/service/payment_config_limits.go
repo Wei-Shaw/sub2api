@@ -33,6 +33,7 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 		}
 		ml := pcAggregateMethodLimits(pt, insts)
 		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, insts)
+		ml.Icon = s.pcAggregateMethodIcon(pt, insts)
 		ml.Currency = currency
 		resp.Methods[ml.PaymentType] = ml
 	}
@@ -96,6 +97,7 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 		}
 		ml := pcAggregateMethodLimits(pt, matching)
 		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, matching)
+		ml.Icon = s.pcAggregateMethodIcon(pt, matching)
 		ml.Currency = currency
 		result = append(result, ml)
 	}
@@ -169,6 +171,7 @@ func (s *PaymentConfigService) pcInstancePaymentCurrency(inst *dbent.PaymentProv
 type easyPayCustomMethodDisplayConfig struct {
 	Type        string `json:"type"`
 	DisplayName string `json:"displayName"`
+	Icon        string `json:"icon"`
 }
 
 func (s *PaymentConfigService) pcAggregateMethodDisplayName(pt string, instances []*dbent.PaymentProviderInstance) string {
@@ -208,6 +211,48 @@ func (s *PaymentConfigService) pcInstanceEasyPayCustomMethodDisplayName(inst *db
 	for _, method := range methods {
 		if strings.TrimSpace(method.Type) == pt {
 			return strings.TrimSpace(method.DisplayName)
+		}
+	}
+	return ""
+}
+
+func (s *PaymentConfigService) pcAggregateMethodIcon(pt string, instances []*dbent.PaymentProviderInstance) string {
+	pt = strings.TrimSpace(pt)
+	if pt == "" {
+		return ""
+	}
+	for _, inst := range instances {
+		icon := s.pcInstanceEasyPayCustomMethodIcon(inst, pt)
+		if icon != "" {
+			return icon
+		}
+	}
+	return ""
+}
+
+func (s *PaymentConfigService) pcInstanceEasyPayCustomMethodIcon(inst *dbent.PaymentProviderInstance, pt string) string {
+	if inst == nil || inst.ProviderKey != payment.TypeEasyPay {
+		return ""
+	}
+	cfg := map[string]string{}
+	if s != nil {
+		decrypted, err := s.decryptConfig(inst.Config)
+		if err == nil && decrypted != nil {
+			cfg = decrypted
+		}
+	}
+	raw := strings.TrimSpace(cfg["customMethods"])
+	if raw == "" {
+		return ""
+	}
+
+	var methods []easyPayCustomMethodDisplayConfig
+	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+		return ""
+	}
+	for _, method := range methods {
+		if strings.TrimSpace(method.Type) == pt {
+			return strings.TrimSpace(method.Icon)
 		}
 	}
 	return ""
