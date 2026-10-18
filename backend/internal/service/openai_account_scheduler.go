@@ -139,6 +139,7 @@ type openAIAccountSchedulerMetrics struct {
 }
 
 type openAIAccountLoadPlan struct {
+	qualityContext            context.Context
 	allCandidates             []openAIAccountCandidateScore
 	candidates                []openAIAccountCandidateScore
 	staleSnapshotCompactRetry []openAIAccountCandidateScore
@@ -561,6 +562,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	if !req.PreserveStickyBinding && !req.DisableStickyEscape && s.service.accountQuality.shouldEscapeSticky(ctx, req.GroupID, req.RequestedModel, accountID) {
+		clearBinding()
+		return nil, false, nil
+	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape && !req.DisableStickyEscape {
 		slog.Info("sticky_escape_triggered",
@@ -654,14 +659,15 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int6
 }
 
 type openAIAccountCandidateScore struct {
-	account   *Account
-	loadInfo  *AccountLoadInfo
-	loadKnown bool
-	score     float64
-	priority  int
-	errorRate float64
-	ttft      float64
-	hasTTFT   bool
+	account       *Account
+	loadInfo      *AccountLoadInfo
+	loadKnown     bool
+	score         float64
+	qualityWeight float64
+	priority      int
+	errorRate     float64
+	ttft          float64
+	hasTTFT       bool
 }
 
 type openAIAccountCandidateHeap []openAIAccountCandidateScore
@@ -820,6 +826,9 @@ func buildOpenAIWeightedSelectionOrder(
 	for i := range pool {
 		// 将 top-K 分值平移到正区间，避免“单一最高分账号”长期垄断。
 		weight := (pool[i].score - minScore) + 1.0
+		if pool[i].qualityWeight > 0 {
+			weight = pool[i].qualityWeight
+		}
 		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight <= 0 {
 			weight = 1.0
 		}
@@ -828,6 +837,20 @@ func buildOpenAIWeightedSelectionOrder(
 
 	order := make([]openAIAccountCandidateScore, 0, len(pool))
 	rng := newOpenAISelectionRNG(deriveOpenAISelectionSeed(req))
+	qualityApplied := false
+	for _, c := range pool {
+		if c.qualityWeight > 0 {
+			qualityApplied = true
+			break
+		}
+	}
+	if qualityApplied {
+		indices := qualityWeightedPermutation(weights, rng.nextFloat64)
+		for _, i := range indices {
+			order = append(order, pool[i])
+		}
+		return order
+	}
 	for len(pool) > 0 {
 		total := 0.0
 		for _, w := range weights {
@@ -1047,6 +1070,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		plan.topK = 1
 	}
 
+	s.applyAccountQuality(ctx, req, &plan)
 	plan.selectionOrder = s.buildOpenAISelectionOrder(req, plan)
 	return plan
 }
@@ -1072,6 +1096,9 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 				}
 				for i, candidate := range ranked {
 					if candidate.account != nil && candidate.account.ID == stickyID {
+						if !req.PreserveStickyBinding && !req.DisableStickyEscape && s.service.accountQuality.shouldEscapeSticky(plan.qualityContext, req.GroupID, req.RequestedModel, stickyID) {
+							continue
+						}
 						primary = append([]openAIAccountCandidateScore{candidate}, ranked[:i]...)
 						primary = append(primary, ranked[i+1:]...)
 						break
@@ -2081,6 +2108,9 @@ func (s *OpenAIGatewayService) getOpenAIAccountScheduler(ctx context.Context) Op
 	if !s.isOpenAIAdvancedSchedulerEnabled(ctx) {
 		return nil
 	}
+	return s.ensureOpenAIAccountScheduler()
+}
+func (s *OpenAIGatewayService) ensureOpenAIAccountScheduler() OpenAIAccountScheduler {
 	s.openaiSchedulerOnce.Do(func() {
 		if s.openaiAccountStats == nil {
 			s.openaiAccountStats = newOpenAIAccountRuntimeStats()
@@ -2330,6 +2360,12 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {
+		if _, active := s.accountQuality.matchRouting(ctx, groupID, requestedModel); active {
+			scheduler = s.ensureOpenAIAccountScheduler()
+			s.qualitySchedulerInitialized.Store(true)
+		}
+	}
+	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if selection, hit, err := s.selectLegacyAccountByPreviousResponse(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform); err != nil {
 			return nil, decision, err
@@ -2448,7 +2484,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
-	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+	selection, decision, selectErr := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
 		Platform:                platform,
 		SessionHash:             sessionHash,
@@ -2469,6 +2505,10 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
 	})
+	if selectErr == nil && selection != nil && selection.Account != nil {
+		s.accountQuality.recordRouting(ctx, groupID, requestedModel, selection.Account.ID, decision.Layer)
+	}
+	return selection, decision, selectErr
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {
@@ -2530,6 +2570,9 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
 	}
 	scheduler := s.getOpenAIAccountScheduler(context.Background())
+	if scheduler == nil && s.qualitySchedulerInitialized.Load() {
+		scheduler = s.ensureOpenAIAccountScheduler()
+	}
 	if scheduler == nil {
 		return healthTripped
 	}
@@ -3161,4 +3204,28 @@ func calcLoadSkewByMoments(sum float64, sumSquares float64, count int) float64 {
 		variance = 0
 	}
 	return math.Sqrt(variance)
+}
+
+func (s *defaultOpenAIAccountScheduler) applyAccountQuality(ctx context.Context, req OpenAIAccountScheduleRequest, plan *openAIAccountLoadPlan) {
+	group, ok := s.service.accountQuality.matchRouting(ctx, req.GroupID, req.RequestedModel)
+	if !ok || len(plan.candidates) == 0 {
+		return
+	}
+	minScore := plan.candidates[0].score
+	for _, c := range plan.candidates {
+		if c.score < minScore {
+			minScore = c.score
+		}
+	}
+	for i := range plan.candidates {
+		c := &plan.candidates[i]
+		m := group.Weights[c.account.ID].Multiplier
+		if m <= 0 {
+			m = 1
+		}
+		c.qualityWeight = ((c.score - minScore) + 1) * m
+		c.score = c.qualityWeight
+	}
+	plan.topK = len(plan.candidates)
+	plan.qualityContext = ctx
 }

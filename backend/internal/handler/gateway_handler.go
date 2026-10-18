@@ -347,6 +347,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
+			c.Request = c.Request.WithContext(service.WithAccountQualityBodyScope(c.Request.Context(), reqModel, body, c.Request.URL.Path))
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if failoverClientGone(c) {
@@ -681,6 +682,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
+			c.Request = c.Request.WithContext(service.WithAccountQualityBodyScope(c.Request.Context(), reqModel, body, c.Request.URL.Path))
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if failoverClientGone(c) {

@@ -469,6 +469,17 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		return nil, false, nil
 	}
 
+	if !entry.QualityScopeKnown {
+		if scope, ok := ctx.Value(accountQualityScopeKey{}).(AccountQualityRequestScope); ok && scope.Endpoint != "" {
+			entry.QualityReasoningEffort = scope.Effort
+			if entry.QualityReasoningEffort == "" {
+				entry.QualityReasoningEffort = "unspecified"
+			}
+			entry.QualityServiceTier = scope.ServiceTier
+			entry.QualityScopeKnown = true
+		}
+	}
+
 	// Ensure timestamps are always populated.
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now()

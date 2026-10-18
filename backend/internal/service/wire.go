@@ -855,7 +855,15 @@ func ProvideAPIKeyService(
 }
 
 // ProviderSet is the Wire provider set for all services
+func ProvideAccountQualityService(repo AccountQualityRepository, tester *AccountTestService, ops *OpsService) *AccountQualityService {
+	svc := NewAccountQualityService(repo, tester)
+	svc.ops = ops
+	svc.Start()
+	return svc
+}
+
 var ProviderSet = wire.NewSet(
+	ProvideAccountQualityService,
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,

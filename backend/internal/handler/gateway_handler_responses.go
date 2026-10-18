@@ -187,6 +187,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if failoverClientGone(c) {
 			return
 		}
+		requestCtx = service.WithAccountQualityBodyScope(requestCtx, reqModel, parsedReq.Body.Bytes(), c.Request.URL.Path)
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if failoverClientGone(c) {

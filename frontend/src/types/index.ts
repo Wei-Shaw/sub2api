@@ -1375,6 +1375,16 @@ export interface Account {
 // operations still use Account from /admin/accounts/:id.
 export type AccountListItem = Omit<Account, 'groups'>
 
+// Shared capacity data for account lists and grouped account cards.
+export type AccountCapacityData = Omit<Pick<Account,
+  | 'platform' | 'type' | 'concurrency' | 'current_concurrency'
+  | 'window_cost_limit' | 'window_cost_sticky_reserve' | 'current_window_cost'
+  | 'max_sessions' | 'session_idle_timeout_minutes' | 'active_sessions'
+  | 'base_rpm' | 'rpm_strategy' | 'rpm_sticky_buffer' | 'current_rpm'
+  | 'quota_limit' | 'quota_used' | 'quota_daily_limit' | 'quota_daily_used'
+  | 'quota_weekly_limit' | 'quota_weekly_used'
+>, 'current_concurrency'> & { current_concurrency?: number | null }
+
 export interface AccountSchedulerGroupScore {
   group_id?: number | null
   group_name?: string

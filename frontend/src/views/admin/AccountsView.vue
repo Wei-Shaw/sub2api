@@ -1,6 +1,24 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <div class="mb-5 flex justify-end gap-1"><button class="btn" :class="groupedView ? 'btn-primary' : 'btn-secondary'" @click="groupedView = true">{{ t('accountQuality.groupView') }}</button><button class="btn" :class="!groupedView ? 'btn-primary' : 'btn-secondary'" @click="groupedView = false">{{ t('accountQuality.listView') }}</button></div>
+    <div v-if="groupedView"><AccountBulkActionsBar v-if="selIds.length" :hide-filtered-controls="true"
+          :selected-ids="selIds"
+          :total-results="selIds.length"
+          :selecting-all="selectingAllResults"
+          :all-results-selected="allResultsSelected"
+          @delete="handleBulkDelete"
+          @reset-status="handleBulkResetStatus"
+          @refresh-token="handleBulkRefreshToken"
+          @probe-upstream-billing="handleBulkProbeUpstreamBilling"
+          @edit-selected="openBulkEditSelected"
+          @edit-filtered="openBulkEditFiltered"
+          @clear="clearSelection"
+          @select-page="selectPage"
+          @select-all-results="handleSelectAllResults"
+          @toggle-schedulable="handleBulkToggleSchedulable"
+        />
+<AccountQualityGroups :refresh-token="qualityRevision" :selected-ids="selIds" @selection="handleQualitySelection" @create="showCreate=true" @edit="id=>handleEdit({id} as AccountListItem)" @test="id=>handleTest({id} as AccountListItem)" @scheduling-change="(id, schedulable) => updateSchedulableInList([id], schedulable)"/></div>
+    <TablePageLayout v-else>
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
@@ -508,6 +526,8 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
+import type {QualityAccount} from '@/api/admin/accountQuality'
+import AccountQualityGroups from '@/components/admin/account/AccountQualityGroups.vue'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
@@ -540,6 +560,9 @@ import { formatMultiplier } from '@/utils/formatters'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
+const groupedView = ref(true)
+const qualitySelectedRows=ref<AccountListItem[]>([])
+const qualityRevision=ref(0)
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
@@ -578,7 +601,7 @@ type AccountBulkEditTarget =
     }
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
-    accounts.value
+    [...accounts.value,...qualitySelectedRows.value]
       .filter(a => isSelected(a.id))
       .map(a => a.platform)
   )
@@ -586,7 +609,7 @@ const selPlatforms = computed<AccountPlatform[]>(() => {
 })
 const selTypes = computed<AccountType[]>(() => {
   const types = new Set(
-    accounts.value
+    [...accounts.value,...qualitySelectedRows.value]
       .filter(a => isSelected(a.id))
       .map(a => a.type)
   )
@@ -1116,6 +1139,8 @@ const {
   getId: (account) => account.id
 })
 
+function handleQualitySelection(rows:QualityAccount[]){qualitySelectedRows.value=rows as unknown as AccountListItem[];setSelectedIds(rows.map(row=>row.id))}
+watch(groupedView,()=>{setSelectedIds([]);qualitySelectedRows.value=[]})
 const selectingAllResults = ref(false)
 const selectedAllResultIDs = ref<Set<number> | null>(null)
 const selectionRequestVersion = ref(0)
@@ -1166,6 +1191,7 @@ const load = async (options: AccountLoadOptions = {}) => {
   pendingTodayStatsRefresh.value = false
   requestParams.lite = '1'
   await baseLoad()
+ qualityRevision.value++
   if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
 }
 
@@ -1175,6 +1201,7 @@ const reload = async () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
+ qualityRevision.value++
   await refreshTodayStatsBatch()
 }
 

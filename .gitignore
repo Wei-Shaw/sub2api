@@ -161,3 +161,7 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+# Account quality implementation notes and third-party attribution
+!docs/ACCOUNT_QUALITY_LOCAL.md
+!docs/ACCOUNT_QUALITY_LICENSES.md
+!docs/ACCOUNT_QUALITY_COMPLETION_AUDIT.md
