@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
+import paymentIcon from '@/assets/icons/payment.svg'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -67,8 +68,7 @@ describe('PaymentMethodSelector', () => {
       },
     })
 
-    // Non-built-in types with no icon resolve to the bundled default payment icon.
-    expect(wrapper.get('img').attributes('src')).not.toBe('')
+    expect(wrapper.get('img').attributes('src')).toBe(paymentIcon)
   })
 
   it('uses the generic selected style for custom methods that contain built-in names', () => {

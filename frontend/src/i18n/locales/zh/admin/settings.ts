@@ -852,7 +852,7 @@ export default {
         field_cidAlipay: '支付宝渠道 ID',
         field_cidWxpay: '微信渠道 ID',
         easypayCustomMethods: '易支付自定义支付方式',
-        easypayCustomMethodsHint: '添加当前易支付服务商额外支持的支付方式。支付方式会记录到 Sub2API 订单中，上游 type 会作为易支付 type 参数提交。图标为可选项——填写 http(s) 图片地址或 data:image URI，留空则使用默认图标。',
+        easypayCustomMethodsHint: '添加当前易支付服务商额外支持的支付方式。支付方式会记录到 Sub2API 订单中，上游 type 会作为易支付 type 参数提交。图标为可选项——填写 https 图片地址或 data:image URI，留空则使用默认图标。',
         addCustomMethod: '添加方式',
         customMethodType: '支付方式',
         customMethodUpstreamType: '上游 type',

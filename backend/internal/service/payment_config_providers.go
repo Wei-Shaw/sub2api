@@ -263,7 +263,7 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type cannot start with alipay or wxpay")
 		}
 		if icon := strings.TrimSpace(method.Icon); icon != "" && !isValidEasyPayCustomMethodIcon(icon) {
-			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods icon must be an http(s) URL or a data:image URI")
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods icon must be an https URL or a data:image URI")
 		}
 		if _, exists := customTypes[method.Type]; exists {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "duplicate customMethods type")
@@ -291,8 +291,9 @@ func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
 }
 
 // isValidEasyPayCustomMethodIcon reports whether an optional custom-method icon
-// is safe to render in an <img src>. Only http(s) URLs and data:image URIs are
-// allowed, which excludes schemes such as javascript: or data:text/html.
+// is safe to render in an <img src>. Only https URLs and data:image URIs are
+// allowed: this excludes schemes such as javascript: or data:text/html, and
+// plain http images, which the default CSP (img-src https: data:) would block.
 func isValidEasyPayCustomMethodIcon(icon string) bool {
 	if strings.HasPrefix(strings.ToLower(icon), "data:image/") {
 		return true
@@ -301,7 +302,7 @@ func isValidEasyPayCustomMethodIcon(icon string) bool {
 	if err != nil {
 		return false
 	}
-	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+	return u.Scheme == "https" && u.Host != ""
 }
 
 // UpdateProviderInstance updates a provider instance by ID (patch semantics).

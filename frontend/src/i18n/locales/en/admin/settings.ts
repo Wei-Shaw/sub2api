@@ -857,7 +857,7 @@ export default {
         field_cidAlipay: 'Alipay Channel ID',
         field_cidWxpay: 'WeChat Channel ID',
         easypayCustomMethods: 'Custom EasyPay methods',
-        easypayCustomMethodsHint: 'Add provider-specific methods supported by this EasyPay endpoint. The payment type is stored on Sub2API orders; the upstream type is sent as EasyPay type. The icon is optional — provide an http(s) image URL or a data:image URI, otherwise the default icon is used.',
+        easypayCustomMethodsHint: 'Add provider-specific methods supported by this EasyPay endpoint. The payment type is stored on Sub2API orders; the upstream type is sent as EasyPay type. The icon is optional — provide an https image URL or a data:image URI, otherwise the default icon is used.',
         addCustomMethod: 'Add method',
         customMethodType: 'Payment type',
         customMethodUpstreamType: 'Upstream type',
