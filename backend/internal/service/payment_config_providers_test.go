@@ -114,6 +114,18 @@ func TestValidateProviderRequest(t *testing.T) {
 	}
 }
 
+func TestValidateEasyPayConfirmNotify(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"", "enabled", "disabled", " Disabled "} {
+		require.NoError(t, validateEasyPayConfirmNotify(map[string]string{"confirmNotify": value}), "confirmNotify=%q", value)
+	}
+	require.NoError(t, validateEasyPayConfirmNotify(nil))
+	err := validateEasyPayConfirmNotify(map[string]string{"confirmNotify": "off"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "confirmNotify must be enabled or disabled")
+}
+
 func TestValidateEasyPayCustomMethods(t *testing.T) {
 	t.Parallel()
 
