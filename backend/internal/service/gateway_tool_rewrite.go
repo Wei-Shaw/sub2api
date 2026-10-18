@@ -179,6 +179,10 @@ type toolNameSpan struct {
 //   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
 //   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
 //   - 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
+//   - 改写协议定义的 tool_reference.tool_name：
+//     $.messages[*].content[*].content[*]（type == "tool_result"），以及
+//     $.messages[*].content[*].content.tool_references[*]
+//     （type == "tool_search_tool_result" 且 content.type == "tool_search_tool_search_result"）
 //   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
 //
 // 响应侧 bytes.Replace 会连带还原假名 → 真名。
@@ -206,6 +210,19 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 		}
 		edits = append(edits, toolNameSpan{name.Index, name.Index + len(name.Raw), encoded})
 	}
+	// Only the direct items of a protocol-defined tool_reference container are
+	// references; tool inputs, outputs and nested payloads stay opaque.
+	addToolReferences := func(refs gjson.Result) {
+		if !refs.IsArray() {
+			return
+		}
+		refs.ForEach(func(_, ref gjson.Result) bool {
+			if ref.Get("type").String() == "tool_reference" {
+				addName(ref.Get("tool_name"))
+			}
+			return true
+		})
+	}
 
 	tools := gjson.GetBytes(body, "tools")
 	if tools.IsArray() {
@@ -224,8 +241,15 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 			content := msg.Get("content")
 			if content.IsArray() {
 				content.ForEach(func(_, block gjson.Result) bool {
-					if block.Get("type").String() == "tool_use" {
+					switch block.Get("type").String() {
+					case "tool_use":
 						addName(block.Get("name"))
+					case "tool_result":
+						addToolReferences(block.Get("content"))
+					case "tool_search_tool_result":
+						if result := block.Get("content"); result.Get("type").String() == "tool_search_tool_search_result" {
+							addToolReferences(result.Get("tool_references"))
+						}
 					}
 					return true
 				})

@@ -358,3 +358,123 @@ func BenchmarkApplyToolNameRewriteToBody_LongHistory(b *testing.B) {
 		_ = applyToolNameRewriteToBody(body, rw)
 	}
 }
+
+// Issue #1963: Claude Code style tool search returns tool_reference blocks in
+// tool_result.content. They must follow the renamed tools[] entries.
+func TestApplyToolNameRewriteToBody_ToolResultToolReference(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"Agent","input_schema":{}},{"name":"Bash","input_schema":{}},{"name":"Edit","input_schema":{}},{"name":"Read","input_schema":{}},{"name":"Skill","input_schema":{}},{"name":"ToolSearch","input_schema":{}},{"name":"WebFetch","input_schema":{},"defer_loading":true},{"name":"Write","input_schema":{}}],"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"ToolSearch","input":{"query":"select:WebFetch"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"WebFetch"}]}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	fakeWebFetch := rw.Forward["WebFetch"]
+	require.NotEmpty(t, fakeWebFetch)
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, fakeWebFetch, gjson.GetBytes(out, "tools.6.name").String())
+	require.Equal(t, rw.Forward["ToolSearch"], gjson.GetBytes(out, "messages.0.content.0.name").String())
+	require.Equal(t, fakeWebFetch, gjson.GetBytes(out, "messages.1.content.0.content.0.tool_name").String())
+	require.Equal(t, "select:WebFetch", gjson.GetBytes(out, "messages.0.content.0.input.query").String())
+}
+
+func TestApplyToolNameRewriteToBody_ToolSearchResultReferences(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"tool_search_tool_regex_20251119","name":"tool_search_tool_regex"},{"name":"get_weather","input_schema":{},"defer_loading":true},{"name":"search_files","input_schema":{},"defer_loading":true},{"name":"alpha","input_schema":{}},{"name":"beta","input_schema":{}},{"name":"gamma","input_schema":{}},{"name":"delta","input_schema":{}}],"messages":[{"role":"user","content":"weather?"},{"role":"assistant","content":[{"type":"server_tool_use","id":"srvtoolu_01","name":"tool_search_tool_regex","input":{"pattern":"weather"}},{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_01","content":{"type":"tool_search_tool_search_result","tool_references":[{"type":"tool_reference","tool_name":"get_weather"},{"type":"tool_reference","tool_name":"search_files"}]}},{"type":"tool_use","id":"toolu_01","name":"get_weather","input":{"location":"SF"}}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, 6)
+	require.NotContains(t, rw.Forward, "tool_search_tool_regex")
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	require.True(t, gjson.ValidBytes(out))
+	refs := "messages.1.content.1.content.tool_references"
+	require.Equal(t, rw.Forward["get_weather"], gjson.GetBytes(out, refs+".0.tool_name").String())
+	require.Equal(t, rw.Forward["search_files"], gjson.GetBytes(out, refs+".1.tool_name").String())
+	require.Equal(t, rw.Forward["get_weather"], gjson.GetBytes(out, "messages.1.content.2.name").String())
+	require.Equal(t, "tool_search_tool_regex", gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, "tool_search_tool_regex", gjson.GetBytes(out, "messages.1.content.0.name").String())
+}
+
+func TestApplyToolNameRewriteToBody_ToolReferencesUseStaticMapping(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"sessions_list","input_schema":{}},{"name":"session_get","input_schema":{}},{"name":"bash","input_schema":{}}],"messages":[{"role":"assistant","content":[{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_01","content":{"type":"tool_search_tool_search_result","tool_references":[{"type":"tool_reference","tool_name":"session_get"},{"type":"tool_reference","tool_name":"bash"}]}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"sessions_list"}]}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, 2)
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	require.True(t, gjson.ValidBytes(out))
+	refs := "messages.0.content.0.content.tool_references"
+	require.Equal(t, "cc_ses_get", gjson.GetBytes(out, refs+".0.tool_name").String())
+	require.Equal(t, "bash", gjson.GetBytes(out, refs+".1.tool_name").String())
+	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.1.content.0.content.0.tool_name").String())
+}
+
+func TestApplyToolNameRewriteToBody_ToolReferencesKeepUnknownAndServerNames(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"web_search_20250305","name":"web_search"},{"type":"tool_search_tool_bm25_20251119","name":"tool_search_tool_bm25"},{"name":"alpha","input_schema":{}},{"name":"beta","input_schema":{}},{"name":"gamma","input_schema":{}},{"name":"delta","input_schema":{}},{"name":"epsilon","input_schema":{}},{"name":"zeta","input_schema":{}}],"messages":[{"role":"assistant","content":[{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_01","content":{"type":"tool_search_tool_search_result","tool_references":[{"type":"tool_reference","tool_name":"web_search"},{"type":"tool_reference","tool_name":"missing_tool"}]}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"tool_search_tool_bm25"},{"type":"tool_reference","tool_name":"Alpha"}]}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, 6)
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
+}
+
+func TestApplyToolNameRewriteToBody_ToolReferencesLeaveOpaquePayloadsByteIdentical(t *testing.T) {
+	names := []string{"WebFetch", "Read", "Bash", "Grep", "Glob", "Write"}
+	// @Name@ marks the only spans that may change. Every other byte, including
+	// look-alike tool_reference objects outside protocol containers, must survive.
+	template := `{"tools":[{"type":"tool_search_tool_regex_20251119","name":"tool_search_tool_regex"},` +
+		`{"name":"@WebFetch@","input_schema":{"type":"object","properties":{"tool_name":{"type":"string","default":"WebFetch"}},"examples":[{"type":"tool_reference","tool_name":"WebFetch"}]},"defer_loading":true},` +
+		`{"name":"@Read@","input_schema":{}},{"name":"@Bash@","input_schema":{}},{"name":"@Grep@","input_schema":{}},{"name":"@Glob@","input_schema":{}},` +
+		`{"name":"@Write@","input_schema":{},"cache_control":{"type":"ephemeral","ttl":"5m"}}],` +
+		`"messages":[{"role":"user","content":"Find WebFetch"},` +
+		`{"role":"assistant","content":[` +
+		`{"type":"thinking","thinking":"use tool_reference WebFetch","signature":"sig-WebFetch"},` +
+		`{"type":"text","text":"{\"type\":\"tool_reference\",\"tool_name\":\"WebFetch\"}"},` +
+		`{"type":"tool_reference","tool_name":"WebFetch"},` +
+		`{"type":"server_tool_use","id":"srvtoolu_01","name":"tool_search_tool_regex","input":{"pattern":"WebFetch"}},` +
+		`{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_01","content":{"type":"tool_search_tool_search_result","tool_references":[{"type":"tool_reference","tool_name":"@Glob@"},{"type":"tool_reference","tool_name":"@Write@"}]}},` +
+		`{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_02","content":{"type":"tool_search_tool_result_error","error_code":"unavailable","tool_references":[{"type":"tool_reference","tool_name":"WebFetch"}]}},` +
+		`{"type":"tool_use","id":"toolu_01","name":"@Read@","input":{"type":"tool_reference","tool_name":"WebFetch","content":[{"type":"tool_reference","tool_name":"WebFetch"}]}}]},` +
+		`{"role":"user","content":[` +
+		`{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"@WebFetch@"},{"type":"text","text":"WebFetch","tool_name":"WebFetch"},{"type":"tool_reference","tool_name":"@Grep@"},{"type":"search_result","source":"s","title":"t","content":[{"type":"tool_reference","tool_name":"WebFetch"}]},{"type":"tool_reference","tool_name":"@WebFetch@"}]},` +
+		`{"type":"tool_result","tool_use_id":"toolu_02","content":"{\"type\":\"tool_reference\",\"tool_name\":\"WebFetch\"}"},` +
+		`{"type":"tool_result","tool_use_id":"toolu_03","content":{"type":"tool_reference","tool_name":"WebFetch"}},` +
+		`{"type":"mcp_tool_result","tool_use_id":"mcptoolu_01","content":[{"type":"tool_reference","tool_name":"WebFetch"}]}]}]}`
+
+	realPairs := make([]string, 0, len(names)*2)
+	for _, name := range names {
+		realPairs = append(realPairs, "@"+name+"@", name)
+	}
+	body := []byte(strings.NewReplacer(realPairs...).Replace(template))
+	require.True(t, gjson.ValidBytes(body))
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, len(names))
+
+	fakePairs := make([]string, 0, len(names)*2)
+	for _, name := range names {
+		fakePairs = append(fakePairs, "@"+name+"@", rw.Forward[name])
+	}
+	want := strings.NewReplacer(fakePairs...).Replace(template)
+
+	require.Equal(t, want, string(applyToolNameRewriteToBody(body, rw)))
+}
+
+func TestApplyToolNameRewriteToBody_EscapedToolReferenceNames(t *testing.T) {
+	staticBody := []byte(`{"tools":[{"name":"sessions_\"quoted","input_schema":{}}],"messages":[{"role":"assistant","content":[{"type":"tool_search_tool_result","tool_use_id":"srvtoolu_01","content":{"type":"tool_search_tool_search_result","tool_references":[{"type":"tool_reference","tool_name":"sessions_\"quoted"}]}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"sessions_\u0022quoted"}]}]}]}`)
+	out := applyToolNameRewriteToBody(staticBody, buildToolNameRewriteFromBody(staticBody))
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, `cc_sess_"quoted`, gjson.GetBytes(out, "messages.0.content.0.content.tool_references.0.tool_name").String())
+	require.Equal(t, `"cc_sess_\"quoted"`, gjson.GetBytes(out, "messages.1.content.0.content.0.tool_name").Raw)
+
+	dynamicBody := []byte(`{"tools":[{"name":"WebFetch","input_schema":{}},{"name":"alpha","input_schema":{}},{"name":"beta","input_schema":{}},{"name":"gamma","input_schema":{}},{"name":"delta","input_schema":{}},{"name":"epsilon","input_schema":{}}],"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"tool_reference","tool_name":"Web\u0046etch"}]}]}]}`)
+	rw := buildToolNameRewriteFromBody(dynamicBody)
+	require.NotNil(t, rw)
+	out = applyToolNameRewriteToBody(dynamicBody, rw)
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, `"`+rw.Forward["WebFetch"]+`"`, gjson.GetBytes(out, "messages.0.content.0.content.0.tool_name").Raw)
+}
