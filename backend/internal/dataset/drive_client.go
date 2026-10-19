@@ -261,9 +261,9 @@ func safeDriveError(err error) error {
 	}
 	var apiErr *googleapi.Error
 	if errors.As(err, &apiErr) && apiErr.Code > 0 {
-		return fmt.Errorf("Google Drive request failed with HTTP %d", apiErr.Code)
+		return fmt.Errorf("drive request failed with HTTP %d", apiErr.Code)
 	}
-	return errors.New("Google Drive request failed")
+	return errors.New("drive request failed")
 }
 
 // tokenFromFile retrieves a token from a local file.

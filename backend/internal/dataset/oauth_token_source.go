@@ -162,7 +162,9 @@ func writeOAuthTokenAtomicallyWithRename(path string, token *oauth2.Token, renam
 		return fmt.Errorf("create temporary token file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 
 	if err := tmp.Chmod(0600); err != nil {
 		_ = tmp.Close()
