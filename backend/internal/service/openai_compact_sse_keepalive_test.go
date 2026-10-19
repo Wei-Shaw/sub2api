@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -108,6 +110,9 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitAppendsEvents(t *testin
 // 收尾（Codex 将其作为终止事件处理），并标记流内错误供 ops 采集。
 func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent(t *testing.T) {
 	c, rec := newCompactBridgeTestContext(t, true)
+	c.Request = c.Request.WithContext(WithOpenAIForwardModel(
+		context.WithValue(c.Request.Context(), ctxkey.Model, "grok-build-0.1"), "grok-4.5", true,
+	))
 	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
 	defer stop()
 	waitForKeepaliveBeats()
@@ -118,6 +123,7 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent
 	require.Len(t, events, 1)
 	require.Equal(t, "response.failed", events[0][0])
 	require.Equal(t, "failed", gjson.Get(events[0][1], "response.status").String())
+	require.Equal(t, "grok-build-0.1", gjson.Get(events[0][1], "response.model").String())
 	require.Contains(t, gjson.Get(events[0][1], "response.error.message").String(), "upstream exploded")
 	require.NotEmpty(t, gjson.Get(events[0][1], "response.id").String())
 
