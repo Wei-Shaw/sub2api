@@ -176,6 +176,8 @@ const metaModels = [
 ]
 
 // xAI Grok
+const devinModels = ['swe-1-6', 'swe-1-6-fast']
+
 const xaiModels = [
   'grok-4.7',
   'grok-4.6',
@@ -294,6 +296,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...devinModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -524,6 +527,7 @@ export function getModelsByPlatform(platform: string): string[] {
       'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus',
       'hy4-preview', 'hy3', 'omen-alpha'
     ]
+    case 'devin': return devinModels
     case 'typesafe': return ['jev-latest']
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
@@ -540,6 +544,10 @@ export function getModelsByPlatform(platform: string): string[] {
 
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
+  if (platform === 'devin') return devinModels.map(model => ({
+    label: model, from: model, to: model,
+    color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300'
+  }))
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings

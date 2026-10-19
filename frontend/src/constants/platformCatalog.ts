@@ -89,7 +89,7 @@ export function isKnownPlatform(platform: string | null | undefined): boolean {
 export function supportsUpstreamModelSync(platform: string | null | undefined): boolean {
   const spec = getPlatformSpec(platform?.trim().toLowerCase())
   if (!spec) return false
-  return !!spec.multi_protocol || ['anthropic', 'openai', 'gemini', 'antigravity', 'grok'].includes(spec.id)
+  return !!spec.multi_protocol || ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'devin'].includes(spec.id)
 }
 
 /** 清单中声明了定价目录 provider 的平台才支持同步定价模型。 */

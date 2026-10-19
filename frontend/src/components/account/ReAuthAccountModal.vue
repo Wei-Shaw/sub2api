@@ -5,7 +5,10 @@
     width="normal"
     @close="handleClose"
   >
-    <div v-if="account" class="space-y-4">
+    <p v-if="account?.platform === 'devin'" data-testid="devin-relogin-hint" class="text-sm text-gray-500">
+      {{ t('admin.accounts.devin.reloginHint') }}
+    </p>
+    <div v-else-if="account" class="space-y-4">
       <!-- Account Info -->
       <div
         class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700"
@@ -142,7 +145,7 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="account.platform !== 'devin' && isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -324,7 +327,7 @@ const handleClose = () => {
 }
 
 const handleGenerateUrl = async () => {
-  if (!props.account) return
+  if (!props.account || props.account.platform === 'devin') return
 
   if (isOpenAILike.value) {
     await openaiOAuth.generateAuthUrl(props.account.proxy_id)

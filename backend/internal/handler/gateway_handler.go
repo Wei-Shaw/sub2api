@@ -1212,6 +1212,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	if platform == service.PlatformDevin {
+		writeModelsList(c, platform, service.DefaultDevinModelIDs())
+		return
+	}
 	if platform == service.PlatformTypeSafe {
 		writeModelsList(c, platform, []string{typesafe.JevLatestModel})
 		return
@@ -1471,6 +1475,8 @@ func modelListingSource(platform string, availableModels, fallbackModels []strin
 
 func defaultCodexModelIDsForPlatform(platform string) []string {
 	switch platform {
+	case service.PlatformDevin:
+		return service.DefaultDevinModelIDs()
 	case service.PlatformDeepseek:
 		return []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-flash"}
 	case service.PlatformMiniMax:
@@ -1482,6 +1488,8 @@ func defaultCodexModelIDsForPlatform(platform string) []string {
 
 func defaultModelIDsForPlatform(platform string) []string {
 	switch platform {
+	case service.PlatformDevin:
+		return service.DefaultDevinModelIDs()
 	case service.PlatformOpenAI:
 		return openai.DefaultModelIDs()
 	case service.PlatformGemini:

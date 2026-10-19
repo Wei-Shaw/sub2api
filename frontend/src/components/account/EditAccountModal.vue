@@ -642,6 +642,21 @@
 
       </div>
 
+      <div v-if="account.platform === 'devin' && account.type === 'oauth'" data-testid="devin-credentials">
+        <label for="edit-devin-session-token" class="input-label">{{ t('admin.accounts.devin.sessionToken') }}</label>
+        <input
+          id="edit-devin-session-token"
+          v-model="devinSessionToken"
+          type="password"
+          autocomplete="new-password"
+          class="input"
+        />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.tokenHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.keepTokenHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.reloginHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.setupDocs') }}</p>
+      </div>
+
       <!-- Grok OAuth client-tool prompt cache opt-in -->
       <div
         v-if="account.platform === 'grok' && account.type === 'oauth'"
@@ -797,7 +812,7 @@
 
       <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'grok' || account.platform === 'devin') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3723,6 +3738,8 @@ const headerOverrideCapable = computed(
   () => !!props.account && isHeaderOverrideCapable(props.account.platform, props.account.type)
 )
 
+const devinSessionToken = ref('')
+
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
@@ -4704,7 +4721,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'devin') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -4721,6 +4738,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  // Never hydrate session secrets from account details; blank means preserve.
+  devinSessionToken.value = ''
 }
 
 async function loadTLSProfiles() {
@@ -5659,8 +5678,19 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    if (props.account.platform === 'devin' && props.account.type === 'oauth') {
+      const credentials = updatePayload.credentials as Record<string, unknown>
+      // Sensitive fields are omitted by the API. Omitting access_token preserves it.
+      delete credentials.access_token
+      if (devinSessionToken.value.trim()) {
+        credentials.access_token = devinSessionToken.value.trim()
+        // Let the backend derive expiration from the replacement JWT.
+        delete credentials.expires_at
+      }
+    }
+
+    // Subscription OAuth: persist model mapping to credentials
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'devin') && props.account.type === 'oauth') {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||

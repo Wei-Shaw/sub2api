@@ -357,7 +357,7 @@ func (a *Account) IsGeminiThirdPartyAPIKey() bool {
 }
 
 func (a *Account) CanGetUsage() bool {
-	return a.Type == AccountTypeOAuth
+	return a.Type == AccountTypeOAuth && !a.IsDevin()
 }
 
 func (a *Account) GetCredential(key string) string {
@@ -1852,6 +1852,11 @@ func (a *Account) GetOpenAISessionID() string {
 
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
 	if a == nil {
+		return false
+	}
+	if a.IsDevin() && capability != "" && capability != OpenAIEndpointCapabilityChatCompletions {
+		// Only the text bridge is implemented. Never route a subscription token
+		// to OpenAI OAuth media/search endpoints based solely on type=oauth.
 		return false
 	}
 	if capability == OpenAIEndpointCapabilitySeedance {

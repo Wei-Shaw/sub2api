@@ -224,6 +224,9 @@ func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository)
 
 // Create 创建账号
 func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
+	if err := NormalizeDevinCredentials(req.Platform, req.Type, req.Credentials); err != nil {
+		return nil, err
+	}
 	if req.Platform == PlatformTypeSafe && req.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -333,7 +336,18 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
-		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
+		credentials := *req.Credentials
+		if account.IsDevin() {
+			previousToken := account.GetCredential("access_token")
+			credentials = MergePreservingSensitiveCreds(account.Credentials, credentials)
+			if token, _ := credentials["access_token"].(string); token != previousToken {
+				delete(credentials, "expires_at")
+			}
+		}
+		account.Credentials = SanitizeStoredCredentials(account.Platform, credentials)
+	}
+	if err := NormalizeDevinCredentials(account.Platform, account.Type, account.Credentials); err != nil {
+		return nil, err
 	}
 
 	if req.Extra != nil {
@@ -519,6 +533,10 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformGrok:
 		// Grok OAuth credentials are validated via token exchange/refresh and request-path probes.
 		return nil
+	case PlatformDevin:
+		// Validate stored session-token configuration here; the connectivity endpoint
+		// performs the real Devin probe (there is no OAuth refresh grant).
+		return NormalizeDevinCredentials(account.Platform, account.Type, account.Credentials)
 	case PlatformTypeSafe:
 		// TypeSafe credentials are API keys; inference failures drive health and cooldown state.
 		return nil

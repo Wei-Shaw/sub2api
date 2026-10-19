@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -74,6 +75,23 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	chatReq.Model = upstreamModel
 	chatReq.ReasoningEffort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, chatReq.ReasoningEffort)
+	if account.IsDevin() {
+		// The generic bridge injects medium effort and parallel=true even when
+		// the client supplied neither. Devin selects effort by catalog model UID
+		// and defaults parallelism to the selected model's capabilities.
+		chatReq.ReasoningEffort = ""
+		chatReq.ParallelToolCalls = nil
+		if disabled := gjson.GetBytes(body, "tool_choice.disable_parallel_tool_use"); disabled.Exists() {
+			parallel := !disabled.Bool()
+			chatReq.ParallelToolCalls = &parallel
+		}
+		if anthropicReq.MaxTokens > 0 {
+			chatReq.MaxCompletionTokens = &anthropicReq.MaxTokens
+		}
+		if len(anthropicReq.StopSeqs) > 0 {
+			chatReq.Stop, _ = json.Marshal(anthropicReq.StopSeqs)
+		}
+	}
 	chatReq.Stream = clientStream
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
@@ -84,6 +102,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	chatBody, err := json.Marshal(chatReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+	if account.IsDevin() {
+		chatBody, err = restoreDevinAnthropicHistory(chatBody, body)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody

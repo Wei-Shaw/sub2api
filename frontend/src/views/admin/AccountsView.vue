@@ -1895,6 +1895,10 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
+  if (accounts.value.some(account => account.platform === 'devin' && selIds.value.includes(account.id))) {
+    appStore.showInfo(t('admin.accounts.devin.reloginHint'))
+    return
+  }
   if (!confirm(t('common.confirm'))) return
   const accountIds = [...selIds.value]
   try {
@@ -2339,7 +2343,14 @@ const handleSchedule = async (a: Account) => {
   }
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
-const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
+const handleReAuth = (a: Account) => {
+  if (a.platform === 'devin') {
+    void handleEdit(a)
+    return
+  }
+  reAuthAcc.value = a
+  showReAuth.value = true
+}
 const duplicatingAccountIDs = new Set<number>()
 const handleDuplicateAccount = async (a: Account) => {
   if (duplicatingAccountIDs.has(a.id)) return
@@ -2356,6 +2367,11 @@ const handleDuplicateAccount = async (a: Account) => {
   }
 }
 const handleRefresh = async (a: Account) => {
+  if (a.platform === 'devin') {
+    appStore.showInfo(t('admin.accounts.devin.reloginHint'))
+    await handleEdit(a)
+    return
+  }
   try {
     const result = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(result.account)

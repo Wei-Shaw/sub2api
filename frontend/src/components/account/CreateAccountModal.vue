@@ -162,6 +162,19 @@
           </button>
           <button
             type="button"
+            data-testid="platform-button-devin"
+            @click="form.platform = 'devin'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'devin'
+                ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-600 dark:text-primary-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            Devin
+          </button>
+          <button
+            type="button"
             @click="selectTypeSafePlatform()"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
@@ -264,6 +277,21 @@
             {{ spec.display_name }}
           </button>
         </div>
+      </div>
+
+      <div v-if="form.platform === 'devin'" data-testid="devin-credentials">
+        <label for="devin-session-token" class="input-label">{{ t('admin.accounts.devin.sessionToken') }} <span class="text-red-500">*</span></label>
+        <input
+          id="devin-session-token"
+          v-model="devinSessionToken"
+          type="password"
+          required
+          autocomplete="new-password"
+          class="input"
+        />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.tokenHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.reloginHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.devin.setupDocs') }}</p>
       </div>
 
       <!-- Account Type Selection (Anthropic) -->
@@ -2486,7 +2514,7 @@
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="((form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow) || form.platform === 'devin'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -5033,8 +5061,12 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const devinSessionToken = ref('')
+
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+  // Devin accepts a manually pasted CLI session, not a browser OAuth flow.
+  if (form.platform === 'devin') return false
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -5175,6 +5207,14 @@ watch(
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
+    }
+    devinSessionToken.value = ''
+    if (newPlatform === 'devin') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
+      form.type = 'oauth'
+      modelRestrictionMode.value = 'whitelist'
+      allowedModels.value = [...getModelsByPlatform('devin')]
     }
     if (newPlatform === 'grok') {
       accountCategory.value = 'oauth-based'
@@ -5608,6 +5648,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  devinSessionToken.value = ''
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5938,6 +5979,22 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (form.platform === 'devin') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!devinSessionToken.value.trim()) {
+      appStore.showError(t('admin.accounts.devin.tokenRequired'))
+      return
+    }
+    const credentials: Record<string, unknown> = { access_token: devinSessionToken.value.trim() }
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) credentials.model_mapping = modelMapping
+    await createAccountAndFinish('devin', 'oauth', credentials)
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

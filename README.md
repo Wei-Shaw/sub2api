@@ -724,6 +724,12 @@ Long-running OpenAI/Grok image generation and editing can be submitted through `
 
 ---
 
+## Devin Subscription Support
+
+Add a **Devin** OAuth account using an existing **Devin CLI session token** (not a REST API key). Text and function-tool requests use the existing Chat Completions, Responses and Anthropic Messages gateways. See [Devin setup and limitations](docs/DEVIN.md) for token renewal, account-scoped model discovery and verification, and [third-party notices](THIRD_PARTY_NOTICES.md) for the adapted oh-my-pi code.
+
+---
+
 ## Grok / xAI Support
 
 Sub2API supports both Grok subscription accounts through xAI OAuth and standard xAI API-key accounts. Both account types forward OpenAI-compatible Responses traffic to xAI.

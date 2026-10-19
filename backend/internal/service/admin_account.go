@@ -411,6 +411,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if err := NormalizeDevinCredentials(input.Platform, input.Type, input.Credentials); err != nil {
+		return nil, err
+	}
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -579,6 +582,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if account.IsDevin() && input.Type != "" && input.Type != AccountTypeOAuth {
+		return nil, infraerrors.BadRequest("DEVIN_OAUTH_REQUIRED", "Devin accounts only support oauth CLI session tokens")
+	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -650,7 +656,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	} else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
+		previousToken := account.GetCredential("access_token")
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if account.IsDevin() && account.GetCredential("access_token") != previousToken {
+			// Expiry belongs to the session token, not the account being edited.
+			delete(account.Credentials, "expires_at")
+		}
 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
@@ -660,6 +671,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		// Strip SSO/password residue that must never sit next to OAuth tokens.
 		account.Credentials = SanitizeStoredCredentials(account.Platform, account.Credentials)
+	}
+	if err := NormalizeDevinCredentials(account.Platform, account.Type, account.Credentials); err != nil {
+		return nil, err
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
@@ -1035,6 +1049,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// UpdateAccount 守卫对齐)。覆盖显式 IDs 与 filter 解析出的 IDs(此处 AccountIDs 已解析完成)。
 	if len(input.Credentials) > 0 {
 		for _, acc := range cachedTargets {
+			if acc != nil && acc.IsDevin() {
+				// A shared JSONB patch cannot normalize each full credential map or
+				// remove stale expiry independently. Use the single-account path.
+				return nil, infraerrors.BadRequest("DEVIN_BULK_CREDENTIALS_UNSUPPORTED",
+					"Devin credentials cannot be updated in bulk; edit each account individually to replace its CLI session token or model mapping")
+			}
 			if acc != nil && acc.IsCredentialShadow() {
 				return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_NO_CREDENTIALS",
 					"spark shadow account %d cannot hold credentials; manage credentials on the parent account", acc.ID)
@@ -1303,6 +1323,10 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if account.IsDevin() {
+		return nil, infraerrors.BadRequest("DEVIN_REFRESH_UNSUPPORTED",
+			"Devin refresh is unsupported; sign in again and replace the CLI session token")
 	}
 	// TODO: Implement refresh logic
 	return account, nil
