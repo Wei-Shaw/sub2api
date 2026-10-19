@@ -56,9 +56,12 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
+	// 配额必须与实际转发使用同一端点，避免读取到另一环境的过期用量。
+	baseURL := resolveAntigravityForwardBaseURL(account)
+
 	// 调用 API 获取配额
 	bodyLimit := resolveModelsListReadLimit(f.cfg)
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, bodyLimit)
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, bodyLimit)
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -82,7 +85,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	}
 
 	// 调用 retrieveUserQuotaSummary 获取 5h / Weekly 共享配额桶（非关键路径，失败不影响主流程）
-	quotaSummaryResp, _, summaryErr := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID, bodyLimit)
+	quotaSummaryResp, _, summaryErr := client.RetrieveUserQuotaSummaryFromURL(ctx, baseURL, accessToken, projectID, bodyLimit)
 	if summaryErr != nil {
 		slog.Warn("failed to fetch antigravity user quota summary", "error", summaryErr)
 	}

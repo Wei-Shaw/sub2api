@@ -720,6 +720,19 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 
 // RetrieveUserQuotaSummary 获取用户共享配额桶摘要（对应 Antigravity agy /usage），支持 URL fallback：prod → daily。
 func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*RetrieveUserQuotaSummaryResponse, map[string]any, error) {
+	return c.retrieveUserQuotaSummary(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
+}
+
+// RetrieveUserQuotaSummaryFromURL 获取指定转发端点的共享配额桶，不回退或重定向到其他端点。
+func (c *Client) RetrieveUserQuotaSummaryFromURL(ctx context.Context, baseURL, accessToken, projectID string, bodyLimit int64) (*RetrieveUserQuotaSummaryResponse, map[string]any, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return nil, nil, errors.New("retrieveUserQuotaSummary base URL is required")
+	}
+	return c.retrieveUserQuotaSummary(ctx, []string{baseURL}, accessToken, projectID, bodyLimit, true)
+}
+
+func (c *Client) retrieveUserQuotaSummary(ctx context.Context, availableURLs []string, accessToken, projectID string, bodyLimit int64, fixedEndpoint bool) (*RetrieveUserQuotaSummaryResponse, map[string]any, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, nil, errors.New("antigravity client is not configured")
 	}
@@ -733,8 +746,10 @@ func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, proj
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	availableURLs := BaseURLs
 	fetchClient := c.fetchAvailableModelsHTTPClient()
+	if fixedEndpoint {
+		fetchClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
 		apiURL := baseURL + "/v1internal:retrieveUserQuotaSummary"

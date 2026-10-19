@@ -5,8 +5,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -661,4 +664,108 @@ func TestBuildUsageInfo_FiveHourPriorityIncludesClaude55AndGemini4Argon(t *testi
 	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 	require.NotNil(t, info.FiveHour)
 	require.InDelta(t, 75.0, info.FiveHour.Utilization, 0.01)
+}
+
+func TestFetchQuota_UsesForwardEndpointForModelsAndSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name, plan, override string
+		daily                bool
+	}{
+		{name: "paid", plan: "pro", daily: true},
+		{name: "free", plan: "free"},
+		{name: "daily override", plan: "free", override: "daily", daily: true},
+		{name: "sandbox override", plan: "free", override: "sandbox", daily: true},
+		{name: "prod override", plan: "ultra", override: "prod"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(antigravityForwardBaseURLEnv, tc.override)
+			requests := map[string][]string{}
+			var requestsMu sync.Mutex
+			handler := func(endpoint string, remaining string) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					requestsMu.Lock()
+					requests[endpoint] = append(requests[endpoint], r.URL.Path)
+					requestsMu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					switch r.URL.Path {
+					case "/v1internal:fetchAvailableModels":
+						_, _ = w.Write([]byte(`{"models":{"gemini-4-argon-high":{"quotaInfo":{"remainingFraction":` + remaining + `}}}}`))
+					case "/v1internal:retrieveUserQuotaSummary":
+						_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":` + remaining + `}]}]}`))
+					case "/v1internal:loadCodeAssist":
+						_, _ = w.Write([]byte(`{"currentTier":{"id":"free-tier"}}`))
+					}
+				}
+			}
+			prod := httptest.NewServer(handler("prod", "0.93"))
+			defer prod.Close()
+			daily := httptest.NewServer(handler("daily", "0.62"))
+			defer daily.Close()
+			old := antigravity.BaseURLs
+			t.Cleanup(func() { antigravity.BaseURLs = old })
+			antigravity.BaseURLs = []string{prod.URL, daily.URL}
+			result, err := NewAntigravityQuotaFetcher(nil, &config.Config{}).FetchQuota(context.Background(), &Account{
+				Platform: PlatformAntigravity, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "token", "project_id": "project", "plan_type": tc.plan},
+			}, "")
+			require.NoError(t, err)
+			selected, other, used := "prod", "daily", 7.0
+			if tc.daily {
+				selected, other, used = "daily", "prod", 38.0
+			}
+			requestsMu.Lock()
+			defer requestsMu.Unlock()
+			require.Contains(t, requests[selected], "/v1internal:fetchAvailableModels")
+			require.Contains(t, requests[selected], "/v1internal:retrieveUserQuotaSummary")
+			require.NotContains(t, requests[other], "/v1internal:fetchAvailableModels")
+			require.NotContains(t, requests[other], "/v1internal:retrieveUserQuotaSummary")
+			require.InDelta(t, used, result.UsageInfo.FiveHour.Utilization, 0.001)
+		})
+	}
+}
+
+func TestFetchQuota_SelectedEndpointFailureDoesNotReadOtherQuota(t *testing.T) {
+	for _, failedPath := range []string{"/v1internal:fetchAvailableModels", "/v1internal:retrieveUserQuotaSummary"} {
+		for _, status := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+			t.Run(fmt.Sprintf("%s/%d", failedPath, status), func(t *testing.T) {
+				t.Setenv(antigravityForwardBaseURLEnv, "")
+				var otherQuotaCalls atomic.Int32
+				prod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != "/v1internal:loadCodeAssist" {
+						otherQuotaCalls.Add(1)
+					}
+					_, _ = w.Write([]byte(`{"models":{},"groups":[{"buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":1}]}]}`))
+				}))
+				defer prod.Close()
+				daily := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == failedPath {
+						w.WriteHeader(status)
+						return
+					}
+					_, _ = w.Write([]byte(`{"models":{"gemini-4-argon-high":{"quotaInfo":{"remainingFraction":0.62}}}}`))
+				}))
+				defer daily.Close()
+				old := antigravity.BaseURLs
+				t.Cleanup(func() { antigravity.BaseURLs = old })
+				antigravity.BaseURLs = []string{prod.URL, daily.URL}
+				result, err := NewAntigravityQuotaFetcher(nil, &config.Config{}).FetchQuota(context.Background(), &Account{
+					Credentials: map[string]any{"access_token": "token", "plan_type": "pro"},
+				}, "")
+				require.Zero(t, otherQuotaCalls.Load())
+				if failedPath == "/v1internal:fetchAvailableModels" {
+					if status == http.StatusForbidden {
+						require.NoError(t, err)
+						require.True(t, result.UsageInfo.IsForbidden)
+					} else {
+						require.ErrorContains(t, err, fmt.Sprint(status))
+						require.Nil(t, result)
+					}
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, result.UsageInfo.AntigravityQuota["gemini-4-argon-high"])
+					require.Nil(t, result.UsageInfo.AntigravityQuota["gemini-5h"])
+				}
+			})
+		}
+	}
 }

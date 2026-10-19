@@ -2073,3 +2073,44 @@ func TestClient_RetrieveUserQuotaSummary(t *testing.T) {
 		t.Fatalf("expected raw response map to be non-nil")
 	}
 }
+
+func TestClient_RetrieveUserQuotaSummaryFromURL(t *testing.T) {
+	var gotPath, gotAuth string
+	selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models"}]}`))
+	}))
+	defer selected.Close()
+	summary, raw, err := mustNewClient(t, "").RetrieveUserQuotaSummaryFromURL(context.Background(), selected.URL+"/", "token", "project", 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/v1internal:retrieveUserQuotaSummary" || gotAuth != "Bearer token" || len(summary.Groups) != 1 || raw == nil {
+		t.Fatalf("unexpected summary response or request: %s %s %+v", gotPath, gotAuth, summary)
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummaryFromURL_DoesNotFallbackOrRedirect(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusNotFound, http.StatusTemporaryRedirect, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			fallbackCalls := 0
+			fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fallbackCalls++; _, _ = w.Write([]byte(`{"groups":[]}`)) }))
+			defer fallback.Close()
+			selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", fallback.URL)
+				w.WriteHeader(status)
+			}))
+			defer selected.Close()
+			old := BaseURLs
+			t.Cleanup(func() { BaseURLs = old })
+			BaseURLs = []string{selected.URL, fallback.URL}
+			summary, _, err := mustNewClient(t, "").RetrieveUserQuotaSummaryFromURL(context.Background(), selected.URL, "token", "project", 1024)
+			if err == nil || summary != nil {
+				t.Fatalf("expected selected endpoint error, got %+v, %v", summary, err)
+			}
+			if fallbackCalls != 0 {
+				t.Fatalf("queried another endpoint %d times", fallbackCalls)
+			}
+		})
+	}
+}
