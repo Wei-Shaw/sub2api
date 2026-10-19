@@ -225,6 +225,12 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderC
 	return _c
 }
 
+// SetSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field.
+func (_c *PaymentOrderCreate) SetSubscriptionPlanSnapshot(v map[string]string) *PaymentOrderCreate {
+	_c.mutation.SetSubscriptionPlanSnapshot(v)
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -794,6 +800,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
 	}
+	if value, ok := _c.mutation.SubscriptionPlanSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionPlanSnapshot, field.TypeJSON, value)
+		_node.SubscriptionPlanSnapshot = value
+	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
 		_node.ProviderInstanceID = &value
@@ -1256,6 +1266,24 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
+	return u
+}
+
+// SetSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsert) SetSubscriptionPlanSnapshot(v map[string]string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldSubscriptionPlanSnapshot, v)
+	return u
+}
+
+// UpdateSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateSubscriptionPlanSnapshot() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldSubscriptionPlanSnapshot)
+	return u
+}
+
+// ClearSubscriptionPlanSnapshot clears the value of the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsert) ClearSubscriptionPlanSnapshot() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldSubscriptionPlanSnapshot)
 	return u
 }
 
@@ -1989,6 +2017,27 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsertOne) SetSubscriptionPlanSnapshot(v map[string]string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionPlanSnapshot(v)
+	})
+}
+
+// UpdateSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateSubscriptionPlanSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionPlanSnapshot()
+	})
+}
+
+// ClearSubscriptionPlanSnapshot clears the value of the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsertOne) ClearSubscriptionPlanSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionPlanSnapshot()
 	})
 }
 
@@ -2942,6 +2991,27 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsertBulk) SetSubscriptionPlanSnapshot(v map[string]string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionPlanSnapshot(v)
+	})
+}
+
+// UpdateSubscriptionPlanSnapshot sets the "subscription_plan_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateSubscriptionPlanSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionPlanSnapshot()
+	})
+}
+
+// ClearSubscriptionPlanSnapshot clears the value of the "subscription_plan_snapshot" field.
+func (u *PaymentOrderUpsertBulk) ClearSubscriptionPlanSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionPlanSnapshot()
 	})
 }
 

@@ -61,7 +61,7 @@
             <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.id }}</span>
           </div>
           <div class="mt-2 flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
             <span class="text-gray-900 dark:text-white">${{ refundTarget.amount.toFixed(2) }}</span>
           </div>
         </div>
@@ -173,7 +173,7 @@ async function confirmRefund() {
 }
 
 function canRequestRefund(order: PaymentOrder): boolean {
-  if (order.status !== 'COMPLETED') return false
+  if (order.order_type !== 'balance' || order.status !== 'COMPLETED') return false
   if (!order.provider_instance_id) return false
   return refundEligibleProviders.value.has(order.provider_instance_id)
 }
