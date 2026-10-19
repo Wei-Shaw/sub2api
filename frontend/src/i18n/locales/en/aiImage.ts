@@ -165,7 +165,7 @@ export default {
       download: 'Download with watermark',
       done: 'Watermarked and downloading.',
       corsBlocked:
-        'The upstream image does not allow cross-origin reads, so it cannot be watermarked in the browser. Opened the original instead.',
+        'The image server does not allow this page to read the file, so it cannot be watermarked in the browser. The original was opened in a new tab \u2014 right-click it and choose "Save image as". To restore "Download with watermark", add a CORS rule for img.chenshuapi.com.',
       hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image.',
       note:
         'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
@@ -229,6 +229,9 @@ export default {
         'This image only lived in the current session (the API returned base64), so it must be regenerated after a refresh.',
       retry: 'Retry',
       download: 'Download',
+      // Fallback copy when the image host blocks cross-origin reads.
+      downloadBlocked:
+        'The image server does not allow this page to read the file, so the original was opened in a new tab. Right-click the image there and choose "Save image as". To restore normal downloads, add a CORS rule for img.chenshuapi.com.',
       remove: 'Delete',
       copyPrompt: 'Copy prompt',
       copied: 'Copied',
@@ -279,6 +282,8 @@ export default {
       applyAll: 'Load all (newline separated)',
       fillOne: 'Load into prompt',
       // Script card editing (owner: "generate what I edited, not the original template").
+      // Title of the script list inside each feature panel (above "this feature's results").
+      cardsTitle: 'Scripts from this run',
       editedTag: 'Edited',
       saveEdit: 'Save changes',
       generateThis: 'Generate just this one',

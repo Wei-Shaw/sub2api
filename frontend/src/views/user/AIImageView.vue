@@ -434,6 +434,30 @@
         <p v-if="hotNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ hotNotice }}</p>
         <p v-if="hotError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ hotError }}</p>
 
+        <!-- 这次执行生成出来的每一张脚本。
+             主人要求：放在「本功能的结果」上方，先看脚本、再看图。 -->
+        <div
+          v-if="scriptCards.length && scriptSource !== 'ozon'"
+          class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"
+          data-testid="hot-script-cards"
+        >
+          <h3 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('aiImage.script.cardsTitle') }}
+          </h3>
+          <AIScriptCards
+            :cards="scriptCards"
+            :open-key="openScriptCardKey"
+            @toggle="toggleScriptCardEditor"
+            @edit="editScriptCard"
+            @save="saveScriptCard"
+            @generate="generateOneScriptCard"
+            @fill="applyScriptCard"
+            @restore="restoreScriptCard"
+            @reset-edits="resetScriptEdits"
+            @apply-all="applyAllScriptCards"
+          />
+        </div>
+
         <!-- 这个功能自己的结果区：只显示「爆款复刻」做出来的图。
              全部功能的图在最下面的「生图结果」里汇总。 -->
         <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700">
@@ -718,6 +742,30 @@
         <p v-if="scriptNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ scriptNotice }}</p>
         <p v-if="scriptError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ scriptError }}</p>
 
+        <!-- 这次执行生成出来的每一张脚本。
+             主人要求：放在「本功能的结果」上方，先看脚本、再看图。 -->
+        <div
+          v-if="scriptCards.length && scriptSource === 'ozon'"
+          class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"
+          data-testid="script-script-cards"
+        >
+          <h3 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('aiImage.script.cardsTitle') }}
+          </h3>
+          <AIScriptCards
+            :cards="scriptCards"
+            :open-key="openScriptCardKey"
+            @toggle="toggleScriptCardEditor"
+            @edit="editScriptCard"
+            @save="saveScriptCard"
+            @generate="generateOneScriptCard"
+            @fill="applyScriptCard"
+            @restore="restoreScriptCard"
+            @reset-edits="resetScriptEdits"
+            @apply-all="applyAllScriptCards"
+          />
+        </div>
+
         <!-- 这个功能自己的结果区：只显示「套图」做出来的图。
              全部功能的图在最下面的「生图结果」里汇总。 -->
         <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700">
@@ -970,106 +1018,8 @@
           }}
         </p>
 
-        <!-- 生成出来的脚本卡片。爆款复刻和套图两个入口产出的卡片都在这儿。
-             **每张卡片都能直接改**：以前它只是个只读按钮，点一下把提示词复制到
-             下面的输入框，改了也回不到卡片里 —— 主人报的
-             「我改完了他还是按照脚本原有的内容去改」就是这个。
-             现在改成：点标题展开编辑区，改完**存回卡片**，一键生成读的是卡片里的内容。 -->
-        <div v-if="scriptCards.length" class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
-          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.script.built', { count: scriptCards.length }) }}</span>
-            <div class="flex flex-wrap items-center gap-2">
-              <button
-                v-if="scriptCards.some((card) => card.edited)"
-                type="button"
-                class="btn btn-secondary btn-sm"
-                data-testid="script-reset-edits"
-                @click="resetScriptEdits"
-              >
-                {{ t('aiImage.script.resetEdits') }}
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" @click="applyAllScriptCards">
-                {{ t('aiImage.script.applyAll') }}
-              </button>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div
-              v-for="card in scriptCards"
-              :key="card.key"
-              class="rounded-lg border bg-gray-50 dark:bg-dark-900"
-              :class="
-                card.edited
-                  ? 'border-amber-300 dark:border-amber-500/40'
-                  : 'border-gray-200 dark:border-dark-600'
-              "
-              :data-testid="`script-card-${card.key}`"
-            >
-              <button
-                type="button"
-                class="flex w-full items-center justify-between gap-2 px-2 py-2 text-left text-xs"
-                :title="card.prompt"
-                :data-testid="`script-card-toggle-${card.key}`"
-                @click="toggleScriptCardEditor(card.key)"
-              >
-                <span class="min-w-0">
-                  <span class="block truncate font-medium text-gray-800 dark:text-gray-100">{{ card.title }}</span>
-                  <span class="mt-0.5 block text-gray-400 dark:text-gray-500">
-                    <template v-if="card.edited">{{ t('aiImage.script.editedTag') }}</template>
-                    <template v-else>{{ t('aiImage.script.fillOne') }}</template>
-                  </span>
-                </span>
-                <Icon
-                  :name="openScriptCardKey === card.key ? 'chevronUp' : 'chevronDown'"
-                  size="sm"
-                  class="flex-shrink-0 text-gray-400"
-                />
-              </button>
-
-              <!-- 编辑区：改的就是这一张真正会发出去的内容 -->
-              <div v-if="openScriptCardKey === card.key" class="border-t border-gray-200 px-2 py-2 dark:border-dark-600">
-                <textarea
-                  v-model="card.prompt"
-                  rows="8"
-                  class="input w-full resize-y text-xs leading-relaxed"
-                  :data-testid="`script-card-text-${card.key}`"
-                  @input="markScriptCardEdited(card)"
-                ></textarea>
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :data-testid="`script-card-save-${card.key}`"
-                    @click="saveScriptCard(card)"
-                  >
-                    {{ t('aiImage.script.saveEdit') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    :data-testid="`script-card-generate-${card.key}`"
-                    @click="generateOneScriptCard(card)"
-                  >
-                    {{ t('aiImage.script.generateThis') }}
-                  </button>
-                  <button type="button" class="btn btn-secondary btn-sm" :data-testid="`script-card-fill-${card.key}`" @click="applyScriptCard(card)">
-                    {{ t('aiImage.script.fillOne') }}
-                  </button>
-                  <button
-                    v-if="card.edited"
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    @click="restoreScriptCard(card)"
-                  >
-                    {{ t('aiImage.script.restoreCard') }}
-                  </button>
-                </div>
-                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.script.editHint') }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- 脚本卡片不在这里了：主人要求放到「爆款复刻 / 套图」各自面板里、
+             本功能结果图的上方。这一条只留进度、并发、一键生成、暂停/停止。 -->
       </div>
 
 
@@ -1141,6 +1091,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AIImageResultGrid from '@/components/aiImage/AIImageResultGrid.vue'
+import AIScriptCards from '@/components/aiImage/AIScriptCards.vue'
 import type { AIImageRecord, RecordSource, RecordStatus, ResultRow, ResultSection } from '@/api/aiImageRecord'
 import {
   AI_IMAGE_DEFAULT_MODEL,
@@ -1728,13 +1679,8 @@ async function downloadWithWatermark(record: AIImageRecord) {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
     watermarkNotice.value = t('aiImage.watermark.done')
   } catch {
-    // 跨域被挡时退化成直接下载原图，并说清楚原因。
-    const link = document.createElement('a')
-    link.href = url
-    link.download = ''
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-    link.click()
+    // 跨域被挡时退化成直接打开原图，并说清楚原因。
+    openInNewTab(url)
     watermarkNotice.value = t('aiImage.watermark.corsBlocked')
   } finally {
     watermarking.value = false
@@ -2467,11 +2413,18 @@ function toggleScriptCardEditor(key: string) {
  * 为什么必须标：生成时要靠这个标记决定发哪一份 ——
  * 没改过就发模板预写的英文（零额外花费），改过就发「英文硬规则 + 改后的中文」。
  */
-function markScriptCardEdited(card: OzonScriptCard) {
+/**
+ * 用户在卡片里改字：写回卡片并标成「已修改」。
+ *
+ * 为什么由父组件来写：子组件（`AIScriptCards`）只负责抛事件、不直接改 props，
+ * 这样「谁改了数据」只有一处，后面排查不用两头找。
+ */
+function editScriptCard(card: OzonScriptCard, value: string) {
+  card.prompt = value
   card.edited = true
 }
 
-/** 保存 = 收起编辑区（内容本来就通过 v-model 实时写回卡片了）。 */
+/** 保存 = 收起编辑区（内容在输入时就已经写回卡片了）。 */
 function saveScriptCard(card: OzonScriptCard) {
   card.edited = true
   openScriptCardKey.value = ''
@@ -2557,9 +2510,26 @@ function clearScript() {
   scriptError.value = ''
 }
 
+/**
+ * 下载一张图。
+ *
+ * 正常情况下把图片读成 Blob 再触发下载（这样文件名、格式都可控）。
+ *
+ * ⚠️ **但读字节需要跨域许可**：图片现在存在 `img.chenshuapi.com`，
+ * 和页面（`chenshuapi.com`）不同源。如果那个域名没发
+ * `Access-Control-Allow-Origin`，浏览器会直接拦掉 fetch，
+ * 于是「点了没反应」或「打开新标签」—— 主人 2026-10-17 报的就是这个。
+ *
+ * 所以这里做了两件事：
+ *   ① 失败时用 `<a target="_blank">` 打开（不用 `window.open`，
+ *      后者会被弹窗拦截器挡掉，表现就是「点了完全没反应」）；
+ *   ② 明确告诉用户为什么，以及怎么存（右键 → 图片另存为）。
+ * 真正的根治是给图片域名加 CORS（见 PROGRESS 会话 032）。
+ */
 async function downloadRecord(record: AIImageRecord) {
   const source = record.images[0]
   if (!source) return
+  copyNotice.value = ''
   try {
     const blob = source.startsWith('data:')
       ? await toBlob({ b64_json: source.split(',')[1] })
@@ -2573,8 +2543,20 @@ async function downloadRecord(record: AIImageRecord) {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   } catch {
-    window.open(source, '_blank', 'noopener,noreferrer')
+    openInNewTab(source)
+    copyNotice.value = t('aiImage.result.downloadBlocked')
   }
+}
+
+/** 用 <a> 打开新标签：不会被弹窗拦截器挡掉，比 window.open 可靠。 */
+function openInNewTab(href: string) {
+  const link = document.createElement('a')
+  link.href = href
+  link.target = '_blank'
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 function removeRecord(record: AIImageRecord) {

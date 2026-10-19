@@ -220,6 +220,23 @@ export const HOT_STYLE_BRIEF_EN =
   'Use at most 3 colors for text and graphics. Keep the product exactly as in the reference. Photorealistic.'
 
 /**
+ * 构图安全区：商品必须完整入镜，不许贴边、不许裁切。
+ *
+ * 【2026-10-17 主人反馈】「爆款复刻出来的图片展示不全」——商品顶部被切掉了。
+ * 根因有两条叠加：
+ *   ① 卡片里只写了占比（如「居中大幅产品」），**没有一句要求「完整入镜」**；
+ *   ② 爆款版式说明里常带「大幅产品」，模型按「大幅」放大后就出框了。
+ * 所以单独加一条硬规则，并且明确写「版式说明要服从这一条」。
+ */
+export const HOT_FRAMING_SAFE_AREA =
+  '- 【构图安全区】商品必须完整入镜：所有部位都在画面内，四周留 8-10% 的安全边距，' +
+  '任何部位都不得贴边、不得被裁切。版式说明里若写了「大幅产品」「满屏」，一律服从这一条。\n'
+
+export const HOT_FRAMING_SAFE_AREA_EN =
+  '- [Framing safety] The product must be fully in frame: every part inside the image, with 8-10% safe margin on all sides. ' +
+  'Nothing may touch the edge and nothing may be cropped. If the layout note says "large product" or "full-bleed", this rule wins.\n'
+
+/**
  * 把拆解出来的版式包成一段「必须沿用」的说明，**每一张都带**。
  *
  * 【2026-10-16 主人反馈】「要识别的放入的商品图片在生成排版之后没有把这些排版融入
@@ -247,6 +264,19 @@ function styleBlockEn(styleDesc: string, focusEn: string): string {
     'Never render the words of that note as image text.\n' +
     `Focus for this card: ${focusEn}\n`
   )
+}
+
+/**
+ * 每张卡片的开头：同行版式 + 构图安全区 + 共用风格说明。
+ *
+ * `cropSafe = false` 用于局部微距那种「本来就要看不到完整商品」的卡片。
+ */
+function cardHeadZh(styleDesc: string, focus: string, cropSafe = true): string {
+  return `${styleBlockZh(styleDesc, focus)}${cropSafe ? HOT_FRAMING_SAFE_AREA : ''}${HOT_STYLE_BRIEF}\n`
+}
+
+function cardHeadEn(styleDesc: string, focusEn: string, cropSafe = true): string {
+  return `${styleBlockEn(styleDesc, focusEn)}${cropSafe ? HOT_FRAMING_SAFE_AREA_EN : ''}${HOT_STYLE_BRIEF_EN}\n`
 }
 
 /**
@@ -279,11 +309,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '01_hook',
       title: '第 1 张 · 主视觉钩子（AIDA · 注意）',
       prompt:
-        `${styleBlockZh(style, '布局、点击钩子、构图、主色')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '布局、点击钩子、构图、主色')}${HOT_STYLE_BRIEF}\n` +
         `第1张：主视觉钩子。产品：${product}。产品45度斜放，背景与同行反着来。` +
         `主文案：${product}。副文案：${sp1 || '核心卖点'} · ${audience} 首选。`,
       promptEn:
-        `${styleBlockEn(style, 'layout, click hook, composition, dominant color')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'layout, click hook, composition, dominant color')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 1: main visual hook. Product: ${product}. Product placed at a 45-degree tilt; the background deliberately contrasts with competitors'. ` +
         `Headline: ${product}. Subline: ${sp1 || 'key benefit'} · the first choice for ${audience}.`,
     },
@@ -292,11 +322,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '02_pain',
       title: '第 2 张 · 痛点唤醒（AIDA · 注意）',
       prompt:
-        `${styleBlockZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
         `第2张：痛点唤醒。产品：${product}。场景实拍，把痛点拍成真实生活瞬间，不要摆拍感。场景：${scene}。` +
         `主文案：你是不是也${pain}？副文案：这一次，彻底解决它。`,
       promptEn:
-        `${styleBlockEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 2: pain awakening. Product: ${product}. Documentary-style scene shot; turn the pain into a real-life moment, no staged feel. Scene: ${scene}. ` +
         `Headline: "Ты тоже ${pain}?" Subline: this time it is solved for good.`,
     },
@@ -305,12 +335,12 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '03_interest',
       title: '第 3 张 · 核心效果（AIDA · 兴趣）',
       prompt:
-        `${styleBlockZh(style, '布局、文案位置、点缀色')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '布局、文案位置、点缀色')}${HOT_STYLE_BRIEF}\n` +
         `第3张：核心效果。产品：${product}。使用后效果特写，把好处可视化，不要堆字。` +
         `产品居中 + 图标化卖点：${sp1 || '卖点1'} / ${sp2 || '卖点2'} / ${sp3 || '卖点3'}。` +
         `主文案：${sp1 || '核心卖点'}。`,
       promptEn:
-        `${styleBlockEn(style, 'layout, text placement, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'layout, text placement, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 3: core benefit. Product: ${product}. Close-up of the after-use result; make the benefit visible, do not pile up words. ` +
         `Product centred with icon-style selling points: ${sp1 || 'benefit 1'} / ${sp2 || 'benefit 2'} / ${sp3 || 'benefit 3'}. ` +
         `Headline: ${sp1 || 'key benefit'}.`,
@@ -320,11 +350,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '04_trust',
       title: '第 4 张 · 信任背书（AIDA · 信任）',
       prompt:
-        `${styleBlockZh(style, '装饰元素、文案位置')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '装饰元素、文案位置')}${HOT_STYLE_BRIEF}\n` +
         `第4张：信任背书。产品：${product}。销量截图 + 证书 + 检测报告 + 买家秀拼图。` +
         `主文案：${trust}。副文案：为什么这么多人选它。`,
       promptEn:
-        `${styleBlockEn(style, 'decorative elements, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'decorative elements, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 4: social proof. Product: ${product}. Sales screenshot + certificate + test report + buyer photo collage. ` +
         `Headline: ${trust}. Subline: why so many people choose it.`,
     },
@@ -333,11 +363,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '05_detail',
       title: '第 5 张 · 细节特写（AIDA · 欲望）',
       prompt:
-        `${styleBlockZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
         `第5张：细节特写。产品：${product}。怼近拍材质纹理、接口、按键、缝线，` +
         `把 ${sp2 || '卖点2'}、${sp3 || '卖点3'} 拍成看得见的品质。`,
       promptEn:
-        `${styleBlockEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 5: detail close-up. Product: ${product}. Macro on material texture, connector, button and stitching; ` +
         `make ${sp2 || 'benefit 2'} and ${sp3 || 'benefit 3'} visible as real quality.`,
     },
@@ -346,11 +376,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '06_compare',
       title: '第 6 张 · 对比反超（AIDA · 对比）',
       prompt:
-        `${styleBlockZh(style, '布局、主色、点缀色')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '布局、主色、点缀色')}${HOT_STYLE_BRIEF}\n` +
         `第6张：对比反超。产品：${product}。左右分屏VS：左普通款灰调，右我们亮调，中间VS分割线。` +
         `产品线稿 + 俄语厘米标注。主文案：凭什么选我们？副文案：${diff}。`,
       promptEn:
-        `${styleBlockEn(style, 'layout, dominant color, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'layout, dominant color, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 6: head-to-head comparison. Product: ${product}. Split screen: grey-toned ordinary version on the left, bright "ours" on the right, VS divider in the middle. ` +
         `Product line-art with Russian centimetre annotations. Headline: why choose us? Subline: ${diff}.`,
     },
@@ -359,11 +389,11 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '07_offer',
       title: '第 7 张 · 利益与售后（AIDA · 行动）',
       prompt:
-        `${styleBlockZh(style, '文案位置、字体风格、装饰元素')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '文案位置、字体风格、装饰元素')}${HOT_STYLE_BRIEF}\n` +
         `第7张：利益与售后。产品：${product}。价格标签 + 赠品堆头 + 售后图标横向排列，` +
         `打开状态但不展示包装盒和说明书。主文案：${price}。副文案：${service}。`,
       promptEn:
-        `${styleBlockEn(style, 'text placement, typography style, decorative elements')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'text placement, typography style, decorative elements')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 7: offer and after-sales. Product: ${product}. Price tag + gift pile + after-sales icons in a horizontal row; ` +
         `shown open, without box or manual. Headline: ${price}. Subline: ${service}.`,
     },
@@ -372,14 +402,15 @@ export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
       key: '08_compliance',
       title: '第 8 张 · 白底合规图（合规兜底）',
       // 白底合规图**不带版式**：合规位要求纯白底、无任何装饰，带版式反而会被平台判不合格。
+      // 但**要带构图安全区**——它也是完整商品图，被裁掉一样不合格。
       prompt:
-        `${HOT_STYLE_BRIEF}\n` +
+        `${HOT_FRAMING_SAFE_AREA}${HOT_STYLE_BRIEF}\n` +
         `第8张：白底合规图（平台审核/搜索抓取位）。产品：${product}。` +
-        '纯白底#FFFFFF正视图，不加任何文字、水印、贴纸。',
+        '纯白底#FFFFFF正视图，商品居中，占画面 70-85%，不加任何文字、水印、贴纸。',
       promptEn:
-        `${HOT_STYLE_BRIEF_EN}\n` +
+        `${HOT_FRAMING_SAFE_AREA_EN}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 8: white-background compliance image (marketplace review and search thumbnail). Product: ${product}. ` +
-        'Pure white #FFFFFF front view; no text, no watermark, no stickers.',
+        'Pure white #FFFFFF front view, product centred, occupying 70-85%; no text, no watermark, no stickers.',
     },
   ]
 
@@ -405,13 +436,13 @@ export function buildHotExtraCards(product: string, styleDesc = ''): OzonScriptC
       key: '09_angles',
       title: '第 9 张 · 多角度展示图（含俯视）',
       prompt:
-        `${styleBlockZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
         `第9张：多角度展示图。产品：${name}。` +
         '同一件商品并排展示 4 个**不同视角**：正面平视 / 正侧面 / 正上方俯视 / 45度俯视，' +
         '构图干净、间距均匀。**俯视要能看到顶面和内部结构**，侧面要有真实厚度感，不要压扁成纸片。' +
         '四个视角必须是同一件商品，颜色和结构完全一致。主文案：全方位看清每一面。',
       promptEn:
-        `${styleBlockEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 9: multi-angle showcase. Product: ${name}. ` +
         'Show the same product in 4 **different viewpoints** side by side: front eye-level / pure side / straight top-down / 45-degree top-down. ' +
         'Clean composition, even spacing. **The top-down view must reveal the top face and interior structure**; the side view must convey real thickness, not a flattened sheet. ' +
@@ -421,13 +452,14 @@ export function buildHotExtraCards(product: string, styleDesc = ''): OzonScriptC
       index: 10,
       key: '10_macro',
       title: '第 10 张 · 细节特写补充图',
+      // 四宫格微距：本来就要「看不到完整商品」，不加构图安全区。
       prompt:
-        `${styleBlockZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '背景、构图', false)}${HOT_STYLE_BRIEF}\n` +
         `第10张：细节特写补充图。产品：${name}。` +
         '2x2 四宫格微距——材质纹理、接口/按键、缝线或密封圈、底部细节，每格怼近拍，' +
         '各配一个俄语短标注指向具体位置，突出做工和用料。主文案：细节见真章。',
       promptEn:
-        `${styleBlockEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'background, composition', false)}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 10: extra detail close-ups. Product: ${name}. ` +
         '2x2 grid of macro shots — material texture, connector/buttons, stitching or sealing ring, bottom detail. Each cell is a tight close-up ' +
         'with a short Russian annotation pointing at the exact spot, emphasising build quality and materials. Headline: the detail is the proof.',
@@ -437,10 +469,10 @@ export function buildHotExtraCards(product: string, styleDesc = ''): OzonScriptC
       key: '11_usage',
       title: '第 11 张 · 使用场景补充图',
       prompt:
-        `${styleBlockZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
         `第11张：使用场景补充。产品：${name}。俄罗斯模特在真实生活场景中使用产品，自然抓拍，突出使用体验。`,
       promptEn:
-        `${styleBlockEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 11: extra usage scene. Product: ${name}. A Russian model using the product in a real-life setting, candid capture, emphasising the experience.`,
     },
     {
@@ -448,10 +480,10 @@ export function buildHotExtraCards(product: string, styleDesc = ''): OzonScriptC
       key: '12_faq',
       title: '第 12 张 · FAQ / 对比图',
       prompt:
-        `${styleBlockZh(style, '布局、文案位置')}${HOT_STYLE_BRIEF}\n` +
+        `${cardHeadZh(style, '布局、文案位置')}${HOT_STYLE_BRIEF}\n` +
         `第12张：FAQ/对比。产品：${name}。左右对比：普通款 vs 我们的产品，俄语标注 3 个常见问题答案。`,
       promptEn:
-        `${styleBlockEn(style, 'layout, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
+        `${cardHeadEn(style, 'layout, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
         `Card 12: FAQ / comparison. Product: ${name}. Left-right comparison: ordinary version vs our product, with 3 common questions answered in Russian.`,
     },
   ]

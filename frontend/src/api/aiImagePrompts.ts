@@ -75,6 +75,26 @@ export const OZON_SYSTEM_PROMPT_EN = `Ozon product main image, 3:4 portrait.
 - Do not add numbers or dimensions that are not present in the reference image.
 `
 
+/**
+ * 构图安全区：商品必须完整入镜，不许贴边、不许裁切。
+ *
+ * 【2026-10-17 主人反馈】「爆款复刻和套图都出现图片展示不全」——
+ * 商品顶部/边缘被切掉了。查代码发现根因：卡片里只写了
+ * 「占画面 70-85%」这类**占比**，但**没有任何一句要求「完整入镜」**。
+ * 模型按占比把产品放大后自然就出框了；爆款复刻那边版式说明里还有「大幅产品」，
+ * 更是雪上加霜。
+ *
+ * 所以把它做成一条**独立的硬规则**，拼在每一张需要露出完整商品的卡片前面。
+ * 三个局部微距卡片（材质/结构/工艺）**不加**——它们本来就要「看不到完整商品」。
+ */
+export const FRAMING_SAFE_AREA =
+  '- 【构图安全区】商品必须完整入镜：所有部位都在画面内，四周留 8-10% 的安全边距，' +
+  '任何部位都不得贴边、不得被裁切。即使版式说明里写了「大幅产品」，也必须先满足这一条。\n'
+
+export const FRAMING_SAFE_AREA_EN =
+  '- [Framing safety] The product must be fully in frame: every part inside the image, with 8-10% safe margin on all sides. ' +
+  'Nothing may touch the edge and nothing may be cropped. Even if the layout note says "large product", this rule wins.\n'
+
 /** 场景库：产品名里命中关键词就自动配这个场景。 */
 export const SCENE_LIBRARY: ReadonlyArray<readonly [string, string, string]> = [
   ['保温杯', 'modern office desk beside a laptop, natural window light', '办公室桌面 + 笔记本电脑 + 窗边自然光'],
@@ -199,7 +219,16 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
    * 模型只能自由发挥，所以出图雷同。现在把这些维度写实，
    * 再配合不同的镜头与光线，画面才会真的不一样。
    */
-  const tasks: Array<{ key: string; title: string; bodyZh: string; bodyEn: string }> = [
+  const tasks: Array<{
+    key: string
+    title: string
+    bodyZh: string
+    bodyEn: string
+    /** 默认要「完整入镜」；三个局部微距卡片设成 false（它们本来就要看不到完整商品）。 */
+    cropSafe?: boolean
+    /** 只有尺寸规格图要写数字，需要临时覆盖「不要添加原图没有的数字」那条规范。 */
+    allowDimensions?: boolean
+  }> = [
     {
       key: '01_selling_points',
       title: '第 1 张 · 核心卖点信息图',
@@ -221,22 +250,36 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: more than three text groups, promo corner badges, borders, walls of text.',
     },
     {
-      key: '02_compliance',
-      title: '第 2 张 · 合规主图',
+      /**
+       * 【2026-10-17 主人要求】原来第 2 张是「白底合规主图」。
+       * 主人说「那个白底图片换成对应风格的模特使用的场景，这样显得不单调，重点是突出产品」，
+       * 所以换成**模特使用场景**，但产品仍然是画面主角（模特只做陪衬）。
+       *
+       * ⚠️ 注意：Ozon/WB 的**第 1 张主图**通常要求白底。这张改成场景图之后，
+       * 整套里就没有白底图了。如果平台审核卡这一条，需要单独补一张白底。
+       */
+      key: '02_model_scene',
+      title: '第 2 张 · 模特使用场景',
       bodyZh:
-        `第2张：合规主图（平台审核位）。产品：${product}。` +
-        '镜头：45度平视，完整入镜不裁切，产品占画面 70-85%。' +
-        '背景：纯白 #FFFFFF，不要任何元素。' +
-        '光线：均匀影棚光，产品正下方有自然淡阴影，不要重投影。' +
-        '文字：只保留俄语尺寸标注（Размеры），不要其他文案。' +
-        '禁忌：Logo、水印、边框、促销标签、模特、道具一律不要。',
+        `第2张：模特使用场景。产品：${product}。` +
+        '镜头：平视略低机位，产品占画面 55-65%，模特在画面一侧，只占 25-30%，不要抢主体。' +
+        `背景：与产品调性一致的真实生活场景（${sceneZh}），有空间层次和自然光。` +
+        '光线：自然窗光或柔和环境光，模特脸上有柔和轮廓光，不要硬闪。' +
+        '人物：一位符合目标市场的俄罗斯模特，穿着与产品调性匹配，动作自然正在使用产品，' +
+        '**手和眼神都要指向产品**，让视线落到产品上。' +
+        '重点：产品必须是画面最亮、最清晰、最抓眼的部分；模特虚化一点没关系。' +
+        '文字：画面不要任何文字，保持干净。' +
+        '禁忌：不要纯白底，不要产品像贴上去的，不要模特占满画面。',
       bodyEn:
-        `Card 2: compliance main image (marketplace review slot). Product: ${product}. ` +
-        'Camera: 45-degree eye level, fully in frame with no cropping; product occupies 70-85%. ' +
-        'Background: pure white #FFFFFF with nothing else. ' +
-        'Lighting: even studio light with a soft natural shadow directly beneath the product; no harsh cast shadow. ' +
-        'Text: Russian size annotation only (Размеры); no other copy. ' +
-        'Forbidden: logos, watermarks, borders, promo badges, models, props.',
+        `Card 2: model lifestyle scene. Product: ${product}. ` +
+        'Camera: eye level, slightly low angle. Product occupies 55-65% of the frame; the model sits to one side taking only 25-30% and must not dominate. ' +
+        `Background: a real-life setting matching the product (${sceneEn}), with spatial depth and natural light. ` +
+        'Lighting: natural window light or soft ambient light; a soft rim light on the model, no harsh flash. ' +
+        'Model: one Russian model matching the target market, dressed to match the product, naturally using the product. ' +
+        '**Hands and gaze must point at the product** so the eye lands on it. ' +
+        'Priority: the product must be the brightest, sharpest, most eye-catching element; the model may be slightly out of focus. ' +
+        'Text: no text at all; keep it clean. ' +
+        'Forbidden: plain white background, product that looks pasted in, model filling the frame.',
     },
     {
       key: '03_lifestyle',
@@ -287,6 +330,8 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     {
       key: '05_material_macro',
       title: '第 5 张 · 细节·材质微距',
+      // 微距卡片**不加**构图安全区：它本来就要「看不到完整商品」。
+      cropSafe: false,
       bodyZh:
         `第5张：材质微距特写。产品：${product}。` +
         '镜头：微距怼近，只拍一个局部，局部占画面 95%，**看不到完整商品**。' +
@@ -309,6 +354,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     {
       key: '06_structure_closeup',
       title: '第 6 张 · 细节·结构特写',
+      cropSafe: false,
       bodyZh:
         `第6张：结构特写。产品：${product}。` +
         '镜头：俯视 45 度局部特写，只拍结构部位，占画面 95%，**看不到完整商品**。' +
@@ -331,6 +377,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     {
       key: '07_craft_closeup',
       title: '第 7 张 · 细节·工艺特写',
+      cropSafe: false,
       bodyZh:
         `第7张：工艺特写。产品：${product}。` +
         '镜头：微距，占画面 95%，只拍工艺细节，**看不到完整商品**。' +
@@ -353,22 +400,36 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     {
       key: '08_size_chart',
       title: '第 8 张 · 尺寸规格图',
+      // 尺寸图必须写数字，要临时覆盖「不要添加原图没有的数字和尺寸」那条规范。
+      allowDimensions: true,
       bodyZh:
         `第8张：尺寸规格图。产品：${product}。` +
         '镜头：正视图平视，产品占画面 60%，四周留出标注空间。' +
         '背景：纯白或极浅灰网格底，不要有场景。' +
         '光线：均匀平光，不要强烈投影，避免干扰标注线。' +
         '表现：产品实拍 + 半透明线稿轮廓叠加，标出关键尺寸。' +
-        '文字：俄语厘米标注（Размеры, см），每个尺寸配双向箭头。' +
-        '禁忌：不要出现英制单位，不要堆无关参数。',
+        '标题：俄语「Размеры, см」，放在画面上方。' +
+        '**每个尺寸都必须写出具体数值，格式是「俄语名称：阿拉伯数字 + см」**，' +
+        '例如 «Высота: 12 см»、«Ширина: 8.5 см»、«Глубина: 4 см»。' +
+        '数值用阿拉伯数字（12、8.5 这种），单位只写 см。' +
+        '每个尺寸配一条双向箭头，箭头两端落在实际测量点上（顶部到顶部、左侧到左侧）。' +
+        '数值按参考图里商品的实际长宽比例估算，小数点最多一位。' +
+        '**禁止只写文字标签不写数字**，也禁止写成空箭头。' +
+        '禁忌：不要出现英制单位（in、inch、дюйм），不要堆无关参数。',
       bodyEn:
         `Card 8: size specification. Product: ${product}. ` +
         'Camera: front view at eye level, product occupying 60% of the frame, with margin around for annotations. ' +
         'Background: pure white or a very light grey grid; no scene. ' +
         'Lighting: even flat light without strong shadows, so it does not fight the annotation lines. ' +
         'Presentation: the real photo with a semi-transparent line-art outline overlaid, marking key dimensions. ' +
-        'Text: Russian centimetre annotations (Размеры, см), each dimension with a double-headed arrow. ' +
-        'Forbidden: imperial units, unrelated specifications.',
+        'Heading: Russian "Размеры, см" across the top. ' +
+        '**Every dimension must carry an explicit value, formatted as "Russian label: Arabic numeral + см"**, ' +
+        'for example «Высота: 12 см», «Ширина: 8.5 см», «Глубина: 4 см». ' +
+        'Use Arabic numerals (12, 8.5) and the unit см only. ' +
+        'Each dimension gets a double-headed arrow whose ends sit on the real measuring points (top to top, left to left). ' +
+        'Estimate the values from the real proportions of the product in the reference image; at most one decimal place. ' +
+        '**Never draw a label without a number**, and never leave an empty arrow. ' +
+        'Forbidden: imperial units (in, inch, дюйм), unrelated specifications.',
     },
     {
       key: '09_top_view',
@@ -412,17 +473,36 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     },
   ]
 
-  return tasks.map((task, index) => ({
-    index: index + 1,
-    key: task.key,
-    title: task.title,
-    // 界面显示 + 用户编辑的是中文这一份。
-    // **不带 PRODUCT_LOCK**：那是英文技术约束，不该出现在用户看到的中文提示词里。
-    // 它在生成时才拼上去（`buildEffectivePrompt`），而且只在「有参考图」时才拼。
-    prompt: `${OZON_SYSTEM_PROMPT}${task.bodyZh}`,
-    // 真正发给模型的是英文这一份。同样不带 PRODUCT_LOCK，理由同上。
-    promptEn: `${OZON_SYSTEM_PROMPT_EN}${task.bodyEn}`,
-  }))
+  return tasks.map((task, index) => {
+    // 尺寸图要写数字，得把「不要添加原图没有的数字和尺寸」那条规范换掉，
+    // 否则模型会严格遵守它、只在图上画空箭头不写数值（主人报的就是这个）。
+    const specZh = task.allowDimensions
+      ? OZON_SYSTEM_PROMPT.replace(
+          '- 不要添加原图没有的数字和尺寸\n',
+          '- 本张是尺寸图：**必须写出阿拉伯数字 + см**（这条覆盖上一条）\n',
+        )
+      : OZON_SYSTEM_PROMPT
+    const specEn = task.allowDimensions
+      ? OZON_SYSTEM_PROMPT_EN.replace(
+          '- Do not add numbers or dimensions that are not present in the reference image.\n',
+          '- This card is the size chart: **Arabic numerals + см are required** (this overrides the rule above).\n',
+        )
+      : OZON_SYSTEM_PROMPT_EN
+    // 需要露出完整商品的卡片，前面加一条构图安全区（微距三张不加）。
+    const framingZh = task.cropSafe === false ? '' : FRAMING_SAFE_AREA
+    const framingEn = task.cropSafe === false ? '' : FRAMING_SAFE_AREA_EN
+    return {
+      index: index + 1,
+      key: task.key,
+      title: task.title,
+      // 界面显示 + 用户编辑的是中文这一份。
+      // **不带 PRODUCT_LOCK**：那是英文技术约束，不该出现在用户看到的中文提示词里。
+      // 它在生成时才拼上去（`buildEffectivePrompt`），而且只在「有参考图」时才拼。
+      prompt: `${framingZh}${specZh}${task.bodyZh}`,
+      // 真正发给模型的是英文这一份。同样不带 PRODUCT_LOCK，理由同上。
+      promptEn: `${framingEn}${specEn}${task.bodyEn}`,
+    }
+  })
 }
 
 /** 视觉模型列表（原程序下拉里的）。 */
