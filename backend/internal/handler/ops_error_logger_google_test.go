@@ -17,7 +17,7 @@ func recordGoogleFormatOpsError(t *testing.T, handle gin.HandlerFunc) *service.O
 	gin.SetMode(gin.TestMode)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1beta/cachedContents", handle)
 
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1beta/cachedContents", nil))
