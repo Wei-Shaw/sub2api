@@ -1108,8 +1108,8 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	}
 	updates["codex_usage_updated_at"] = baseTime.Format(time.RFC3339)
 
-	// 归一化到 5h/7d 规范字段
-	if normalized := snapshot.Normalize(); normalized != nil {
+	// 归一化到 5h/7d 规范字段；非 5h/周级的窗口（如生图 24h 额度）只保留上面的原始字段
+	if normalized := snapshot.normalizeCanonical(); normalized != nil {
 		if normalized.Used5hPercent != nil {
 			updates["codex_5h_used_percent"] = *normalized.Used5hPercent
 		}
