@@ -1193,7 +1193,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	if len(availableModels) > 0 || (platform == service.PlatformOpenAI && availableModels != nil) {
+	if availableModels != nil {
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1287,7 +1287,7 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	if group.ModelAllowlistEnabled() {
 		return group.ModelAllowlist.FilterForListing(modelListingSource(platform, availableModels, fallbackModels))
 	}
-	if len(availableModels) > 0 {
+	if availableModels != nil {
 		return availableModels
 	}
 	return fallbackModels
@@ -1308,7 +1308,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 			continue
 		}
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
-		if len(platformModels) == 0 && (platform != service.PlatformOpenAI || platformModels == nil) {
+		if platformModels == nil {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
 			// default 分支是 Claude 列表），composite 下只暴露账号映射键。
 			if _, ok := schedulablePlatforms[platform]; ok && !service.IsMultiProtocolAPIKeyProvider(platform) {
@@ -1454,13 +1454,10 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 }
 
 // modelListingSource 汇总模型列表过滤的候选来源：账号映射键（availableModels）
-// 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表；Anthropic
+// 与平台默认列表（fallbackModels）。nil 表示未配置，空切片表示过滤后无模型；Anthropic
 // 平台两者取并集，其余平台以账号映射键为准。
 func modelListingSource(platform string, availableModels, fallbackModels []string) []string {
-	if platform == service.PlatformOpenAI && availableModels != nil {
-		return availableModels
-	}
-	if len(availableModels) == 0 {
+	if availableModels == nil {
 		return fallbackModels
 	}
 	if platform == service.PlatformAnthropic {
