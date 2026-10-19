@@ -38,6 +38,8 @@ export default {
     restartRequired: 'Please restart the service to apply the update',
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
+    restartUnsupported:
+      'Automatic restart is only supported on Linux (systemd). Please restart the service manually.',
     retry: 'Retry',
     rollback: 'Version Rollback',
     rollbackSelectVersion: 'Select a version to roll back to (last 3 versions)',

@@ -2,11 +2,22 @@
 package sysutil
 
 import (
+	"errors"
 	"log"
 	"os"
 	"runtime"
 	"time"
 )
+
+// ErrRestartUnsupported is returned when the current platform cannot restart
+// the service by exiting (there is no systemd to bring it back).
+var ErrRestartUnsupported = errors.New("service restart via exit is only supported on Linux with systemd")
+
+// RestartSupported reports whether RestartService can restart the service on
+// the current platform.
+func RestartSupported() bool {
+	return runtime.GOOS == "linux"
+}
 
 // RestartService triggers a service restart by gracefully exiting.
 //
@@ -21,9 +32,8 @@ import (
 //   - Linux OS with systemd
 //   - Service configured with Restart=always in systemd unit file
 func RestartService() error {
-	if runtime.GOOS != "linux" {
-		log.Println("Service restart via exit only works on Linux with systemd")
-		return nil
+	if !RestartSupported() {
+		return ErrRestartUnsupported
 	}
 
 	log.Println("Initiating service restart by graceful exit...")
@@ -43,6 +53,6 @@ func RestartService() error {
 func RestartServiceAsync() {
 	if err := RestartService(); err != nil {
 		log.Printf("Service restart failed: %v", err)
-		log.Println("Please restart the service manually: sudo systemctl restart sub2api")
+		log.Println("Please restart the service manually")
 	}
 }

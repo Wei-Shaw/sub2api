@@ -198,9 +198,31 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 	})
 }
 
+// systemRestartSupported and scheduleSystemRestart are swapped in tests so the
+// handler can be exercised without exiting the test process.
+var (
+	systemRestartSupported = sysutil.RestartSupported
+	scheduleSystemRestart  = func() {
+		// Wait a moment to ensure the response is sent
+		time.Sleep(500 * time.Millisecond)
+		sysutil.RestartServiceAsync()
+	}
+)
+
+const (
+	systemRestartUnsupportedReason  = "SYSTEM_RESTART_UNSUPPORTED"
+	systemRestartUnsupportedMessage = "automatic restart is only supported on Linux with systemd; please restart the service manually"
+)
+
 // RestartService restarts the systemd service
 // POST /api/v1/admin/system/restart
 func (h *SystemHandler) RestartService(c *gin.Context) {
+	// Without systemd nothing brings the process back, so report it instead of a fake success.
+	// Not ErrorFrom: an expected platform limitation must not be logged as a 5xx server error.
+	if !systemRestartSupported() {
+		response.ErrorWithDetails(c, http.StatusNotImplemented, systemRestartUnsupportedMessage, systemRestartUnsupportedReason, nil)
+		return
+	}
 	operationID := buildSystemOperationID(c, "restart")
 	payload := gin.H{"operation_id": operationID}
 	executeAdminIdempotentJSON(c, "admin.system.restart", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {
@@ -215,11 +237,7 @@ func (h *SystemHandler) RestartService(c *gin.Context) {
 
 		// Schedule service restart in background after sending response
 		// This ensures the client receives the success response before the service restarts
-		go func() {
-			// Wait a moment to ensure the response is sent
-			time.Sleep(500 * time.Millisecond)
-			sysutil.RestartServiceAsync()
-		}()
+		go scheduleSystemRestart()
 		succeeded = true
 		return gin.H{
 			"message":      "Service restart initiated",

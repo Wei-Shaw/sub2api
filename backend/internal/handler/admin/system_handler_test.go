@@ -101,6 +101,7 @@ func newSystemHandlerTestRouter(t *testing.T, updateSvc *systemHandlerUpdateServ
 	router.POST("/api/v1/admin/system/update", handler.PerformUpdate)
 	router.POST("/api/v1/admin/system/rollback", handler.Rollback)
 	router.GET("/api/v1/admin/system/rollback-versions", handler.GetRollbackVersions)
+	router.POST("/api/v1/admin/system/restart", handler.RestartService)
 	return router
 }
 
@@ -321,4 +322,57 @@ func TestSystemHandlerGetRollbackVersionsError(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func stubSystemRestart(t *testing.T, supported bool) <-chan struct{} {
+	t.Helper()
+	scheduled := make(chan struct{}, 1)
+	prevSupported, prevSchedule := systemRestartSupported, scheduleSystemRestart
+	systemRestartSupported = func() bool { return supported }
+	scheduleSystemRestart = func() { scheduled <- struct{}{} }
+	t.Cleanup(func() {
+		systemRestartSupported, scheduleSystemRestart = prevSupported, prevSchedule
+	})
+	return scheduled
+}
+
+// #8058: on platforms without systemd (macOS, Windows) the restart used to report
+// success while doing nothing, leaving the old binary running after an update.
+func TestSystemHandlerRestartUnsupportedPlatformReturnsNotImplemented(t *testing.T) {
+	scheduled := stubSystemRestart(t, false)
+	router := newSystemHandlerTestRouter(t, &systemHandlerUpdateServiceStub{}, newMemoryIdempotencyRepoStub())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/restart", nil)
+	req.Header.Set("Idempotency-Key", "restart-unsupported")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotImplemented, rec.Code)
+	var body struct {
+		Code   int    `json:"code"`
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, http.StatusNotImplemented, body.Code)
+	require.Equal(t, "SYSTEM_RESTART_UNSUPPORTED", body.Reason)
+	require.Empty(t, scheduled, "restart must not be scheduled on an unsupported platform")
+}
+
+func TestSystemHandlerRestartSupportedPlatformSchedulesRestart(t *testing.T) {
+	scheduled := stubSystemRestart(t, true)
+	repo := newMemoryIdempotencyRepoStub()
+	router := newSystemHandlerTestRouter(t, &systemHandlerUpdateServiceStub{}, repo)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/restart", nil)
+	req.Header.Set("Idempotency-Key", "restart-supported")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	select {
+	case <-scheduled:
+	case <-time.After(time.Second):
+		t.Fatal("restart was not scheduled")
+	}
+	requireSystemLockStatus(t, repo, service.IdempotencyStatusSucceeded)
 }
