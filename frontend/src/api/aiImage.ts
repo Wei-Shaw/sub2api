@@ -426,22 +426,33 @@ export async function extractSellingPoints(request: {
 }
 
 /**
- * 拆解爆款版式：把同行的爆款主图丢给视觉模型，让它吐出 9 个版式维度。
+ * 让视觉模型看一组图并返回原始文本。
  *
- * 和 extractSellingPoints 走同一个网关接口（/v1/chat/completions），
- * 只是提示词和温度不同（桌面程序里拆解用 0.2、识别卖点用 0.3）。
- * 返回**原始文本**，解析交给 aiImageHot.extractJsonObject，
- * 因为视觉模型经常在 JSON 前后夹带解释文字。
+ * 【2026-10-19 改成收多张图】爆款复刻现在要**同时**看两张：
+ *   ① 同行的爆款参考图（要照抄它的版式）；
+ *   ② 我们自己的商品图（要换成它）。
+ * 只给一张的话模型分不清「该抄谁、该换谁」，所以接口从单张 `image` 改成 `images`。
+ *
+ * 每一项既可以是本地文件，也可以是**图片直链**：
+ *   - 本地文件 → 读成 data URL 再送；
+ *   - `http(s)://...` 直链 → **原样送**，由上游自己去下载。
+ *     这样浏览器完全不需要跨域读到那张图（跨域读图正是「下载/加水印」那个老毛病）。
+ *
+ * 走的是同一个网关接口（/v1/chat/completions），返回**原始文本**，
+ * 解析交给 aiImageHot.parseHotLayout —— 视觉模型经常在 JSON 前后夹带解释文字。
  */
 export async function analyzeHotStyle(request: {
   apiKey: string
-  image: File
+  /** 一次送的图，顺序有意义：第 1 张是版式参考，第 2 张是我们的商品。 */
+  images: Array<File | string>
   model?: string
   prompt: string
   temperature: number
   timeoutMs?: number
 }): Promise<string> {
-  const base64 = await fileToBase64(request.image)
+  const urls = await Promise.all(
+    request.images.map((item) => (typeof item === 'string' ? item.trim() : fileToBase64(item))),
+  )
   const url = buildGatewayUrl('/v1/chat/completions')
 
   // 浏览器 fetch 默认没有超时，视觉模型又慢，必须自己掐表，
@@ -461,7 +472,7 @@ export async function analyzeHotStyle(request: {
             role: 'user',
             content: [
               { type: 'text', text: request.prompt },
-              { type: 'image_url', image_url: { url: base64 } },
+              ...urls.map((item) => ({ type: 'image_url', image_url: { url: item } })),
             ],
           },
         ],

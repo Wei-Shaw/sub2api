@@ -286,8 +286,10 @@
 
         <p class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ t('aiImage.hot.hint') }}</p>
 
-        <!-- 第 1 步：传爆款图 → 拆版式 -->
-        <div class="mt-3 flex flex-wrap items-center gap-2">
+        <!-- 第 1 步：放同行的爆款参考图并拆解。
+             一张参考图 = 一张脚本 = 一张出图，所以这里放几张就出几张。 -->
+        <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step1') }}</p>
+        <div class="mt-1 flex flex-wrap items-center gap-2">
           <input
             ref="hotRefInputRef"
             type="file"
@@ -304,7 +306,7 @@
             type="button"
             class="btn btn-primary btn-sm"
             data-testid="hot-analyze"
-            :disabled="hotAnalyzing || !hotRefFiles.length"
+            :disabled="hotAnalyzing || !hotRefCount"
             @click="runHotAnalyze"
           >
             <Icon :name="hotAnalyzing ? 'refresh' : 'brain'" size="sm" class="mr-1.5" :class="hotAnalyzing ? 'animate-spin' : ''" />
@@ -315,24 +317,55 @@
           </span>
         </div>
 
-        <!-- 拆解出来的版式描述 -->
-        <div v-if="hotStyleDesc" class="mt-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-900">
-          <p class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.styleTitle') }}</p>
-          <p class="mt-1 break-words text-xs leading-relaxed text-gray-700 dark:text-gray-200" data-testid="hot-style-desc">
-            {{ hotStyleDesc }}
-          </p>
+        <!-- 图片直链：同行图站基本都不给跨域头，所以这里**不下载**，
+             直接把网址原样交给视觉模型，由上游去取图。
+             这样「浏览器读不到那张图」不再是障碍。 -->
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            v-model="hotUrlInput"
+            class="input flex-1 text-sm"
+            :placeholder="t('aiImage.hot.urlPlaceholder')"
+            data-testid="hot-url-input"
+            @keyup.enter="addHotRefUrl"
+          />
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-testid="hot-add-url"
+            :disabled="!hotUrlInput.trim()"
+            @click="addHotRefUrl"
+          >
+            {{ t('aiImage.hot.addUrl') }}
+          </button>
         </div>
 
-        <!-- 当前用哪套「模板」。没有的话直接说清楚，免得点了生成才发现不对。 -->
-        <p
-          class="mt-3 text-xs leading-relaxed"
-          :class="hotTemplate ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'"
-          data-testid="hot-template-state"
-        >
-          {{ hotTemplate ? t('aiImage.hot.templateReady') : t('aiImage.hot.needTemplate') }}
-        </p>
+        <!-- 已经放进去的参考图（文件 + 链接混在一起，顺序就是出图顺序） -->
+        <div v-if="hotRefs.length" class="mt-2 flex flex-wrap items-center gap-1.5" data-testid="hot-ref-list">
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.hot.refCount', { count: hotRefCount }) }}</span>
+          <span
+            v-for="(item, index) in hotRefs"
+            :key="item.id"
+            class="inline-flex max-w-[18rem] items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-dark-900 dark:text-gray-200"
+          >
+            <span class="text-gray-400 dark:text-gray-500">{{ index + 1 }}</span>
+            <span class="truncate" :title="item.url || item.name">
+              {{ item.url ? t('aiImage.hot.fromUrl') : '' }}{{ item.name }}
+            </span>
+            <button
+              type="button"
+              class="text-gray-400 hover:text-red-500"
+              :data-testid="`hot-remove-ref-${index + 1}`"
+              @click="removeHotRef(item.id)"
+            >
+              ×
+            </button>
+          </span>
+        </div>
 
-        <!-- 第 2 步：填自己的产品信息（这一步是独立的，不用先去把 Ozon 脚本那张表） -->
+        <!-- 第 2 步：放我自己的商品图。
+             拆解时会把这张图和每一张爆款参考图**一起**送给视觉模型：
+             参考图给的是版式，这张图给的是「文案该写成什么」。
+             两张都给，模型才知道「抄这张的排版、换成这张的商品」。 -->
         <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
           <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step2') }}</p>
 
@@ -363,72 +396,8 @@
               class="h-10 w-10 rounded border border-gray-200 object-cover dark:border-dark-600"
             />
 
-            <!-- 卖点 / 痛点 / 差异化交给视觉模型：主人要的是
-                 「卖点由 Gemini 生成，痛点和差异化靠跟我的商品图对比得出」。 -->
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              data-testid="hot-extract"
-              :disabled="hotExtracting || !referenceImage"
-              @click="aiExtractHot"
-            >
-              <Icon
-                :name="hotExtracting ? 'refresh' : 'brain'"
-                size="sm"
-                class="mr-1.5"
-                :class="hotExtracting ? 'animate-spin' : ''"
-              />
-              {{ hotExtracting ? t('aiImage.hot.extracting') : t('aiImage.hot.extract') }}
-            </button>
           </div>
-          <p class="mb-3 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.extractHint') }}</p>
-
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.product') }}</label>
-              <input
-                v-model="hotForm.product"
-                class="input text-sm"
-                :placeholder="t('aiImage.script.productPlaceholder')"
-                data-testid="hot-product"
-              />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.sp1') }}</label>
-              <input v-model="hotForm.sp1" class="input text-sm" data-testid="hot-sp1" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.sp2') }}</label>
-              <input v-model="hotForm.sp2" class="input text-sm" data-testid="hot-sp2" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.sp3') }}</label>
-              <input v-model="hotForm.sp3" class="input text-sm" data-testid="hot-sp3" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.pain') }}</label>
-              <input v-model="hotForm.pain" class="input text-sm" data-testid="hot-pain" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.diff') }}</label>
-              <input v-model="hotForm.diff" class="input text-sm" data-testid="hot-diff" />
-            </div>
-          </div>
-
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <label class="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
-              <input v-model="hotIncludeExtras" type="checkbox" class="h-3.5 w-3.5" data-testid="hot-extras" />
-              {{ t('aiImage.hot.extras') }}
-            </label>
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              data-testid="hot-build-script"
-              @click="buildHotScriptCards"
-            >
-              {{ t('aiImage.hot.buildScript') }}
-            </button>
-          </div>
+          <p class="mb-3 text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.productHint') }}</p>
         </div>
 
         <p v-if="hotNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ hotNotice }}</p>
@@ -457,6 +426,23 @@
             @apply-all="applyAllScriptCards"
           />
         </div>
+
+        <!-- 一键生成全部 / 进度 / 并发 / 暂停 / 停止。
+             主人要求：位置和脚本一样，在「本功能的结果」上方、脚本的下方。
+             以前它是页面最下面一条常驻横条，离脚本隔着一屏。 -->
+        <AIBatchBar
+          v-if="scriptCards.length && scriptSource !== 'ozon'"
+          :count="scriptCards.length"
+          :running="batchRunning"
+          :paused="batchPaused"
+          :progress="batchProgress"
+          :concurrency="batchConcurrency"
+          source="hot"
+          @generate-all="generateAllScriptCards"
+          @pause="toggleBatchPause"
+          @stop="stopBatch"
+          @update:concurrency="batchConcurrency = $event"
+        />
 
         <!-- 这个功能自己的结果区：只显示「爆款复刻」做出来的图。
              全部功能的图在最下面的「生图结果」里汇总。 -->
@@ -729,7 +715,7 @@
               {{ aiExtracting ? t('aiImage.script.aiExtracting') : t('aiImage.script.aiExtract') }}
             </button>
             <button type="button" class="btn btn-primary btn-sm" @click="buildScript">
-              {{ t('aiImage.script.build') }}
+              {{ t('aiImage.script.build', { count: OZON_CARD_COUNT }) }}
             </button>
           </div>
           <!-- 主人要求：这个框里要明确提示「选 Gemini 渠道」。
@@ -765,6 +751,22 @@
             @apply-all="applyAllScriptCards"
           />
         </div>
+
+        <!-- 一键生成全部 / 进度 / 并发 / 暂停 / 停止。
+             和「爆款复刻」那一页放同一个位置：脚本下方、本功能结果上方。 -->
+        <AIBatchBar
+          v-if="scriptCards.length && scriptSource === 'ozon'"
+          :count="scriptCards.length"
+          :running="batchRunning"
+          :paused="batchPaused"
+          :progress="batchProgress"
+          :concurrency="batchConcurrency"
+          source="ozon"
+          @generate-all="generateAllScriptCards"
+          @pause="toggleBatchPause"
+          @stop="stopBatch"
+          @update:concurrency="batchConcurrency = $event"
+        />
 
         <!-- 这个功能自己的结果区：只显示「套图」做出来的图。
              全部功能的图在最下面的「生图结果」里汇总。 -->
@@ -938,89 +940,10 @@
         </div>
       </div>
 
-      <!-- 批量进度 + 并发 + 一键生成全部 + 暂停 / 停止。
-           主人两次说「找不到暂停/停止」，所以这一条常驻在提示词下面：
-           既不折叠、也不藏在任何面板里，没在跑的时候置灰。 -->
-      <div
-        class="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-700 dark:bg-dark-800"
-        data-testid="batch-bar"
-      >
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          <template v-if="scriptCards.length">
-            <span class="font-medium text-gray-700 dark:text-gray-200">
-              {{ t('aiImage.batch.progress', { done: batchProgress.done, total: batchProgress.total || scriptCards.length }) }}
-            </span>
-            <span v-if="batchProgress.failed" class="text-red-600 dark:text-red-400">
-              {{ t('aiImage.batch.failedCount', { count: batchProgress.failed }) }}
-            </span>
-            <span v-if="batchPaused" class="font-medium text-amber-600 dark:text-amber-400">
-              {{ t('aiImage.batch.paused') }}
-            </span>
-          </template>
-          <span v-else class="text-gray-500 dark:text-gray-400">{{ t('aiImage.batch.needScript') }}</span>
-
-          <!-- 并发数：和桌面程序一样上限 3，避免被上游限流、也避免一次烧太多额度 -->
-          <label v-if="scriptCards.length" class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
-            {{ t('aiImage.batch.concurrency') }}
-            <select v-model.number="batchConcurrency" class="input w-16 py-1 text-xs" :disabled="batchRunning">
-              <option v-for="n in BATCH_CONCURRENCY_OPTIONS" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </label>
-
-          <button
-            v-if="scriptCards.length"
-            type="button"
-            class="btn btn-primary btn-sm"
-            data-testid="generate-all-script-cards"
-            :disabled="batchRunning"
-            @click="generateAllScriptCards"
-          >
-            <Icon
-              :name="batchRunning ? 'refresh' : 'sparkles'"
-              size="sm"
-              class="mr-1"
-              :class="batchRunning ? 'animate-spin' : ''"
-            />
-            {{ batchRunning ? t('aiImage.batch.running') : t('aiImage.batch.generateAll', { count: scriptCards.length }) }}
-          </button>
-
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              data-testid="batch-pause"
-              :disabled="!batchRunning"
-              @click="toggleBatchPause"
-            >
-              {{ batchPaused ? t('aiImage.batch.resume') : t('aiImage.batch.pause') }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              data-testid="batch-stop"
-              :disabled="!batchRunning"
-              @click="stopBatch"
-            >
-              {{ t('aiImage.batch.stop') }}
-            </button>
-          </div>
-          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.batch.stopHint') }}</span>
-        </div>
-
-        <!-- 这组卡片是谁生成的（爆款复刻 / Ozon 脚本），标一下免得两个入口混在一起分不清 -->
-        <p v-if="scriptCards.length && scriptSource" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          {{
-            scriptSource === 'ozon'
-              ? t('aiImage.batch.fromOzon')
-              : scriptSource === 'hot-saved'
-                ? t('aiImage.batch.fromHotSaved')
-                : t('aiImage.batch.fromHot')
-          }}
-        </p>
-
-        <!-- 脚本卡片不在这里了：主人要求放到「爆款复刻 / 套图」各自面板里、
-             本功能结果图的上方。这一条只留进度、并发、一键生成、暂停/停止。 -->
-      </div>
+      <!-- 【2026-10-19】原来这里还有一条常驻的「批量进度 + 并发 + 一键生成全部 + 暂停/停止」横条。
+           主人要求「一键生成全部」的位置和脚本一样，于是在「爆款复刻」「套图」两个功能页里
+           各放了一份 `AIBatchBar`（脚本卡片下方、本功能结果上方），这条全局的删掉了 ——
+           否则同一个动作会有两个按钮，用户不知道该点哪个。 -->
 
 
       <!-- 中间：结果区 -->
@@ -1091,6 +1014,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AIImageResultGrid from '@/components/aiImage/AIImageResultGrid.vue'
+import AIBatchBar from '@/components/aiImage/AIBatchBar.vue'
 import AIScriptCards from '@/components/aiImage/AIScriptCards.vue'
 import type { AIImageRecord, RecordSource, RecordStatus, ResultRow, ResultSection } from '@/api/aiImageRecord'
 import {
@@ -1111,6 +1035,7 @@ import {
 } from '@/api/aiImage'
 import {
   DEFAULT_SCENE,
+  OZON_CARD_COUNT,
   OZON_SIZE_OPTIONS,
   OZON_SYSTEM_PROMPT_EN,
   PRODUCT_LOCK,
@@ -1142,16 +1067,12 @@ import {
   compositeImageBlobs,
 } from '@/api/aiImageComposite'
 import {
-  HOT_ANALYZE_PROMPT,
-  HOT_ANALYZE_TEMPERATURE,
-  HOT_EXTRACT_PROMPT,
-  buildHotExtraCards,
+  HOT_LAYOUT_PROMPT,
+  HOT_LAYOUT_TEMPERATURE,
   HOT_VISION_TIMEOUT_MS,
-  buildHotScript,
-  extractJsonObject,
-  mergeStyleSamples,
-  normalizeStyleSample,
-  type HotStyleDimensionKey,
+  buildHotLayoutCards,
+  parseHotLayout,
+  type HotLayout,
 } from '@/api/aiImageHot'
 
 /**
@@ -1296,32 +1217,48 @@ function isPanelOpen(id: PanelId): boolean {
  * 只要拆出了版式（或者套了一个已存的模板），填上产品名就能直接生成，
  * 不需要先去把 Ozon 脚本那一步做一遍。
  */
-const hotRefFiles = ref<File[]>([])
+/**
+ * 一张爆款参考图。
+ *
+ * 两种来源都支持（2026-10-19 主人要求「加入放入图片网页链接的方式」）：
+ *   - 本地文件（拖/选上传）；
+ *   - 图片直链（粘贴网址）。
+ * 直链是**原样交给视觉模型**的，浏览器不去下载它，所以不受跨域限制。
+ */
+interface HotRef {
+  id: string
+  /** 界面上显示的名字：文件名，或者链接的尾巴 */
+  name: string
+  file?: File
+  url?: string
+}
+
+const hotRefs = ref<HotRef[]>([])
+/** 这一批参考图的数量（文件 + 链接）。 */
+const hotRefCount = computed(() => hotRefs.value.length)
 const hotRefInputRef = ref<HTMLInputElement | null>(null)
+/** 「粘贴图片链接」那个输入框。 */
+const hotUrlInput = ref('')
 const hotAnalyzing = ref(false)
 /** 爆款复刻页里那个「我的商品图」选择框（和别的页面共用同一份 referenceImage）。 */
 const hotProductInputRef = ref<HTMLInputElement | null>(null)
-/** 正在让视觉模型识别卖点/痛点/差异化。 */
-const hotExtracting = ref(false)
 const hotProgress = ref({ done: 0, total: 0 })
-const hotStyleDesc = ref('')
+/**
+ * 这一批参考图拆出来的版式，**一张参考图一条**。
+ * 它既是脚本的来源（`buildHotLayoutCards` 按它建卡片），
+ * 也是「放了几张图就出几张图」这条要求的唯一依据，所以单独存一份。
+ */
+const hotLayouts = ref<HotLayout[]>([])
 const hotNotice = ref('')
 const hotError = ref('')
-const hotIncludeExtras = ref(false)
-const hotForm = ref({
-  product: '',
-  sp1: '',
-  sp2: '',
-  sp3: '',
-  sp1Ru: '',
-  sp2Ru: '',
-  sp3Ru: '',
-  pain: '',
-  diff: '',
-})
 
-/** 当前这组脚本卡片是谁生成的（界面上标一下，免得两个入口的卡片混在一起分不清）。 */
-const scriptSource = ref<'ozon' | 'hot-extracted' | 'hot-saved' | ''>('')
+/**
+ * 当前这组脚本卡片是谁生成的（界面上标一下，免得两个入口的卡片混在一起分不清）。
+ *
+ * `'hot'` 只有一种来源了：参考图拆解的结果。（原来还有一个 `'hot-saved'`，
+ * 指「套用提示词模板」，2026-10-19 按主人「不能有任何默认脚本」的要求去掉了。）
+ */
+const scriptSource = ref<'ozon' | 'hot' | ''>('')
 
 /**
  * 商品编号。客户端按 images/<商品编号>/<序号>.jpg 存放和识别图片，
@@ -1373,12 +1310,13 @@ const visionModel = ref(VISION_DEFAULT_MODEL)
 /**
  * 批量生成（桌面程序的「批量任务(并发)」）。
  *
- * 为什么需要它：八张主图脚本一次要出八张图，一张一张点太慢。
+ * 为什么需要它：一套脚本一次要出好几张图，一张一张点太慢。
  * 桌面程序允许 1/2/3 个并发同时跑，还能暂停和停止。
  * 这里的并发数刻意**上限 3**——和桌面程序一致：
  * 生图接口又慢又贵，开太多并发容易被上游限流，也容易一次烧掉太多额度。
+ *
+ * 并发数的**选项**在 `AIBatchBar` 组件里（下拉框在那儿），这里只存当前值。
  */
-const BATCH_CONCURRENCY_OPTIONS = [1, 2, 3] as const
 const batchConcurrency = ref<number>(2)
 const batchRunning = ref(false)
 const batchPaused = ref(false)
@@ -1822,6 +1760,28 @@ function isVisionRoutingFailure(message: string): boolean {
 }
 
 /**
+ * 结尾一律再压一条「不许画中文」的硬规则。
+ *
+ * 【2026-10-19 主人反馈】「实际运行图片中还会出现中文」——截图里标题是俄语，
+ * 下面整段却是中文（那段中文正是用户填的「用户痛点」原文）。
+ * 根因不是规则没写，而是**中文出现在提示词正文里**：模型把正文里的中文字符
+ * 当成了「要画上去的内容」。规则写在开头时，长正文会把它稀释掉。
+ *
+ * 所以：开头照旧压规则（`OZON_SYSTEM_PROMPT_EN`），**结尾再压一次**，
+ * 并且明确说「正文里的中文是给我的指令，请翻成俄语，不许把汉字画进图里」。
+ * 模型对结尾的服从度明显高于中段，这一条几乎零成本。
+ */
+const NO_CHINESE_TAIL =
+  '\n\n[Hard rule — read last] Not one Chinese character may appear on the image: ' +
+  'not a title, not a caption, not a badge, not a watermark, not a stray stroke. ' +
+  'Every visible word must be Russian. ' +
+  'If any instruction above is written in Chinese, translate its meaning into Russian and render the Russian only; ' +
+  'never copy the Chinese characters into the picture.'
+
+/** 判断一段提示词里有没有汉字（用来决定要不要额外解释「中文只是指令」）。 */
+const HAS_CJK = /[\u3400-\u4dbf\u4e00-\u9fff]/
+
+/**
  * 拼出发给模型的最终提示词。
  * 有参考图且开了锁定时，在最前面加上商品一致性锁定——
  * 这是「生成的图和客户端显示的商品是同一件」的保障。
@@ -1839,9 +1799,16 @@ function buildEffectivePrompt(record: AIImageRecord, reference: File | null): st
    */
   const body = record.edited || !record.promptEn ? record.prompt : record.promptEn
   const withRules = record.edited ? `${OZON_SYSTEM_PROMPT_EN}\n${body}` : body
+  // 正文里带汉字时，必须显式说明「这些汉字是给模型的指令，不是要画的字」，
+  // 否则模型会把它们原样画到图上（主人截图里那段中文就是这么来的）。
+  const cjkNotice = HAS_CJK.test(body)
+    ? '[Note] Some Chinese text below is an instruction from the operator. ' +
+      'Translate its meaning into Russian and render only the Russian. Do not render the Chinese characters.\n'
+    : ''
+  const composed = `${cjkNotice}${withRules}${NO_CHINESE_TAIL}`
   // 商品一致性锁定只在「有参考图」时才拼：纯文生图没有「参考图里的商品」可锁。
-  if (record.locked && reference) return `${PRODUCT_LOCK}${withRules}`
-  return withRules
+  if (record.locked && reference) return `${PRODUCT_LOCK}${composed}`
+  return composed
 }
 
 async function runGeneration(record: AIImageRecord, reference: File | null, imageCount?: number) {
@@ -1981,102 +1948,110 @@ function onHotRefPicked(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files || [])
   if (files.length) {
-    hotRefFiles.value = [...hotRefFiles.value, ...files]
-    hotNotice.value = t('aiImage.hot.picked', { count: hotRefFiles.value.length })
+    for (const file of files) {
+      hotRefs.value = [
+        ...hotRefs.value,
+        { id: `${Date.now()}-${hotRefs.value.length}-${file.name}`, name: file.name, file },
+      ]
+    }
+    hotNotice.value = t('aiImage.hot.picked', { count: hotRefCount.value })
   }
   if (hotRefInputRef.value) hotRefInputRef.value.value = ''
 }
 
+/**
+ * 从网址添加一张爆款参考图。
+ *
+ * 只做最基本的形态校验（必须是 http/https），**不去 fetch 它**：
+ * 图片直链是原样交给视觉模型、由上游去下载的，
+ * 我们自己 fetch 反而会撞上跨域（同行图站基本都不给跨域头）。
+ */
+function addHotRefUrl() {
+  const raw = hotUrlInput.value.trim()
+  if (!raw) return
+  if (!/^https?:\/\/\S+$/i.test(raw)) {
+    hotError.value = t('aiImage.hot.badUrl')
+    return
+  }
+  if (hotRefs.value.some((item) => item.url === raw)) {
+    hotError.value = t('aiImage.hot.dupUrl')
+    return
+  }
+  // 名字取链接最后一段，太长就截断，纯粹为了方便在列表里认出来。
+  const tail = raw.split('?')[0].split('/').filter(Boolean).pop() || raw
+  hotRefs.value = [...hotRefs.value, { id: `${Date.now()}-${hotRefs.value.length}-url`, name: tail.slice(0, 42), url: raw }]
+  hotUrlInput.value = ''
+  hotError.value = ''
+  hotNotice.value = t('aiImage.hot.urlAdded', { count: hotRefCount.value })
+}
+
+function removeHotRef(id: string) {
+  hotRefs.value = hotRefs.value.filter((item) => item.id !== id)
+  if (!hotRefs.value.length) hotNotice.value = ''
+}
+
 function clearHotRef() {
-  hotRefFiles.value = []
-  hotStyleDesc.value = ''
+  hotRefs.value = []
+  hotUrlInput.value = ''
+  hotLayouts.value = []
   hotNotice.value = ''
   hotError.value = ''
   hotProgress.value = { done: 0, total: 0 }
+  // 参考图清空了，「按参考图复刻」这套脚本就失去依据了，一起清掉，
+  // 免得用户看着旧卡片以为这次还能照样出图。
+  if (scriptSource.value === 'hot') setScriptCards([])
 }
 
 /**
- * 让视觉模型看**我自己的商品图**，自动填卖点 / 痛点 / 差异化。
+ * 拆解参考图，并**当场出一条一图一脚本**。
  *
- * 【2026-10-16 主人说明的流程】爆款复刻里：
- *   - **卖点**由 Gemini 生成；
- *   - **痛点 / 差异化**靠「跟我放的商品图做对比」得出。
- * 所以这里传的是爆款复刻专用的 `HOT_EXTRACT_PROMPT`（要求模型做对比），
- * 而不是套图那份只描述照片内容的提示词。
+ * 【2026-10-19 主人的要求，逐条对应】
+ *   - 「不能有套图的脚本 / 不能有任何默认脚本」
+ *       → 不再调 `buildOzonScript`，也删掉了 `buildHotScript` / `buildHotExtraCards`；
+ *   - 「脚本必须来自与放入的图片的解析处理来的脚本」
+ *       → 每张参考图单独送一次视觉模型，脚本内容就是它拆出来的分块版式；
+ *   - 「图片中的产品的所有信息都替换为本产品的信息」
+ *       → 每次请求**同时送我们自己的商品图**，要求模型把每一块文案改写成我们商品的说法；
+ *   - 「信息的位置不能变」
+ *       → 拆解结果带 zone（顶部/中部/底部）和 size_pct，脚本里逐条写明，
+ *         并明确「顺序、位置、占比、层级全部照抄」；
+ *   - 「生图的数量必须以放入的参考图的数量一样」
+ *       → 一张参考图 = 一张卡片 = 一张出图（`buildHotLayoutCards` 按顺序一一映射）。
  *
- * 填完仍留在输入框里，用户可以自己改 —— 识别只是省打字，不是不可改。
- */
-async function aiExtractHot() {
-  if (!ensureVisionKey('hot')) return
-  const source = referenceImage.value
-  if (!source) {
-    hotError.value = t('aiImage.hot.needProductImage')
-    return
-  }
-  hotExtracting.value = true
-  hotError.value = ''
-  hotNotice.value = ''
-  try {
-    const result = await extractSellingPoints({
-      apiKey: effectiveVisionKey.value,
-      image: source,
-      model: visionModel.value,
-      prompt: HOT_EXTRACT_PROMPT,
-      hints: { 产品名称: hotForm.value.product },
-    })
-    if (result.product) hotForm.value.product = result.product
-    // 中文进界面，俄语留给图用。
-    if (result.sp1) hotForm.value.sp1 = result.sp1
-    if (result.sp2) hotForm.value.sp2 = result.sp2
-    if (result.sp3) hotForm.value.sp3 = result.sp3
-    if (result.sp1_ru) hotForm.value.sp1Ru = result.sp1_ru
-    if (result.sp2_ru) hotForm.value.sp2Ru = result.sp2_ru
-    if (result.sp3_ru) hotForm.value.sp3Ru = result.sp3_ru
-    if (result.pain) hotForm.value.pain = result.pain
-    if (result.diff) hotForm.value.diff = result.diff
-    hotNotice.value = t('aiImage.hot.extracted')
-  } catch (error) {
-    const reason = errorMessage(error)
-    if (isVisionRoutingFailure(reason)) {
-      hotError.value = t('aiImage.visionKey.failedRouting')
-      showKeyPanel.value = true
-    } else {
-      hotError.value = `${t('aiImage.hot.extractFailed')}：${reason}`
-    }
-  } finally {
-    hotExtracting.value = false
-  }
-}
-
-/**
- * 拆解爆款版式：逐张送视觉模型，再把多张的结果按维度投票合并。
- *
- * 逐张串行是有意的：桌面程序也是串行的（每张之间还停 0.3 秒）。
- * 并发打视觉模型容易被限流，而且这里本来就慢，串行更好排查是哪张出的问题。
+ * 串行是刻意的：并发打视觉模型容易被限流，而且这里本来就慢，
+ * 串行更容易看出是哪一张出的问题。
  */
 async function runHotAnalyze() {
   if (!ensureVisionKey('hot')) return
-  if (!hotRefFiles.value.length) {
+  if (!hotRefs.value.length) {
     hotError.value = t('aiImage.hot.needRef')
+    return
+  }
+  // 拆解要两张图一起看：参考图（版式）+ 我们的商品图（文案该写成什么）。
+  const productImage = referenceImage.value
+  if (!productImage) {
+    hotError.value = t('aiImage.hot.needProductImage')
     return
   }
 
   hotAnalyzing.value = true
   hotError.value = ''
   hotNotice.value = ''
-  hotStyleDesc.value = ''
-  hotProgress.value = { done: 0, total: hotRefFiles.value.length }
+  hotLayouts.value = []
+  hotProgress.value = { done: 0, total: hotRefs.value.length }
 
-  const samples: Array<Partial<Record<HotStyleDimensionKey, string>>> = []
+  const layouts: HotLayout[] = []
   let lastError = ''
   try {
-    for (const file of hotRefFiles.value) {
+    for (let i = 0; i < hotRefs.value.length; i += 1) {
+      const ref = hotRefs.value[i]
       try {
-        const raw = await analyzeHotStyleRequest(file)
-        const sample = normalizeStyleSample(extractJsonObject(raw))
-        if (Object.keys(sample).length) samples.push(sample)
+        const raw = await analyzeHotStyleRequest(ref, productImage)
+        const layout = parseHotLayout(raw, i + 1)
+        if (layout) layouts.push(layout)
+        else lastError = lastError || 'layout_not_parsed'
       } catch (error) {
-        // 单张失败不中断整批：其余几张照样能投票出结果。
+        // 单张失败不中断整批：其余几张照样能出脚本，用户能先拿到能做的那几张。
         lastError = error instanceof Error ? error.message : String(error)
         hotError.value = t('aiImage.hot.oneFailed', { reason: lastError })
       }
@@ -2085,8 +2060,7 @@ async function runHotAnalyze() {
       await new Promise((resolve) => setTimeout(resolve, 300))
     }
 
-    const merged = mergeStyleSamples(samples)
-    if (!merged.description) {
+    if (!layouts.length) {
       // 路由阶段失败（分组里没有视觉模型）要给专门的话术，
       // 否则用户只会看到 "Service temporarily unavailable" 然后反复重试。
       if (isVisionRoutingFailure(lastError)) {
@@ -2099,85 +2073,44 @@ async function runHotAnalyze() {
       }
       return
     }
-    hotStyleDesc.value = merged.description
-    hotNotice.value = t('aiImage.hot.analyzed', { count: merged.used })
+
+    hotLayouts.value = layouts
+    setScriptCards(buildHotLayoutCards(layouts))
+    scriptSource.value = 'hot'
+    hotNotice.value = t('aiImage.hot.scriptBuilt', { count: layouts.length })
   } finally {
     hotAnalyzing.value = false
   }
 }
 
 /** 抽出来单独一层，方便测试替换。 */
-async function analyzeHotStyleRequest(file: File): Promise<string> {
+async function analyzeHotStyleRequest(ref: HotRef, productImage: File): Promise<string> {
   return analyzeHotStyle({
     apiKey: effectiveVisionKey.value,
-    image: file,
+    // 顺序固定：第 1 张是版式参考图，第 2 张是我们的商品 —— 提示词里就是这么约定的。
+    // 参考图可以是本地文件，也可以是图片直链（直链原样交给上游去下载）。
+    images: [ref.file ?? ref.url ?? '', productImage],
     model: visionModel.value,
-    prompt: HOT_ANALYZE_PROMPT,
-    temperature: HOT_ANALYZE_TEMPERATURE,
+    prompt: HOT_LAYOUT_PROMPT,
+    temperature: HOT_LAYOUT_TEMPERATURE,
     timeoutMs: HOT_VISION_TIMEOUT_MS,
   })
 }
 
-/**
- * 爆款复刻用的「模板」——也就是套到商品上的那套版式/写法。
- * 两个来源，有哪个用哪个：
- *   1. 拆解爆款图得到的版式（hotStyleDesc）。
- *   2. 「提示词模板」里选中的那个模板的提示词。
- * 都没有就没法复刻（会明确提示），而不是悄悄生成一套没版式的脚本。
- */
-const hotTemplate = computed(() => {
-  if (hotStyleDesc.value.trim()) {
-    return { text: hotStyleDesc.value.trim(), from: 'extracted' as const }
-  }
-  const saved = findTemplate(templates.value, selectedTemplateId.value)
-  if (saved && saved.prompt.trim()) {
-    return { text: saved.prompt.trim(), from: 'saved' as const }
-  }
-  return null
-})
-
-/**
- * 用爆款版式生成脚本卡片。
+/*
+ * 【2026-10-19 删掉了两样东西】
  *
- * 只用**爆款复刻面板自己那套**产品信息，不去读「套图」那份表单——
- * 否则用户必须先打开、填完那个面板才能用爆款复刻，这就是主人反馈的逻辑问题。
- * 产品名在爆款面板里没填时，才退回去用 Ozon 面板已填的值（省得重复输入）。
+ * 1. `hotTemplate` —— 原来爆款复刻可以套「提示词模板」里选中的那个模板来当版式。
+ *    主人明确说「不能有任何的默认脚本」，而一个存好的模板恰恰就是一套
+ *    **跟这次放进来的图无关**的默认脚本，所以这条路整个去掉：
+ *    现在版式只能来自「这一批参考图的拆解结果」。
+ *    「提示词模板」功能本身还在，但它只服务于「单张生图」，不再参与爆款复刻。
+ *
+ * 2. `buildHotScriptCards()` —— 原来要用户先填产品名/卖点/痛点/差异化，
+ *    再点一下「按爆款版式生成脚本」。现在这两步都不需要了：
+ *    拆解的同一次请求里，模型已经按我们的商品把文案改写好，
+ *    脚本在 `runHotAnalyze` 里当场就装进 `scriptCards` 了。
  */
-function buildHotScriptCards() {
-  const style = hotTemplate.value
-  if (!style) {
-    hotError.value = t('aiImage.hot.needTemplate')
-    return
-  }
-  const product = (hotForm.value.product || scriptForm.value.product).trim()
-  if (!product) {
-    hotError.value = t('aiImage.hot.needProduct')
-    return
-  }
-  hotError.value = ''
-  const pick = (hotValue: string, scriptValue: string) => (hotValue || '').trim() || scriptValue
-  // 图上印俄语：爆款面板填了就用它的，没填就用 Ozon 面板的；都没有俄语版才退回中文。
-  const printed = (zhHot: string, ruHot: string, zhScript: string, ruScript: string) =>
-    printedText(pick(zhHot, zhScript), pick(ruHot, ruScript))
-  const cards = buildHotScript({
-    product,
-    sp1: printed(hotForm.value.sp1, hotForm.value.sp1Ru, scriptForm.value.sp1, scriptForm.value.sp1Ru),
-    sp2: printed(hotForm.value.sp2, hotForm.value.sp2Ru, scriptForm.value.sp2, scriptForm.value.sp2Ru),
-    sp3: printed(hotForm.value.sp3, hotForm.value.sp3Ru, scriptForm.value.sp3, scriptForm.value.sp3Ru),
-    pain: pick(hotForm.value.pain, scriptForm.value.pain),
-    diff: pick(hotForm.value.diff, scriptForm.value.diff),
-    styleDesc: style.text,
-    sceneZh: matchedScene.value.zh,
-  })
-  setScriptCards(
-    hotIncludeExtras.value
-      ? // 补充图也要带上同行版式，否则九、十、十一、十二张又变成通用脚本。
-        [...cards, ...buildHotExtraCards(product, style.text)]
-      : cards,
-  )
-  scriptSource.value = style.from === 'saved' ? 'hot-saved' : 'hot-extracted'
-  hotNotice.value = t('aiImage.hot.scriptBuilt', { count: scriptCards.value.length })
-}
 
 async function startGenerate() {
   if (!apiKey.value || keyState.value !== 'valid') {

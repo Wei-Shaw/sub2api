@@ -109,38 +109,37 @@ export default {
     hot: {
       title: 'Bestseller clone',
       hint:
-        'Upload a few competitor bestseller images; the AI extracts the layout (9 traits: layout, palette, copy placement\u2026) and applies it to your own product.',
+        'Add a few competitor bestseller images and one photo of your own product. The AI dissects each reference block by block (position, type hierarchy, share of the frame) and rewrites every block of copy for your product \u2014 one reference image gives one script and one generated image.',
       pick: 'Add bestseller images',
       clear: 'Clear',
-      picked: 'Added {count} bestseller image(s).',
+      picked: 'Added {count} bestseller image(s) \u2014 a few images means the same number of generated images.',
+      // Image URLs: never downloaded locally, handed to the vision model as-is to dodge CORS.
+      urlPlaceholder: 'Or paste an image URL (https://\u2026)',
+      addUrl: 'Add URL',
+      badUrl: 'That does not look like a link \u2014 it must start with http:// or https://.',
+      dupUrl: 'That link is already in the list.',
+      urlAdded: 'Link added \u2014 {count} reference image(s) in total.',
+      refCount: '{count} reference image(s)',
+      fromUrl: 'URL: ',
       analyzing: 'Analyzing\u2026',
-      analyze: 'Extract bestseller layout',
+      analyze: 'Dissect and build scripts',
       progress: '{done}/{total} analyzed',
-      styleTitle: 'Extracted layout (shared traits across images)',
-      analyzed: 'Analyzed {count} bestseller image(s); shared traits merged.',
-      extras: 'Also generate 4 more (multi-angle side view / macro detail / usage scene / FAQ compare)',
-      buildScript: 'Build script from this layout',
-      scriptBuilt: 'Built {count} cards from the bestseller layout \u2014 generate them below.',
+      analyzed: '{count} analyzed.',
+      scriptBuilt: 'Built {count} script(s) from {count} reference image(s) \u2014 one script per image. Edit or generate them one by one below, or generate them all at once.',
       needRef: 'Add at least one bestseller image first.',
-      needProduct: 'Fill in your product name first (the "Product name" field right below this step).',
-      needTemplate:
-        'No layout template available yet \u2014 either upload bestseller images above and click "Extract bestseller layout", or pick a saved template under "Prompt templates".',
-      templateReady: 'Ready: the template for this clone is set. Fill in the product name and you can generate.',
-      noResult: 'None of these images produced a result. Try different images, or check the vision model.',
+      noResult: 'None of these images produced a layout. Try different images, or check the vision model.',
       oneFailed: 'One image failed and was skipped (the rest continued): {reason}',
-      step2: 'Step 2: add your own product photo and fill in the details (independent of the "Image set" panel)',
+      step1: 'Step 1: add the competitor bestseller images, then dissect them',
+      step2: 'Step 2: add a photo of your own product',
+      // Both images go to the vision model together: the reference fixes the layout,
+      // this photo fixes what the copy should say and which product gets drawn.
+      productHint:
+        'This photo is sent to the vision model together with each reference image: the reference decides the layout, this photo decides the wording and which product appears.',
       // Your own product photo: cloning means "apply the reference layout to MY product".
       pickProductImage: 'Pick my product photo',
       replaceProductImage: 'Replace my product photo',
-      noProductImage: 'No product photo yet (it becomes the product in the generated images)',
-      // Selling points come from the vision model; pain/differentiation come from comparing this photo.
-      extract: 'AI-detect selling points / pain / differentiation',
-      extracting: 'Detecting\u2026',
-      extractHint:
-        'With a product photo in place, hit detect: the vision model writes the selling points, and pain/differentiation come from comparing this item against ordinary ones in the same category. You can still edit everything afterwards.',
-      extracted: 'Selling points, pain and differentiation detected and filled in (editable).',
-      extractFailed: 'Detection failed',
-      needProductImage: 'Pick your own product photo first \u2014 detection needs it.',
+      noProductImage: 'No product photo yet (needed for both dissecting and generating)',
+      needProductImage: 'Pick your own product photo first \u2014 dissecting needs it together with the reference image.',
     },
 
     composite: {
@@ -200,12 +199,8 @@ export default {
       resume: 'Resume',
       stop: 'Stop',
       stopHint: 'Stopping submits no new jobs; the one in flight runs to completion.',
-      needScript:
-        'No script yet \u2014 build one in "Bestseller clone" or "Image set" to enable generate-all, pause and stop.',
-      fromHot: 'These cards came from "Bestseller clone" (the extracted bestseller layout was applied).',
-      fromHotSaved:
-        'These cards came from "Bestseller clone" (the template selected under "Prompt templates" was applied).',
-      fromOzon: 'These cards came from the "Image set" panel.',
+      fromHot: 'These scripts came from "Bestseller clone" (dissected block by block from the reference images).',
+      fromOzon: 'These scripts came from the "Image set" panel.',
     },
 
     options: {
@@ -277,7 +272,7 @@ export default {
       diff: 'Differentiator',
       scene: 'Auto-matched scene',
       scenePlaceholder: 'Filled automatically from the product name',
-      build: 'Build the 10 prompts',
+      build: 'Build {count} prompts',
       built: 'Built {count} prompts. Click any one to expand and edit it.',
       applyAll: 'Load all (newline separated)',
       fillOne: 'Load into prompt',

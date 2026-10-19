@@ -1,72 +1,96 @@
 /**
- * 爆款复刻（桌面程序的「爆款复刻模式」）。
+ * 爆款复刻：**逐张拆解参考图，一图一脚本**。
  *
- * 思路：拿几张同行的爆款主图 → 让视觉模型拆出「版式特征」→
- * 再把这份版式套到我们自己的商品上，生成一整套主图。
+ * 【2026-10-19 主人推翻了原来的做法】
+ *   原话：「爆款复刻现在不能有套图的脚本，不能有任何的默认脚本，
+ *   脚本必须来自与放入的图片的解析处理来的脚本，同时图片中的产品的所有信息
+ *   都替换为本产品的信息且信息的位置不能变。生图的数量必须以放入的参考图的数量一样。」
  *
- * 参数照抄桌面程序（已反汇编确认）：
- *   - 拆解 9 个维度，多张图**逐字段取出现次数最多的值**合并
- *   - 拆解温度 0.2；识别卖点温度 0.3
- *   - 脚本用 **AIDA 漏斗**（注意→兴趣→信任→欲望→对比→行动），
- *     白底合规图放在**第 8 张**（和单产品模式的脚本正好相反）
+ * 于是删掉了这些**默认脚本**（它们跟放进去的图无关，等于凭空生成一套 Ozon 八股）：
+ *   - `buildHotScript()`（AIDA 八张）
+ *   - `buildHotExtraCards()`（额外四张：多角度 / 细节 / 使用 / FAQ）
+ *   - `HOT_DEFAULTS`（写死的价格 `1990₽`、`已售 10 万+`、`7 天无理由`）
+ *   - 九维度版式投票（`HOT_STYLE_DIMENSIONS` + `mergeStyleSamples`）——
+ *     它把多张图**合并成一段文字描述**，结果是「几张图长得一样」，
+ *     而且合并之后就说不清哪张图对应哪张出图了。
+ *
+ * 现在的做法：
+ *   ① 每张参考图**单独**送一次视觉模型，同时把**我们自己的商品图**一起送过去；
+ *   ② 模型返回这张图的**分块版式**（从上到下：区块位置 / 类型 / 字号样式 / 占比），
+ *      并且**顺手把每一块的文案改写成我们商品的说法**（`text_ru`），
+ *      原始文案放在 `source_ru` 里只作长度和位置的参照；
+ *   ③ 一块参考图 = 一张脚本 = 一张出图。三张参考图就是三张脚本、三张图。
+ *
+ * 这样「脚本来自图片解析」「信息位置不变」「数量等于参考图数量」三条同时满足。
  */
+import { FRAMING_SAFE_AREA, FRAMING_SAFE_AREA_EN } from './aiImagePrompts'
 import type { OzonScriptCard } from './aiImagePrompts'
 
-/** 拆解的 9 个维度。key 是模型要返回的 JSON 字段名。 */
-export const HOT_STYLE_DIMENSIONS = [
-  { key: 'layout', label: '布局' },
-  { key: 'bg', label: '背景' },
-  { key: 'main_color', label: '主色' },
-  { key: 'accent_color', label: '点缀色' },
-  { key: 'text_pos', label: '文案位置' },
-  { key: 'text_style', label: '字体' },
-  { key: 'decor', label: '装饰元素' },
-  { key: 'hook', label: '点击钩子' },
-  { key: 'composition', label: '构图' },
-] as const
-
-export type HotStyleDimensionKey = (typeof HOT_STYLE_DIMENSIONS)[number]['key']
-
-/** 拆解爆款的提示词。桌面程序用的是俄语，这里保持一致。 */
-export const HOT_ANALYZE_PROMPT =
-  'Ты топ e-commerce designer. Разбери эту главную карточку Ozon/WB и верни СТРОГО JSON ' +
-  'без пояснений: {"layout":"布局","bg":"背景风格","main_color":"主色","accent_color":"点缀色",' +
-  '"text_pos":"文案位置","text_style":"字体风格","decor":"装饰元素","hook":"点击钩子",' +
-  '"composition":"构图规律"}.'
-
-/** 拆解用温度（桌面程序是 0.2）。 */
-export const HOT_ANALYZE_TEMPERATURE = 0.2
-/** 识别卖点用温度（桌面程序是 0.3）。 */
-export const HOT_EXTRACT_TEMPERATURE = 0.3
-/** 视觉请求超时（桌面程序是 90 秒）。 */
+/** 拆解用温度：要的是稳定复现，不要发挥。 */
+export const HOT_LAYOUT_TEMPERATURE = 0.2
+/** 视觉请求超时（桌面程序是 90 秒；两张图一起送，留同样的余量）。 */
 export const HOT_VISION_TIMEOUT_MS = 90000
 
 /**
- * 爆款复刻专用的「看我的商品图 → 出卖点/痛点/差异化」提示词。
+ * 拆解参考图的提示词。
  *
- * 【2026-10-16 主人说明的流程】主人讲的爆款复刻是：
- *   ① 放同行的爆款图 → 拆版式；
- *   ② 放**我自己的商品图** → 用我的商品主体套同版式生成；
- *   ③ **卖点**由视觉模型（Gemini）生成；
- *   ④ **痛点 / 差异化**靠「跟我放的商品图做对比」得出。
+ * 关键点：同时喂两张图，并且**明确告诉模型哪张是「版式」哪张是「我们的商品」**，
+ * 否则模型分不清该抄谁、该换谁。这是「信息位置不变 + 商品换成我们的」的前提。
  *
- * 和套图那份 `VISION_EXTRACT_PROMPT` 的区别就在这里：
- * 套图那份只描述「照片上是什么」，这一份要求模型**做对比**——
- * 拿这件商品跟同类里的普通款比，比出「买家现在受的什么罪」（痛点）
- * 和「这件强在哪」（差异化）。所以单独立一份，不去动套图那条链路。
+ * 要求 `text_ru`（给我们的商品重写的俄语）和 `source_ru`（同行原文）分开返回：
+ *   - `text_ru` 会用进最终脚本，也就是会印在图上；
+ *   - `source_ru` 只用来告诉生图模型「这一块大概多长、在哪个位置」，不会原样发出去。
  */
-export const HOT_EXTRACT_PROMPT =
-  'Ты эксперт по продажам на Ozon/Wildberries. ' +
-  'Посмотри на товар на фото и СРАВНИ его с обычными похожими товарами этой категории. ' +
-  'Выведи СТРОГО JSON без пояснений: ' +
-  '{"product":"中文产品名","audience":"目标人群中文","sp1":"卖点1中文","sp2":"卖点2中文","sp3":"卖点3中文",' +
-  '"sp1_ru":"卖点1俄语","sp2_ru":"卖点2俄语","sp3_ru":"卖点3俄语",' +
-  '"pain":"用户痛点中文","diff":"差异化中文"}. ' +
-  'pain — какую проблему обычных товаров решает этот товар (главная боль покупателя). ' +
-  'diff — чем именно этот товар отличается от обычных (материал, конструкция, комплект). ' +
-  'sp1/sp2/sp3 — по-китайски (для интерфейса). sp1_ru/sp2_ru/sp3_ru — тот же смысл по-русски ' +
-  '(этот текст печатается на картинке, поэтому обязательно по-русски). ' +
-  'Не выдумывай, опирайся на фото.'
+export const HOT_LAYOUT_PROMPT =
+  'Ты топ e-commerce дизайнер на Ozon/Wildberries. На входе ДВЕ картинки:\n' +
+  'изображение 1 — карточка конкурента (эталон вёрстки, её вёрстку нужно повторить);\n' +
+  'изображение 2 — НАШ товар (именно его нужно вставить вместо товара конкурента).\n' +
+  'Разбери вёрстку изображения 1 по блокам и верни СТРОГО JSON без пояснений:\n' +
+  '{"canvas":"соотношение сторон, например 3:4","background":"фон: цвет и характер (плоский/градиент/фото)",' +
+  '"palette":["#RRGGBB","#RRGGBB"],"product_slot":"где стоит товар: зона кадра, размер в % кадра, ракурс",' +
+  '"graphics":"иконки, стрелки, плашки, линии — что именно и где",' +
+  '"notes":"другие важные особенности вёрстки","blocks":[{"zone":"top|upper|middle|lower|bottom",' +
+  '"kind":"headline|subline|badge|icon-row|text|label|cta|product|footer",' +
+  '"style":"размер/жирность/цвет/выравнивание/в сколько строк","size_pct":12,' +
+  '"source_ru":"текст конкурента ДОСЛОВНО","text_ru":"НОВЫЙ текст по-русски для НАШЕГО товара"}]}\n' +
+  'Правила:\n' +
+  '- Порядок blocks — строго сверху вниз, как на изображении 1.\n' +
+  '- size_pct — примерная доля высоты кадра, которую занимает блок (сумма всех ≈ 100).\n' +
+  '- source_ru — дословно с изображения 1, нужен только как ориентир по длине и позиции.\n' +
+  '- text_ru — перепиши под НАШ товар (изображение 2), сохранив примерно ту же длину и стиль; ' +
+  'если блок не про товар (например «спасибо за покупку»), сохрани смысл, но не копируй бренд конкурента.\n' +
+  '- ВЕСЬ текст на карточке — только по-русски. Никогда не пиши по-китайски.\n' +
+  '- Не выдумывай блоков, которых нет на изображении 1, и не пропускай существующие.\n' +
+  '- Не копируй название бренда, логотип, название магазина и водяные знаки конкурента.'
+
+/** 一个版式区块（参考图上从上到下的一块内容）。 */
+export interface HotLayoutBlock {
+  /** 在画面里的纵向位置：top / upper / middle / lower / bottom */
+  zone: string
+  /** 这一块是什么：headline / subline / badge / icon-row / text / label / cta / product / footer */
+  kind: string
+  /** 字号、粗细、颜色、对齐、占几行 */
+  style: string
+  /** 占画面高度的百分比（估的） */
+  sizePct: number
+  /** 同行原图上那块文字，只作长度和位置的参照 */
+  sourceRu: string
+  /** **给我们商品重写的俄语**，这一段才是最终要印在图上、会写进脚本里的字 */
+  textRu: string
+}
+
+/** 一张参考图拆出来的完整版式。 */
+export interface HotLayout {
+  /** 第几张参考图（从 1 开始），也决定它是第几张出图 */
+  index: number
+  canvas: string
+  background: string
+  palette: string[]
+  productSlot: string
+  graphics: string
+  notes: string
+  blocks: HotLayoutBlock[]
+}
 
 /**
  * 从模型回复里抠出 JSON。
@@ -125,366 +149,181 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
   return null
 }
 
-/** 把单张图的拆解结果收成「字段 → 值」，去掉空值。 */
-export function normalizeStyleSample(parsed: Record<string, unknown> | null): Partial<Record<HotStyleDimensionKey, string>> {
-  const result: Partial<Record<HotStyleDimensionKey, string>> = {}
-  if (!parsed) return result
-  for (const dimension of HOT_STYLE_DIMENSIONS) {
-    const value = parsed[dimension.key]
-    if (typeof value === 'string' && value.trim()) {
-      result[dimension.key] = value.trim()
-    }
+/** 取字符串字段，兼容模型换着写法给键名。 */
+function pickString(source: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number') return String(value)
   }
-  return result
+  return ''
 }
 
 /**
- * 把多张图的拆解结果合并成一条版式描述。
- *
- * 每个维度**取出现次数最多的那个值**（桌面程序用 Counter.most_common）。
- * 出现次数相同时，保留**先出现**的那个 —— 这样结果稳定、可复现，
- * 不会因为遍历顺序变化而每次不一样。
+ * 取数组字段。
+ * 模型经常把 `blocks` 写成 `sections` / `layout` / `elements`，都要认。
  */
-export function mergeStyleSamples(
-  samples: Array<Partial<Record<HotStyleDimensionKey, string>>>,
-): { description: string; used: number } {
-  const usable = samples.filter((sample) => Object.keys(sample).length > 0)
-  if (!usable.length) return { description: '', used: 0 }
+function pickArray(source: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    const value = source[key]
+    if (Array.isArray(value) && value.length) return value
+  }
+  return []
+}
 
-  const parts: string[] = []
-  for (const dimension of HOT_STYLE_DIMENSIONS) {
-    const counts = new Map<string, number>()
-    for (const sample of usable) {
-      const value = sample[dimension.key]
-      if (!value) continue
-      counts.set(value, (counts.get(value) || 0) + 1)
-    }
-    if (!counts.size) continue
+/**
+ * 把模型返回的 JSON 规整成 `HotLayout`。
+ *
+ * **必须宽容**：视觉模型给键名不稳定（`zone`/`pos`、`text_ru`/`text`），
+ * 只要有一处对不上就整张丢弃的话，用户会看到「一张都拆不出来」而不知道为什么。
+ * 只有「一个区块都没有」才算失败 —— 那说明它真的没看懂图。
+ */
+export function parseHotLayout(raw: string, index: number): HotLayout | null {
+  const parsed = extractJsonObject(raw)
+  if (!parsed) return null
 
-    let bestValue = ''
-    let bestCount = 0
-    for (const [value, count] of counts) {
-      if (count > bestCount) {
-        bestCount = count
-        bestValue = value
-      }
-    }
-    parts.push(`${dimension.label}=${bestValue}`)
+  const rawBlocks = pickArray(parsed, ['blocks', 'sections', 'layout', 'elements', 'items'])
+  const blocks: HotLayoutBlock[] = []
+  for (const item of rawBlocks) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const block = item as Record<string, unknown>
+    const textRu = pickString(block, ['text_ru', 'textRu', 'ours_ru', 'new_ru', 'text'])
+    const sourceRu = pickString(block, ['source_ru', 'sourceRu', 'source', 'original', 'origin_ru', 'origin'])
+    // 两个都没有的区块没有意义（既不知道要写什么，也不知道原来多长）。
+    if (!textRu && !sourceRu) continue
+
+    const sizeRaw = block.size_pct ?? block.sizePct ?? block.height_pct ?? block.heightPct
+    const sizePct = typeof sizeRaw === 'number' ? sizeRaw : Number.parseFloat(String(sizeRaw ?? ''))
+    blocks.push({
+      zone: pickString(block, ['zone', 'pos', 'position', 'area', 'place']),
+      kind: pickString(block, ['kind', 'type', 'role', 'block']),
+      style: pickString(block, ['style', 'typography', 'font']),
+      sizePct: Number.isFinite(sizePct) ? Math.max(0, Math.min(100, sizePct)) : 0,
+      sourceRu,
+      // 模型漏了改写时退回原文：位置和长度至少是对的，比空着强。
+      textRu: textRu || sourceRu,
+    })
   }
 
-  if (!parts.length) return { description: '', used: usable.length }
+  if (!blocks.length) return null
+
+  const paletteRaw = parsed.palette
+  const palette = Array.isArray(paletteRaw)
+    ? paletteRaw.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
   return {
-    description: `【批量拆解${usable.length}张爆款共同版式】${parts.join('；')}`,
-    used: usable.length,
+    index,
+    canvas: pickString(parsed, ['canvas', 'ratio', 'aspect', 'size']),
+    background: pickString(parsed, ['background', 'bg']),
+    palette,
+    productSlot: pickString(parsed, ['product_slot', 'productSlot', 'product', 'product_zone']),
+    graphics: pickString(parsed, ['graphics', 'decor', 'decorations', 'icons']),
+    notes: pickString(parsed, ['notes', 'note', 'remarks']),
+    blocks,
   }
 }
 
-export interface HotScriptContext {
-  product: string
-  sp1?: string
-  sp2?: string
-  sp3?: string
-  pain?: string
-  diff?: string
-  /** 拆解出来的爆款版式描述 */
-  styleDesc?: string
-  sceneZh?: string
-  /** 桌面程序里是硬编码的默认值 */
-  audience?: string
-  price?: string
-  trust?: string
-  service?: string
+/** 区块位置的中文说法（给界面看的中文提示词用）。 */
+const ZONE_LABELS: Record<string, string> = {
+  top: '顶部',
+  upper: '上中',
+  middle: '中部',
+  lower: '下中',
+  bottom: '底部',
 }
 
-/** 桌面程序里这几个字段是写死的默认值。 */
-export const HOT_DEFAULTS = {
-  audience: '目标用户',
-  price: '1990₽',
-  trust: '已售 10 万+ / SGS 检测',
-  service: '7 天无理由 + 1 年质保',
-} as const
-
-/**
- * 每张卡片共用的精简前缀。
- *
- * 【2026-10-15 主人要求精简】原来每条卡片末尾都重复一遍
- * 「俄语文案，配色≤3种，3:4竖版1200x1600。Photorealistic.」——
- * 八张就是八遍。提到这里来只写一次，卡片里只留「这一张画什么」。
- */
-export const HOT_STYLE_BRIEF =
-  'Ozon 主图，3:4 竖版 1200x1600。画面文字用俄语。文字和图形配色≤3种。商品保持原样。Photorealistic.'
-
-/** 上面那段共用前缀的**英文版**——真正发给模型的是这一份（理由同套图的 OZON_SYSTEM_PROMPT_EN）。 */
-export const HOT_STYLE_BRIEF_EN =
-  'Ozon main image, 3:4 portrait 1200x1600. Every piece of on-image text must be Russian; never render Chinese. ' +
-  'Use at most 3 colors for text and graphics. Keep the product exactly as in the reference. Photorealistic.'
-
-/**
- * 构图安全区：商品必须完整入镜，不许贴边、不许裁切。
- *
- * 【2026-10-17 主人反馈】「爆款复刻出来的图片展示不全」——商品顶部被切掉了。
- * 根因有两条叠加：
- *   ① 卡片里只写了占比（如「居中大幅产品」），**没有一句要求「完整入镜」**；
- *   ② 爆款版式说明里常带「大幅产品」，模型按「大幅」放大后就出框了。
- * 所以单独加一条硬规则，并且明确写「版式说明要服从这一条」。
- */
-export const HOT_FRAMING_SAFE_AREA =
-  '- 【构图安全区】商品必须完整入镜：所有部位都在画面内，四周留 8-10% 的安全边距，' +
-  '任何部位都不得贴边、不得被裁切。版式说明里若写了「大幅产品」「满屏」，一律服从这一条。\n'
-
-export const HOT_FRAMING_SAFE_AREA_EN =
-  '- [Framing safety] The product must be fully in frame: every part inside the image, with 8-10% safe margin on all sides. ' +
-  'Nothing may touch the edge and nothing may be cropped. If the layout note says "large product" or "full-bleed", this rule wins.\n'
-
-/**
- * 把拆解出来的版式包成一段「必须沿用」的说明，**每一张都带**。
- *
- * 【2026-10-16 主人反馈】「要识别的放入的商品图片在生成排版之后没有把这些排版融入
- * 图片生成的提示词中」——查证属实：原来的 `stylePrefix` **只拼在第 1 张**，
- * 第 2~12 张完全没有版式，等于除第 1 张外都是「没套版式的通用脚本」。
- *
- * 现在改成每一张都带，并额外给一句「本张侧重」，
- * 免得 12 张因为共用同一段版式而长得一模一样。
- *
- * 版式描述是视觉模型生成的中文，所以英文版里要额外加一句：
- * 这段只是构图参考，**不要把它里面的字当成画面文字画出来**。
- */
-function styleBlockZh(styleDesc: string, focus: string): string {
-  const desc = (styleDesc || '').trim()
-  if (!desc) return ''
-  return `【沿用同行爆款版式】${desc}\n本张侧重：${focus}\n`
+/** 区块类型的中文说法。 */
+const KIND_LABELS: Record<string, string> = {
+  headline: '大标题',
+  subline: '副标题',
+  badge: '角标 / 贴纸',
+  'icon-row': '图标行',
+  text: '正文',
+  label: '小标注',
+  cta: '行动按钮',
+  product: '商品本体',
+  footer: '页脚',
 }
 
-function styleBlockEn(styleDesc: string, focusEn: string): string {
-  const desc = (styleDesc || '').trim()
-  if (!desc) return ''
+function zoneLabel(zone: string): string {
+  return ZONE_LABELS[zone.toLowerCase()] || zone || '位置未说明'
+}
+
+function kindLabel(kind: string): string {
+  return KIND_LABELS[kind.toLowerCase()] || kind || '文字块'
+}
+
+/** 把一张拆解结果拼成中文脚本（界面显示 / 用户可改的那一份）。 */
+function layoutCardBodyZh(layout: HotLayout): string {
+  const lines = layout.blocks.map((block, i) => {
+    const parts = [`${i + 1}) ${zoneLabel(block.zone)}｜${kindLabel(block.kind)}`]
+    if (block.style) parts.push(`样式：${block.style}`)
+    if (block.sizePct > 0) parts.push(`约占高度 ${block.sizePct}%`)
+    parts.push(`俄语文字：«${block.textRu}»`)
+    return parts.join('｜') + '。'
+  })
+
+  const meta: string[] = []
+  if (layout.canvas) meta.push(`画幅：${layout.canvas}。`)
+  if (layout.background) meta.push(`背景：${layout.background}。`)
+  if (layout.palette.length) meta.push(`配色：${layout.palette.join(' / ')}。`)
+  if (layout.productSlot) meta.push(`商品位置：${layout.productSlot}。`)
+  if (layout.graphics) meta.push(`图形元素：${layout.graphics}。`)
+
   return (
-    `[Clone the competitor layout] ${desc}\n` +
-    'The layout note above is a composition reference only — translate its meaning into camera, framing, background, colour and text placement. ' +
-    'Never render the words of that note as image text.\n' +
-    `Focus for this card: ${focusEn}\n`
+    `第${layout.index}张：照抄第 ${layout.index} 张参考图的版式，只把商品和文字换成我们的。` +
+    meta.join('') +
+    '版式分区（从上到下，**顺序 / 位置 / 占比 / 字号层级全部照抄，不许改**）：' +
+    lines.join('') +
+    (layout.notes ? `其他要点：${layout.notes}。` : '') +
+    '硬规则：参考图上有几个文字块就画几个，不许合并、不许新增、不许漏；' +
+    '所有画面文字必须是俄语并且必须真的写出来，内容就用上面每一条给的俄语，不要自行改写、不要译成中文；' +
+    '不要出现参考图里的品牌名、店铺名、logo 和水印。'
+  )
+}
+
+/** 拼成英文脚本（真正发给模型的那一份）。 */
+function layoutCardBodyEn(layout: HotLayout): string {
+  const lines = layout.blocks.map((block, i) => {
+    const parts = [`${i + 1}) zone ${block.zone || 'unspecified'}, kind ${block.kind || 'text'}`]
+    if (block.style) parts.push(`style: ${block.style}`)
+    if (block.sizePct > 0) parts.push(`about ${block.sizePct}% of the height`)
+    parts.push(`Russian text: "${block.textRu}"`)
+    return parts.join(' | ') + '. '
+  })
+
+  const meta: string[] = []
+  if (layout.canvas) meta.push(`Canvas: ${layout.canvas}. `)
+  if (layout.background) meta.push(`Background: ${layout.background}. `)
+  if (layout.palette.length) meta.push(`Palette: ${layout.palette.join(' / ')}. `)
+  if (layout.productSlot) meta.push(`Product placement: ${layout.productSlot}. `)
+  if (layout.graphics) meta.push(`Graphic elements: ${layout.graphics}. `)
+
+  return (
+    `Card ${layout.index}: clone the layout of reference image ${layout.index}, replacing only the product and the wording with ours. ` +
+    meta.join('') +
+    'Layout blocks from top to bottom (**keep the order, position, proportion and type hierarchy exactly as the reference; do not change them**): ' +
+    lines.join('') +
+    (layout.notes ? `Other notes: ${layout.notes}. ` : '') +
+    'Hard rules: as many text blocks as the reference has — do not merge, do not add, do not skip any; ' +
+    'every on-image text must be Russian and must actually be rendered, using exactly the Russian given above; do not rewrite it and never translate it into Chinese; ' +
+    'never reproduce the competitor brand name, shop name, logo or watermarks.'
   )
 }
 
 /**
- * 每张卡片的开头：同行版式 + 构图安全区 + 共用风格说明。
+ * 一个版式 → 一张脚本卡片。
  *
- * `cropSafe = false` 用于局部微距那种「本来就要看不到完整商品」的卡片。
+ * `index` 直接决定「第几张出图」，所以顺序必须和参考图的顺序一致 ——
+ * 主人的要求是「生图的数量必须以放入的参考图的数量一样」。
  */
-function cardHeadZh(styleDesc: string, focus: string, cropSafe = true): string {
-  return `${styleBlockZh(styleDesc, focus)}${cropSafe ? HOT_FRAMING_SAFE_AREA : ''}${HOT_STYLE_BRIEF}\n`
-}
-
-function cardHeadEn(styleDesc: string, focusEn: string, cropSafe = true): string {
-  return `${styleBlockEn(styleDesc, focusEn)}${cropSafe ? HOT_FRAMING_SAFE_AREA_EN : ''}${HOT_STYLE_BRIEF_EN}\n`
-}
-
-/**
- * 生成爆款复刻的 8 张脚本（AIDA 结构）。
- *
- * 和单产品模式脚本的关键差别：
- *   - 第 1 张是「主视觉钩子」（不是白底合规图）
- *   - 第 8 张才是「白底合规图」（顺序正好颠倒）
- *
- * 【2026-10-16】每一张都带上同行版式（原来只有第 1 张带），
- * 并且每张同时产出中文版（给用户看/改）和英文版（发给模型）。
- */
-export function buildHotScript(ctx: HotScriptContext): OzonScriptCard[] {
-  const product = (ctx.product || '').trim()
-  const sp1 = (ctx.sp1 || '').trim()
-  const sp2 = (ctx.sp2 || '').trim()
-  const sp3 = (ctx.sp3 || '').trim()
-  const pain = (ctx.pain || '').trim() || 'daily hassle'
-  const diff = (ctx.diff || '').trim() || 'better material'
-  const audience = (ctx.audience || '').trim() || HOT_DEFAULTS.audience
-  const price = (ctx.price || '').trim() || HOT_DEFAULTS.price
-  const trust = (ctx.trust || '').trim() || HOT_DEFAULTS.trust
-  const service = (ctx.service || '').trim() || HOT_DEFAULTS.service
-  const scene = (ctx.sceneZh || '').trim() || '真实生活场景'
-  const style = (ctx.styleDesc || '').trim()
-
-  const cards: OzonScriptCard[] = [
-    {
-      index: 1,
-      key: '01_hook',
-      title: '第 1 张 · 主视觉钩子（AIDA · 注意）',
-      prompt:
-        `${cardHeadZh(style, '布局、点击钩子、构图、主色')}${HOT_STYLE_BRIEF}\n` +
-        `第1张：主视觉钩子。产品：${product}。产品45度斜放，背景与同行反着来。` +
-        `主文案：${product}。副文案：${sp1 || '核心卖点'} · ${audience} 首选。`,
-      promptEn:
-        `${cardHeadEn(style, 'layout, click hook, composition, dominant color')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 1: main visual hook. Product: ${product}. Product placed at a 45-degree tilt; the background deliberately contrasts with competitors'. ` +
-        `Headline: ${product}. Subline: ${sp1 || 'key benefit'} · the first choice for ${audience}.`,
-    },
-    {
-      index: 2,
-      key: '02_pain',
-      title: '第 2 张 · 痛点唤醒（AIDA · 注意）',
-      prompt:
-        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
-        `第2张：痛点唤醒。产品：${product}。场景实拍，把痛点拍成真实生活瞬间，不要摆拍感。场景：${scene}。` +
-        `主文案：你是不是也${pain}？副文案：这一次，彻底解决它。`,
-      promptEn:
-        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 2: pain awakening. Product: ${product}. Documentary-style scene shot; turn the pain into a real-life moment, no staged feel. Scene: ${scene}. ` +
-        `Headline: "Ты тоже ${pain}?" Subline: this time it is solved for good.`,
-    },
-    {
-      index: 3,
-      key: '03_interest',
-      title: '第 3 张 · 核心效果（AIDA · 兴趣）',
-      prompt:
-        `${cardHeadZh(style, '布局、文案位置、点缀色')}${HOT_STYLE_BRIEF}\n` +
-        `第3张：核心效果。产品：${product}。使用后效果特写，把好处可视化，不要堆字。` +
-        `产品居中 + 图标化卖点：${sp1 || '卖点1'} / ${sp2 || '卖点2'} / ${sp3 || '卖点3'}。` +
-        `主文案：${sp1 || '核心卖点'}。`,
-      promptEn:
-        `${cardHeadEn(style, 'layout, text placement, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 3: core benefit. Product: ${product}. Close-up of the after-use result; make the benefit visible, do not pile up words. ` +
-        `Product centred with icon-style selling points: ${sp1 || 'benefit 1'} / ${sp2 || 'benefit 2'} / ${sp3 || 'benefit 3'}. ` +
-        `Headline: ${sp1 || 'key benefit'}.`,
-    },
-    {
-      index: 4,
-      key: '04_trust',
-      title: '第 4 张 · 信任背书（AIDA · 信任）',
-      prompt:
-        `${cardHeadZh(style, '装饰元素、文案位置')}${HOT_STYLE_BRIEF}\n` +
-        `第4张：信任背书。产品：${product}。销量截图 + 证书 + 检测报告 + 买家秀拼图。` +
-        `主文案：${trust}。副文案：为什么这么多人选它。`,
-      promptEn:
-        `${cardHeadEn(style, 'decorative elements, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 4: social proof. Product: ${product}. Sales screenshot + certificate + test report + buyer photo collage. ` +
-        `Headline: ${trust}. Subline: why so many people choose it.`,
-    },
-    {
-      index: 5,
-      key: '05_detail',
-      title: '第 5 张 · 细节特写（AIDA · 欲望）',
-      prompt:
-        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
-        `第5张：细节特写。产品：${product}。怼近拍材质纹理、接口、按键、缝线，` +
-        `把 ${sp2 || '卖点2'}、${sp3 || '卖点3'} 拍成看得见的品质。`,
-      promptEn:
-        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 5: detail close-up. Product: ${product}. Macro on material texture, connector, button and stitching; ` +
-        `make ${sp2 || 'benefit 2'} and ${sp3 || 'benefit 3'} visible as real quality.`,
-    },
-    {
-      index: 6,
-      key: '06_compare',
-      title: '第 6 张 · 对比反超（AIDA · 对比）',
-      prompt:
-        `${cardHeadZh(style, '布局、主色、点缀色')}${HOT_STYLE_BRIEF}\n` +
-        `第6张：对比反超。产品：${product}。左右分屏VS：左普通款灰调，右我们亮调，中间VS分割线。` +
-        `产品线稿 + 俄语厘米标注。主文案：凭什么选我们？副文案：${diff}。`,
-      promptEn:
-        `${cardHeadEn(style, 'layout, dominant color, accent color')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 6: head-to-head comparison. Product: ${product}. Split screen: grey-toned ordinary version on the left, bright "ours" on the right, VS divider in the middle. ` +
-        `Product line-art with Russian centimetre annotations. Headline: why choose us? Subline: ${diff}.`,
-    },
-    {
-      index: 7,
-      key: '07_offer',
-      title: '第 7 张 · 利益与售后（AIDA · 行动）',
-      prompt:
-        `${cardHeadZh(style, '文案位置、字体风格、装饰元素')}${HOT_STYLE_BRIEF}\n` +
-        `第7张：利益与售后。产品：${product}。价格标签 + 赠品堆头 + 售后图标横向排列，` +
-        `打开状态但不展示包装盒和说明书。主文案：${price}。副文案：${service}。`,
-      promptEn:
-        `${cardHeadEn(style, 'text placement, typography style, decorative elements')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 7: offer and after-sales. Product: ${product}. Price tag + gift pile + after-sales icons in a horizontal row; ` +
-        `shown open, without box or manual. Headline: ${price}. Subline: ${service}.`,
-    },
-    {
-      index: 8,
-      key: '08_compliance',
-      title: '第 8 张 · 白底合规图（合规兜底）',
-      // 白底合规图**不带版式**：合规位要求纯白底、无任何装饰，带版式反而会被平台判不合格。
-      // 但**要带构图安全区**——它也是完整商品图，被裁掉一样不合格。
-      prompt:
-        `${HOT_FRAMING_SAFE_AREA}${HOT_STYLE_BRIEF}\n` +
-        `第8张：白底合规图（平台审核/搜索抓取位）。产品：${product}。` +
-        '纯白底#FFFFFF正视图，商品居中，占画面 70-85%，不加任何文字、水印、贴纸。',
-      promptEn:
-        `${HOT_FRAMING_SAFE_AREA_EN}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 8: white-background compliance image (marketplace review and search thumbnail). Product: ${product}. ` +
-        'Pure white #FFFFFF front view, product centred, occupying 70-85%; no text, no watermark, no stickers.',
-    },
-  ]
-
-  return cards
-}
-
-/**
- * 8 张主图之外的可选补充图。
- *
- * 主人要求：把商品的**侧面图、细节图**补进去，让买家能看到商品更多细节。
- * 所以这两张排在最前面（紧跟 8 张主图），使用场景和 FAQ 往后顺延。
- * 勾上「额外再生成」时才会一起生成。
- *
- * 之所以做成函数（而不是常量数组）：前两张要点名商品，才能把侧面的厚度、
- * 细节的材质锚定在**这一件**商品上，而不是让模型自己发挥。
- */
-export function buildHotExtraCards(product: string, styleDesc = ''): OzonScriptCard[] {
-  const name = (product || '').trim() || '本产品'
-  const style = (styleDesc || '').trim()
-  return [
-    {
-      index: 9,
-      key: '09_angles',
-      title: '第 9 张 · 多角度展示图（含俯视）',
-      prompt:
-        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
-        `第9张：多角度展示图。产品：${name}。` +
-        '同一件商品并排展示 4 个**不同视角**：正面平视 / 正侧面 / 正上方俯视 / 45度俯视，' +
-        '构图干净、间距均匀。**俯视要能看到顶面和内部结构**，侧面要有真实厚度感，不要压扁成纸片。' +
-        '四个视角必须是同一件商品，颜色和结构完全一致。主文案：全方位看清每一面。',
-      promptEn:
-        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 9: multi-angle showcase. Product: ${name}. ` +
-        'Show the same product in 4 **different viewpoints** side by side: front eye-level / pure side / straight top-down / 45-degree top-down. ' +
-        'Clean composition, even spacing. **The top-down view must reveal the top face and interior structure**; the side view must convey real thickness, not a flattened sheet. ' +
-        'All four viewpoints must be the same item, identical in color and structure. Headline: see every side at a glance.',
-    },
-    {
-      index: 10,
-      key: '10_macro',
-      title: '第 10 张 · 细节特写补充图',
-      // 四宫格微距：本来就要「看不到完整商品」，不加构图安全区。
-      prompt:
-        `${cardHeadZh(style, '背景、构图', false)}${HOT_STYLE_BRIEF}\n` +
-        `第10张：细节特写补充图。产品：${name}。` +
-        '2x2 四宫格微距——材质纹理、接口/按键、缝线或密封圈、底部细节，每格怼近拍，' +
-        '各配一个俄语短标注指向具体位置，突出做工和用料。主文案：细节见真章。',
-      promptEn:
-        `${cardHeadEn(style, 'background, composition', false)}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 10: extra detail close-ups. Product: ${name}. ` +
-        '2x2 grid of macro shots — material texture, connector/buttons, stitching or sealing ring, bottom detail. Each cell is a tight close-up ' +
-        'with a short Russian annotation pointing at the exact spot, emphasising build quality and materials. Headline: the detail is the proof.',
-    },
-    {
-      index: 11,
-      key: '11_usage',
-      title: '第 11 张 · 使用场景补充图',
-      prompt:
-        `${cardHeadZh(style, '背景、构图')}${HOT_STYLE_BRIEF}\n` +
-        `第11张：使用场景补充。产品：${name}。俄罗斯模特在真实生活场景中使用产品，自然抓拍，突出使用体验。`,
-      promptEn:
-        `${cardHeadEn(style, 'background, composition')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 11: extra usage scene. Product: ${name}. A Russian model using the product in a real-life setting, candid capture, emphasising the experience.`,
-    },
-    {
-      index: 12,
-      key: '12_faq',
-      title: '第 12 张 · FAQ / 对比图',
-      prompt:
-        `${cardHeadZh(style, '布局、文案位置')}${HOT_STYLE_BRIEF}\n` +
-        `第12张：FAQ/对比。产品：${name}。左右对比：普通款 vs 我们的产品，俄语标注 3 个常见问题答案。`,
-      promptEn:
-        `${cardHeadEn(style, 'layout, text placement')}${HOT_STYLE_BRIEF_EN}\n` +
-        `Card 12: FAQ / comparison. Product: ${name}. Left-right comparison: ordinary version vs our product, with 3 common questions answered in Russian.`,
-    },
-  ]
+export function buildHotLayoutCards(layouts: HotLayout[]): OzonScriptCard[] {
+  return layouts.map((layout, position) => ({
+    index: position + 1,
+    key: `hot_${String(position + 1).padStart(2, '0')}_ref${layout.index}`,
+    title: `第 ${position + 1} 张 · 复刻参考图 ${layout.index}`,
+    prompt: `${FRAMING_SAFE_AREA}${layoutCardBodyZh(layout)}`,
+    promptEn: `${FRAMING_SAFE_AREA_EN}${layoutCardBodyEn(layout)}`,
+  }))
 }

@@ -184,16 +184,28 @@ export interface OzonScriptCard {
 }
 
 /**
- * 生成 Ozon 主图脚本（**10 张**）。
+ * 一套脚本的张数。
+ * 单独导出，是为了让界面按钮上的「生成 9 张脚本」不会写死之后再跟模板脱节
+ * （2026-10-19 把 10 张改成 9 张时，按钮文案就是靠它自动跟上的）。
+ */
+export const OZON_CARD_COUNT = 9
+
+/**
+ * 生成 Ozon 主图脚本（**9 张**）。
  *
- * 【2026-10-16 主人定的新顺序与结构】
+ * 【2026-10-16 主人定的结构】
  *   主人指出「9 张全是我放进去的商品主体，太单调，需要一些商品的细节展示」，
  *   并且「多角度不只是正面/侧面/45度，还要俯视等其他角度」。
- *   所以重排成：**核心卖点打头 → 合规 → 场景 → 痛点对比 → 三张细节微距 → 尺寸 → 俯视 → 侧视**。
  *
- *   顺序是主人指定的：把原来的第 3 张（核心卖点）提到第 1 位，
- *   原来的第 1 张（合规）和第 2 张（场景）顺位往下移。
- *   **售后保障图按主人要求删掉**（它那 397 字全是要印的俄语客服文案，画面几乎没描述）。
+ * 【2026-10-19 主人又改了两处】
+ *   ① 「核心痛点和痛点对比合为一张图片」——
+ *      原来的第 1 张「核心卖点信息图」和第 4 张「痛点对比图」合并成第 1 张，
+ *      所以总数从 10 张变 9 张；
+ *   ② 「第九张第十张的角度取消，换为如图片中的内容」——
+ *      原来的「正俯视 / 正侧视」两个角度图换成两张售后/客服引导图：
+ *      第 8 张售后保障图、第 9 张联系卖家步骤图。
+ *
+ * 现在的顺序：**卖点+痛点 → 模特场景 → 生活场景 → 三张细节微距 → 尺寸 → 售后保障 → 联系卖家**。
  *
  * 每张的提示词 = 设计规范 + 这一张的具体任务。
  * 中文给用户看/改，英文发给模型（两套都由这里的模板生成，不调用模型翻译）。
@@ -230,24 +242,41 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     allowDimensions?: boolean
   }> = [
     {
-      key: '01_selling_points',
-      title: '第 1 张 · 核心卖点信息图',
+      /**
+       * 【2026-10-19 主人要求】「核心痛点和痛点对比合为一张图片」。
+       *
+       * 原来是分开的两张：第 1 张「核心卖点信息图」、第 4 张「痛点对比图」。
+       * 合成一张之后整套从 10 张变 9 张，省一张的钱，而且「先戳痛点、再给卖点」
+       * 本来就是同一块信息，拆两张反而重复。
+       *
+       * 版面 = 三段式：上 18% 痛点头条 / 中 50% 左右对比 / 下 32% 三组卖点。
+       */
+      key: '01_value_pain',
+      title: '第 1 张 · 核心卖点 + 痛点对比（合成一张）',
       bodyZh:
-        `第1张：核心卖点信息图。产品：${product}。` +
-        '镜头：45度平视，产品居中偏下，占画面 60-70%。' +
-        '背景：干净的浅色几何背景（浅灰或浅米），带极淡渐层，不要花纹和纹理。' +
-        '光线：均匀柔光，几乎没有硬阴影，产品表面高光柔和。' +
-        `构图：画面上方三分之一留白放卖点，三组卖点均匀分布。卖点：${sp1} / ${sp2} / ${sp3}，主文案突出 ${sp1}。` +
-        '文字：三组俄语卖点，每组配一个小图标，图标风格统一。' +
-        '禁忌：文字不超过三组，不要促销角标，不要边框，不要堆满文字。',
+        `第1张：核心卖点与痛点对比合成图。产品：${product}。` +
+        '镜头：平视，画面竖着分三段，从上到下依次是「痛点头条 → 左右对比 → 三组卖点」。' +
+        '背景：整体浅色干净；右侧明亮通透，左侧偏暗偏冷。' +
+        '光线：右侧明亮自然光，左侧低对比阴天感。' +
+        '构图：① 顶部 18% 放一行痛点头条，字号是整张最大的；' +
+        '② 中部 50% 左右分屏，中间一条细分隔线；左侧 45% 画「普通款」，偏暗偏闷、背景杂乱；' +
+        '右侧 55% 画「我们的产品」，明亮清爽，产品占右侧区域的 70%；' +
+        '③ 底部 32% 三组卖点横排，每组一个小图标加一句短俄语，均匀分布。' +
+        `文案：顶部俄语主文案是「Ты тоже ${pain}?」；右侧角标补一句俄语差异化：${diff}；` +
+        `底部三组俄语卖点：${sp1} / ${sp2} / ${sp3}，主推 ${sp1}。` +
+        '禁忌：不要写成长段说明文字；两侧产品不要画得一模一样；卖点不要超过三组的范围。',
       bodyEn:
-        `Card 1: key selling points infographic. Product: ${product}. ` +
-        'Camera: 45-degree eye level. Product centred slightly low, occupying 60-70% of the frame. ' +
-        'Background: clean pale geometric backdrop (light grey or light beige) with a very soft gradient; no patterns, no texture. ' +
-        'Lighting: even soft light, almost no hard shadow, gentle highlights on the product surface. ' +
-        `Composition: keep the upper third empty for the selling points; three groups distributed evenly. Selling points: ${sp1} / ${sp2} / ${sp3}; lead with ${sp1}. ` +
-        'Text: three Russian selling points, each with one small icon; icons share the same style. ' +
-        'Forbidden: more than three text groups, promo corner badges, borders, walls of text.',
+        `Card 1: combined selling points and pain comparison. Product: ${product}. ` +
+        'Camera: eye level; the frame is split vertically into three bands — pain headline, then the left/right comparison, then three selling points. ' +
+        'Background: clean and pale overall; the right side bright and airy, the left side dim and cool. ' +
+        'Lighting: bright natural light on the right, a low-contrast overcast feel on the left. ' +
+        'Composition: (1) the top 18% carries a single pain headline in the largest type on the card; ' +
+        '(2) the middle 50% is split left/right by a thin divider: the left 45% shows "the ordinary version", dim, dull and cluttered; ' +
+        'the right 55% shows "our product", bright and fresh, with the product taking 70% of that side; ' +
+        '(3) the bottom 32% is a row of three selling points, each with one small icon and one short Russian phrase, evenly spaced. ' +
+        `Text: the Russian headline at the top is "Ты тоже ${pain}?"; one Russian differentiator badge sits on the right side: ${diff}; ` +
+        `the three Russian selling points at the bottom are ${sp1} / ${sp2} / ${sp3}, leading with ${sp1}. ` +
+        'Forbidden: paragraphs of explanation; the two sides looking identical; more than three selling points.',
     },
     {
       /**
@@ -302,38 +331,12 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: staged look, product that looks pasted in, plain solid background.',
     },
     {
-      key: '04_pain_comparison',
-      title: '第 4 张 · 痛点对比图',
-      bodyZh:
-        `第4张：痛点对比图。产品：${product}。` +
-        '镜头：平视，左右两个产品各自 40% 画面，四周留边距。' +
-        '构图：左右分屏，中间一条细分隔线。' +
-        '背景：左侧灰调冷色、背景杂乱偏暗；右侧亮调暖色、背景干净通透。' +
-        '左侧：「普通款」，画面偏暗偏闷。' +
-        '右侧：「我们的产品」，画面明亮清爽。' +
-        '光线：左侧低对比阴天感，右侧明亮自然光。' +
-        `文字：俄语主文案「Ты тоже ${pain}?」放在画面上方，字号大、占一行。` +
-        `右侧角标补一句俄语差异化：${diff}。` +
-        '禁忌：不要写成大段说明文字，两侧产品不要画得一模一样。',
-      bodyEn:
-        `Card 4: pain point comparison. Product: ${product}. ` +
-        'Camera: eye level. Each product takes 40% of the frame, with margins around. ' +
-        'Composition: split screen left/right with a thin divider. ' +
-        'Background: cluttered, dim, cool grey on the left; clean, airy, warm on the right. ' +
-        'Left side: the "ordinary version", dim and dull. ' +
-        'Right side: "our product", bright and fresh. ' +
-        'Lighting: low-contrast overcast feel on the left, bright natural light on the right. ' +
-        `Text: Russian headline "Ты тоже ${pain}?" across the top, large and on a single line. ` +
-        `Add one Russian differentiator badge on the right side: ${diff}. ` +
-        'Forbidden: paragraphs of explanation; the two sides must not look identical.',
-    },
-    {
-      key: '05_material_macro',
-      title: '第 5 张 · 细节·材质微距',
+      key: '04_material_macro',
+      title: '第 4 张 · 细节·材质微距',
       // 微距卡片**不加**构图安全区：它本来就要「看不到完整商品」。
       cropSafe: false,
       bodyZh:
-        `第5张：材质微距特写。产品：${product}。` +
+        `第4张：材质微距特写。产品：${product}。` +
         '镜头：微距怼近，只拍一个局部，局部占画面 95%，**看不到完整商品**。' +
         '焦点：材质纹理（金属拉丝、磨砂、织物、硅胶等），纹理必须清晰可辨。' +
         '背景：完全虚化，只留一片柔和的同色系底色，不能有任何可辨识的物体。' +
@@ -342,7 +345,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '文字：一个俄语短标注，用引线指向纹理位置。' +
         '禁忌：不要出现完整商品，不要出现场景，不要平光把纹理拍平。',
       bodyEn:
-        `Card 5: material macro close-up. Product: ${product}. ` +
+        `Card 4: material macro close-up. Product: ${product}. ` +
         'Camera: macro, extremely close. Only one local area is shown, filling 95% of the frame; **the whole product is not visible**. ' +
         'Focus: material texture (brushed metal, matte finish, fabric weave, silicone, etc.); the texture must be clearly readable. ' +
         'Background: fully blurred, just a soft same-tone surface; nothing recognisable. ' +
@@ -352,11 +355,11 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: the whole product, any scene, flat lighting that kills the texture.',
     },
     {
-      key: '06_structure_closeup',
-      title: '第 6 张 · 细节·结构特写',
+      key: '05_structure_closeup',
+      title: '第 5 张 · 细节·结构特写',
       cropSafe: false,
       bodyZh:
-        `第6张：结构特写。产品：${product}。` +
+        `第5张：结构特写。产品：${product}。` +
         '镜头：俯视 45 度局部特写，只拍结构部位，占画面 95%，**看不到完整商品**。' +
         '焦点：接口、螺纹、卡扣、密封圈、铰链等结构件，要看得出装配关系。' +
         '背景：纯深色或纯浅色单色底，完全虚化，用来把结构件托出来。' +
@@ -365,7 +368,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '文字：俄语标注结构名称，一条引线。' +
         '禁忌：不要拍成整机图，不要平光。',
       bodyEn:
-        `Card 6: structural close-up. Product: ${product}. ` +
+        `Card 5: structural close-up. Product: ${product}. ` +
         'Camera: 45-degree top-down close-up. Only the structural part is shown, filling 95% of the frame; **the whole product is not visible**. ' +
         'Focus: connector, thread, clip, sealing ring, hinge and similar parts; the assembly relationship must be visible. ' +
         'Background: a single flat tone (dark or light), fully blurred, to lift the structural part out. ' +
@@ -375,11 +378,11 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: showing the whole product, flat lighting.',
     },
     {
-      key: '07_craft_closeup',
-      title: '第 7 张 · 细节·工艺特写',
+      key: '06_craft_closeup',
+      title: '第 6 张 · 细节·工艺特写',
       cropSafe: false,
       bodyZh:
-        `第7张：工艺特写。产品：${product}。` +
+        `第6张：工艺特写。产品：${product}。` +
         '镜头：微距，占画面 95%，只拍工艺细节，**看不到完整商品**。' +
         '焦点：缝线、焊点、表面处理、logo 雕刻、边角收口。' +
         '背景：完全虚化的单色底，不要出现任何场景元素。' +
@@ -388,7 +391,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '文字：俄语短标注，一条引线。' +
         '禁忌：不要拍成整机图，不要用柔光把细节磨掉。',
       bodyEn:
-        `Card 7: craftsmanship close-up. Product: ${product}. ` +
+        `Card 6: craftsmanship close-up. Product: ${product}. ` +
         'Camera: macro, filling 95% of the frame; only the craft detail is shown; **the whole product is not visible**. ' +
         'Focus: stitching, weld points, surface treatment, engraved logo, edge finishing. ' +
         'Background: fully blurred single tone; no scene elements at all. ' +
@@ -398,12 +401,12 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: showing the whole product, soft light that erases the detail.',
     },
     {
-      key: '08_size_chart',
-      title: '第 8 张 · 尺寸规格图',
+      key: '07_size_chart',
+      title: '第 7 张 · 尺寸规格图',
       // 尺寸图必须写数字，要临时覆盖「不要添加原图没有的数字和尺寸」那条规范。
       allowDimensions: true,
       bodyZh:
-        `第8张：尺寸规格图。产品：${product}。` +
+        `第7张：尺寸规格图。产品：${product}。` +
         '镜头：正视图平视，产品占画面 60%，四周留出标注空间。' +
         '背景：纯白或极浅灰网格底，不要有场景。' +
         '光线：均匀平光，不要强烈投影，避免干扰标注线。' +
@@ -417,7 +420,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '**禁止只写文字标签不写数字**，也禁止写成空箭头。' +
         '禁忌：不要出现英制单位（in、inch、дюйм），不要堆无关参数。',
       bodyEn:
-        `Card 8: size specification. Product: ${product}. ` +
+        `Card 7: size specification. Product: ${product}. ` +
         'Camera: front view at eye level, product occupying 60% of the frame, with margin around for annotations. ' +
         'Background: pure white or a very light grey grid; no scene. ' +
         'Lighting: even flat light without strong shadows, so it does not fight the annotation lines. ' +
@@ -431,45 +434,107 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '**Never draw a label without a number**, and never leave an empty arrow. ' +
         'Forbidden: imperial units (in, inch, дюйм), unrelated specifications.',
     },
+    /**
+     * 【2026-10-19 主人要求】原来第 9、10 张是「正俯视 / 正侧视」两个角度图，
+     * 主人说「第九张第十张的角度取消，换为如图片中的内容」——
+     * 也就是换成两张**售后/客服引导图**（主人给了两张同类卖家的成品参考图）。
+     *
+     * 这两张是纯信息图，不是商品实拍，所以不加构图安全区。
+     * 但图标里的元素必须长在**这件商品**上（比如「Упаковка」那一格画这个商品的包装），
+     * 否则会像从别的类目拼过来的，主人原话是「不能有很大的违和感」。
+     */
     {
-      key: '09_top_view',
-      title: '第 9 张 · 角度·正俯视',
+      key: '08_after_sales',
+      title: '第 8 张 · 售后保障图（先别急着差评）',
+      cropSafe: false,
       bodyZh:
-        `第9张：正俯视角度图。产品：${product}。` +
-        '镜头：正上方垂直俯视（top-down），镜头与产品顶面平行。' +
-        '产品占画面 80%，居中。' +
-        '背景：纯色台面或浅木纹台面，保持干净。' +
-        '光线：均匀顶光，投影落在产品四周，方向一致。' +
-        '重点：让买家看清整体形状、开口、内部结构或容量。' +
-        '文字：不要文字。',
+        `第8张：售后保障图。产品：${product}。` +
+        '整体：3:4 竖版，干净浅色底（纯白或极浅灰），不要纹理、不要场景、不要照片背景。' +
+        '版式从上到下严格按这六段，位置和占比不要变：' +
+        '① 顶部 22%：三行大标题，粗体、点缀色（红或本品牌色）、居中，断成三行：' +
+        '«ДОРОГИЕ ПОКУПАТЕЛИ,» / «У ВАС ЕСТЬ ПРЕТЕНЗИЯ» / «К ЗАКАЗУ?»；' +
+        '② 中部 30%：等宽三列，每列一个**实心圆形图标**（点缀色圆底 + 白色描边图形），' +
+        '圆形下面两行俄语说明，列与列之间一条极细竖线：' +
+        '左列 «Упаковка» + «На упаковке обнаружены следы повреждения?»；' +
+        '中列 «Товар» + «Привезли не тот товар?»；' +
+        '右列 «Доставка» + «Задержалась доставка, или привезли не туда?»；' +
+        '三个圆形里的图形要贴合本商品——左列画**本商品的包装/外箱**、中列画**本商品本体**、右列画一个快递箱加时钟；' +
+        '③ 中下部 12%：两行居中、常规字重俄语：' +
+        '«Не спешите оставлять негативный отзыв,» / «доставкой товара занимается маркетплейс»；' +
+        '④ 下部 10%：两行居中、全大写、加粗俄语：' +
+        '«СВЯЖИТЕСЬ С ПОДДЕРЖКОЙ» / «В ЛИЧНОМ КАБИНЕТЕ, И ВАМ ПОМОГУТ!»；' +
+        '⑤ 底部 12%：一条**点缀色圆角胶囊条**横贯画面，左端压一个白色圆形加心形图标，' +
+        '胶囊条里两行白色俄语：«Используйте отзывы для оценки качества нашего товара»；' +
+        '⑥ 最底 4%：一条浅色横带，一行小字俄语 «С любовью и заботой о вас!»，**不要画任何品牌 logo**。' +
+        '硬规则：所有文字必须是俄语而且必须真的写出来（不许留空、不许画成横线代替）；' +
+        '层级要明显（大标题 > 三列小标题 > 说明 > 底部小字）；整张配色最多四种：底色 + 点缀色 + 白 + 一处中性灰。' +
+        '禁忌：不要中文，不要二维码、电话、网址，不要把三列画成两列或四列。',
       bodyEn:
-        `Card 9: top-down angle. Product: ${product}. ` +
-        'Camera: straight down from directly above (top-down); the lens is parallel to the top surface of the product. ' +
-        'Product occupies 80% of the frame, centred. ' +
-        'Background: solid-colour tabletop or light wood grain, kept clean. ' +
-        'Lighting: even top light; the shadow falls around the product with a consistent direction. ' +
-        'Purpose: let the buyer see the overall shape, the opening, the interior structure or the capacity. ' +
-        'Text: no text.',
+        `Card 8: after-sales care card. Product: ${product}. ` +
+        'Overall: 3:4 portrait, clean pale ground (pure white or very light grey); no texture, no scene, no photographic backdrop. ' +
+        'Layout top to bottom, keep these six bands in this order with these proportions: ' +
+        '(1) top 22%: a three-line bold headline in the accent colour (red or the brand colour), centred, broken into exactly three lines: ' +
+        '"ДОРОГИЕ ПОКУПАТЕЛИ," / "У ВАС ЕСТЬ ПРЕТЕНЗИЯ" / "К ЗАКАЗУ?"; ' +
+        '(2) middle 30%: three equal columns, each a **filled circular badge** (accent-colour disc with a white outlined glyph), ' +
+        'two lines of Russian underneath, separated by very thin vertical rules: ' +
+        'left "Упаковка" + "На упаковке обнаружены следы повреждения?"; ' +
+        'centre "Товар" + "Привезли не тот товар?"; ' +
+        'right "Доставка" + "Задержалась доставка, или привезли не туда?"; ' +
+        'the glyphs must belong to this product — left shows **this product packaging / shipping box**, centre shows **the product itself**, right shows a parcel with a clock; ' +
+        '(3) lower middle 12%: two centred lines of regular-weight Russian: ' +
+        '"Не спешите оставлять негативный отзыв," / "доставкой товара занимается маркетплейс"; ' +
+        '(4) lower 10%: two centred lines, all caps, bold Russian: ' +
+        '"СВЯЖИТЕСЬ С ПОДДЕРЖКОЙ" / "В ЛИЧНОМ КАБИНЕТЕ, И ВАМ ПОМОГУТ!"; ' +
+        '(5) bottom 12%: an **accent-colour rounded pill bar** spanning the width, with a white circular heart badge overlapping its left end, ' +
+        'and two lines of white Russian inside the pill: "Используйте отзывы для оценки качества нашего товара"; ' +
+        '(6) very bottom 4%: a pale band with one line of small Russian "С любовью и заботой о вас!"; **do not draw any brand logo**. ' +
+        'Hard rules: every piece of text must be Russian and must actually be rendered (never leave it blank, never replace it with a line); ' +
+        'the type hierarchy must be obvious (headline > column titles > captions > footer); use at most four colours in total: ground + accent + white + one neutral grey. ' +
+        'Forbidden: Chinese text, QR codes, phone numbers, URLs, and any deviation from three columns.',
     },
     {
-      key: '10_side_view',
-      title: '第 10 张 · 角度·正侧视',
+      key: '09_contact_seller',
+      title: '第 9 张 · 联系卖家步骤图',
+      cropSafe: false,
       bodyZh:
-        `第10张：正侧面角度图。产品：${product}。` +
-        '镜头：正侧面平视（side view），镜头与产品侧面垂直。' +
-        '产品占画面 80%，居中。' +
-        '背景：纯色（浅灰或浅米），无杂物。' +
-        '光线：侧光从一侧打过来，勾出厚度和轮廓。' +
-        '重点：让买家看清厚度、高度、侧面结构与比例。' +
-        '文字：不要文字。',
+        `第9张：联系卖家步骤图（怎么找到客服）。产品：${product}。` +
+        '整体：3:4 竖版，**竖向渐变**底色（深→浅，深色用本商品主色或其深色版），不要照片背景。' +
+        '版式从上到下严格按这八段，位置和占比不要变：' +
+        '① 10%：一行大标题，白色粗体居中：«УВАЖАЕМЫЕ ПОКУПАТЕЛИ!»；' +
+        '② 10%：两行白色常规字重居中：«Не торопитесь оставлять негативный отзыв.» / «Мы сможем Вам помочь!»；' +
+        '③ 8%：一条**纯白圆角长条**，左中右留边一致，条内深色俄语粗体居中：«ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ»；' +
+        '④ 14%：等宽三列，白色细线图标 + 两行白色说明：' +
+        '«Повреждена упаковка» / «Перепутан товар» / «Задержалась доставка»；' +
+        '三个图标分别画：破损的外箱、被翻转的包裹、带时钟的货车；第一个图标要画成**本商品的箱子**；' +
+        '⑤ 8%：第二条**纯白圆角长条**：«НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА»；' +
+        '⑥ 8%：一行三步流程，白色小图标 + 白色文字，中间用右箭头连接：«Профиль → Сообщения → Поддержка»；' +
+        '⑦ 8%：第三条**纯白圆角长条**：«ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ»；' +
+        '⑧ 26%：左半是三行编号步骤，白色大字，行距均匀：' +
+        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»；' +
+        '右半是一个**简化的手机界面示意卡**：白色圆角卡片，上方一行俄语商品名（用本商品的名称），' +
+        '中间一行小评分和一个 «Вопросы» 按钮，底部一条蓝色 «В корзину» 按钮。' +
+        '硬规则：所有文字必须是俄语而且必须真的写出来；白字压在渐变上要够对比；三条白长条必须等宽、圆角一致、左右留边一致。' +
+        '禁忌：不要中文，不要真实平台 logo，不要把三条白色长条合成一句，不要把步骤写成一段。',
       bodyEn:
-        `Card 10: pure side view. Product: ${product}. ` +
-        'Camera: eye-level side view; the lens is perpendicular to the side face of the product. ' +
-        'Product occupies 80% of the frame, centred. ' +
-        'Background: solid colour (light grey or light beige), nothing else. ' +
-        'Lighting: side light from one direction, outlining thickness and silhouette. ' +
-        'Purpose: let the buyer see thickness, height, side structure and proportions. ' +
-        'Text: no text.',
+        `Card 9: how-to-contact-the-seller card. Product: ${product}. ` +
+        'Overall: 3:4 portrait with a **vertical gradient** ground (dark to light, the dark end taken from the product accent colour), no photographic backdrop. ' +
+        'Layout top to bottom, keep these eight bands in this order with these proportions: ' +
+        '(1) 10%: one bold white headline, centred: "УВАЖАЕМЫЕ ПОКУПАТЕЛИ!"; ' +
+        '(2) 10%: two centred lines of regular white Russian: "Не торопитесь оставлять негативный отзыв." / "Мы сможем Вам помочь!"; ' +
+        '(3) 8%: a **pure white rounded bar** with equal side margins, containing dark bold Russian, centred: "ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ"; ' +
+        '(4) 14%: three equal columns, white thin-line glyphs with two lines of white Russian: ' +
+        '"Повреждена упаковка" / "Перепутан товар" / "Задержалась доставка"; ' +
+        'the three glyphs are: a dented shipping box, an overturned parcel, a van with a clock; the first box must look like **this product packaging**; ' +
+        '(5) 8%: a second **pure white rounded bar**: "НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА"; ' +
+        '(6) 8%: a single three-step row, small white glyphs with white labels joined by right arrows: "Профиль → Сообщения → Поддержка"; ' +
+        '(7) 8%: a third **pure white rounded bar**: "ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ"; ' +
+        '(8) 26%: the left half holds three numbered steps in large white type with even leading: ' +
+        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»; ' +
+        'the right half is a **simplified phone-UI mock**: a white rounded card with one line of Russian product name on top (use this product name), ' +
+        'a small rating row and a "Вопросы" button in the middle, and a blue "В корзину" button along the bottom. ' +
+        'Hard rules: every piece of text must be Russian and must actually be rendered; white type over the gradient must stay legible; ' +
+        'the three white bars must share one width, one corner radius and equal side margins. ' +
+        'Forbidden: Chinese text, real marketplace logos, merging the three white bars into one sentence, writing the steps as a paragraph.',
     },
   ]
 
