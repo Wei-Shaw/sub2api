@@ -181,6 +181,65 @@
             </span>
           </template>
 
+          <template #cell-batch_id="{ row }">
+            <div v-if="row.batch_id" class="flex flex-col gap-1">
+              <div class="flex items-center space-x-1.5">
+                <code
+                  class="cursor-pointer font-mono text-xs text-gray-700 transition-colors hover:text-primary-600 hover:underline dark:text-gray-300 dark:hover:text-primary-400"
+                  :title="t('admin.redeem.clickToFilterBatch')"
+                  @click="filterByBatch(row.batch_id)"
+                >
+                  {{ row.batch_id.length > 14 ? row.batch_id.slice(0, 14) + '...' : row.batch_id }}
+                </code>
+                <!-- 复制按钮 -->
+                <button
+                  type="button"
+                  @click.stop="copyToClipboard(row.batch_id)"
+                  :class="[
+                    'flex items-center transition-colors',
+                    copiedCode === row.batch_id
+                      ? 'text-green-500'
+                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                  ]"
+                  :title="copiedCode === row.batch_id ? t('admin.redeem.copied') : t('keys.copyToClipboard')"
+                >
+                  <Icon v-if="copiedCode !== row.batch_id" name="copy" size="xs" :stroke-width="2" />
+                  <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </button>
+                <!-- 快捷查找/过滤此批号按钮 -->
+                <button
+                  type="button"
+                  @click.stop="filterByBatch(row.batch_id)"
+                  class="text-gray-400 transition-colors hover:text-primary-600 dark:hover:text-primary-400"
+                  :title="t('admin.redeem.clickToFilterBatch')"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <span
+                v-if="row.only_once_per_account"
+                class="inline-flex w-fit items-center rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+              >
+                {{ t('admin.redeem.batchLimitBadge') }}
+              </span>
+            </div>
+            <span v-else class="text-xs text-gray-400">-</span>
+          </template>
+
           <template #cell-actions="{ row }">
             <div class="flex items-center space-x-2">
               <button
@@ -395,6 +454,23 @@
                 required
                 class="input"
               />
+            </div>
+            <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <label class="flex cursor-pointer items-start space-x-3">
+                <input
+                  v-model="generateForm.only_once_per_account"
+                  type="checkbox"
+                  class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                />
+                <div class="flex flex-col">
+                  <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {{ t('admin.redeem.onlyOncePerAccount') }}
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.redeem.onlyOncePerAccountHint') }}
+                  </span>
+                </div>
+              </label>
             </div>
             <div class="flex justify-end gap-3 pt-2">
               <button type="button" @click="showGenerateDialog = false" class="btn btn-secondary">
@@ -736,6 +812,7 @@ const columns = computed<Column[]>(() => [
   { key: 'used_by', label: t('admin.redeem.columns.usedBy') },
   { key: 'used_at', label: t('admin.redeem.columns.usedAt'), sortable: true },
   { key: 'expires_at', label: t('admin.redeem.columns.expiresAt'), sortable: true },
+  { key: 'batch_id', label: t('admin.redeem.columns.batchId') },
   { key: 'actions', label: t('admin.redeem.columns.actions') }
 ])
 
@@ -842,7 +919,8 @@ const generateForm = reactive({
   group_id: null as number | null,
   validity_days: 30,
   expiry_option: 'never' as RedeemCodeExpiryOption,
-  custom_expiry_days: 7
+  custom_expiry_days: 7,
+  only_once_per_account: false
 })
 
 // 监听类型变化，邀请码类型时自动设置 value 为 0
@@ -912,6 +990,12 @@ const handleSearch = () => {
     pagination.page = 1
     loadCodes()
   }, 300)
+}
+
+const filterByBatch = (batchId: string) => {
+  searchQuery.value = batchId
+  pagination.page = 1
+  loadCodes()
 }
 
 const handlePageChange = (page: number) => {
@@ -1046,7 +1130,8 @@ const handleGenerateCodes = async () => {
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
       generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
-      expiresInDays
+      expiresInDays,
+      generateForm.only_once_per_account
     )
     showGenerateDialog.value = false
     generatedCodes.value = result
@@ -1056,6 +1141,7 @@ const handleGenerateCodes = async () => {
     generateForm.validity_days = 30
     generateForm.expiry_option = 'never'
     generateForm.custom_expiry_days = 7
+    generateForm.only_once_per_account = false
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))

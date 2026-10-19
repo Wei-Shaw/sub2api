@@ -170,6 +170,34 @@ func (_c *RedeemCodeCreate) SetNillableValidityDays(v *int) *RedeemCodeCreate {
 	return _c
 }
 
+// SetBatchID sets the "batch_id" field.
+func (_c *RedeemCodeCreate) SetBatchID(v string) *RedeemCodeCreate {
+	_c.mutation.SetBatchID(v)
+	return _c
+}
+
+// SetNillableBatchID sets the "batch_id" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableBatchID(v *string) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetBatchID(*v)
+	}
+	return _c
+}
+
+// SetOnlyOncePerAccount sets the "only_once_per_account" field.
+func (_c *RedeemCodeCreate) SetOnlyOncePerAccount(v bool) *RedeemCodeCreate {
+	_c.mutation.SetOnlyOncePerAccount(v)
+	return _c
+}
+
+// SetNillableOnlyOncePerAccount sets the "only_once_per_account" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableOnlyOncePerAccount(v *bool) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetOnlyOncePerAccount(*v)
+	}
+	return _c
+}
+
 // SetUserID sets the "user" edge to the User entity by ID.
 func (_c *RedeemCodeCreate) SetUserID(id int64) *RedeemCodeCreate {
 	_c.mutation.SetUserID(id)
@@ -249,6 +277,10 @@ func (_c *RedeemCodeCreate) defaults() {
 		v := redeemcode.DefaultValidityDays
 		_c.mutation.SetValidityDays(v)
 	}
+	if _, ok := _c.mutation.OnlyOncePerAccount(); !ok {
+		v := redeemcode.DefaultOnlyOncePerAccount
+		_c.mutation.SetOnlyOncePerAccount(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -285,6 +317,14 @@ func (_c *RedeemCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.ValidityDays(); !ok {
 		return &ValidationError{Name: "validity_days", err: errors.New(`ent: missing required field "RedeemCode.validity_days"`)}
+	}
+	if v, ok := _c.mutation.BatchID(); ok {
+		if err := redeemcode.BatchIDValidator(v); err != nil {
+			return &ValidationError{Name: "batch_id", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.batch_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.OnlyOncePerAccount(); !ok {
+		return &ValidationError{Name: "only_once_per_account", err: errors.New(`ent: missing required field "RedeemCode.only_once_per_account"`)}
 	}
 	return nil
 }
@@ -348,6 +388,14 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ValidityDays(); ok {
 		_spec.SetField(redeemcode.FieldValidityDays, field.TypeInt, value)
 		_node.ValidityDays = value
+	}
+	if value, ok := _c.mutation.BatchID(); ok {
+		_spec.SetField(redeemcode.FieldBatchID, field.TypeString, value)
+		_node.BatchID = &value
+	}
+	if value, ok := _c.mutation.OnlyOncePerAccount(); ok {
+		_spec.SetField(redeemcode.FieldOnlyOncePerAccount, field.TypeBool, value)
+		_node.OnlyOncePerAccount = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -597,6 +645,36 @@ func (u *RedeemCodeUpsert) AddValidityDays(v int) *RedeemCodeUpsert {
 	return u
 }
 
+// SetBatchID sets the "batch_id" field.
+func (u *RedeemCodeUpsert) SetBatchID(v string) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldBatchID, v)
+	return u
+}
+
+// UpdateBatchID sets the "batch_id" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateBatchID() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldBatchID)
+	return u
+}
+
+// ClearBatchID clears the value of the "batch_id" field.
+func (u *RedeemCodeUpsert) ClearBatchID() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldBatchID)
+	return u
+}
+
+// SetOnlyOncePerAccount sets the "only_once_per_account" field.
+func (u *RedeemCodeUpsert) SetOnlyOncePerAccount(v bool) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldOnlyOncePerAccount, v)
+	return u
+}
+
+// UpdateOnlyOncePerAccount sets the "only_once_per_account" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateOnlyOncePerAccount() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldOnlyOncePerAccount)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -828,6 +906,41 @@ func (u *RedeemCodeUpsertOne) AddValidityDays(v int) *RedeemCodeUpsertOne {
 func (u *RedeemCodeUpsertOne) UpdateValidityDays() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetBatchID sets the "batch_id" field.
+func (u *RedeemCodeUpsertOne) SetBatchID(v string) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetBatchID(v)
+	})
+}
+
+// UpdateBatchID sets the "batch_id" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateBatchID() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateBatchID()
+	})
+}
+
+// ClearBatchID clears the value of the "batch_id" field.
+func (u *RedeemCodeUpsertOne) ClearBatchID() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearBatchID()
+	})
+}
+
+// SetOnlyOncePerAccount sets the "only_once_per_account" field.
+func (u *RedeemCodeUpsertOne) SetOnlyOncePerAccount(v bool) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetOnlyOncePerAccount(v)
+	})
+}
+
+// UpdateOnlyOncePerAccount sets the "only_once_per_account" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateOnlyOncePerAccount() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateOnlyOncePerAccount()
 	})
 }
 
@@ -1228,6 +1341,41 @@ func (u *RedeemCodeUpsertBulk) AddValidityDays(v int) *RedeemCodeUpsertBulk {
 func (u *RedeemCodeUpsertBulk) UpdateValidityDays() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.UpdateValidityDays()
+	})
+}
+
+// SetBatchID sets the "batch_id" field.
+func (u *RedeemCodeUpsertBulk) SetBatchID(v string) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetBatchID(v)
+	})
+}
+
+// UpdateBatchID sets the "batch_id" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateBatchID() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateBatchID()
+	})
+}
+
+// ClearBatchID clears the value of the "batch_id" field.
+func (u *RedeemCodeUpsertBulk) ClearBatchID() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearBatchID()
+	})
+}
+
+// SetOnlyOncePerAccount sets the "only_once_per_account" field.
+func (u *RedeemCodeUpsertBulk) SetOnlyOncePerAccount(v bool) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetOnlyOncePerAccount(v)
+	})
+}
+
+// UpdateOnlyOncePerAccount sets the "only_once_per_account" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateOnlyOncePerAccount() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateOnlyOncePerAccount()
 	})
 }
 

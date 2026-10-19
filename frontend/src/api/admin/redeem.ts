@@ -57,11 +57,13 @@ export async function getById(id: number): Promise<RedeemCode> {
 /**
  * Generate new redeem codes
  * @param count - Number of codes to generate
+ * @param count - Number of codes to generate
  * @param type - Type of redeem code
  * @param value - Value of the code
  * @param groupId - Group ID (required for subscription type)
  * @param validityDays - Validity days (for subscription type)
  * @param expiresInDays - Days before the code itself expires
+ * @param onlyOncePerAccount - Whether each user account can redeem only one code from this batch
  * @returns Array of generated redeem codes
  */
 export async function generate(
@@ -70,12 +72,14 @@ export async function generate(
   value: number,
   groupId?: number | null,
   validityDays?: number,
-  expiresInDays?: number | null
+  expiresInDays?: number | null,
+  onlyOncePerAccount?: boolean
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
     type,
-    value
+    value,
+    only_once_per_account: onlyOncePerAccount
   }
 
   // 订阅类型专用字段

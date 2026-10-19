@@ -110,6 +110,16 @@ func ValidityDays(v int) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldValidityDays, v))
 }
 
+// BatchID applies equality check predicate on the "batch_id" field. It's identical to BatchIDEQ.
+func BatchID(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldBatchID, v))
+}
+
+// OnlyOncePerAccount applies equality check predicate on the "only_once_per_account" field. It's identical to OnlyOncePerAccountEQ.
+func OnlyOncePerAccount(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldOnlyOncePerAccount, v))
+}
+
 // CodeEQ applies the EQ predicate on the "code" field.
 func CodeEQ(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldCode, v))
@@ -658,6 +668,91 @@ func ValidityDaysLT(v int) predicate.RedeemCode {
 // ValidityDaysLTE applies the LTE predicate on the "validity_days" field.
 func ValidityDaysLTE(v int) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldLTE(FieldValidityDays, v))
+}
+
+// BatchIDEQ applies the EQ predicate on the "batch_id" field.
+func BatchIDEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldBatchID, v))
+}
+
+// BatchIDNEQ applies the NEQ predicate on the "batch_id" field.
+func BatchIDNEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldBatchID, v))
+}
+
+// BatchIDIn applies the In predicate on the "batch_id" field.
+func BatchIDIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldBatchID, vs...))
+}
+
+// BatchIDNotIn applies the NotIn predicate on the "batch_id" field.
+func BatchIDNotIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldBatchID, vs...))
+}
+
+// BatchIDGT applies the GT predicate on the "batch_id" field.
+func BatchIDGT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldBatchID, v))
+}
+
+// BatchIDGTE applies the GTE predicate on the "batch_id" field.
+func BatchIDGTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldBatchID, v))
+}
+
+// BatchIDLT applies the LT predicate on the "batch_id" field.
+func BatchIDLT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldBatchID, v))
+}
+
+// BatchIDLTE applies the LTE predicate on the "batch_id" field.
+func BatchIDLTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldBatchID, v))
+}
+
+// BatchIDContains applies the Contains predicate on the "batch_id" field.
+func BatchIDContains(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContains(FieldBatchID, v))
+}
+
+// BatchIDHasPrefix applies the HasPrefix predicate on the "batch_id" field.
+func BatchIDHasPrefix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasPrefix(FieldBatchID, v))
+}
+
+// BatchIDHasSuffix applies the HasSuffix predicate on the "batch_id" field.
+func BatchIDHasSuffix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasSuffix(FieldBatchID, v))
+}
+
+// BatchIDIsNil applies the IsNil predicate on the "batch_id" field.
+func BatchIDIsNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIsNull(FieldBatchID))
+}
+
+// BatchIDNotNil applies the NotNil predicate on the "batch_id" field.
+func BatchIDNotNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotNull(FieldBatchID))
+}
+
+// BatchIDEqualFold applies the EqualFold predicate on the "batch_id" field.
+func BatchIDEqualFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEqualFold(FieldBatchID, v))
+}
+
+// BatchIDContainsFold applies the ContainsFold predicate on the "batch_id" field.
+func BatchIDContainsFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContainsFold(FieldBatchID, v))
+}
+
+// OnlyOncePerAccountEQ applies the EQ predicate on the "only_once_per_account" field.
+func OnlyOncePerAccountEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldOnlyOncePerAccount, v))
+}
+
+// OnlyOncePerAccountNEQ applies the NEQ predicate on the "only_once_per_account" field.
+func OnlyOncePerAccountNEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldOnlyOncePerAccount, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.
