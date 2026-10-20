@@ -29,6 +29,7 @@ export type OAuthLoginProvider =
   | 'google'
   | 'linuxdo'
   | 'dingtalk'
+  | 'feishu'
   | 'wechat'
   | 'oidc'
 
@@ -613,7 +614,7 @@ export async function completeWeChatOAuthRegistration(
 }
 
 async function createPendingOAuthAccount(
-  provider: 'linuxdo' | 'oidc' | 'wechat' | 'dingtalk',
+  provider: 'linuxdo' | 'oidc' | 'wechat' | 'dingtalk' | 'feishu',
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
   affiliateCode?: string
@@ -717,3 +718,7 @@ export const authAPI = {
 }
 
 export default authAPI
+
+export async function completeFeishuOAuthRegistration(invitationCode: string, decision?: OAuthAdoptionDecision, affiliateCode?: string): Promise<OAuthTokenResponse> {
+  return createPendingOAuthAccount('feishu', invitationCode, decision, affiliateCode)
+}

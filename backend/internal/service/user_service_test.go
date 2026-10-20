@@ -914,3 +914,11 @@ func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {
 	require.Equal(t, "https://cdn.example.com/profile.png", user.AvatarURL)
 	require.Equal(t, "remote_url", user.AvatarSource)
 }
+
+func TestFeishuOnlyIdentityCannotBeUnbound(t *testing.T) {
+	repo := &mockUserRepo{getByIDUser: &User{ID: 19, Email: "opaque@feishu-connect.invalid", SignupSource: "feishu"}, identities: []UserAuthIdentityRecord{{ProviderType: "feishu", ProviderKey: "cli_test", ProviderSubject: "opaque-subject"}}}
+	svc := NewUserService(repo, nil, nil, nil)
+	_, err := svc.UnbindUserAuthProvider(context.Background(), 19, "feishu")
+	require.ErrorIs(t, err, ErrIdentityUnbindLastMethod)
+	require.Empty(t, repo.unboundProviders)
+}

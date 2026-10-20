@@ -340,6 +340,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomMenuItems:                     settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
+		FeishuOAuthEnabled:                  s.cfg != nil && s.cfg.Feishu.Enabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
 		WeChatOAuthEnabled:                  weChatEnabled,
 		WeChatOAuthOpenEnabled:              weChatOpenEnabled,
@@ -599,6 +600,7 @@ type PublicSettingsInjectionPayload struct {
 	CustomMenuItems                     json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
+	FeishuOAuthEnabled                  bool                     `json:"feishu_oauth_enabled"`
 	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
 	WeChatOAuthOpenEnabled              bool                     `json:"wechat_oauth_open_enabled"`
@@ -693,6 +695,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CustomMenuItems:                     filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                     safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,
+		FeishuOAuthEnabled:                  settings.FeishuOAuthEnabled,
 		DingTalkOAuthEnabled:                settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:                  settings.WeChatOAuthEnabled,
 		WeChatOAuthOpenEnabled:              settings.WeChatOAuthOpenEnabled,

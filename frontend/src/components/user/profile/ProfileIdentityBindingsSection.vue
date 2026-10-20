@@ -220,6 +220,7 @@ const props = withDefaults(
   defineProps<{
     user: User | null
     linuxdoEnabled?: boolean
+    feishuEnabled?: boolean
     dingtalkEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
@@ -231,6 +232,7 @@ const props = withDefaults(
   }>(),
   {
     linuxdoEnabled: false,
+    feishuEnabled: false,
     dingtalkEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
@@ -415,6 +417,7 @@ function getDisplayableEmail(user: User | null | undefined): string {
 }
 
 function isProviderEnabledForBinding(provider: BindableProvider): boolean {
+  if (provider === 'feishu') return props.feishuEnabled
   if (provider === 'linuxdo') {
     return props.linuxdoEnabled
   }
@@ -446,6 +449,14 @@ const providerItems = computed(() => [
       (getBindingDetails('linuxdo')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
     details: getBindingDetails('linuxdo'),
+  },
+  {
+    provider: 'feishu' as const,
+    label: t('profile.authBindings.providers.oidc', { providerName: 'Feishu' }),
+    bound: getBindingStatus('feishu'),
+    canBind: !getBindingStatus('feishu') && props.feishuEnabled && (getBindingDetails('feishu')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('feishu') && getBindingDetails('feishu')?.can_unbind),
+    details: getBindingDetails('feishu'),
   },
   {
     provider: 'dingtalk' as const,
@@ -483,6 +494,7 @@ const providerItems = computed(() => [
 ])
 
 function providerInitial(provider: UserAuthProvider): string {
+  if (provider === 'feishu') return 'F'
   if (provider === 'linuxdo') {
     return 'L'
   }
