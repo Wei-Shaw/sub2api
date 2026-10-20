@@ -57,6 +57,27 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
+func TestListPlazaGroups_MetadataDoesNotRequireHardCodedGroupName(t *testing.T) {
+	channels := []Channel{
+		plazaPricedChannel(1, "gpt-channel", []int64{10}, PlatformOpenAI, "gpt-5.5"),
+	}
+	groups := []Group{{ID: 10, Name: "GPT-普通分组", Platform: PlatformOpenAI, RateMultiplier: 1}}
+
+	// A non-nil setting repository enables the production catalog path. The
+	// catalog contains "openai" labels, while this runtime group is custom.
+	svc := NewModelPlazaService(
+		&mockChannelRepository{listAllFn: func(context.Context) ([]Channel, error) { return channels, nil }},
+		&stubGroupRepoForAvailable{activeGroups: groups}, nil, nil, nil, &mockSettingRepo{},
+	)
+	out, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, "GPT-普通分组", out[0].Name)
+	require.Len(t, out[0].Models, 1)
+	require.NotNil(t, out[0].Models[0].Metadata)
+	require.Equal(t, "gpt-5.5", out[0].Models[0].Name)
+}
+
 func TestWithDefaultMaxReasoningEffortMultiplier_Fable51(t *testing.T) {
 	base := &ChannelModelPricing{BillingMode: BillingModeToken}
 	got := withDefaultMaxReasoningEffortMultiplier(base, "claude-fable-5-1")

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -69,7 +68,7 @@ type ModelPlazaService struct {
 	pricingService *PricingService
 	billingService *BillingService
 	resolver       *ModelPricingResolver
-	settingRepo    SettingRepository
+	settingRepo    SettingRepository // non-nil marks the production wiring; metadata itself is project-embedded.
 }
 
 // NewModelPlazaService 创建模型广场服务。
@@ -212,7 +211,10 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			filtered := make([]PlazaModel, 0, len(pg.Models))
 			for j := range pg.Models {
 				metadata, ok := metadataByName[strings.ToLower(pg.Models[j].Name)]
-				if !ok || !metadataAllowsGroup(metadata, pg.Name) {
+				// The group name is administrator-defined runtime configuration.
+				// Metadata must not hard-code it; platform isolation and channel/group
+				// configuration above already determine where a model is available.
+				if !ok {
 					continue
 				}
 				metadataCopy := metadata
@@ -247,38 +249,21 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	return out, nil
 }
 
-func (s *ModelPlazaService) loadModelMetadata(ctx context.Context) (map[string]ModelMetadata, error) {
+func (s *ModelPlazaService) loadModelMetadata(_ context.Context) (map[string]ModelMetadata, error) {
+	// Unit callers may intentionally omit the production setting repository to
+	// exercise aggregation without the business catalog filter.
 	if s.settingRepo == nil {
 		return nil, nil
 	}
-	raw, err := s.settingRepo.GetValue(ctx, ModelMetadataSettingKey)
+	records, err := parseProjectModelMetadata(modelMetadataFile)
 	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return map[string]ModelMetadata{}, nil
-		}
-		return nil, fmt.Errorf("load model metadata: %w", err)
-	}
-	records, err := ParseAndValidateModelMetadata([]byte(raw), nil)
-	if err != nil {
-		return nil, fmt.Errorf("stored model metadata is invalid: %w", err)
+		return nil, fmt.Errorf("project model metadata is invalid: %w", err)
 	}
 	out := make(map[string]ModelMetadata, len(records))
 	for _, record := range records {
 		out[strings.ToLower(record.CallName)] = record
 	}
 	return out, nil
-}
-
-func metadataAllowsGroup(metadata ModelMetadata, groupName string) bool {
-	for _, allowed := range metadata.AuthorizedGroups {
-		if strings.TrimSpace(allowed) == AllAuthorizedGroupsMarker {
-			return true
-		}
-		if strings.EqualFold(strings.TrimSpace(allowed), strings.TrimSpace(groupName)) {
-			return true
-		}
-	}
-	return false
 }
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：

@@ -99,31 +99,29 @@ function mountSection(g: ModelPlazaGroup, showRateDetails = true) {
   })
 }
 
-const NOTE = 'modelPlaza.detail.longContextDisabledNote'
-
 describe('PlazaGroupSection 长上下文说明', () => {
-  it('分组关闭阶梯且组内有官方阶梯模型时显示说明', () => {
+  it('分组关闭阶梯时不显示官方价格说明', () => {
     const wrapper = mountSection(group({ long_context_pricing_enabled: false }))
-    expect(wrapper.text()).toContain(NOTE)
+    expect(wrapper.text()).not.toContain('modelPlaza.detail.longContextDisabledNote')
   })
 
   it('分组开启阶梯时不显示', () => {
     const wrapper = mountSection(group({ long_context_pricing_enabled: true }))
-    expect(wrapper.text()).not.toContain(NOTE)
+    expect(wrapper.text()).not.toContain('modelPlaza.detail.longContextDisabledNote')
   })
 
   it('分组关闭但没有官方阶梯模型时不显示', () => {
     const wrapper = mountSection(
       group({ long_context_pricing_enabled: false, models: [ladderModel(1)] })
     )
-    expect(wrapper.text()).not.toContain(NOTE)
+    expect(wrapper.text()).not.toContain('modelPlaza.detail.longContextDisabledNote')
   })
 
   it('旧后端缺少开关字段时不显示', () => {
     const g = group()
     delete (g as Partial<ModelPlazaGroup>).long_context_pricing_enabled
     const wrapper = mountSection(g)
-    expect(wrapper.text()).not.toContain(NOTE)
+    expect(wrapper.text()).not.toContain('modelPlaza.detail.longContextDisabledNote')
   })
 })
 

@@ -70,6 +70,27 @@ func (s *GroupRepoSuite) TestCreate() {
 	s.Require().Equal("test-create", got.Name)
 }
 
+func (s *GroupRepoSuite) TestGroupNameIsGloballyUnique() {
+	create := func(platform string) *service.Group {
+		return &service.Group{
+			Name:             "multimodal-shared-name",
+			Platform:         platform,
+			RateMultiplier:   1,
+			Status:           service.StatusActive,
+			SubscriptionType: service.SubscriptionTypeStandard,
+		}
+	}
+
+	openAIGroup := create(service.PlatformOpenAI)
+	deepSeekGroup := create(service.PlatformDeepseek)
+	s.Require().NoError(s.repo.Create(s.ctx, openAIGroup))
+	s.Require().ErrorIs(s.repo.Create(s.ctx, deepSeekGroup), service.ErrGroupExists)
+
+	exists, err := s.repo.ExistsByName(s.ctx, "multimodal-shared-name")
+	s.Require().NoError(err)
+	s.Require().True(exists)
+}
+
 func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligibleAccounts() {
 	source := &service.Group{
 		Name:             "duplicate-source",

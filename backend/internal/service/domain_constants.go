@@ -43,6 +43,7 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
+	PlatformSeedance    = domain.PlatformSeedance
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi       = domain.PlatformKimi
 	PlatformZhipu      = domain.PlatformZhipu
@@ -85,7 +86,23 @@ const (
 	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
 	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
+	// DefaultSeedanceBaseURL is Volcano Engine Ark's OpenAI-style API root.
+	DefaultSeedanceBaseURL = "https://ark.cn-beijing.volces.com/api/v3"
 )
+
+// DefaultSeedanceModelIDs are the public model IDs commonly exposed by the
+// Volcano Engine Ark video API.  They are only used as configuration/listing
+// candidates; an account's explicit model_mapping may add newer IDs without a
+// code change.
+func DefaultSeedanceModelIDs() []string {
+	return []string{
+		"doubao-seedance-2-0-260128",
+		"doubao-seedance-1-5-pro-251215",
+		"doubao-seedance-1-0-pro-250528",
+		"doubao-seedance-1-0-lite-t2v-250428",
+		"doubao-seedance-1-0-lite-i2v-250428",
+	}
+}
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
@@ -130,6 +147,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformGemini,
 	PlatformAntigravity,
 	PlatformGrok,
+	PlatformSeedance,
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,

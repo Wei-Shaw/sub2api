@@ -82,7 +82,9 @@ type modelPlazaModel struct {
 	// LongContextBasis 多档时的计价基准："whole_request"（整单按档）| "marginal"（仅超出部分）。
 	LongContextBasis string `json:"long_context_basis,omitempty"`
 	// TimePricing 分时倍率时段，落在时段内的请求整单乘倍率；无分时省略。
-	TimePricing *modelPlazaTimePricing `json:"time_pricing,omitempty"`
+	TimePricing  *modelPlazaTimePricing `json:"time_pricing,omitempty"`
+	PriceTable   []map[string]string    `json:"price_table,omitempty"`
+	PricingNotes []string               `json:"pricing_notes,omitempty"`
 }
 
 // modelPlazaGroup 广场分组条目（白名单字段）。
@@ -219,6 +221,8 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 			dto.CacheWritePrice = metadata.CacheWritePrice
 			dto.Glossary = metadata.Glossary
 			dto.LaunchDate = metadata.LaunchDate
+			dto.PriceTable = metadata.PriceTable
+			dto.PricingNotes = metadata.PricingNotes
 		}
 		models = append(models, dto)
 	}

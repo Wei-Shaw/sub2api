@@ -642,7 +642,11 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	requestID string,
 	body []byte,
 	contentType string,
+	platform ...string,
 ) (*OpenAIForwardResult, error) {
+	if len(platform) > 0 && platform[0] == PlatformSeedance {
+		return s.ForwardSeedanceVideo(ctx, c, account, endpoint, requestID, body, contentType)
+	}
 	startTime := time.Now()
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")

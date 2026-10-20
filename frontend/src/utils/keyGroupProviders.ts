@@ -12,6 +12,7 @@ const PROVIDER_BY_PLATFORM: Record<GroupPlatform, KeyGroupProvider> = {
   zhipu: 'domestic',
   deepseek: 'domestic',
   minimax: 'domestic',
+  seedance: 'other',
   gemini: 'other',
   grok: 'other',
   antigravity: 'other',
@@ -28,5 +29,5 @@ export const KEY_GROUP_PROVIDER_ICONS: Record<KeyGroupProvider, GroupPlatform[]>
   anthropic: ['anthropic'],
   openai: ['openai'],
   domestic: ['deepseek', 'kimi'],
-  other: ['gemini', 'grok']
+  other: ['gemini', 'grok', 'seedance']
 }

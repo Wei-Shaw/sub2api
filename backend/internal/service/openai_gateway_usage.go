@@ -830,6 +830,12 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
 		}
 	}
+	// Seedance has no xAI/LiteLLM fallback price. If an administrator has not
+	// configured a matching group price, keep the usage row fail-closed instead
+	// of accidentally charging the unrelated Grok default ladder.
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == PlatformSeedance {
+		return &CostBreakdown{BillingMode: string(BillingModeVideo)}
+	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
 		// 渠道 per_request/image 定价保持"按请求次数"口径（价格由管理员按次配置），不乘视频时长。

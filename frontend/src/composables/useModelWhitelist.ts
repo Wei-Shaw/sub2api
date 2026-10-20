@@ -170,6 +170,17 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+// Volcano Engine Ark Seedance video models.  Account mappings remain the
+// source of truth and are merged into the picker, so new Ark IDs can still be
+// entered without waiting for this catalogue to change.
+const seedanceModels = [
+  'doubao-seedance-2-0-260128',
+  'doubao-seedance-1-5-pro-251215',
+  'doubao-seedance-1-0-pro-250528',
+  'doubao-seedance-1-0-lite-t2v-250428',
+  'doubao-seedance-1-0-lite-i2v-250428'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -260,6 +271,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...seedanceModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -449,6 +461,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'seedance': return seedanceModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot':
@@ -482,6 +495,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  if (platform === 'seedance') return []
   return anthropicPresetMappings
 }
 

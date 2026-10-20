@@ -373,6 +373,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
 
+	if account.IsSeedance() {
+		return s.testSeedanceAccountConnection(c, account, modelID)
+	}
+
 	if account.IsGemini() {
 		return s.testGeminiAccountConnection(c, account, modelID, prompt)
 	}
@@ -390,6 +394,75 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testSeedanceAccountConnection verifies Ark credentials through its
+// read-only model catalog endpoint. It intentionally never creates a video
+// task, so an account test cannot incur generation charges.
+func (s *AccountTestService) testSeedanceAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		models := DefaultSeedanceModelIDs()
+		if len(models) > 0 {
+			testModelID = models[0]
+		} else {
+			testModelID = "Seedance"
+		}
+	}
+	if s.httpUpstream == nil {
+		return s.sendErrorAndEnd(c, "HTTP upstream not configured")
+	}
+
+	req, err := s.buildSeedanceUpstreamModelsRequest(c.Request.Context(), account)
+	if err != nil {
+		if syncErr, ok := err.(*UpstreamModelSyncError); ok {
+			return s.sendErrorAndEnd(c, syncErr.SafeMessage())
+		}
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	resp, err := s.doUpstreamModelsRequest(req, upstreamModelsProxyURL(account), account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Seedance /models request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bodyLimit := resolveModelsListReadLimit(s.cfg)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Seedance model list: %s", err.Error()))
+	}
+	if int64(len(body)) > bodyLimit {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Seedance model list response exceeds %d bytes", bodyLimit))
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+		if message == "" {
+			message = truncateString(strings.TrimSpace(string(body)), 500)
+		}
+		if message == "" {
+			message = http.StatusText(resp.StatusCode)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Seedance /models returned HTTP %d: %s", resp.StatusCode, message))
+	}
+
+	models, parseErr := extractUpstreamModelIDs(body)
+	if parseErr != nil {
+		return s.sendErrorAndEnd(c, "Seedance model list response was not valid JSON")
+	}
+	if len(models) == 0 {
+		return s.sendErrorAndEnd(c, "Seedance model list returned no models")
+	}
+	modelCount := len(models)
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Seedance Ark /models connection successful (HTTP %d); %d models available.", resp.StatusCode, modelCount)})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected

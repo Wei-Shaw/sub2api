@@ -11,8 +11,30 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
+
+// seedanceTestHTTPUpstream is a read-only upstream stub shared by the
+// Seedance model discovery tests in this file.
+type seedanceTestHTTPUpstream struct {
+	lastReq   *http.Request
+	responses []*http.Response
+}
+
+func (u *seedanceTestHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	return u.DoWithTLS(req, "", 0, 0, nil)
+}
+
+func (u *seedanceTestHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	u.lastReq = req
+	if len(u.responses) == 0 {
+		return nil, context.DeadlineExceeded
+	}
+	resp := u.responses[0]
+	u.responses = u.responses[1:]
+	return resp, nil
+}
 
 type upstreamModelMetadataRepoStub struct {
 	AccountRepository
@@ -320,6 +342,76 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", antigravityReq.URL.String())
 	require.Equal(t, "antigravity-key", antigravityReq.Header.Get("x-api-key"))
+}
+
+func TestBuildUpstreamModelsRequestForSeedanceUsesArkModelsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
+	account := &Account{
+		ID:       48,
+		Platform: PlatformSeedance,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "ark-test-key",
+			"base_url": "https://ark.example.com/api/v3/",
+		},
+	}
+
+	req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, http.MethodGet, req.Method)
+	require.Equal(t, "https://ark.example.com/api/v3/models", req.URL.String())
+	require.Equal(t, "Bearer ark-test-key", req.Header.Get("Authorization"))
+	require.Equal(t, "application/json", req.Header.Get("Accept"))
+
+	defaultAccount := &Account{
+		Platform: PlatformSeedance,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "ark-test-key",
+		},
+	}
+	defaultReq, err := svc.buildUpstreamModelsRequest(context.Background(), defaultAccount)
+	require.NoError(t, err)
+	require.Equal(t, DefaultSeedanceBaseURL+"/models", defaultReq.URL.String())
+}
+
+func TestFetchUpstreamSupportedModelsForSeedanceUsesReadOnlyCatalog(t *testing.T) {
+	t.Parallel()
+
+	upstream := &seedanceTestHTTPUpstream{responses: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"seedance-v2"}],"models":[{"id":"seedance-v1"}]}`)),
+	}}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{
+		ID:       49,
+		Platform: PlatformSeedance,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "ark-test-key",
+			"base_url": "https://ark.example.com/api/v3",
+		},
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"seedance-v1", "seedance-v2"}, models)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
+	require.Equal(t, "https://ark.example.com/api/v3/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer ark-test-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Nil(t, upstream.lastReq.Body, "model discovery must not create a billable video task")
+}
+
+func TestExtractUpstreamModelIDsAcceptsSeedanceArkCatalogShapes(t *testing.T) {
+	t.Parallel()
+
+	models, err := extractUpstreamModelIDs([]byte(`{"data":[{"id":"doubao-seedance-v2"}],"models":[{"id":"doubao-seedance-v1"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"doubao-seedance-v1", "doubao-seedance-v2"}, models)
 }
 
 func TestBuildUpstreamModelsRequestSupportsGrokOAuth(t *testing.T) {

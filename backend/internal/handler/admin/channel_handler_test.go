@@ -549,7 +549,7 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 	svc := service.NewPricingService(nil, nil)
 	router := setupSyncPricingModelsRouter(svc)
 
-	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity", "grok", "kimi", "zhipu", "deepseek", "minimax"} {
+	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity", "grok", "seedance", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"} {
 		req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+platform, nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -564,6 +564,23 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
 	}
+}
+
+func TestSyncPricingModels_SeedanceUsesProjectMetadata(t *testing.T) {
+	router := setupSyncPricingModelsRouter(service.NewPricingService(nil, nil))
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform=seedance", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data struct {
+			Models []string `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Contains(t, body.Data.Models, "doubao-seedance-2-0-260128")
+	require.Contains(t, body.Data.Models, "doubao-seedream-5-0-pro-260628")
 }
 
 func setupModelDefaultPricingRouter() *gin.Engine {

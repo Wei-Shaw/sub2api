@@ -1,7 +1,7 @@
 <template>
   <div class="model-card-wrapper flex flex-col">
     <article
-    class="model-card group relative flex h-full flex-col rounded-[22px] border border-primary-200 bg-white p-5 shadow-card transition hover:border-primary-400 hover:shadow-card-hover dark:border-primary-800/70 dark:bg-dark-800/80 dark:hover:border-primary-600"
+    class="model-card group relative flex flex-col rounded-[22px] border border-primary-200 bg-white p-5 shadow-card transition hover:border-primary-400 hover:shadow-card-hover dark:border-primary-800/70 dark:bg-dark-800/80 dark:hover:border-primary-600"
     :class="{ 'pricing-open rounded-b-none border-b-0': pricingOpen }"
   >
     <div class="flex items-start gap-4">
@@ -63,12 +63,6 @@
       </span>
       <div class="flex flex-wrap items-center justify-end gap-2">
         <span
-          v-if="model.tier_condition"
-          class="rounded-full border border-gray-200 bg-gray-50 px-3.5 py-1.5 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
-        >
-          {{ model.tier_condition }}
-        </span>
-        <span
           v-for="category in model.categories"
           :key="category"
           class="rounded-full border border-gray-200 bg-gray-50 px-3.5 py-1.5 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
@@ -84,7 +78,24 @@
       class="pricing-dropdown rounded-b-[22px] border border-t-0 border-primary-200 bg-white px-5 pb-5 pt-1 dark:border-primary-800/70 dark:bg-dark-800"
       @click.stop
     >
-      <div class="grid gap-4 text-sm sm:grid-cols-2">
+      <div v-if="model.price_table?.length" class="space-y-3 text-sm">
+        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-600">
+          <table class="min-w-full text-left">
+            <thead class="bg-gray-50 dark:bg-dark-700/60">
+              <tr>
+                <th v-for="key in priceTableKeys" :key="key" class="whitespace-nowrap px-3 py-2 font-semibold text-gray-700 dark:text-dark-200">{{ key }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, rowIndex) in model.price_table" :key="rowIndex" class="border-t border-gray-100 dark:border-dark-700">
+                <td v-for="key in priceTableKeys" :key="key" class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-dark-300">{{ row[key] || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="model.pricing_notes?.length" class="whitespace-pre-wrap text-gray-500 dark:text-dark-400">{{ model.pricing_notes.join('；') }}</p>
+      </div>
+      <div v-else class="grid gap-4 text-sm sm:grid-cols-2">
         <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="displayMetadata(model.input_price)" />
         <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="displayMetadata(model.output_price)" />
         <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="displayMetadata(model.cache_read_price)" />
@@ -112,12 +123,33 @@
       </div>
       <DetailItem :label="t('modelPlaza.card.capability')" :value="displayMetadata(model.capability)" />
       <DetailItem :label="t('modelPlaza.card.useCases')" :value="displayMetadata(model.use_cases)" />
-      <DetailItem :label="t('modelPlaza.card.tier')" :value="displayMetadata(model.tier_condition)" />
+      <DetailItem
+        v-if="showTierCondition"
+        :label="t('modelPlaza.card.tier')"
+        :value="displayMetadata(model.tier_condition)"
+      />
       <div class="grid gap-3 sm:grid-cols-2">
-        <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="displayMetadata(model.input_price)" />
-        <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="displayMetadata(model.output_price)" />
-        <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="displayMetadata(model.cache_read_price)" />
-        <DetailItem :label="t('modelPlaza.card.cacheWrite')" :value="displayMetadata(model.cache_write_price)" />
+        <template v-if="!model.price_table?.length">
+          <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="displayMetadata(model.input_price)" />
+          <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="displayMetadata(model.output_price)" />
+          <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="displayMetadata(model.cache_read_price)" />
+          <DetailItem :label="t('modelPlaza.card.cacheWrite')" :value="displayMetadata(model.cache_write_price)" />
+        </template>
+      </div>
+      <div v-if="model.price_table?.length" class="space-y-3">
+        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-600">
+          <table class="min-w-full text-left text-sm">
+            <thead class="bg-gray-50 dark:bg-dark-700/60">
+              <tr><th v-for="key in priceTableKeys" :key="key" class="whitespace-nowrap px-3 py-2 font-semibold text-gray-700 dark:text-dark-200">{{ key }}</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, rowIndex) in model.price_table" :key="rowIndex" class="border-t border-gray-100 dark:border-dark-700">
+                <td v-for="key in priceTableKeys" :key="key" class="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-dark-300">{{ row[key] || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <DetailItem v-if="model.pricing_notes?.length" :label="t('modelPlaza.card.pricingNotes')" :value="model.pricing_notes.join('；')" />
       </div>
       <DetailItem :label="t('modelPlaza.card.glossary')" :value="displayMetadata(model.glossary)" />
     </div>
@@ -143,7 +175,7 @@ const appStore = useAppStore()
 const detailsOpen = ref(false)
 const pricingOpen = ref(false)
 const platformName = computed(() => platformLabel(props.model.platform))
-const sharedPlatformIcons = new Set(['openai', 'gemini', 'antigravity', 'grok', 'kimi', 'minimax', 'opencode_go'])
+const sharedPlatformIcons = new Set(['openai', 'gemini', 'antigravity', 'grok', 'seedance', 'kimi', 'minimax', 'opencode_go'])
 const useSharedPlatformIcon = computed(() => sharedPlatformIcons.has(props.model.platform))
 const platformIconClass = computed(() =>
   props.model.platform === 'openai' ? 'text-gray-900 dark:text-white' : platformTextClass(props.model.platform)
@@ -158,8 +190,23 @@ const descriptionText = computed(() => {
   return displayMetadata(props.model.capability || props.model.use_cases)
 })
 
+// Seedance carries its provider-specific resolution pricing in price_table;
+// the generic metadata tier label is usually just "见价格表" and adds no value.
+const showTierCondition = computed(() =>
+  props.model.platform !== 'seedance' && Boolean(props.model.tier_condition?.trim())
+)
+
 const hasTieredPricing = computed(() => {
-  return Boolean(props.model.tier_condition?.trim()) || (props.model.pricing?.intervals?.length ?? 0) > 1
+  return Boolean(props.model.price_table?.length) || Boolean(props.model.tier_condition?.trim()) || (props.model.pricing?.intervals?.length ?? 0) > 1
+})
+
+const priceTableKeys = computed(() => {
+  const rows = props.model.price_table ?? []
+  const keys: string[] = []
+  for (const row of rows) {
+    for (const key of Object.keys(row)) if (!keys.includes(key)) keys.push(key)
+  }
+  return keys
 })
 
 const DetailItem = defineComponent({

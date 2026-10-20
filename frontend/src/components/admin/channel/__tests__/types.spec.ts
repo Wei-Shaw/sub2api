@@ -5,6 +5,8 @@ import {
   createDefaultTimePricingForm,
   formIntervalsToAPI,
   formTimePricingToAPI,
+  getPlatformTagClass,
+  getPlatformTextClass,
   isValidPositiveMultiplier,
   validateIntervals,
   validateTimePricing,
@@ -12,6 +14,14 @@ import {
   type TimePricingFormEntry,
   type TimePricingPeriodFormEntry,
 } from '../types'
+
+describe('platform model tag colors', () => {
+  it('uses a distinct Seedance color for model chips and text', () => {
+    expect(getPlatformTagClass('seedance')).toContain('bg-cyan-100')
+    expect(getPlatformTagClass('seedance')).toContain('text-cyan-700')
+    expect(getPlatformTextClass('seedance')).toContain('text-cyan-700')
+  })
+})
 
 describe('interval multiplier conversion', () => {
   it('preserves component multipliers without MTok conversion', () => {

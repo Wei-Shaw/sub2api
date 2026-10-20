@@ -41,20 +41,26 @@
     <rect width="24" height="24" rx="7" fill="#111214" />
     <path d="M5 5h14v3h-8.9L19 16v3H5v-3h8.9L5 8V5z" fill="#fff" />
   </svg>
+  <img
+    v-else-if="platform === 'seedance'"
+    :class="[sizeClass, 'rounded-md object-contain']"
+    src="/platform-icons/seedance.png"
+    alt=""
+    aria-hidden="true"
+  />
   <span v-else :class="[sizeClass, 'text-gray-500']" aria-hidden="true">?</span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{ platform?: string; size?: 'sm' | 'md' | 'lg' }>(), {
+const props = withDefaults(defineProps<{ platform?: string; size?: 'xs' | 'sm' | 'md' | 'lg' }>(), {
   size: 'lg'
 })
-
 const sizeClass = computed(() => {
   // OpenAI 原先在模型卡片中通过 PlatformIcon 的 lg 尺寸显示为 20px；保留这个视觉比例。
   if (props.platform === 'openai') return 'h-5 w-5 flex-shrink-0'
-  const sizes = { sm: 'h-4 w-4', md: 'h-5 w-5', lg: 'h-9 w-9' }
+  const sizes = { xs: 'h-3 w-3', sm: 'h-4 w-4', md: 'h-5 w-5', lg: 'h-9 w-9' }
   return `${sizes[props.size]} flex-shrink-0`
 })
 </script>

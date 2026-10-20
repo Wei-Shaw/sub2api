@@ -979,6 +979,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        seedance: 'Seedance',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
@@ -1032,7 +1033,29 @@ export default {
         modeHint:
           'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
         finalPricePreview: 'Final per-second price preview',
-        notConfigured: 'Not configured'
+        notConfigured: 'Not configured',
+        seedance: {
+          title: 'Seedance Video Pricing',
+          description: 'Configure Seedance per-second prices by model ID and resolution. Generation is blocked when a matching price is missing.',
+          allowVideoGeneration: 'Allow Seedance video generation for this group',
+          addModel: 'Add Seedance model ID',
+          independentMultiplier: 'Use independent video multiplier',
+          videoMultiplier: 'Video multiplier',
+          modeHint: 'Seedance is billed per second: price × duration × effective multiplier.',
+          finalPricePreview: 'Seedance prices are configured per model row',
+          notConfigured: 'Not configured'
+        },
+        composite: {
+          title: 'Composite Video Pricing',
+          description: 'Configure per-second prices for video models routed through this Composite group. Generation is blocked when a matching price is missing.',
+          allowVideoGeneration: 'Allow video generation for this group',
+          addModel: 'Add video model ID',
+          independentMultiplier: 'Use independent video multiplier',
+          videoMultiplier: 'Video multiplier',
+          modeHint: 'Videos are billed per second: price × duration × effective multiplier.',
+          finalPricePreview: 'Final per-second price preview',
+          notConfigured: 'Not configured'
+        }
       },
       explicitPricing: {
         title: 'Grok Search & Voice Pricing',

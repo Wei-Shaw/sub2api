@@ -1049,11 +1049,22 @@
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
-            {{ t(videoPricingI18nKey("title")) }}
+            {{ t(videoPricingI18nKey("title", createForm.platform)) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingI18nKey("description", createForm.platform)) }}
           </p>
+          <label
+            v-if="['seedance', 'composite'].includes(createForm.platform)"
+            class="mb-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+          >
+            <input
+              v-model="createForm.allow_image_generation"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            {{ t(videoPricingI18nKey("allowVideoGeneration", createForm.platform)) }}
+          </label>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -1061,7 +1072,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t(videoPricingI18nKey("independentMultiplier")) }}
+              {{ t(videoPricingI18nKey("independentMultiplier", createForm.platform)) }}
             </label>
           </div>
           <div
@@ -1069,7 +1080,7 @@
             class="mb-4"
           >
             <label class="input-label">{{
-              t(videoPricingI18nKey("videoMultiplier"))
+              t(videoPricingI18nKey("videoMultiplier", createForm.platform))
             }}</label>
             <input
               v-model.number="createForm.video_rate_multiplier"
@@ -1125,15 +1136,39 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
+            <button
+              v-if="['seedance', 'composite'].includes(createForm.platform)"
+              type="button"
+              class="mt-3 rounded bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+              @click="addVideoModelPriceFamily(createForm.video_model_prices)"
+            >
+              {{ t(videoPricingI18nKey("addModel", createForm.platform)) }}
+            </button>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices, createForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_repeat(3,minmax(0,7rem))] sm:items-end"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  v-if="['seedance', 'composite'].includes(createForm.platform)"
+                  :value="family.key"
+                  type="text"
+                  class="input font-mono text-xs"
+                  @change="renameSeedanceVideoFamily(createForm.video_model_prices, family.key, $event)"
+                />
+                <div v-else class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
                   {{ family.label }}
                 </div>
+                <button
+                v-if="['seedance', 'composite'].includes(createForm.platform)"
+                  type="button"
+                  class="self-end pb-2 text-xs text-red-500 hover:text-red-700"
+                  :title="t('common.delete')"
+                  @click="removeVideoModelPriceFamily(createForm.video_model_prices, family.key)"
+                >
+                  {{ t("common.delete") }}
+                </button>
                 <label
                   v-for="resolution in grokVideoPriceResolutions"
                   :key="resolution.key"
@@ -1155,11 +1190,11 @@
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingI18nKey("modeHint", createForm.platform)) }}
           </p>
-          <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          <div v-if="createForm.platform !== 'seedance'" class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t(videoPricingI18nKey("finalPricePreview")) }}
+              {{ t(videoPricingI18nKey("finalPricePreview", createForm.platform)) }}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -1896,8 +1931,8 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（Anthropic/Seedance 平台） -->
+        <div v-if="['anthropic', 'seedance'].includes(createForm.platform)" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -2689,11 +2724,22 @@
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
-            {{ t(videoPricingI18nKey("title")) }}
+            {{ t(videoPricingI18nKey("title", editForm.platform)) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingI18nKey("description", editForm.platform)) }}
           </p>
+          <label
+            v-if="['seedance', 'composite'].includes(editForm.platform)"
+            class="mb-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+          >
+            <input
+              v-model="editForm.allow_image_generation"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            {{ t(videoPricingI18nKey("allowVideoGeneration", editForm.platform)) }}
+          </label>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -2701,7 +2747,7 @@
                 type="checkbox"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              {{ t(videoPricingI18nKey("independentMultiplier")) }}
+              {{ t(videoPricingI18nKey("independentMultiplier", editForm.platform)) }}
             </label>
           </div>
           <div
@@ -2709,7 +2755,7 @@
             class="mb-4"
           >
             <label class="input-label">{{
-              t(videoPricingI18nKey("videoMultiplier"))
+              t(videoPricingI18nKey("videoMultiplier", editForm.platform))
             }}</label>
             <input
               v-model.number="editForm.video_rate_multiplier"
@@ -2765,15 +2811,39 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
+            <button
+              v-if="['seedance', 'composite'].includes(editForm.platform)"
+              type="button"
+              class="mt-3 rounded bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+              @click="addVideoModelPriceFamily(editForm.video_model_prices)"
+            >
+              {{ t(videoPricingI18nKey("addModel", editForm.platform)) }}
+            </button>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices, editForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_repeat(3,minmax(0,7rem))] sm:items-end"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  v-if="['seedance', 'composite'].includes(editForm.platform)"
+                  :value="family.key"
+                  type="text"
+                  class="input font-mono text-xs"
+                  @change="renameSeedanceVideoFamily(editForm.video_model_prices, family.key, $event)"
+                />
+                <div v-else class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
                   {{ family.label }}
                 </div>
+                <button
+                v-if="['seedance', 'composite'].includes(editForm.platform)"
+                  type="button"
+                  class="self-end pb-2 text-xs text-red-500 hover:text-red-700"
+                  :title="t('common.delete')"
+                  @click="removeVideoModelPriceFamily(editForm.video_model_prices, family.key)"
+                >
+                  {{ t("common.delete") }}
+                </button>
                 <label
                   v-for="resolution in grokVideoPriceResolutions"
                   :key="resolution.key"
@@ -2795,11 +2865,11 @@
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingI18nKey("modeHint", editForm.platform)) }}
           </p>
-          <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          <div v-if="editForm.platform !== 'seedance'" class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t(videoPricingI18nKey("finalPricePreview")) }}
+              {{ t(videoPricingI18nKey("finalPricePreview", editForm.platform)) }}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -3545,8 +3615,8 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（Anthropic/Seedance 平台） -->
+        <div v-if="['anthropic', 'seedance'].includes(editForm.platform)" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -4371,6 +4441,9 @@ import {
 import {
   createVideoModelPricesForm,
   grokVideoPriceResolutions,
+  addVideoModelPriceFamily,
+  renameVideoModelPriceFamily,
+  removeVideoModelPriceFamily,
   serializeVideoModelPrices,
   videoModelPriceFamilyRows,
 } from "./groupsVideoModelPricing";
@@ -5072,13 +5145,13 @@ const clearAllAccountSearchState = () => {
 
 const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   delay: 300,
-  search: async (keyword, { signal }) => {
+  search: async (keyword, { key, signal }) => {
     const res = await adminAPI.accounts.list(
       1,
       20,
       {
         search: keyword,
-        platform: "anthropic",
+        platform: key.startsWith("edit-") ? editForm.platform : createForm.platform,
       },
       { signal },
     );
@@ -5092,7 +5165,7 @@ const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   },
 });
 
-// 搜索账号（仅限 anthropic 平台）
+// 搜索当前分组平台的候选账号。
 const searchAccounts = (key: string) => {
   accountSearchRunner.trigger(key, accountSearchKeyword.value[key] || "");
 };
@@ -5445,6 +5518,17 @@ const formatVideoPricePreview = (value: number | string | null | undefined) => {
     return t("admin.groups.videoPricing.notConfigured");
   }
   return `$${price.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
+};
+
+const renameSeedanceVideoFamily = (
+  form: Record<string, Record<string, number | string | null>>,
+  oldKey: string,
+  event: Event,
+) => {
+  const nextKey = (event.target as HTMLInputElement | null)?.value ?? "";
+  if (!renameVideoModelPriceFamily(form, oldKey, nextKey)) {
+    appStore.showError("请输入不重复的 Seedance 模型 ID");
+  }
 };
 
 const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
@@ -5888,6 +5972,7 @@ const handleCreateGroup = async () => {
     } = createForm;
     const videoModelPrices = serializeVideoModelPrices(
       createForm.video_model_prices,
+      createForm.platform,
     );
     // 构建请求数据，包含模型路由配置
     const requestData = {
@@ -6058,6 +6143,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_1080p = group.video_price_1080p;
   editForm.video_model_prices = createVideoModelPricesForm(
     group.video_model_prices,
+    group.platform,
   );
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.search_price_per_1k = group.search_price_per_1k ?? null;
@@ -6250,6 +6336,7 @@ const handleUpdateGroup = async () => {
       ),
       video_model_prices: serializeVideoModelPrices(
         editForm.video_model_prices,
+        editForm.platform,
       ),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,

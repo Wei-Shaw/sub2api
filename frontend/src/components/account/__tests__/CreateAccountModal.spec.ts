@@ -419,6 +419,31 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
   })
 
+  it('creates Seedance API-key accounts with Ark credentials and platform-specific hints', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Seedance')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Seedance test')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('ark-test-key')
+
+    expect(wrapper.text()).toContain('admin.accounts.seedance.baseUrlHint')
+    expect(wrapper.text()).toContain('admin.accounts.seedance.apiKeyHint')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'seedance',
+      type: 'apikey',
+      credentials: {
+        base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+        api_key: 'ark-test-key'
+      },
+      upstream_billing_probe_enabled: true
+    })
+    expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
+  })
+
   it('waits for the initial upstream billing probe before refreshing the account list', async () => {
     let resolveProbe: (() => void) | undefined
     probeUpstreamBillingMock.mockImplementationOnce(

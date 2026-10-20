@@ -649,7 +649,7 @@ export default {
     noSearchResult: 'No matching models',
     anonymousHint: 'Sign in to see your exclusive groups and personal rates',
     filters: {
-      categoryLabel: 'Model categories',
+      categoryLabel: 'Modality',
       orHint: 'OR filter: models matching any selected category are shown',
       platformLabel: 'Platform',
       groupLabel: 'Group',
@@ -671,7 +671,8 @@ export default {
       copySuccess: 'Model ID copied',
       viewDetails: 'View full details for {name}',
       tieredBilling: 'Tiered billing',
-      standardBilling: 'Standard billing'
+      standardBilling: 'Standard billing',
+      pricingNotes: 'Pricing notes'
     },
     badges: {
       exclusive: 'Exclusive',
@@ -681,7 +682,6 @@ export default {
       noModels: 'No models configured for this group',
       noPricing: 'Pricing not configured',
       peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
-      longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
     },
     table: {
       model: 'Model',
@@ -705,7 +705,6 @@ export default {
       timePricingWeekdays: 'Weekdays',
       timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
       paidPrice: 'Your Price (Discounted)',
-      officialPrice: 'Official Price',
       rate: 'Rate',
       unitPerMillion: '$ / 1M tokens',
       perUnitRequest: '/ request',

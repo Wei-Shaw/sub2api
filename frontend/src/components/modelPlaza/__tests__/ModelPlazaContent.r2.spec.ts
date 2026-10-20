@@ -6,13 +6,18 @@ import PlazaFilterBar from '../PlazaFilterBar.vue'
 import type { ModelPlazaGroup, ModelPlazaResponse, PlazaModel } from '@/api/modelPlaza'
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key })
+  useI18n: () => ({ t: (key: string) => key }),
+  createI18n: () => ({ global: { t: (key: string) => key } })
 }))
 
 const CardStub = defineComponent({
   props: { model: { type: Object, required: true } },
   setup(props) {
-    return () => h('div', { class: 'model-card', 'data-name': (props.model as PlazaModel).name })
+    return () => h('div', {
+      class: 'model-card',
+      'data-name': (props.model as PlazaModel).name,
+      'data-platform': (props.model as PlazaModel).platform
+    })
   }
 })
 
@@ -114,19 +119,7 @@ describe('ModelPlazaContent R2', () => {
       ]
     })
     const filter = wrapper.findComponent(PlazaFilterBar)
-    expect(filter.props('platforms')).toEqual([
-      'anthropic',
-      'openai',
-      'gemini',
-      'antigravity',
-      'grok',
-      'kimi',
-      'zhipu',
-      'deepseek',
-      'minimax',
-      'opencode_go',
-      'composite'
-    ])
+    expect(filter.props('platforms')).toEqual(['anthropic', 'openai'])
     expect(filter.props('rates')).toEqual([0.1, 0.5])
 
     await filter.vm.$emit('update:platform', 'anthropic')
@@ -134,7 +127,7 @@ describe('ModelPlazaContent R2', () => {
       'anthropic-model'
     ])
 
-    await filter.vm.$emit('update:groupId', 2)
+    await filter.vm.$emit('update:groupName', 'group-2')
     await filter.vm.$emit('update:rate', 0.5)
     expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
       'anthropic-model'
@@ -147,22 +140,74 @@ describe('ModelPlazaContent R2', () => {
   it('derives platform filters from every platform returned by the API', () => {
     const wrapper = mountContent({
       description: '',
-      groups: [group(1, [model('custom-model', '2026-01-01', ['文本'])], 'new-platform')]
+      groups: [group(1, [model('custom-model', '2026-01-01', ['文本'], 'new-platform')], 'new-platform')]
     })
 
-    expect(wrapper.findComponent(PlazaFilterBar).props('platforms')).toEqual([
-      'anthropic',
-      'openai',
-      'gemini',
-      'antigravity',
-      'grok',
-      'kimi',
-      'zhipu',
-      'deepseek',
-      'minimax',
-      'opencode_go',
-      'composite',
-      'new-platform'
+    expect(wrapper.findComponent(PlazaFilterBar).props('platforms')).toEqual(['new-platform'])
+  })
+
+  it('shows one shared group filter across platforms and preserves same-name models by platform', async () => {
+    const wrapper = mountContent({
+      description: '',
+      groups: [
+        { ...group(1, [model('shared-model', '2026-01-01', ['多模态'], 'openai')]), name: '多模态' },
+        { ...group(2, [model('shared-model', '2026-01-01', ['多模态'], 'deepseek')], 'deepseek'), name: '多模态' }
+      ]
+    })
+
+    const filter = wrapper.findComponent(PlazaFilterBar)
+    expect(filter.findAll('button[data-filter="group"]').filter((button) => button.text() === '多模态')).toHaveLength(1)
+    await filter.vm.$emit('update:groupName', '多模态')
+
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-platform'))).toEqual(['openai', 'deepseek'])
+
+    await filter.vm.$emit('update:platform', 'deepseek')
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-platform'))).toEqual(['deepseek'])
+  })
+
+  it('paginates the models after applying a category filter', async () => {
+    const models = Array.from({ length: 8 }, (_, index) =>
+      model(`openai-${index + 1}`, `2026-01-${String(index + 1).padStart(2, '0')}`, ['文本'])
+    )
+    const wrapper = mountContent({
+      description: '',
+      groups: [group(1, models, 'openai')]
+    })
+
+    const filter = wrapper.findComponent(PlazaFilterBar)
+    await filter.vm.$emit('update:platform', 'openai')
+    await filter.vm.$emit('update:groupName', 'group-1')
+
+    expect(wrapper.findAll('.model-card')).toHaveLength(6)
+    expect(wrapper.find('nav[aria-label="Pagination"]').exists()).toBe(true)
+
+    const pageTwo = wrapper
+      .find('nav[aria-label="Pagination"]')
+      .findAll('button')
+      .find((button) => button.text() === '2')
+    expect(pageTwo).toBeDefined()
+    await pageTwo!.trigger('click')
+
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
+      'openai-2',
+      'openai-1'
+    ])
+  })
+
+  it('filters models by metadata modality', async () => {
+    const wrapper = mountContent({
+      description: '',
+      groups: [group(1, [
+        model('text-model', '2026-01-01', ['文本']),
+        model('vision-model', '2026-01-02', ['多模态'])
+      ])]
+    })
+
+    const filter = wrapper.findComponent(PlazaFilterBar)
+    await filter.vm.$emit('update:category', '多模态')
+
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
+      'vision-model'
     ])
   })
 })

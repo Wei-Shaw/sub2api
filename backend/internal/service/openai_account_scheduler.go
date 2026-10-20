@@ -88,6 +88,14 @@ type OpenAIAccountScheduleRequest struct {
 	RequiredTransport       OpenAIUpstreamTransport
 	RequiredCapability      OpenAIEndpointCapability
 	RequiredImageCapability OpenAIImagesCapability
+	// AllowedAccountIDs is an internal first-pass restriction used by model
+	// routing. When populated, only these accounts are eligible; the caller can
+	// retry with an unrestricted request when every routed account is busy.
+	AllowedAccountIDs map[int64]struct{}
+	// RoutedAccountIDs requests a routing-first selection. Select performs the
+	// restricted pass and falls back to the ordinary pool when it has no
+	// eligible account.
+	RoutedAccountIDs []int64
 	// RequireCompact is only for legacy /responses/compact capability filtering
 	// and compact_model_mapping; native remote compaction v2 leaves it false.
 	RequireCompact bool
@@ -383,6 +391,27 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	if len(req.RoutedAccountIDs) > 0 {
+		routedReq := req
+		routedReq.AllowedAccountIDs = make(map[int64]struct{}, len(req.RoutedAccountIDs))
+		for _, accountID := range req.RoutedAccountIDs {
+			if accountID > 0 {
+				routedReq.AllowedAccountIDs[accountID] = struct{}{}
+			}
+		}
+		routedReq.RoutedAccountIDs = nil
+		if len(routedReq.AllowedAccountIDs) > 0 {
+			routedSelection, routedDecision, routedErr := s.Select(ctx, routedReq)
+			if routedErr == nil && routedSelection != nil && routedSelection.Account != nil {
+				return routedSelection, routedDecision, nil
+			}
+			if routedErr != nil && !errors.Is(routedErr, ErrNoAvailableAccounts) && !errors.Is(routedErr, ErrNoAvailableCompactAccounts) {
+				return nil, routedDecision, routedErr
+			}
+		}
+		req.RoutedAccountIDs = nil
+		req.AllowedAccountIDs = nil
+	}
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
@@ -1776,6 +1805,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if account == nil {
 		return false, "account_nil"
 	}
+	if len(req.AllowedAccountIDs) > 0 {
+		if _, allowed := req.AllowedAccountIDs[account.ID]; !allowed {
+			return false, "model_routing_not_selected"
+		}
+	}
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
@@ -2248,6 +2282,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	routingAccountIDs := s.modelRoutingAccountIDsForSelection(ctx, groupID, requestedModel, platform)
 	decision := OpenAIAccountScheduleDecision{}
 	preserveGuardianParentBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash)
 	guardianParentAccountID := int64(0)
@@ -2290,6 +2325,21 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		legacySessionHash := sessionHash
 		if preserveGuardianParentBinding {
 			legacySessionHash = ""
+		}
+		if len(routingAccountIDs) > 0 {
+			routedExcluded, routeErr := s.excludeUnroutedAccounts(ctx, groupID, platform, excludedIDs, routingAccountIDs)
+			if routeErr != nil {
+				return nil, decision, routeErr
+			}
+			if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
+				routedSelection, routedErr := s.selectAccountWithLoadAwareness(ctx, groupID, platform, legacySessionHash, requestedModel, routedExcluded, requireCompact, requiredCapability, useUpstreamTokenCost)
+				if routedErr == nil && routedSelection != nil && routedSelection.Account != nil {
+					return routedSelection, decision, nil
+				}
+				if routedErr != nil && !errors.Is(routedErr, ErrNoAvailableAccounts) && !errors.Is(routedErr, ErrNoAvailableCompactAccounts) {
+					return nil, decision, routedErr
+				}
+			}
 		}
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
@@ -2383,7 +2433,49 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
+		RoutedAccountIDs:        routingAccountIDs,
 	})
+}
+
+// modelRoutingAccountIDsForSelection reads the group routing rule for the
+// specialized OpenAI-compatible scheduler. Seedance is intentionally included
+// here because its video gateway uses this scheduler rather than the legacy
+// GatewayService scheduler.
+func (s *OpenAIGatewayService) modelRoutingAccountIDsForSelection(ctx context.Context, groupID *int64, requestedModel, platform string) []int64 {
+	if s == nil || groupID == nil || strings.TrimSpace(requestedModel) == "" || platform != PlatformSeedance {
+		return nil
+	}
+	if s.schedulerSnapshot == nil {
+		return nil
+	}
+	group, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
+	if err != nil || group == nil || group.Platform != PlatformSeedance {
+		return nil
+	}
+	return group.GetRoutingAccountIDs(requestedModel)
+}
+
+func (s *OpenAIGatewayService) excludeUnroutedAccounts(ctx context.Context, groupID *int64, platform string, excludedIDs map[int64]struct{}, routedIDs []int64) (map[int64]struct{}, error) {
+	result := cloneExcludedAccountIDs(excludedIDs)
+	allowed := make(map[int64]struct{}, len(routedIDs))
+	for _, id := range routedIDs {
+		if id > 0 {
+			allowed[id] = struct{}{}
+		}
+	}
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = make(map[int64]struct{}, len(accounts))
+	}
+	for _, account := range accounts {
+		if _, ok := allowed[account.ID]; !ok {
+			result[account.ID] = struct{}{}
+		}
+	}
+	return result, nil
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

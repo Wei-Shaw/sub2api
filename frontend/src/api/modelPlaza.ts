@@ -64,9 +64,12 @@ export interface PlazaModel {
   long_context_basis?: PlazaLongContextBasis
   /** 仅配置了分时倍率的模型返回。 */
   time_pricing?: PlazaTimePricing
+  /** Provider-specific non-token price rows, e.g. Seedance resolution/input mode pricing. */
+  price_table?: Array<Record<string, string>>
+  pricing_notes?: string[]
 }
 
-export const MODEL_CATEGORIES = ['文本', '多模态', '图像', '代码', '语音'] as const
+export const MODEL_CATEGORIES = ['文本', '多模态', '图像', '视频', '代码', '语音'] as const
 export type ModelCategory = (typeof MODEL_CATEGORIES)[number]
 
 export interface ModelPlazaGroup {

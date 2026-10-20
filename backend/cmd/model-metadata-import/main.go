@@ -1,4 +1,5 @@
-// model-metadata-import validates and atomically imports the Bestloong model catalog.
+// model-metadata-import is a legacy database migration tool. Runtime model-plaza
+// reads backend/internal/service/model_metadata_v7.json from the project.
 //
 // Usage (from backend/):
 //

@@ -16,7 +16,7 @@ import (
 func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 	for _, platform := range []string{
 		PlatformOpenAI, PlatformGrok, PlatformAnthropic, PlatformGemini, PlatformAntigravity,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
+		PlatformSeedance, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
 	} {
 		require.True(t, IsUpstreamBillingProbeIdentity(platform, AccountTypeAPIKey), platform)
 		require.True(t, isUpstreamBillingProbeAccount(&Account{Platform: platform, Type: AccountTypeAPIKey}), platform)
@@ -159,6 +159,7 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		// 跨平台官方域同样必无该端点，一并拦截。
 		{PlatformAnthropic, "https://api.x.ai/v1"},
 		{PlatformGrok, "https://api.openai.com"},
+		{PlatformSeedance, "https://ark.cn-beijing.volces.com/api/v3"},
 		// Ollama Cloud 是本仓一等支持配置（platform openai/anthropic +
 		// base_url https://ollama.com/v1），同为官方 API，不能拿 Key 去空探。
 		{PlatformAnthropic, "https://ollama.com/v1"},

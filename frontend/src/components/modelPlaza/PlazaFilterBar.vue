@@ -17,12 +17,12 @@
           @click="$emit('update:platform', p)"
         >
           <PlatformIcon v-if="p !== 'all'" :platform="p as GroupPlatform" size="xs" />
-          {{ p === 'all' ? t('modelPlaza.filters.all') : p }}
+          {{ p === 'all' ? t('modelPlaza.filters.all') : platformLabel(p) }}
         </button>
       </div>
     </div>
 
-    <!-- 二级:分组(按所属平台着色,当前组合下无结果的置灰) -->
+    <!-- 二级:分组名称；同名分组跨平台共用一个筛选项。 -->
     <div class="flex items-start gap-2">
       <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.groupLabel') }}
@@ -30,28 +30,58 @@
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
+          data-filter="group"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-          :class="chipClass(groupId === 'all')"
-          @click="$emit('update:groupId', 'all')"
+          :class="chipClass(groupName === null)"
+          @click="$emit('update:groupName', null)"
         >
           {{ t('modelPlaza.filters.all') }}
         </button>
         <button
-          v-for="g in groups"
-          :key="`group-${g.id}`"
+          v-for="name in groupNames"
+          :key="`group-${name}`"
           type="button"
+          data-filter="group"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
-          :class="groupId === g.id ? 'chip-tinted-active' : 'chip-tinted'"
-          :style="{ '--chip-accent': platformAccentColor(g.platform) }"
-          :disabled="!groupEnabled(g)"
-          @click="$emit('update:groupId', g.id)"
+          :class="chipClass(groupName === name)"
+          :disabled="!groupEnabled(name)"
+          @click="$emit('update:groupName', name)"
         >
-          {{ g.name }}
+          {{ name }}
         </button>
       </div>
     </div>
 
-    <!-- 三级:倍率(当前组合下不存在的置灰) -->
+    <!-- 三级:模型元数据模态；当前组合下没有模型的选项置灰。 -->
+    <div class="flex items-start gap-2">
+      <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
+        {{ t('modelPlaza.filters.categoryLabel') }}
+      </span>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-filter="category"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :class="chipClass(category === null)"
+          @click="$emit('update:category', null)"
+        >
+          {{ t('modelPlaza.filters.all') }}
+        </button>
+        <button
+          v-for="name in categoryNames"
+          :key="`category-${name}`"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :class="chipClass(category === name)"
+          :disabled="!categoryEnabled(name)"
+          @click="$emit('update:category', name)"
+        >
+          {{ name }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 四级:倍率(当前组合下不存在的置灰) -->
     <div v-if="showRate" class="flex items-start gap-2">
       <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.rateLabel') }}
@@ -79,7 +109,7 @@
       </div>
     </div>
 
-    <!-- 四级:模型名搜索(纯前端过滤) -->
+    <!-- 五级:模型名搜索(纯前端过滤) -->
     <div class="flex flex-wrap items-start gap-2">
       <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.modelLabel') }}
@@ -111,21 +141,25 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import { platformAccentColor } from '@/utils/platformColors'
+import { platformAccentColor, platformLabel } from '@/utils/platformColors'
 import type { GroupPlatform } from '@/types'
 
 const props = withDefaults(defineProps<{
   /** 数据中出现的平台(去重排序后)。 */
   platforms: string[]
-  /** 全量分组(含平台与生效倍率),三个维度的置灰联动由此推导。 */
-  groups: Array<{ id: number; name: string; platform: string; rate: number }>
+  /** 全量分组(含平台与生效倍率)，同名分组可来自多个平台。 */
+  groups: Array<{ name: string; platform: string; rate: number }>
   /** 全量生效倍率去重升序。 */
   rates: number[]
+  /** 模型元数据类别及其筛选组合（页面展示为“模态”）。 */
+  categoryOptions: Array<{ name: string; platform: string; groupName: string; rate: number }>
   platform: string
-  groupId: number | 'all'
+  groupName: string | null
+  category: string | null
   rate: number | 'all'
   /** 模型名搜索词(纯前端过滤)。 */
   search: string
@@ -137,12 +171,23 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   'update:platform': [value: string]
-  'update:groupId': [value: number | 'all']
+  'update:groupName': [value: string | null]
+  'update:category': [value: string | null]
   'update:rate': [value: number | 'all']
   'update:search': [value: string]
 }>()
 
 const { t } = useI18n()
+const groupNames = computed(() =>
+  [...new Set(props.groups.map((group) => group.name))].sort((a, b) =>
+    a.localeCompare(b, 'zh-CN')
+  )
+)
+const categoryNames = computed(() =>
+  [...new Set(props.categoryOptions.map((category) => category.name))].sort((a, b) =>
+    a.localeCompare(b, 'zh-CN')
+  )
+)
 
 /**
  * 三个维度互为约束(faceted):某选项可点 ⟺ 在「其他两维」当前选择下仍有分组命中。
@@ -152,15 +197,27 @@ function platformEnabled(p: string): boolean {
   return props.groups.some(
     (g) =>
       g.platform === p &&
-      (props.groupId === 'all' || g.id === props.groupId) &&
+      (props.groupName === null || g.name === props.groupName) &&
       (props.rate === 'all' || g.rate === props.rate)
   )
 }
 
-function groupEnabled(g: { platform: string; rate: number }): boolean {
-  return (
-    (props.platform === 'all' || g.platform === props.platform) &&
-    (props.rate === 'all' || g.rate === props.rate)
+function groupEnabled(name: string): boolean {
+  return props.groups.some(
+    (g) =>
+      g.name === name &&
+      (props.platform === 'all' || g.platform === props.platform) &&
+      (props.rate === 'all' || g.rate === props.rate)
+  )
+}
+
+function categoryEnabled(name: string): boolean {
+  return props.categoryOptions.some(
+    (option) =>
+      option.name === name &&
+      (props.platform === 'all' || option.platform === props.platform) &&
+      (props.groupName === null || option.groupName === props.groupName) &&
+      (props.rate === 'all' || option.rate === props.rate)
   )
 }
 
@@ -169,7 +226,7 @@ function rateEnabled(r: number): boolean {
     (g) =>
       g.rate === r &&
       (props.platform === 'all' || g.platform === props.platform) &&
-      (props.groupId === 'all' || g.id === props.groupId)
+      (props.groupName === null || g.name === props.groupName)
   )
 }
 

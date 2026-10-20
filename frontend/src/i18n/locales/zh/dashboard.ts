@@ -654,7 +654,7 @@ export default {
     noSearchResult: '没有匹配的模型',
     anonymousHint: '登录后可查看你的专属分组与专属倍率',
     filters: {
-      categoryLabel: '模型类别',
+      categoryLabel: '模态',
       orHint: '已按并集筛选：命中任一所选类别即可显示',
       platformLabel: '平台',
       groupLabel: '分组',
@@ -676,7 +676,8 @@ export default {
       copySuccess: '调用名已复制',
       viewDetails: '查看 {name} 完整信息',
       tieredBilling: '阶梯计费',
-      standardBilling: '标准计费'
+      standardBilling: '标准计费',
+      pricingNotes: '计价说明'
     },
     badges: {
       exclusive: '专属分组',
@@ -686,7 +687,6 @@ export default {
       noModels: '该分组暂未配置模型',
       noPricing: '未配置定价',
       peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
-      longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
     },
     table: {
       model: '模型',
@@ -709,7 +709,6 @@ export default {
       timePricingWeekdays: '工作日',
       timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
       paidPrice: '实付价格(折后)',
-      officialPrice: '官方价格',
       rate: '折扣倍率',
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',

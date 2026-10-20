@@ -10,13 +10,15 @@ export const supportsImagePricingPlatform = (platform: string): boolean =>
   imagePricingPlatforms.has(platform);
 
 export const supportsVideoPricingPlatform = (platform: string): boolean =>
-  platform === "grok";
+  platform === "grok" || platform === "seedance" || platform === "composite";
 
 export const imagePricingI18nKey = (_platform: string, key: string): string =>
   `admin.groups.imagePricing.${key}`;
 
-export const videoPricingI18nKey = (key: string): string =>
-  `admin.groups.videoPricing.${key}`;
+export const videoPricingI18nKey = (key: string, platform = "grok"): string =>
+  platform === "seedance" || platform === "composite"
+    ? `admin.groups.videoPricing.${platform}.${key}`
+    : `admin.groups.videoPricing.${key}`;
 
 type ImagePricingTierKey = "image_price_1k" | "image_price_2k" | "image_price_4k";
 type VideoPricingTierKey =

@@ -656,6 +656,15 @@ func (h *ChannelHandler) SyncPricingModels(c *gin.Context) {
 			WithMetadata(map[string]string{"param": "platform"}))
 		return
 	}
+	if platform == service.PlatformSeedance {
+		models, err := service.ProjectModelNamesForPlatform(platform)
+		if err != nil {
+			response.Error(c, 500, "Failed to load project model catalog")
+			return
+		}
+		response.Success(c, gin.H{"models": models})
+		return
+	}
 
 	provider, ok := platformToLiteLLMProvider[platform]
 	if !ok {

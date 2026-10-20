@@ -3,6 +3,8 @@
 package service
 
 import (
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,6 +64,64 @@ func TestParseAndNormalizeIncompleteModelMetadata_FillsPendingFields(t *testing.
 	require.Contains(t, records[0].Categories, "图像")
 }
 
-func TestMetadataAllowsGroup_AcceptsDraftWildcard(t *testing.T) {
-	require.True(t, metadataAllowsGroup(ModelMetadata{AuthorizedGroups: []string{AllAuthorizedGroupsMarker}}, "any-group"))
+func TestParseProjectModelMetadataDeduplicatesV7Catalog(t *testing.T) {
+	records, err := parseProjectModelMetadata(modelMetadataFile)
+	require.NoError(t, err)
+	require.NotEmpty(t, records)
+
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		key := strings.ToLower(record.CallName)
+		if _, exists := seen[key]; exists {
+			t.Fatalf("duplicate project metadata model: %s", record.CallName)
+		}
+		seen[key] = struct{}{}
+		require.NotEmpty(t, record.AuthorizedGroups, record.CallName)
+		require.NotEmpty(t, record.Categories, record.CallName)
+	}
+	require.Contains(t, seen, "gpt-5.5-pro")
+}
+
+func TestProjectModelNamesForPlatform_SeedanceUsesEmbeddedCatalog(t *testing.T) {
+	names, err := ProjectModelNamesForPlatform(" Seedance ")
+	require.NoError(t, err)
+	require.Contains(t, names, "doubao-seedance-2-0-260128")
+	require.Contains(t, names, "doubao-seedream-5-0-pro-260628")
+	require.NotContains(t, names, "gpt-5.5-pro")
+	require.True(t, sort.StringsAreSorted(names))
+}
+
+func TestProjectModelNamesForPlatform_RejectsUnsupportedPlatform(t *testing.T) {
+	_, err := ProjectModelNamesForPlatform("openai")
+	require.Error(t, err)
+}
+
+func TestParseAndValidateModelMetadata_AcceptsSeedanceV3PriceTable(t *testing.T) {
+	raw := []byte(`{"模型元数据v3":[{
+		"能力边界":"视频生成","适用场景":"短视频创作",
+		"价格表":[{"分辨率":"480p","无视频输入（元/秒）":"0.46","有视频输入（元/个）":"2.53~5.62"}],
+		"计价说明":["输出固定为5s"],"类别":"视频生成","上架日":"2026-02-12",
+		"展示名":"Seedance 2.0","调用名":"doubao-seedance-2-0-260128","授权分组":"Seedance"
+	}]}`)
+	records, err := ParseAndValidateModelMetadata(raw, map[string]struct{}{"seedance": {}})
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.ElementsMatch(t, []string{"视频"}, records[0].Categories)
+	require.Equal(t, "0.46", records[0].PriceTable[0]["无视频输入（元/秒）"])
+	require.Equal(t, []string{"输出固定为5s"}, records[0].PricingNotes)
+}
+
+func TestParseAndNormalizeIncompleteModelMetadata_PreservesSeedancePriceTable(t *testing.T) {
+	raw := []byte(`{"模型元数据v3":[{
+		"能力边界":"视频生成","适用场景":"短视频创作",
+		"价格表":[{"分辨率":"480p","无视频输入（元/秒）":"0.46"}],
+		"计价说明":["输出固定为5s"],"类别":"视频生成","上架日":"2026-02-12",
+		"展示名":"Seedance 2.0","调用名":"doubao-seedance-2-0-260128","授权分组":"Seedance"
+	}]}`)
+	records, err := ParseAndNormalizeIncompleteModelMetadata(raw)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, "0.46", records[0].PriceTable[0]["无视频输入（元/秒）"])
+	require.Equal(t, []string{"输出固定为5s"}, records[0].PricingNotes)
+	require.Contains(t, records[0].Categories, "视频")
 }

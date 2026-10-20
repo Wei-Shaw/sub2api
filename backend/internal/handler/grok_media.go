@@ -31,6 +31,53 @@ func (h *OpenAIGatewayHandler) GrokVideoGeneration(c *gin.Context) {
 	h.handleGrokMedia(c, service.GrokMediaEndpointVideosGenerations, "")
 }
 
+// SeedanceVideoGeneration creates an asynchronous Volcano Engine Ark video
+// task through a Seedance group.  It deliberately shares only the gateway
+// admission/billing lifecycle with Grok; the upstream protocol is translated
+// by service.ForwardSeedanceVideo.
+func (h *OpenAIGatewayHandler) SeedanceVideoGeneration(c *gin.Context) {
+	h.handleSeedanceMedia(c, service.GrokMediaEndpointVideosGenerations, "")
+}
+
+// SeedanceVideoStatus polls a task on the account that created it.
+func (h *OpenAIGatewayHandler) SeedanceVideoStatus(c *gin.Context) {
+	h.handleSeedanceMedia(c, service.GrokMediaEndpointVideoStatus, c.Param("request_id"))
+}
+
+// SeedanceVideoContent downloads a completed Ark video through the account
+// that created the task.
+func (h *OpenAIGatewayHandler) SeedanceVideoContent(c *gin.Context) {
+	h.handleSeedanceMedia(c, service.GrokMediaEndpointVideoContent, c.Param("request_id"))
+}
+
+// CompositeVideoStatus dispatches a model-less task lookup using the task's
+// ownership binding. The task ID is the only reliable platform discriminator.
+func (h *OpenAIGatewayHandler) CompositeVideoStatus(c *gin.Context) {
+	apiKey, apiKeyOK := middleware2.GetAPIKeyFromContext(c)
+	subject, subjectOK := middleware2.GetAuthSubjectFromContext(c)
+	if apiKeyOK && subjectOK && apiKey != nil && h.gatewayService != nil {
+		if accountID, err := h.gatewayService.ResolveSeedanceVideoRequestAccount(c.Request.Context(), apiKey.GroupID, c.Param("request_id"), subject.UserID, apiKey.ID); err == nil && accountID > 0 {
+			h.SeedanceVideoStatus(c)
+			return
+		}
+	}
+	h.GrokVideoStatus(c)
+}
+
+// CompositeVideoContent is the content-download counterpart to
+// CompositeVideoStatus and preserves the same task ownership decision.
+func (h *OpenAIGatewayHandler) CompositeVideoContent(c *gin.Context) {
+	apiKey, apiKeyOK := middleware2.GetAPIKeyFromContext(c)
+	subject, subjectOK := middleware2.GetAuthSubjectFromContext(c)
+	if apiKeyOK && subjectOK && apiKey != nil && h.gatewayService != nil {
+		if accountID, err := h.gatewayService.ResolveSeedanceVideoRequestAccount(c.Request.Context(), apiKey.GroupID, c.Param("request_id"), subject.UserID, apiKey.ID); err == nil && accountID > 0 {
+			h.SeedanceVideoContent(c)
+			return
+		}
+	}
+	h.GrokVideoContent(c)
+}
+
 // GrokVideoEdit handles asynchronous xAI video edits through Grok groups.
 func (h *OpenAIGatewayHandler) GrokVideoEdit(c *gin.Context) {
 	h.handleGrokMedia(c, service.GrokMediaEndpointVideosEdits, "")
@@ -693,6 +740,39 @@ func recordGrokMediaUsage(
 	body []byte,
 	requestID string,
 ) {
+	recordMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID, service.PlatformGrok)
+}
+
+func recordSeedanceMediaUsage(
+	c *gin.Context,
+	h *OpenAIGatewayHandler,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	subscription *service.UserSubscription,
+	account *service.Account,
+	result *service.OpenAIForwardResult,
+	requestModel string,
+	body []byte,
+	requestID string,
+) {
+	recordMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID, service.PlatformSeedance)
+}
+
+func recordMediaUsage(
+	c *gin.Context,
+	h *OpenAIGatewayHandler,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	subscription *service.UserSubscription,
+	account *service.Account,
+	result *service.OpenAIForwardResult,
+	requestModel string,
+	body []byte,
+	requestID string,
+	platform string,
+) {
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
@@ -714,8 +794,12 @@ func recordGrokMediaUsage(
 	videoTaskID := ""
 	if result != nil && result.VideoCount > 0 {
 		videoTaskID = strings.TrimSpace(firstNonEmptyString(requestID, result.ResponseID))
-		if stable := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
-			result.RequestID = stable
+		stableRequestID := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID))
+		if platform == service.PlatformSeedance {
+			stableRequestID = service.StableSeedanceVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID))
+		}
+		if stableRequestID != "" {
+			result.RequestID = stableRequestID
 		}
 		// Prefer task id hash for payload fingerprint stability across status/content.
 		if len(body) == 0 && videoTaskID != "" {
@@ -740,7 +824,11 @@ func recordGrokMediaUsage(
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {
-				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
+				releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID)
+				if platform == service.PlatformSeedance {
+					releaseErr = h.gatewayService.ReleaseSeedanceVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID)
+				}
+				if releaseErr != nil {
 					reqLog.Warn("grok_media.video_billing_claim_release_failed",
 						zap.String("request_id", videoTaskID),
 						zap.Error(releaseErr),
