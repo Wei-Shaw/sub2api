@@ -167,49 +167,34 @@ type modelDef struct {
 
 // Antigravity 支持的 Claude 模型
 var claudeModels = []modelDef{
-	{ID: "claude-fable-5-1", DisplayName: "Claude Fable 5.1", CreatedAt: "2026-09-01T00:00:00Z"},
-	{ID: "claude-fable-5", DisplayName: "Claude Fable 5", CreatedAt: "2026-06-09T00:00:00Z"},
 	{ID: "claude-opus-5-5-high", DisplayName: "Claude Opus 5.5 (High)", CreatedAt: "2026-09-22T00:00:00Z"},
 	{ID: "claude-opus-5-5-medium", DisplayName: "Claude Opus 5.5 (Medium)", CreatedAt: "2026-09-22T00:00:00Z"},
 	{ID: "claude-opus-5-5-low", DisplayName: "Claude Opus 5.5 (Low)", CreatedAt: "2026-09-22T00:00:00Z"},
 	{ID: "claude-sonnet-5-5-high", DisplayName: "Claude Sonnet 5.5 (High)", CreatedAt: "2026-09-28T00:00:00Z"},
 	{ID: "claude-sonnet-5-5-medium", DisplayName: "Claude Sonnet 5.5 (Medium)", CreatedAt: "2026-09-28T00:00:00Z"},
 	{ID: "claude-sonnet-5-5-low", DisplayName: "Claude Sonnet 5.5 (Low)", CreatedAt: "2026-09-28T00:00:00Z"},
-	{ID: "claude-opus-4-5-thinking", DisplayName: "Claude Opus 4.5 Thinking", CreatedAt: "2025-11-01T00:00:00Z"},
-	{ID: "claude-sonnet-4-5", DisplayName: "Claude Sonnet 4.5", CreatedAt: "2025-09-29T00:00:00Z"},
-	{ID: "claude-sonnet-4-5-thinking", DisplayName: "Claude Sonnet 4.5 Thinking", CreatedAt: "2025-09-29T00:00:00Z"},
-	{ID: "claude-opus-4-6", DisplayName: "Claude Opus 4.6", CreatedAt: "2026-02-05T00:00:00Z"},
 	{ID: "claude-opus-4-6-thinking", DisplayName: "Claude Opus 4.6 Thinking", CreatedAt: "2026-02-05T00:00:00Z"},
-	{ID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", CreatedAt: "2026-04-17T00:00:00Z"},
-	{ID: "claude-opus-4-8", DisplayName: "Claude Opus 4.8", CreatedAt: "2026-05-29T00:00:00Z"},
 	{ID: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", CreatedAt: "2026-02-17T00:00:00Z"},
 }
 
 // Antigravity 支持的 Gemini 模型
 var geminiModels = []modelDef{
+	{ID: "gemini-2.5-pro", DisplayName: "Gemini 2.5 Pro", CreatedAt: "2025-01-01T00:00:00Z"},
+	{ID: "gpt-oss-120b-medium", DisplayName: "GPT OSS 120B", CreatedAt: "2025-01-01T00:00:00Z"},
+	{ID: "tab_flash_lite_preview", DisplayName: "Flash Lite Preview", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", CreatedAt: "2025-01-01T00:00:00Z"},
-	{ID: "gemini-2.5-flash-image", DisplayName: "Gemini 2.5 Flash Image", CreatedAt: "2025-01-01T00:00:00Z"},
-	{ID: "gemini-2.5-flash-image-preview", DisplayName: "Gemini 2.5 Flash Image Preview", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-lite", DisplayName: "Gemini 2.5 Flash Lite", CreatedAt: "2025-01-01T00:00:00Z"},
 	{ID: "gemini-2.5-flash-thinking", DisplayName: "Gemini 2.5 Flash Thinking", CreatedAt: "2025-01-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3-flash", DisplayName: "Gemini 3 Flash", CreatedAt: "2025-06-01T00:00:00Z"},
-	{ID: "gemini-3-pro-low", DisplayName: "Gemini 3 Pro Low", CreatedAt: "2025-06-01T00:00:00Z"},
-	{ID: "gemini-3-pro-high", DisplayName: "Gemini 3 Pro High", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.1-pro-low", DisplayName: "Gemini 3.1 Pro Low", CreatedAt: "2026-02-19T00:00:00Z"},
 	{ID: "gemini-3.1-pro-high", DisplayName: "Gemini 3.1 Pro High", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", CreatedAt: "2026-02-19T00:00:00Z"},
-	{ID: "gemini-3.1-flash-image-preview", DisplayName: "Gemini 3.1 Flash Image Preview", CreatedAt: "2026-02-19T00:00:00Z"},
-	{ID: "gemini-3.6-flash", DisplayName: "Gemini 3.6 Flash", CreatedAt: "2026-07-21T00:00:00Z"},
 	{ID: "gemini-3.6-flash-high", DisplayName: "Gemini 3.6 Flash High", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash-low", DisplayName: "Gemini 3.6 Flash Low", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash-medium", DisplayName: "Gemini 3.6 Flash Medium", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3.6-flash-tiered", DisplayName: "Gemini 3.6 Flash", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3.7-flash", DisplayName: "Gemini 3.7 Flash", CreatedAt: "2026-08-13T00:00:00Z"},
 	{ID: "gemini-3.7-flash-high", DisplayName: "Gemini 3.7 Flash High", CreatedAt: "2026-08-13T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.7-flash-low", DisplayName: "Gemini 3.7 Flash Low", CreatedAt: "2026-08-13T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.7-flash-medium", DisplayName: "Gemini 3.7 Flash Medium", CreatedAt: "2026-08-13T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3.7-flash-tiered", DisplayName: "Gemini 3.7 Flash", CreatedAt: "2026-08-13T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3.8-flash", DisplayName: "Gemini 3.8 Flash", CreatedAt: "2026-09-02T00:00:00Z"},
 	{ID: "gemini-3.8-flash-high", DisplayName: "Gemini 3.8 Flash High", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.8-flash-low", DisplayName: "Gemini 3.8 Flash Low", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.8-flash-medium", DisplayName: "Gemini 3.8 Flash Medium", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
@@ -217,8 +202,7 @@ var geminiModels = []modelDef{
 	{ID: "gemini-4-argon-high", DisplayName: "Gemini 4 Argon (High)", CreatedAt: "2026-10-13T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-4-argon-low", DisplayName: "Gemini 4 Argon (Low)", CreatedAt: "2026-10-13T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-4-argon-medium", DisplayName: "Gemini 4 Argon (Medium)", CreatedAt: "2026-10-13T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3-pro-preview", DisplayName: "Gemini 3 Pro Preview", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
-	{ID: "gemini-3-pro-image", DisplayName: "Gemini 3 Pro Image", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "gemini-pro-agent", DisplayName: "Gemini Pro Agent", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
 }
 
 // ========== Claude API 格式 (/v1/models) ==========

@@ -77,16 +77,16 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 
 		// 3. 默认映射中的透传（映射到自己）
 		{
-			name:           "默认映射透传 - claude-fable-5-1",
+			name:           "下线默认模型不再准入 - claude-fable-5-1",
 			requestedModel: "claude-fable-5-1",
 			accountMapping: nil,
-			expected:       "claude-fable-5-1",
+			expected:       "",
 		},
 		{
-			name:           "默认映射透传 - claude-fable-5",
+			name:           "下线默认模型不再准入 - claude-fable-5",
 			requestedModel: "claude-fable-5",
 			accountMapping: nil,
-			expected:       "claude-fable-5",
+			expected:       "",
 		},
 		{
 			name:           "默认映射透传 - claude-sonnet-4-6",
@@ -95,22 +95,22 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-6",
 		},
 		{
-			name:           "显式 canonical 选择 - claude-sonnet-4-5 透传",
+			name:           "默认兼容别名 - claude-sonnet-4-5 → 4-6",
 			requestedModel: "claude-sonnet-4-5",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-6",
 		},
 		{
-			name:           "默认映射透传 - claude-opus-4-8",
+			name:           "默认兼容别名 - claude-opus-4-8 → 4-6-thinking",
 			requestedModel: "claude-opus-4-8",
 			accountMapping: nil,
-			expected:       "claude-opus-4-8",
+			expected:       "claude-opus-4-6-thinking",
 		},
 		{
-			name:           "默认映射透传 - claude-opus-4-7",
+			name:           "默认兼容别名 - claude-opus-4-7 → 4-6-thinking",
 			requestedModel: "claude-opus-4-7",
 			accountMapping: nil,
-			expected:       "claude-opus-4-7",
+			expected:       "claude-opus-4-6-thinking",
 		},
 		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
