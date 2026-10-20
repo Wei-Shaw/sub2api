@@ -2062,7 +2062,11 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired:
-		// 402 without a body-classified billing decision: keep the legacy 30m cool.
+		// A 402 that does not identify billing state is a request failure.
+		// Cooling it as payment required lets one empty response quarantine the failover chain.
+		if isGrokUnrecognizedPaymentRequired(statusCode, responseBody) {
+			return
+		}
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
 	case http.StatusForbidden:
 		// Spending-limit already handled by body classifier when phrasing matches.

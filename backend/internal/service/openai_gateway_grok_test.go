@@ -3051,13 +3051,6 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			wantMaxCooldown: 30*time.Minute + time.Second,
 		},
 		{
-			name:            "payment required",
-			status:          http.StatusPaymentRequired,
-			wantReason:      "grok payment required",
-			wantMinCooldown: 30*time.Minute - time.Second,
-			wantMaxCooldown: 30*time.Minute + time.Second,
-		},
-		{
 			name:            "upstream temporary error",
 			status:          http.StatusInternalServerError,
 			wantReason:      "grok upstream temporary error",
@@ -3186,10 +3179,11 @@ func TestHandleGrokAccountUpstreamError402RecoversAfterCooldownExpiry(t *testing
 	}
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
+	body := []byte(`{"error":{"message":"You have run out of credits or need a Grok subscription"}}`)
 
-	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, nil)
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, body)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, 1, repo.rateLimitedCalls)
 
 	expired := time.Now().Add(-time.Second)
 	account.TempUnschedulableUntil = &expired
