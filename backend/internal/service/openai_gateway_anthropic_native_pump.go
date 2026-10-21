@@ -15,6 +15,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -22,6 +23,12 @@ import (
 
 // errAnthropicNativeStreamIdle 表示上游流读间隔超时（见上方文件注释）。
 var errAnthropicNativeStreamIdle = errors.New("stream data interval timeout")
+
+// A disconnected client still needs a bounded drain even when the operator
+// disabled the normal stream interval timeout. Keep the fallback aligned with
+// the documented default so slow thinking streams have time to finish while a
+// stalled upstream cannot pin the request forever.
+const defaultAnthropicNativeDisconnectDrainTimeout = 180 * time.Second
 
 // anthropicNativeLineEvent 是行泵交付的单次读取结果：line 为一行 SSE 文本，
 // err 为 scanner 读错误（流自然结束时 next 返回 io.EOF，不经过本字段）。
@@ -37,6 +44,9 @@ type anthropicNativeLinePump struct {
 	done     chan struct{}
 	timer    *time.Timer
 	interval time.Duration
+	// clientDisconnectSeen is only accessed by the handler goroutine through
+	// nextWithContext; the scanner goroutine never touches it.
+	clientDisconnectSeen bool
 }
 
 // newAnthropicNativeLinePump 启动泵 goroutine；调用方 defer pump.stop()。
@@ -88,6 +98,55 @@ func (p *anthropicNativeLinePump) next() (string, error) {
 	}
 }
 
+// nextWithContext is the context-aware variant used by compatibility handlers.
+// A canceled client context marks the drain as disconnected and enables the
+// disconnect-only fallback interval before continuing to consume upstream
+// events. This keeps a silent detached upstream from blocking forever when the
+// normal stream interval timeout is disabled.
+func (p *anthropicNativeLinePump) nextWithContext(ctx context.Context, onDisconnect func()) (string, error) {
+	if ctx == nil || p.clientDisconnectSeen {
+		return p.next()
+	}
+	markDisconnected := func() {
+		p.clientDisconnectSeen = true
+		p.enableInterval(defaultAnthropicNativeDisconnectDrainTimeout)
+		if onDisconnect != nil {
+			onDisconnect()
+		}
+	}
+	clientDone := ctx.Done()
+	if ctx.Err() != nil {
+		markDisconnected()
+		return p.next()
+	}
+
+	var timeoutCh <-chan time.Time
+	if p.timer != nil {
+		timeoutCh = p.timer.C
+	}
+	select {
+	case ev, ok := <-p.events:
+		if ctx.Err() != nil {
+			markDisconnected()
+		}
+		if !ok {
+			return "", io.EOF
+		}
+		p.resetTimer()
+		return ev.line, ev.err
+	case <-timeoutCh:
+		if ctx.Err() != nil {
+			markDisconnected()
+		}
+		return "", errAnthropicNativeStreamIdle
+	case <-clientDone:
+		markDisconnected()
+		// Continue the same line read, including when cancellation occurs between
+		// an SSE event line and its data line, so final usage is never skipped.
+		return p.next()
+	}
+}
+
 // resetTimer 在收到一行后重启间隔计时器。
 func (p *anthropicNativeLinePump) resetTimer() {
 	if p.timer == nil {
@@ -100,6 +159,17 @@ func (p *anthropicNativeLinePump) resetTimer() {
 		}
 	}
 	p.timer.Reset(p.interval)
+}
+
+// enableInterval turns on an idle timeout after a downstream disconnect. It
+// is called by the handler goroutine, which is also the only goroutine that
+// reads or resets p.timer.
+func (p *anthropicNativeLinePump) enableInterval(interval time.Duration) {
+	if p.timer != nil || interval <= 0 {
+		return
+	}
+	p.interval = interval
+	p.timer = time.NewTimer(interval)
 }
 
 // stop 终止泵 goroutine。注意：goroutine 若正阻塞在 scanner.Read 上，需由
