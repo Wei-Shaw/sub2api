@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 
 import Select from '../Select.vue'
 
@@ -112,6 +112,61 @@ describe('Select dropdown viewport constraints', () => {
     expect(dropdown?.style.left).toBe('312px')
     expect(dropdown?.style.minWidth).toBe('0px')
     expect(dropdown?.style.maxWidth).toBe('0px')
+  })
+})
+
+describe('Select multiple mode', () => {
+  it.each(['auto', false] as const)('supports a bare multiple prop and keeps the dropdown open while toggling values (searchable=%s)', async (searchable) => {
+    const Host = defineComponent({
+      components: { AppSelect: Select },
+      setup() {
+        const selected = ref<number[]>([])
+        const options = [
+          { value: 1, label: 'Group 1' },
+          { value: 2, label: 'Group 2' },
+          { value: 3, label: 'Group 3' },
+          { value: 4, label: 'Group 4' },
+          { value: 5, label: 'Group 5' },
+          { value: 6, label: 'Group 6' },
+        ]
+        return { selected, options, searchable }
+      },
+      template: '<AppSelect v-model="selected" :options="options" :searchable="searchable" multiple />',
+    })
+
+    const wrapper = mount(Host)
+    unmountWrapper = () => wrapper.unmount()
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+
+    const dropdown = document.body.querySelector<HTMLElement>('.select-dropdown-portal')
+    expect(dropdown?.getAttribute('aria-multiselectable')).toBe('true')
+    expect(dropdown?.getAttribute('tabindex')).toBe('-1')
+    expect(dropdown?.querySelectorAll('.select-checkbox')).toHaveLength(6)
+    if (searchable === false) {
+      expect(dropdown?.querySelector('.select-search')).toBeNull()
+      expect(document.activeElement).toBe(dropdown)
+    } else {
+      expect(dropdown?.querySelector('.select-search')).not.toBeNull()
+    }
+
+    const options = dropdown?.querySelectorAll<HTMLElement>('.select-option')
+    options?.[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect((wrapper.vm as any).selected).toEqual([1])
+    expect(document.body.querySelector('.select-dropdown-portal')).not.toBeNull()
+
+    options?.[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect((wrapper.vm as any).selected).toEqual([1, 2])
+
+    options?.[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect((wrapper.vm as any).selected).toEqual([2])
   })
 })
 
