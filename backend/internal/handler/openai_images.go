@@ -193,11 +193,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
 				if !cls.ModelNotFound {
-					message = "No available compatible accounts"
+					recordNoAvailableAccountsErrorForOps(c, err)
 				}
-				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -211,12 +210,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, service.PlatformOpenAI)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
 			}
-			message := cls.Message
-			if !cls.ModelNotFound {
-				message = "No available compatible accounts"
-			}
-			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			return
 		}
 
