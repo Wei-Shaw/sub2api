@@ -1,4 +1,4 @@
-import type { UserSubscription } from '@/types'
+import type { Group, UserSubscription } from '@/types'
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
@@ -12,6 +12,49 @@ export interface RemainingDurationParts {
   days: number
   hours: number
   minutes: number
+}
+
+export type SubscriptionQuotaWindow = 'daily' | 'weekly' | 'monthly'
+
+export type SubscriptionQuotaLimits = Pick<
+  Group,
+  'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd'
+>
+
+export interface ResettableQuotaWindow {
+  key: SubscriptionQuotaWindow
+  limit: number
+}
+
+export type QuotaResetSelection = Record<SubscriptionQuotaWindow, boolean>
+
+export function getResettableQuotaWindows(
+  group: SubscriptionQuotaLimits | null | undefined
+): ResettableQuotaWindow[] {
+  const windows = [
+    { key: 'daily' as const, limit: group?.daily_limit_usd },
+    { key: 'weekly' as const, limit: group?.weekly_limit_usd },
+    { key: 'monthly' as const, limit: group?.monthly_limit_usd }
+  ]
+
+  return windows.filter(
+    (window): window is ResettableQuotaWindow =>
+      typeof window.limit === 'number' && window.limit > 0
+  )
+}
+
+export function getQuotaResetSelection(
+  group: SubscriptionQuotaLimits | null | undefined
+): QuotaResetSelection {
+  const resettableWindows = new Set(
+    getResettableQuotaWindows(group).map((window) => window.key)
+  )
+
+  return {
+    daily: resettableWindows.has('daily'),
+    weekly: resettableWindows.has('weekly'),
+    monthly: resettableWindows.has('monthly')
+  }
 }
 
 export function isOneTimeDailyQuota(
