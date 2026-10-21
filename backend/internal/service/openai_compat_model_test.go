@@ -1145,7 +1145,7 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
 
-func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
+func TestForwardAsAnthropic_OAuthEnforcesCodexIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
@@ -1194,6 +1194,37 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, codexCLIUserAgent, openai.CodexDefaultOriginator)
 		})
 	}
+}
+
+func TestForwardAsAnthropic_OAuthUsesAccountCodexIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "pi (darwin 25.0.0; arm64)")
+
+	upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_account_identity", "gpt-5.4")}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          1,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+			"user_agent":         "codex_vscode/0.125.0 (Mac OS X 14.0; arm64) vscode",
+		},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	requireOpenAIMessagesCodexIdentity(t, upstream.lastReq,
+		"codex_vscode/"+codexCLIVersion+" (Mac OS X 14.0; arm64) vscode", "codex_vscode")
 }
 
 func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey(t *testing.T) {
@@ -1547,7 +1578,7 @@ func requireOpenAIMessagesCodexIdentity(t *testing.T, req *http.Request, wantUse
 	require.Equal(t, wantUserAgent, req.Header.Get("User-Agent"))
 	require.Equal(t, wantOriginator, req.Header.Get("originator"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("version"))
-	require.Equal(t, "responses=experimental", req.Header.Get("OpenAI-Beta"))
+	require.Empty(t, req.Header.Get("OpenAI-Beta"))
 }
 
 func openAICompatSSEResponseWithoutUsage(responseID, model string) *http.Response {
