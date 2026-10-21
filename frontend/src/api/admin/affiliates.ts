@@ -32,7 +32,16 @@ export interface ListAffiliateRecordsParams {
   sort_by?: string
   sort_order?: 'asc' | 'desc'
   timezone?: string
+  source_type?: AffiliateRebateSourceFilter
 }
+
+export type AffiliateRebateSourceType =
+  | 'payment_order'
+  | 'balance_redeem_code'
+  | 'admin_recharge'
+  | 'legacy_unknown'
+
+export type AffiliateRebateSourceFilter = AffiliateRebateSourceType | 'all'
 
 export interface AffiliateInviteRecord {
   inviter_id: number
@@ -52,14 +61,19 @@ export interface AffiliateInviteRecord {
  * was deleted.
  */
 export interface AffiliateRebateRecord {
+  ledger_id: number
+  source_type: AffiliateRebateSourceType
   order_id: number | null
   out_trade_no: string
+  redeem_code_id?: number | null
+  redeem_code_masked?: string | null
   inviter_id: number
   inviter_email: string
   inviter_username: string
   invitee_id: number | null
   invitee_email: string
   invitee_username: string
+  base_amount?: number | null
   order_amount: number | null
   pay_amount: number | null
   rebate_amount: number
@@ -203,6 +217,7 @@ function recordParams(params: ListAffiliateRecordsParams = {}) {
     sort_by: params.sort_by || undefined,
     sort_order: params.sort_order || undefined,
     timezone: params.timezone || undefined,
+    source_type: params.source_type || undefined,
   }
 }
 

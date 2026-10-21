@@ -84,14 +84,19 @@ describe('AdminAffiliateRecordsTable', () => {
   it('renders non-order rebate accruals with empty order fields', async () => {
     listRebateRecords.mockResolvedValue(page([
       {
+        ledger_id: 10,
+        source_type: 'balance_redeem_code',
         order_id: null,
         out_trade_no: '',
+        redeem_code_id: 5,
+        redeem_code_masked: 'A****Z',
         inviter_id: 1,
         inviter_email: 'inviter@example.com',
         inviter_username: 'inviter',
         invitee_id: 2,
         invitee_email: 'invitee@example.com',
         invitee_username: 'invitee',
+        base_amount: 10,
         order_amount: null,
         pay_amount: null,
         rebate_amount: 2,
@@ -105,11 +110,12 @@ describe('AdminAffiliateRecordsTable', () => {
     await flushPromises()
 
     const row = wrapper.get('[data-test="row-0"]')
-    expect(row.get('[data-test="cell-order"]').text()).toBe('-')
-    expect(row.get('[data-test="cell-order_amount"]').text()).toBe('-')
+    expect(row.get('[data-test="cell-source"]').text()).toBe('admin.affiliates.records.sourceTypes.balance_redeem_code')
+    expect(row.get('[data-test="cell-source_reference"]').text()).toContain('A****Z')
+    expect(row.get('[data-test="cell-base_amount"]').text()).toBe('$10.00')
     expect(row.get('[data-test="cell-pay_amount"]').text()).toBe('-')
     expect(row.get('[data-test="cell-payment_type"]').text()).toBe('-')
-    expect(row.get('[data-test="cell-order_status"]').text()).toBe('-')
+    expect(row.get('[data-test="cell-source_status"]').text()).toBe('admin.affiliates.records.sourceStatuses.redeemed')
     expect(row.get('[data-test="cell-rebate_amount"]').text()).toBe('$2.00')
     expect(wrapper.find('[data-test="affiliate-withdraw-open"]').exists()).toBe(false)
   })

@@ -514,25 +514,60 @@ func (s *adminServiceImpl) BatchUpdateLimits(ctx context.Context, userIDs []int6
 }
 
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {
-	// 余额调整必须走原子接口：先读后整行写回会把并发的计费扣款覆盖掉。
-	var (
-		change BalanceChange
-		err    error
-	)
-	switch operation {
-	case "set":
-		change, err = s.userRepo.SetBalance(ctx, userID, balance)
-	case "add":
-		change, err = s.userRepo.AdjustBalance(ctx, userID, balance)
-	case "subtract":
-		change, err = s.userRepo.AdjustBalance(ctx, userID, -balance)
-	default:
+	if operation != "set" && operation != "add" && operation != "subtract" {
 		return nil, fmt.Errorf("unsupported balance operation: %q", operation)
 	}
-	if errors.Is(err, ErrBalanceNegative) {
-		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", change.Old, change.New)
-	}
-	if err != nil {
+
+	var balanceDiff float64
+	if err := s.withAdminBalanceUpdateTx(ctx, func(txCtx context.Context) error {
+		// 余额调整必须走原子接口：先读后整行写回会把并发的计费扣款覆盖掉。
+		var (
+			change BalanceChange
+			err    error
+		)
+		switch operation {
+		case "set":
+			change, err = s.userRepo.SetBalance(txCtx, userID, balance)
+		case "add":
+			change, err = s.userRepo.AdjustBalance(txCtx, userID, balance)
+		case "subtract":
+			change, err = s.userRepo.AdjustBalance(txCtx, userID, -balance)
+		}
+		if errors.Is(err, ErrBalanceNegative) {
+			return fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", change.Old, change.New)
+		}
+		if err != nil {
+			return err
+		}
+
+		balanceDiff = change.New - change.Old
+		if balanceDiff == 0 {
+			return nil
+		}
+
+		code, err := GenerateRedeemCode()
+		if err != nil {
+			return fmt.Errorf("generate balance adjustment record code: %w", err)
+		}
+		adjustmentRecord := &RedeemCode{
+			Code:   code,
+			Type:   AdjustmentTypeAdminBalance,
+			Value:  balanceDiff,
+			Status: StatusUsed,
+			UsedBy: &userID,
+			Notes:  notes,
+		}
+		now := time.Now()
+		adjustmentRecord.UsedAt = &now
+		if err := s.redeemCodeRepo.Create(txCtx, adjustmentRecord); err != nil {
+			return fmt.Errorf("create balance adjustment record: %w", err)
+		}
+		if adjustmentRecord.ID <= 0 {
+			return errors.New("balance adjustment record has invalid id")
+		}
+
+		return s.accrueAffiliateRebateForAdminRecharge(txCtx, userID, operation, balance, adjustmentRecord.ID)
+	}); err != nil {
 		return nil, err
 	}
 
@@ -540,14 +575,11 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	if err != nil {
 		return nil, err
 	}
-
-	balanceDiff := change.New - change.Old
+	// 缓存只在数据库事务提交后失效，避免其他请求读取到尚未提交的余额。
 	if s.authCacheInvalidator != nil && balanceDiff != 0 {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
-	s.tryAccrueAffiliateRebateForAdminRecharge(ctx, userID, operation, balance)
-
-	if s.billingCacheService != nil {
+	if s.billingCacheService != nil && balanceDiff != 0 {
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -557,48 +589,50 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		}()
 	}
 
-	if balanceDiff != 0 {
-		code, err := GenerateRedeemCode()
-		if err != nil {
-			logger.LegacyPrintf("service.admin", "failed to generate adjustment redeem code: %v", err)
-			return user, nil
-		}
-
-		adjustmentRecord := &RedeemCode{
-			Code:   code,
-			Type:   AdjustmentTypeAdminBalance,
-			Value:  balanceDiff,
-			Status: StatusUsed,
-			UsedBy: &user.ID,
-			Notes:  notes,
-		}
-		now := time.Now()
-		adjustmentRecord.UsedAt = &now
-
-		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
-		}
-	}
-
 	return user, nil
 }
 
-func (s *adminServiceImpl) tryAccrueAffiliateRebateForAdminRecharge(ctx context.Context, userID int64, operation string, amount float64) {
+// withAdminBalanceUpdateTx 保证余额、调整记录、返利流水和返利额度一次提交。
+func (s *adminServiceImpl) withAdminBalanceUpdateTx(ctx context.Context, fn func(context.Context) error) error {
+	if s.entClient == nil {
+		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "admin balance transaction unavailable")
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin admin balance transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := fn(txCtx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit admin balance transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *adminServiceImpl) accrueAffiliateRebateForAdminRecharge(ctx context.Context, userID int64, operation string, amount float64, adjustmentRecordID int64) error {
 	if operation != "add" || amount <= 0 || s.settingService == nil || s.affiliateService == nil {
-		return
+		return nil
 	}
 	if !s.settingService.IsAffiliateAdminRechargeEnabled(ctx) {
-		return
+		return nil
 	}
 
-	rebate, err := s.affiliateService.AccrueInviteRebate(ctx, userID, amount)
+	rebate, err := s.affiliateService.AccrueInviteRebate(ctx, userID, AffiliateRebateSource{
+		Type:         AffiliateRebateSourceAdminRecharge,
+		BaseAmount:   amount,
+		RedeemCodeID: &adjustmentRecordID,
+	})
 	if err != nil {
-		logger.LegacyPrintf("service.admin", "affiliate rebate failed for admin recharge: user_id=%d amount=%.8f err=%v", userID, amount, err)
-		return
+		return fmt.Errorf("accrue affiliate rebate for admin recharge: %w", err)
 	}
 	if rebate > 0 {
 		logger.LegacyPrintf("service.admin", "affiliate rebate accrued for admin recharge: user_id=%d amount=%.8f rebate=%.8f", userID, amount, rebate)
 	}
+	return nil
 }
 
 func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error) {
