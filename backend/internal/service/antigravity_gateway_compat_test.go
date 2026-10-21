@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -86,7 +87,7 @@ func newAntigravityCompatService(cfg config.GatewayConfig, upstream HTTPUpstream
 		tokenProvider,
 		nil,
 		upstream,
-		NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: cfg}),
+		NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: cfg, JWT: config.JWTConfig{Secret: "test-antigravity-compact-jwt-secret-key-32b"}}),
 		nil,
 	)
 }
@@ -1026,4 +1027,284 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 			require.Contains(t, recorder.Body.String(), tt.want)
 		})
 	}
+}
+
+func TestAntigravityCompatPreservesResponsesTokenLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		body string
+		want int64
+	}{
+		{
+			name: "omitted max_output_tokens uses antigravity 64000 ceiling instead of 8192",
+			body: `{"model":"gemini-3.1-pro-high","input":"ok"}`,
+			want: 64000,
+		},
+		{
+			name: "explicit max_output_tokens below ceiling is preserved",
+			body: `{"model":"gemini-3.1-pro-high","input":"ok","max_output_tokens":1024}`,
+			want: 1024,
+		},
+		{
+			name: "explicit max_output_tokens above ceiling is clamped",
+			body: `{"model":"gemini-3.1-pro-high","input":"ok","max_output_tokens":90000}`,
+			want: 64000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			body := []byte(tt.body)
+			c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+			result, err := svc.ForwardAsResponses(
+				context.Background(),
+				c,
+				newAntigravityCompatAccount(AccountTypeOAuth),
+				body,
+				nil,
+			)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requestBodies, 1)
+			require.Equal(t, tt.want, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.maxOutputTokens").Int())
+		})
+	}
+}
+
+func TestAntigravityCompatResponsesAdaptsAndRestoresClientTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sseBody := `data: {"response":{"responseId":"resp_tool","candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"apply_patch","args":{"input":"*** Begin Patch\n*** End Patch"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6}}}` + "\n\n"
+	upstream := &queuedHTTPUpstreamStub{
+		responses: []*http.Response{{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(sseBody)),
+		}},
+	}
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+	account := newAntigravityCompatAccount(AccountTypeOAuth)
+	account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+
+	reqBody := []byte(`{
+		"model":"gemini-4-argon-medium",
+		"stream":true,
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"patch the file"}]},
+			{"type":"custom_tool_call","id":"ctc_prev","call_id":"call_prev","name":"apply_patch","input":"old patch"},
+			{"type":"custom_tool_call_output","id":"ctco_prev","call_id":"call_prev","output":"applied"}
+		],
+		"tools":[
+			{"type":"custom","name":"apply_patch","description":"Apply a patch"}
+		]
+	}`)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", reqBody)
+
+	result, err := svc.ForwardAsResponses(context.Background(), c, account, reqBody, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requestBodies, 1)
+
+	upstreamReq := upstream.requestBodies[0]
+	contents := gjson.GetBytes(upstreamReq, "request.contents").Array()
+	require.NotEmpty(t, contents)
+	// History ending with custom_tool_call_output must end with a user turn (functionResponse), not model.
+	require.Equal(t, "user", contents[len(contents)-1].Get("role").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(upstreamReq, "request.tools.0.functionDeclarations.0.name").String())
+
+	// Streamed response must restore the custom tool call back to custom_tool_call.
+	require.Contains(t, recorder.Body.String(), `"type":"custom_tool_call"`)
+	require.Contains(t, recorder.Body.String(), `"input":"*** Begin Patch\n*** End Patch"`)
+}
+
+func TestAntigravityCompatResponsesRemoteCompactionV2AndRestore(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	summarySSE := `data: {"response":{"responseId":"resp_compact","candidates":[{"content":{"role":"model","parts":[{"text":"Progress: fixed bug A. Next: verify B."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":25,"totalTokenCount":145}}}` + "\n\n"
+	followUpSSE := `data: {"response":{"responseId":"resp_next","candidates":[{"content":{"role":"model","parts":[{"text":"Resumed from checkpoint."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":40,"candidatesTokenCount":10,"totalTokenCount":50}}}` + "\n\n"
+
+	upstream := &queuedHTTPUpstreamStub{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(summarySSE)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(followUpSSE)),
+			},
+		},
+	}
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+	account := newAntigravityCompatAccount(AccountTypeOAuth)
+	account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+
+	compactBody := []byte(`{
+		"model":"gemini-4-argon-medium",
+		"stream":true,
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix bug A"}]},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I fixed bug A."}]},
+			{"type":"compaction_trigger"}
+		],
+		"tools":[
+			{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{}}}
+		]
+	}`)
+	userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	c1, rec1 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", compactBody)
+
+	res1, err := svc.ForwardAsResponses(userCtx, c1, account, compactBody, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res1)
+	require.True(t, res1.NativeCompactionV2)
+	require.Len(t, upstream.requestBodies, 1)
+
+	// 1. Upstream request must NOT end with a model turn and must not include tools.
+	firstUpstreamReq := upstream.requestBodies[0]
+	contents := gjson.GetBytes(firstUpstreamReq, "request.contents").Array()
+	require.Len(t, contents, 3)
+	require.Equal(t, "user", contents[len(contents)-1].Get("role").String())
+	require.Contains(t, contents[len(contents)-1].Get("parts.0.text").String(), "CONTEXT CHECKPOINT COMPACTION")
+	require.False(t, gjson.GetBytes(firstUpstreamReq, "request.tools").Exists())
+
+	// 2. Client SSE must contain exactly one compaction output item and response.completed.
+	sseOut := rec1.Body.String()
+	require.Contains(t, sseOut, "event: response.output_item.done")
+	require.Contains(t, sseOut, "event: response.completed")
+	var encryptedContent string
+	for _, line := range strings.Split(sseOut, "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if gjson.Get(payload, "type").String() == "response.completed" {
+			outputs := gjson.Get(payload, "response.output").Array()
+			require.Len(t, outputs, 1)
+			require.Equal(t, "compaction", outputs[0].Get("type").String())
+			encryptedContent = outputs[0].Get("encrypted_content").String()
+		}
+	}
+	require.NotEmpty(t, encryptedContent)
+
+	// 3. Follow-up turn carrying the compaction item must restore it as a user checkpoint message.
+	followUpBody, err := json.Marshal(map[string]any{
+		"model":  "gemini-4-argon-medium",
+		"stream": false,
+		"input": []any{
+			map[string]any{
+				"type":              "compaction",
+				"encrypted_content": encryptedContent,
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Continue with B"},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	c2, rec2 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", followUpBody)
+
+	res2, err := svc.ForwardAsResponses(userCtx, c2, account, followUpBody, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.Len(t, upstream.requestBodies, 2)
+
+	secondUpstreamReq := upstream.requestBodies[1]
+	require.Contains(t, gjson.GetBytes(secondUpstreamReq, "request.contents.0.parts.0.text").String(), "<compacted-summary>Progress: fixed bug A. Next: verify B.</compacted-summary>")
+}
+
+func TestAntigravityCompatResponsesEndsWithUserTurnAndRejectsInvalidCompactEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("trailing assistant turn is padded with user Continue turn", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+
+		body := []byte(`{
+			"model":"gemini-4-argon-medium",
+			"input":[
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"start"}]},
+				{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial answer"}]}
+			]
+		}`)
+		c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+		res, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Len(t, upstream.requestBodies, 1)
+		contents := gjson.GetBytes(upstream.requestBodies[0], "request.contents").Array()
+		require.Equal(t, "user", contents[len(contents)-1].Get("role").String())
+		require.Equal(t, "Continue.", contents[len(contents)-1].Get("parts.0.text").String())
+	})
+
+	t.Run("invalid gateway compact envelope returns 400", func(t *testing.T) {
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		body := []byte(`{
+			"model":"gemini-3.1-pro-high",
+			"input":[
+				{"type":"compaction","encrypted_content":"sub2api.deepseek.compact.v1.invalid_ciphertext"},
+				{"type":"message","role":"user","content":"hi"}
+			]
+		}`)
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+		res, err := svc.ForwardAsResponses(userCtx, c, account, body, nil)
+		require.Error(t, err)
+		require.Nil(t, res)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("rejects previous_response_id and duplicate compaction_trigger on compact", func(t *testing.T) {
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+
+		for _, payload := range []string{
+			`{"model":"gemini-3.1-pro-high","previous_response_id":"resp_old","input":[{"type":"message","role":"user","content":"hi"},{"type":"compaction_trigger"}]}`,
+			`{"model":"gemini-3.1-pro-high","input":[{"type":"message","role":"user","content":"hi"},{"type":"compaction_trigger"},{"type":"compaction_trigger"}]}`,
+		} {
+			c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses", []byte(payload))
+			res, err := svc.ForwardAsResponses(userCtx, c, account, []byte(payload), nil)
+			require.Error(t, err)
+			require.Nil(t, res)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+		}
+	})
+
+	t.Run("standalone /v1/responses/compact returns unary JSON even when stream is true", func(t *testing.T) {
+		summarySSE := `data: {"response":{"responseId":"resp_compact_unary","candidates":[{"content":{"role":"model","parts":[{"text":"Unary compact summary."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":8,"totalTokenCount":38}}}` + "\n\n"
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(summarySSE)),
+		}}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+		body := []byte(`{"model":"gemini-3.1-pro-high","stream":true,"input":"Summarize this"}`)
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses/compact", body)
+
+		res, err := svc.ForwardAsResponses(userCtx, c, account, body, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.False(t, res.NativeCompactionV2)
+		require.Equal(t, "compaction", gjson.GetBytes(rec.Body.Bytes(), "output.0.type").String())
+	})
 }

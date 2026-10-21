@@ -3881,3 +3881,16 @@ func TestGPT61SolAPIKeyCatalogContextWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCodexModelsManifestDefaultGeminiContextWindow(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{"gemini-4-argon-medium", "gemini-3.8-flash-high"})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 2)
+	for _, model := range models {
+		require.EqualValues(t, 1_048_576, model["context_window"], "slug=%v", model["slug"])
+		require.EqualValues(t, 1_048_576, model["max_context_window"], "slug=%v", model["slug"])
+	}
+}

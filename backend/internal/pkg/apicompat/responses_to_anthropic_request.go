@@ -217,10 +217,14 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			if item.Arguments != "" {
 				input = json.RawMessage(item.Arguments)
 			}
+			name := item.Name
+			if strings.TrimSpace(item.Namespace) != "" {
+				name = flattenNamespaceToolName(item.Namespace, name)
+			}
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
 				ID:    fromResponsesCallIDToAnthropic(item.CallID),
-				Name:  item.Name,
+				Name:  name,
 				Input: input,
 			}
 			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
@@ -229,8 +233,41 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
+		case item.Type == "custom_tool_call":
+			name := item.Name
+			if strings.TrimSpace(item.Namespace) != "" {
+				name = flattenNamespaceToolName(item.Namespace, name)
+			}
+			block := AnthropicContentBlock{
+				Type:  "tool_use",
+				ID:    fromResponsesCallIDToAnthropic(item.CallID),
+				Name:  name,
+				Input: json.RawMessage(customToolCallArguments(item.Input)),
+			}
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
+			messages = append(messages, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
+
+		case item.Type == "tool_search_call":
+			block := AnthropicContentBlock{
+				Type:  "tool_use",
+				ID:    fromResponsesCallIDToAnthropic(item.CallID),
+				Name:  toolSearchProxyName,
+				Input: json.RawMessage(rawObjectString(item.Arguments)),
+			}
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
+			messages = append(messages, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
+
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output" || item.Type == "tool_search_output":
+			// *_call_output → user message with tool_result block
+			if item.Type == "tool_search_output" && item.Output == "" && len(item.outputRaw) == 0 && len(item.Tools) > 0 {
+				item.Output = string(item.Tools)
+			}
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
@@ -241,6 +278,17 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			messages = append(messages, AnthropicMessage{
 				Role:    "user",
 				Content: blockJSON,
+			})
+
+		case item.Type == "agent_message":
+			text := strings.TrimSpace(agentMessageText(item.Content))
+			if text == "" {
+				continue
+			}
+			contentJSON, _ := json.Marshal(text)
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: contentJSON,
 			})
 
 		case item.Type == "reasoning":

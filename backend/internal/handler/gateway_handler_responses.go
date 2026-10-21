@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -35,6 +36,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		h.responsesErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
+	}
+	if subject.UserID > 0 && c.Request != nil {
+		if id, ok := c.Request.Context().Value(ctxkey.UserID).(int64); !ok || id <= 0 {
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.UserID, subject.UserID))
+		}
 	}
 	reqLog := requestLogger(
 		c,
@@ -84,6 +90,22 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.responsesErrorResponse) {
 		return
+	}
+	if h.gatewayService != nil {
+		restoredBody, changed, restoreErr := h.gatewayService.RestoreGatewayCompactInput(c.Request.Context(), body)
+		if restoreErr != nil {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "invalid compact encrypted_content")
+			return
+		}
+		if changed {
+			body = restoredBody
+		}
+	}
+	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
+		body = normalizedBody
+	}
+	if normalizedBody, changed := normalizeCodexDelegationBootstrap(body); changed {
+		body = normalizedBody
 	}
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
