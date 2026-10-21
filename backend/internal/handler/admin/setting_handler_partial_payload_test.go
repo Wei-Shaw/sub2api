@@ -53,6 +53,124 @@ func TestUpdateSettingsFullPayloadStillClearsSentEmptyFields(t *testing.T) {
 		"an explicitly sent empty value is a deliberate clear, not an omission")
 }
 
+func TestUpdateSettingsChannelMonitorDingTalkStoresSecretsWithoutEchoingThem(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	webhook := "https://oapi.dingtalk.com/robot/send?access_token=sensitive-token"
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled": true,
+		"channel_monitor_dingtalk_webhook": webhook,
+		"channel_monitor_dingtalk_secret":  "SEC-sensitive-secret",
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, webhook, repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+	require.Equal(t, "SEC-sensitive-secret", repo.values[service.SettingKeyChannelMonitorDingTalkSecret])
+	require.NotContains(t, rec.Body.String(), "sensitive-token")
+	require.NotContains(t, rec.Body.String(), "SEC-sensitive-secret")
+	require.Contains(t, rec.Body.String(), `"channel_monitor_dingtalk_webhook_configured":true`)
+	require.Contains(t, rec.Body.String(), `"channel_monitor_dingtalk_secret_configured":true`)
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkKeepsStoredSecretsWhenInputsAreEmpty(t *testing.T) {
+	webhook := "https://oapi.dingtalk.com/robot/send?access_token=stored-token"
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyChannelMonitorDingTalkEnabled: "true",
+		service.SettingKeyChannelMonitorDingTalkWebhook: webhook,
+		service.SettingKeyChannelMonitorDingTalkSecret:  "SEC-stored-secret",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled": true,
+		"channel_monitor_dingtalk_webhook": "",
+		"channel_monitor_dingtalk_secret":  "",
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, webhook, repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+	require.Equal(t, "SEC-stored-secret", repo.values[service.SettingKeyChannelMonitorDingTalkSecret])
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkRejectsUnsafeWebhook(t *testing.T) {
+	h, _ := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled": true,
+		"channel_monitor_dingtalk_webhook": "https://example.com/robot/send?access_token=x",
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "oapi.dingtalk.com")
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkRequiresWebhookOnlyWhenEnabled(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled": true,
+	}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "webhook is required")
+
+	rec = doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled": false,
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyChannelMonitorDingTalkEnabled])
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkClearsStoredCredentialsWhenDisabled(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyChannelMonitorDingTalkEnabled: "true",
+		service.SettingKeyChannelMonitorDingTalkWebhook: "https://oapi.dingtalk.com/robot/send?access_token=stored-token",
+		service.SettingKeyChannelMonitorDingTalkSecret:  "SEC-stored-secret",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled":       false,
+		"channel_monitor_dingtalk_webhook_clear": true,
+		"channel_monitor_dingtalk_secret_clear":  true,
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "", repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+	require.Equal(t, "", repo.values[service.SettingKeyChannelMonitorDingTalkSecret])
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkRejectsClearingWebhookWhileEnabled(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyChannelMonitorDingTalkEnabled: "true",
+		service.SettingKeyChannelMonitorDingTalkWebhook: "https://oapi.dingtalk.com/robot/send?access_token=stored-token",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled":       true,
+		"channel_monitor_dingtalk_webhook_clear": true,
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "webhook is required")
+	require.NotEqual(t, "", repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+}
+
+func TestUpdateSettingsChannelMonitorDingTalkClearsOptionalSecretWhileEnabled(t *testing.T) {
+	webhook := "https://oapi.dingtalk.com/robot/send?access_token=stored-token"
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyChannelMonitorDingTalkEnabled: "true",
+		service.SettingKeyChannelMonitorDingTalkWebhook: webhook,
+		service.SettingKeyChannelMonitorDingTalkSecret:  "SEC-stored-secret",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"channel_monitor_dingtalk_enabled":      true,
+		"channel_monitor_dingtalk_secret_clear": true,
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, webhook, repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+	require.Equal(t, "", repo.values[service.SettingKeyChannelMonitorDingTalkSecret])
+}
+
 // smtp_from_email is the one request field whose JSON name differs from its
 // setting key; the alias keeps it from being treated as always-omitted.
 func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
