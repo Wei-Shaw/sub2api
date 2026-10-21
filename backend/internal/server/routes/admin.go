@@ -681,6 +681,10 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	subscriptions := admin.Group("/subscriptions")
 	{
 		subscriptions.GET("", h.Admin.Subscription.List)
+		// 全站一键重置（按范围分批执行；静态路由置于 /:id 之前）
+		subscriptions.GET("/reset-all-quota/preview", h.Admin.Subscription.ResetAllQuotaPreview)
+		subscriptions.POST("/reset-all-quota", h.Admin.Subscription.ResetAllQuota)
+		subscriptions.POST("/reset-all-quota/retry", h.Admin.Subscription.ResetAllQuotaRetry)
 		subscriptions.GET("/:id", h.Admin.Subscription.GetByID)
 		subscriptions.GET("/:id/progress", h.Admin.Subscription.GetProgress)
 		subscriptions.POST("/assign", h.Admin.Subscription.Assign)

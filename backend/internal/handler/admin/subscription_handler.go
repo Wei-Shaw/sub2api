@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -348,6 +349,88 @@ func (h *SubscriptionHandler) ListByUser(c *gin.Context) {
 		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 	}
 	response.Success(c, out)
+}
+
+// ResetAllQuotaRequest 全站一键重置入参：窗口勾选 + 可选批大小。
+type ResetAllQuotaRequest struct {
+	Daily   bool `json:"daily"`
+	Weekly  bool `json:"weekly"`
+	Monthly bool `json:"monthly"`
+	// Limit 每批处理条数（默认与上限均为 MaxBulkSubscriptionActions）。
+	Limit int `json:"limit"`
+}
+
+// ResetAllQuotaPreview 只读预估：按勾选窗口口径统计将受影响的订阅数。
+// GET /api/v1/admin/subscriptions/reset-all-quota/preview?daily=true&weekly=true&monthly=true
+func (h *SubscriptionHandler) ResetAllQuotaPreview(c *gin.Context) {
+	daily := queryBool(c, "daily")
+	weekly := queryBool(c, "weekly")
+	monthly := queryBool(c, "monthly")
+	if !daily && !weekly && !monthly {
+		response.BadRequest(c, "At least one of 'daily', 'weekly', or 'monthly' must be true")
+		return
+	}
+	matched, err := h.subscriptionService.ResetAllQuotaPreview(c.Request.Context(), daily, weekly, monthly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"matched": matched})
+}
+
+// ResetAllQuota 按范围分批执行一键重置（每批 ≤ MaxBulkSubscriptionActions，
+// 调用方循环至 remaining=0）。
+// POST /api/v1/admin/subscriptions/reset-all-quota
+func (h *SubscriptionHandler) ResetAllQuota(c *gin.Context) {
+	var req ResetAllQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if !req.Daily && !req.Weekly && !req.Monthly {
+		response.BadRequest(c, "At least one of 'daily', 'weekly', or 'monthly' must be true")
+		return
+	}
+	result, err := h.subscriptionService.ResetAllQuotaBatch(c.Request.Context(), req.Daily, req.Weekly, req.Monthly, req.Limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ResetAllQuotaRetry 重试失败项（显式 ID 集合）。
+// POST /api/v1/admin/subscriptions/reset-all-quota/retry
+func (h *SubscriptionHandler) ResetAllQuotaRetry(c *gin.Context) {
+	var req struct {
+		SubscriptionIDs []int64 `json:"subscription_ids"`
+		Daily           bool    `json:"daily"`
+		Weekly          bool    `json:"weekly"`
+		Monthly         bool    `json:"monthly"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if !req.Daily && !req.Weekly && !req.Monthly {
+		response.BadRequest(c, "At least one of 'daily', 'weekly', or 'monthly' must be true")
+		return
+	}
+	result, err := h.subscriptionService.ResetAllQuotaBatchByIDs(c.Request.Context(), req.SubscriptionIDs, req.Daily, req.Weekly, req.Monthly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// queryBool 解析布尔型 query 参数，缺省或非法值一律为 false。
+func queryBool(c *gin.Context, key string) bool {
+	value, err := strconv.ParseBool(strings.TrimSpace(c.Query(key)))
+	if err != nil {
+		return false
+	}
+	return value
 }
 
 // Helper function to get admin ID from context
