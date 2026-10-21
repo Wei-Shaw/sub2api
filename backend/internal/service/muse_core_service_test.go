@@ -344,6 +344,7 @@ func TestMuseSchedulerFiltersObservedModelsAndMappedAliases(t *testing.T) {
 	g, _, _, store, _, a, key := newMuseCoreFixture()
 	a.Schedulable = true
 	store.observation.Capabilities.Models = []string{"muse/basic"}
+	require.False(t, supportsOpenAIRequestModel(a, "muse/basic", false), "unhydrated Muse accounts must not bypass profile verification")
 	ctx := context.WithValue(context.Background(), ctxkey.UserID, key.UserID)
 	candidates := g.filterMuseAccounts(ctx, []Account{*a})
 	require.Len(t, candidates, 1)
@@ -353,6 +354,8 @@ func TestMuseSchedulerFiltersObservedModelsAndMappedAliases(t *testing.T) {
 	candidates = g.filterMuseAccounts(ctx, []Account{*a})
 	require.True(t, candidates[0].IsModelSupported("client-basic"))
 	require.False(t, candidates[0].IsModelSupported("muse/premium"))
+	require.True(t, supportsOpenAIRequestModel(&candidates[0], "client-basic", false))
+	require.False(t, supportsOpenAIRequestModel(&candidates[0], "muse/premium", false))
 }
 
 type museProfileSetFixture struct {
