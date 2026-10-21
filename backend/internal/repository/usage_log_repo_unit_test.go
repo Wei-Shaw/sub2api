@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUsageLogInsertValuePlaceholdersMatchArgTypes(t *testing.T) {
+	placeholders := strings.Split(usageLogInsertValuePlaceholders(), ", ")
+	require.Len(t, placeholders, len(usageLogInsertArgTypes))
+	require.Equal(t, "$1", placeholders[0])
+	require.Equal(t, "$"+strconv.Itoa(len(usageLogInsertArgTypes)), placeholders[len(placeholders)-1])
+}
 
 func TestSafeDateFormat(t *testing.T) {
 	tests := []struct {
