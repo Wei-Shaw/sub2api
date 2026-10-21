@@ -38,6 +38,8 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			}
 		} else if account.Type == AccountTypeAPIKey {
 			validationModel = account.GetMappedModel(validationModel)
+		} else if account.IsAnthropicOAuthOrSetupToken() {
+			validationModel = claude.NormalizeModelID(account.GetMappedModel(validationModel))
 		}
 	}
 	if account != nil && account.Platform == PlatformAnthropic {
@@ -75,6 +77,16 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 	reqModel := parsed.Model
+
+	// Reuse the validated target so normalization cannot trigger a second mapping.
+	if account.IsAnthropicOAuthOrSetupToken() && reqModel != validationModel {
+		if err := replaceBody(s.replaceModelInBody(body, validationModel)); err != nil {
+			return err
+		}
+		logger.LegacyPrintf("service.gateway", "CountTokens OAuth model mapping applied: %s -> %s (account: %s)", reqModel, validationModel, account.Name)
+		reqModel = validationModel
+		parsed.Model = validationModel
+	}
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
@@ -114,7 +126,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
-	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）
+	// - OAuth/SetupToken 账号：账号映射已在校验前应用，此处仅保留标准 ID 归一化
 	if reqModel != "" {
 		mappedModel := reqModel
 		mappingSource := ""

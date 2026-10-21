@@ -37,6 +37,16 @@ func (s *GatewayService) ForwardAsResponses(
 ) (*ForwardResult, error) {
 	startTime := time.Now()
 
+	// Legacy messages payloads run through Chat Completions conversion, whose
+	// validation must see the OAuth target rather than a public model alias.
+	originalOAuthModel := gjson.GetBytes(body, "model").String()
+	if account.IsAnthropicOAuthOrSetupToken() && gjson.ValidBytes(body) {
+		target := claude.NormalizeModelID(account.GetMappedModel(originalOAuthModel))
+		if target != originalOAuthModel {
+			body = s.replaceModelInBody(body, target)
+		}
+	}
+
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 	if err != nil {
 		return nil, err
@@ -62,6 +72,10 @@ func (s *GatewayService) ForwardAsResponses(
 	// 3. Convert Responses → Anthropic
 	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
+	if account.IsAnthropicOAuthOrSetupToken() {
+		// Already resolved above; do not chain mappings. Billing retains the client ID.
+		originalModel = originalOAuthModel
+	}
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
@@ -70,11 +84,8 @@ func (s *GatewayService) ForwardAsResponses(
 		if normalized != originalModel {
 			mappedModel = normalized
 		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		normalized := claude.NormalizeModelID(originalModel)
-		if normalized != originalModel {
-			mappedModel = normalized
-		}
+	} else if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && account.Type != AccountTypeServiceAccount {
+		mappedModel = claude.NormalizeModelID(mappedModel)
 	}
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

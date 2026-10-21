@@ -9,6 +9,8 @@ import {
 
 const {
   createAccountMock,
+  exchangeCodeMock,
+  generateAuthUrlMock,
   probeUpstreamBillingMock,
   syncUpstreamModelsMock,
   showWarningMock,
@@ -17,6 +19,8 @@ const {
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
+  exchangeCodeMock: vi.fn(),
+  generateAuthUrlMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
   showWarningMock: vi.fn(),
@@ -45,6 +49,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       create: createAccountMock,
+      exchangeCode: exchangeCodeMock,
+      generateAuthUrl: generateAuthUrlMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
       syncUpstreamModels: syncUpstreamModelsMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
@@ -90,8 +96,8 @@ const OAuthAuthorizationFlowStub = defineComponent({
     showCodexPatOption: Boolean,
     initialInputMethod: String,
   },
-  data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  data: () => ({ inputMethod: 'manual', authCode: 'fixture-auth-code' }),
+  emits: ['import-codex-session', 'import-codex-pat', 'generate-url', 'cookie-auth'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
@@ -138,9 +144,9 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = []) {
+function mountModal(groups: any[] = [], show = true) {
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups },
+    props: { show, proxies: [], groups },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -1040,4 +1046,71 @@ describe('CreateAccountModal Vertex API key auth', () => {
     expect(wrapper.find('[data-testid="vertex-auth-mode-apikey"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vertex-api-key-input"]').exists()).toBe(false)
   })
+})
+
+
+describe('CreateAccountModal Anthropic model restrictions', () => {
+  beforeEach(() => {
+    createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'anthropic', type: 'oauth' })
+    generateAuthUrlMock.mockReset().mockResolvedValue({ auth_url: 'https://example.com/oauth', session_id: 'session-fixture' })
+    exchangeCodeMock.mockReset().mockResolvedValue({ access_token: 'fixture-token', refresh_token: 'fixture-refresh' })
+  })
+
+  it('keeps reopened and platform-switched Anthropic subscriptions unrestricted by default', async () => {
+    const wrapper = mountModal([], false)
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual([])
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'Anthropic')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual([])
+    await selectButtonByText(wrapper, 'admin.accounts.modelMapping')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual([])
+    wrapper.unmount()
+  })
+
+  for (const type of ['oauth', 'setup-token']) {
+    for (const flow of ['code', 'cookie']) {
+      it.each(['none', 'whitelist', 'mapping'])(`${type} ${flow} saves %s restrictions`, async (mode) => {
+        const wrapper = mountModal([], false)
+        await wrapper.setProps({ show: true })
+        await wrapper.get(`input[type="radio"][value="${type}"]`).setValue(true)
+        await wrapper.get('form#create-account-form input[type="text"]').setValue('Claude account')
+        expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+        const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+        expect(selector.props('platform')).toBe('anthropic')
+        expect(selector.props('modelValue')).toEqual([])
+        let expected: Record<string, string> | undefined
+        if (mode === 'whitelist') {
+          selector.vm.$emit('update:modelValue', ['claude-sonnet-4-6'])
+          expected = { 'claude-sonnet-4-6': 'claude-sonnet-4-6' }
+        } else if (mode === 'mapping') {
+          await selectButtonByText(wrapper, 'admin.accounts.modelMapping')
+          await selectButtonByText(wrapper, 'admin.accounts.addMapping')
+          await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('public-claude')
+          await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('claude-opus-4-7')
+          expected = { 'public-claude': 'claude-opus-4-7' }
+        }
+        await wrapper.get('form#create-account-form').trigger('submit.prevent')
+        await flushPromises()
+        const auth = wrapper.getComponent(OAuthAuthorizationFlowStub)
+        if (flow === 'code') {
+          auth.vm.$emit('generate-url')
+          await flushPromises()
+          await selectButtonByText(wrapper, 'admin.accounts.oauth.completeAuth')
+        } else {
+          auth.vm.$emit('cookie-auth', 'cookie-one\ncookie-two')
+        }
+        await flushPromises()
+        expect(createAccountMock).toHaveBeenCalledTimes(flow === 'cookie' ? 2 : 1)
+        for (const [payload] of createAccountMock.mock.calls) {
+          expect(payload).toMatchObject({ platform: 'anthropic', type })
+          expect(payload.credentials.access_token).toBe('fixture-token')
+          expect(payload.credentials.model_mapping).toEqual(expected)
+        }
+        wrapper.unmount()
+      })
+    }
+  }
 })
