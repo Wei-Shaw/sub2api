@@ -925,10 +925,15 @@ func (a *Account) GetBaseURL() string {
 		return ""
 	}
 	baseURL := a.GetCredential("base_url")
-	if baseURL == "" {
-		if a.Platform == PlatformMiniMax {
-			return "https://api.minimax.io/anthropic"
+	if a.IsMiniMax() {
+		switch strings.TrimRight(strings.TrimSpace(baseURL), "/") {
+		case "", minimax.DefaultOpenAIBaseURL:
+			return minimax.DefaultAnthropicBaseURL
+		case minimax.CNOpenAIBaseURL:
+			return minimax.CNAnthropicBaseURL
 		}
+	}
+	if baseURL == "" {
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {

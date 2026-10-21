@@ -5,7 +5,7 @@ const (
 	DefaultOpenAIBaseURL    = "https://api.minimax.io/v1"
 	CNAnthropicBaseURL      = "https://api.minimaxi.com/anthropic"
 	CNOpenAIBaseURL         = "https://api.minimaxi.com/v1"
-	DefaultTestModel        = "MiniMax-M3"
+	DefaultTestModel        = "MiniMax-M3.1-Flash"
 )
 
 type Model struct {
@@ -19,20 +19,20 @@ type Model struct {
 
 var DefaultModels = []Model{
 	{
+		ID:            DefaultTestModel,
+		Object:        "model",
+		DisplayName:   "MiniMax M3.1 Flash",
+		ContextWindow: 1000000,
+		Modalities:    []string{"text", "image", "video"},
+		Thinking:      []string{"adaptive"},
+	},
+	{
 		ID:            "MiniMax-M3",
 		Object:        "model",
 		DisplayName:   "MiniMax M3",
 		ContextWindow: 1000000,
 		Modalities:    []string{"text", "image", "video"},
 		Thinking:      []string{"adaptive", "disabled"},
-	},
-	{
-		ID:            "MiniMax-M2.7",
-		Object:        "model",
-		DisplayName:   "MiniMax M2.7",
-		ContextWindow: 204800,
-		Modalities:    []string{"text"},
-		Thinking:      []string{"always_on"},
 	},
 }
 

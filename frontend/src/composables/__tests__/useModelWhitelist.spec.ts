@@ -102,7 +102,17 @@ describe('useModelWhitelist', () => {
   })
 
   it('minimax model list contains current text models', () => {
-    expect(getModelsByPlatform('minimax')).toEqual(['MiniMax-M3', 'MiniMax-M2.7'])
+    expect(getModelsByPlatform('minimax')).toEqual(['MiniMax-M3.1-Flash', 'MiniMax-M3'])
+  })
+
+  it('preserves saved legacy and custom MiniMax mappings outside the curated catalog', () => {
+    const saved = {
+      'MiniMax-M2.7': 'MiniMax-M2.7',
+      'my-model': 'my-private-minimax',
+      'gpt-5.4': 'gpt-5.4'
+    }
+    const { allowedModels, modelMappings } = splitModelMappingObject(saved)
+    expect(buildModelMappingObject('combined', allowedModels, modelMappings)).toEqual(saved)
   })
 
   it('whitelist 模式会忽略通配符条目', () => {
