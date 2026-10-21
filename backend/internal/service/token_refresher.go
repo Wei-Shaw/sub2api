@@ -48,11 +48,18 @@ func (r *ClaudeTokenRefresher) CanRefresh(account *Account) bool {
 }
 
 // NeedsRefresh 检查token是否需要刷新
-// 基于 expires_at 字段判断是否在刷新窗口内
+// 基于 expires_at 字段判断是否在刷新窗口内。
+// expires_at 缺失或无法解析时，说明过期时间未知，此时应当刷新一次以建立已知状态：
+// 若继续沿用旧 access_token，它会在到期后静默失效，请求只能拿到上游 401。
+// 与 GrokTokenRefresher / OpenAITokenRefresher 的处理保持一致：
+// 没有 refresh_token 就无从刷新，直接跳过。
 func (r *ClaudeTokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
+	if account == nil || strings.TrimSpace(account.GetCredential("refresh_token")) == "" {
+		return false
+	}
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
-		return false
+		return true
 	}
 	return time.Until(*expiresAt) < refreshWindow
 }
