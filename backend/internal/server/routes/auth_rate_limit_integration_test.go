@@ -20,14 +20,14 @@ import (
 
 const authRouteRedisImageTag = "redis:8.4-alpine"
 
-func TestAuthRegisterRateLimitThresholdHitReturns429(t *testing.T) {
+func TestAuthLogin2FARateLimitThresholdHitReturns429(t *testing.T) {
 	ctx := context.Background()
 	rdb := startAuthRouteRedis(t, ctx)
 
 	router := newAuthRoutesTestRouter(rdb)
-	const path = "/api/v1/auth/register"
+	const path = "/api/v1/auth/login/2fa"
 
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 21; i++ {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = "198.51.100.10:23456"
@@ -35,11 +35,11 @@ func TestAuthRegisterRateLimitThresholdHitReturns429(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		if i <= 5 {
+		if i <= 20 {
 			require.Equal(t, http.StatusBadRequest, w.Code, "第 %d 次请求应先进入业务校验", i)
 			continue
 		}
-		require.Equal(t, http.StatusTooManyRequests, w.Code, "第 6 次请求应命中限流")
+		require.Equal(t, http.StatusTooManyRequests, w.Code, "第 21 次请求应命中限流")
 		require.Contains(t, w.Body.String(), "rate limit exceeded")
 	}
 }

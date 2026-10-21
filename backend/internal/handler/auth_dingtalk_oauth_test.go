@@ -94,47 +94,6 @@ func TestCheckDingTalkCorpAllowed_InternalOnly(t *testing.T) {
 	assert.True(t, checkDingTalkCorpAllowed(cfgNoCorpID, ""), "internal_only + no InternalCorpID: 空 corpID 也通过")
 }
 
-// TestDecideDingTalkStep34Strategy_PolicyNone 验证 policy=none 时
-// Step 3/4 失败应降级（shouldFallback=true, isFatal=false）。
-func TestDecideDingTalkStep34Strategy_PolicyNone(t *testing.T) {
-	step3Err := &DingTalkAPIError{Code: "60011", Message: "not in directory", HTTP: 403}
-
-	shouldFallback, isFatal := decideDingTalkStep34Strategy("none", step3Err)
-
-	require.True(t, shouldFallback, "policy=none: step3 failure should trigger fallback")
-	require.False(t, isFatal, "policy=none: step3 failure should NOT be fatal")
-}
-
-// TestDecideDingTalkStep34Strategy_PolicyNoneEmpty 验证 policy="" 时行为与 "none" 相同。
-func TestDecideDingTalkStep34Strategy_PolicyNoneEmpty(t *testing.T) {
-	stepErr := &DingTalkAPIError{Code: "60011", Message: "not in directory", HTTP: 403}
-
-	shouldFallback, isFatal := decideDingTalkStep34Strategy("", stepErr)
-
-	require.True(t, shouldFallback, "policy='': step failure should trigger fallback")
-	require.False(t, isFatal, "policy='': step failure should NOT be fatal")
-}
-
-// TestDecideDingTalkStep34Strategy_PolicyInternalOnly 验证 policy=internal_only 时
-// Step 3/4 失败应 hard fail（isFatal=true）。
-func TestDecideDingTalkStep34Strategy_PolicyInternalOnly(t *testing.T) {
-	step3Err := &DingTalkAPIError{Code: "60011", Message: "not in directory", HTTP: 403}
-
-	shouldFallback, isFatal := decideDingTalkStep34Strategy("internal_only", step3Err)
-
-	require.False(t, shouldFallback, "policy=internal_only: should NOT fallback on step3 error")
-	require.True(t, isFatal, "policy=internal_only: step3 failure should be fatal")
-}
-
-// TestDecideDingTalkStep34Strategy_NoError 验证 stepErr=nil 时两个返回值均为 false。
-func TestDecideDingTalkStep34Strategy_NoError(t *testing.T) {
-	for _, policy := range []string{"none", "internal_only", ""} {
-		shouldFallback, isFatal := decideDingTalkStep34Strategy(policy, nil)
-		require.False(t, shouldFallback, "no error should not trigger fallback (policy=%q)", policy)
-		require.False(t, isFatal, "no error should not be fatal (policy=%q)", policy)
-	}
-}
-
 // TestCompleteDingTalkRegistration_UsernameFromEmailLocalPart 验证 username 为空时
 // 退到 email local part（@ 之前的部分）。
 // E: CompleteDingTalkOAuthRegistration username fallback。

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -31,13 +32,13 @@ func RegisterAuthRoutes(
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
 	{
-		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
-		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Register)
-		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Login)
+		// Retired email/password endpoints stay explicit so old clients receive
+		// a clear error instead of falling through to the legacy handlers.
+		for _, path := range []string{"/login", "/register", "/send-verify-code", "/forgot-password", "/reset-password"} {
+			auth.POST(path, func(c *gin.Context) {
+				response.Forbidden(c, "邮箱登录已停用，请使用钉钉登录")
+			})
+		}
 		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login2FA)
@@ -47,9 +48,6 @@ func RegisterAuthRoutes(
 		auth.POST("/passkey/login/finish", rateLimiter.LimitWithOptions("passkey-login-finish", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Passkey.FinishLogin)
-		auth.POST("/send-verify-code", rateLimiter.LimitWithOptions("auth-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.SendVerifyCode)
 		// Token刷新接口添加速率限制：每分钟最多 30 次（Redis 故障时 fail-close）
 		auth.POST("/refresh", rateLimiter.LimitWithOptions("refresh-token", 30, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
@@ -64,14 +62,6 @@ func RegisterAuthRoutes(
 		auth.POST("/validate-invitation-code", rateLimiter.LimitWithOptions("validate-invitation", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ValidateInvitationCode)
-		// 忘记密码接口添加速率限制：每分钟最多 5 次（Redis 故障时 fail-close）
-		auth.POST("/forgot-password", rateLimiter.LimitWithOptions("forgot-password", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.ForgotPassword)
-		// 重置密码接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
-		auth.POST("/reset-password", rateLimiter.LimitWithOptions("reset-password", 10, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
 		auth.POST("/oauth/linuxdo/start", rateLimiter.LimitWithOptions("oauth-linuxdo-start", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
@@ -207,6 +197,7 @@ func RegisterAuthRoutes(
 			}),
 			h.Auth.CreateOIDCOAuthAccount,
 		)
+		auth.GET("/oauth/dingtalk/apps", h.DingTalkOrganization.PublicApps)
 		auth.GET("/oauth/dingtalk/start", h.Auth.DingTalkOAuthStart)
 		auth.POST("/oauth/dingtalk/start", rateLimiter.LimitWithOptions("oauth-dingtalk-start", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

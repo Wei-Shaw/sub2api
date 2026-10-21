@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/register',
     name: 'Register',
-    component: () => import('@/views/auth/RegisterView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Register',
@@ -62,7 +62,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/email-verify',
     name: 'EmailVerify',
-    component: () => import('@/views/auth/EmailVerifyView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Verify Email'
@@ -122,7 +122,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/auth/dingtalk/email-completion',
     name: 'dingtalk-email-completion',
-    component: () => import('@/views/auth/DingTalkEmailCompletionView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'DingTalk Email Completion'
@@ -141,7 +141,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/forgot-password',
     name: 'ForgotPassword',
-    component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Forgot Password',
@@ -151,7 +151,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/reset-password',
     name: 'ResetPassword',
-    component: () => import('@/views/auth/ResetPasswordView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Reset Password'
@@ -187,6 +187,31 @@ const routes: RouteRecordRaw[] = [
   },
 
   // ==================== User Routes ====================
+  {
+    path: '/organization/managers',
+    name: 'DingTalkManagers',
+    component: () => import('@/views/user/DingTalkManagersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Project managers', titleKey: 'nav.dingtalkManagers' }
+  },
+  {
+    path: '/organization/quota',
+    name: 'DingTalkQuota',
+    component: () => import('@/views/user/DingTalkOrganizationView.vue'),
+    props: { mode: 'allocation' },
+    meta: { requiresAuth: true, title: 'Organization quota allocation', titleKey: 'nav.organizationQuota' }
+  },
+  {
+    path: '/organization/statistics',
+    name: 'DingTalkStatistics',
+    component: () => import('@/views/user/DingTalkStatisticsView.vue'),
+    meta: { requiresAuth: true, title: 'Organization quota statistics', titleKey: 'nav.organizationStatistics' }
+  },
+  {
+    path: '/organization/dingtalk',
+    name: 'DingTalkOrganization',
+    component: () => import('@/views/user/DingTalkOrganizationView.vue'),
+    meta: { requiresAuth: true, title: 'DingTalk organization' }
+  },
   {
     path: '/',
     redirect: '/home'
@@ -479,6 +504,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/channels/models',
+    name: 'AdminModelManagement',
+    component: () => import('@/views/admin/ModelManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Management',
+      titleKey: 'admin.channels.modelManagementTitle'
+    }
+  },
+  {
     path: '/admin/channels/monitor',
     name: 'AdminChannelMonitor',
     component: () => import('@/views/admin/ChannelMonitorView.vue'),
@@ -633,6 +669,17 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
+    }
+  },
+  {
+    path: '/admin/statistics',
+    name: 'AdminStatistics',
+    component: () => import('@/views/user/DingTalkStatisticsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Statistics',
+      titleKey: 'nav.statistics'
     }
   },
   {

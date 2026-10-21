@@ -396,3 +396,20 @@ func (c *DingTalkClient) GetStaffInfoByUserId(ctx context.Context, userID string
 		DeptIDs:  v.Result.DeptID,
 	}, nil
 }
+
+// GetCurrentStaff requires a live directory lookup. OAuth authorization alone
+// still succeeds for some former employees and is not proof of membership.
+func (c *DingTalkClient) GetCurrentStaff(ctx context.Context, unionID string) (*DingTalkStaffInfo, error) {
+	userID, err := c.GetUserIdByUnionId(ctx, unionID)
+	if err != nil {
+		return nil, err
+	}
+	staff, err := c.GetStaffInfoByUserId(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if staff == nil || strings.TrimSpace(staff.UserID) != strings.TrimSpace(userID) || len(staff.DeptIDs) == 0 {
+		return nil, &DingTalkAPIError{Code: "MEMBERSHIP_REQUIRED", Message: "用户已离职或不在企业通讯录中", HTTP: http.StatusForbidden}
+	}
+	return staff, nil
+}

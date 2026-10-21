@@ -246,6 +246,7 @@ type StartUserIdentityBindingResult struct {
 
 const (
 	userIdentityNoteEmailManagedFromProfile = "profile.authBindings.notes.emailManagedFromProfile"
+	userIdentityNoteOrganizationManaged     = "profile.authBindings.notes.organizationManaged"
 	userIdentityNoteCanUnbind               = "profile.authBindings.notes.canUnbind"
 	userIdentityNoteBindAnotherBeforeUnbind = "profile.authBindings.notes.bindAnotherBeforeUnbind"
 )
@@ -446,7 +447,10 @@ func (s *UserService) UnbindUserAuthProviderWithResult(ctx context.Context, user
 	if len(filterUserAuthIdentities(records, provider)) == 0 {
 		return user, false, nil
 	}
-	if !s.canUnbindProvider(provider, user, records) {
+	if provider == "dingtalk" {
+		return nil, false, infraerrors.Forbidden("DINGTALK_IDENTITY_MANAGED", "企业钉钉身份不可自行解绑，请联系管理员")
+	}
+	if !s.canUnbindProvider(provider, records) {
 		return nil, false, ErrIdentityUnbindLastMethod
 	}
 
@@ -775,8 +779,11 @@ func (s *UserService) buildProviderIdentitySummary(provider string, user *User, 
 	summary.SubjectHint = maskOpaqueIdentity(primary.ProviderSubject)
 	summary.ProviderKey = strings.TrimSpace(primary.ProviderKey)
 	summary.VerifiedAt = primary.VerifiedAt
-	summary.CanUnbind = s.canUnbindProvider(provider, user, records)
-	if summary.CanUnbind {
+	summary.CanUnbind = s.canUnbindProvider(provider, records)
+	if provider == "dingtalk" {
+		summary.NoteKey = userIdentityNoteOrganizationManaged
+		summary.Note = "Your organization manages this sign-in method. Contact your administrator."
+	} else if summary.CanUnbind {
 		summary.NoteKey = userIdentityNoteCanUnbind
 		summary.Note = "You can unbind this sign-in method."
 	} else {
@@ -786,13 +793,9 @@ func (s *UserService) buildProviderIdentitySummary(provider string, user *User, 
 	return summary
 }
 
-func (s *UserService) canUnbindProvider(provider string, user *User, records []UserAuthIdentityRecord) bool {
-	if provider == "" || provider == "email" || len(filterUserAuthIdentities(records, provider)) == 0 {
+func (s *UserService) canUnbindProvider(provider string, records []UserAuthIdentityRecord) bool {
+	if provider == "" || provider == "email" || provider == "dingtalk" || len(filterUserAuthIdentities(records, provider)) == 0 {
 		return false
-	}
-
-	if s.canUseEmailAsSignInMethod(user, records) {
-		return true
 	}
 
 	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk"} {
@@ -805,44 +808,6 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 	}
 
 	return false
-}
-
-func (s *UserService) canUseEmailAsSignInMethod(user *User, records []UserAuthIdentityRecord) bool {
-	if user == nil {
-		return false
-	}
-
-	email := strings.ToLower(strings.TrimSpace(user.Email))
-	if email == "" || isReservedEmail(email) {
-		return false
-	}
-
-	if emailSignupSourceAllowsLogin(user.SignupSource) {
-		return true
-	}
-
-	for _, record := range filterUserAuthIdentities(records, "email") {
-		if emailIdentitySupportsSignIn(record) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func emailSignupSourceAllowsLogin(signupSource string) bool {
-	signupSource = strings.ToLower(strings.TrimSpace(signupSource))
-	return signupSource == "" || signupSource == "email"
-}
-
-func emailIdentitySupportsSignIn(record UserAuthIdentityRecord) bool {
-	source := strings.TrimSpace(firstStringIdentityValue(record.Metadata, "source"))
-	switch source {
-	case "auth_service_email_bind", "auth_service_login_backfill", "auth_service_dual_write":
-		return true
-	default:
-		return false
-	}
 }
 
 func (s *UserService) listUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error) {
@@ -1154,6 +1119,13 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 	if err := s.userRepo.UpdateBalance(ctx, userID, amount); err != nil {
 		return fmt.Errorf("update balance: %w", err)
 	}
+	s.InvalidateBalanceCaches(ctx, userID)
+	return nil
+}
+
+// InvalidateBalanceCaches refreshes gateway state after an external transaction
+// has committed a balance change.
+func (s *UserService) InvalidateBalanceCaches(ctx context.Context, userID int64) {
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
@@ -1171,7 +1143,6 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 			}
 		}()
 	}
-	return nil
 }
 
 // UpdateConcurrency 更新用户并发数（管理员功能）

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -197,6 +198,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
+		SettingKeyDingTalkApps,
 		SettingKeyWeChatConnectEnabled,
 		SettingKeyWeChatConnectAppID,
 		SettingKeyWeChatConnectAppSecret,
@@ -261,6 +263,18 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	} else {
 		dingTalkEnabled = s.cfg != nil && s.cfg.DingTalk.Enabled
 	}
+	if raw := settings[SettingKeyDingTalkApps]; raw != "" {
+		var apps []config.DingTalkAppConfig
+		if json.Unmarshal([]byte(raw), &apps) == nil {
+			for _, app := range apps {
+				dingTalkEnabled = dingTalkEnabled || app.Enabled
+			}
+		}
+	} else if s.cfg != nil {
+		for _, app := range s.cfg.DingTalk.Apps {
+			dingTalkEnabled = dingTalkEnabled || app.Enabled
+		}
+	}
 	oidcEnabled := false
 	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {
 		oidcEnabled = raw == "true"
@@ -280,7 +294,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
-	passwordResetEnabled := emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true"
 	registrationEmailSuffixWhitelist := ParseRegistrationEmailSuffixWhitelist(
 		settings[SettingKeyRegistrationEmailSuffixWhitelist],
 	)
@@ -300,13 +313,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}
 
 	return &PublicSettings{
-		RegistrationEnabled:                 settings[SettingKeyRegistrationEnabled] == "true",
+		RegistrationEnabled:                 false, // Email registration is retired.
 		EmailVerifyEnabled:                  emailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:        settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist:    registrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
 		PromoCodeEnabled:                    settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:                passwordResetEnabled,
+		PasswordResetEnabled:                false,                                           // Email/password login is retired.
 		InvitationCodeEnabled:               settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                         settings[SettingKeyTotpEnabled] == "true",
 		PasskeyEnabled:                      s.passkeyConfigured() && s.passkeySettingEnabled(settings),

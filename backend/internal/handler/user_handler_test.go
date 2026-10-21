@@ -354,7 +354,8 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 
 	linuxdoCompatBinding, ok := identityBindings["linuxdo"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "profile.authBindings.notes.canUnbind", linuxdoCompatBinding["note_key"])
+	require.Equal(t, false, linuxdoCompatBinding["can_unbind"])
+	require.Equal(t, "profile.authBindings.notes.bindAnotherBeforeUnbind", linuxdoCompatBinding["note_key"])
 
 	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
 	require.True(t, ok)
@@ -578,6 +579,7 @@ func TestUserHandlerUnbindIdentityReturnsUpdatedProfile(t *testing.T) {
 			Status:   service.StatusActive,
 		},
 		identities: []service.UserAuthIdentityRecord{
+			{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "staff"},
 			{
 				ProviderType:    "email",
 				ProviderKey:     "email",
@@ -633,6 +635,7 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 			TokenVersion: 4,
 		},
 		identities: []service.UserAuthIdentityRecord{
+			{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "staff"},
 			{
 				ProviderType:    "email",
 				ProviderKey:     "email",

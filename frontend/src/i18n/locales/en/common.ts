@@ -163,11 +163,17 @@ export default {
 
   // Navigation
   nav: {
+    organizationQuota: 'Organization quota allocation',
+    organizationStatistics: 'Organization quota statistics',
+    dingtalkManagers: 'Project managers',
+    dingtalkManagement: 'DingTalk management',
+    dingtalkOrganization: 'DingTalk organization',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     usage: 'Usage',
+    statistics: 'Statistics',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -207,6 +213,7 @@ export default {
     paymentPlans: 'Plans',
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
+    modelManagement: 'Model Management',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
@@ -335,7 +342,7 @@ export default {
       error: {
         title: 'DingTalk Sign-in Failed',
         csrf: 'Login session expired, please scan again',
-        corp_rejected: 'Your DingTalk account is not part of this organization. Please contact administrator',
+        corp_rejected: 'Your DingTalk account is no longer in this organization’s employee directory. Login is not allowed.',
         dingtalk_not_enabled: 'DingTalk login is not enabled',
         upstream_error: 'DingTalk service is temporarily unavailable. Please try again later',
         missing_browser_session: 'Browser session lost. Please login again',
