@@ -41,9 +41,11 @@ const legacyOpenCode = {
 }
 
 const legacyGoRules = [
+  { pattern: 'claude-*', protocol: 'anthropic' },
   { pattern: 'grok-*', protocol: 'responses' },
   { pattern: 'gpt-*', protocol: 'responses' },
   { pattern: 'muse-spark-*', protocol: 'responses' },
+  { pattern: 'minimax-m3.1-flash-free', protocol: 'chat_completions' },
   { pattern: 'minimax-*', protocol: 'anthropic' },
   { pattern: 'qwen*', protocol: 'anthropic' }
 ]
