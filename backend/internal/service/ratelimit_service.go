@@ -403,8 +403,12 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 	// Command Code 用量超限按文案区分、与状态码无关（见 ratelimit_command_code.go）；
 	// 未识别的错误（含普通频率限制）继续走下面的默认逻辑。
+	// 400 亦纳入：上游会把周/5h 窗口耗尽打成 400（"You've reached your weekly usage
+	// limit ... resets at <RFC3339>"），普通参数 400 文案不命中分类、交回默认逻辑，
+	// 不受影响。
 	if account.IsCommandCode() && (statusCode == http.StatusPaymentRequired ||
-		statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests) {
+		statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusBadRequest) {
 		if handled, disable := s.handleCommandCodeUsageError(ctx, account, statusCode, responseBody, upstreamMsg); handled {
 			return disable
 		}
@@ -439,6 +443,21 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			// KYC 身份验证要求 → 永久禁用，账号需完成身份验证后才能恢复
 			msg := "Identity verification required (400): " + upstreamMsg
 			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+		} else if resetAt, assumedUTC := parseBodyResetAt(responseBody, time.Now()); resetAt != nil && usageWindowLimitText(responseBody) {
+			// 上游把用量窗口限流打成 400，文案里带明确恢复时刻
+			// （"You've reached your weekly usage limit ... resets at <RFC3339>"）。
+			// 停调到该点到期自愈，避免账号在窗口耗尽期间反复撞同一个 400。
+			// 双重条件把关：文案必须是用量窗口类，且带可解析的绝对恢复时刻——
+			// 普通参数 400 不命中，走下面的默认逻辑不受影响。
+			msg := "Usage window limit (400): " + upstreamMsg
+			s.notifyAccountSchedulingBlocked(account, *resetAt, "upstream_usage_limit_400")
+			if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *resetAt, msg); err != nil {
+				slog.Warn("usage_limit_400_set_failed", "account_id", account.ID, "error", err)
+			} else {
+				slog.Info("upstream_usage_limit_400", "account_id", account.ID,
+					"reset_at", *resetAt, "assumed_utc", assumedUTC)
+			}
 			shouldDisable = true
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
@@ -551,6 +570,22 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
 			msg := "Workspace deactivated (402): workspace has been deactivated"
 			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+		}
+		// 文案自带明确恢复时刻（"Coding Plan quota resets at <RFC3339>"）：临时停调
+		// 到该点、到期自愈，替代永久 SetError。永久停用意味着账号只能人工恢复——
+		// 而上游已经说明了何时恢复，周期探测也只覆盖激活账号，置 status=error 后
+		// 充值/窗口恢复都无法自动生效。无时间的 402 维持人工介入语义不变。
+		if resetAt, assumedUTC := parseBodyResetAt(responseBody, time.Now()); resetAt != nil {
+			msg := "Payment required (402): " + upstreamMsg
+			s.notifyAccountSchedulingBlocked(account, *resetAt, "insufficient_balance_reset_at")
+			if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *resetAt, msg); err != nil {
+				slog.Warn("account_402_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+			} else {
+				slog.Info("account_402_temp_unschedulable", "account_id", account.ID,
+					"reset_at", *resetAt, "assumed_utc", assumedUTC)
+			}
 			shouldDisable = true
 			break
 		}
@@ -1290,6 +1325,20 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
 				return
 			}
+		}
+
+		// 上游文案自带绝对恢复点（"Your limit resets at <RFC3339>"）：有明确时间就
+		// 停到该点。报文里写明的窗口重置时刻比秒级兜底可信——后者只会让账号短暂
+		// 冷却后重新撞同一个 429。解析不出时维持各平台原有兜底不变。
+		if resetAt, assumedUTC := parseBodyResetAt(responseBody, time.Now()); resetAt != nil {
+			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+				return
+			}
+			slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform,
+				"reset_at", *resetAt, "reset_at_source", "message_iso", "assumed_utc", assumedUTC)
+			return
 		}
 
 		// Anthropic 平台：没有限流重置时间的 429 可能是非真实限流（如 Extra usage required），
