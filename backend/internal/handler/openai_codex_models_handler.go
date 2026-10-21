@@ -33,6 +33,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI and Composite groups")
 		return
 	}
+	modelsCtx := h.gatewayService.WithOpenAICodexClientAdmission(c.Request.Context(), c, nil)
+	c.Request = c.Request.WithContext(modelsCtx)
 
 	ifNoneMatch := c.GetHeader("If-None-Match")
 	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
@@ -48,7 +50,15 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			if c.Request.Context().Err() != nil {
 				return
 			}
+			// 客户端准入的权威读取失败时固定 503，不回退调度器放大仓库故障。
+			if errors.Is(pinnedErr, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, pinnedErr, false, false)
+				return
+			}
 			if !apiKey.Group.CodexModelsManifestConfig.FallbackToScheduler {
+				if h.handleOpenAICodexAdmissionError(c, pinnedErr, false, false) {
+					return
+				}
 				if errors.Is(pinnedErr, service.ErrNoPinnedCodexModelsAccounts) {
 					h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available pinned OpenAI accounts")
 					return
@@ -96,6 +106,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		maxAccountSwitches = 3
 	}
 	failedAccountIDs := make(map[int64]struct{})
+	clientVetoCount := 0
 	switchCount := 0
 	var lastUpstreamErr error
 
@@ -109,9 +120,29 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				h.errorResponse(c, infraerrors.Code(lastUpstreamErr), "upstream_error", infraerrors.Message(lastUpstreamErr))
 				return
 			}
+			if h.handleOpenAICodexAdmissionError(c, err, false, false) {
+				return
+			}
+			if allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+				return
+			}
 			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
 			return
 		}
+		admission, admissionErr := h.gatewayService.OpenAITerminalAdmissionLatest(c.Request.Context(), account)
+		if admissionErr != nil {
+			h.handleOpenAICodexAdmissionError(c, admissionErr, false, false)
+			return
+		}
+		if admission.ClientVetoed {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+				return
+			}
+			continue
+		}
+		account = admission.Account
 		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
@@ -121,6 +152,17 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		if err != nil {
 			if c.Request.Context().Err() != nil {
 				return
+			}
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, false, false)
+				return
+			}
+			if errors.Is(err, service.ErrCodexClientRestricted) {
+				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+					return
+				}
+				continue
 			}
 			if service.IsRetryableCodexModelsManifestError(err) && switchCount < maxAccountSwitches {
 				failedAccountIDs[account.ID] = struct{}{}
