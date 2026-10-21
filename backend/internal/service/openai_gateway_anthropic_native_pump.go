@@ -10,8 +10,9 @@ package service
 //
 // 与 handleAnthropicStreamingResponse / readOpenAICompatBufferedTerminal 的
 // 同类排水一致，本泵用 gateway.stream_data_interval_timeout（默认 180s）作为
-// 逐行读间隔上限，超时即向调用方返回 errAnthropicNativeStreamIdle，由调用方
-// 关闭 resp.Body 解除阻塞的读并结束排水。
+// 真实数据行到达间隔上限（心跳行不计，见 anthropicSSELineIsHeartbeat），超时
+// 即向调用方返回 errAnthropicNativeStreamIdle，由调用方关闭 resp.Body 解除
+// 阻塞的读并结束排水。
 
 import (
 	"bufio"
@@ -69,8 +70,8 @@ func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) 
 }
 
 // next 阻塞返回下一行。返回 io.EOF 表示上游正常收流；errAnthropicNativeStreamIdle
-// 表示 interval 内无任何数据到达（计时从收到上一行时起算，事件处理耗时不算入，
-// 与 readOpenAICompatBufferedTerminal 的 resetTimeout 语义一致）。
+// 表示 interval 内无任何真实数据到达（心跳行不计，见 anthropicSSELineIsHeartbeat；
+// 事件处理耗时不算入，与 readOpenAICompatBufferedTerminal 的 resetTimeout 语义一致）。
 func (p *anthropicNativeLinePump) next() (string, error) {
 	var timeoutCh <-chan time.Time
 	if p.timer != nil {
@@ -81,14 +82,16 @@ func (p *anthropicNativeLinePump) next() (string, error) {
 		if !ok {
 			return "", io.EOF
 		}
-		p.resetTimer()
+		if ev.err == nil && !anthropicSSELineIsHeartbeat(ev.line) {
+			p.resetTimer()
+		}
 		return ev.line, ev.err
 	case <-timeoutCh:
 		return "", errAnthropicNativeStreamIdle
 	}
 }
 
-// resetTimer 在收到一行后重启间隔计时器。
+// resetTimer 在收到一行真实数据后重启间隔计时器。
 func (p *anthropicNativeLinePump) resetTimer() {
 	if p.timer == nil {
 		return
