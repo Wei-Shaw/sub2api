@@ -7,6 +7,9 @@
 export interface ConfigFieldDef {
   key: string
   label: string
+  labelKey?: string
+  multiline?: boolean
+  visibleWhen?: { key: string; value: string }
   sensitive: boolean
   optional?: boolean
   clearable?: boolean
@@ -134,8 +137,34 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },
+    {
+      key: 'authMode', label: '', sensitive: false, defaultValue: 'public_key',
+      hintKey: 'admin.settings.payment.alipayAuthModeHint',
+      options: [
+        { value: 'public_key', label: 'admin.settings.payment.alipayAuthModePublicKey' },
+        { value: 'certificate', label: 'admin.settings.payment.alipayAuthModeCertificate' },
+      ],
+    },
     { key: 'privateKey', label: '', sensitive: true },
-    { key: 'publicKey', label: '', sensitive: true },
+    {
+      key: 'publicKey', label: '', labelKey: 'admin.settings.payment.field_alipayPublicKey', sensitive: true,
+      visibleWhen: { key: 'authMode', value: 'public_key' },
+    },
+    {
+      key: 'appCertPublicKey', label: '', sensitive: true, multiline: true,
+      hintKey: 'admin.settings.payment.alipayAppCertHint',
+      visibleWhen: { key: 'authMode', value: 'certificate' },
+    },
+    {
+      key: 'alipayCertPublicKey', label: '', sensitive: true, multiline: true,
+      hintKey: 'admin.settings.payment.alipayPublicCertHint',
+      visibleWhen: { key: 'authMode', value: 'certificate' },
+    },
+    {
+      key: 'alipayRootCert', label: '', sensitive: true, multiline: true,
+      hintKey: 'admin.settings.payment.alipayRootCertHint',
+      visibleWhen: { key: 'authMode', value: 'certificate' },
+    },
   ],
   wxpay: [
     { key: 'appId', label: 'App ID', sensitive: false },
@@ -164,6 +193,17 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 }
 
 // --- Helpers ---
+
+/** Only show and validate credentials used by the selected authentication mode. */
+export function getProviderConfigFields(providerKey: string, config: Record<string, string>): ConfigFieldDef[] {
+  const fields = PROVIDER_CONFIG_FIELDS[providerKey] || []
+  return fields.filter(field => {
+    if (!field.visibleWhen) return true
+    const { key, value } = field.visibleWhen
+    const selected = config[key] || fields.find(candidate => candidate.key === key)?.defaultValue
+    return selected === value
+  })
+}
 
 /** Resolve type label for display. */
 export function resolveTypeLabel(
