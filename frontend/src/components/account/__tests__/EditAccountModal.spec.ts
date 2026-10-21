@@ -986,6 +986,56 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('shows the RPM limit for API key accounts and writes it into extra only when it changes', async () => {
+    const account = buildAccount()
+    account.extra = { openai_compact_mode: 'force_on' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const untouched = mountModal(account)
+    expect(untouched.find('[data-testid="account-rpm-limit-section"]').exists()).toBe(true)
+    await untouched.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.base_rpm).toBeUndefined()
+
+    updateAccountMock.mockClear()
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="account-rpm-limit-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="account-rpm-limit-base-rpm"]').setValue('140')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_compact_mode: 'force_on',
+      base_rpm: 140,
+      rpm_strategy: 'tiered'
+    })
+  })
+
+  it('loads an existing RPM limit and removes it from extra when switched off', async () => {
+    const account = buildAccount()
+    account.base_rpm = 92
+    account.rpm_strategy = 'sticky_exempt'
+    account.extra = { base_rpm: 92, rpm_strategy: 'sticky_exempt' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="account-rpm-limit-base-rpm"]').element as HTMLInputElement).value).toBe('92')
+    await wrapper.get('[data-testid="account-rpm-limit-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toBeDefined()
+    expect(extra).not.toHaveProperty('base_rpm')
+    expect(extra).not.toHaveProperty('rpm_strategy')
+  })
+
   it('removes the upstream request id header from extra when cleared', async () => {
     const account = buildAccount()
     account.extra = { upstream_request_id_header: 'X-Request-ID' }
