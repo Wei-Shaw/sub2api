@@ -38,19 +38,34 @@
         :platforms="platforms"
         :groups="groupOptions"
         :rates="rates"
+        :billing-modes="billingModes"
         :platform="selectedPlatform"
         :group-id="selectedGroupId"
         :rate="selectedRate"
+        :billing-mode="selectedBillingMode"
         :search="searchQuery"
+        :view-mode="viewMode"
+        :result-count="resultCount"
+        :total-count="totalCount"
+        :active-filter-count="activeFilterCount"
         @update:platform="selectedPlatform = $event"
         @update:group-id="selectedGroupId = $event"
         @update:rate="selectedRate = $event"
+        @update:billing-mode="selectedBillingMode = $event"
         @update:search="searchQuery = $event"
+        @update:view-mode="viewMode = $event"
+        @reset="resetFilters"
       />
 
       <!-- 分组分节的模型清单(默认按生效倍率升序) -->
       <div v-if="filteredGroups.length > 0" class="space-y-5">
-        <PlazaGroupSection v-for="g in filteredGroups" :key="g.id" :group="g" />
+        <PlazaGroupSection
+          v-for="g in filteredGroups"
+          :key="g.id"
+          :group="g"
+          :view-mode="viewMode"
+          @select-model="openModelDetail($event, g)"
+        />
       </div>
       <div
         v-else
@@ -59,6 +74,13 @@
         {{ searchActive ? t('modelPlaza.noSearchResult') : t('modelPlaza.empty') }}
       </div>
     </template>
+
+    <PlazaModelDetailDrawer
+      :open="selectedModel != null && selectedGroup != null"
+      :model="selectedModel"
+      :group="selectedGroup"
+      @close="closeModelDetail"
+    />
   </div>
 </template>
 
@@ -70,7 +92,13 @@ import DOMPurify from 'dompurify'
 import Icon from '@/components/icons/Icon.vue'
 import PlazaFilterBar from './PlazaFilterBar.vue'
 import PlazaGroupSection from './PlazaGroupSection.vue'
-import type { ModelPlazaGroup, ModelPlazaResponse } from '@/api/modelPlaza'
+import PlazaModelDetailDrawer from './PlazaModelDetailDrawer.vue'
+import { resolveModelPlazaViewMode, type ModelPlazaViewMode } from './viewMode'
+import type { ModelPlazaGroup, ModelPlazaResponse, PlazaModel } from '@/api/modelPlaza'
+import {
+  BILLING_MODE_TOKEN,
+  type BillingMode
+} from '@/constants/channel'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -88,9 +116,24 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 const selectedPlatform = ref<string>('all')
 const selectedGroupId = ref<number | 'all'>('all')
 const selectedRate = ref<number | 'all'>('all')
+const selectedBillingMode = ref<BillingMode | 'all'>('all')
 const searchQuery = ref('')
+const selectedModel = ref<PlazaModel | null>(null)
+const selectedGroup = ref<ModelPlazaGroup | null>(null)
 
-const searchActive = computed(() => searchQuery.value.trim() !== '')
+const VIEW_MODE_STORAGE_KEY = 'model-plaza-view-mode'
+
+function initialViewMode(): ModelPlazaViewMode {
+  return resolveModelPlazaViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY))
+}
+
+const viewMode = ref<ModelPlazaViewMode>(initialViewMode())
+
+watch(viewMode, (mode) => {
+  localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
+})
+
+const searchActive = computed(() => activeFilterCount.value > 0)
 
 const descriptionHtml = computed(() => {
   const md = props.response?.description?.trim()
@@ -103,9 +146,20 @@ function effectiveRate(g: ModelPlazaGroup): number {
   return g.user_rate_multiplier ?? g.rate_multiplier
 }
 
-const platforms = computed(() =>
-  [...new Set((props.response?.groups ?? []).map((g) => g.platform).filter(Boolean))].sort()
+const totalCount = computed(() =>
+  (props.response?.groups ?? []).reduce((sum, group) => sum + group.models.length, 0)
 )
+
+const platforms = computed(() => {
+  const counts = new Map<string, number>()
+  for (const group of props.response?.groups ?? []) {
+    counts.set(group.platform, (counts.get(group.platform) ?? 0) + group.models.length)
+  }
+  return [...counts.entries()]
+    .filter(([name]) => Boolean(name))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => ({ name, count }))
+})
 
 const groupOptions = computed(() =>
   (props.response?.groups ?? []).map((g) => ({
@@ -121,10 +175,26 @@ const rates = computed(() =>
   [...new Set((props.response?.groups ?? []).map(effectiveRate))].sort((a, b) => a - b)
 )
 
+function modelBillingMode(model: PlazaModel): BillingMode {
+  return model.pricing?.billing_mode ?? BILLING_MODE_TOKEN
+}
+
+const billingModes = computed(() =>
+  [...new Set(
+    (props.response?.groups ?? []).flatMap((group) => group.models.map(modelBillingMode))
+  )].sort()
+)
+
 /** 数据刷新后选中的倍率可能不复存在,重置为全部。 */
 watch(rates, (list) => {
   if (selectedRate.value !== 'all' && !list.includes(selectedRate.value)) {
     selectedRate.value = 'all'
+  }
+})
+
+watch(billingModes, (list) => {
+  if (selectedBillingMode.value !== 'all' && !list.includes(selectedBillingMode.value)) {
+    selectedBillingMode.value = 'all'
   }
 })
 
@@ -139,6 +209,16 @@ const filteredGroups = computed(() => {
   if (selectedRate.value !== 'all') {
     groups = groups.filter((g) => effectiveRate(g) === selectedRate.value)
   }
+  if (selectedBillingMode.value !== 'all') {
+    groups = groups
+      .map((group) => ({
+        ...group,
+        models: group.models.filter(
+          (model) => modelBillingMode(model) === selectedBillingMode.value
+        )
+      }))
+      .filter((group) => group.models.length > 0)
+  }
   // 模型名搜索:分组内只留命中的模型,整组无命中则隐藏该分组。
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
@@ -151,6 +231,37 @@ const filteredGroups = computed(() => {
     (a, b) => effectiveRate(a) - effectiveRate(b) || a.name.localeCompare(b.name)
   )
 })
+
+const resultCount = computed(() =>
+  filteredGroups.value.reduce((sum, group) => sum + group.models.length, 0)
+)
+
+const activeFilterCount = computed(
+  () =>
+    Number(selectedPlatform.value !== 'all') +
+    Number(selectedGroupId.value !== 'all') +
+    Number(selectedRate.value !== 'all') +
+    Number(selectedBillingMode.value !== 'all') +
+    Number(searchQuery.value.trim() !== '')
+)
+
+function resetFilters(): void {
+  selectedPlatform.value = 'all'
+  selectedGroupId.value = 'all'
+  selectedRate.value = 'all'
+  selectedBillingMode.value = 'all'
+  searchQuery.value = ''
+}
+
+function openModelDetail(model: PlazaModel, group: ModelPlazaGroup): void {
+  selectedModel.value = model
+  selectedGroup.value = group
+}
+
+function closeModelDetail(): void {
+  selectedModel.value = null
+  selectedGroup.value = null
+}
 </script>
 
 <style scoped>
