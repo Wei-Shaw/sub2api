@@ -54,6 +54,26 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate)
 }
 
+// gatewayProfitControlConfigured 用与 withGatewayProfitControlGate 完全相同的
+// 条件判定「本请求是否受利润控制」，但不安装门、不记录安装观测。
+//
+// 它只有一个消费方：handler 在选号前装配成功粘性状态时需要知道门是否会生效，
+// 而通用路径的门装在调度栈内部的局部 ctx 上，handler 此时还拿不到。判定条件
+// 与装门点保持逐字一致，两者不得各自演化。
+func (s *GatewayService) gatewayProfitControlConfigured(ctx context.Context, groupID *int64) bool {
+	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
+		return false
+	}
+	if existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); ok && existing != nil && existing.groupID == *groupID {
+		return true
+	}
+	group, err := s.resolveProfitControlGroup(ctx, *groupID)
+	if err != nil || group == nil {
+		return false
+	}
+	return group.ProfitControlEnabled && profitControlPlatformSupported(group.Platform)
+}
+
 func (s *GatewayService) clearForeignProfitControlGate(ctx context.Context, groupID *int64) context.Context {
 	existing, ok := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 	if !ok || existing == nil || groupID == nil || existing.groupID == *groupID {

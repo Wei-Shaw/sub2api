@@ -160,3 +160,10 @@ func (c StubSessionLimitCache) SetWindowCost(_ context.Context, _ int64, _ float
 func (c StubSessionLimitCache) GetWindowCostBatch(_ context.Context, _ []int64) (map[int64]float64, error) {
 	return nil, nil
 }
+
+func (c StubGatewayCache) GetGatewayStickySuccess(_ context.Context, _ int64, _, _ string) (service.GatewayStickySuccessBinding, error) {
+	return service.GatewayStickySuccessBinding{}, service.ErrStickySessionNotFound
+}
+func (c StubGatewayCache) CompareAndSwapGatewayStickySuccess(_ context.Context, _ int64, _, _ string, _, _ service.GatewayStickySuccessBinding, _ time.Duration) (bool, error) {
+	return false, nil
+}
