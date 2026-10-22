@@ -67,12 +67,13 @@ describe('Prompt Audit components', () => {
 
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
-      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
-      worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99],
+      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, continue_on_guard_failure: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+      worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99], model_filter: { type: 'all', models: [] },
       endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
     }
     const wrapper = mount(PolicyPanel, {
       props: { draft, groups: [{ id: 1, name: 'Alpha', platform: 'openai', status: 'active' }, { id: 2, name: 'Beta', platform: 'claude', status: 'inactive' }] },
+      global: { stubs: { ModelWhitelistSelector: true } },
     })
     expect(wrapper.text()).toContain('99')
     expect(wrapper.findAll('input[type="checkbox"]').filter((input) => SCANNER_CATALOG.some((scanner) => input.attributes('aria-label') === `admin.promptAudit.scanners.${scanner.id}`))).toHaveLength(9)
@@ -82,6 +83,24 @@ describe('Prompt Audit components', () => {
     await wrapper.get('[aria-label="admin.promptAudit.policy.workerCount"]').setValue('6')
     const emitted = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
     expect(emitted.worker_count).toBe(6)
+  })
+
+  it('switches the model scope and clears its list for all models', async () => {
+    const draft: PromptAuditDraft = {
+      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, continue_on_guard_failure: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+      worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: true, group_ids: [], model_filter: { type: 'include', models: ['gpt-test'] },
+      endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
+    }
+    const wrapper = mount(PolicyPanel, {
+      props: { draft, groups: [] },
+      global: { stubs: { ModelWhitelistSelector: true } },
+    })
+    expect(wrapper.find('model-whitelist-selector-stub').exists()).toBe(true)
+    const allModels = wrapper.findAll('button').find((button) => button.text().includes('admin.promptAudit.policy.modelFilterAll'))
+    expect(allModels).toBeTruthy()
+    await allModels!.trigger('click')
+    const emitted = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
+    expect(emitted.model_filter).toEqual({ type: 'all', models: [] })
   })
 
   it('keeps identity fields separate, supports selection, and opens filter deletion from the toolbar', async () => {
