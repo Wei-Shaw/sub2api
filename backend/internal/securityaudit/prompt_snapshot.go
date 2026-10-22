@@ -106,6 +106,9 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 		return append(extractInstructions(root["instructions"]), extractResponses(root["input"])...)
 	case "openai_images", "grok_media", "media", "images":
 		return userPromptSegments(extractMediaPrompts(root))
+	case "openai_decisions":
+		texts := appendJSONStringLeaves(nil, root["questions"])
+		return append(userPromptSegments(texts), extractResponses(root["input"])...)
 	case "typesafe_systemone":
 		return extractSystemOneSegments(root)
 	default:
