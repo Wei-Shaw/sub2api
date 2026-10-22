@@ -28,15 +28,34 @@ export interface WatermarkOptions {
   stepY: number
 }
 
-/** 桌面程序里的默认值。 */
+/**
+ * 默认值。
+ *
+ * 【2026-10-22 主人要求】「水印不能默认为熊管家AI，可以没有」。
+ * 原来照抄桌面程序写死 `熊管家AI`，但这里是辰数平台的网页，
+ * 替用户署名到别人的图上是越权的。所以默认**留空**：
+ * 留空时 `watermarkImageBlob` 直接返回原图，等于没水印；
+ * 用户自己填了字才有水印。
+ */
 export const DEFAULT_WATERMARK: WatermarkOptions = {
   enabled: false,
-  text: '熊管家AI',
+  text: '',
   alpha: 30,
   fontSize: 0,
   color: '#ffffff',
   stepX: 0,
   stepY: 0,
+}
+
+/**
+ * 判断「这次到底要不要真的打水印」。
+ *
+ * 开关开着但文字是空的 —— 没有字可画，等于没水印。
+ * 单独抽出来是因为两个地方都要判（真正画图的地方 + 界面预览），
+ * 分开写迟早会不一致。
+ */
+export function shouldApplyWatermark(options: WatermarkOptions): boolean {
+  return options.enabled && options.text.trim().length > 0
 }
 
 /** 桌面程序的滑块范围。 */

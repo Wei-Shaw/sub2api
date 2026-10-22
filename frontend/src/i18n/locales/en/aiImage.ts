@@ -158,6 +158,8 @@ export default {
       title: 'Watermark',
       enable: 'Add watermark when downloading',
       text: 'Text',
+      // Empty by default (owner's request, 2026-10-22): no watermark unless the user types something.
+      textPlaceholder: 'Leave empty = no watermark (only what you type gets stamped)',
       alpha: 'Strength',
       fontSize: 'Font size',
       auto: '(0 = auto)',
@@ -165,7 +167,7 @@ export default {
       done: 'Watermarked and downloading.',
       corsBlocked:
         'The image server does not allow this page to read the file, so it cannot be watermarked in the browser. The original was opened in a new tab \u2014 right-click it and choose "Save image as". To restore "Download with watermark", add a CORS rule for img.chenshuapi.com.',
-      hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image.',
+      hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image. Leave the text empty and no watermark is applied \u2014 the button is hidden.',
       note:
         'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
     },
@@ -205,6 +207,8 @@ export default {
 
     options: {
       model: 'Model',
+      // Shared by all three panels (single / bestseller clone / image set) \u2014 one setting, not three.
+      modelHint: 'Same setting as "Single image" \u2014 change it once and all three follow.',
       size: 'Size',
       count: 'Count',
       countHint: 'Up to {max} images',

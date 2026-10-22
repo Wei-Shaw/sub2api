@@ -286,6 +286,20 @@
 
         <p class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ t('aiImage.hot.hint') }}</p>
 
+        <!-- 生图模型：和「单张生图」用的是同一个变量、同一份选项。
+             主人 2026-10-22 要求「给爆款复刻和套图添加一个可以选择模型的窗口，
+             内容和单张生图是一样的」。
+             共用 `model` 而不是各存一份，是因为这套脚本最终都要交给同一个生图接口；
+             分开放的话用户在这个页面选了 A、切到那个页面又变成 B，很容易生成到一半
+             才发现模型不对（已经出过的图还退不了钱）。 -->
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label class="text-gray-500 dark:text-gray-400">{{ t('aiImage.options.model') }}</label>
+          <select v-model="model" class="input w-56 text-sm" data-testid="hot-model-select">
+            <option v-for="name in AI_IMAGE_MODEL_OPTIONS" :key="name" :value="name">{{ name }}</option>
+          </select>
+          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.options.modelHint') }}</span>
+        </div>
+
         <!-- 第 1 步：放同行的爆款参考图并拆解。
              一张参考图 = 一张脚本 = 一张出图，所以这里放几张就出几张。 -->
         <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step1') }}</p>
@@ -453,7 +467,7 @@
           <AIImageResultGrid
             :sections="hotSections"
             :empty-title="t('aiImage.result.panelEmpty')"
-            :watermark-enabled="watermark.enabled"
+            :watermark-enabled="watermarkActive"
             :watermarking="watermarking"
             @retry="retryRecord"
             @copy-url="copyImageUrl"
@@ -586,7 +600,12 @@
         <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <div class="flex items-center gap-2">
             <label class="w-16 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.watermark.text') }}</label>
-            <input v-model="watermark.text" class="input w-full text-sm" data-testid="watermark-text" />
+            <input
+              v-model="watermark.text"
+              class="input w-full text-sm"
+              :placeholder="t('aiImage.watermark.textPlaceholder')"
+              data-testid="watermark-text"
+            />
           </div>
           <div class="flex items-center gap-2">
             <label class="w-16 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.watermark.alpha') }}</label>
@@ -631,6 +650,15 @@
               {{ t('aiImage.script.clear') }}
             </button>
           </div>
+        </div>
+
+        <!-- 生图模型：和「单张生图」「爆款复刻」共用同一个变量，理由同爆款复刻那一处。 -->
+        <div class="mb-3 flex flex-wrap items-center gap-2 text-xs" data-testid="script-model-row">
+          <label class="text-gray-500 dark:text-gray-400">{{ t('aiImage.options.model') }}</label>
+          <select v-model="model" class="input w-56 text-sm" data-testid="script-model-select">
+            <option v-for="name in AI_IMAGE_MODEL_OPTIONS" :key="name" :value="name">{{ name }}</option>
+          </select>
+          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.options.modelHint') }}</span>
         </div>
 
         <!-- 产品参考图。以前这个按钮长在常驻的「单张生图」卡片里，
@@ -777,7 +805,7 @@
           <AIImageResultGrid
             :sections="scriptSections"
             :empty-title="t('aiImage.result.panelEmpty')"
-            :watermark-enabled="watermark.enabled"
+            :watermark-enabled="watermarkActive"
             :watermarking="watermarking"
             @retry="retryRecord"
             @copy-url="copyImageUrl"
@@ -929,7 +957,7 @@
           <AIImageResultGrid
             :sections="singleSections"
             :empty-title="t('aiImage.result.panelEmpty')"
-            :watermark-enabled="watermark.enabled"
+            :watermark-enabled="watermarkActive"
             :watermarking="watermarking"
             @retry="retryRecord"
             @copy-url="copyImageUrl"
@@ -995,7 +1023,7 @@
           :sections="recordSections"
           :empty-title="t('aiImage.result.empty')"
           :empty-hint="t('aiImage.result.emptyHint')"
-          :watermark-enabled="watermark.enabled"
+          :watermark-enabled="watermarkActive"
           :watermarking="watermarking"
           @retry="retryRecord"
           @copy-url="copyImageUrl"
@@ -1058,6 +1086,7 @@ import {
   DEFAULT_WATERMARK,
   WATERMARK_ALPHA_MAX,
   WATERMARK_ALPHA_MIN,
+  shouldApplyWatermark,
   watermarkImageBlob,
   type WatermarkOptions,
 } from '@/api/aiImageWatermark'
@@ -1184,6 +1213,14 @@ const compositeNotice = ref('')
 const watermark = ref<WatermarkOptions>({ ...DEFAULT_WATERMARK })
 const watermarking = ref(false)
 const watermarkNotice = ref('')
+/**
+ * 真正「有水印可打」的判定：开关开着 **且** 文字非空。
+ *
+ * 主人 2026-10-22 要求「水印不能默认为熊管家AI，可以没有」。
+ * 默认文字现在为空，所以这里必须再加一道「有没有字」的判断 ——
+ * 只看开关的话，用户勾上开关却没填字，按钮会亮着但点下去什么也没发生。
+ */
+const watermarkActive = computed(() => shouldApplyWatermark(watermark.value))
 
 /**
  * 功能模块：一次只展开一个。
