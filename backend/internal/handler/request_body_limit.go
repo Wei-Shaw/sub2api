@@ -39,3 +39,12 @@ func gatewayMaxBodySize(cfg *config.Config) int64 {
 	}
 	return cfg.Gateway.MaxBodySize
 }
+
+// imageInputModelMap returns the gateway-level "image-input model rewrite"
+// mapping; returns nil when cfg is nil (safe for zero-value handlers).
+func imageInputModelMap(cfg *config.Config) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	return cfg.Gateway.ImageInputModelMap
+}
