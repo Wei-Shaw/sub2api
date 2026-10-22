@@ -20,9 +20,10 @@ type crsLongContextAccountRepo struct {
 }
 
 type crsOpenAILongContextSource struct {
-	collection  string
-	credentials map[string]any
-	extra       map[string]any
+	collection    string
+	credentials   map[string]any
+	extra         map[string]any
+	wsModeDefault string
 }
 
 func newCRSLongContextAccountRepo(existing ...*Account) *crsLongContextAccountRepo {
@@ -69,13 +70,19 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 		credentials   map[string]any
 		sourceExtra   map[string]any
 		existingExtra map[string]any
+		wsModeDefault string
+		wantWSMode    string
+		wantWSEnabled *bool
 		wantAction    string
 		wantEnabled   bool
 	}{
 		{name: "OAuth create defaults missing value disabled", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, wantAction: "created"},
 		{name: "OAuth create preserves source true", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, sourceExtra: map[string]any{openAILongContextBillingEnabledKey: true}, wantAction: "created", wantEnabled: true},
 		{name: "OAuth create preserves source false", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, sourceExtra: map[string]any{openAILongContextBillingEnabledKey: false}, wantAction: "created"},
+		{name: "OAuth create applies configured WS mode", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, wsModeDefault: OpenAIWSIngressModePassthrough, wantWSMode: OpenAIWSIngressModePassthrough, wantWSEnabled: boolPointer(true), wantAction: "created"},
+		{name: "OAuth create preserves explicit WS off", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, sourceExtra: map[string]any{openAIOAuthResponsesWebsocketsV2ModeKey: OpenAIWSIngressModeOff}, wsModeDefault: OpenAIWSIngressModePassthrough, wantWSMode: OpenAIWSIngressModeOff, wantAction: "created"},
 		{name: "OAuth update defaults missing value disabled", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, existingExtra: map[string]any{"existing": true}, wantAction: "updated"},
+		{name: "OAuth update preserves existing WS mode", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, existingExtra: map[string]any{openAIOAuthResponsesWebsocketsV2ModeKey: OpenAIWSIngressModeOff}, wsModeDefault: OpenAIWSIngressModePassthrough, wantWSMode: OpenAIWSIngressModeOff, wantAction: "updated"},
 		{name: "OAuth update preserves existing true when source omits value", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, existingExtra: map[string]any{openAILongContextBillingEnabledKey: true}, wantAction: "updated", wantEnabled: true},
 		{name: "OAuth update preserves existing false when source omits value", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, existingExtra: map[string]any{openAILongContextBillingEnabledKey: false}, wantAction: "updated"},
 		{name: "OAuth update preserves source true over existing false", collection: "openaiOAuthAccounts", credentials: map[string]any{"access_token": "oauth-token"}, sourceExtra: map[string]any{openAILongContextBillingEnabledKey: true}, existingExtra: map[string]any{openAILongContextBillingEnabledKey: false}, wantAction: "updated", wantEnabled: true},
@@ -110,9 +117,10 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 			}
 			repo := newCRSLongContextAccountRepo(existing)
 			result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
-				collection:  tt.collection,
-				credentials: tt.credentials,
-				extra:       tt.sourceExtra,
+				collection:    tt.collection,
+				credentials:   tt.credentials,
+				extra:         tt.sourceExtra,
+				wsModeDefault: tt.wsModeDefault,
 			})
 
 			require.Len(t, result.Items, 1)
@@ -124,19 +132,51 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 			stored, ok := repo.accounts[crsID].Extra[openAILongContextBillingEnabledKey]
 			require.True(t, ok)
 			require.Equal(t, tt.wantEnabled, stored)
+			if tt.wantWSMode != "" {
+				require.Equal(t, tt.wantWSMode, repo.accounts[crsID].Extra[openAIOAuthResponsesWebsocketsV2ModeKey])
+			}
+			if tt.wantWSEnabled != nil {
+				require.Equal(t, *tt.wantWSEnabled, repo.accounts[crsID].Extra[openAIOAuthResponsesWebsocketsV2EnabledKey])
+			}
 		})
 	}
 }
 
+func TestCRSSyncAnthropicOAuthDoesNotGetOpenAIWSDefault(t *testing.T) {
+	repo := newCRSLongContextAccountRepo()
+	result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+		collection:    "claudeAccounts",
+		credentials:   map[string]any{"access_token": "oauth-token"},
+		wsModeDefault: OpenAIWSIngressModePassthrough,
+	})
+
+	require.Equal(t, 1, result.Created)
+	account := repo.accounts["crs-openai-1"]
+	require.Equal(t, PlatformAnthropic, account.Platform)
+	require.NotContains(t, account.Extra, openAIOAuthResponsesWebsocketsV2ModeKey)
+	require.NotContains(t, account.Extra, openAIOAuthResponsesWebsocketsV2EnabledKey)
+}
+
+func boolPointer(value bool) *bool { return &value }
+
 func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source crsOpenAILongContextSource) *SyncFromCRSResult {
 	t.Helper()
+	kind := "openai"
+	accountFields := map[string]any{}
+	if source.collection == "claudeAccounts" {
+		kind = "claude"
+		accountFields["authType"] = "oauth"
+	}
 	account := map[string]any{
-		"kind":        "openai",
+		"kind":        kind,
 		"id":          "crs-openai-1",
 		"name":        "OpenAI CRS",
 		"isActive":    true,
 		"schedulable": true,
 		"credentials": source.credentials,
+	}
+	for key, value := range accountFields {
+		account[key] = value
 	}
 	if source.extra != nil {
 		account["extra"] = source.extra
@@ -157,6 +197,7 @@ func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source cr
 	t.Cleanup(server.Close)
 
 	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault = source.wsModeDefault
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 	service := NewCRSSyncService(repo, nil, nil, nil, nil, cfg)
 	result, err := service.SyncFromCRS(context.Background(), SyncFromCRSInput{
