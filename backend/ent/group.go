@@ -110,8 +110,8 @@ type Group struct {
 	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
 	// 无效请求兜底使用的分组 ID
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`
-	// 模型路由配置：模型模式 -> 优先账号ID列表
-	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
+	// 模型路由配置：模型模式 -> {max_concurrency, accounts[{id,priority,concurrency}]}
+	ModelRouting domain.ModelRoutingMap `json:"model_routing,omitempty"`
 	// 是否启用模型路由配置
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
 	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）

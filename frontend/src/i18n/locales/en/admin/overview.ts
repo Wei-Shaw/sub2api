@@ -1290,7 +1290,8 @@ export default {
       },
       modelRouting: {
         title: 'Model Routing',
-        tooltip: 'Configure specific model requests to be routed to designated accounts. Supports wildcard matching, e.g., claude-opus-* matches all opus models.',
+        tooltip:
+          'Route specific model requests to preferred accounts. Supports wildcards (e.g. claude-opus-*). Configure rule total concurrency and per-account priority/concurrency; when capped, fall back to other group accounts.',
         enabled: 'Enabled',
         disabled: 'Disabled',
         disabledHint: 'Routing rules will only take effect when enabled',
@@ -1298,6 +1299,8 @@ export default {
         modelPattern: 'Model Pattern',
         modelPatternPlaceholder: 'claude-opus-*',
         modelPatternHint: 'Supports * wildcard, e.g., claude-opus-* matches all opus models',
+        maxConcurrency: 'Preferred pool max concurrency',
+        maxConcurrencyHint: '0 = no rule-total limit (account global concurrency still applies)',
         accounts: 'Priority Accounts',
         selectAccounts: 'Select accounts',
         noAccounts: 'No accounts in this group',
@@ -1306,7 +1309,11 @@ export default {
         noRules: 'No routing rules',
         noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
         searchAccountPlaceholder: 'Search accounts...',
-        accountsHint: 'Select accounts to prioritize for this model pattern'
+        accountsHint: 'Preferred accounts for this pattern; lower priority values are tried first',
+        accountPriority: 'Priority',
+        accountConcurrency: 'Concurrency',
+        accountPriorityHint: 'Lower value means higher priority',
+        accountConcurrencyHint: '0 = no extra per-account limit under this rule'
       },
       claudeMaxSimulation: {
         title: 'Claude Max Usage Simulation',

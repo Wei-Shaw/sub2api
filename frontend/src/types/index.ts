@@ -640,6 +640,19 @@ export interface Group {
   updated_at: string
 }
 
+/** 模型路由规则中的优先账号（规则内 priority/concurrency，独立于账号全局字段） */
+export interface ModelRoutingAccountRef {
+  id: number
+  priority: number
+  concurrency: number
+}
+
+/** 模型路由结构化规则（groups.model_routing value） */
+export interface ModelRoutingRuleConfig {
+  max_concurrency: number
+  accounts: ModelRoutingAccountRef[]
+}
+
 export interface AdminGroup extends Group {
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
   i18n?: GroupI18n
@@ -653,7 +666,9 @@ export interface AdminGroup extends Group {
   profit_safety_buffer: number
 
   // 模型路由配置（仅管理员可见，内部信息）
-  model_routing: Record<string, number[]> | null
+  // 新格式：pattern -> { max_concurrency, accounts[{id,priority,concurrency}] }
+  // 读兼容旧格式：pattern -> number[]
+  model_routing: Record<string, ModelRoutingRuleConfig | number[]> | null
   model_routing_enabled: boolean
 
   // MCP XML 协议注入（仅 antigravity 平台使用）
@@ -860,7 +875,7 @@ export interface CreateGroupRequest {
   allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  model_routing?: Record<string, number[]> | null
+  model_routing?: Record<string, ModelRoutingRuleConfig | number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
@@ -927,7 +942,7 @@ export interface UpdateGroupRequest {
   allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
-  model_routing?: Record<string, number[]> | null
+  model_routing?: Record<string, ModelRoutingRuleConfig | number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
