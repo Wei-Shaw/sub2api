@@ -8,6 +8,7 @@
 - [UI Bridge](docs/ui-bridge.md)：沙箱配置 UI 的消息结构和安全要求。
 - [包格式](docs/package-format.md)：清单、文件哈希、签名和版本规则。
 - [安全边界](docs/security.md)：进程权限、敏感数据和故障策略。
+- [请求补丁](docs/request-patch.md)：Anthropic OAuth 的可选补丁 RPC、调用点和保护字段。
 
 ## 实体与运行方式
 
@@ -19,9 +20,11 @@
 
 独立进程是代码和发布边界，不是操作系统安全沙箱。插件拥有 Sub2API 服务用户所拥有的文件和网络权限，因此只应安装可信发布者的签名包。闭源二进制可提高源码分发门槛，但不能承诺无法反编译。
 
-## 初期能力边界
+## 能力边界
 
-当前只接受 `openai.oauth.outbound_transport.v1`：
+支持独立安装、启停和按账号灰度的两种能力，同一作用域最多启用一个插件；OpenAI 与 Anthropic 插件可以并存。同一插件声明两种能力时共享一个进程和配置，不要求 Claude 插件附带 OpenAI 能力。
+
+`openai.oauth.outbound_transport.v1`：
 
 - 仅匹配 `platform=openai` 且 `account_type=oauth` 的上游 HTTP 请求。
 - API Key 账号、其他 provider、OAuth 登录与 Token 刷新流程不进入插件。
@@ -29,6 +32,15 @@
 - 命中插件的 OAuth WebSocket 账号会使用 Sub2API 现有 HTTP Bridge，不直接建立上游 WebSocket，避免绕过 v1 HTTP 插件协议。
 - Sub2API 继续负责响应状态处理、SSE 解析、错误映射、用量统计、计费和下游输出。
 - 灰度比例以账号 ID 稳定分桶，未命中的 OAuth 账号继续使用原有内置路径。
+
+`anthropic.oauth.request_patch.v1`：
+
+- 仅匹配 `platform=anthropic`、`account_type=oauth` 的 Messages、Count Tokens 和管理员账号测试请求。
+- 插件接收脱敏请求元数据和最终 JSON 正文，通过 `RequestPatch.PatchRequest` 返回正文及请求头补丁。
+- OAuth、URL、代理、TLS、连接池、重试、响应解析、SSE 和计费继续使用宿主已有实现。
+- API Key、Setup Token、Vertex、Bedrock、登录和 Token 刷新不进入该补丁能力。
+- 不向补丁 RPC 传递认证头、代理凭据和 URL 查询串，不授予 Anthropic 账号凭据目录权限。
+- 具体限制和失败语义见[请求补丁契约](docs/request-patch.md)。
 
 ## 宿主服务（HostService）
 
@@ -95,6 +107,7 @@ UI 可以发送以下消息。消息按语义分层，鉴权与副作用一致�
 ## 协议源码
 
 - `v1/plugin.proto`：稳定的进程间消息定义。
+- `v1/request_patch.proto`：按实现可选注册的请求补丁服务。
 - `v1/runtime.go`：Go 插件进程启动入口和宿主客户端声明。
 - `v1/manifest.schema.json`：`manifest.json` 的 JSON Schema。
 
