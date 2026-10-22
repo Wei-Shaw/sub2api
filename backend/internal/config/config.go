@@ -2102,6 +2102,8 @@ func setDefaults() {
 		"open.bigmodel.cn",
 		"api.minimaxi.com", // MiniMax CN quota + inference
 		"api.minimax.io",   // MiniMax intl; frozen allowlists must add this host to use the intl site
+		"api.minimax.cn",   // MiniMax CN new inference host
+		"www.minimax.cn",   // MiniMax CN Token Plan quota
 		"opencode.ai",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
