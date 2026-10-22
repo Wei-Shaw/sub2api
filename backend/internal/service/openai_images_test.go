@@ -2231,3 +2231,97 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)
 }
+
+func TestOpenAIGatewayServiceForwardImages_APIKey2xxErrorBodyIsNotBilled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1536x1024"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	// Some OpenAI-compatible upstreams answer a content refusal with HTTP 200 and an error object.
+	upstreamBody := `{"error":{"message":"request blocked by safety policy","type":"upstream_error","param":"","code":"upstream_error"}}`
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       6,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.ImageCount)
+	// The client still sees the upstream response unchanged.
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, upstreamBody, rec.Body.String())
+	// Ops records the request as failed despite the 200 on the wire.
+	streamErr, ok := GetOpsStreamError(c)
+	require.True(t, ok)
+	require.True(t, streamErr.NonStream)
+	require.True(t, streamErr.CountTowardsSLA)
+	require.Equal(t, "request blocked by safety policy", streamErr.Message)
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey2xxWithoutCountableImagesKeepsRequestedCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000007}`)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       6,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	// Without an error object the existing fallback to the requested n is unchanged.
+	require.Equal(t, 1, result.ImageCount)
+	_, marked := GetOpsStreamError(c)
+	require.False(t, marked)
+}
