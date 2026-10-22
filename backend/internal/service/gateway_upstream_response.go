@@ -494,6 +494,11 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
 		errMsg = "Upstream access forbidden, please contact administrator"
+	case http.StatusRequestEntityTooLarge:
+		// A payload rejection is a client error, not a retryable gateway failure.
+		statusCode = http.StatusRequestEntityTooLarge
+		errType = "request_too_large"
+		errMsg = "Request exceeds the upstream size limit"
 	case 429:
 		statusCode = http.StatusTooManyRequests
 		errType = "rate_limit_error"
