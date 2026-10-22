@@ -170,10 +170,9 @@ func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, err
 	s.consumeClaudeEvents(finalEvents)
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
-			s.adapter.WriteError(s.writer, "empty_stream")
-			return s.result(false), errors.New("empty Antigravity compatibility stream after keepalive")
+			return s.committedEmptyStream()
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, antigravityCompatEmptyStreamError(s.processor.MalformedFunctionCallOnly())
 	}
 	s.adapter.Finalize(s.writer)
 	return s.result(s.writer.Disconnected()), nil
@@ -334,7 +333,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 			writeAntigravityCompatStreamError(c, adapter, writer, "stream_timeout")
 			return session.collectResult(false), fmt.Errorf("pre-content stream timeout")
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, antigravityCompatEmptyStreamError(session.processor.MalformedFunctionCallOnly())
 	}
 
 	for {
@@ -389,10 +388,17 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 
 func handleAntigravityCompatEmptyStream(c *gin.Context, session *antigravityCompatStreamSession) (*antigravityStreamResult, error) {
 	if session.preContentKeepaliveSent {
-		writeAntigravityCompatStreamError(c, session.adapter, session.writer, "empty_stream")
-		return session.collectResult(false), errors.New("empty Antigravity compatibility stream after keepalive")
+		return session.committedEmptyStream()
 	}
-	return nil, antigravityCompatEmptyStreamError()
+	return nil, antigravityCompatEmptyStreamError(session.processor.MalformedFunctionCallOnly())
+}
+
+// committedEmptyStream reports an empty stream after HTTP 200 is already
+// committed. The SSE frame must be a real error event: a bare close is counted
+// as a successful completion by downstream proxies.
+func (s *antigravityCompatStreamSession) committedEmptyStream() (*antigravityStreamResult, error) {
+	s.adapter.WriteError(s.writer, "empty_stream")
+	return s.result(false), errors.New("empty Antigravity compatibility stream after keepalive")
 }
 
 func (s *AntigravityGatewayService) startAntigravityCompatScanner(
@@ -483,7 +489,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatReadError(
 			writeAntigravityCompatStreamError(c, session.adapter, session.writer, "stream_read_error")
 			return session.collectResult(false), fmt.Errorf("stream read error: %w", err)
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, antigravityCompatEmptyStreamError(session.processor.MalformedFunctionCallOnly())
 	}
 	if disconnect, handled := handleStreamReadError(err, session.writer.Disconnected(), prefix); handled {
 		return session.collectResult(disconnect), nil
@@ -507,12 +513,16 @@ func writeAntigravityCompatStreamError(
 	MarkResponseCommitted(c)
 }
 
-func antigravityCompatEmptyStreamError() error {
+func antigravityCompatEmptyStreamError(switchAccount bool) error {
 	logger.LegacyPrintf("service.antigravity_gateway", "Empty Antigravity compatibility stream, triggering failover")
+	body := []byte(`{"error":"empty stream response from upstream"}`)
+	if switchAccount {
+		body = []byte(`{"error":"malformed function call from upstream"}`)
+	}
 	return &UpstreamFailoverError{
 		StatusCode:             http.StatusBadGateway,
-		ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
-		RetryableOnSameAccount: true,
+		ResponseBody:           body,
+		RetryableOnSameAccount: !switchAccount,
 	}
 }
 
