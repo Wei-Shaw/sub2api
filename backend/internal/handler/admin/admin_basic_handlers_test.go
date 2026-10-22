@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -53,6 +55,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.PUT("/api/v1/admin/proxies/:id", proxyHandler.Update)
 	router.DELETE("/api/v1/admin/proxies/:id", proxyHandler.Delete)
 	router.POST("/api/v1/admin/proxies/batch-delete", proxyHandler.BatchDelete)
+	router.POST("/api/v1/admin/proxies/apply-quality-policy", proxyHandler.ApplyQualityPolicy)
 	router.POST("/api/v1/admin/proxies/:id/test", proxyHandler.Test)
 	router.POST("/api/v1/admin/proxies/:id/quality-check", proxyHandler.CheckQuality)
 	router.GET("/api/v1/admin/proxies/:id/stats", proxyHandler.GetStats)
@@ -370,4 +373,43 @@ func TestRedeemHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/redeem-codes/5/stats", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestProxyApplyQualityPolicyDisablesBelowThreshold(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	adminSvc.qualityResults = map[int64]*service.ProxyQualityCheckResult{
+		1: {ProxyID: 1, Grade: "C", Score: 65},
+		2: {ProxyID: 2, Grade: "D", Score: 50},
+		3: {ProxyID: 3, Grade: "F", Score: 20},
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"ids":            []int64{1, 2, 3, 2},
+		"quality_policy": "disable_d",
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/apply-quality-policy", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equalf(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	require.ElementsMatch(t, []int64{2, 3}, adminSvc.updatedProxyIDs)
+	require.Len(t, adminSvc.updatedProxies, 2)
+	for _, update := range adminSvc.updatedProxies {
+		require.Equal(t, service.StatusDisabled, update.Status)
+	}
+
+	var envelope struct {
+		Data struct {
+			Total           int     `json:"total"`
+			QualityChecked  int     `json:"quality_checked"`
+			QualityDisabled int     `json:"quality_disabled"`
+			DisabledIDs     []int64 `json:"disabled_ids"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
+	require.Equal(t, 3, envelope.Data.Total)
+	require.Equal(t, 3, envelope.Data.QualityChecked)
+	require.Equal(t, 2, envelope.Data.QualityDisabled)
+	require.ElementsMatch(t, []int64{2, 3}, envelope.Data.DisabledIDs)
 }
