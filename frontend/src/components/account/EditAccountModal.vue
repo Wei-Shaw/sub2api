@@ -2459,6 +2459,19 @@
         </div>
       </div>
 
+      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label" for="edit-codex-timezone">{{ t('admin.accounts.openai.codexTimezone') }}</label>
+        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTimezoneDesc') }}</p>
+        <Select
+          id="edit-codex-timezone"
+          v-model="codexTimezone"
+          :options="codexTimezoneOptions"
+          data-testid="edit-codex-timezone-select"
+          searchable
+          creatable
+        />
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3252,6 +3265,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import { getTimezoneOptions } from '@/utils/timezoneOptions'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -3861,6 +3875,12 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexTimezone = ref('')
+const codexTimezoneOptions = computed(() => [
+  { value: '', label: t('admin.accounts.openai.codexTimezoneInherit') },
+  { value: 'off', label: t('admin.accounts.openai.codexTimezoneClient') },
+  ...getTimezoneOptions(codexTimezone.value),
+])
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -4357,6 +4377,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  codexTimezone.value = ''
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4404,6 +4425,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       defaultMode: OPENAI_WS_MODE_OFF
     })
     if (newAccount.type === 'oauth' || newAccount.type === 'setup-token') {
+      codexTimezone.value = typeof extra?.codex_timezone === 'string' ? extra.codex_timezone : ''
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
@@ -6001,6 +6023,14 @@ const handleSubmit = async () => {
           newExtra.codex_cli_only_allow_app_server = true
         } else {
           delete newExtra.codex_cli_only_allow_app_server
+        }
+      }
+
+      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+        if (codexTimezone.value) {
+          newExtra.codex_timezone = codexTimezone.value
+        } else {
+          delete newExtra.codex_timezone
         }
       }
 

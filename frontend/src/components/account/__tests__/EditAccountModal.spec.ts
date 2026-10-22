@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -1598,6 +1598,26 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_explicit_tool_policy')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge')
+  })
+
+  it.each(['oauth', 'setup-token'])('loads, overrides and restores global Codex timezone for %s accounts', async (type) => {
+    const account = { ...buildOpenAISetupTokenAccount(), type, extra: { codex_timezone: 'Etc/GMT-8', unrelated: 'keep' } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="edit-codex-timezone-select"]')
+    expect(select.element.value).toBe('Etc/GMT-8')
+    await select.setValue('Asia/Taipei')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.extra).toMatchObject({ codex_timezone: 'Asia/Taipei', unrelated: 'keep' })
+
+    await select.setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.extra).not.toHaveProperty('codex_timezone')
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.extra?.unrelated).toBe('keep')
+    wrapper.unmount()
   })
 
   it('setup-token account can select and submit OAuth WS mode', async () => {

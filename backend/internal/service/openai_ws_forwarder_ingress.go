@@ -274,6 +274,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		} else if compatibilityChanged {
 			normalized = compatibilityBody
 		}
+		normalized, timezoneErr := s.applyCodexTimezone(ctx, account, normalized)
+		if timezoneErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket timezone context", timezoneErr)
+		}
 		if account.IsOpenAIOAuthLike() {
 			aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(normalized)
 			if aliasErr != nil {

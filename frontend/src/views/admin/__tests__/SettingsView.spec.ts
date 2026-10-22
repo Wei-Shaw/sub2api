@@ -476,6 +476,7 @@ const baseSettingsResponse = {
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
+  openai_codex_timezone: "",
   openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
@@ -1293,6 +1294,30 @@ describe("admin SettingsView payment visible method controls", () => {
         },
       },
     ]);
+  });
+
+  it("loads, updates and clears the Codex upstream timezone", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, openai_codex_timezone: "UTC" });
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const input = wrapper.get<HTMLSelectElement>("#openai-codex-timezone");
+    expect(input.element.value).toBe("UTC");
+    await input.setValue("Asia/Taipei");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ openai_codex_timezone: "Asia/Taipei" }),
+    );
+
+    await input.setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ openai_codex_timezone: "" }),
+    );
+    wrapper.unmount();
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {
