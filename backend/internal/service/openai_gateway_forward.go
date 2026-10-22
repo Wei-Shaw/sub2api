@@ -784,6 +784,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// 命中 WS 时仅走 WebSocket Mode；不再自动回退 HTTP。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+		// This path sends directly to the WS pool, bypassing HTTP builders.
+		rewritten, timezoneErr := s.applyCodexTimezone(ctx, account, body)
+		if timezoneErr != nil {
+			return nil, timezoneErr
+		}
+		if !bytes.Equal(rewritten, body) {
+			body = rewritten
+			requestView = newOpenAIRequestView(body)
+			reqBody = nil
+		}
 		// WS 分支需要结构化 payload 与重连恢复，命中后再触发 full-map decode。
 		wsReqBody, err := ensureReqBody()
 		if err != nil {
@@ -1370,6 +1380,12 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+	// Apply after ingress/protocol conversion so legacy and compatibility
+	// routes receive the same account timezone as native Responses requests.
+	body, timezoneErr := s.applyCodexTimezone(ctx, account, body)
+	if timezoneErr != nil {
+		return nil, timezoneErr
+	}
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {

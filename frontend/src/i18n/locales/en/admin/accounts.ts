@@ -711,6 +711,10 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
+        codexTimezone: 'Codex upstream timezone',
+        codexTimezoneDesc: 'An account timezone overrides the global default; dates and times use the server clock. Changes apply to new requests. Reconnect existing WebSocket connections to use new account settings.',
+        codexTimezoneInherit: 'Follow global default',
+        codexTimezoneClient: 'Preserve client values',
         codexFingerprintMode: 'Codex fingerprint convergence',
         codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values to reduce upstream-visible device and session count. Off by default (client identifiers pass through as-is); opt in explicitly when needed. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
         codexFingerprintOff: 'Off (passthrough, default)',

@@ -188,9 +188,13 @@ async function submitApiKeyAccount(
   return wrapper
 }
 
-async function openCodexImportStep(toggleClicks = 0) {
+async function openCodexImportStep(toggleClicks = 0, timezone?: string) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, 'OpenAI')
+  if (timezone !== undefined) {
+    wrapper.getComponent('[data-testid="create-codex-timezone-select"]').vm.$emit('update:modelValue', timezone)
+    await flushPromises()
+  }
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -843,6 +847,19 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.upstream_billing_probe_enabled).toBe(true)
     // 创建成功后前端立即发起一次首探（与其他 apikey 平台一致）。
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
+  })
+
+  it.each(['Asia/Taipei', 'off', ''])('passes the selected Codex timezone %j through session import', async (timezone) => {
+    const wrapper = await openCodexImportStep(0, timezone)
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    const extra = importCodexSessionMock.mock.calls[0]?.[0]?.extra
+    if (timezone) {
+      expect(extra?.codex_timezone).toBe(timezone)
+    } else {
+      expect(extra?.codex_timezone).toBeUndefined()
+    }
+    wrapper.unmount()
   })
 
   it('leaves Codex session import billing ownership to the backend', async () => {

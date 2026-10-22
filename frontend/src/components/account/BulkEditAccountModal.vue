@@ -974,6 +974,22 @@
         </div>
       </div>
 
+      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label class="input-label mb-0" for="bulk-edit-codex-timezone-enabled">{{ t('admin.accounts.openai.codexTimezone') }}</label>
+          <input id="bulk-edit-codex-timezone-enabled" v-model="enableCodexTimezone" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+        </div>
+        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTimezoneDesc') }}</p>
+        <Select
+          v-model="codexTimezone"
+          :options="codexTimezoneOptions"
+          :disabled="!enableCodexTimezone"
+          data-testid="bulk-codex-timezone-select"
+          searchable
+          creatable
+        />
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1490,6 +1506,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import { getTimezoneOptions } from '@/utils/timezoneOptions'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -1709,7 +1726,14 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const enableCodexFingerprintMode = ref(false)
+const enableCodexTimezone = ref(false)
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexTimezone = ref('')
+const codexTimezoneOptions = computed(() => [
+  { value: '', label: t('admin.accounts.openai.codexTimezoneInherit') },
+  { value: 'off', label: t('admin.accounts.openai.codexTimezoneClient') },
+  ...getTimezoneOptions(codexTimezone.value),
+])
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -2090,6 +2114,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_cli_only_allow_app_server = codexCLIOnlyAppServerEnabled.value
   }
 
+  if (enableCodexTimezone.value && allOpenAIOAuth.value) {
+    // Bulk updates merge JSONB keys: an explicit empty value resets inheritance.
+    ensureExtra().codex_timezone = codexTimezone.value
+  }
+
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
     // off 必须显式落键，不能靠删本地键表达。批量更新走 JSONB 顶层合并
@@ -2224,6 +2253,7 @@ const handleSubmit = async () => {
     enableUpstreamBillingAutoProbe.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
+    enableCodexTimezone.value ||
     enableCodexFingerprintMode.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
@@ -2375,8 +2405,10 @@ watch(
       enableUpstreamBillingAutoProbe.value = false
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
+      enableCodexTimezone.value = false
       enableCodexFingerprintMode.value = false
       codexFingerprintMode.value = 'off'
+      codexTimezone.value = ''
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

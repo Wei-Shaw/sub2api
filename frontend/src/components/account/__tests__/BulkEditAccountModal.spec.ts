@@ -932,6 +932,26 @@ describe('BulkEditAccountModal', () => {
       status: 'active'
     })
   })
+  it.each(['Asia/Taipei', 'off', ''])('submits Codex timezone %j, including an explicit inheritance reset', async (value) => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['oauth', 'setup-token'] })
+    await wrapper.get('#bulk-edit-codex-timezone-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-codex-timezone-select"]').setValue(value)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { extra: { codex_timezone: value } })
+    wrapper.unmount()
+  })
+
+  it('does not reset account timezone overrides when editing another field', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['oauth'] })
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { extra: { codex_cli_only: true } })
+    wrapper.unmount()
+  })
+
   // issue #6327：批量编辑无法把 Codex 指纹收敛关掉。
   //
   // 批量更新走 JSONB 顶层合并（extra = COALESCE(extra,'{}') || payload），删掉 payload
