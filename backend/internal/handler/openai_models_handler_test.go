@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -214,4 +216,47 @@ func TestPinnedModelsMappingFollowsUpstreamDiscoveryForBothRepresentations(t *te
 			}
 		})
 	}
+}
+
+// The admin picker flags mapping-only models with "unlisted", and the public
+// catalog is built from the same struct. This pins the ordinary listing path to
+// exactly the documented entry fields. The pinned/Codex paths go through the
+// untouched projection helper and keep their own tests, so this does not stand
+// in for them.
+func TestWriteOpenAIModelsListOmitsUnlistedFlag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	writeOpenAIModelsList(c, []string{"gpt-5.6-sol", "custom-model"})
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotContains(t, recorder.Body.String(), "unlisted")
+
+	var payload struct {
+		Data []map[string]json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Len(t, payload.Data, 2)
+	for _, entry := range payload.Data {
+		keys := make([]string, 0, len(entry))
+		for key := range entry {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		require.Equal(t, []string{"created", "display_name", "id", "object", "owned_by", "type"}, keys,
+			"the public catalog entry keeps exactly its documented fields")
+	}
+}
+
+// The flag has to serialize when the picker sets it, otherwise the admin UI
+// could not tell a mapping-only model from a catalog-backed one.
+func TestOpenAIModelUnlistedFlagSerializesOnlyWhenSet(t *testing.T) {
+	listed, err := json.Marshal(openai.Model{ID: "listed"})
+	require.NoError(t, err)
+	require.NotContains(t, string(listed), "unlisted")
+
+	unlisted, err := json.Marshal(openai.Model{ID: "mapping-only", Unlisted: true})
+	require.NoError(t, err)
+	require.Contains(t, string(unlisted), `"unlisted":true`)
 }

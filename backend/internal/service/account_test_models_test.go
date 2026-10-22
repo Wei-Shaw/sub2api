@@ -105,6 +105,117 @@ func TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping(t *testing.T) 
 	require.EqualValues(t, 123, alias.Created)
 }
 
+// A configured alias whose target the upstream catalog does not advertise used
+// to vanish from the picker without a trace. The gateway routes by the mapping
+// and never consults the catalog, so the entry is kept and flagged instead.
+func TestFetchOpenAIAccountModelsAPIKeyKeepsUnlistedMappingAlias(t *testing.T) {
+	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"data":[
+			{"id":"upstream-target","owned_by":"provider","created":123},
+			{"id":"unconfigured-model","owned_by":"provider"}
+		]}`), nil
+	}})
+	svc := &AccountTestService{openaiGatewayService: gateway}
+	account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+	account.Credentials["model_mapping"] = map[string]any{
+		"configured-alias": "upstream-target",
+		"missing-alias":    "absent-upstream",
+	}
+
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"configured-alias", "missing-alias"}, pickerModelIDs(models),
+		"catalog-backed entries come first, mapping-only entries are appended")
+
+	require.False(t, models[0].Unlisted, "an alias the catalog advertises is listed")
+	require.Equal(t, "provider", models[0].OwnedBy)
+	require.EqualValues(t, 123, models[0].Created)
+
+	require.True(t, models[1].Unlisted, "an alias only the mapping knows is flagged")
+	require.Equal(t, "missing-alias", models[1].DisplayName)
+	require.Equal(t, "model", models[1].Type)
+}
+
+// The picker selects its image test mode from the public name prefix while the
+// backend routes the test by the mapping target, so the two only agree when the
+// target is itself an image model. That is exactly when such an alias may be
+// recovered: an image-shaped name pointing at a text or missing target stays out.
+func TestFetchOpenAIAccountModelsAPIKeyUnlistedImageAliases(t *testing.T) {
+	cases := []struct {
+		name         string
+		mapping      map[string]any
+		want         []string
+		wantUnlisted bool
+	}{
+		{
+			name:         "image alias pointing at a missing image target is recovered",
+			mapping:      map[string]any{"gpt-image-custom": "gpt-image-2.5-flare"},
+			want:         []string{"gpt-image-custom"},
+			wantUnlisted: true,
+		},
+		{
+			name:         "image name mapped onto itself is recovered",
+			mapping:      map[string]any{"gpt-image-2.5-flare": "gpt-image-2.5-flare"},
+			want:         []string{"gpt-image-2.5-flare"},
+			wantUnlisted: true,
+		},
+		{
+			name:         "plain alias pointing at a missing image target is recovered",
+			mapping:      map[string]any{"paint": "gpt-image-2.5-flare"},
+			want:         []string{"paint"},
+			wantUnlisted: true,
+		},
+		{
+			name:         "image alias pointing at a missing text target stays out",
+			mapping:      map[string]any{"gpt-image-2.5-lookalike": "text-target-missing"},
+			want:         []string{},
+			wantUnlisted: false,
+		},
+		{
+			name:         "image alias pointing at a catalogued text target stays projected",
+			mapping:      map[string]any{"gpt-image-2.5-lookalike": "gpt-6-astra"},
+			want:         []string{"gpt-image-2.5-lookalike"},
+			wantUnlisted: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+				return ordinaryModelsUpstreamResponse(`{"data":[{"id":"gpt-6-astra","owned_by":"provider"}]}`), nil
+			}})
+			svc := &AccountTestService{openaiGatewayService: gateway}
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Credentials["model_mapping"] = tc.mapping
+
+			models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.want, pickerModelIDs(models))
+			for _, model := range models {
+				require.Equal(t, tc.wantUnlisted, model.Unlisted)
+			}
+		})
+	}
+}
+
+// Passthrough forwards the upstream catalog unchanged and ignores the mapping,
+// so it must not grow mapping-only entries either.
+func TestFetchOpenAIAccountModelsAPIKeyPassthroughSkipsUnlistedAliases(t *testing.T) {
+	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"data":[{"id":"target","owned_by":"provider"}]}`), nil
+	}})
+	svc := &AccountTestService{openaiGatewayService: gateway}
+	account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+	account.Extra = map[string]any{"openai_passthrough": true}
+	account.Credentials["model_mapping"] = map[string]any{"missing-alias": "absent-upstream"}
+
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"target"}, pickerModelIDs(models))
+	for _, model := range models {
+		require.False(t, model.Unlisted)
+	}
+}
+
 func TestFetchOpenAIAccountModelsPreservesEmptyCatalog(t *testing.T) {
 	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 		return ordinaryModelsUpstreamResponse(`{"data":[]}`), nil
