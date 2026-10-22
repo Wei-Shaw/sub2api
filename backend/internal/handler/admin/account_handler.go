@@ -1266,6 +1266,9 @@ type TestAccountRequest struct {
 	ModelID string `json:"model_id"`
 	Prompt  string `json:"prompt"`
 	Mode    string `json:"mode"`
+	// PlainAPIKey sends the Anthropic api_key test as a plain JSON client
+	// request (no Claude Code mimicry). Ignored for other account types.
+	PlainAPIKey bool `json:"plain_api_key"`
 	// Optional media for Grok (and future) real generation tests.
 	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
 	ImageDataURL string `json:"image_data_url"`
@@ -1302,6 +1305,7 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	opts := service.AccountTestOptions{
 		ImageDataURL: req.ImageDataURL,
 		AudioDataURL: req.AudioDataURL,
+		PlainAPIKey:  req.PlainAPIKey,
 	}
 
 	// Use AccountTestService to test the account with SSE streaming
