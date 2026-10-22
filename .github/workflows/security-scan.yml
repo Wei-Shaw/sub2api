@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          want="go$(awk '/^go /{print $2; exit}' backend/go.mod)"
+          want="go$(sed -n 's/^go //p' backend/go.mod | tr -d '\r')"
           go version | grep -q "$want"
       - name: Run govulncheck
         working-directory: backend

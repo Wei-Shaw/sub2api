@@ -35,7 +35,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.3'
+          want="go$(sed -n 's/^go //p' backend/go.mod | tr -d '\r')"
+          go version | grep -q "$want"
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -75,7 +76,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.3'
+          want="go$(sed -n 's/^go //p' backend/go.mod | tr -d '\r')"
+          go version | grep -q "$want"
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
