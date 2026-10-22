@@ -233,6 +233,10 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
 		return nil, s.writeAntigravityCompatError(c, http.StatusForbidden, "permission_error", message)
 	}
+	if geminiImageGenerationDenied(c, nil, request.originalModel, mappedModel) {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", ImageGenerationPermissionMessage())
+	}
+
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
 	}

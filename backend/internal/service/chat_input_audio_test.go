@@ -156,6 +156,39 @@ func TestAntigravityChatInputAudioThinkingAwareFamily(t *testing.T) {
 	}
 }
 
+func TestAntigravityChatInputAudioImageGenerationGate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, allowImages := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_images=%t", allowImages), func(t *testing.T) {
+			body := []byte(`{"model":"gemini-3.8-flash","reasoning_effort":"medium","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]}]}`)
+			ginContext, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+			withGeminiImageGateAPIKey(ginContext, &Group{ID: 20, Platform: PlatformAntigravity, AllowImageGeneration: allowImages})
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			account := newAntigravityCompatAccount(AccountTypeOAuth)
+			account.Credentials["model_mapping"] = map[string]any{
+				"gemini-3.8-flash-high":   "gemini-3.8-flash",
+				"gemini-3.8-flash-medium": "gemini-3-pro-image",
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), ginContext, account, body, nil)
+			if !allowImages {
+				require.Error(t, err)
+				require.Nil(t, result)
+				requireGeminiImagePermissionError(t, recorder, "")
+				require.Zero(t, upstream.callCount)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Len(t, upstream.requestBodies, 1)
+			require.Equal(t, "gemini-3-pro-image", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+			require.Contains(t, string(upstream.requestBodies[0]), `"mimeType":"audio/wav"`)
+			require.Contains(t, string(upstream.requestBodies[0]), `"data":"YXVkaW8="`)
+		})
+	}
+}
+
 func TestChatInputAudioRawPassthroughUnchanged(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"audio-model","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"pcm16"}}]}]}`)
