@@ -804,9 +804,9 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/intelligence-check', label: t('nav.intelligenceCheck'), icon: IntelligenceCheckIcon, hideInSimpleMode: true, featureFlag: flagIntelligenceCheck },
     // AI生图：位于「智力检测」下方、「我的订阅」上方。用户端主菜单与管理端「我的账户」
     // 共用这份声明，因此管理端会自动落在左侧最下方对应的同一位置。
-    // adminOnly：这个模块是新做的，先只给管理员测试，普通用户看不到。
-    // 等真机验证通过后，去掉这里的 adminOnly、并把路由的 requiresAdmin 改回 false 即可。
-    { path: '/ai-image', label: t('nav.aiImage'), icon: AiImageIcon, hideInSimpleMode: true, adminOnly: true },
+    // 【2026-10-22 主人要求】已对普通用户开放，所以去掉了 adminOnly。
+    // 能不能真的生成，取决于用户自己的 Key 是否落在「生图」分组（页面里会提示）。
+    { path: '/ai-image', label: t('nav.aiImage'), icon: AiImageIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },

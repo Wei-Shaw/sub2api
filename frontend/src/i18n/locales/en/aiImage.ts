@@ -166,7 +166,7 @@ export default {
       download: 'Download with watermark',
       done: 'Watermarked and downloading.',
       corsBlocked:
-        'The image server does not allow this page to read the file, so it cannot be watermarked in the browser. The original was opened in a new tab \u2014 right-click it and choose "Save image as". To restore "Download with watermark", add a CORS rule for img.chenshuapi.com.',
+        'The image server does not allow this page to read the pixels, so the watermark cannot be applied in the browser. The original image was downloaded instead. To restore "Download with watermark", add a CORS rule for img.chenshuapi.com.',
       hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image. Leave the text empty and no watermark is applied \u2014 the button is hidden.',
       note:
         'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
@@ -230,7 +230,7 @@ export default {
       download: 'Download',
       // Fallback copy when the image host blocks cross-origin reads.
       downloadBlocked:
-        'The image server does not allow this page to read the file, so the original was opened in a new tab. Right-click the image there and choose "Save image as". To restore normal downloads, add a CORS rule for img.chenshuapi.com.',
+        'Download started \u2014 the browser saves it to its default download folder. If you cannot find the file, check your browser download settings.',
       remove: 'Delete',
       copyPrompt: 'Copy prompt',
       copied: 'Copied',

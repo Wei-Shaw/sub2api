@@ -530,15 +530,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    // AI生图：目前**只给管理员**。这个模块是新做的，要先由管理员在真机上跑通、
-    // 看过实际出图效果之后再放给普通用户。等测试通过，把 requiresAdmin 改回 false、
-    // 并去掉侧边栏里的 adminOnly 即可（两处，见 AppSidebar.vue）。
+    // AI生图：**2026-10-22 起对普通用户开放**（主人要求）。
+    // 原来这里有 requiresAdmin，是为了让管理员先真机验一遍再放量；
+    // 现在验证通过，放开给所有登录用户。
+    //
+    // 注意：普通用户能不能真的生成，取决于**他自己的密钥落在哪个分组**——
+    // 只有「生图」分组（allow_image_generation = true）的 Key 才调得通，
+    // 否则页面里的密钥校验会直接提示「这个密钥不是生图模型」。
     path: '/ai-image',
     name: 'AIImage',
     component: () => import('@/views/user/AIImageView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
       title: 'AI Image',
       titleKey: 'nav.aiImage'
     }

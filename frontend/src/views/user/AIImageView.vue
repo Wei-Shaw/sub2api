@@ -1632,8 +1632,12 @@ async function onMultiReferencePicked(event: Event) {
 /**
  * 给一张图片地址加水印并下载。
  *
- * 注意：生成的图在上游的 CDN 上，浏览器直接 fetch 可能被跨域策略挡住。
- * 挡不住就直接下载原图并明确告诉用户，而不是静默失败。
+ * 注意：加水印必须**读到图片像素**，而图片域名没有跨域许可，
+ * 浏览器会拦掉 fetch，canvas 也会被污染。所以这条路径在没有 CORS 时
+ * 只能退化成「下载原图（没水印）」并说清原因。
+ *
+ * 【2026-10-22】兜底从「新开标签页」改成**当前页跳转** —— 后端给图加了
+ * `Content-Disposition: attachment`，跳过去会直接下载，页面不会离开。
  */
 async function downloadWithWatermark(record: AIImageRecord) {
   const url = record.images[0]
@@ -1654,8 +1658,8 @@ async function downloadWithWatermark(record: AIImageRecord) {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
     watermarkNotice.value = t('aiImage.watermark.done')
   } catch {
-    // 跨域被挡时退化成直接打开原图，并说清楚原因。
-    openInNewTab(url)
+    // 读不到像素 → 退化成下载原图（没有水印），并说清原因。
+    navigateToDownload(url)
     watermarkNotice.value = t('aiImage.watermark.corsBlocked')
   } finally {
     watermarking.value = false
@@ -2485,16 +2489,19 @@ function clearScript() {
  *
  * 正常情况下把图片读成 Blob 再触发下载（这样文件名、格式都可控）。
  *
- * ⚠️ **但读字节需要跨域许可**：图片现在存在 `img.chenshuapi.com`，
- * 和页面（`chenshuapi.com`）不同源。如果那个域名没发
- * `Access-Control-Allow-Origin`，浏览器会直接拦掉 fetch，
- * 于是「点了没反应」或「打开新标签」—— 主人 2026-10-17 报的就是这个。
+ * ⚠️ **但读字节需要跨域许可**：图片存在 `img.chenshuapi.com`，
+ * 和页面（`chenshuapi.com`）不同源。那个域名没有 `Access-Control-Allow-Origin`，
+ * 浏览器会直接拦掉 fetch。
  *
- * 所以这里做了两件事：
- *   ① 失败时用 `<a target="_blank">` 打开（不用 `window.open`，
- *      后者会被弹窗拦截器挡掉，表现就是「点了完全没反应」）；
- *   ② 明确告诉用户为什么，以及怎么存（右键 → 图片另存为）。
- * 真正的根治是给图片域名加 CORS（见 PROGRESS 会话 032）。
+ * 【2026-10-22 改了兜底方式】原来失败时新开一个标签页让用户右键另存；
+ * 现在后端给图片加了 `Content-Disposition: attachment`（0.2.9.37 起），
+ * 所以改成**当前页跳转** —— 浏览器遇到 attachment 响应会直接下载，
+ * 且**不会离开当前页面**（真浏览器实测：跳转前后 pathname 都是 /home）。
+ *
+ * 为什么不能无条件用当前页跳转：没有 attachment 的图，`location.href = url`
+ * 会把页面导航到图片上，用户就丢了 AI生图 页面（同样实测过）。
+ * 所以顺序是「先试着读字节 → 读不到再当前页跳转」，
+ * 只要后端一直带 attachment，兜底就是安全的。
  */
 async function downloadRecord(record: AIImageRecord) {
   const source = record.images[0]
@@ -2513,20 +2520,24 @@ async function downloadRecord(record: AIImageRecord) {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   } catch {
-    openInNewTab(source)
+    // 读不到字节 → 让浏览器自己去取。带 attachment 的响应会直接下载，页面不动。
+    navigateToDownload(source)
     copyNotice.value = t('aiImage.result.downloadBlocked')
   }
 }
 
-/** 用 <a> 打开新标签：不会被弹窗拦截器挡掉，比 window.open 可靠。 */
-function openInNewTab(href: string) {
-  const link = document.createElement('a')
-  link.href = href
-  link.target = '_blank'
-  link.rel = 'noopener noreferrer'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+/**
+ * 当前页跳转去下载。
+ *
+ * 用 `location.href` 而不是 `<a target="_blank">`：
+ *   - attachment 响应下，浏览器只触发下载，**页面不会离开**（实测）；
+ *   - 不会多留一个空白标签页。
+ *
+ * 用 `location.assign` 而不是直接赋值，是为了让「这是有意导航」更明确，
+ * 也方便测试里替换。
+ */
+function navigateToDownload(href: string) {
+  window.location.assign(href)
 }
 
 function removeRecord(record: AIImageRecord) {
