@@ -345,11 +345,12 @@ func TestAccountHandlerGetAvailableModels_Antigravity(t *testing.T) {
 		{name: "empty JSON mapping", credentials: map[string]any{"model_mapping": map[string]any{}}, want: defaults},
 		{name: "empty string mapping", credentials: map[string]any{"model_mapping": map[string]string{}}, want: defaults},
 		{name: "blank key", credentials: map[string]any{"model_mapping": map[string]any{" ": "upstream-model"}}, want: defaults},
-		{name: "JSON mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]any{
-			known.ID: known.ID, custom.ID: "upstream-model",
+		{name: "wildcard only falls back to defaults", credentials: map[string]any{"model_mapping": map[string]any{"claude-*": "claude-sonnet-4-6", "gemini-3*": "gemini-3-flash"}}, want: defaults},
+		{name: "JSON mapping keys and metadata skips wildcards", credentials: map[string]any{"model_mapping": map[string]any{
+			known.ID: known.ID, custom.ID: "upstream-model", "claude-*": "claude-sonnet-4-6",
 		}}, want: []antigravity.ClaudeModel{custom, known}},
-		{name: "string mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]string{
-			known.ID: known.ID, custom.ID: "upstream-model",
+		{name: "string mapping keys and metadata skips wildcards", credentials: map[string]any{"model_mapping": map[string]string{
+			known.ID: known.ID, custom.ID: "upstream-model", "gemini-*": "gemini-3-flash",
 		}}, want: []antigravity.ClaudeModel{custom, known}},
 	}
 	for _, tc := range cases {
