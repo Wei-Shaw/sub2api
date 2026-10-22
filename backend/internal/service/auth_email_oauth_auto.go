@@ -93,10 +93,8 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if err != nil {
 		return nil, nil, err
 	}
-	if identityUser != nil && !strings.EqualFold(strings.TrimSpace(identityUser.Email), email) {
-		return nil, nil, infraerrors.Conflict("AUTH_IDENTITY_EMAIL_MISMATCH", "oauth identity belongs to a different email")
-	}
-
+	// The provider subject is the stable key: a bound identity signs in to its own user
+	// even when the provider email changed (e.g. a renamed Gmail address).
 	user := identityUser
 	created := false
 	if user == nil {
