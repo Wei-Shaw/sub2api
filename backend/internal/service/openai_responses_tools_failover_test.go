@@ -19,15 +19,15 @@ import (
 func TestResponsesSolToolsCapabilityFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tools := range []struct{ name, fields string }{
-		{"function", `"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
-		{"custom", `"tools":[{"type":"custom","name":"exec"}]`},
-		{"namespace", `"tools":[{"type":"namespace","name":"shell","tools":[{"type":"function","name":"pwd","parameters":{"type":"object"}}]}]`},
-		{"additional", `"additional_tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
-		{"native", `"tools":[{"type":"computer_use_preview","display_width":1024,"display_height":768,"environment":"browser"}]`},
+		{"function", `"input":"hello","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
+		{"custom", `"input":"hello","tools":[{"type":"custom","name":"exec"}]`},
+		{"namespace", `"input":"hello","tools":[{"type":"namespace","name":"shell","tools":[{"type":"function","name":"pwd","parameters":{"type":"object"}}]}]`},
+		{"additional", `"input":[{"type":"additional_tools","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]},{"role":"user","content":"hello"}]`},
+		{"native", `"input":"hello","tools":[{"type":"computer_use_preview","display_width":1024,"display_height":768,"environment":"browser"}]`},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", tools.name, stream), func(t *testing.T) {
-				body := fmt.Sprintf(`{"model":"public-alias","input":"hello","stream":%t,%s}`, stream, tools.fields)
+				body := fmt.Sprintf(`{"model":"public-alias","stream":%t,%s}`, stream, tools.fields)
 				c, rec := newSolToolsFallbackContext(body)
 				account := forceChatResponsesFallbackAccount()
 				account.Credentials["model_mapping"] = map[string]any{"public-alias": "gpt-6.1-sol"}
