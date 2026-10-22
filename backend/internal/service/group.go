@@ -35,6 +35,7 @@ type Group struct {
 	// an already committed one-click copy. It must never be mapped to API DTOs.
 	DuplicateOperationID string
 
+	ResetQuotaOnRenewal bool
 	SubscriptionType    string
 	DailyLimitUSD       *float64
 	WeeklyLimitUSD      *float64

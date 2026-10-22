@@ -726,6 +726,13 @@
             v-if="createForm.subscription_type === 'subscription'"
             class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
           >
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-3">
+                <label class="input-label mb-0">{{ t("admin.groups.subscription.resetQuotaOnRenewal") }}</label>
+                <Toggle v-model="createForm.reset_quota_on_renewal" />
+              </div>
+              <p class="input-hint">{{ t("admin.groups.subscription.resetQuotaOnRenewalHint") }}</p>
+            </div>
             <div>
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
@@ -2366,6 +2373,13 @@
             v-if="editForm.subscription_type === 'subscription'"
             class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
           >
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-3">
+                <label class="input-label mb-0">{{ t("admin.groups.subscription.resetQuotaOnRenewal") }}</label>
+                <Toggle v-model="editForm.reset_quota_on_renewal" />
+              </div>
+              <p class="input-hint">{{ t("admin.groups.subscription.resetQuotaOnRenewalHint") }}</p>
+            </div>
             <div>
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
@@ -4949,6 +4963,7 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
+  reset_quota_on_renewal: false,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -5315,6 +5330,7 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
+  reset_quota_on_renewal: false,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -5778,6 +5794,7 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
+  createForm.reset_quota_on_renewal = false;
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
@@ -6067,6 +6084,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
+  editForm.reset_quota_on_renewal = group.reset_quota_on_renewal ?? false;
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;

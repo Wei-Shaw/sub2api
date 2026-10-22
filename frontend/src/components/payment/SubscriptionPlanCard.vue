@@ -92,6 +92,10 @@
 
       <div class="flex-1" />
 
+      <p v-if="plan.reset_quota_on_renewal" class="mb-3 text-xs text-amber-700 dark:text-amber-300" role="note">
+        {{ t('payment.resetQuotaOnRenewalNotice') }}
+      </p>
+
       <!-- Subscribe Button -->
       <button
         type="button"

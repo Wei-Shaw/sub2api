@@ -263,6 +263,28 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 			sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.SubscriptionGroupID)
 			if err == nil && sub != nil {
 				p.SubscriptionID = sub.ID
+				// An older purchase must not deduct time from its replacement term.
+				entry, auditErr := s.entClient.PaymentAuditLog.Query().Where(
+					paymentauditlog.OrderIDEQ(strconv.FormatInt(o.ID, 10)),
+					paymentauditlog.ActionEQ("SUBSCRIPTION_ASSIGNED"),
+				).First(ctx)
+				if auditErr != nil && !dbent.IsNotFound(auditErr) {
+					return &RefundResult{Warning: "cannot verify subscription term for deduction"}
+				}
+				var detail struct {
+					StartsAt *time.Time `json:"subscriptionStartsAt"`
+				}
+				if entry != nil {
+					if err := json.Unmarshal([]byte(entry.Detail), &detail); err != nil {
+						return &RefundResult{Warning: "cannot verify subscription term for deduction"}
+					}
+				}
+				if (detail.StartsAt != nil && !detail.StartsAt.Equal(sub.StartsAt)) ||
+					(detail.StartsAt == nil && o.CompletedAt != nil && o.CompletedAt.Before(sub.StartsAt)) {
+					p.SubDaysToDeduct = 0
+					return nil
+				}
+				p.SubscriptionStartsAt = &sub.StartsAt
 			} else if !force {
 				return &RefundResult{Success: false, Warning: "cannot find active subscription for deduction, use force", RequireForce: true}
 			}
@@ -330,7 +352,7 @@ func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*Ref
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
 		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
-			_, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct)
+			_, err := s.adjustRefundSubscription(ctx, p, -p.SubDaysToDeduct)
 			if err != nil {
 				if errors.Is(err, ErrAdjustWouldExpire) {
 					// Deduction would expire the subscription — revoke it entirely
@@ -524,6 +546,11 @@ func (s *PaymentService) finalizePendingRefundSuccess(ctx context.Context, p *Re
 	if !p.deductionHeld && p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
 		s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
 	}
+	if p.SubscriptionStartsAt != nil && p.Order.SubscriptionGroupID != nil {
+		if err := s.subscriptionSvc.invalidateSubscriptionCaches(p.Order.UserID, *p.Order.SubscriptionGroupID); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
 }
 
@@ -564,7 +591,7 @@ func (s *PaymentService) applyRefundFinalDeduction(ctx context.Context, p *Refun
 		p.BalanceToDeduct = deducted
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct); err != nil {
+		if _, err := s.adjustRefundSubscription(ctx, p, -p.SubDaysToDeduct); err != nil {
 			if errors.Is(err, ErrAdjustWouldExpire) {
 				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
 					return fmt.Errorf("revoke subscription: %w", revokeErr)
@@ -589,6 +616,11 @@ func (s *PaymentService) finalizeRefundFailed(ctx context.Context, p *RefundPlan
 	if returnErr == nil {
 		if p.deductionHeld && p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
 			s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
+		}
+		if p.deductionHeld && p.SubscriptionStartsAt != nil && p.SubscriptionID > 0 {
+			if err := s.subscriptionSvc.invalidateSubscriptionCaches(p.Order.UserID, *p.Order.SubscriptionGroupID); err != nil {
+				return nil, err
+			}
 		}
 		return &RefundResult{Success: false, Warning: warning}, nil
 	}
@@ -664,7 +696,7 @@ func (s *PaymentService) returnHeldRefundDeduction(ctx context.Context, p *Refun
 		}
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, p.SubDaysToDeduct); err != nil {
+		if _, err := s.adjustRefundSubscription(ctx, p, p.SubDaysToDeduct); err != nil {
 			return fmt.Errorf("return held subscription deduction: %w", err)
 		}
 	}
@@ -690,16 +722,17 @@ func createPaymentAuditLogTx(ctx context.Context, client *dbent.Client, oid int6
 // refundPendingAuditDetail 记录在 REFUND_PENDING 审计日志中。DeductionHeld 为 true 表示
 // 进入 pending 时扣减被保留；旧记录没有该字段，扣减已在 pending 时归还（DeductionRollbackOK）。
 type refundPendingAuditDetail struct {
-	RefundID            string  `json:"refundID"`
-	RefundAmount        float64 `json:"refundAmount"`
-	Reason              string  `json:"reason"`
-	Force               bool    `json:"force"`
-	DeductionRollbackOK bool    `json:"deductionRollbackOK,omitempty"`
-	DeductionHeld       bool    `json:"deductionHeld,omitempty"`
-	DeductionType       string  `json:"deductionType,omitempty"`
-	BalanceDeducted     float64 `json:"balanceDeducted"`
-	SubDaysDeducted     int     `json:"subDaysDeducted"`
-	SubscriptionID      int64   `json:"subscriptionID,omitempty"`
+	RefundID             string     `json:"refundID"`
+	RefundAmount         float64    `json:"refundAmount"`
+	Reason               string     `json:"reason"`
+	Force                bool       `json:"force"`
+	DeductionRollbackOK  bool       `json:"deductionRollbackOK,omitempty"`
+	DeductionHeld        bool       `json:"deductionHeld,omitempty"`
+	DeductionType        string     `json:"deductionType,omitempty"`
+	BalanceDeducted      float64    `json:"balanceDeducted"`
+	SubDaysDeducted      int        `json:"subDaysDeducted"`
+	SubscriptionID       int64      `json:"subscriptionID,omitempty"`
+	SubscriptionStartsAt *time.Time `json:"subscriptionStartsAt,omitempty"`
 	// requestedAt 取自审计记录的创建时间，不参与序列化。
 	requestedAt time.Time
 }
@@ -713,6 +746,7 @@ func (d refundPendingAuditDetail) applyTo(p *RefundPlan) {
 	p.BalanceToDeduct = d.BalanceDeducted
 	p.SubDaysToDeduct = d.SubDaysDeducted
 	p.SubscriptionID = d.SubscriptionID
+	p.SubscriptionStartsAt = d.SubscriptionStartsAt
 }
 
 // latestRefundPendingDetail 读取最近一次 REFUND_PENDING 审计。没有记录视为旧订单（扣减已在
@@ -806,15 +840,16 @@ func (s *PaymentService) markRefundOkTx(ctx context.Context, client *dbent.Clien
 // 订单状态与审计记录同事务写入，确保终态收敛时能读到保留的扣减。
 func (s *PaymentService) markRefundPending(ctx context.Context, p *RefundPlan, resp *payment.RefundResponse) (_ *RefundResult, err error) {
 	detail, err := json.Marshal(refundPendingAuditDetail{
-		RefundID:        refundResponseID(resp),
-		RefundAmount:    p.RefundAmount,
-		Reason:          p.Reason,
-		Force:           p.Force,
-		DeductionHeld:   true,
-		DeductionType:   p.DeductionType,
-		BalanceDeducted: p.BalanceToDeduct,
-		SubDaysDeducted: p.SubDaysToDeduct,
-		SubscriptionID:  p.SubscriptionID,
+		RefundID:             refundResponseID(resp),
+		RefundAmount:         p.RefundAmount,
+		Reason:               p.Reason,
+		Force:                p.Force,
+		DeductionHeld:        true,
+		DeductionType:        p.DeductionType,
+		BalanceDeducted:      p.BalanceToDeduct,
+		SubDaysDeducted:      p.SubDaysToDeduct,
+		SubscriptionID:       p.SubscriptionID,
+		SubscriptionStartsAt: p.SubscriptionStartsAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal refund pending audit: %w", err)
@@ -873,7 +908,7 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 		s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, p.SubDaysToDeduct); err != nil {
+		if _, err := s.adjustRefundSubscription(ctx, p, p.SubDaysToDeduct); err != nil {
 			slog.Error("[CRITICAL] subscription rollback failed", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct, "error", err)
 			s.writeAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED", "admin", map[string]any{"gatewayError": psErrMsg(gErr), "rollbackError": psErrMsg(err), "subDaysDeducted": p.SubDaysToDeduct})
 			return false

@@ -587,6 +587,7 @@ export interface Group {
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
+  reset_quota_on_renewal?: boolean
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
@@ -810,6 +811,7 @@ export interface CreateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
+  reset_quota_on_renewal?: boolean
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -877,6 +879,7 @@ export interface UpdateGroupRequest {
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
+  reset_quota_on_renewal?: boolean
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
