@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -178,6 +179,8 @@ func TestRewriteCodexEnvironmentTimezoneWSFrames(t *testing.T) {
 }
 
 func TestSettingServiceCodexTimezone(t *testing.T) {
+	mappingOptions := xai.RuntimeModelMappingOptions()
+	t.Cleanup(func() { xai.SetRuntimeModelMappingOptions(mappingOptions) })
 	resetGatewayForwardingSettingsCacheForTest(t)
 	repo := &gatewayTTLSettingRepo{data: map[string]string{}}
 	svc := NewSettingService(repo, &config.Config{})
@@ -224,6 +227,8 @@ func TestCodexTimezoneAccountScope(t *testing.T) {
 }
 
 func TestCodexTimezoneAccountOverridesAndGlobalChanges(t *testing.T) {
+	mappingOptions := xai.RuntimeModelMappingOptions()
+	t.Cleanup(func() { xai.SetRuntimeModelMappingOptions(mappingOptions) })
 	resetGatewayForwardingSettingsCacheForTest(t)
 	ctx := context.Background()
 	settingsService := NewSettingService(&gatewayTTLSettingRepo{data: map[string]string{}}, &config.Config{})
