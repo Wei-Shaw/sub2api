@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
@@ -199,6 +200,9 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	}
 
 	contentType := strings.TrimSpace(c.GetHeader("Content-Type"))
+	if err := requestmodel.ValidateBody(endpoint, contentType, body); err != nil {
+		return nil, err
+	}
 	req := &OpenAIImagesRequest{
 		Endpoint:    endpoint,
 		ContentType: contentType,
