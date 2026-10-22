@@ -61,24 +61,30 @@ describe('PROVIDER_CONFIG_FIELDS.stripe', () => {
 describe('EasyPay custom methods config', () => {
   it('parses customMethods from the JSON string stored in provider config', () => {
     expect(parseEasyPayCustomMethods(
-      '[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":"USDT-TRC20"}]',
+      '[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":"USDT-TRC20","icon":"https://cdn.example.com/usdt.svg"}]',
     )).toEqual([
-      { type: 'ldc', upstreamType: 'epay', displayName: 'LDC' },
-      { type: 'usdt_trc20', upstreamType: 'usdt', displayName: 'USDT-TRC20' },
+      { type: 'ldc', upstreamType: 'epay', displayName: 'LDC', icon: '' },
+      { type: 'usdt_trc20', upstreamType: 'usdt', displayName: 'USDT-TRC20', icon: 'https://cdn.example.com/usdt.svg' },
     ])
   })
 
   it('serializes non-empty custom methods into the config string format', () => {
     expect(serializeEasyPayCustomMethods([
-      { type: 'ldc', upstreamType: 'epay', displayName: 'LDC' },
-      { type: '  ', upstreamType: 'ignored', displayName: 'Ignored' },
-      { type: 'usdt_trc20', upstreamType: 'usdt', displayName: '' },
+      { type: 'ldc', upstreamType: 'epay', displayName: 'LDC', icon: '' },
+      { type: '  ', upstreamType: 'ignored', displayName: 'Ignored', icon: '' },
+      { type: 'usdt_trc20', upstreamType: 'usdt', displayName: '', icon: '' },
     ])).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":""}]')
+  })
+
+  it('serializes an optional icon only when it is set', () => {
+    expect(serializeEasyPayCustomMethods([
+      { type: 'usdt', upstreamType: 'usdt', displayName: 'USDT', icon: 'https://cdn.example.com/usdt.svg' },
+    ])).toBe('[{"type":"usdt","upstreamType":"usdt","displayName":"USDT","icon":"https://cdn.example.com/usdt.svg"}]')
   })
 
   it('returns an empty string for invalid or empty custom methods', () => {
     expect(parseEasyPayCustomMethods('not-json')).toEqual([])
-    expect(serializeEasyPayCustomMethods([{ type: '', upstreamType: 'epay', displayName: 'LDC' }])).toBe('')
+    expect(serializeEasyPayCustomMethods([{ type: '', upstreamType: 'epay', displayName: 'LDC', icon: '' }])).toBe('')
   })
 })
 
