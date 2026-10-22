@@ -146,9 +146,9 @@ func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *test
 	}
 	releaseCalls := 0
 
-	selection, err := svc.newAcquiredSelectionResult(context.Background(), &Account{ID: 1001}, func() {
+	selection, err := svc.newAcquiredSelectionResult(context.Background(), &Account{ID: 1001}, &AcquireResult{ReleaseFunc: func() {
 		releaseCalls++
-	})
+	}})
 
 	if err == nil {
 		t.Fatalf("expected hydration error")

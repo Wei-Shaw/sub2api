@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	coderws "github.com/coder/websocket"
@@ -12,6 +13,49 @@ type openAIWSClientReadResult struct {
 	messageType coderws.MessageType
 	payload     []byte
 	err         error
+}
+
+type openAIWSClientReadAheadKey struct{}
+
+type openAIWSClientReadAhead struct {
+	conn    *coderws.Conn
+	claimed atomic.Bool
+	result  chan openAIWSClientReadResult
+	done    chan struct{}
+}
+
+// BeginOpenAIWSClientReadAhead observes disconnects during handshake recovery.
+// The next regular reader takes over this read, preserving an early client frame.
+// Call only while no regular reader is active, and clean up when the handler exits.
+func BeginOpenAIWSClientReadAhead(ctx context.Context, conn *coderws.Conn) (context.Context, func()) {
+	if reader, _ := ctx.Value(openAIWSAccountWaitReaderKey{}).(*openAIWSAccountWaitReader); reader != nil && reader.conn == conn {
+		return BeginOpenAIWSAccountWait(ctx)
+	}
+	if pending, _ := ctx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead); pending != nil && pending.conn == conn && !pending.claimed.Load() {
+		return ctx, func() {}
+	}
+	pending := &openAIWSClientReadAhead{
+		conn: conn, result: make(chan openAIWSClientReadResult, 1), done: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	ctx = context.WithValue(ctx, openAIWSClientReadAheadKey{}, pending)
+	go func() {
+		defer close(pending.done)
+		messageType, payload, err := conn.Read(context.Background())
+		pending.result <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
+		if err != nil && !pending.claimed.Load() {
+			cancel()
+		}
+	}()
+	return ctx, func() {
+		cancel()
+		select {
+		case <-pending.done:
+		default:
+			_ = conn.CloseNow()
+			<-pending.done
+		}
+	}
 }
 
 // ReadOpenAIWSClientMessage keeps one reader alive while control events send
@@ -54,10 +98,16 @@ func readOpenAIWSClientMessageWithTimeoutStart(
 	}
 
 	readDone := make(chan openAIWSClientReadResult, 1)
-	go func() {
-		messageType, payload, err := conn.Read(context.Background())
-		readDone <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
-	}()
+	if reader, _ := controlCtx.Value(openAIWSAccountWaitReaderKey{}).(*openAIWSAccountWaitReader); reader != nil && reader.conn == conn {
+		go func() { readDone <- reader.next() }()
+	} else if pending, _ := controlCtx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead); pending != nil && pending.conn == conn && pending.claimed.CompareAndSwap(false, true) {
+		readDone = pending.result
+	} else {
+		go func() {
+			messageType, payload, err := conn.Read(context.Background())
+			readDone <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
+		}()
+	}
 
 	var timer *time.Timer
 	var timeoutCh <-chan time.Time

@@ -448,3 +448,47 @@ func TestOpenAIGatewayService_PreviousResponseSimpleModeIgnoresGroupMembership(t
 		selection.ReleaseFunc()
 	}
 }
+
+func TestOpenAIGatewayService_LegacyGuardianParentFallbackStaysOnParentWithContinuationWaiters(t *testing.T) {
+	parentID := "55555555-5555-4555-8555-555555555555"
+	parentHash := DeriveSessionHashFromSeed(parentID)
+	groupID := int64(102031)
+	accounts := []Account{
+		{
+			ID: 39031, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Concurrency: 2, Priority: 0,
+			GroupIDs: []int64{groupID}, Credentials: map[string]any{"plan_type": "team"},
+		},
+		{
+			ID: 39032, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true, Concurrency: 2, Priority: 5,
+			GroupIDs: []int64{groupID}, Credentials: map[string]any{"plan_type": "team"},
+		},
+	}
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:" + parentHash: 39031}}
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:            cache,
+		cfg:              &config.Config{},
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("false"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{39031: true, 39032: true},
+			contWaitCounts: map[int64]int{39031: 1},
+		}),
+	}
+
+	ctx := guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", parentID, "")
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx, &groupID, "", "guardian-cont-waiter-child", codexAutoReviewModel,
+		nil, OpenAIUpstreamTransportAny, false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	require.Equal(t, int64(39031), selection.Account.ID, "父线程回退按续聊处理，父账号有空槽时不得让给续聊等待者")
+	require.Equal(t, openAIAccountScheduleLayerGuardianParent, decision.Layer)
+	require.True(t, selection.Acquired)
+}

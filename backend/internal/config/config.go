@@ -1106,6 +1106,7 @@ type GatewayConfig struct {
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
 	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
+	// OpenAI WS ctx_pool/http_bridge 成功完成一轮后，后续轮次恢复独立的切换预算。
 	MaxAccountSwitches int `mapstructure:"max_account_switches"`
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
 	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
@@ -1350,6 +1351,8 @@ type GatewayOpenAIWSConfig struct {
 	LBTopK int `mapstructure:"lb_top_k"`
 	// StickySessionTTLSeconds: session_hash -> account_id 粘连 TTL
 	StickySessionTTLSeconds int `mapstructure:"sticky_session_ttl_seconds"`
+	// TurnSlotHoldSeconds: WS 轮结束后账号槽保留秒数，下一轮在保留期内直接取回并续租；0 关闭；仅 openai 平台
+	TurnSlotHoldSeconds int `mapstructure:"turn_slot_hold_seconds"`
 	// SessionHashReadOldFallback: 会话哈希迁移期是否允许“新 key 未命中时回退读旧 SHA-256 key”
 	SessionHashReadOldFallback bool `mapstructure:"session_hash_read_old_fallback"`
 	// SessionHashDualWriteOld: 会话哈希迁移期是否双写旧 SHA-256 key（短 TTL）
@@ -1490,6 +1493,11 @@ type TLSProfileConfig struct {
 
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
+	// 有新会话等待时，最多连续准入的续聊次数；0 恢复续聊绝对优先。仅 openai 平台。
+	ContinuationBurstLimit int `mapstructure:"continuation_burst_limit"`
+	// openai 平台每账号的续聊等待容量，HTTP/WS 共用，与粘性分流阈值独立。
+	ContinuationMaxWaiting int `mapstructure:"continuation_max_waiting"`
+
 	// 粘性会话排队配置
 	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
 	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`
@@ -2483,6 +2491,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.payload_log_sample_rate", 0.2)
 	viper.SetDefault("gateway.openai_ws.lb_top_k", 7)
 	viper.SetDefault("gateway.openai_ws.sticky_session_ttl_seconds", 3600)
+	viper.SetDefault("gateway.openai_ws.turn_slot_hold_seconds", 10)
 	viper.SetDefault("gateway.openai_ws.session_hash_read_old_fallback", true)
 	viper.SetDefault("gateway.openai_ws.session_hash_dual_write_old", true)
 	viper.SetDefault("gateway.openai_ws.metadata_bridge_enabled", true)
@@ -2551,6 +2560,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_nonstream_keepalive_interval", 0)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
+	viper.SetDefault("gateway.scheduling.continuation_burst_limit", 2)
+	viper.SetDefault("gateway.scheduling.continuation_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
@@ -3575,6 +3586,9 @@ func (c *Config) Validate() error {
 	if c.Gateway.OpenAIWS.StickySessionTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.openai_ws.sticky_session_ttl_seconds must be positive")
 	}
+	if c.Gateway.OpenAIWS.TurnSlotHoldSeconds < 0 {
+		return fmt.Errorf("gateway.openai_ws.turn_slot_hold_seconds must be non-negative")
+	}
 	if c.Gateway.OpenAIWS.StickyResponseIDTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.openai_ws.sticky_response_id_ttl_seconds must be positive")
 	}
@@ -3694,6 +3708,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ModelsListCacheTTLSeconds < 10 || c.Gateway.ModelsListCacheTTLSeconds > 30 {
 		return fmt.Errorf("gateway.models_list_cache_ttl_seconds must be between 10-30")
+	}
+	if c.Gateway.Scheduling.ContinuationBurstLimit < 0 {
+		return fmt.Errorf("gateway.scheduling.continuation_burst_limit must be non-negative")
+	}
+	if c.Gateway.Scheduling.ContinuationMaxWaiting <= 0 {
+		return fmt.Errorf("gateway.scheduling.continuation_max_waiting must be positive")
 	}
 	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
