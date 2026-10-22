@@ -38,7 +38,7 @@ func TestResponsesSolToolsSwitchAccount(t *testing.T) {
 				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{contentType}},
 				Body: io.NopCloser(strings.NewReader(response)),
 			})
-			h := newSolToolsFailoverHandler(t, accounts, upstream)
+			h, repo := newSolToolsFailoverHandler(t, accounts, upstream)
 			body := solToolsTestRequest(stream)
 			c, rec := newAstraProFailoverContext(t, body)
 
@@ -54,9 +54,9 @@ func TestResponsesSolToolsSwitchAccount(t *testing.T) {
 			require.Contains(t, rec.Body.String(), "function_call")
 			require.NotContains(t, rec.Body.String(), "response.failed")
 			require.NotContains(t, rec.Body.String(), "only supports Chat Completions")
-			metrics := h.gatewayService.SnapshotOpenAIAccountSchedulerMetrics()
-			require.EqualValues(t, 1, metrics.AccountSwitchTotal)
-			require.Equal(t, 1, metrics.RuntimeStatsAccountCount, "only the successful account gets a health observation")
+			require.Equal(t, 2, repo.selectorCalls())
+			require.Empty(t, repo.errorIDs())
+			require.Empty(t, repo.rateLimitedAccountIDs())
 			after, err := json.Marshal(accounts)
 			require.NoError(t, err)
 			require.JSONEq(t, string(before), string(after), "routing must not change capability flags, models or scheduling")
@@ -67,20 +67,23 @@ func TestResponsesSolToolsSwitchAccount(t *testing.T) {
 func TestResponsesSolToolsFailoverExhausted(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {
-		name         string
-		stream       bool
-		started      bool
-		maxSwitches  int
-		wantSwitches int64
+		name           string
+		stream         bool
+		started        bool
+		maxSwitches    int
+		wantSelections int
 	}{
-		{"json", false, false, 10, 2},
-		{"stream_not_started", true, false, 10, 2},
-		{"stream_keepalive", true, true, 10, 2},
+		{"json", false, false, 10, 3},
+		{"stream_not_started", true, false, 10, 3},
+		{"stream_keepalive", true, true, 10, 3},
 		{"bounded", false, false, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			upstream := newAstraProCapturedUpstream()
-			h := newSolToolsFailoverHandler(t, solToolsTestAccounts(false, false), upstream)
+			accounts := solToolsTestAccounts(false, false)
+			before, err := json.Marshal(accounts)
+			require.NoError(t, err)
+			h, repo := newSolToolsFailoverHandler(t, accounts, upstream)
 			h.maxAccountSwitches = tc.maxSwitches
 			c, rec := newAstraProFailoverContext(t, solToolsTestRequest(tc.stream))
 			if tc.started {
@@ -104,9 +107,12 @@ func TestResponsesSolToolsFailoverExhausted(t *testing.T) {
 			require.Contains(t, rec.Body.String(), "gpt-6.1-sol")
 			_, hasUpstreamError := c.Get(service.OpsUpstreamStatusCodeKey)
 			require.False(t, hasUpstreamError, "local incompatibility must not be recorded as an upstream HTTP failure")
-			metrics := h.gatewayService.SnapshotOpenAIAccountSchedulerMetrics()
-			require.Equal(t, tc.wantSwitches, metrics.AccountSwitchTotal)
-			require.Zero(t, metrics.RuntimeStatsAccountCount)
+			require.Equal(t, tc.wantSelections, repo.selectorCalls())
+			require.Empty(t, repo.errorIDs())
+			require.Empty(t, repo.rateLimitedAccountIDs())
+			after, err := json.Marshal(accounts)
+			require.NoError(t, err)
+			require.JSONEq(t, string(before), string(after), "exhaustion must not change account state")
 		})
 	}
 }
@@ -116,7 +122,7 @@ func TestResponsesSolPlainTextStillUsesChatAccount(t *testing.T) {
 		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
 		Body: io.NopCloser(strings.NewReader(`{"id":"chat_sol","model":"gpt-6.1-sol","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)),
 	})
-	h := newSolToolsFailoverHandler(t, solToolsTestAccounts(false, true), upstream)
+	h, repo := newSolToolsFailoverHandler(t, solToolsTestAccounts(false, true), upstream)
 	c, rec := newAstraProFailoverContext(t, `{"model":"public-alias","input":"hello","stream":false}`)
 
 	h.Responses(c)
@@ -126,7 +132,7 @@ func TestResponsesSolPlainTextStillUsesChatAccount(t *testing.T) {
 	require.Equal(t, []string{"https://upstream.example/v1/chat/completions"}, urls)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "ok", gjson.GetBytes(rec.Body.Bytes(), "output.0.content.0.text").String())
-	require.Zero(t, h.gatewayService.SnapshotOpenAIAccountSchedulerMetrics().AccountSwitchTotal)
+	require.Equal(t, 1, repo.selectorCalls())
 }
 
 func solToolsTestRequest(stream bool) string {
@@ -150,11 +156,12 @@ func solToolsTestAccounts(supported ...bool) []service.Account {
 	return accounts
 }
 
-func newSolToolsFailoverHandler(t *testing.T, accounts []service.Account, upstream service.HTTPUpstream) *OpenAIGatewayHandler {
+func newSolToolsFailoverHandler(t *testing.T, accounts []service.Account, upstream service.HTTPUpstream) (*OpenAIGatewayHandler, *grokCredentialHandlerRepo) {
 	t.Helper()
 	cfg := &config.Config{RunMode: config.RunModeSimple}
+	repo := &grokCredentialHandlerRepo{accounts: accounts}
 	gateway := service.NewOpenAIGatewayService(
-		openAIImagesFailoverAccountRepo{accounts: accounts}, nil, nil, nil, nil, nil, nil, cfg,
+		repo, nil, nil, nil, nil, nil, nil, cfg,
 		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -165,5 +172,5 @@ func newSolToolsFailoverHandler(t *testing.T, accounts []service.Account, upstre
 		nil, nil, nil, nil, cfg,
 	)
 	h.maxAccountSwitches = 10
-	return h
+	return h, repo
 }
