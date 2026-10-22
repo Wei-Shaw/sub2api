@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
+import UserAgentDistributionChart from '@/components/charts/UserAgentDistributionChart.vue'
 
 const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
@@ -172,6 +173,7 @@ const mountRouteFilteredUsageView = () => mount(UsageView, {
     DateRangePicker: true, Icon: true, TokenUsageTrend: true,
     ModelDistributionChart: true, GroupDistributionChart: true,
     EndpointDistributionChart: true, UserTokenRanking: true,
+    UserAgentDistributionChart: true,
   } },
 })
 
@@ -198,6 +200,39 @@ describe('admin UsageView route filters', () => {
   afterEach(() => {
     Object.keys(routeQuery).forEach((key) => delete routeQuery[key])
     vi.useRealTimers()
+  })
+
+  it('requests full-scope UA stats and ignores stale success and failure after refresh', async () => {
+    let resolveOld!: (value: unknown) => void
+    getStats.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ include_user_agents: true }))
+    const current = [{ user_agent: 'curl/8', client: 'curl', version: '8', requests: 2 }]
+    getStats.mockResolvedValueOnce({ user_agents: current })
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    expect(getStats).toHaveBeenLastCalledWith(expect.objectContaining({ include_user_agents: true, nocache: 1 }))
+    resolveOld({ user_agents: [{ client: 'old' }] })
+    await flushPromises()
+    expect(wrapper.findComponent(UserAgentDistributionChart).props('stats')).toEqual(current)
+
+    let rejectOld!: (error: Error) => void
+    getStats.mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject }))
+    ;(wrapper.vm as any).refreshData()
+    getStats.mockResolvedValueOnce({ user_agents: current })
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    rejectOld(new Error('stale failure'))
+    await flushPromises()
+    expect(wrapper.findComponent(UserAgentDistributionChart).props()).toMatchObject({ stats: current, error: false, loading: false })
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getStats.mockRejectedValueOnce(new Error('current failure'))
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    expect(wrapper.findComponent(UserAgentDistributionChart).props()).toMatchObject({ stats: [], error: true, loading: false })
+    errorLog.mockRestore()
+    wrapper.unmount()
   })
 
   it('shows the routed user while applying user_id to usage requests', async () => {
