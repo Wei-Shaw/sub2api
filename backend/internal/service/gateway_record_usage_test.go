@@ -523,6 +523,92 @@ func TestGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingAtAndUp
 	}
 }
 
+func TestGatewayServiceRecordUsage_AccountStatsPreservesCacheTTLBreakdown(t *testing.T) {
+	const model = "claude-opus-5-5"
+	for _, pricingSource := range []string{"model_pricing", "custom_account_rule"} {
+		for _, tt := range []struct {
+			name                string
+			cache5m             int
+			cache1h             int
+			overrideTarget      string
+			wantCacheCost       float64
+			wantCustomCacheCost float64
+		}{
+			{name: "1h", cache1h: 10000, wantCacheCost: 0.08, wantCustomCacheCost: 0.12},
+			{name: "mixed", cache5m: 4000, cache1h: 6000, wantCacheCost: 0.068, wantCustomCacheCost: 0.082},
+			{name: "5m", cache5m: 10000, wantCacheCost: 0.05, wantCustomCacheCost: 0.025},
+			{name: "aggregate_only", wantCacheCost: 0.05, wantCustomCacheCost: 0.025},
+			{name: "override_1h", cache5m: 10000, overrideTarget: "1h", wantCacheCost: 0.08, wantCustomCacheCost: 0.12},
+		} {
+			t.Run(pricingSource+"/"+tt.name, func(t *testing.T) {
+				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+				userRepo := &openAIRecordUsageUserRepoStub{}
+				svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+				groupID := int64(906)
+				channel := &Channel{ID: 1, Status: StatusActive}
+				wantAccountCacheCost := tt.wantCacheCost
+				if pricingSource == "custom_account_rule" {
+					inputPrice, outputPrice, cacheReadPrice := 4e-6, 20e-6, 0.2e-6
+					cacheWritePrice, cacheWrite1hPrice := 2.5e-6, 12e-6
+					channel.AccountStatsPricingRules = []AccountStatsPricingRule{{
+						GroupIDs: []int64{groupID},
+						Pricing: []ChannelModelPricing{{
+							Models: []string{model}, BillingMode: BillingModeToken,
+							InputPrice: &inputPrice, OutputPrice: &outputPrice, CacheReadPrice: &cacheReadPrice,
+							CacheWritePrice: &cacheWritePrice, CacheWrite1hPrice: &cacheWrite1hPrice,
+						}},
+					}}
+					wantAccountCacheCost = tt.wantCustomCacheCost
+				}
+				svc.channelService = newTestChannelServiceForStats(t, channel, groupID, PlatformAnthropic)
+				svc.resolver = NewModelPricingResolver(svc.channelService, svc.billingService)
+				accountMultiplier := 1.2
+				account := &Account{ID: 706, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, RateMultiplier: &accountMultiplier}
+				if tt.overrideTarget != "" {
+					account.Type = AccountTypeOAuth
+					account.Extra = map[string]any{
+						"cache_ttl_override_enabled": true,
+						"cache_ttl_override_target":  tt.overrideTarget,
+					}
+				}
+				err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+					Result: &ForwardResult{
+						RequestID: "gateway_account_stats_cache_ttl_" + pricingSource + "_" + tt.name,
+						Model:     model, UpstreamModel: model,
+						Usage: ClaudeUsage{
+							InputTokens: 1000, OutputTokens: 500, CacheReadInputTokens: 1000,
+							CacheCreationInputTokens: 10000,
+							CacheCreation5mTokens:    tt.cache5m,
+							CacheCreation1hTokens:    tt.cache1h,
+						},
+					},
+					APIKey: &APIKey{ID: 806, GroupID: &groupID, Group: &Group{
+						ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 0.5,
+					}},
+					User: &User{ID: 606}, Account: account,
+				})
+				require.NoError(t, err)
+				require.NotNil(t, usageRepo.lastLog)
+				log := usageRepo.lastLog
+				// Input, output and cache-read prices are the same in both pricing sources.
+				const nonCacheWriteCost = 0.0142
+				customerTotal := nonCacheWriteCost + tt.wantCacheCost
+				require.InDelta(t, tt.wantCacheCost, log.CacheCreationCost, 1e-12)
+				require.InDelta(t, customerTotal, log.TotalCost, 1e-12)
+				require.InDelta(t, customerTotal*0.5, log.ActualCost, 1e-12)
+				require.Equal(t, 1, userRepo.deductCalls)
+				require.InDelta(t, customerTotal*0.5, userRepo.lastAmount, 1e-12)
+				require.Equal(t, tt.overrideTarget != "", log.CacheTTLOverridden)
+				require.NotNil(t, log.AccountRateMultiplier)
+				require.Equal(t, accountMultiplier, *log.AccountRateMultiplier)
+				require.NotNil(t, log.AccountStatsCost)
+				require.InDelta(t, nonCacheWriteCost+wantAccountCacheCost, *log.AccountStatsCost, 1e-12,
+					"account cost must preserve the effective cache TTL breakdown before applying the account multiplier")
+			})
+		}
+	}
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}
