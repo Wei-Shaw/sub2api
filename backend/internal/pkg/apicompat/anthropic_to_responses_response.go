@@ -16,7 +16,37 @@ import (
 // Non-streaming: AnthropicResponse → ResponsesResponse
 // ---------------------------------------------------------------------------
 
-const anthropicThinkingEnvelopePrefix = "anthropic-thinking-v1:"
+const (
+	anthropicThinkingEnvelopePrefix = "anthropic-thinking-v1:"
+	geminiThinkingEnvelopePrefix    = "gemini-thinking-v1:"
+
+	maxGeminiThoughtSignatureBytes = 64 * 1024
+	maxGeminiThoughtEnvelopeBytes  = 128 * 1024
+)
+
+type geminiThoughtEnvelope struct {
+	Signature string `json:"signature"`
+	CallID    string `json:"call_id,omitempty"`
+}
+
+func isGeminiModel(model string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if slash := strings.LastIndexByte(normalized, '/'); slash >= 0 {
+		normalized = strings.TrimSpace(normalized[slash+1:])
+	}
+	normalized = strings.TrimPrefix(normalized, "models/")
+	return strings.HasPrefix(normalized, "gemini-")
+}
+
+func isPreservableGeminiSignature(sig string) bool {
+	sig = strings.TrimSpace(sig)
+	return sig != "" && sig != "skip_thought_signature_validator" && len(sig) <= maxGeminiThoughtSignatureBytes
+}
+
+func encodeGeminiThoughtSignature(env geminiThoughtEnvelope) string {
+	payload, _ := json.Marshal(env)
+	return geminiThinkingEnvelopePrefix + base64.RawStdEncoding.EncodeToString(payload)
+}
 
 func encodeAnthropicThinking(block AnthropicContentBlock) string {
 	// Only fields belonging to the signed thinking block are retained.
@@ -50,11 +80,25 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	var outputs []ResponsesOutput
 	var msgParts []ResponsesContentPart
 
+	isGemini := isGeminiModel(resp.Model)
+
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "thinking", "redacted_thinking":
 			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && (block.Signature != "" || block.Data != "") {
 				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
+				if block.Thinking != "" {
+					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
+				}
+				outputs = append(outputs, item)
+				continue
+			}
+			if isGemini && isPreservableGeminiSignature(block.Signature) {
+				item := ResponsesOutput{
+					Type:             "reasoning",
+					ID:               generateItemID(),
+					EncryptedContent: encodeGeminiThoughtSignature(geminiThoughtEnvelope{Signature: strings.TrimSpace(block.Signature)}),
+				}
 				if block.Thinking != "" {
 					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
 				}
@@ -83,6 +127,15 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				})
 			}
 		case "tool_use":
+			callID := toResponsesCallID(block.ID)
+			if isGemini && isPreservableGeminiSignature(block.Signature) {
+				outputs = append(outputs, ResponsesOutput{
+					Type:             "reasoning",
+					ID:               generateItemID(),
+					Status:           "completed",
+					EncryptedContent: encodeGeminiThoughtSignature(geminiThoughtEnvelope{Signature: strings.TrimSpace(block.Signature), CallID: callID}),
+				})
+			}
 			args := "{}"
 			if len(block.Input) > 0 {
 				args = string(block.Input)
@@ -90,7 +143,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			outputs = append(outputs, ResponsesOutput{
 				Type:      "function_call",
 				ID:        generateItemID(),
-				CallID:    toResponsesCallID(block.ID),
+				CallID:    callID,
 				Name:      block.Name,
 				Arguments: args,
 				Status:    "completed",
@@ -198,6 +251,7 @@ type AnthropicEventToResponsesState struct {
 	CurrentSummary             string                 // reasoning
 	CurrentThinking            AnthropicContentBlock
 	PreserveThinkingSignatures bool
+	PreserveGeminiSignatures   bool
 
 	// PendingToolInput holds tool arguments that arrived complete on
 	// content_block_start instead of as input_json_delta. It is only consumed at
@@ -286,6 +340,7 @@ func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEven
 	if evt.Message != nil {
 		state.ResponseID = evt.Message.ID
 		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || claude.IsOpus55(evt.Message.Model) || claude.IsSonnet55(evt.Message.Model) || claude.IsHaiku55(evt.Message.Model)
+		state.PreserveGeminiSignatures = state.PreserveGeminiSignatures || isGeminiModel(evt.Message.Model) || isGeminiModel(state.Model)
 		if state.Model == "" {
 			state.Model = evt.Message.Model
 		}
@@ -385,9 +440,38 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		// Close previous item if any
 		events = append(events, closeCurrentResponsesItem(state)...)
 
+		callID := toResponsesCallID(evt.ContentBlock.ID)
+		state.PreserveGeminiSignatures = state.PreserveGeminiSignatures || isGeminiModel(state.Model)
+		if state.PreserveGeminiSignatures && isPreservableGeminiSignature(evt.ContentBlock.Signature) {
+			reasoningID := generateItemID()
+			encrypted := encodeGeminiThoughtSignature(geminiThoughtEnvelope{
+				Signature: strings.TrimSpace(evt.ContentBlock.Signature),
+				CallID:    callID,
+			})
+			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+				OutputIndex: state.OutputIndex,
+				Item: &ResponsesOutput{
+					Type: "reasoning",
+					ID:   reasoningID,
+				},
+			}))
+			doneItem := ResponsesOutput{
+				Type:             "reasoning",
+				ID:               reasoningID,
+				Status:           "completed",
+				EncryptedContent: encrypted,
+			}
+			state.Outputs = append(state.Outputs, doneItem)
+			state.OutputIndex++
+			events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+				OutputIndex: state.OutputIndex - 1,
+				Item:        &doneItem,
+			}))
+		}
+
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "function_call"
-		state.CurrentCallID = toResponsesCallID(evt.ContentBlock.ID)
+		state.CurrentCallID = callID
 		state.CurrentName = evt.ContentBlock.Name
 		// The canonical Anthropic stream leaves input empty here and streams the
 		// arguments as input_json_delta, but Anthropic-compatible relays may put
@@ -459,7 +543,8 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 
 	case "signature_delta":
 		// Keep signatures in the opaque bridge envelope, never in visible text.
-		if state.PreserveThinkingSignatures {
+		state.PreserveGeminiSignatures = state.PreserveGeminiSignatures || isGeminiModel(state.Model)
+		if state.PreserveThinkingSignatures || state.PreserveGeminiSignatures {
 			state.CurrentThinking.Signature += evt.Delta.Signature
 		}
 		return nil
@@ -631,9 +716,14 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		}
 		item.Arguments = args
 	case "reasoning":
+		state.PreserveGeminiSignatures = state.PreserveGeminiSignatures || isGeminiModel(state.Model)
 		if state.PreserveThinkingSignatures && (state.CurrentThinking.Signature != "" || state.CurrentThinking.Data != "") {
 			state.CurrentThinking.Thinking = state.CurrentSummary
 			item.EncryptedContent = encodeAnthropicThinking(state.CurrentThinking)
+		} else if state.PreserveGeminiSignatures && isPreservableGeminiSignature(state.CurrentThinking.Signature) {
+			item.EncryptedContent = encodeGeminiThoughtSignature(geminiThoughtEnvelope{
+				Signature: strings.TrimSpace(state.CurrentThinking.Signature),
+			})
 		}
 		if state.CurrentSummary != "" {
 			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: state.CurrentSummary}}

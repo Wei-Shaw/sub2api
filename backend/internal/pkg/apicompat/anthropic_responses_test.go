@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -2057,4 +2058,194 @@ func TestGPT61SolCacheOptionsAndBreakpointsSurviveChatBridge(t *testing.T) {
 		require.JSONEq(t, `{"ttl":"30m","mode":"explicit"}`, string(out.PromptCacheOptions))
 		require.Contains(t, string(out.Input), "prompt_cache_breakpoint")
 	}
+}
+
+func TestGeminiThoughtSignatureResponsesRoundTrip(t *testing.T) {
+	// Turn 1: thinking block carries a signature (for call_1) and call_2 carries its own tool_use signature.
+	turn1Resp := AnthropicToResponsesResponse(&AnthropicResponse{
+		Model: "gemini-4-argon",
+		Content: []AnthropicContentBlock{
+			{Type: "thinking", Thinking: "Planning step 1", Signature: "gem-sig-think-turn1"},
+			{Type: "tool_use", ID: "call_1", Name: "exec_command", Input: json.RawMessage(`{"cmd":"ls"}`)},
+			{Type: "tool_use", ID: "call_2", Name: "exec_command", Input: json.RawMessage(`{"cmd":"pwd"}`), Signature: "gem-sig-tool-turn1"},
+		},
+	})
+	require.Len(t, turn1Resp.Output, 4)
+	require.Equal(t, "reasoning", turn1Resp.Output[0].Type)
+	require.True(t, strings.HasPrefix(turn1Resp.Output[0].EncryptedContent, "gemini-thinking-v1:"))
+	require.NotContains(t, turn1Resp.Output[0].EncryptedContent, "anthropic-thinking-v1:")
+	require.Equal(t, "function_call", turn1Resp.Output[1].Type)
+	require.Equal(t, "reasoning", turn1Resp.Output[2].Type)
+	require.True(t, strings.HasPrefix(turn1Resp.Output[2].EncryptedContent, "gemini-thinking-v1:"))
+	require.Equal(t, "function_call", turn1Resp.Output[3].Type)
+
+	// Turn 2 (streamed): tool_use with signature and thinking with signature.
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "gemini-3.1-pro-high"
+	idx0, idx1 := 0, 1
+	var streamEvents []ResponsesStreamEvent
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:    "message_start",
+		Message: &AnthropicResponse{ID: "msg_gem_2", Model: "gemini-3.1-pro-high"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:         "content_block_start",
+		Index:        &idx0,
+		ContentBlock: &AnthropicContentBlock{Type: "thinking"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx0,
+		Delta: &AnthropicDelta{Type: "thinking_delta", Thinking: "Step 2 thought"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx0,
+		Delta: &AnthropicDelta{Type: "signature_delta", Signature: "gem-sig-think-turn2"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx0,
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:         "content_block_start",
+		Index:        &idx1,
+		ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "call_3", Name: "exec_command", Input: json.RawMessage(`{"cmd":"git status"}`), Signature: "gem-sig-tool-turn2"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx1,
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "message_delta",
+		Delta: &AnthropicDelta{StopReason: "tool_use"},
+	}, state)...)
+	streamEvents = append(streamEvents, AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_stop",
+	}, state)...)
+
+	var completed *ResponsesResponse
+	for i := range streamEvents {
+		if streamEvents[i].Type == "response.completed" {
+			completed = streamEvents[i].Response
+		}
+	}
+	require.NotNil(t, completed)
+
+	// Build multi-turn input: Turn 1 outputs + outputs results + Turn 2 outputs + output result + unsigned call_4.
+	var history []ResponsesInputItem
+	rawTurn1, err := json.Marshal(turn1Resp.Output)
+	require.NoError(t, err)
+	var turn1Items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(rawTurn1, &turn1Items))
+	history = append(history, ResponsesInputItem{Role: "user", Content: json.RawMessage(`"run commands"`)})
+	history = append(history, turn1Items...)
+	history = append(history,
+		ResponsesInputItem{Type: "function_call_output", CallID: "call_1", Output: "file1"},
+		ResponsesInputItem{Type: "function_call_output", CallID: "call_2", Output: "/workspace"},
+	)
+
+	rawTurn2, err := json.Marshal(completed.Output)
+	require.NoError(t, err)
+	var turn2Items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(rawTurn2, &turn2Items))
+	history = append(history, turn2Items...)
+	history = append(history,
+		ResponsesInputItem{Type: "function_call_output", CallID: "call_3", Output: "clean"},
+		ResponsesInputItem{Type: "function_call", CallID: "call_4", Name: "exec_command", Arguments: `{"cmd":"date"}`},
+		ResponsesInputItem{Type: "function_call_output", CallID: "call_4", Output: "today"},
+	)
+
+	historyJSON, err := json.Marshal(history)
+	require.NoError(t, err)
+
+	converted, err := ResponsesToAnthropicRequest(&ResponsesRequest{
+		Model: "gemini-4-argon",
+		Input: historyJSON,
+	})
+	require.NoError(t, err)
+
+	sigsByID := make(map[string]string)
+	for _, msg := range converted.Messages {
+		if msg.Role != "assistant" {
+			continue
+		}
+		var blocks []AnthropicContentBlock
+		require.NoError(t, json.Unmarshal(msg.Content, &blocks))
+		for _, b := range blocks {
+			if b.Type == "tool_use" {
+				sigsByID[b.ID] = b.Signature
+			}
+		}
+	}
+	require.Equal(t, "gem-sig-think-turn1", sigsByID["call_1"])
+	require.Equal(t, "gem-sig-tool-turn1", sigsByID["call_2"])
+	require.Equal(t, "gem-sig-tool-turn2", sigsByID["call_3"])
+	require.Equal(t, "", sigsByID["call_4"])
+}
+
+func TestGeminiAndAnthropicThinkingPrefixIsolation(t *testing.T) {
+	// 1. Gemini ignores anthropic-thinking-v1: and arbitrary OpenAI encrypted_content.
+	claudeBlock := AnthropicContentBlock{Type: "thinking", Thinking: "claude", Signature: "claude-sig"}
+	claudeResp := AnthropicToResponsesResponse(&AnthropicResponse{
+		Model:   "claude-opus-5-5",
+		Content: []AnthropicContentBlock{claudeBlock},
+	})
+	require.Len(t, claudeResp.Output, 1)
+	require.True(t, strings.HasPrefix(claudeResp.Output[0].EncryptedContent, "anthropic-thinking-v1:"))
+
+	gemInput, err := json.Marshal([]ResponsesInputItem{
+		{Type: "reasoning", EncryptedContent: claudeResp.Output[0].EncryptedContent},
+		{Type: "reasoning", EncryptedContent: "gAAAAABlOpenAICiphertext"},
+		{Type: "function_call", CallID: "call_1", Name: "lookup", Arguments: `{}`},
+		{Type: "function_call_output", CallID: "call_1", Output: "ok"},
+	})
+	require.NoError(t, err)
+	gemReq, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "gemini-3.1-pro", Input: gemInput})
+	require.NoError(t, err)
+	var gemBlocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(gemReq.Messages[0].Content, &gemBlocks))
+	require.Len(t, gemBlocks, 1)
+	require.Equal(t, "tool_use", gemBlocks[0].Type)
+	require.Empty(t, gemBlocks[0].Signature)
+
+	// 2. Claude 5.5 ignores gemini-thinking-v1: and keeps its own behavior unchanged.
+	gemResp := AnthropicToResponsesResponse(&AnthropicResponse{
+		Model:   "gemini-3.1-pro",
+		Content: []AnthropicContentBlock{{Type: "thinking", Thinking: "gem", Signature: "gem-sig"}},
+	})
+	require.Len(t, gemResp.Output, 1)
+	require.True(t, strings.HasPrefix(gemResp.Output[0].EncryptedContent, "gemini-thinking-v1:"))
+
+	claudeInput, err := json.Marshal([]ResponsesInputItem{
+		{Type: "reasoning", EncryptedContent: gemResp.Output[0].EncryptedContent},
+		{Type: "reasoning", EncryptedContent: claudeResp.Output[0].EncryptedContent},
+		{Type: "function_call", CallID: "call_1", Name: "lookup", Arguments: `{}`},
+		{Type: "function_call_output", CallID: "call_1", Output: "ok"},
+	})
+	require.NoError(t, err)
+	claudeOut, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5-5", Input: claudeInput})
+	require.NoError(t, err)
+	var claudeBlocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(claudeOut.Messages[0].Content, &claudeBlocks))
+	require.Len(t, claudeBlocks, 2)
+	require.Equal(t, claudeBlock, claudeBlocks[0])
+	require.Equal(t, "tool_use", claudeBlocks[1].Type)
+	require.Empty(t, claudeBlocks[1].Signature)
+
+	// 3. Invalid or oversized gemini-thinking-v1: envelopes fail cleanly without echoing raw secret.
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{
+		Model: "gemini-3.1-pro",
+		Input: json.RawMessage(`[{"type":"reasoning","encrypted_content":"gemini-thinking-v1:!invalid!"}]`),
+	})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "!invalid!")
+
+	oversized := "gemini-thinking-v1:" + strings.Repeat("A", 200*1024)
+	OversizedInput, _ := json.Marshal([]ResponsesInputItem{{Type: "reasoning", EncryptedContent: oversized}})
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{
+		Model: "gemini-3.1-pro",
+		Input: OversizedInput,
+	})
+	require.Error(t, err)
 }

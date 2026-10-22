@@ -1027,3 +1027,249 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 		})
 	}
 }
+
+func TestAntigravityCompatResponsesGeminiThoughtSignatureMultiTurnRoundTrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	turn1SSE := strings.Join([]string{
+		`data: {"response":{"responseId":"resp_gem_t1","candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"Checking workspace","thoughtSignature":"sig_gem_think_1"},{"thoughtSignature":"sig_gem_call_1","functionCall":{"name":"exec_command","args":{"cmd":"pwd"},"id":"call_gem_1"}},{"functionCall":{"name":"exec_command","args":{"cmd":"ls"},"id":"call_gem_2"}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6,"thoughtsTokenCount":4}}}`,
+		"",
+	}, "\n\n")
+	turn2SSE := `data: {"response":{"responseId":"resp_gem_t2","candidates":[{"content":{"role":"model","parts":[{"text":"Done."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":4}}}` + "\n\n"
+
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(turn1SSE)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(turn2SSE)),
+		},
+	}}
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+	account := newAntigravityCompatAccount(AccountTypeOAuth)
+	modelMapping, ok := account.Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	modelMapping["gemini-4-argon-high"] = "gemini-4-argon-high"
+
+	// Turn 1: streaming Responses request receives reasoning encrypted_content with gemini-thinking-v1: prefix.
+	req1Body := []byte(`{"model":"gemini-4-argon-high","stream":true,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"inspect"}]}]}`)
+	c1, rec1 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", req1Body)
+	_, err := svc.ForwardAsResponses(context.Background(), c1, account, req1Body, nil)
+	require.NoError(t, err)
+
+	var completedJSON string
+	for _, line := range strings.Split(rec1.Body.String(), "\n") {
+		if strings.HasPrefix(line, "data: ") && strings.Contains(line, `"type":"response.completed"`) {
+			completedJSON = strings.TrimPrefix(line, "data: ")
+		}
+	}
+	require.NotEmpty(t, completedJSON)
+
+	outputRaw := gjson.Get(completedJSON, "response.output").Raw
+	var turn1Outputs []apicompat.ResponsesInputItem
+	require.NoError(t, json.Unmarshal([]byte(outputRaw), &turn1Outputs))
+
+	// Turn 2: send Turn 1 outputs + tool outputs + an unsigned legacy function_call.
+	var turn2Input []apicompat.ResponsesInputItem
+	turn2Input = append(turn2Input, apicompat.ResponsesInputItem{
+		Type:    "message",
+		Role:    "user",
+		Content: json.RawMessage(`[{"type":"input_text","text":"inspect"}]`),
+	})
+	turn2Input = append(turn2Input, turn1Outputs...)
+	turn2Input = append(turn2Input,
+		apicompat.ResponsesInputItem{Type: "function_call_output", CallID: "call_gem_1", Output: "/workspace"},
+		apicompat.ResponsesInputItem{Type: "function_call_output", CallID: "call_gem_2", Output: "README.md"},
+		apicompat.ResponsesInputItem{Type: "function_call", CallID: "call_legacy", Name: "exec_command", Arguments: `{"cmd":"whoami"}`},
+		apicompat.ResponsesInputItem{Type: "function_call_output", CallID: "call_legacy", Output: "user"},
+	)
+	turn2InputBytes, err := json.Marshal(turn2Input)
+	require.NoError(t, err)
+	req2Body, err := json.Marshal(map[string]any{
+		"model":  "gemini-4-argon-high",
+		"stream": false,
+		"input":  json.RawMessage(turn2InputBytes),
+	})
+	require.NoError(t, err)
+
+	c2, rec2 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", req2Body)
+	_, err = svc.ForwardAsResponses(context.Background(), c2, account, req2Body, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.Len(t, upstream.requestBodies, 2)
+
+	secondUpstreamReq := string(upstream.requestBodies[1])
+	require.Contains(t, secondUpstreamReq, `"thoughtSignature":"sig_gem_call_1"`)
+	require.Contains(t, secondUpstreamReq, `"thoughtSignature":"sig_gem_think_1"`)
+	require.Contains(t, secondUpstreamReq, `"thoughtSignature":"skip_thought_signature_validator"`)
+}
+
+func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	makeSSEChunk := func(partJSON string, finish string) string {
+		finishField := ""
+		if finish != "" {
+			finishField = `,"finishReason":"` + finish + `"`
+		}
+		return `data: {"response":{"responseId":"resp_rep","candidates":[{"content":{"role":"model","parts":[` + partJSON + `]}` + finishField + `}]}}` + "\n\n"
+	}
+
+	t.Run("stops repeated text cycle >= 8 times with error event", func(t *testing.T) {
+		unit := "Let's run it. Let's call exec_command.我将执行更新并提交。"
+		var builder strings.Builder
+		for i := 0; i < 40; i++ {
+			b, _ := json.Marshal(unit)
+			_, _ = builder.WriteString(makeSSEChunk(`{"text":`+string(b)+`}`, ""))
+		}
+		_, _ = builder.WriteString(makeSSEChunk(`{"text":"after"}`, "STOP"))
+
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(builder.String())),
+		}
+
+		_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+		require.Error(t, err)
+		body := recorder.Body.String()
+		require.Contains(t, body, "event: error")
+		require.NotContains(t, body, "event: response.completed")
+	})
+
+	t.Run("stops repeated thinking cycle >= 8 times with error event", func(t *testing.T) {
+		unit := "Thinking about calling exec_command next step in the plan. "
+		var builder strings.Builder
+		for i := 0; i < 40; i++ {
+			b, _ := json.Marshal(unit)
+			_, _ = builder.WriteString(makeSSEChunk(`{"thought":true,"text":`+string(b)+`}`, ""))
+		}
+		_, _ = builder.WriteString(makeSSEChunk(`{"text":"done"}`, "STOP"))
+
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(builder.String())),
+		}
+
+		_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+		require.Error(t, err)
+		body := recorder.Body.String()
+		require.Contains(t, body, "event: error")
+		require.NotContains(t, body, "event: response.completed")
+	})
+
+	t.Run("allows normal prose, code, markdown tables, and <8 repeats", func(t *testing.T) {
+		unit := "Let's run it. Let's call exec_command.我将执行更新并提交。"
+		var sevenBuilder strings.Builder
+		for i := 0; i < 7; i++ {
+			b, _ := json.Marshal(unit)
+			_, _ = sevenBuilder.WriteString(makeSSEChunk(`{"text":`+string(b)+`}`, ""))
+		}
+		normalTableAndCode := "\n| Column A | Column B | Column C |\n| --- | --- | --- |\n" +
+			"| row 1 value alpha | row 1 value beta | row 1 value gamma |\n" +
+			"| row 2 value delta | row 2 value epsilon | row 2 value zeta |\n" +
+			"```go\nfunc main() {\n\tfmt.Println(\"hello world 1\")\n\tfmt.Println(\"hello world 2\")\n}\n```\n"
+		b, _ := json.Marshal(normalTableAndCode)
+		_, _ = sevenBuilder.WriteString(makeSSEChunk(`{"text":`+string(b)+`}`, "STOP"))
+
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(sevenBuilder.String())),
+		}
+
+		_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+		require.NoError(t, err)
+		body := recorder.Body.String()
+		require.NotContains(t, body, "event: error")
+		require.Contains(t, body, "event: response.completed")
+	})
+
+	// 2026-10-22: the first version stopped any 32-byte unit seen eight times (256 bytes), which cut off ordinary
+	// answers with a long divider, a run of zeros or a hex dump. Such runs, and short repeats, now pass.
+	t.Run("allows long dividers, zero runs, hex dumps, repeated table rows and short repeats", func(t *testing.T) {
+		samples := []string{
+			strings.Repeat("-", 600),
+			strings.Repeat("─", 300),
+			"var zeros = []int{" + strings.Repeat("0, ", 400) + "}",
+			strings.Repeat("00 00 00 00 00 00 00 00  ", 120),
+			strings.Repeat("| pending | pending | pending | pending |\n", 12),
+			strings.Repeat("Let's run it. Let's call exec_command.我将执行更新并提交。", 8),
+		}
+		for i, sample := range samples {
+			b, _ := json.Marshal(sample)
+			sse := makeSSEChunk(`{"text":`+string(b)+`}`, "STOP")
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(sse)),
+			}
+			_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+			require.NoError(t, err, "sample %d", i)
+			require.Contains(t, recorder.Body.String(), "event: response.completed", "sample %d", i)
+		}
+	})
+
+	t.Run("stops alternating thinking and text cycle and never logs secret content", func(t *testing.T) {
+		thoughtPart := "Let's call exec_command SECRET_MARKER_99. "
+		textPart := "我将执行更新并提交。"
+		var builder strings.Builder
+		for i := 0; i < 40; i++ {
+			b1, _ := json.Marshal(thoughtPart)
+			b2, _ := json.Marshal(textPart)
+			_, _ = builder.WriteString(makeSSEChunk(`{"thought":true,"text":`+string(b1)+`},{"text":`+string(b2)+`}`, ""))
+		}
+
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(builder.String())),
+		}
+
+		_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "SECRET_MARKER_99")
+		require.Contains(t, recorder.Body.String(), "event: error")
+		require.NotContains(t, recorder.Body.String(), "event: response.completed")
+	})
+
+	t.Run("enforces 32B and 2048B period boundaries", func(t *testing.T) {
+		for _, periodLen := range []int{32, 2048} {
+			unit := strings.Repeat("abcdefghijklmnop", periodLen/16)
+			require.Len(t, unit, periodLen)
+			// A loop is stopped once it has run for 2 KiB and at least eight cycles.
+			cycles := 8
+			if need := (2048 + periodLen - 1) / periodLen; need > cycles {
+				cycles = need
+			}
+			b, _ := json.Marshal(strings.Repeat(unit, cycles))
+			sse := makeSSEChunk(`{"text":`+string(b)+`}`, "STOP")
+
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(sse)),
+			}
+			_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+			require.Error(t, err, "periodLen=%d", periodLen)
+			require.Contains(t, recorder.Body.String(), "event: error")
+		}
+	})
+}

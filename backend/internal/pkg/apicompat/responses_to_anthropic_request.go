@@ -17,7 +17,8 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	isOpus55 := claude.IsOpus55(req.Model)
 	isSonnet55 := claude.IsSonnet55(req.Model)
 	isHaiku55 := claude.IsHaiku55(req.Model)
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55)
+	isGemini := isGeminiModel(req.Model)
+	system, messages, err := convertResponsesInputToAnthropicWithGemini(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55, isGemini)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +180,49 @@ func mapResponsesEffortToAnthropic(effort string) string {
 // convertResponsesInputToAnthropic extracts system prompt and messages from
 // a Responses API instructions + input array. Returns the system as raw JSON
 // (for Anthropic's polymorphic system field) and a list of Anthropic messages.
+func decodeGeminiThoughtSignature(encrypted string) (geminiThoughtEnvelope, error) {
+	if len(encrypted) > maxGeminiThoughtEnvelopeBytes {
+		return geminiThoughtEnvelope{}, fmt.Errorf("invalid Gemini thinking envelope: exceeds maximum length")
+	}
+	encoded := strings.TrimPrefix(encrypted, geminiThinkingEnvelopePrefix)
+	raw, err := base64.RawStdEncoding.DecodeString(encoded)
+	if err != nil {
+		return geminiThoughtEnvelope{}, fmt.Errorf("invalid Gemini thinking envelope: %w", err)
+	}
+	var env geminiThoughtEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return geminiThoughtEnvelope{}, fmt.Errorf("invalid Gemini thinking block: %w", err)
+	}
+	env.Signature = strings.TrimSpace(env.Signature)
+	env.CallID = strings.TrimSpace(env.CallID)
+	if !isPreservableGeminiSignature(env.Signature) {
+		return geminiThoughtEnvelope{}, fmt.Errorf("invalid Gemini signed thinking block")
+	}
+	return env, nil
+}
+
+func assignToolUseSignatureInMessage(msg *AnthropicMessage, sig string) {
+	if msg == nil || sig == "" {
+		return
+	}
+	blocks := parseContentBlocks(msg.Content)
+	changed := false
+	for i := range blocks {
+		if blocks[i].Type == "tool_use" && blocks[i].Signature == "" {
+			blocks[i].Signature = sig
+			changed = true
+		}
+	}
+	if changed {
+		msg.Content, _ = json.Marshal(blocks)
+	}
+}
+
 func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool) (json.RawMessage, []AnthropicMessage, error) {
+	return convertResponsesInputToAnthropicWithGemini(instructions, inputRaw, preserveThinking, false)
+}
+
+func convertResponsesInputToAnthropicWithGemini(instructions string, inputRaw json.RawMessage, preserveThinking, preserveGemini bool) (json.RawMessage, []AnthropicMessage, error) {
 	var systemParts []string
 	if strings.TrimSpace(instructions) != "" {
 		systemParts = append(systemParts, strings.TrimSpace(instructions))
@@ -202,6 +245,50 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 	}
 
 	var messages []AnthropicMessage
+	var geminiSigByCallID map[string]string
+	var geminiToolMsgIndexByCallID map[string]int
+	var pendingGeminiSig string
+	var unassignedGeminiToolMsgIndices []int
+	if preserveGemini {
+		geminiSigByCallID = make(map[string]string)
+		geminiToolMsgIndexByCallID = make(map[string]int)
+	}
+	resetGeminiTurnState := func() {
+		pendingGeminiSig = ""
+		unassignedGeminiToolMsgIndices = nil
+	}
+	attachGeminiToolBlock := func(rawCallID string, block *AnthropicContentBlock) (usedSpecific, usedPending bool) {
+		if !preserveGemini || block == nil {
+			return false, false
+		}
+		if sig := geminiSigByCallID[rawCallID]; sig != "" {
+			block.Signature = sig
+			return true, false
+		}
+		if sig := geminiSigByCallID[block.ID]; sig != "" {
+			block.Signature = sig
+			return true, false
+		}
+		if pendingGeminiSig != "" {
+			block.Signature = pendingGeminiSig
+			return false, true
+		}
+		return false, false
+	}
+	recordGeminiToolMsg := func(rawCallID, toolID string, msgIdx int, usedSpecific bool) {
+		if !preserveGemini {
+			return
+		}
+		if rawCallID != "" {
+			geminiToolMsgIndexByCallID[rawCallID] = msgIdx
+		}
+		if toolID != "" {
+			geminiToolMsgIndexByCallID[toolID] = msgIdx
+		}
+		if !usedSpecific && messages[msgIdx].Role == "assistant" {
+			unassignedGeminiToolMsgIndices = append(unassignedGeminiToolMsgIndices, msgIdx)
+		}
+	}
 
 	for _, item := range items {
 		switch {
@@ -223,13 +310,16 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Name:  item.Name,
 				Input: input,
 			}
+			usedSpecific, _ := attachGeminiToolBlock(item.CallID, &block)
 			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
 			messages = append(messages, AnthropicMessage{
 				Role:    "assistant",
 				Content: blockJSON,
 			})
+			recordGeminiToolMsg(item.CallID, block.ID, len(messages)-1, usedSpecific)
 
 		case item.Type == "function_call_output":
+			resetGeminiTurnState()
 			// function_call_output → user message with tool_result block
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
@@ -263,9 +353,42 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 					return nil, nil, err
 				}
 				messages = append(messages, AnthropicMessage{Role: "assistant", Content: content})
+			} else if preserveGemini && strings.HasPrefix(item.EncryptedContent, geminiThinkingEnvelopePrefix) {
+				env, err := decodeGeminiThoughtSignature(item.EncryptedContent)
+				if err != nil {
+					return nil, nil, err
+				}
+				if env.CallID != "" {
+					geminiSigByCallID[env.CallID] = env.Signature
+					normID := fromResponsesCallIDToAnthropic(env.CallID)
+					geminiSigByCallID[normID] = env.Signature
+					if idx, ok := geminiToolMsgIndexByCallID[env.CallID]; ok {
+						blocks := parseContentBlocks(messages[idx].Content)
+						for i := range blocks {
+							if blocks[i].Type == "tool_use" {
+								blocks[i].Signature = env.Signature
+							}
+						}
+						messages[idx].Content, _ = json.Marshal(blocks)
+					} else if idx, ok := geminiToolMsgIndexByCallID[normID]; ok {
+						blocks := parseContentBlocks(messages[idx].Content)
+						for i := range blocks {
+							if blocks[i].Type == "tool_use" {
+								blocks[i].Signature = env.Signature
+							}
+						}
+						messages[idx].Content, _ = json.Marshal(blocks)
+					}
+				} else {
+					pendingGeminiSig = env.Signature
+					for _, idx := range unassignedGeminiToolMsgIndices {
+						assignToolUseSignatureInMessage(&messages[idx], env.Signature)
+					}
+				}
 			}
 
 		case item.Role == "user":
+			resetGeminiTurnState()
 			content, err := convertResponsesUserToAnthropicContent(item.Content)
 			if err != nil {
 				return nil, nil, err
