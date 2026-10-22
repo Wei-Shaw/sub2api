@@ -235,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
@@ -266,6 +266,20 @@ const { t, te } = useI18n()
 
 const authStore = useAuthStore()
 const appStore = useAppStore()
+const callbackSessionVersion = authStore.authSessionVersion
+const callbackPersistedToken = localStorage.getItem('auth_token')
+let disposed = false
+onUnmounted(() => { disposed = true })
+
+function isSessionChanged(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === 'AUTH_SESSION_CHANGED'
+}
+
+function assertCallbackSession(): void {
+  if (disposed || callbackSessionVersion !== authStore.authSessionVersion || callbackPersistedToken !== localStorage.getItem('auth_token')) {
+    throw Object.assign(new Error('Authentication session changed'), { code: 'AUTH_SESSION_CHANGED' })
+  }
+}
 
 const isProcessing = ref(true)
 const errorMessage = ref('')
@@ -296,6 +310,7 @@ const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
 const providerName = t('auth.dingtalkProviderName')
+const pendingSyntheticSignup = ref(false)
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsChooser = computed(() => pendingAccountAction.value === 'choose_account_action')
@@ -333,6 +348,7 @@ type DingTalkPendingActionResponse = PendingOAuthExchangeResponse & {
   pending_email?: string
   existing_account_email?: string
   suggested_email?: string
+  synthetic_email?: string
 }
 
 function persistPendingAuthSession(redirect?: string) {
@@ -633,12 +649,61 @@ async function finalizePendingAccountResponse(completion: DingTalkPendingActionR
   await finalizeCompletion(completion, redirect)
 }
 
+// Registration must either return login tokens or an explicit interactive pending state.
+// A missing token alone is never evidence of successful identity binding.
+async function finalizeRegistrationResponse(completion: DingTalkPendingActionResponse) {
+  assertCallbackSession()
+  const registrationRedirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
+  if (isOAuthLoginCompletion(completion)) {
+    await authStore.setToken(completion.access_token, {
+      refreshToken: completion.refresh_token,
+      expiresIn: completion.expires_in,
+      expectedSessionVersion: callbackSessionVersion
+    })
+    if (disposed || authStore.token !== completion.access_token || localStorage.getItem('auth_token') !== completion.access_token) throw Object.assign(new Error('Authentication session changed'), { code: 'AUTH_SESSION_CHANGED' })
+    clearAllAffiliateReferralCodes()
+    appStore.showSuccess(t('auth.loginSuccess'))
+    await router.replace(registrationRedirect)
+    return
+  }
+  if (completion.error === 'invitation_required' || completion.step === 'email_completion' ||
+      (completion as Record<string, unknown>).requires_email_completion === true ||
+      (completion.requires_2fa === true && Boolean(completion.temp_token)) || resolvePendingAccountAction(completion) !== 'none' ||
+      completion.auth_result === 'pending_session') {
+    await finalizePendingAccountResponse(completion)
+    return
+  }
+  throw new Error(t('auth.dingtalk.callbackMissingToken'))
+}
+
+async function completeSyntheticSignup() {
+  assertCallbackSession()
+  let completion: DingTalkPendingActionResponse
+  try {
+    const { data } = await apiClient.post<DingTalkPendingActionResponse>('/auth/oauth/dingtalk/complete-registration', {
+      ...oauthAffiliatePayload(loadOAuthAffiliateCode()),
+      ...serializeAdoptionDecision(currentAdoptionDecision())
+    })
+    completion = data
+  } catch (error: unknown) {
+    assertCallbackSession()
+    if ((error as { reason?: string } | null)?.reason !== 'OAUTH_INVITATION_REQUIRED') throw error
+    needsInvitation.value = true
+    needsAdoptionConfirmation.value = false
+    isProcessing.value = false
+    persistPendingAuthSession(redirectTo.value)
+    return
+  }
+  await finalizeRegistrationResponse(completion)
+}
+
 async function handleSubmitInvitation() {
   invitationError.value = ''
   if (!invitationCode.value.trim()) return
 
   isSubmitting.value = true
   try {
+    assertCallbackSession()
     const affCode = loadOAuthAffiliateCode()
     const decision = currentAdoptionDecision()
     const { data: completion } = await apiClient.post<DingTalkPendingActionResponse>(
@@ -650,8 +715,9 @@ async function handleSubmitInvitation() {
         ...serializeAdoptionDecision(decision)
       }
     )
-    await finalizePendingAccountResponse(completion)
+    await finalizeRegistrationResponse(completion)
   } catch (e: unknown) {
+    if (isSessionChanged(e)) return
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     invitationError.value =
       err.response?.data?.message || err.message || t('auth.dingtalk.completeRegistrationFailed')
@@ -663,9 +729,15 @@ async function handleSubmitInvitation() {
 async function handleContinueLogin() {
   isSubmitting.value = true
   try {
+    assertCallbackSession()
+    if (pendingSyntheticSignup.value) {
+      await completeSyntheticSignup()
+      return
+    }
     const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision()) as DingTalkPendingActionResponse
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
+    if (isSessionChanged(e)) return
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     needsAdoptionConfirmation.value = false
   } finally {
@@ -750,6 +822,7 @@ async function handleSubmitTotpChallenge() {
 }
 
 onMounted(async () => {
+  let awaitingInitialExchange = false
   const params = parseFragmentParams()
   const legacyLogin = readLegacyFragmentLogin(params)
   const legacyPendingToken = params.get('pending_oauth_token')?.trim() || ''
@@ -784,7 +857,10 @@ onMounted(async () => {
       return
     }
 
+    awaitingInitialExchange = true
     const completion = await exchangePendingOAuthCompletion()
+    assertCallbackSession()
+    awaitingInitialExchange = false
     const completionRedirect = sanitizeRedirectPath(
       completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
     )
@@ -792,6 +868,8 @@ onMounted(async () => {
     redirectTo.value = completionRedirect
 
     const completionData = completion as DingTalkPendingActionResponse
+    pendingSyntheticSignup.value = !isOAuthLoginCompletion(completion) &&
+      typeof completionData.synthetic_email === 'string' && completionData.synthetic_email.trim() !== ''
     // 用户从补邮箱页"我已有账户"按钮跳回时携带 bind=1，跳过 email_completion 自动 redirect，
     // 直接进入 bind_login 输入密码绑定已有账户。
     const wantsBindExisting = (route.query.bind as string | undefined) === '1'
@@ -829,15 +907,28 @@ onMounted(async () => {
       return
     }
 
-    if (adoptionRequired.value && hasSuggestedProfile(completion)) {
+    if (!isOAuthLoginCompletion(completion) && 'synthetic_email' in completionData && !pendingSyntheticSignup.value) {
+      throw new Error(t('auth.dingtalk.callbackMissingToken'))
+    }
+
+    if (adoptionRequired.value && hasSuggestedProfile(completionData)) {
       needsAdoptionConfirmation.value = true
       isProcessing.value = false
       persistPendingAuthSession(completionRedirect)
       return
     }
 
+    if (pendingSyntheticSignup.value) {
+      await completeSyntheticSignup()
+      return
+    }
+
     await finalizeCompletion(completion, completionRedirect)
   } catch (e: unknown) {
+    if (isSessionChanged(e)) return
+    if (awaitingInitialExchange) {
+      try { assertCallbackSession() } catch { return }
+    }
     clearPendingAuthSession()
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     isProcessing.value = false
