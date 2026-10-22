@@ -186,6 +186,7 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
+	Scheduler                 service.GroupSchedulerConfig  `json:"scheduler"`
 	Description               string                        `json:"description"`
 	I18n                      service.GroupI18n             `json:"i18n"` // 名称与描述的界面语言译文
 	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
@@ -261,6 +262,7 @@ type CreateGroupRequest struct {
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
+	Scheduler                 *service.GroupSchedulerConfig  `json:"scheduler"`
 	Description               *string                        `json:"description"`
 	I18n                      *service.GroupI18n             `json:"i18n"` // 缺省不修改，传入则整体替换
 	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
@@ -668,6 +670,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
+		Scheduler:                       req.Scheduler,
 		Description:                     req.Description,
 		I18n:                            req.I18n,
 		Platform:                        req.Platform,
@@ -814,6 +817,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
+		Scheduler:                       req.Scheduler,
 		Description:                     req.Description,
 		I18n:                            req.I18n,
 		Platform:                        req.Platform,

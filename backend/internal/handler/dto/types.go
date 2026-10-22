@@ -91,13 +91,14 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID             int64                        `json:"id"`
+	Name           string                       `json:"name"`
+	Description    string                       `json:"description"`
+	Platform       string                       `json:"platform"`
+	Scheduler      service.GroupSchedulerConfig `json:"scheduler"`
+	RateMultiplier float64                      `json:"rate_multiplier"`
+	IsExclusive    bool                         `json:"is_exclusive"`
+	Status         string                       `json:"status"`
 
 	// I18n 名称与描述的各语言译文。只有管理端输出；用户侧接口经 Localized 把
 	// name/description 换成请求语言的版本后清空本字段。
@@ -591,12 +592,13 @@ type BatchUpdateRedeemCodesRequest struct {
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
-	RequestID string `json:"request_id"`
-	Model     string `json:"model"`
+	RequestResult *service.UsageRequestResult `json:"request_result,omitempty"`
+	ID            int64                       `json:"id"`
+	UserID        int64                       `json:"user_id"`
+	APIKeyID      int64                       `json:"api_key_id"`
+	AccountID     int64                       `json:"account_id"`
+	RequestID     string                      `json:"request_id"`
+	Model         string                      `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).

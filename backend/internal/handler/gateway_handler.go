@@ -341,7 +341,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
-		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		groupMaxSwitches := service.ResolveGroupMaxAccountSwitches(apiKey.Group, h.maxAccountSwitchesGemini)
+		fs := NewFailoverState(groupMaxSwitches, hasBoundSession)
 
 		// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
 		// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
@@ -524,7 +525,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, effectiveSameAccountRetryLimitForContext(c, failoverErr, account), failoverErr)
 					switch action {
 					case FailoverContinue:
 						continue
@@ -662,7 +663,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}()
 
 	for {
-		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+		groupMaxSwitches := service.ResolveGroupMaxAccountSwitches(apiKey.Group, h.maxAccountSwitches)
+		fs := NewFailoverState(groupMaxSwitches, hasBoundSession)
 		retryWithFallback := false
 
 		for {
@@ -1060,7 +1062,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, effectiveSameAccountRetryLimitForContext(c, failoverErr, account), failoverErr)
 					switch action {
 					case FailoverContinue:
 						// 本次尝试已确定性失败，立即释放该账号的会话注册
