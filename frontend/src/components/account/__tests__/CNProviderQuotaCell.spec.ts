@@ -2,15 +2,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CNProviderQuotaCell from '../CNProviderQuotaCell.vue'
 import UsageProgressBar from '../UsageProgressBar.vue'
+import ZhipuResetCardActions from '../ZhipuResetCardActions.vue'
 import type { Account } from '@/types'
 
-const { queryQuota } = vi.hoisted(() => ({
-  queryQuota: vi.fn()
+const { queryQuota, listResetCards } = vi.hoisted(() => ({
+  queryQuota: vi.fn(),
+  listResetCards: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
-    cnProviders: { queryQuota }
+    cnProviders: { queryQuota, listResetCards }
   }
 }))
 
@@ -43,6 +45,7 @@ const account = {
 describe('CNProviderQuotaCell', () => {
   beforeEach(() => {
     queryQuota.mockReset()
+    listResetCards.mockReset()
   })
 
   it('renders tier rows through the shared UsageProgressBar inside the account table cell', async () => {
@@ -101,5 +104,95 @@ describe('CNProviderQuotaCell', () => {
     await probeButton.trigger('click')
     await flushPromises()
     expect(queryQuota).toHaveBeenCalledWith(account.id)
+  })
+
+  describe('zhipu reset cards', () => {
+    const cards = {
+      week_cards: [{ record_id: 302, grant_type: 'G', expire_time: '2026-10-20 23:59:59', available: true }],
+      five_hour_cards: [],
+      fetched_at: 1_790_000_000,
+      persisted: true
+    }
+
+    it('refreshes the quota and the card list together on a manual query', async () => {
+      queryQuota.mockResolvedValue({ success: true, tiers: [{ window: 'weekly', used_percent: 40 }] })
+      listResetCards.mockResolvedValue(cards)
+      const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+      await flushPromises()
+
+      const actions = wrapper.getComponent(ZhipuResetCardActions)
+      expect(actions.props('cards')).toBeNull()
+      expect(wrapper.find('[data-test="zhipu-reset-cards-unknown"]').exists()).toBe(true)
+
+      await wrapper.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+      await flushPromises()
+
+      expect(queryQuota).toHaveBeenCalledWith(account.id)
+      expect(listResetCards).toHaveBeenCalledWith(account.id)
+      expect(actions.props('cards')).toEqual(cards)
+      expect(actions.props('tiers')).toEqual([{ window: 'weekly', used_percent: 40 }])
+      expect(wrapper.find('[data-test="zhipu-reset-week"]').exists()).toBe(true)
+    })
+
+    it('keeps the quota result and reports a failed card refresh', async () => {
+      queryQuota.mockResolvedValue({ success: true, tiers: [{ window: 'weekly', used_percent: 40 }] })
+      listResetCards.mockRejectedValue({ message: 'CN_QUOTA_RESET_AUTH_FAILED' })
+      const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+      await flushPromises()
+
+      await wrapper.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('40%')
+      expect(wrapper.text()).toContain('admin.accounts.cnProviders.resetCardsFailed')
+    })
+
+    it('does not fetch cards on the automatic probe after mount', async () => {
+      queryQuota.mockResolvedValue({ success: true, tiers: [] })
+      const staleAccount = { ...account, id: 70, extra: {} } as Account
+      mount(CNProviderQuotaCell, { props: { account: staleAccount } })
+      await flushPromises()
+
+      expect(queryQuota).toHaveBeenCalledWith(70)
+      expect(listResetCards).not.toHaveBeenCalled()
+    })
+
+    it('applies the probe and card list returned by a used card', async () => {
+      const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+      await flushPromises()
+
+      const actions = wrapper.getComponent(ZhipuResetCardActions)
+      actions.vm.$emit('used', {
+        success: true,
+        cards,
+        probe: {
+          success: true,
+          tiers: [
+            { window: '5h', used_percent: 0 },
+            { window: 'weekly', used_percent: 0 }
+          ]
+        }
+      })
+      await flushPromises()
+
+      expect(actions.props('cards')).toEqual(cards)
+      const bars = wrapper.findAllComponents(UsageProgressBar)
+      expect(bars.map((bar) => bar.props('utilization'))).toEqual([0, 0])
+    })
+
+    it.each([
+      ['team plan', { account_mode: 'coding', zhipu_organization: 'org-1' }],
+      ['international site', { account_mode: 'coding', base_url: 'https://api.z.ai/api/coding/paas/v4' }],
+      ['custom relay', { account_mode: 'coding', base_url: 'https://relay.example.com/v1' }]
+    ])('hides reset cards for a %s account', async (_, credentials) => {
+      queryQuota.mockResolvedValue({ success: true, tiers: [] })
+      const wrapper = mount(CNProviderQuotaCell, { props: { account: { ...account, credentials } as Account } })
+      await flushPromises()
+
+      expect(wrapper.findComponent(ZhipuResetCardActions).exists()).toBe(false)
+      await wrapper.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+      await flushPromises()
+      expect(listResetCards).not.toHaveBeenCalled()
+    })
   })
 })
