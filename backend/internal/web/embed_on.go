@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/headscript"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -149,8 +150,8 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	// Check cache first
 	cached := s.cache.Get()
 	if cached != nil {
-		// Check If-None-Match for 304 response
-		if match := c.GetHeader("If-None-Match"); match == cached.ETag {
+		// A 304 would reuse old HTML nonces with this response's fresh CSP nonce.
+		if match := c.GetHeader("If-None-Match"); nonce == "" && match == cached.ETag {
 			c.Status(http.StatusNotModified)
 			c.Abort()
 			return
@@ -205,6 +206,14 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	// Create the script tag to inject with nonce placeholder
 	// The placeholder will be replaced with actual nonce at request time
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
+	var cfg struct {
+		CustomHeadScript string `json:"custom_head_script"`
+	}
+	if json.Unmarshal(settingsJSON, &cfg) == nil {
+		if customScript, err := headscript.Render(cfg.CustomHeadScript, NonceHTMLPlaceholder); err == nil {
+			script = append(script, []byte(customScript)...)
+		}
+	}
 
 	// Inject before </head>
 	headClose := []byte("</head>")

@@ -675,6 +675,8 @@ export default {
         docUrlPlaceholder: 'https://docs.example.com',
         docUrlHint: 'Link to your documentation site. Leave empty to hide the documentation link.',
         siteLogo: 'Site Logo',
+        customHeadScript: 'Custom Script (JavaScript / <script>, max 64 KiB)',
+        customHeadScriptWarning: 'Scripts run on every site page with the current user\'s privileges and are publicly visible. Only use trusted code; never include secrets. Reload after saving; clear to disable. Third-party requests remain subject to CSP.',
         uploadImage: 'Upload Image',
         remove: 'Remove',
         logoHint: 'PNG, JPG, or SVG. Max 300KB. Recommended: 80x80px square image.',
