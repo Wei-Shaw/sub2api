@@ -549,35 +549,109 @@ func StableGrokVideoBillingRequestID(taskRequestID string) string {
 	return "grok-video:" + taskRequestID
 }
 
-// Official xAI async video status success shape (docs.x.ai Video Generation):
+// xAI async video status success shape (docs.x.ai Video Generation):
 //
 //	{"status":"done","model":"grok-imagine-video-1.5","video":{"url":"...","duration":8,"respect_moderation":true}}
 //
-// Request may include resolution ("480p"|"720p"|"1080p"); completed status does not
-// document a resolution field — bill resolution from the create-time request snapshot.
+// OpenAI/Ark-compatible relays fronting the same endpoint answer with a different
+// success vocabulary and put the finished file in a top-level field instead:
+//
+//	{"status":"completed","model":"seedance-2.5-M","video_url":"...","url":"...",
+//	 "result_url":"...","metadata":{"url":"..."},"data":[{"url":"..."}]}
+//
+// Both shapes are billable. Anything that is not an explicit success status
+// (pending / queued / running / expired / failed / cancelled) is not.
+// Request may include resolution ("480p"|"720p"|"1080p"); status rarely reports it —
+// bill resolution from the create-time request snapshot.
 
-// IsGrokVideoStatusBillable matches official success: status == "done" AND non-empty video.url.
-// pending / expired / failed, or done without a video URL, are not billable.
+// grokVideoStatusSuccessStates holds every status value observed for a finished
+// video. xAI documents "done"; relay upstreams answer "completed" or "succeeded".
+var grokVideoStatusSuccessStates = map[string]struct{}{
+	"done":      {},
+	"completed": {},
+	"succeeded": {},
+}
+
+func isGrokVideoStatusSuccess(statusBody []byte) bool {
+	status := strings.ToLower(strings.TrimSpace(gjson.GetBytes(statusBody, "status").String()))
+	if status == "" {
+		return false
+	}
+	_, ok := grokVideoStatusSuccessStates[status]
+	return ok
+}
+
+// grokVideoStatusURLPaths lists every field a finished video URL has been observed
+// in, xAI's own first. A non-empty value is enough: the gateway may already have
+// rewritten it to its own /v1/videos/{id}/content proxy path.
+var grokVideoStatusURLPaths = []string{
+	"video.url",
+	"video_url",
+	"url",
+	"result_url",
+	"metadata.url",
+	"content.video_url",
+	"data.0.url",
+	"data.video.url",
+	"data.video_url",
+}
+
+func grokVideoStatusURL(statusBody []byte) string {
+	for _, path := range grokVideoStatusURLPaths {
+		if raw := strings.TrimSpace(gjson.GetBytes(statusBody, path).String()); raw != "" {
+			return raw
+		}
+	}
+	return ""
+}
+
+// grokVideoStatusDurationSeconds reads the clip length (seconds) from any field an
+// upstream reports it in. 0 means unknown — the caller falls back to the create-time
+// snapshot, then to the documented default.
+func grokVideoStatusDurationSeconds(statusBody []byte) int {
+	for _, path := range []string{"video.duration", "duration", "metadata.duration"} {
+		value := gjson.GetBytes(statusBody, path)
+		if !value.Exists() || value.Type != gjson.Number {
+			continue
+		}
+		if seconds := int(value.Int()); seconds > 0 {
+			return seconds
+		}
+		if seconds := int(value.Float()); seconds > 0 {
+			return seconds
+		}
+	}
+	return 0
+}
+
+// grokVideoStatusResolution reads a reported resolution tier; empty means unknown.
+func grokVideoStatusResolution(statusBody []byte) string {
+	for _, path := range []string{"resolution", "video.resolution", "metadata.resolution"} {
+		if raw := strings.TrimSpace(gjson.GetBytes(statusBody, path).String()); raw != "" {
+			return raw
+		}
+	}
+	return ""
+}
+
+// IsGrokVideoStatusBillable matches a finished video: an explicit success status plus
+// a downloadable URL in any known field. A missing status is not billable, so
+// unrelated or partial bodies can never be priced.
 func IsGrokVideoStatusBillable(statusBody []byte) bool {
 	if len(statusBody) == 0 || !gjson.ValidBytes(statusBody) {
 		return false
 	}
-	if !isOfficialGrokVideoStatusDone(statusBody) {
+	if !isGrokVideoStatusSuccess(statusBody) {
 		return false
 	}
-	return strings.TrimSpace(gjson.GetBytes(statusBody, "video.url").String()) != ""
+	return grokVideoStatusURL(statusBody) != ""
 }
 
-func isOfficialGrokVideoStatusDone(statusBody []byte) bool {
-	// Official enum: pending | done | expired | failed.
-	return strings.EqualFold(strings.TrimSpace(gjson.GetBytes(statusBody, "status").String()), "done")
-}
-
-// ExtractGrokVideoBillingFromStatusBody builds usage units from an official done status.
-// Field priority (official docs):
-//   - duration: video.duration (seconds)
-//   - model: top-level model
-//   - resolution: not in status response → create-time pending snapshot → default 480p
+// ExtractGrokVideoBillingFromStatusBody builds usage units from a finished status.
+// Field priority:
+//   - duration: video.duration, then duration/metadata.duration, then create-time snapshot
+//   - model: top-level model, then create-time snapshot
+//   - resolution: create-time snapshot, then reported resolution, then default 480p
 func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideoPendingBilling, requestID string) *OpenAIForwardResult {
 	if !IsGrokVideoStatusBillable(statusBody) {
 		return nil
@@ -591,14 +665,8 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 	if gjson.ValidBytes(statusBody) {
 		// Official: top-level model.
 		model = strings.TrimSpace(gjson.GetBytes(statusBody, "model").String())
-		// Official: video.duration (number of seconds).
-		if v := gjson.GetBytes(statusBody, "video.duration"); v.Exists() && v.Type == gjson.Number {
-			durationSeconds = int(v.Int())
-			if durationSeconds == 0 && v.Float() > 0 {
-				// Sub-second values are unexpected for this API; still accept truncated int path above.
-				durationSeconds = int(v.Float())
-			}
-		}
+		durationSeconds = grokVideoStatusDurationSeconds(statusBody)
+		resolution = grokVideoStatusResolution(statusBody)
 	}
 	if pending != nil {
 		if model == "" {
@@ -610,8 +678,11 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 		if upstreamModel == "" {
 			upstreamModel = pending.UpstreamModel
 		}
-		// Official status has no resolution — always take create request when available.
-		resolution = pending.VideoResolution
+		// Status rarely reports resolution — the create-time request is authoritative
+		// for what the user was actually billed upstream.
+		if strings.TrimSpace(pending.VideoResolution) != "" {
+			resolution = pending.VideoResolution
+		}
 		if durationSeconds <= 0 {
 			durationSeconds = pending.VideoDurationSeconds
 		}
