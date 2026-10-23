@@ -178,7 +178,7 @@ func (s *AccountTestService) SetOpenAIGatewayService(gateway *OpenAIGatewayServi
 }
 
 // FetchOpenAIAccountModels uses the shared cached discovery path for the test picker.
-// It only fills picker-only gaps (local display-name fallbacks, OAuth image choices)
+// It only fills picker-only gaps (configured names, display labels, OAuth images)
 // on its own copy; the shared catalog and its cache stay untouched.
 func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, account *Account) ([]openai.Model, error) {
 	if s == nil || s.openaiGatewayService == nil {
@@ -214,15 +214,15 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			model.Type = "model"
 		}
 	}
+	seen := make(map[string]bool, len(payload.Data))
+	for _, model := range payload.Data {
+		seen[model.ID] = true
+	}
 	// Codex discovery lists Responses drivers, not image_generation tool models.
 	// Add locally supported image choices only to the OAuth test picker; keep the
 	// shared upstream catalog and API-key discovery authoritative.
 	if account != nil && account.IsOpenAIOAuthLike() {
 		passthrough := account.IsOpenAIPassthroughEnabled()
-		seen := make(map[string]bool, len(payload.Data))
-		for _, model := range payload.Data {
-			seen[model.ID] = true
-		}
 		for _, model := range openai.DefaultModels {
 			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
 				if !passthrough && !IsGPTImageGenerationModel(account.GetMappedModel(model.ID)) {
@@ -252,6 +252,17 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			}
 			payload.Data = append(payload.Data, openai.Model{ID: publicID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(publicID)})
 			seen[publicID] = true
+		}
+	}
+	// Keep explicitly configured request names testable even when discovery omits them.
+	if !account.IsOpenAIPassthroughEnabled() {
+		for publicID := range account.GetModelMapping() {
+			if strings.TrimSpace(publicID) == "" || strings.Contains(publicID, "*") || seen[publicID] {
+				continue
+			}
+			payload.Data = append(payload.Data, openai.Model{
+				ID: publicID, Object: "model", Type: "model", DisplayName: publicID,
+			})
 		}
 	}
 	return payload.Data, nil
