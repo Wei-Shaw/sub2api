@@ -749,6 +749,33 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("loads and saves authentication forwarding independently for each custom page", async () => {
+    const menuItems = [
+      { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },
+      { id: "integration", label: "Integration", url: "https://example.com/pay", icon_svg: "", visibility: "user", sort_order: 1, pass_user_id: true, pass_auth_token: true },
+    ];
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_menu_items: menuItems });
+    const wrapper = mountView();
+    await flushPromises();
+
+    const userIdToggles = wrapper.findAll<HTMLInputElement>('[data-testid="custom-menu-pass-user-id"]');
+    const tokenToggles = wrapper.findAll<HTMLInputElement>('[data-testid="custom-menu-pass-auth-token"]');
+    expect(userIdToggles.map(toggle => toggle.element.checked)).toEqual([false, true]);
+    expect(tokenToggles.map(toggle => toggle.element.checked)).toEqual([false, true]);
+    await userIdToggles[0].setValue(true);
+    await tokenToggles[1].setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      custom_menu_items: [
+        { ...menuItems[0], pass_user_id: true },
+        { ...menuItems[1], pass_auth_token: false },
+      ],
+    }));
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();

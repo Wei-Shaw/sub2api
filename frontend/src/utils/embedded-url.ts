@@ -1,7 +1,7 @@
 /**
  * Shared URL builder for iframe-embedded pages.
- * Used by PurchaseSubscriptionView and CustomPageView to build consistent URLs
- * with user_id, token, theme, lang, ui_mode, src_host, and src parameters.
+ * Authentication context is opt-in per page; existing menus without explicit
+ * flags receive presentation/source context only.
  */
 
 const EMBEDDED_USER_ID_QUERY_KEY = 'user_id'
@@ -13,20 +13,27 @@ const EMBEDDED_UI_MODE_VALUE = 'embedded'
 const EMBEDDED_SRC_HOST_QUERY_KEY = 'src_host'
 const EMBEDDED_SRC_QUERY_KEY = 'src_url'
 
+export interface EmbeddedAuthOptions {
+  passUserId?: boolean
+  passAuthToken?: boolean
+}
+
 export function buildEmbeddedUrl(
   baseUrl: string,
   userId?: number,
   authToken?: string | null,
   theme: 'light' | 'dark' = 'light',
   lang?: string,
+  authOptions: EmbeddedAuthOptions = {},
 ): string {
   if (!baseUrl) return baseUrl
   try {
     const url = new URL(baseUrl)
-    if (userId) {
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return baseUrl
+    if (authOptions.passUserId === true && userId) {
       url.searchParams.set(EMBEDDED_USER_ID_QUERY_KEY, String(userId))
     }
-    if (authToken) {
+    if (authOptions.passAuthToken === true && authToken) {
       url.searchParams.set(EMBEDDED_AUTH_TOKEN_QUERY_KEY, authToken)
     }
     url.searchParams.set(EMBEDDED_THEME_QUERY_KEY, theme)
@@ -37,7 +44,12 @@ export function buildEmbeddedUrl(
     // Source tracking: let the embedded page know where it's being loaded from
     if (typeof window !== 'undefined') {
       url.searchParams.set(EMBEDDED_SRC_HOST_QUERY_KEY, window.location.origin)
-      url.searchParams.set(EMBEDDED_SRC_QUERY_KEY, window.location.href)
+      // Source URLs may contain login parameters or OAuth fragments. Never copy
+      // those into another page, even when authentication forwarding is off.
+      const sourceUrl = new URL(window.location.href)
+      sourceUrl.search = ''
+      sourceUrl.hash = ''
+      url.searchParams.set(EMBEDDED_SRC_QUERY_KEY, sourceUrl.toString())
     }
     return url.toString()
   } catch {
