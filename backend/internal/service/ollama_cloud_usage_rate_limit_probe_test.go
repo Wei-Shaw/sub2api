@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -129,6 +131,11 @@ func TestOllamaCloudUsageRateLimitProbeExhaustedReportsReset(t *testing.T) {
 }
 
 func TestOllamaCloudUsageRateLimitProbeNotExhaustedNoCallback(t *testing.T) {
+	var slogOutput bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&slogOutput, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
 	fixedNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	account := ollamaUsageAccount(12)
 	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
@@ -148,6 +155,81 @@ func TestOllamaCloudUsageRateLimitProbeNotExhaustedNoCallback(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 	require.Equal(t, int64(1), upstream.calls.Load(), "a fresh probe must still refresh once")
+	require.Contains(t, slogOutput.String(), "ollama_cloud_usage_probe_not_exhausted",
+		"a successful probe without exhaustion must be reported")
+	require.Contains(t, slogOutput.String(), "account_id=12")
+	require.Contains(t, slogOutput.String(), "five_hour_used_percent=5")
+}
+
+// TestOllamaCloudUsageRateLimitProbeLogsUnknownResetForExhaustedWindow pins the
+// Warn for a fresh success whose window is exhausted but whose reset cannot be
+// computed (past reset): no callback, and the outcome must be visible.
+func TestOllamaCloudUsageRateLimitProbeLogsUnknownResetForExhaustedWindow(t *testing.T) {
+	var slogOutput bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&slogOutput, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	fixedNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	account := ollamaUsageAccount(42)
+	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
+	repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{
+		accounts: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &ollamaUsageHTTPStub{body: ollamaCloudProbeUsageBody(100, fixedNow.Add(-time.Hour).Format(time.RFC3339))}
+	svc := ollamaCloudProbeFixture(t, repo, upstream, fixedNow)
+
+	called := make(chan struct{}, 1)
+	require.True(t, svc.ScheduleOllamaCloudUsageRateLimitProbe(account.ID, func(int64, time.Time) {
+		called <- struct{}{}
+	}))
+	select {
+	case <-called:
+		t.Fatal("an exhausted window without a usable reset must not invoke the callback")
+	case <-time.After(300 * time.Millisecond):
+	}
+	require.Equal(t, int64(1), upstream.calls.Load(), "the probe must still fetch once")
+	require.Contains(t, slogOutput.String(), "ollama_cloud_usage_probe_reset_unknown",
+		"an exhausted window with an unusable reset must be reported at Warn level")
+	require.Contains(t, slogOutput.String(), "account_id=42")
+	require.Contains(t, slogOutput.String(), "five_hour_used_percent=100")
+}
+
+// TestOllamaCloudUsageRateLimitProbeLogsFailedFetch pins the Warn for a probe
+// whose scrape failed: persistFailure reports the failure through the returned
+// snapshot instead of an error, so the log carries reason, HTTP status and the
+// failure count from that snapshot.
+func TestOllamaCloudUsageRateLimitProbeLogsFailedFetch(t *testing.T) {
+	var slogOutput bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&slogOutput, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	fixedNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	account := ollamaUsageAccount(43)
+	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
+	repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{
+		accounts: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &ollamaUsageHTTPStub{status: http.StatusServiceUnavailable, body: []byte("unavailable")}
+	svc := ollamaCloudProbeFixture(t, repo, upstream, fixedNow)
+
+	called := make(chan struct{}, 1)
+	require.True(t, svc.ScheduleOllamaCloudUsageRateLimitProbe(account.ID, func(int64, time.Time) {
+		called <- struct{}{}
+	}))
+	select {
+	case <-called:
+		t.Fatal("a failed fetch must not invoke the callback")
+	case <-time.After(300 * time.Millisecond):
+	}
+	require.Equal(t, int64(1), upstream.calls.Load(), "the probe must have attempted the fetch")
+	require.Contains(t, slogOutput.String(), "ollama_cloud_usage_probe_fetch_failed",
+		"a probe whose scrape failed must be reported at Warn level")
+	require.Contains(t, slogOutput.String(), "account_id=43")
+	require.Contains(t, slogOutput.String(), "reason=http_error")
+	require.Contains(t, slogOutput.String(), "http_status=503")
+	require.Contains(t, slogOutput.String(), "failure_count=1")
 }
 
 func TestOllamaCloudUsageRateLimitProbeSameGroupCoalescesIntoOneFetchPerAccount(t *testing.T) {
@@ -220,7 +302,12 @@ func TestOllamaCloudUsageRateLimitProbeSkipsMissingCookieAndNonOllamaAccount(t *
 	require.Zero(t, upstream.calls.Load(), "no upstream fetch for ineligible accounts")
 }
 
-func TestOllamaCloudUsageRateLimitProbeRespectsFailureBackoff(t *testing.T) {
+// TestOllamaCloudUsageRateLimitProbeFetchesDespiteFailureBackoff pins the 429
+// exemption: a model 429 is itself fresh evidence that the account still needs a
+// recovery horizon, so the probe fetches even while the persisted snapshot sits
+// in a scrape-429 failure backoff (NextRefreshAt far in the future), and a
+// successful fetch still reports exhaustion.
+func TestOllamaCloudUsageRateLimitProbeFetchesDespiteFailureBackoff(t *testing.T) {
 	fixedNow := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	account := ollamaUsageAccount(41)
 	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
@@ -234,19 +321,22 @@ func TestOllamaCloudUsageRateLimitProbeRespectsFailureBackoff(t *testing.T) {
 	repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{
 		accounts: map[int64]*Account{account.ID: account},
 	}}
-	upstream := &ollamaUsageHTTPStub{body: ollamaCloudProbeUsageBody(100, ollamaCloudProbeReset(t, fixedNow).Format(time.RFC3339))}
+	wantReset := ollamaCloudProbeReset(t, fixedNow)
+	upstream := &ollamaUsageHTTPStub{body: ollamaCloudProbeUsageBody(100, wantReset.Format(time.RFC3339))}
 	svc := ollamaCloudProbeFixture(t, repo, upstream, fixedNow)
 
-	called := make(chan struct{}, 1)
-	require.True(t, svc.ScheduleOllamaCloudUsageRateLimitProbe(account.ID, func(int64, time.Time) {
-		called <- struct{}{}
+	called := make(chan time.Time, 1)
+	require.True(t, svc.ScheduleOllamaCloudUsageRateLimitProbe(account.ID, func(id int64, reset time.Time) {
+		require.Equal(t, account.ID, id)
+		called <- reset
 	}))
 	select {
-	case <-called:
-		t.Fatal("a model 429 must not bypass scrape-429 backoff")
-	case <-time.After(300 * time.Millisecond):
+	case reset := <-called:
+		require.True(t, reset.Equal(wantReset))
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected a callback: a model 429 must fetch despite scrape-429 failure backoff")
 	}
-	require.Zero(t, upstream.calls.Load(), "no fetch while the snapshot is in failure backoff")
+	require.Equal(t, int64(1), upstream.calls.Load(), "the probe must fetch exactly once despite the failure backoff")
 }
 
 func TestOllamaCloudUsageRateLimitProbeStopCancelsInFlightAndRejectsNew(t *testing.T) {
