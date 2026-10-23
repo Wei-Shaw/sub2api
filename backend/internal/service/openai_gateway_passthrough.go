@@ -137,7 +137,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 ) (*OpenAIForwardResult, error) {
 	requestedModel := reqModel
 	upstreamPassthroughModel := ""
-	if isOpenAIResponsesCompactPath(c) {
+	summaryExecution := IsOpenAICompactionSummaryExecution(c)
+	legacyCompactRequest := isOpenAIResponsesCompactPath(c) && !summaryExecution
+	if legacyCompactRequest {
 		compactMappedModel := s.resolveOpenAICompactFallbackModel(account, reqModel)
 		if compactMappedModel != "" && compactMappedModel != reqModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
@@ -171,14 +173,20 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = nextBody
 		}
 
-		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, legacyCompactRequest)
 		if err != nil {
 			return nil, err
 		}
 		if normalized {
 			body = normalizedBody
 		}
-		reqStream = gjson.GetBytes(body, "stream").Bool()
+		if summaryExecution {
+			// OAuth upstream requires an SSE request, while the summary response
+			// must be buffered and finalized through the non-streaming path.
+			reqStream = false
+		} else {
+			reqStream = gjson.GetBytes(body, "stream").Bool()
+		}
 
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
@@ -193,7 +201,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 一次性解析收敛 ID：请求体 client_metadata 在此改写（raw 字节外科
 		// 手术，透传热路径禁全量 Unmarshal），出站头改写由请求构造器读取
 		// context 中的同一份 IDs 完成（turn_id 等随机字段两侧必须一致）。
-		if !isOpenAIResponsesCompactPath(c) {
+		if !legacyCompactRequest {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
@@ -216,7 +224,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		normalizedBody, normalized, normalizeErr := normalizeOpenAIResponsesCompatibilityBodyWithOptions(body, account, openAIResponsesCompatibilityOptions{
 			Config:        s.cfg,
 			ResponsesLite: responsesLite,
-			Compact:       isOpenAIResponsesCompactPath(c),
+			Compact:       legacyCompactRequest,
 		})
 		if normalizeErr != nil {
 			return nil, fmt.Errorf("normalize passthrough Responses compatibility: %w", normalizeErr)
@@ -237,7 +245,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
-		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
+		!legacyCompactRequest && needsOpenAIResponsesClientToolAdaptation(body) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
 		if adaptErr != nil {
 			return nil, adaptErr
@@ -478,6 +486,24 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
+				if result != nil && (errors.Is(handleErr, ErrOpenAICompactionSummaryGeneration) || errors.Is(handleErr, ErrOpenAICompactionSummaryKey)) {
+					partialUsage := OpenAIUsage{}
+					if result.usage != nil {
+						partialUsage = *result.usage
+					}
+					partial := &OpenAIForwardResult{
+						RequestID:       resp.Header.Get("x-request-id"),
+						UpstreamHeaders: resp.Header,
+						ResponseID:      strings.TrimSpace(result.responseID),
+						Usage:           partialUsage,
+						Model:           reqModel,
+						UpstreamModel:   upstreamPassthroughModel,
+						Stream:          false,
+						Duration:        time.Since(startTime),
+					}
+					stampOpenAIResponsesUpstreamEndpoint(c, partial)
+					return partial, handleErr
+				}
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
 					c, account, requestedModel, body, handleErr, compactModelFallbackRetried, resp,
 				); retry {
@@ -586,28 +612,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
-	targetURL := openaiPlatformAPIURL
-	switch account.Type {
-	case AccountTypeOAuth:
-		targetURL = chatgptCodexURL
-	case AccountTypeSetupToken:
-		if account.IsOpenAIOAuthLike() {
-			targetURL = chatgptCodexURL
-		}
-	case AccountTypeAPIKey:
-		baseURL := account.GetOpenAIBaseURL()
-		if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
-			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
-		}
-		if baseURL != "" {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, err
-			}
-			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
-		}
+	legacyCompactRequest := isOpenAIResponsesCompactPath(c) && !IsOpenAICompactionSummaryExecution(c)
+	targetURL, err := s.openAIResponsesTargetURL(account)
+	if err != nil {
+		return nil, err
 	}
-	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	pathSuffix := openAIResponsesRequestPathSuffix(c)
+	if IsOpenAICompactionSummaryExecution(c) {
+		pathSuffix = ""
+	}
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, pathSuffix)
 
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
@@ -665,7 +679,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
 		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
-		if isOpenAIResponsesCompactPath(c) {
+		if legacyCompactRequest {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", CodexCanonicalClientVersion())
@@ -692,7 +706,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if clientConversationID != "" {
 			req.Header.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientConversationID))
 		}
-	} else if isOpenAIResponsesCompactPath(c) {
+	} else if legacyCompactRequest {
 		// 透传白名单会放行客户端的 Accept: text/event-stream；compact 上游是
 		// unary JSON 协议，API-key 账号同样强制 Accept，避免上游按 SSE 返回
 		// （#3777 期望行为 4）。
@@ -2374,6 +2388,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	body, finalizeErr := s.finalizeOpenAICompactionSummaryResponse(c, resp.StatusCode, body)
+	if finalizeErr != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, finalizeErr)
+		return &openaiNonStreamingResultPassthrough{OpenAIUsage: usage, usage: usage}, finalizeErr
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2409,6 +2428,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
 	usage := s.parseSSEUsageFromBody(bodyText)
+	if !ok && IsOpenAICompactionSummaryExecution(c) {
+		err := fmt.Errorf("%w: upstream SSE ended without a completed response", ErrOpenAICompactionSummaryGeneration)
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return &openaiNonStreamingResultPassthrough{OpenAIUsage: usage, usage: usage}, err
+	}
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
@@ -2435,6 +2459,12 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		finalizedBody, finalizeErr := s.finalizeOpenAICompactionSummaryResponse(c, resp.StatusCode, body)
+		if finalizeErr != nil {
+			writeOpenAICompactionSummaryFinalizationError(c, finalizeErr)
+			return &openaiNonStreamingResultPassthrough{OpenAIUsage: usage, usage: usage}, finalizeErr
+		}
+		body = finalizedBody
 	} else {
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)

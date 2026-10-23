@@ -2280,14 +2280,14 @@ func TestForwardGrokResponsesInvalidEncryptedContentRecoveryDoesNotOvermatch(t *
 	}
 }
 
-func TestGrokCompactionBlobRecoveryStripsCompactionItem(t *testing.T) {
+func TestGrokCompactionBlobRecoveryNeverDeletesCompactionItem(t *testing.T) {
 	body := []byte(`{"model":"grok","input":[{"type":"compaction","id":"cmp_1","encrypted_content":"blob"},{"type":"message","role":"user","content":"hi"}]}`)
 	require.True(t, isGrokInvalidEncryptedContentResponse(http.StatusUnprocessableEntity, []byte(`{"code":"invalid_compaction","error":"could not decode the compaction blob"}`)))
 	retry, changed, err := trimGrokInvalidEncryptedContentRetryBody(body)
 	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "message", gjson.GetBytes(retry, "input.0.type").String())
-	require.False(t, gjson.GetBytes(retry, "input.#(type==\"compaction\")").Exists())
+	require.False(t, changed)
+	require.Equal(t, "compaction", gjson.GetBytes(retry, "input.0.type").String())
+	require.Equal(t, "blob", gjson.GetBytes(retry, "input.0.encrypted_content").String())
 }
 
 func TestForwardGrokResponsesInvalidEncryptedContentRecoveryNestedErrorShape(t *testing.T) {
@@ -3796,4 +3796,76 @@ func TestBuildGrokSchedulerExtraUpdates_FeedsThresholdEvaluator(t *testing.T) {
 func TestBuildGrokSchedulerExtraUpdates_NilWhenNoQuotaWindows(t *testing.T) {
 	require.Nil(t, buildGrokSchedulerExtraUpdates(&xai.QuotaSnapshot{}))
 	require.Nil(t, buildGrokSchedulerExtraUpdates(nil))
+}
+
+func TestForwardGrokResponsesDoesNotRetryAfterCompactionRejection(t *testing.T) {
+	assertGrokCompactionRejectionSingleRequest(t, []byte(`{"model":"grok","input":[{"type":"compaction","encrypted_content":"blob"},{"type":"message","role":"user","content":"hi"}],"stream":false}`))
+}
+
+func TestForwardGrokResponsesStringSummaryCompactionRejection(t *testing.T) {
+	assertGrokCompactionRejectionSingleRequest(t, []byte(`{"model":"grok","input":[{"type":"compaction","encrypted_content":"blob","summary":"readable string"},{"type":"message","role":"user","content":"hi"}],"stream":false}`))
+}
+
+func TestForwardGrokResponsesDuplicateSummaryCompactionRejection(t *testing.T) {
+	assertGrokCompactionRejectionSingleRequest(t, []byte(`{"model":"grok","input":[{"type":"compaction","encrypted_content":"blob","summary":[{"text":"visible"}],"summary":[]},{"type":"message","role":"user","content":"hi"}],"stream":false}`))
+}
+
+func assertGrokCompactionRejectionSingleRequest(t *testing.T, body []byte) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	account := &Account{
+		ID:          4540,
+		Name:        "grok-api-key",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "token", "base_url": "https://api.x.ai/v1"},
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{{
+		StatusCode: http.StatusUnprocessableEntity,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"code":"invalid_compaction","error":"could not decode the compaction blob"}`)),
+	}}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 1, "unrecoverable compaction history must not be retried")
+	require.Len(t, upstream.bodies, 1)
+	require.Contains(t, string(upstream.bodies[0]), `"type":"reasoning"`)
+	require.Contains(t, string(upstream.bodies[0]), `"encrypted_content":"blob"`)
+}
+
+func TestForwardGrokResponsesOpaqueCompactionSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok","input":[{"type":"compaction","encrypted_content":"blob"},{"type":"message","role":"user","content":"hi"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	account := &Account{
+		ID:          4541,
+		Name:        "grok-api-key",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "token", "base_url": "https://api.x.ai/v1"},
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_ok","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 1)
+	require.Len(t, upstream.bodies, 1)
+	require.Contains(t, string(upstream.bodies[0]), `"type":"reasoning"`)
+	require.Contains(t, string(upstream.bodies[0]), `"encrypted_content":"blob"`)
 }

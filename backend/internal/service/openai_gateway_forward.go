@@ -19,8 +19,11 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	beginOpenAICompactionAttempt(c)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	explicitCompaction := isExplicitOpenAICompactContext(c)
+	preResolvedUpstreamProtocol := ""
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -35,6 +38,36 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	setCodexToolNameReverse(c, nil)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
+	}
+	// Resolve the production protocol once after credential preparation, then use
+	// that same value for the compaction target decision and the downstream route.
+	if explicitCompaction {
+		routingModel := upstreamRoutingModel(account, body, "")
+		if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
+			return nil, writeOpenCodeUnsupportedModelError(c, false, routingModel)
+		}
+		preResolvedUpstreamProtocol = s.resolveUpstreamProtocolFor(ctx, account, APIProtocolResponses, routingModel)
+		execution := s.openAICompactionExecutionForAccount(c, account, gjson.GetBytes(body, "model").String(), preResolvedUpstreamProtocol)
+		switch execution {
+		case openAICompactionExecutionSummary:
+			summaryBody, summaryErr := buildOpenAICompactionSummaryRequestBody(body)
+			if summaryErr == nil {
+				_, summaryErr = s.openAICompactionSummaryCipherKey(ctx, true)
+			}
+			if summaryErr != nil {
+				writeOpenAICompactionSummaryRequestError(c, summaryErr)
+				return nil, summaryErr
+			}
+			kind := openAICompactionKindLegacy
+			if isOpenAINativeCompactionV2(c) {
+				kind = openAICompactionKindV2
+			}
+			markOpenAICompactionSummaryExecution(c, kind)
+			ClearOpenAINativeCompactionV2(c)
+			body = summaryBody
+		case openAICompactionExecutionUnsupported:
+			return nil, newOpenAINativeCompactionUnsupportedError()
+		}
 	}
 	startTime := time.Now()
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
@@ -112,7 +145,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
-	compactPath := isOpenAIResponsesCompactPath(c)
+	compactPath := isOpenAIResponsesCompactPath(c) || IsOpenAICompactionSummaryExecution(c)
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled, compactPath) {
 		body, err = flattenOpenAIResponsesNamespaces(c, body)
 		if err != nil {
@@ -179,11 +212,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// 上游协议统一由 resolveUpstreamProtocol 判定（按模型分流时带上游模型目录）。OpenAI API Key 账号只会落到
 	// Responses / Chat Completions，上面的归一化对两条路径都生效。
-	routingModel := upstreamRoutingModel(account, body, "")
-	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
-		return nil, writeOpenCodeUnsupportedModelError(c, false, routingModel)
+	upstreamProtocol := preResolvedUpstreamProtocol
+	if upstreamProtocol == "" {
+		routingModel := upstreamRoutingModel(account, body, "")
+		if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
+			return nil, writeOpenCodeUnsupportedModelError(c, false, routingModel)
+		}
+		upstreamProtocol = s.resolveUpstreamProtocolFor(ctx, account, APIProtocolResponses, routingModel)
 	}
-	switch s.resolveUpstreamProtocolFor(ctx, account, APIProtocolResponses, routingModel) {
+	if explicitCompaction && !IsOpenAICompactionSummaryExecution(c) && upstreamProtocol != APIProtocolResponses {
+		return nil, newOpenAINativeCompactionUnsupportedError()
+	}
+	switch upstreamProtocol {
 	case APIProtocolAnthropic:
 		// Responses 客户端 × Anthropic 上游：转成 Anthropic 请求走原生端点。不能落到
 		// raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
@@ -270,6 +310,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		mappedModel := account.GetMappedModel(reqModel)
+		// Passthrough keeps the original body model; model_mapping is not applied
+		// on this branch, so the final budget target is reqModel.
+		if err := validateOpenAICompactionSummaryContextForExecution(c, account, body, reqModel); err != nil {
+			return nil, err
+		}
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, mappedModel)
 		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
@@ -371,9 +416,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	isCompactRequest := compactPath
+	useLegacyCompactModelMapping := isOpenAIResponsesCompactPath(c) && !IsOpenAICompactionSummaryExecution(c)
 	requestedModel := reqModel
-	billingModel, upstreamModel := resolveOpenAIForwardMappedModels(account, requestedModel, isCompactRequest)
-	if isCompactRequest {
+	billingModel, upstreamModel := resolveOpenAIForwardMappedModels(account, requestedModel, useLegacyCompactModelMapping)
+	if useLegacyCompactModelMapping {
 		if compactModel := s.resolveOpenAICompactFallbackModel(account, requestedModel); compactModel != "" {
 			upstreamModel = compactModel
 		}
@@ -391,7 +437,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("model", upstreamModel)
 	}
 	if upstreamModel != billingModel {
-		if isCompactRequest {
+		if useLegacyCompactModelMapping {
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", requestedModel, upstreamModel, account.Name, isCodexCLI)
 		} else {
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)", billingModel, upstreamModel, account.Name, account.Type, isCodexCLI)
@@ -504,7 +550,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if compatMessagesBridge {
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
 				IsCodexCLI:                          isCodexCLI,
-				IsCompact:                           isCompactRequest,
+				IsCompact:                           useLegacyCompactModelMapping,
 				SkipDefaultInstructions:             true,
 				PreserveToolCallIDs:                 true,
 				OmitPromotedSystemMessagesFromInput: omitPromotedSystemMessages,
@@ -515,7 +561,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
 				IsCodexCLI:                          isCodexCLI,
-				IsCompact:                           isCompactRequest,
+				IsCompact:                           useLegacyCompactModelMapping,
 				OmitPromotedSystemMessagesFromInput: omitPromotedSystemMessages,
 				ResponsesLite:                       responsesLite,
 			})
@@ -529,7 +575,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			markDecodedModified()
 		}
 		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
-		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {
+		if !useLegacyCompactModelMapping && applyCodexClientMetadata(decoded, account) {
 			markDecodedModified()
 		}
 		if currentClientPromptCacheKey, ok := decoded["prompt_cache_key"].(string); ok {
@@ -538,13 +584,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Account namespace is orthogonal to fingerprint convergence: preserve
 		// each client's identity cardinality, but never reuse it across OAuth
 		// credentials after scheduler failover.
-		if !isCompactRequest && applyCodexAccountIdentityClientMetadataMap(decoded, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c)) {
+		if !useLegacyCompactModelMapping && applyCodexAccountIdentityClientMetadataMap(decoded, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c)) {
 			markDecodedModified()
 		}
 		stageCodexFingerprintIDs(c, nil)
 		// 指纹收敛：一次性解析收敛 ID，请求体和出站头共享同一份 IDs（保证 turn_id 等随机字段一致）。
 		// fingerprintIDs 在此处解析，后续 buildUpstreamRequest 中使用同一份。
-		if !isCompactRequest {
+		if !useLegacyCompactModelMapping {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
@@ -574,6 +620,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
+	}
+	if err := validateOpenAICompactionSummaryContextForExecution(c, account, body, upstreamModel); err != nil {
+		return nil, err
 	}
 
 	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {
@@ -840,6 +889,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		recoverInvalidEncryptedContent := func(attempt int) bool {
 			if wsInvalidEncryptedContentRecoveryTried {
+				return false
+			}
+			if HasOpenAIEncryptedCompactionInput(body) {
+				logOpenAIWSModeInfo(
+					"reconnect_invalid_encrypted_content_recovery_skip account_id=%d attempt=%d reason=encrypted_native_compaction",
+					account.ID,
+					attempt,
+				)
 				return false
 			}
 			// 写入 lineage 后，同一失效密文在后续 turn 进场时被预剥离，不再重复
@@ -1271,6 +1328,25 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
+				if nonStreamResult != nil && (errors.Is(err, ErrOpenAICompactionSummaryGeneration) || errors.Is(err, ErrOpenAICompactionSummaryKey)) {
+					partialUsage := OpenAIUsage{}
+					if nonStreamResult.usage != nil {
+						partialUsage = *nonStreamResult.usage
+					}
+					partial := &OpenAIForwardResult{
+						RequestID:       resp.Header.Get("x-request-id"),
+						UpstreamHeaders: resp.Header,
+						ResponseID:      strings.TrimSpace(nonStreamResult.responseID),
+						Usage:           partialUsage,
+						Model:           originalModel,
+						BillingModel:    billingModel,
+						UpstreamModel:   upstreamModel,
+						Stream:          false,
+						Duration:        time.Since(startTime),
+					}
+					stampOpenAIResponsesUpstreamEndpoint(c, partial)
+					return partial, err
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
@@ -1370,37 +1446,15 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
-	// Determine target URL based on account type
-	var targetURL string
-	switch account.Type {
-	case AccountTypeOAuth:
-		// OAuth accounts use ChatGPT internal API
-		targetURL = chatgptCodexURL
-	case AccountTypeSetupToken:
-		if account.IsOpenAIOAuthLike() {
-			targetURL = chatgptCodexURL
-		} else {
-			targetURL = openaiPlatformAPIURL
-		}
-	case AccountTypeAPIKey:
-		// API Key accounts use Platform API or custom base URL
-		baseURL := account.GetOpenAIBaseURL()
-		if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
-			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
-		}
-		if baseURL == "" {
-			targetURL = openaiPlatformAPIURL
-		} else {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, err
-			}
-			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
-		}
-	default:
-		targetURL = openaiPlatformAPIURL
+	targetURL, err := s.openAIResponsesTargetURL(account)
+	if err != nil {
+		return nil, err
 	}
-	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	pathSuffix := openAIResponsesRequestPathSuffix(c)
+	if IsOpenAICompactionSummaryExecution(c) {
+		pathSuffix = ""
+	}
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, pathSuffix)
 
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。

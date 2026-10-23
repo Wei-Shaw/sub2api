@@ -67,6 +67,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	// Resolve the mapped model before choosing its thinking/tool protocol.
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	if err := validateOpenAICompactionSummaryContextForExecution(c, account, body, upstreamModel); err != nil {
+		return nil, err
+	}
 	if err := validateClaude55Request(body, upstreamModel); err != nil {
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -274,8 +277,35 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 	if isClaude55SignedThinkingModel(upstreamModel) {
 		finalResp.Model = upstreamModel
 	}
+	if err := validateOpenAICompactionSummaryAnthropicTerminal(c, finalResp); err != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return &OpenAIForwardResult{
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            claudeUsageToOpenAIUsage(&usage),
+			Model:            originalModel,
+			BillingModel:     billingModel,
+			UpstreamModel:    upstreamModel,
+			UpstreamEndpoint: "/v1/messages",
+			ReasoningEffort:  reasoningEffort,
+			Stream:           false,
+			Duration:         time.Since(startTime),
+		}, err
+	}
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
 	responsesResp.Model = originalModel
+	result := &OpenAIForwardResult{
+		RequestID:        requestID,
+		UpstreamHeaders:  resp.Header,
+		Usage:            claudeUsageToOpenAIUsage(&usage),
+		Model:            originalModel,
+		BillingModel:     billingModel,
+		UpstreamModel:    upstreamModel,
+		UpstreamEndpoint: "/v1/messages",
+		ReasoningEffort:  reasoningEffort,
+		Stream:           false,
+		Duration:         time.Since(startTime),
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -288,23 +318,19 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 		if err != nil {
 			return nil, fmt.Errorf("restore responses client tools: %w", err)
 		}
-		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+		respBytes, err = s.finalizeOpenAICompactionSummaryResponse(c, http.StatusOK, respBytes)
+		if err != nil {
+			writeOpenAICompactionSummaryFinalizationError(c, err)
+			return result, err
+		}
+		if !writeOpenAICompactSSEBridge(c, http.StatusOK, respBytes) {
+			c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+		}
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
 	}
 
-	return &OpenAIForwardResult{
-		RequestID:        requestID,
-		UpstreamHeaders:  resp.Header,
-		Usage:            claudeUsageToOpenAIUsage(&usage),
-		Model:            originalModel,
-		BillingModel:     billingModel,
-		UpstreamModel:    upstreamModel,
-		UpstreamEndpoint: "/v1/messages",
-		ReasoningEffort:  reasoningEffort,
-		Stream:           false,
-		Duration:         time.Since(startTime),
-	}, nil
+	return result, nil
 }
 
 // handleResponsesStreamingFromNativeAnthropic reads Anthropic SSE events, converts

@@ -832,8 +832,11 @@ describe('BulkEditAccountModal', () => {
       }
     })
 
+    expect(wrapper.find('[data-testid="bulk-compact-model-mapping"]').exists()).toBe(true)
     await wrapper.get('#bulk-edit-openai-compact-mode-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-compact-mode-select"]').setValue('force_on')
+    await wrapper.get('#bulk-edit-compact-summary-apply').setValue(true)
+    await wrapper.get('#bulk-edit-compact-summary-value-checkbox').setValue(true)
     await wrapper.get('#bulk-edit-openai-compact-model-mapping-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-compact-model-mapping-add"]').trigger('click')
     const inputs = wrapper.findAll('[data-testid="bulk-edit-openai-compact-model-mapping-input"]')
@@ -846,12 +849,49 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({
       filters: { platform: 'openai' },
       extra: {
-        openai_compact_mode: 'force_on'
+        openai_compact_mode: 'force_on',
+        compact_summary_enabled: true
       },
       credentials: {
         compact_model_mapping: {
           'gpt-5.4': 'gpt-5.4-openai-compact'
         }
+      }
+    })
+  })
+
+  it('does not change compact fields when their apply controls are unchecked', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['deepseek'],
+      selectedTypes: ['apikey']
+    })
+    expect(wrapper.find('[data-testid="compact-capability-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="bulk-compact-model-mapping"]').exists()).toBe(false)
+    await wrapper.get('#bulk-edit-base-url-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-base-url').setValue('https://relay.example.com/v1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = vi.mocked(adminAPI.accounts.bulkUpdate).mock.calls[0]?.[1] as {
+      extra?: Record<string, unknown>
+    }
+    expect(payload.extra ?? {}).not.toHaveProperty('openai_compact_mode')
+    expect(payload.extra ?? {}).not.toHaveProperty('compact_summary_enabled')
+  })
+
+  it('writes an explicit false summary consent when the apply control is checked', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['deepseek'],
+      selectedTypes: ['apikey']
+    })
+    expect(wrapper.find('[data-testid="bulk-compact-model-mapping"]').exists()).toBe(false)
+    await wrapper.get('#bulk-edit-compact-summary-apply').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        compact_summary_enabled: false
       }
     })
   })

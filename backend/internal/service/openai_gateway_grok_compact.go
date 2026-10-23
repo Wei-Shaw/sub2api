@@ -137,6 +137,36 @@ func convertOpenAICompactInputsForGrok(body []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+// grokCompactionReplayHasUnrecoverableHistory mirrors the converter's decoder
+// and summary parsing. A string summary is not readable by compactSummaryText,
+// and duplicate members are rejected before this helper is used.
+func grokCompactionReplayHasUnrecoverableHistory(body []byte) (bool, error) {
+	if err := ValidateOpenAICompactionInputShape(body); err != nil {
+		return false, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false, err
+	}
+	items, ok := payload["input"].([]any)
+	if !ok {
+		return false, nil
+	}
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok || !isOpenAICompactionType(stringValue(item["type"])) {
+			continue
+		}
+		if strings.TrimSpace(stringValue(item["encrypted_content"])) == "" {
+			continue
+		}
+		if compactSummaryText(item["summary"]) == "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func convertGrokResponseToOpenAICompact(body []byte) ([]byte, error) {
 	var response map[string]any
 	if err := json.Unmarshal(body, &response); err != nil {

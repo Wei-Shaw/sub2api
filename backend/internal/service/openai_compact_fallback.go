@@ -31,7 +31,7 @@ func asOpenAICompactFallbackSignal(err error) (*openAICompactFallbackSignal, boo
 }
 
 func isExplicitOpenAICompactContext(c *gin.Context) bool {
-	return isOpenAIResponsesCompactPath(c) || isOpenAINativeCompactionV2(c)
+	return isOpenAIResponsesCompactPath(c) || isOpenAINativeCompactionV2(c) || IsOpenAICompactionSummaryExecution(c)
 }
 
 func newOpenAICompactFallbackSignal(c *gin.Context, payload []byte, message string) error {
@@ -252,7 +252,7 @@ func (s *OpenAIGatewayService) prepareOpenAICompactFallbackRetry(
 	upstreamBody []byte,
 	alreadyRetried bool,
 ) ([]byte, string, bool) {
-	if alreadyRetried || !isExplicitOpenAICompactRequest(c, currentBody) ||
+	if IsOpenAICompactionSummaryExecution(c) || alreadyRetried || !isExplicitOpenAICompactRequest(c, currentBody) ||
 		!isOpenAICompactModelFailure(statusCode, upstreamMsg, upstreamBody) {
 		return currentBody, "", false
 	}

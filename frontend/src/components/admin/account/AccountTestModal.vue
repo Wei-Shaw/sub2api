@@ -79,6 +79,14 @@
           :options="openAITestModeOptions"
           :disabled="status === 'connecting'"
         />
+        <p
+          v-if="testMode === 'compact' || compactProbeIncompatible"
+          class="text-xs"
+          :class="compactProbeIncompatible ? 'text-rose-600 dark:text-rose-300' : 'text-gray-500 dark:text-gray-400'"
+          data-testid="compact-probe-mode-hint"
+        >
+          {{ t(compactProbeHintKey, { protocol: compactProbeFixedProtocol }) }}
+        </p>
       </div>
 
       <div v-if="supportsPromptInput" class="space-y-1.5">
@@ -375,6 +383,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
+import { getProviderProfile } from '@/constants/platformCatalog'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -397,6 +406,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'finished'): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -409,6 +419,7 @@ const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
+let finishEventEmitted = false
 const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
@@ -422,11 +433,42 @@ const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isOpenAIAccount = computed(() => props.account?.platform === 'openai' || !!getProviderProfile(props.account?.platform))
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
+const compactProbeFixedProtocol = computed(() => {
+  if (!isOpenAIAccount.value || !props.account) return ''
+  const credentials = props.account.credentials as Record<string, unknown> | undefined
+  const protocol = typeof credentials?.api_protocol === 'string'
+    ? credentials.api_protocol.trim().toLowerCase()
+    : ''
+  if (protocol === 'chat_completions' || protocol === 'anthropic') return protocol
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (props.account.platform === 'openai' && extra?.openai_responses_mode === 'force_chat_completions') {
+    return 'chat_completions'
+  }
+  return ''
+})
+const compactProbeIncompatible = computed(() => compactProbeFixedProtocol.value !== '')
+const compactProbeHintKey = computed(() => {
+  if (compactProbeIncompatible.value) {
+    return 'admin.accounts.openai.compactProbeFixedIncompatible'
+  }
+  const credentials = props.account?.credentials as Record<string, unknown> | undefined
+  const protocol = typeof credentials?.api_protocol === 'string'
+    ? credentials.api_protocol.trim().toLowerCase()
+    : ''
+  if (protocol === 'adaptive') {
+    return 'admin.accounts.openai.compactProbeAdaptiveHint'
+  }
+  return 'admin.accounts.openai.compactProbeHint'
+})
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  {
+    value: 'compact',
+    label: t('admin.accounts.openai.testModeCompact'),
+    disabled: compactProbeIncompatible.value
+  }
 ])
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
@@ -675,6 +717,7 @@ const testModeSummary = computed(() => {
 
 const canStartTest = computed(() => {
   if (status.value === 'connecting') return false
+  if (testMode.value === 'compact' && compactProbeIncompatible.value) return false
   if (isGrokAccount.value) {
     if (
       grokTestMode.value === 'search' ||
@@ -799,6 +842,7 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
+  finishEventEmitted = false
 }
 
 const handleClose = () => {
@@ -816,6 +860,12 @@ const abortStream = () => {
 const addLine = (text: string, className: string = 'text-gray-300') => {
   outputLines.value.push({ text, class: className })
   scrollToBottom()
+}
+
+const emitFinished = () => {
+  if (finishEventEmitted) return
+  finishEventEmitted = true
+  emit('finished')
 }
 
 const scrollToBottom = async () => {
@@ -935,6 +985,7 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : t('common.unknownError')
     errorMessage.value = msg
     addLine(t('admin.accounts.errorPrefix', { message: msg }), 'text-red-400')
+    emitFinished()
   }
 }
 
@@ -1034,6 +1085,7 @@ const handleEvent = (event: {
         status.value = 'error'
         errorMessage.value = event.error || t('admin.accounts.testFailed')
       }
+      emitFinished()
       break
 
     case 'error':
@@ -1043,6 +1095,7 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      emitFinished()
       break
   }
 }

@@ -1,10 +1,20 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/tidwall/gjson"
+)
+
+type openAICompactProbeResult uint8
+
+const (
+	openAICompactProbeUnknown openAICompactProbeResult = iota
+	openAICompactProbeSupported
+	openAICompactProbeUnsupported
 )
 
 const (
@@ -49,29 +59,67 @@ func createOpenAICompactProbePayload(model string, isOAuth bool) map[string]any 
 	return payload
 }
 
-// openAICompactProbeFoundCompactionItem 判定探测响应是否产出了 compaction
-// 输出 item——v2 契约的核心（codex 缺它即 fatal "got 0 items"）。三种形态都
-// 认：① SSE 的 output_item.done/added（原生 v2 主形态，codex 只从这里收集
-// item）；② SSE 终态 response.completed 的 response.output[]（部分上游只在
-// 终态给出 item）；③ 整体 JSON 的 output[]（老网关链把请求降级成 unary）。
+// openAICompactProbeFoundCompactionItem 判定响应是否满足 Codex 的 v2 消费
+// 契约：SSE 中恰好一个 response.output_item.done compaction，并等到成功终态。
+// output_item.added、仅终态 response.output[]、整体 JSON 都不能证明真实客户端
+// 可消费该 v2 响应。
 func openAICompactProbeFoundCompactionItem(body []byte) bool {
+	return classifyOpenAICompactProbeSuccess(body) == openAICompactProbeSupported
+}
+
+func classifyOpenAICompactProbeSuccess(body []byte) openAICompactProbeResult {
 	if len(body) == 0 {
-		return false
+		return openAICompactProbeUnknown
 	}
-	bodyText := string(body)
-	if _, found := findRawCompactionItemFromSSE(bodyText); found {
-		return true
+	if bodyHasSSEFraming(body) {
+		doneCount := 0
+		completed := false
+		failed := false
+		forEachOpenAISSEFrame(string(body), func(eventType string, data []byte) {
+			switch eventType {
+			case "response.output_item.done":
+				item := gjson.GetBytes(data, "item")
+				if item.IsObject() && isResponsesCompactionItemType(item.Get("type").String()) && strings.TrimSpace(item.Get("encrypted_content").String()) != "" {
+					doneCount++
+				}
+			case "response.completed":
+				status := strings.ToLower(strings.TrimSpace(gjson.GetBytes(data, "response.status").String()))
+				// response.completed is itself the success terminal event. Some
+				// compatible relays omit the nested status field, while the Codex
+				// client still observes a completed turn from this event type.
+				if status == "" || status == "completed" {
+					completed = true
+				}
+			case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
+				failed = true
+			}
+		})
+		if failed {
+			return openAICompactProbeUnknown
+		}
+		if !completed {
+			return openAICompactProbeUnknown
+		}
+		if doneCount == 1 {
+			return openAICompactProbeSupported
+		}
+		return openAICompactProbeUnsupported
 	}
-	if finalResponse, ok := extractCodexFinalResponse(bodyText); ok &&
-		responsesOutputHasCompactionItem(finalResponse) {
-		return true
+	if !json.Valid(body) {
+		return openAICompactProbeUnknown
 	}
-	return responsesOutputHasCompactionItem(body)
+	status := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "status").String()))
+	if status != "completed" {
+		return openAICompactProbeUnknown
+	}
+	// A completed unary JSON response is not the streaming v2 wire. It may be a
+	// legacy/compat response, but it is negative evidence for native v2.
+	return openAICompactProbeUnsupported
 }
 
 func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
 	switch status {
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
 		return true
 	case http.StatusBadRequest, http.StatusForbidden, http.StatusUnprocessableEntity:
 		lower := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body) + " " + string(body)))
@@ -90,53 +138,6 @@ func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
 		}
 	}
 	return false
-}
-
-// buildOpenAICompactProbeExtraUpdates 计算探测结果的账号 extra 更新。
-// compactionFound 是 v2 契约判据：HTTP 2xx 但响应无 compaction item 时同样
-// 记为不支持（链路把 compaction_trigger 吞掉的形态，等价 codex 的 "got 0
-// items" fatal，#5478/#5648）。极端场景（上游链只支持 legacy unary compact）
-// 可用账号级 openai_compact_mode=force_on 人工覆盖。
-func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probeErr error, compactionFound bool, now time.Time) map[string]any {
-	updates := map[string]any{
-		"openai_compact_checked_at":  now.Format(time.RFC3339),
-		"openai_compact_last_status": nil,
-	}
-
-	if resp != nil {
-		updates["openai_compact_last_status"] = resp.StatusCode
-	}
-
-	switch {
-	case probeErr != nil:
-		updates["openai_compact_last_error"] = truncateString(sanitizeUpstreamErrorMessage(probeErr.Error()), 2048)
-	case resp == nil:
-		updates["openai_compact_last_error"] = "compact probe failed"
-	default:
-		errMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-		if errMsg == "" && len(body) > 0 {
-			errMsg = strings.TrimSpace(string(body))
-		}
-		if errMsg == "" && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
-			errMsg = "HTTP " + strconv.Itoa(resp.StatusCode)
-		}
-		errMsg = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
-		switch {
-		case resp.StatusCode >= 200 && resp.StatusCode < 300 && compactionFound:
-			updates["openai_compact_supported"] = true
-			updates["openai_compact_last_error"] = ""
-		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			updates["openai_compact_supported"] = false
-			updates["openai_compact_last_error"] = "upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported)"
-		default:
-			if shouldMarkOpenAICompactUnsupported(resp.StatusCode, body) {
-				updates["openai_compact_supported"] = false
-			}
-			updates["openai_compact_last_error"] = errMsg
-		}
-	}
-
-	return updates
 }
 
 func mergeExtraUpdates(base map[string]any, more map[string]any) map[string]any {

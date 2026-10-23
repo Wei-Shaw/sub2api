@@ -72,7 +72,11 @@ func TestSelectAccountWithScheduler_LegacyProfitDiagnostics(t *testing.T) {
 
 	t.Run("compact preserves compact sentinel", func(t *testing.T) {
 		account := legacyProfitDiagnosticAccount(53134)
-		account.Extra = map[string]any{"openai_compact_supported": false}
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any)
+		}
+		account.Credentials["api_key"] = "fixture-value"
+		recordOpenAICompactionTargetEvidence(t, &OpenAIGatewayService{}, account, "gpt-test", openAICompactionKindLegacy, OpenAICompactionProbeVerdictUnsupported)
 		profitControlTestAccountWithRate(account, 0.4)
 		svc := legacyProfitDiagnosticService([]Account{*account})
 

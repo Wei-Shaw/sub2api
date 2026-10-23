@@ -71,6 +71,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	if err := validateOpenAICompactionSummaryContextForExecution(c, account, body, upstreamModel); err != nil {
+		return nil, err
+	}
 	if err := validateGPT61SolCompatRequest(body, upstreamModel); err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -160,13 +163,52 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if err != nil {
 		return nil, err
 	}
+	if err := validateOpenAICompactionSummaryChatTerminal(c, ccResp); err != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return &OpenAIForwardResult{
+			RequestID:       requestID,
+			UpstreamHeaders: resp.Header,
+			Usage:           usage,
+			Model:           originalModel,
+			BillingModel:    billingModel,
+			UpstreamModel:   upstreamModel,
+			ReasoningEffort: reasoningEffort,
+			Stream:          false,
+			Duration:        time.Since(startTime),
+		}, err
+	}
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, responsesResp)
+	if IsOpenAICompactionSummaryExecution(c) {
+		respBytes, marshalErr := json.Marshal(responsesResp)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("marshal compaction summary responses: %w", marshalErr)
+		}
+		finalized, finalizeErr := s.finalizeOpenAICompactionSummaryResponse(c, http.StatusOK, respBytes)
+		if finalizeErr != nil {
+			writeOpenAICompactionSummaryFinalizationError(c, finalizeErr)
+			return &OpenAIForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				BillingModel:    billingModel,
+				UpstreamModel:   upstreamModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}, finalizeErr
+		}
+		if !writeOpenAICompactSSEBridge(c, http.StatusOK, finalized) {
+			c.Data(http.StatusOK, "application/json; charset=utf-8", finalized)
+		}
+	} else {
+		c.JSON(http.StatusOK, responsesResp)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:                   requestID,

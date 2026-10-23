@@ -670,7 +670,8 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
+			extra -> 'opencode_go_usage_snapshot',
+			extra
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -699,6 +700,7 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentExtra                   []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -713,6 +715,7 @@ func lockAndMergeAccountProbeExtra(
 		&opencodeGroupIdentityUnchanged,
 		&currentOpenCodeAutoRefresh,
 		&currentOpenCodeSnapshot,
+		&currentExtra,
 	); err != nil {
 		return nil, err
 	}
@@ -730,6 +733,7 @@ func lockAndMergeAccountProbeExtra(
 		service.OllamaCloudUsageSnapshotExtraKey,
 		service.OpenCodeGoUsageAutoRefreshExtraKey,
 		service.OpenCodeGoUsageSnapshotExtraKey,
+		service.OpenAICompactionProbeTargetsExtraKey,
 	} {
 		delete(extra, key)
 	}
@@ -824,6 +828,17 @@ func lockAndMergeAccountProbeExtra(
 			} else if ok {
 				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
 			}
+		}
+	}
+	var currentExtraMap map[string]any
+	if len(currentExtra) > 0 {
+		if err := json.Unmarshal(currentExtra, &currentExtraMap); err != nil {
+			return nil, err
+		}
+	}
+	if identityUnchanged && service.OpenAICompactionProbeRouteMaterialEqual(account.Extra, currentExtraMap) {
+		if targets, exists := currentExtraMap[service.OpenAICompactionProbeTargetsExtraKey]; exists {
+			extra[service.OpenAICompactionProbeTargetsExtraKey] = targets
 		}
 	}
 	return extra, nil
@@ -2805,6 +2820,140 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	return nil
+}
+
+// UpdateOpenAICompactionProbeTarget merges one target observation under a row
+// lock. The current account and credential source must still match the target
+// that was probed; independent target keys merge without read-modify-write loss.
+func (r *accountRepository) UpdateOpenAICompactionProbeTarget(
+	ctx context.Context,
+	account *service.Account,
+	target service.OpenAICompactionProbeTarget,
+	observation service.OpenAICompactionProbeObservation,
+) error {
+	if account == nil || strings.TrimSpace(target.ConfigFingerprint) == "" {
+		return service.ErrAccountNilInput
+	}
+	if dbent.TxFromContext(ctx) == nil {
+		tx, err := r.client.Tx(ctx)
+		if errors.Is(err, dbent.ErrTxStarted) {
+			return r.updateOpenAICompactionProbeTargetInTx(ctx, account, target, observation)
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if err := r.updateOpenAICompactionProbeTargetInTx(dbent.NewTxContext(ctx, tx), account, target, observation); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		r.syncSchedulerAccountSnapshot(ctx, account.ID)
+		return nil
+	}
+	return r.updateOpenAICompactionProbeTargetInTx(ctx, account, target, observation)
+}
+
+func (r *accountRepository) updateOpenAICompactionProbeTargetInTx(
+	ctx context.Context,
+	account *service.Account,
+	target service.OpenAICompactionProbeTarget,
+	observation service.OpenAICompactionProbeObservation,
+) error {
+	client := clientFromContext(ctx, r.client)
+	current, err := loadOpenAICompactionProbeAccountForUpdate(ctx, client, account.ID, true)
+	if err != nil {
+		return err
+	}
+	credentialAccount := current
+	if current.IsShadow() {
+		if current.ParentAccountID == nil {
+			return service.ErrOpenAICompactionProbeIdentityChanged
+		}
+		credentialAccount, err = loadOpenAICompactionProbeAccountForUpdate(ctx, client, *current.ParentAccountID, false)
+		if err != nil {
+			if errors.Is(err, service.ErrAccountNotFound) {
+				return service.ErrOpenAICompactionProbeIdentityChanged
+			}
+			return err
+		}
+	}
+	credentialSource, credentialAccountID := "direct", current.ID
+	if current.IsShadow() {
+		credentialSource, credentialAccountID = "credential_shadow", credentialAccount.ID
+	}
+	if target.LogicalAccountID != current.ID || target.CredentialAccountID != credentialAccountID ||
+		target.CredentialSource != credentialSource ||
+		service.OpenAICompactionProbeTargetFingerprint(current, credentialAccount, target) != target.ConfigFingerprint {
+		return service.ErrOpenAICompactionProbeIdentityChanged
+	}
+	updates, err := service.BuildOpenAICompactionProbeExtraUpdates(current.Extra, target, observation)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(updates)
+	if err != nil {
+		return err
+	}
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, string(payload), current.ID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &current.ID, nil, nil)
+}
+
+func loadOpenAICompactionProbeAccountForUpdate(ctx context.Context, client *dbent.Client, id int64, lock bool) (*service.Account, error) {
+	query := `
+		SELECT platform, type, credentials, COALESCE(extra, '{}'::jsonb), proxy_id, parent_account_id
+		FROM accounts
+		WHERE id = $1 AND deleted_at IS NULL`
+	if lock {
+		query += ` FOR UPDATE`
+	} else {
+		query += ` FOR SHARE`
+	}
+	var platform, accountType string
+	var credentialsJSON, extraJSON []byte
+	var proxyID, parentAccountID *int64
+	rows, err := client.QueryContext(ctx, query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrAccountNotFound
+	}
+	err = rows.Scan(&platform, &accountType, &credentialsJSON, &extraJSON, &proxyID, &parentAccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrAccountNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	account := &service.Account{ID: id, Platform: platform, Type: accountType, ProxyID: proxyID, ParentAccountID: parentAccountID}
+	if err := json.Unmarshal(credentialsJSON, &account.Credentials); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(extraJSON, &account.Extra); err != nil {
+		return nil, err
+	}
+	return account, nil
 }
 
 // UpdateUpstreamBillingProbeSnapshot stores a probe result only while the

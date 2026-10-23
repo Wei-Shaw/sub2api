@@ -1,6 +1,9 @@
 package service
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // ProviderEndpoints 是多协议 API Key 供应商在某个接入模式下的官方默认端点与
 // 内置分流规则。账号凭证里的 base_url / api_base_urls / protocol_rules 仍优先于这里。
@@ -12,7 +15,22 @@ type ProviderEndpoints struct {
 	// ProtocolRules 是按模型分流的内置默认表（首条命中生效）；为空表示该模式
 	// 不按模型分流，由账号 api_protocol 决定上游协议。
 	ProtocolRules []ProtocolRule
+	// RemoteCompactionV2 declares a provider capability for the native
+	// Responses compaction trigger. An empty value means unknown; unknown
+	// endpoints retain their existing routing behavior.
+	RemoteCompactionV2 ProviderCapabilityStatus
 }
+
+// ProviderCapabilityStatus is the static status of a provider capability.
+// The zero value is unknown so custom endpoints are not treated as the
+// official provider's implementation by accident.
+type ProviderCapabilityStatus string
+
+const (
+	ProviderCapabilityUnknown     ProviderCapabilityStatus = ""
+	ProviderCapabilitySupported   ProviderCapabilityStatus = "supported"
+	ProviderCapabilityUnsupported ProviderCapabilityStatus = "unsupported"
+)
 
 // ProviderRouting 决定多协议供应商账号如何选择上游协议。
 type ProviderRouting string
@@ -142,6 +160,7 @@ var providerProfiles = map[string]*ProviderProfile{
 					APIProtocolResponses:       DefaultDeepseekBaseURL,
 					APIProtocolAnthropic:       DefaultDeepseekAnthropicBaseURL,
 				},
+				RemoteCompactionV2: ProviderCapabilityUnsupported,
 			},
 		},
 	},
@@ -249,6 +268,58 @@ func (a *Account) defaultProviderBaseURL(protocol string) string {
 func (a *Account) providerSupportsProtocol(protocol string) bool {
 	profile := a.providerProfile()
 	return profile != nil && profile.SupportsProtocol(a.GetCredential("account_mode"), protocol)
+}
+
+// remoteCompactionV2Capability resolves the capability for the actual account
+// endpoint. A provider default is authoritative only when the account still
+// uses that default endpoint; custom relays remain unknown instead of
+// inheriting the official endpoint's capability.
+func (a *Account) remoteCompactionV2Capability() ProviderCapabilityStatus {
+	if a == nil {
+		return ProviderCapabilityUnknown
+	}
+	if a.IsOpenAI() {
+		return ProviderCapabilityUnknown
+	}
+
+	profile := a.providerProfile()
+	if profile == nil {
+		return ProviderCapabilityUnknown
+	}
+	mode := strings.TrimSpace(a.GetCredential("account_mode"))
+	endpoints := profile.Endpoints(mode)
+	status := endpoints.RemoteCompactionV2
+	if status == ProviderCapabilityUnknown {
+		return status
+	}
+
+	// Use the same endpoint selection as buildUpstreamRequest. In adaptive
+	// mode the Chat Completions override must not change Responses capability.
+	configuredBaseURL := a.GetOpenAIBaseURL()
+	if a.UsesNativeCNResponses() && a.IsAdaptiveAPIProtocol() {
+		configuredBaseURL = a.GetCNProtocolBaseURL(APIProtocolResponses)
+	}
+	defaultBaseURL := profile.DefaultBaseURL(mode, APIProtocolResponses)
+	actual, err := url.Parse(buildOpenAIResponsesURLForPlatform(a.Platform, configuredBaseURL))
+	if err != nil {
+		return ProviderCapabilityUnknown
+	}
+	expected, err := url.Parse(buildOpenAIResponsesURLForPlatform(a.Platform, defaultBaseURL))
+	if err != nil {
+		return ProviderCapabilityUnknown
+	}
+	for _, endpoint := range []*url.URL{actual, expected} {
+		if (strings.EqualFold(endpoint.Scheme, "https") && endpoint.Port() == "443") ||
+			(strings.EqualFold(endpoint.Scheme, "http") && endpoint.Port() == "80") {
+			endpoint.Host = endpoint.Hostname()
+		}
+	}
+	if !strings.EqualFold(actual.Scheme, expected.Scheme) ||
+		!strings.EqualFold(actual.Host, expected.Host) || actual.EscapedPath() != expected.EscapedPath() ||
+		actual.RawQuery != expected.RawQuery {
+		return ProviderCapabilityUnknown
+	}
+	return status
 }
 
 // routesByModel 报告账号所在供应商是否按模型名分流上游协议（多模型聚合平台）。

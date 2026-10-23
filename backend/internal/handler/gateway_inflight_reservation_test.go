@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,41 @@ func TestRequestMaxOutputTokens(t *testing.T) {
 	require.Equal(t, 512, requestMaxOutputTokens([]byte(`{"generationConfig":{"maxOutputTokens":512}}`)))
 	require.Equal(t, 0, requestMaxOutputTokens([]byte(`{"max_tokens":"x"}`)))
 	require.Equal(t, 0, requestMaxOutputTokens([]byte(`{}`)))
+}
+
+func TestTokenInflightEstimateForCompactionSummaryIncludesPromptAndBudget(t *testing.T) {
+	body := []byte(`{"max_output_tokens":512}`)
+	plain := tokenInflightEstimate("deepseek-chat", body)
+	summary := tokenInflightEstimateForCompactionSummary("deepseek-chat", body)
+	require.Equal(t, plain.BodyBytes+len(service.OpenAICompactionSummaryPromptForReservation()), summary.BodyBytes)
+	require.Equal(t, service.OpenAICompactionSummaryOutputTokenBudget, summary.MaxTokens)
+
+	large := []byte(`{"max_output_tokens":16384}`)
+	require.Equal(t, 16384, tokenInflightEstimateForCompactionSummary("deepseek-chat", large).MaxTokens)
+}
+
+func TestTokenInflightEstimateForGatewayRequestUsesSummaryBudgetForLegacyCompactPath(t *testing.T) {
+	c := newInflightTestGinContext()
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(`{"max_output_tokens":512}`))
+
+	estimate := tokenInflightEstimateForGatewayRequest(c, "deepseek-chat", []byte(`{"max_output_tokens":512}`))
+	require.Equal(t, service.OpenAICompactionSummaryOutputTokenBudget, estimate.MaxTokens)
+	require.Greater(t, estimate.BodyBytes, len(`{"max_output_tokens":512}`))
+}
+
+func TestOpenAIForwardUsageRecorderRecordsOnlyFirstNonNilResult(t *testing.T) {
+	first := &service.ForwardResult{RequestID: "first"}
+	second := &service.ForwardResult{RequestID: "second"}
+	var recorded []*service.ForwardResult
+	record := onceOpenAIForwardUsageRecorder(func(result *service.ForwardResult) {
+		recorded = append(recorded, result)
+	})
+
+	record(nil)
+	record(first)
+	record(second)
+
+	require.Equal(t, []*service.ForwardResult{first}, recorded)
 }
 
 type countingEstimator struct {

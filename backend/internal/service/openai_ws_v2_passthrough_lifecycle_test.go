@@ -171,6 +171,17 @@ func startPassthroughLifecycleServerWithHooks(
 	account *Account,
 	hooksFactory func(*gin.Context) *OpenAIWSIngressHooks,
 ) (*httptest.Server, <-chan error) {
+	return startPassthroughLifecycleServerWithHooksAndAPIKey(t, controlCtx, svc, account, hooksFactory, nil)
+}
+
+func startPassthroughLifecycleServerWithHooksAndAPIKey(
+	t *testing.T,
+	controlCtx context.Context,
+	svc *OpenAIGatewayService,
+	account *Account,
+	hooksFactory func(*gin.Context) *OpenAIWSIngressHooks,
+	apiKey *APIKey,
+) (*httptest.Server, <-chan error) {
 	t.Helper()
 	serverErr := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +213,9 @@ func startPassthroughLifecycleServerWithHooks(
 		req := r.Clone(controlCtx)
 		req.Header = req.Header.Clone()
 		ginCtx.Request = req
+		if apiKey != nil {
+			ginCtx.Set("api_key", apiKey)
+		}
 		var hooks *OpenAIWSIngressHooks
 		if hooksFactory != nil {
 			hooks = hooksFactory(ginCtx)
@@ -263,6 +277,153 @@ func TestPassthroughLifecycle_LaterTurnPreOutputRateLimitRequestsReconnect(t *te
 	case replay := <-upstream.writes:
 		t.Fatalf("later-turn reconnect must not replay the retained first request: %s", replay)
 	default:
+	}
+}
+
+func TestPassthroughCompactionRecoveryRunsBeforeFirstUpstreamWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	key := testOpenAICompactionSummaryKey()
+	scope, err := NewOpenAICompactionOwnerScope(42, nil)
+	require.NoError(t, err)
+	sealed, err := SealOpenAICompactionSummary(key, scope, "ws summary", time.Now())
+	require.NoError(t, err)
+	otherScope, err := NewOpenAICompactionOwnerScope(99, nil)
+	require.NoError(t, err)
+	otherUserSealed, err := SealOpenAICompactionSummary(key, otherScope, "other user", time.Now())
+	require.NoError(t, err)
+
+	run := func(t *testing.T, encrypted string, wantOutbound bool) {
+		t.Helper()
+		controlCtx, cancelControl := context.WithCancelCause(context.Background())
+		defer cancelControl(context.Canceled)
+		upstream := newStagedPassthroughConn()
+		account := passthroughLifecycleAccount()
+		svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream)
+		svc.compactionSummaryKey = append([]byte(nil), key...)
+		server, _ := startPassthroughLifecycleServerWithHooksAndAPIKey(
+			t, controlCtx, svc, account, nil, &APIKey{ID: 1, UserID: 42},
+		)
+		defer server.Close()
+		payload := `{"type":"response.create","model":"gpt-5.1","input":[{"type":"compaction","encrypted_content":"` + encrypted + `"},{"type":"message","role":"user","content":"continue"}]}`
+		clientConn := dialPassthroughLifecycleClientWithPayload(t, server, payload)
+		defer func() { _ = clientConn.CloseNow() }()
+
+		if wantOutbound {
+			outbound := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+			require.NotContains(t, string(outbound), encrypted)
+			require.Contains(t, string(outbound), "ws summary")
+			require.Equal(t, "message", gjson.GetBytes(outbound, "input.0.type").String())
+			return
+		}
+		select {
+		case outbound := <-upstream.writes:
+			t.Fatalf("invalid gateway ciphertext reached upstream: %s", outbound)
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+
+	t.Run("valid_gateway_ciphertext_is_restored", func(t *testing.T) {
+		run(t, sealed, true)
+	})
+	t.Run("unknown_version_never_reaches_upstream", func(t *testing.T) {
+		run(t, "s2cmp1.v9.invalid", false)
+	})
+	t.Run("cross_user_ciphertext_never_reaches_upstream", func(t *testing.T) {
+		run(t, otherUserSealed, false)
+	})
+}
+
+func TestPassthroughCompactionRecoveryRunsOnLaterResponseCreate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	key := testOpenAICompactionSummaryKey()
+	scope, err := NewOpenAICompactionOwnerScope(42, nil)
+	require.NoError(t, err)
+	sealed, err := SealOpenAICompactionSummary(key, scope, "later summary", time.Now())
+	require.NoError(t, err)
+
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	account := passthroughLifecycleAccount()
+	svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream)
+	svc.compactionSummaryKey = append([]byte(nil), key...)
+	server, _ := startPassthroughLifecycleServerWithHooksAndAPIKey(
+		t, controlCtx, svc, account, nil, &APIKey{ID: 1, UserID: 42},
+	)
+	defer server.Close()
+
+	clientConn := dialPassthroughLifecycleClientWithPayload(t, server, `{"type":"response.create","model":"gpt-5.1","input":[{"type":"message","role":"user","content":"first"}]}`)
+	defer func() { _ = clientConn.CloseNow() }()
+	firstOutbound := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+	require.Contains(t, string(firstOutbound), `"content":"first"`)
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	_, err = readPassthroughLifecycleFrame(t, clientConn, time.Second)
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","input":[{"type":"compaction","encrypted_content":"`+sealed+`"},{"type":"message","role":"user","content":"continue"}]}`))
+	cancelWrite()
+	require.NoError(t, err)
+	outbound := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+	require.NotContains(t, string(outbound), sealed)
+	require.Contains(t, string(outbound), "later summary")
+}
+
+func TestPassthroughAmbiguousEventTypeNeverReachesUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []string{
+		`{"type":"response.cancel","type":"response.create","model":"gpt-5.1","input":[{"type":"compaction","encrypted_content":"s2cmp1.v9.invalid"}]}`,
+		`{"Type":"response.cancel","type":"response.create","model":"gpt-5.1","input":[{"type":"compaction","encrypted_content":"s2cmp1.v9.invalid"}]}`,
+	}
+	for _, payload := range cases {
+		controlCtx, cancelControl := context.WithCancelCause(context.Background())
+		upstream := newStagedPassthroughConn()
+		account := passthroughLifecycleAccount()
+		svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream)
+		server, _ := startPassthroughLifecycleServerWithHooksAndAPIKey(
+			t, controlCtx, svc, account, nil, &APIKey{ID: 1, UserID: 42},
+		)
+		clientConn := dialPassthroughLifecycleClientWithPayload(t, server, payload)
+		select {
+		case outbound := <-upstream.writes:
+			t.Fatalf("ambiguous websocket event reached upstream: %s", outbound)
+		case <-time.After(150 * time.Millisecond):
+		}
+		_ = clientConn.CloseNow()
+		server.Close()
+		cancelControl(context.Canceled)
+	}
+}
+
+func TestPassthroughLaterAmbiguousResponseCreateNeverReachesUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	account := passthroughLifecycleAccount()
+	svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream)
+	server, _ := startPassthroughLifecycleServerWithHooksAndAPIKey(
+		t, controlCtx, svc, account, nil, &APIKey{ID: 1, UserID: 42},
+	)
+	defer server.Close()
+
+	clientConn := dialPassthroughLifecycleClientWithPayload(t, server, `{"type":"response.create","model":"gpt-5.1","input":[{"type":"message","role":"user","content":"first"}]}`)
+	defer func() { _ = clientConn.CloseNow() }()
+	_ = requirePassthroughUpstreamWrite(t, upstream, time.Second)
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	_, err := readPassthroughLifecycleFrame(t, clientConn, time.Second)
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.cancel","type":"response.create","model":"gpt-5.1","input":[{"type":"compaction","encrypted_content":"s2cmp1.v9.invalid"}]}`))
+	cancelWrite()
+	require.NoError(t, err)
+	select {
+	case outbound := <-upstream.writes:
+		t.Fatalf("ambiguous later response.create reached upstream: %s", outbound)
+	case <-time.After(150 * time.Millisecond):
 	}
 }
 

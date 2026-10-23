@@ -40,8 +40,8 @@ func TestAccountTestServiceOpenAICompactAgentIdentityUsesFreshAssertion(t *testi
 	repo := &snapshotUpdateAccountRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent_fresh","encrypted_content":"blob"}]}`)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(compactProbeSSESuccessBody)),
 	}}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
 
@@ -73,6 +73,10 @@ func TestAccountTestServiceOpenAICompactAgentIdentityRecoversInvalidTaskOnce(t *
 			"agent_private_key":  privateKey,
 			"task_id":            "task-compact-old",
 			"chatgpt_account_id": "account-agent-compact-recovery",
+			"model_mapping": map[string]any{
+				"public-a": "mapped-b",
+				"mapped-b": "mapped-c",
+			},
 		},
 	}
 	repo := &accountTestAgentIdentityRepo{account: account}
@@ -88,7 +92,7 @@ func TestAccountTestServiceOpenAICompactAgentIdentityRecoversInvalidTaskOnce(t *
 
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"}}`))},
-		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent","encrypted_content":"blob"}]}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(compactProbeSSESuccessBody))},
 	}}
 	invalidator := &agentIdentityWSInvalidationRecorder{}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, agentIdentityWS: invalidator}
@@ -96,9 +100,11 @@ func TestAccountTestServiceOpenAICompactAgentIdentityRecoversInvalidTaskOnce(t *
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/22/test", bytes.NewReader(nil))
 
-	require.NoError(t, svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact))
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "public-a", "", AccountTestModeCompact))
 	require.Equal(t, 1, registerCalls)
 	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "mapped-b", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.Equal(t, "mapped-b", gjson.GetBytes(upstream.bodies[1], "model").String())
 	require.Equal(t, "task-compact-new", account.GetCredential("task_id"))
 	require.Equal(t, 0, repo.setErrorCalls)
 	require.Equal(t, []int64{account.ID}, invalidator.accountIDs)

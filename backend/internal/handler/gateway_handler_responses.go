@@ -68,6 +68,14 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if h.openAIGatewayService != nil {
+		restoredBody, _, restoreErr := h.openAIGatewayService.RestoreOpenAICompactionSummaryInput(c.Request.Context(), c, body)
+		if restoreErr != nil {
+			writeOpenAICompactionSummaryPayloadError(c, restoreErr)
+			return
+		}
+		body = restoredBody
+	}
 
 	// Extract model and stream using gjson (like OpenAI handler)
 	modelResult := gjson.GetBytes(body, "model")
@@ -159,7 +167,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
-	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	inflightEstimate := tokenInflightEstimateForGatewayRequest(c, reqModel, body)
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if err != nil {
 		reqLog.Info("gateway.responses.inflight_reservation_rejected", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -186,6 +195,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	compactionIntent := service.IsOpenAIResponsesCompactPath(c) || service.HasCompactionTriggerInInput(body)
 
 	for {
 		if failoverClientGone(c) {
@@ -210,6 +220,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
 				return
 			}
+			if compactionIntent {
+				h.responsesErrorResponse(c, http.StatusBadRequest, "compaction_not_supported", "No selected account is configured for server-side compaction")
+				return
+			}
 			action := fs.HandleSelectionExhausted(requestCtx)
 			switch action {
 			case FailoverContinue:
@@ -227,6 +241,13 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		account := selection.Account
+		if compactionIntent && !account.OpenAICompactSummaryEnabled() {
+			fs.FailedAccountIDs[account.ID] = struct{}{}
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			continue
+		}
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		// 4. Acquire account concurrency slot
@@ -283,6 +304,46 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		attemptParsedReq := parsedReq
+		attemptCtx := requestCtx
+		if compactionIntent {
+			if h.openAIGatewayService == nil {
+				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "compaction_summary_unavailable", "Server-side compaction is unavailable")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			summaryBody, summaryErr := h.openAIGatewayService.PrepareOpenAICompactionSummaryRequest(account, forwardBody)
+			if summaryErr == nil {
+				summaryErr = h.openAIGatewayService.EnsureOpenAICompactionSummaryKey(requestCtx)
+			}
+			if summaryErr != nil {
+				h.responsesErrorResponse(c, http.StatusBadRequest, "compaction_summary_unsupported", summaryErr.Error())
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			forwardBody = summaryBody
+			attemptParsedReq, _ = service.ParseGatewayRequest(service.NewRequestBodyRef(summaryBody), "responses")
+			if attemptParsedReq == nil {
+				attemptParsedReq = &service.ParsedRequest{Model: reqModel, Stream: false, Body: service.NewRequestBodyRef(summaryBody)}
+			}
+			attemptParsedReq.SessionContext = parsedReq.SessionContext
+			protocol := "legacy_compact"
+			if service.HasCompactionTriggerInInput(body) {
+				protocol = "native_v2"
+			}
+			service.MarkOpenAICompactionSummaryExecutionForRequest(c, protocol)
+			if protocol == "native_v2" {
+				service.MarkOpenAICompactClientStream(c)
+			}
+			attemptCtx = service.WithOpenAICompactionSummaryService(requestCtx, h.openAIGatewayService)
+			if c.Request != nil {
+				c.Request = c.Request.WithContext(attemptCtx)
+			}
+		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
 		if shouldUseAntigravityCompat(account) {
@@ -294,30 +355,29 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
-			result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+			result, err = h.antigravityGatewayService.ForwardAsResponses(attemptCtx, c, account, forwardBody, attemptParsedReq)
 		} else {
-			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+			result, err = h.gatewayService.ForwardAsResponses(attemptCtx, c, account, forwardBody, attemptParsedReq)
 		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
-
-		// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
-		// 错误路径共用；failover 错误恒定 result=nil，不会重复计费。
-		submitForwardUsage := func(result *service.ForwardResult) {
+		recordUsage := onceOpenAIForwardUsageRecorder(func(forwardResult *service.ForwardResult) {
+			if forwardResult == nil {
+				return
+			}
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
-			stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
+			stampForwardRequestedReasoningEffort(forwardResult, service.RequestedReasoningEffortFromContext(c.Request.Context()))
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:             result,
+					Result:             forwardResult,
 					QuotaPlatform:      quotaPlatform,
 					APIKey:             apiKey,
 					User:               apiKey.User,
@@ -331,7 +391,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					APIKeyService:      h.apiKeyService,
 					SessionID:          sessionID,
-					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, forwardResult.UpstreamModel),
 				}); err != nil {
 					reqLog.Error("gateway.responses.record_usage_failed",
 						zap.Int64("account_id", account.ID),
@@ -339,9 +399,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					)
 				}
 			})
-		}
+		})
 
 		if err != nil {
+			if result != nil && (errors.Is(err, service.ErrOpenAICompactionSummaryGeneration) || errors.Is(err, service.ErrOpenAICompactionSummaryKey)) {
+				recordUsage(result)
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
@@ -373,13 +436,13 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				zap.Error(err),
 			)
 			if result != nil {
-				submitForwardUsage(result)
+				recordUsage(result)
 			}
 			return
 		}
 
 		// 6. Record usage
-		submitForwardUsage(result)
+		recordUsage(result)
 		return
 	}
 }

@@ -1674,6 +1674,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 	body = restoreCodexToolNamesFromContext(c, body)
 	body = ensureOpenAIResponseObjectCreatedAt(body)
+	body, finalizeErr := s.finalizeOpenAICompactionSummaryResponse(c, resp.StatusCode, body)
+	if finalizeErr != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, finalizeErr)
+		return &openaiNonStreamingResult{OpenAIUsage: usage, usage: usage}, finalizeErr
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
 	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
@@ -1740,6 +1745,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
 	usage := s.parseSSEUsageFromBody(bodyText)
+	if !ok && IsOpenAICompactionSummaryExecution(c) {
+		err := fmt.Errorf("%w: upstream SSE ended without a completed response", ErrOpenAICompactionSummaryGeneration)
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return &openaiNonStreamingResult{OpenAIUsage: usage, usage: usage}, err
+	}
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
@@ -1775,6 +1785,12 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = ensureOpenAIResponseObjectCreatedAt(restoredBody)
+		finalizedBody, finalizeErr := s.finalizeOpenAICompactionSummaryResponse(c, resp.StatusCode, body)
+		if finalizeErr != nil {
+			writeOpenAICompactionSummaryFinalizationError(c, finalizeErr)
+			return &openaiNonStreamingResult{OpenAIUsage: usage, usage: usage}, finalizeErr
+		}
+		body = finalizedBody
 	} else {
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)

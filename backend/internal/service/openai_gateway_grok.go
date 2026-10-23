@@ -63,6 +63,12 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}})
 		return nil, err
 	}
+	hasUnrecoverableCompaction, unrecoverableErr := grokCompactionReplayHasUnrecoverableHistory(body)
+	if unrecoverableErr != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, unrecoverableErr.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": unrecoverableErr.Error()}})
+		return nil, unrecoverableErr
+	}
 	setGrokResponsesClientToolMapping(c, clientToolMapping)
 	// OpenAI /responses/compact is not a native xAI endpoint. Convert it into a
 	// normal Grok Responses turn that asks for a structured summary, then map the
@@ -135,6 +141,9 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if !invalidEncryptedContent && !isGrokCompactionReplayDecodeError(resp.StatusCode, respBody) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			break
+		}
+		if hasUnrecoverableCompaction {
+			return nil, fmt.Errorf("grok rejected encrypted compaction state; refusing retry without the original history")
 		}
 
 		var retryBody []byte

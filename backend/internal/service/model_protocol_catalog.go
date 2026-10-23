@@ -74,8 +74,13 @@ func (c *modelProtocolCatalog) entryLocked(key string) *modelProtocolCatalogEntr
 // 目录缺失或过期、且不在刷新中也不在失败退避期时，异步调用 refresh（由其调用 store）；
 // 目录从未加载成功且刷新进行中时，只等待本轮冷启动窗口的剩余时间。
 func (c *modelProtocolCatalog) lookup(ctx context.Context, key, model string, now time.Time, refresh func()) []string {
+	protocols, _ := c.lookupWithKnown(ctx, key, model, now, refresh)
+	return protocols
+}
+
+func (c *modelProtocolCatalog) lookupWithKnown(ctx context.Context, key, model string, now time.Time, refresh func()) ([]string, bool) {
 	if ctx.Err() != nil {
-		return nil
+		return nil, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -103,9 +108,10 @@ func (c *modelProtocolCatalog) lookup(ctx context.Context, key, model string, no
 		c.mu.Lock()
 	}
 	if entry.models == nil || ctx.Err() != nil {
-		return nil
+		return nil, false
 	}
-	return entry.models[strings.ToLower(strings.TrimSpace(model))]
+	protocols, ok := entry.models[strings.ToLower(strings.TrimSpace(model))]
+	return protocols, ok && len(protocols) > 0
 }
 
 // store 写入一次刷新的结果；失败时保留旧目录并进入退避。
@@ -175,18 +181,23 @@ func parseModelProtocolCatalog(body []byte) (map[string][]string, error) {
 // modelCatalogProtocols 返回上游模型目录中 model 支持的协议；平台不提供目录、账号固定了
 // 上游协议或目录尚未就绪时返回 nil。
 func (s *OpenAIGatewayService) modelCatalogProtocols(ctx context.Context, account *Account, model string) []string {
+	protocols, _ := s.modelCatalogProtocolsKnown(ctx, account, model)
+	return protocols
+}
+
+func (s *OpenAIGatewayService) modelCatalogProtocolsKnown(ctx context.Context, account *Account, model string) ([]string, bool) {
 	if s == nil || s.httpUpstream == nil || strings.TrimSpace(model) == "" || !account.routesByModel() {
-		return nil
+		return nil, false
 	}
 	if profile := account.providerProfile(); profile == nil || !profile.ModelCatalog {
-		return nil
+		return nil, false
 	}
 	if account.GetAPIProtocol() != APIProtocolAdaptive {
-		return nil
+		return nil, false
 	}
 	base := strings.TrimSpace(account.GetCNProtocolBaseURL(APIProtocolChatCompletions))
 	if base == "" {
-		return nil
+		return nil, false
 	}
 	url := buildOpenAIModelsURL(base)
 	key := modelProtocolCatalogKey(account, url)
@@ -196,7 +207,7 @@ func (s *OpenAIGatewayService) modelCatalogProtocols(ctx context.Context, accoun
 		proxyURL = account.Proxy.URL()
 	}
 	accountID, concurrency := account.ID, account.Concurrency
-	return upstreamModelProtocols.lookup(ctx, key, model, time.Now(), func() {
+	return upstreamModelProtocols.lookupWithKnown(ctx, key, model, time.Now(), func() {
 		ctx, cancel := context.WithTimeout(context.Background(), modelProtocolCatalogTimeout)
 		defer cancel()
 		models, err := s.fetchModelProtocolCatalog(ctx, url, headers, proxyURL, accountID, concurrency)
@@ -207,6 +218,29 @@ func (s *OpenAIGatewayService) modelCatalogProtocols(ctx context.Context, accoun
 		}
 		upstreamModelProtocols.store(key, models, err, time.Now())
 	})
+}
+
+func cachedModelCatalogProtocolsKnown(account *Account, model string) ([]string, bool) {
+	if account == nil || strings.TrimSpace(model) == "" || !account.routesByModel() {
+		return nil, false
+	}
+	profile := account.providerProfile()
+	if profile == nil || !profile.ModelCatalog || account.GetAPIProtocol() != APIProtocolAdaptive {
+		return nil, false
+	}
+	base := strings.TrimSpace(account.GetCNProtocolBaseURL(APIProtocolChatCompletions))
+	if base == "" {
+		return nil, false
+	}
+	key := modelProtocolCatalogKey(account, buildOpenAIModelsURL(base))
+	upstreamModelProtocols.mu.Lock()
+	defer upstreamModelProtocols.mu.Unlock()
+	entry := upstreamModelProtocols.entries[key]
+	if entry == nil || entry.models == nil || time.Since(entry.fetchedAt) >= modelProtocolCatalogTTL {
+		return nil, false
+	}
+	protocols, ok := entry.models[strings.ToLower(strings.TrimSpace(model))]
+	return protocols, ok && len(protocols) > 0
 }
 
 // modelProtocolCatalogKey 按账号和地址隔离目录及刷新退避，避免一个账号的目录或
@@ -260,4 +294,19 @@ func (s *OpenAIGatewayService) fetchModelProtocolCatalog(ctx context.Context, ur
 // 提供模型目录时，带上目录中该模型支持的协议。
 func (s *OpenAIGatewayService) resolveUpstreamProtocolFor(ctx context.Context, account *Account, inbound, model string) string {
 	return resolveUpstreamProtocol(account, inbound, model, s.modelCatalogProtocols(ctx, account, model))
+}
+
+// cachedModelCatalogProtocols is an observation-only scheduling read. Candidate
+// filtering must not start or wait for a separate /models fetch per account.
+// A cache miss remains unknown until Forward resolves the selected account.
+func cachedModelCatalogProtocols(account *Account, model string) []string {
+	base := strings.TrimSpace(account.GetCNProtocolBaseURL(APIProtocolChatCompletions))
+	key := modelProtocolCatalogKey(account, buildOpenAIModelsURL(base))
+	upstreamModelProtocols.mu.Lock()
+	defer upstreamModelProtocols.mu.Unlock()
+	entry := upstreamModelProtocols.entries[key]
+	if entry == nil || time.Since(entry.fetchedAt) >= modelProtocolCatalogTTL {
+		return nil
+	}
+	return entry.models[strings.ToLower(strings.TrimSpace(model))]
 }

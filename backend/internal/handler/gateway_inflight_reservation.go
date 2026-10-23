@@ -2,11 +2,24 @@ package handler
 
 import (
 	"context"
+	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
+
+// onceOpenAIForwardUsageRecorder keeps one logical Responses request from
+// recording both a partial summary result and a later successful result.
+func onceOpenAIForwardUsageRecorder(record func(*service.ForwardResult)) func(*service.ForwardResult) {
+	var once sync.Once
+	return func(result *service.ForwardResult) {
+		if result == nil {
+			return
+		}
+		once.Do(func() { record(result) })
+	}
+}
 
 // inflightReservationEstimator 估算单请求在途预留金额（USD）；false 表示无法定价。
 type inflightReservationEstimator interface {
@@ -31,6 +44,25 @@ func tokenInflightEstimate(model string, body []byte) service.InflightEstimateRe
 		MaxTokens: requestMaxOutputTokens(body),
 		Kind:      service.InflightEstimateToken,
 	}
+}
+
+// tokenInflightEstimateForCompactionSummary includes the summary prompt and the
+// server-side output budget. Native compact requests use the same conservative
+// reservation because the selected account may execute through summary mode.
+func tokenInflightEstimateForCompactionSummary(model string, body []byte) service.InflightEstimateRequest {
+	estimate := tokenInflightEstimate(model, body)
+	estimate.BodyBytes += len(service.OpenAICompactionSummaryPromptForReservation())
+	if estimate.MaxTokens < service.OpenAICompactionSummaryOutputTokenBudget {
+		estimate.MaxTokens = service.OpenAICompactionSummaryOutputTokenBudget
+	}
+	return estimate
+}
+
+func tokenInflightEstimateForGatewayRequest(c *gin.Context, model string, body []byte) service.InflightEstimateRequest {
+	if service.IsOpenAIResponsesCompactPath(c) || service.HasCompactionTriggerInInput(body) {
+		return tokenInflightEstimateForCompactionSummary(model, body)
+	}
+	return tokenInflightEstimate(model, body)
 }
 
 func inflightNoop() {}

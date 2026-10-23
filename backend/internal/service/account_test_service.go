@@ -383,6 +383,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 		return nil
 	}
+	if normalizeAccountTestMode(mode) == AccountTestModeCompact && account.IsOpenAICompatible() {
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, AccountTestModeCompact)
+	}
 
 	// Route to platform-specific test method
 	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
@@ -807,14 +810,13 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		testModelID = openai.DefaultTestModel
 	}
 
-	// Align test routing with gateway behavior: OpenAI accounts apply normal
-	// account model mapping. Native remote compaction v2 rides the ordinary
-	// /responses wire and does NOT apply the legacy compact-only mapping
-	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
-	testModelID = account.GetMappedModel(testModelID)
 	if mode == AccountTestModeCompact {
+		// The compact probe resolves the mapped model and protocol exactly once
+		// through the same target resolver used by forwarding and scheduling.
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
+	// Ordinary account tests apply the account model mapping before dispatch.
+	testModelID = account.GetMappedModel(testModelID)
 
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
@@ -2186,6 +2188,32 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 // endpoint has been sunset upstream (404, #5598/#5624) and is no longer probed.
 func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string) error {
 	ctx := c.Request.Context()
+	requestedModel := strings.TrimSpace(testModelID)
+	targetGateway := s.openaiGatewayService
+	if targetGateway == nil {
+		targetGateway = &OpenAIGatewayService{
+			accountRepo:    s.accountRepo,
+			httpUpstream:   s.httpUpstream,
+			cfg:            s.cfg,
+			settingService: s.settingService,
+		}
+	}
+	target, err := targetGateway.resolveOpenAICompactionTarget(ctx, account, requestedModel, openAICompactionKindV2, true)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to resolve compact target")
+	}
+	if target.Protocol != APIProtocolResponses {
+		obs := OpenAICompactionProbeObservation{
+			Verdict:    OpenAICompactionProbeVerdictUnsupported,
+			CheckedAt:  time.Now(),
+			ErrorClass: openAICompactionErrorEndpointUnsupported,
+			Error:      fmt.Sprintf("native remote compaction requires Responses protocol; resolved %s", target.Protocol),
+		}
+		if persistErr := s.persistOpenAICompactionProbeObservation(ctx, account, target, obs, nil, nil); persistErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to persist compact probe")
+		}
+		return s.sendErrorAndEnd(c, obs.Error)
+	}
 	credentialAccount := account
 	if account.IsShadow() {
 		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
@@ -2195,37 +2223,19 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		credentialAccount = resolved
 	}
 
-	authToken := ""
-	apiURL := ""
-	isOAuth := false
-
-	switch {
-	case credentialAccount.IsOAuth():
-		isOAuth = true
-		if !credentialAccount.IsOpenAIAgentIdentity() {
-			authToken = credentialAccount.GetOpenAIAccessToken()
-		}
-		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
-			return s.sendErrorAndEnd(c, "No access token available")
-		}
-		apiURL = chatgptCodexAPIURL
-	case account.Type == AccountTypeAPIKey:
-		authToken = account.GetOpenAIProtocolAPIKey()
-		if authToken == "" {
-			return s.sendErrorAndEnd(c, "No API key available")
-		}
-		baseURL := account.GetOpenAIBaseURL()
-		if baseURL == "" {
-			baseURL = "https://api.openai.com"
-		}
-		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
-		if err != nil {
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
-		}
-		apiURL = buildOpenAIResponsesURLForPlatform(account.Platform, normalizedBaseURL)
-	default:
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
+	authToken, _, err := targetGateway.GetAccessToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to resolve account credentials")
 	}
+	isOAuth := credentialAccount.IsOAuth() || credentialAccount.Type == AccountTypeSetupToken
+	if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
+		return s.sendErrorAndEnd(c, "No access token available")
+	}
+	apiURL := target.outboundEndpoint
+	if apiURL == "" {
+		apiURL = target.Endpoint
+	}
+	testModelID = target.Model
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -2233,10 +2243,6 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// 原生 v2 走普通 /responses 线：OAuth 与真实转发一致做上游模型归一化。
-	if isOAuth {
-		testModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
-	}
 	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID, isOAuth))
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
 		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2294,12 +2300,11 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
 	if err != nil {
+		obs := classifyOpenAICompactionProbeObservation(nil, nil, err, openAICompactProbeUnknown, time.Now())
 		if s.accountRepo != nil {
-			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, false, time.Now())
-			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
-			mergeAccountExtra(account, updates)
+			_ = s.persistOpenAICompactionProbeObservation(ctx, account, target, obs, nil, nil)
 		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+		return s.sendErrorAndEnd(c, "Compact probe failed: "+obs.Error)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -2308,21 +2313,17 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
 		expectedTaskID := credentialAccount.GetCredential("task_id")
 		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
+			return s.sendErrorAndEnd(c, "Agent Identity task recovery failed")
 		}
 		c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
-		return s.testOpenAICompactConnection(c, account, testModelID)
+		return s.testOpenAICompactConnection(c, account, requestedModel)
 	}
 
-	compactionFound := openAICompactProbeFoundCompactionItem(body)
+	probeResult := classifyOpenAICompactProbeSuccess(body)
+	observation := classifyOpenAICompactionProbeObservation(resp, body, nil, probeResult, time.Now())
 	if s.accountRepo != nil {
-		updates := buildOpenAICompactProbeExtraUpdates(resp, body, nil, compactionFound, time.Now())
-		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
-			updates = mergeExtraUpdates(updates, codexUpdates)
-		}
-		if len(updates) > 0 {
-			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
-			mergeAccountExtra(account, updates)
+		if persistErr := s.persistOpenAICompactionProbeObservation(ctx, account, target, observation, resp, body); persistErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to persist compact probe")
 		}
 		// 探测如返回 429,主动同步限流状态,避免后续短时间内继续选中。
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -2331,19 +2332,62 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		safeError := strings.TrimSpace(observation.Error)
+		if safeError == "" {
+			safeError = "compact probe failed"
 		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, safeError)
+		}
+		return s.sendErrorAndEnd(c, safeError)
 	}
 
-	if !compactionFound {
+	if probeResult != openAICompactProbeSupported {
 		return s.sendErrorAndEnd(c, "Upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported on this chain)")
 	}
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded (native remote compaction v2)"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) persistOpenAICompactionProbeObservation(
+	ctx context.Context,
+	account *Account,
+	target OpenAICompactionProbeTarget,
+	observation OpenAICompactionProbeObservation,
+	resp *http.Response,
+	body []byte,
+) error {
+	if s == nil || account == nil {
+		return nil
+	}
+	updates, err := BuildOpenAICompactionProbeExtraUpdates(account.Extra, target, observation)
+	if err != nil {
+		return err
+	}
+	if resp != nil {
+		if codexUpdates, codexErr := extractOpenAICodexProbeUpdates(resp); codexErr == nil && len(codexUpdates) > 0 {
+			updates = mergeExtraUpdates(updates, codexUpdates)
+		}
+	}
+	if s.accountRepo != nil {
+		if writer, ok := s.accountRepo.(OpenAICompactionProbeTargetWriter); ok {
+			if err := writer.UpdateOpenAICompactionProbeTarget(ctx, account, target, observation); err != nil {
+				return err
+			}
+			delete(updates, OpenAICompactionProbeTargetsExtraKey)
+		}
+		if len(updates) > 0 {
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+				return err
+			}
+		}
+	}
+	mergeAccountExtra(account, updates)
+	if targetUpdates, buildErr := BuildOpenAICompactionProbeExtraUpdates(account.Extra, target, observation); buildErr == nil {
+		mergeAccountExtra(account, targetUpdates)
+	}
 	return nil
 }
 

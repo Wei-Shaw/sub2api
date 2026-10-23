@@ -687,6 +687,39 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.credentials?.api_base_urls).not.toHaveProperty('anthropic')
   })
 
+  it('persists native compact policy and summary consent for a provider profile account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'DeepSeek')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('deepseek compact')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-deepseek')
+    ;(wrapper.vm as any).openAICompactMode = 'force_off'
+    ;(wrapper.vm as any).openAICompactSummaryEnabled = true
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="compact-capability-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-compact-model-mapping"]').exists()).toBe(false)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'deepseek',
+      type: 'apikey',
+      extra: {
+        openai_compact_mode: 'force_off',
+        compact_summary_enabled: true,
+      },
+    })
+  })
+
+  it('keeps the compact-only mapping editor inside the OpenAI form scope', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    expect(wrapper.find('[data-testid="compact-capability-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-compact-model-mapping"]').exists()).toBe(true)
+  })
+
   it('submits adaptive Kimi protocol endpoints', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')

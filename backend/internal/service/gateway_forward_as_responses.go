@@ -76,6 +76,9 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
+	if err := validateOpenAICompactionSummaryContextForExecution(c, account, body, mappedModel); err != nil {
+		return nil, err
+	}
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -489,6 +492,19 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	if isClaude55SignedThinkingModel(mappedModel) {
 		finalResp.Model = mappedModel
 	}
+	if err := validateOpenAICompactionSummaryAnthropicTerminal(c, finalResp); err != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return &ForwardResult{
+			RequestID:       requestID,
+			UpstreamHeaders: resp.Header,
+			Usage:           usage,
+			Model:           originalModel,
+			UpstreamModel:   mappedModel,
+			ReasoningEffort: reasoningEffort,
+			Stream:          false,
+			Duration:        time.Since(startTime),
+		}, err
+	}
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
 	responsesResp.Model = originalModel // Use original model name
 
@@ -507,7 +523,23 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		if err != nil {
 			return nil, fmt.Errorf("restore responses client tools: %w", err)
 		}
-		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+		respBytes, err = finalizeOpenAICompactionSummaryBody(c, respBytes)
+		if err != nil {
+			writeOpenAICompactionSummaryFinalizationError(c, err)
+			return &ForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				UpstreamModel:   mappedModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}, err
+		}
+		if !writeOpenAICompactSSEBridge(c, http.StatusOK, respBytes) {
+			c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+		}
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
 	}

@@ -147,6 +147,7 @@ type openAIAccountLoadPlan struct {
 	topK                      int
 	loadSkew                  float64
 	includeOverflowFallback   bool
+	compactBlocked            bool
 }
 
 type openAIAccountLoadSelectionAttempt struct {
@@ -863,6 +864,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	loadMap map[int64]*AccountLoadInfo,
 ) openAIAccountLoadPlan {
 	allCandidates := make([]openAIAccountCandidateScore, 0, len(filtered))
+	compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
 	for _, account := range filtered {
 		loadInfo, loadKnown := loadMap[account.ID]
 		if !loadKnown || loadInfo == nil {
@@ -885,10 +887,10 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 
 	candidates := allCandidates
 	staleSnapshotCompactRetry := make([]openAIAccountCandidateScore, 0, len(allCandidates))
-	if req.RequireCompact {
+	if compactionKind != "" {
 		candidates = make([]openAIAccountCandidateScore, 0, len(allCandidates))
 		for _, candidate := range allCandidates {
-			if openAICompactSupportTier(candidate.account) == 0 {
+			if s.service.openAICompactSupportTier(candidate.account, req.RequestedModel, compactionKind) == openAICompactionTierUnsupported {
 				staleSnapshotCompactRetry = append(staleSnapshotCompactRetry, candidate)
 				continue
 			}
@@ -901,6 +903,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		candidates:                candidates,
 		staleSnapshotCompactRetry: staleSnapshotCompactRetry,
 		candidateCount:            len(candidates),
+		compactBlocked:            req.RequireCompact && len(candidates) == 0 && len(staleSnapshotCompactRetry) > 0,
 	}
 	if len(candidates) == 0 {
 		plan.selectionOrder = s.buildOpenAISelectionOrder(req, plan)
@@ -1105,19 +1108,24 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		return append(primary, overflow...)
 	}
 
-	if req.RequireCompact {
-		supported := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
+	if preferOpenAICompactSupport(req.RequireCompact, req.RequiredCapability, req.Platform) {
+		verified := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
+		declared := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
 		unknown := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
+		compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
 		for _, candidate := range plan.candidates {
-			switch openAICompactSupportTier(candidate.account) {
-			case 2:
-				supported = append(supported, candidate)
-			case 1:
+			switch s.service.openAICompactSupportTier(candidate.account, req.RequestedModel, compactionKind) {
+			case openAICompactionTierVerified:
+				verified = append(verified, candidate)
+			case openAICompactionTierDeclared:
+				declared = append(declared, candidate)
+			case openAICompactionTierUnknown:
 				unknown = append(unknown, candidate)
 			}
 		}
 		selectionOrder := make([]openAIAccountCandidateScore, 0, len(plan.allCandidates))
-		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrder(verified)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrder(declared)...)
 		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
 		if len(plan.staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
 			selectionOrder = append(selectionOrder, sortOpenAICompactRetryCandidates(plan.staleSnapshotCompactRetry)...)
@@ -1201,7 +1209,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			continue
 		}
 
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1210,12 +1218,15 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			release(result)
 			break
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+		var compactRejected bool
+		fresh, compactRejected = s.service.recheckSelectedOpenAIAccountFromDBWithCompactReason(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+		compactBlocked = compactBlocked || compactRejected
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
 		}
-		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+		compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
+		if compactionKind != "" && s.service.openAICompactSelectedSupportTier(ctx, fresh, req.RequestedModel, compactionKind) == openAICompactionTierUnsupported {
 			compactBlocked = true
 			release(result)
 			continue
@@ -1305,7 +1316,8 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
-		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+		compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
+		if compactionKind != "" && s.service.openAICompactSelectedSupportTier(ctx, account, req.RequestedModel, compactionKind) == openAICompactionTierUnsupported {
 			continue
 		}
 		// Keep weighted sticky fallback subject to the same free-tier gate as the
@@ -1572,6 +1584,7 @@ func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(
 		candidateCount: plan.candidateCount,
 		topK:           plan.topK,
 		loadSkew:       plan.loadSkew,
+		compactBlocked: plan.compactBlocked,
 	}
 	if req.RequireCompact && len(plan.candidates) == 0 && len(plan.staleSnapshotCompactRetry) == 0 {
 		attempt.noCompactCandidates = true
@@ -1589,7 +1602,7 @@ func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(
 	}
 
 	result, compactBlocked, acquireErr := s.tryAcquireOpenAISelectionOrderWithBudget(ctx, req, attempt.selectionOrder, budget)
-	attempt.compactBlocked = compactBlocked
+	attempt.compactBlocked = attempt.compactBlocked || compactBlocked
 	if acquireErr != nil {
 		attempt.err = acquireErr
 		return attempt
@@ -1620,7 +1633,7 @@ func (s *defaultOpenAIAccountScheduler) trySelectByLoadBalancePool(
 					attempt.loadSkew = freshPlan.loadSkew
 					return attempt
 				}
-				attempt.compactBlocked = attempt.compactBlocked || freshCompactBlocked
+				attempt.compactBlocked = attempt.compactBlocked || freshPlan.compactBlocked || freshCompactBlocked
 				attempt.selectionOrder = freshPlan.selectionOrder
 				attempt.candidateCount = freshPlan.candidateCount
 				attempt.topK = freshPlan.topK
@@ -1636,15 +1649,16 @@ func openAICostOverflowExpanded(req OpenAIAccountScheduleRequest, plan openAIAcc
 	if !plan.includeOverflowFallback || plan.topK <= 0 {
 		return false
 	}
-	if !req.RequireCompact {
+	if !preferOpenAICompactSupport(req.RequireCompact, req.RequiredCapability, req.Platform) {
 		return len(plan.candidates) > plan.topK
 	}
 	supported, unknown := 0, 0
+	compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
 	for _, candidate := range plan.candidates {
-		switch openAICompactSupportTier(candidate.account) {
-		case 2:
+		switch (&OpenAIGatewayService{}).openAICompactSupportTier(candidate.account, req.RequestedModel, compactionKind) {
+		case openAICompactionTierVerified, openAICompactionTierDeclared:
 			supported++
-		case 1:
+		case openAICompactionTierUnknown:
 			unknown++
 		}
 	}
@@ -1707,18 +1721,21 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					continue
 				}
 			}
-			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
 				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
 			}
-			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
+			var compactRejected bool
+			fresh, compactRejected = s.service.recheckSelectedOpenAIAccountFromDBWithCompactReason(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+			compactBlocked = compactBlocked || compactRejected
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
-			if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+			compactionKind := openAICompactionKindForScheduling(req.RequireCompact, req.RequiredCapability)
+			if compactionKind != "" && s.service.openAICompactSelectedSupportTier(ctx, fresh, req.RequestedModel, compactionKind) == openAICompactionTierUnsupported {
 				compactBlocked = true
 				continue
 			}
@@ -1820,8 +1837,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 		s.service.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.RequestedModel, req.RequireCompact) {
 		return false, "channel_upstream_restricted"
 	}
-	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
+	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability, req.RequireCompact) {
 		return false, "capability_mismatch"
+	}
+	if !supportsOpenAIRequestProtocol(account, req.RequestedModel, req.RequiredCapability) {
+		return false, "native_compaction_protocol_mismatch"
 	}
 	// 分组利润控制：不合格账号在候选过滤与抢槽后终检阶段即被排除，
 	// 排序/评分/粘性/熔断只在合格账号之间工作；named reason 进入 filter stats。
@@ -2384,7 +2404,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				if selection == nil || selection.Account == nil {
 					return selection, decision, nil
 				}
-				if accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) {
+				if accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability, requireCompact) {
 					applyLegacySelectionDecision(&decision, selection)
 					return selection, decision, nil
 				}
@@ -2411,7 +2431,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				return selection, decision, nil
 			}
 			if s.isOpenAIAccountTransportCompatible(selection.Account, requiredTransport) &&
-				accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) {
+				accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability, requireCompact) {
 				applyLegacySelectionDecision(&decision, selection)
 				return selection, decision, nil
 			}
@@ -2471,11 +2491,17 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	})
 }
 
-func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {
+func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability, requireCompact bool) bool {
 	if account == nil {
 		return false
 	}
-	return account.SupportsOpenAIEndpointCapability(requiredCapability) &&
+	capabilitySupported := account.SupportsOpenAIEndpointCapability(requiredCapability)
+	if requiredCapability == OpenAIEndpointCapabilityRemoteCompactionV2 || (requireCompact && account.OpenAICompactSummaryEnabled()) {
+		// Target-scoped evidence and legacy summary execution are evaluated by the
+		// shared compaction decision rather than this account-wide endpoint gate.
+		capabilitySupported = true
+	}
+	return capabilitySupported &&
 		account.SupportsOpenAIImageCapability(requiredImageCapability)
 }
 
