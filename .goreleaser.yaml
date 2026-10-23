@@ -41,6 +41,7 @@ archives:
         format: zip
     files:
       - LICENSE*
+      - THIRD_PARTY_NOTICES.md
       - README*
       - deploy/*
 

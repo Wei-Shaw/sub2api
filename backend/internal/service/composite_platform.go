@@ -117,6 +117,8 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformMiniMax, true
 		case "typesafe", "jev":
 			return PlatformTypeSafe, true
+		case "devin":
+			return PlatformDevin, true
 		}
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")
@@ -124,6 +126,8 @@ func DetectModelPlatform(model string) (string, bool) {
 	}
 
 	switch {
+	case normalized == "swe-1-6" || normalized == "swe-1-6-fast":
+		return PlatformDevin, true
 	case strings.HasPrefix(normalized, "anthropic.claude-"),
 		strings.HasPrefix(normalized, "claude-"):
 		return PlatformAnthropic, true

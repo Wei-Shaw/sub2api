@@ -278,6 +278,12 @@
           }
         ]
       }
+    },
+    {
+      "id": "devin",
+      "display_name": "Devin",
+      "gateway": "openai",
+      "cn_provider": false
     }
   ],
   "composite_precedence": [
@@ -293,6 +299,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "devin"
   ]
 }

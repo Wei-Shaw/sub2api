@@ -247,7 +247,10 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	capabilityIDs := capabilitySyncModelIDs(enrichIDs)
 
 	source := "upstream"
-	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
+	// Devin's CLI catalog lacks complete context/reasoning metadata. Do not query
+	// unrelated models.dev providers or invent capabilities; retain the supported
+	// IDs and report incomplete metadata below instead.
+	if (account == nil || !account.IsDevin()) && upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
 		if registryMetadata, registryErr := s.fetchModelsDevMetadata(ctx, account, enrichIDs); registryErr == nil {
 			for modelID, fallback := range registryMetadata {
 				current := catalog.Metadata[modelID]
@@ -739,6 +742,10 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	}
 	if account == nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Account is required", nil)
+	}
+
+	if account.IsDevin() {
+		return s.fetchDevinUpstreamModels(ctx, account)
 	}
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {

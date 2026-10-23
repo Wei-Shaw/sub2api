@@ -1,5 +1,14 @@
 export default {
     accounts: {
+      devin: {
+        sessionToken: 'Devin CLI 会话令牌',
+        tokenHint: '粘贴通过您自己的 Devin CLI 或 oh-my-pi 登录获得的会话令牌；如有 devin-session-token$ 前缀请保留。这不是 Devin REST API Key。此处未实现浏览器 OAuth 登录。',
+        tokenRequired: '请输入 Devin CLI 会话令牌。',
+        keepTokenHint: '留空以保留现有会话令牌。',
+        reloginHint: '会话令牌无法刷新。过期后请通过 CLI 重新登录，并在编辑账号中替换令牌。',
+        setupDocs: '配置说明：docs/DEVIN.md。保存账号后可同步上游模型。',
+        replaceToken: '替换会话令牌',
+      },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',

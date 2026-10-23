@@ -150,7 +150,7 @@ func prepareNativeOpenAIInputTokensCountRequest(body []byte, account *Account) (
 }
 
 func shouldEstimateOpenAIInputTokensLocally(account *Account) bool {
-	if account == nil || account.IsGrok() || account.RoutesProtocolByInbound() || account.Type == AccountTypeUpstream {
+	if account == nil || account.IsDevin() || account.IsGrok() || account.RoutesProtocolByInbound() || account.Type == AccountTypeUpstream {
 		return true
 	}
 	if account.Type != AccountTypeAPIKey {

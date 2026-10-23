@@ -1,5 +1,14 @@
 export default {
     accounts: {
+      devin: {
+        sessionToken: 'Devin CLI session token',
+        tokenHint: 'Paste the session token from your own Devin CLI or oh-my-pi login, including the devin-session-token$ prefix if present. This is not a Devin REST API key. No browser OAuth login is implemented here.',
+        tokenRequired: 'Enter a Devin CLI session token.',
+        keepTokenHint: 'Leave blank to keep the existing session token.',
+        reloginHint: 'Session tokens cannot be refreshed. Sign in again with your CLI and replace the token in Edit Account when it expires.',
+        setupDocs: 'Setup instructions: docs/DEVIN.md. Save the account before syncing upstream models.',
+        replaceToken: 'Replace session token',
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

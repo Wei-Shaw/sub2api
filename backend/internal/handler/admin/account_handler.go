@@ -1403,6 +1403,10 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 // refreshSingleAccount refreshes credentials for a single OAuth account.
 // Returns (updatedAccount, warning, error) where warning is used for Antigravity ProjectIDMissing scenario.
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
+	if account.IsDevin() {
+		return nil, "", infraerrors.BadRequest("DEVIN_REFRESH_UNSUPPORTED",
+			"Devin refresh is unsupported; sign in again and replace the CLI session token")
+	}
 	if !account.IsOAuth() {
 		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
 	}
@@ -2801,6 +2805,23 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.NotFound(c, "Account not found")
+		return
+	}
+
+	if account.IsDevin() {
+		ids := service.DefaultDevinModelIDs()
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			ids = make([]string, 0, len(mapping))
+			for id := range mapping {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+		}
+		models := make([]openai.Model, 0, len(ids))
+		for _, id := range ids {
+			models = append(models, openai.Model{ID: id, Object: "model", Type: "model", DisplayName: id})
+		}
+		response.Success(c, models)
 		return
 	}
 

@@ -73,6 +73,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
+	if account.IsDevin() {
+		return s.forwardDevin(ctx, c, account, body, APIProtocolChatCompletions, promptCacheKey, defaultMappedModel)
+	}
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)

@@ -350,6 +350,11 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return nil, fmt.Errorf("account is required")
 	}
 	accountID := account.ID
+	if account.IsDevin() {
+		// No quota RPC is implemented. Never fall through to Claude's OAuth
+		// usage fetcher with a Devin session token, nor invent a quota window.
+		return &UsageInfo{Source: "passive", Error: "Devin subscription quota is unavailable; see local usage records"}, nil
+	}
 
 	// Dedicated UI load-test accounts must remain fully interactive without ever
 	// contacting Anthropic with synthetic credentials. Reuse the same persisted
