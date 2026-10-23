@@ -275,6 +275,10 @@ func (Group) Fields() []ent.Field {
 			Default(domain.GroupCodexModelsManifestConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("固定账号获取 Codex Model Manifest 配置；开启后 /models 请求只用选定账号拉取（仅 openai 平台）"),
+		field.JSON("capability_allowlist", domain.GroupCapabilityAllowlist{}).
+			Default(domain.GroupCapabilityAllowlist{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组 Codex 能力白名单：允许的 Daybreak 等级与 service tier；约束请求准入与 manifest 能力投影（仅 openai / composite 平台）"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

@@ -80,7 +80,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 			c.Request.Context(), apiKey.GroupID, "", "", "", failed,
 			service.OpenAIUpstreamTransportHTTPSSE,
 			service.OpenAIEndpointCapabilityChatCompletions,
-			false, false, false, service.PlatformGrok,
+			false, false, false, service.OpenAIAccountRequirement{}, service.PlatformGrok,
 		)
 		if selectErr != nil || candidate == nil || candidate.Account == nil {
 			break
@@ -259,6 +259,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			false,
 			false,
 			false,
+			service.OpenAIAccountRequirement{},
 			service.PlatformGrok,
 		)
 		if selectErr != nil || selection == nil || selection.Account == nil {

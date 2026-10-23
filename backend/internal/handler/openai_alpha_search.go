@@ -149,6 +149,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			false,
 			false,
 			false,
+			service.OpenAIAccountRequirement{},
 			service.PlatformOpenAI,
 		)
 		if err != nil || selection == nil || selection.Account == nil {

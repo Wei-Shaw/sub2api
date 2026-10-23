@@ -215,6 +215,10 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	liveListAvailable := err == nil
+	if liveListAvailable && len(body) > 0 && s.codexCapabilityProber != nil && isCodexCapabilityProbeAccount(account) {
+		// OAuth 账号的模型列表就是规范版本拉取的 Codex 目录：顺手回写能力记录，不再发起请求。
+		s.codexCapabilityProber.RecordFromManifest(ctx, account, CodexCanonicalClientVersion(), body)
+	}
 	if err != nil {
 		configuredModels := configuredUpstreamModelsForCapabilitySync(account)
 		if !upstreamModelListEndpointUnsupported(err) || len(configuredModels) == 0 {
@@ -1115,7 +1119,9 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 }
 
 func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
-	if account.IsOpenAIOAuth() {
+	// OAuth-like（oauth 与 setup_token）账号与 Codex 能力探测共用同一范围谓词，
+	// 走 ChatGPT Codex 目录；收窄范围时只需改 isCodexCapabilityProbeAccount。
+	if isCodexCapabilityProbeAccount(account) {
 		return s.buildOpenAIOAuthUpstreamModelsRequest(ctx, account)
 	}
 	return buildOpenAIAPIKeyModelsRequest(ctx, account, s.validateUpstreamBaseURL)
@@ -1164,7 +1170,7 @@ func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.C
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to resolve OpenAI account credentials", err)
 	}
-	if !credentialAccount.IsOpenAIOAuth() {
+	if !isCodexCapabilityProbeAccount(credentialAccount) {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", credentialAccount.Type), nil,
 		)

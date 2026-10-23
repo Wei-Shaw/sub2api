@@ -668,6 +668,7 @@ export interface AdminGroup extends Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
+  capability_allowlist?: CapabilityAllowlist
 
   // 分组排序
   sort_order: number
@@ -683,6 +684,27 @@ export interface CodexModelsManifestConfig {
   enabled: boolean
   account_ids: number[]
   fallback_to_scheduler: boolean
+}
+
+// 分组 Codex 能力白名单（openai / composite 分组）：
+// cyber_programs ⊆ {daybreak_blue, daybreak_red}，service_tiers ⊆ {priority, ultrafast}。
+export interface CapabilityAllowlist {
+  enabled: boolean
+  cyber_programs: string[]
+  service_tiers: string[]
+}
+
+// 账号 Codex 能力记录（accounts.extra.codex_capabilities），由上游模型目录推导。
+export interface CodexModelCapabilities {
+  service_tiers?: string[]
+  cyber_programs?: string[]
+}
+
+export interface CodexAccountCapabilities {
+  models?: Record<string, CodexModelCapabilities>
+  service_tiers?: string[]
+  cyber_programs?: string[]
+  synced_at?: string
 }
 
 export type CompositeRouteMatchType = 'exact' | 'prefix'
@@ -852,6 +874,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
+  capability_allowlist?: CapabilityAllowlist
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -919,6 +942,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   codex_models_manifest_config?: CodexModelsManifestConfig
+  capability_allowlist?: CapabilityAllowlist
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -1256,6 +1280,7 @@ export interface Account {
       fetched_at: number
     }
     codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
+    codex_capabilities?: CodexAccountCapabilities
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number

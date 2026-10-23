@@ -69,6 +69,8 @@ type TokenRefreshService struct {
 	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
+	// OpenAI OAuth-like: 刷新成功后同步探测 Codex 能力记录；nil 表示未接入
+	codexCapabilityProber CodexCapabilityProber
 
 	stopCh        chan struct{}
 	stopOnce      sync.Once
@@ -168,6 +170,11 @@ func (s *TokenRefreshService) setCandidateAfterID(afterID int64) {
 func (s *TokenRefreshService) SetPrivacyDeps(factory PrivacyClientFactory, proxyRepo ProxyRepository) {
 	s.privacyClientFactory = factory
 	s.proxyRepo = proxyRepo
+}
+
+// SetCodexCapabilityProber 注入 Codex 能力探测器
+func (s *TokenRefreshService) SetCodexCapabilityProber(prober CodexCapabilityProber) {
+	s.codexCapabilityProber = prober
 }
 
 // SetRefreshAPI 注入统一的 OAuth 刷新 API
@@ -1198,6 +1205,8 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	s.postRefreshStateSync(ctx, account)
 	// OpenAI OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则尝试关闭训练数据共享
 	s.ensureOpenAIPrivacy(ctx, account)
+	// OpenAI OAuth-like: 刷新成功后探测 Codex 能力（Daybreak / service tier），失败只记日志
+	s.probeCodexCapabilities(account)
 	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
 	s.ensureAntigravityPrivacy(ctx, account)
 	// Grok: clear soft reauth flag after a successful credential refresh.
@@ -1436,6 +1445,21 @@ func isNonRetryableRefreshError(err error) bool {
 		}
 	}
 	return false
+}
+
+// probeCodexCapabilities 以独立超时同步探测 OpenAI OAuth-like 账号的 Codex 能力记录。
+func (s *TokenRefreshService) probeCodexCapabilities(account *Account) {
+	if s.codexCapabilityProber == nil || !isCodexCapabilityProbeAccount(account) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), codexCapabilityProbeTimeout)
+	defer cancel()
+	if err := s.codexCapabilityProber.Probe(ctx, account); err != nil {
+		slog.Warn("token_refresh.codex_capability_probe_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+	}
 }
 
 // ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，

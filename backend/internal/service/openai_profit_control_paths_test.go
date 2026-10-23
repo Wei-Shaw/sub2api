@@ -316,10 +316,10 @@ func TestProfitControl_EligibilityFunctionVetoes(t *testing.T) {
 		account.Schedulable = true
 	}
 
-	require.True(t, isOpenAICompatibleAccountEligibleForRequest(gateCtx, cheap, PlatformOpenAI, "", false, ""))
-	require.False(t, isOpenAICompatibleAccountEligibleForRequest(gateCtx, expensive, PlatformOpenAI, "", false, ""))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(gateCtx, cheap, PlatformOpenAI, "", false, "", OpenAIAccountRequirement{}))
+	require.False(t, isOpenAICompatibleAccountEligibleForRequest(gateCtx, expensive, PlatformOpenAI, "", false, "", OpenAIAccountRequirement{}))
 	// 无门时保持既有行为。
-	require.True(t, isOpenAICompatibleAccountEligibleForRequest(context.Background(), expensive, PlatformOpenAI, "", false, ""))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(context.Background(), expensive, PlatformOpenAI, "", false, "", OpenAIAccountRequirement{}))
 }
 
 // legacy 引擎粘性写回（评审 M-Legacy 回归）：门下选号阶段不得直写粘性——

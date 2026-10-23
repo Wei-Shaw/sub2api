@@ -689,6 +689,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 		false,
 		false,
 		true,
+		OpenAIAccountRequirement{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -786,7 +787,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "gpt-image-2", nil,
 			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses,
-			false, false, false,
+			false, false, false, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -799,7 +800,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "gpt-image-2", nil,
 			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses,
-			false, false, false,
+			false, false, false, OpenAIAccountRequirement{},
 		)
 		require.Error(t, err)
 		require.Nil(t, selection)
@@ -810,7 +811,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "gpt-5.1", nil,
 			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions,
-			false, false, true,
+			false, false, true, OpenAIAccountRequirement{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
@@ -859,6 +860,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_AlphaSearchAllowsAPIKey
 		false,
 		false,
 		false,
+		OpenAIAccountRequirement{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -903,6 +905,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_AllowsG
 		false,
 		false,
 		false,
+		OpenAIAccountRequirement{},
 		PlatformGrok,
 	)
 	require.NoError(t, err)
@@ -942,7 +945,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokMediaCapabilityFilt
 		selection, _, err := newService([]Account{ineligible, eligible}).SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "grok-imagine-video", nil,
 			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityGrokMediaGeneration,
-			false, false, false, PlatformGrok,
+			false, false, false, OpenAIAccountRequirement{}, PlatformGrok,
 		)
 
 		require.NoError(t, err)
@@ -955,7 +958,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokMediaCapabilityFilt
 		selection, _, err := newService([]Account{ineligible}).SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "grok-imagine-video", nil,
 			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityGrokMediaGeneration,
-			false, false, false, PlatformGrok,
+			false, false, false, OpenAIAccountRequirement{}, PlatformGrok,
 		)
 
 		require.Error(t, err)
@@ -967,7 +970,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokMediaCapabilityFilt
 		selection, _, err := newService([]Account{ineligible}).SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "grok-4.3", nil,
 			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityChatCompletions,
-			false, false, false, PlatformGrok,
+			false, false, false, OpenAIAccountRequirement{}, PlatformGrok,
 		)
 
 		require.NoError(t, err)
@@ -1437,6 +1440,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 		false,
 		false,
 		true,
+		OpenAIAccountRequirement{},
 		PlatformOpenAI,
 	)
 	require.NoError(t, err)
@@ -1461,6 +1465,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 		false,
 		true,
 		true,
+		OpenAIAccountRequirement{},
 		PlatformOpenAI,
 	)
 	require.NoError(t, err)
@@ -1604,6 +1609,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 		false,
 		false,
 		true,
+		OpenAIAccountRequirement{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -1679,6 +1685,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 		false,
 		false,
 		true,
+		OpenAIAccountRequirement{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -2284,7 +2291,7 @@ func TestOpenAIGatewayService_RecheckSelectedOpenAIAccountFromDB_SimpleModeUsesF
 	requestedGroupID := int64(100)
 
 	for _, groupID := range []*int64{nil, &requestedGroupID} {
-		fresh := svc.recheckSelectedOpenAIAccountFromDB(context.Background(), &grouped, groupID, PlatformOpenAI, "gpt-5.1", false, "")
+		fresh := svc.recheckSelectedOpenAIAccountFromDB(context.Background(), &grouped, groupID, PlatformOpenAI, "gpt-5.1", false, "", OpenAIAccountRequirement{})
 		require.NotNil(t, fresh)
 		require.Equal(t, grouped.ID, fresh.ID)
 	}
@@ -2297,8 +2304,8 @@ func TestOpenAIGatewayService_RecheckSelectedOpenAIAccountFromDB_SimpleModeUsesF
 		cfg:               &config.Config{RunMode: config.RunModeStandard},
 		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{}},
 	}
-	require.Nil(t, standardSvc.recheckSelectedOpenAIAccountFromDB(context.Background(), &grouped, nil, PlatformOpenAI, "gpt-5.1", false, ""))
-	require.NotNil(t, standardSvc.recheckSelectedOpenAIAccountFromDB(context.Background(), &ungrouped, nil, PlatformOpenAI, "gpt-5.1", false, ""))
+	require.Nil(t, standardSvc.recheckSelectedOpenAIAccountFromDB(context.Background(), &grouped, nil, PlatformOpenAI, "gpt-5.1", false, "", OpenAIAccountRequirement{}))
+	require.NotNil(t, standardSvc.recheckSelectedOpenAIAccountFromDB(context.Background(), &ungrouped, nil, PlatformOpenAI, "gpt-5.1", false, "", OpenAIAccountRequirement{}))
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {

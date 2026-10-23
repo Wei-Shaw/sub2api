@@ -1275,6 +1275,25 @@ export default {
         free: 'Free Fast',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },
+      capabilityAllowlist: {
+        title: 'Codex capability allowlist',
+        hint: 'Restricts the Daybreak programs and service tiers this group may use: requests carrying a disabled capability get 404 capability_not_allowed, and the model catalog served to Codex clients stops advertising them. Standard is always allowed.',
+        enable: 'Enable capability allowlist',
+        enabledHint: 'Unchecked capabilities are disabled. When Force Fast is also enabled, Fast (priority) must be allowed or the group cannot be saved.',
+        disabledHint: 'Disabled: every Daybreak program and service tier is allowed according to the accounts\' actual capabilities.',
+        daybreak: 'Allowed Daybreak programs',
+        daybreakHint: 'When a model advertises both Blue and Red, Codex clients only send Blue; uncheck Blue if you need Red.',
+        serviceTier: 'Allowed service tiers',
+        serviceTierHint: 'Fast is the wire value priority. Ultrafast is billed by the requested tier and the upstream never rejects it, so only allow it when the group has Ultrafast-capable accounts.',
+        programs: {
+          daybreak_blue: 'Daybreak Blue',
+          daybreak_red: 'Daybreak Red'
+        },
+        tiers: {
+          priority: 'Fast (priority)',
+          ultrafast: 'Ultrafast'
+        }
+      },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',

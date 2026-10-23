@@ -297,6 +297,8 @@ type CreateGroupInput struct {
 	ModelAllowlist              GroupModelAllowlist
 	// CodexModelsManifestConfig 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig
+	// CapabilityAllowlist 分组 Codex 能力白名单；非 openai / composite 平台归零。
+	CapabilityAllowlist GroupCapabilityAllowlist
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
 	// MaxReasoningEffort Anthropic/OpenAI 请求的推理强度上限，空字符串表示不限制。
@@ -379,6 +381,8 @@ type UpdateGroupInput struct {
 	ModelAllowlist              *GroupModelAllowlist
 	// CodexModelsManifestConfig nil 表示不修改；非 openai 平台会被归一化为关闭。
 	CodexModelsManifestConfig *GroupCodexModelsManifestConfig
+	// CapabilityAllowlist nil 表示不修改；非 openai / composite 平台归零。
+	CapabilityAllowlist *GroupCapabilityAllowlist
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
@@ -713,6 +717,8 @@ type adminServiceImpl struct {
 	compositeResolver    *CompositeRouteResolver
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
+	// OpenAI OAuth-like 账号创建 / 凭据变更后的 Codex 能力探测；可为 nil（跳过）
+	codexCapabilityProber CodexCapabilityProber
 }
 
 // ChannelCacheInvalidator 失效渠道缓存。
@@ -754,6 +760,7 @@ func NewAdminService(
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
 	channelCacheInvalidator ChannelCacheInvalidator,
+	codexCapabilityProber CodexCapabilityProber,
 ) AdminService {
 	return &adminServiceImpl{
 		cfg:                  cfg,
@@ -784,5 +791,6 @@ func NewAdminService(
 		compositeResolver:    compositeResolver,
 
 		channelCacheInvalidator: channelCacheInvalidator,
+		codexCapabilityProber:   codexCapabilityProber,
 	}
 }

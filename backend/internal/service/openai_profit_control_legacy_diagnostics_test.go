@@ -65,7 +65,8 @@ func TestSelectAccountWithScheduler_LegacyProfitDiagnostics(t *testing.T) {
 		selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, false)
 		require.Nil(t, selection)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
-		require.Contains(t, err.Error(), "ineligible=1")
+		// 优先级+LRU 路径的复检失败记录谓词给出的命名原因，而非统一的 ineligible。
+		require.Contains(t, err.Error(), "model_not_supported=1")
 		require.NotContains(t, err.Error(), openAIProfitFilterReasonThreshold)
 		require.NotContains(t, err.Error(), openAIProfitFilterReasonInvalidAccountRate)
 	})
