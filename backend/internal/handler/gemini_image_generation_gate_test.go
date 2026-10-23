@@ -114,7 +114,11 @@ func TestGatewayHandlers_GeminiImageGenerationDisabledGroupRejectsBeforeSelectio
 				}
 				recorder, c, schedulerCache := runGeminiImageGateEndpoint(t, ep, group, platform)
 
-				require.Equal(t, http.StatusBadRequest, recorder.Code)
+				wantStatus := http.StatusBadRequest
+				if ep.name == "gemini native" {
+					wantStatus = http.StatusForbidden
+				}
+				require.Equal(t, wantStatus, recorder.Code)
 				require.Contains(t, recorder.Body.String(), service.ImageGenerationPermissionMessage())
 				_, reachedSelection := c.Get(opsAccountIDKey)
 				require.False(t, reachedSelection)

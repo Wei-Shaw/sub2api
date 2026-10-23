@@ -39,8 +39,16 @@ func TestIsGeminiImageGenerationIntent(t *testing.T) {
 		{name: "no generation config", body: `{"contents":[{"parts":[{"text":"IMAGE"}]}]}`, want: false},
 		{name: "integer enum modalities", body: `{"generationConfig":{"responseModalities":[1,2]}}`, want: true},
 		{name: "integer enum text only", body: `{"generationConfig":{"responseModalities":[1]}}`, want: false},
+		{name: "image config empty object", body: `{"generationConfig":{"imageConfig":{}}}`, models: []string{"gemini-3.7-flash"}, want: true},
+		{name: "image config null", body: `{"generationConfig":{"imageConfig":null}}`, models: []string{"gemini-3.7-flash"}, want: false},
+		{name: "image config unsupported numeric only", body: `{"generationConfig":{"imageConfig":{"numberOfImages":2}}}`, models: []string{"gemini-3.7-flash"}, want: true},
+		{name: "image config aspect ratio", body: `{"generationConfig":{"imageConfig":{"aspectRatio":"16:9"}}}`, models: []string{"gemini-3.7-flash"}, want: true},
+		{name: "image config image size", body: `{"generationConfig":{"imageConfig":{"imageSize":"2K"}}}`, models: []string{"gemini-3.7-flash"}, want: true},
+		{name: "snake_case image config", body: `{"generation_config":{"image_config":{"aspect_ratio":"16:9"}}}`, models: []string{"gemini-3.7-flash"}, want: true},
 		{name: "duplicate generationConfig keys", body: `{"generationConfig":{"responseModalities":["TEXT"]},"generationConfig":{"responseModalities":["IMAGE"]}}`, want: true},
+		{name: "duplicate generationConfig preserves image intent", body: `{"generationConfig":{"responseModalities":["IMAGE"]},"generationConfig":{"responseModalities":["TEXT"]}}`, want: true},
 		{name: "duplicate modalities keys", body: `{"generationConfig":{"responseModalities":["TEXT"],"responseModalities":["IMAGE"]}}`, want: true},
+		{name: "duplicate modalities preserves image intent", body: `{"generationConfig":{"responseModalities":["IMAGE"],"responseModalities":["TEXT"]}}`, want: true},
 		{name: "invalid json", body: `{"generationConfig":{"responseModalities":["IMAGE"]`, want: false},
 	}
 	for _, tc := range cases {

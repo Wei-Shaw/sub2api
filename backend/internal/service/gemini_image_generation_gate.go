@@ -57,22 +57,32 @@ func geminiRequestAsksForImageOutput(body []byte) bool {
 	}
 	found := false
 	gjson.ParseBytes(body).ForEach(func(key, config gjson.Result) bool {
-		if key.Str == "generationConfig" || key.Str == "generation_config" {
-			found = geminiGenerationConfigAsksForImage(config)
+		if (key.Str == "generationConfig" || key.Str == "generation_config") && geminiGenerationConfigAsksForImage(config) {
+			found = true
 		}
 		return !found
 	})
 	return found
 }
 
+// geminiGenerationConfigAsksForImage 判断 generationConfig 中的 IMAGE 响应模态或 imageConfig。
+// Gemini REST 同时接受 camelCase 与 snake_case 字段名、字符串与整数枚举；
+// 重复出现的键逐个检查。
 func geminiGenerationConfigAsksForImage(config gjson.Result) bool {
 	if !config.IsObject() {
 		return false
 	}
 	found := false
-	config.ForEach(func(key, modalities gjson.Result) bool {
-		if key.Str == "responseModalities" || key.Str == "response_modalities" {
-			found = geminiModalitiesContainImage(modalities)
+	config.ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "responseModalities", "response_modalities":
+			if geminiModalitiesContainImage(value) {
+				found = true
+			}
+		case "imageConfig", "image_config":
+			if value.IsObject() {
+				found = true
+			}
 		}
 		return !found
 	})

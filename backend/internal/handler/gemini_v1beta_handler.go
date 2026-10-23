@@ -388,11 +388,6 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "Request body is empty")
 		return
 	}
-	if service.IsGeminiNativeImageGenerationIntent(modelName, body) && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		googleError(c, http.StatusForbidden, service.ImageGenerationPermissionMessage())
-		return
-	}
-
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
@@ -402,7 +397,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName // 保存映射前的原始模型名
 	if action != "countTokens" && geminiImageGenerationRejected(c, apiKey, body, urlModel, reqModel, channelMapping.MappedModel) {
-		googleError(c, http.StatusBadRequest, service.ImageGenerationPermissionMessage())
+		googleError(c, http.StatusForbidden, service.ImageGenerationPermissionMessage())
 		return
 	}
 
