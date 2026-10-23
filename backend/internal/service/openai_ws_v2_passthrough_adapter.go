@@ -29,6 +29,7 @@ type openAIWSClientFrameConn struct {
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+	restoreServiceTier   func([]byte) []byte
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -647,6 +648,9 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 		}
+		if c.restoreServiceTier != nil {
+			payload = c.restoreServiceTier(payload)
+		}
 		if c.restoreToolNames != nil {
 			payload = c.restoreToolNames(payload)
 		}
@@ -965,6 +969,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			requestModel, upstreamModel := usageMeta.turnModels("")
 			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
+		},
+		restoreServiceTier: func(payload []byte) []byte {
+			return normalizeOpenAIResponseServiceTier(account, optionalStringValue(usageMeta.serviceTier.Load()), payload)
 		},
 		restoreToolNames: func(payload []byte) []byte {
 			return restoreCodexToolNamesFromContext(c, payload)

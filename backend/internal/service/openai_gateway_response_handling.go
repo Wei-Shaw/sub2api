@@ -503,6 +503,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				suppressCurrentEvent = true
 			}
 			observer.ObserveOpenAI(dataBytes, eventType)
+			if normalized := normalizeOpenAIResponseServiceTier(account, openAIResponseServiceTier(c), dataBytes); !bytes.Equal(normalized, dataBytes) {
+				dataBytes = normalized
+				line = "data: " + string(normalized)
+			}
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
 			if openAIStreamEventIsTerminalWithType(data, eventType) {
 				sawTerminalEvent = true
@@ -1686,6 +1690,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	body = normalizeOpenAIResponseServiceTier(account, openAIResponseServiceTier(c), body)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1793,6 +1798,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
+	body = normalizeOpenAIResponseServiceTier(account, openAIResponseServiceTier(c), body)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
