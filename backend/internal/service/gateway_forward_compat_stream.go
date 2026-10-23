@@ -232,6 +232,39 @@ func finishAnthropicCompatStreamFailure(c *gin.Context, writerSizeBeforeStream i
 	return result, failure.err
 }
 
+// finishAnthropicCompatBufferedFailure 是非流式（缓冲）兼容入口的收尾：上游被强制
+// 流式，客户端在线时上游未发出结束事件即中断。此时尚未向客户端写出任何内容，半截
+// 结果不下发：上游流内 error 事件与流式一致，返回 sseStreamErrorEventError 由调用方
+// 换号重试；尚未观测到 usage 的读错误与 /v1/messages 尚未输出时一致，返回可同号重试
+// 的 UpstreamFailoverError；其余以端点自身的错误格式回 502，并带上已观测到的 usage，
+// 未观测到任何 usage 时结果为 nil。
+func finishAnthropicCompatBufferedFailure(c *gin.Context, failure *anthropicCompatStreamFailure, result *ForwardResult, writeError func(*gin.Context, int, string, string)) (*ForwardResult, error) {
+	var sseErr *sseStreamErrorEventError
+	if errors.As(failure.err, &sseErr) {
+		return nil, failure.err
+	}
+	observed := result.Usage.hasObservedTokens()
+	if failure.errType == "stream_read_error" && !observed {
+		body, _ := json.Marshal(map[string]any{
+			"type": "error",
+			"error": map[string]string{
+				"type":    "upstream_disconnected",
+				"message": failure.message,
+			},
+		})
+		return nil, &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           body,
+			RetryableOnSameAccount: true,
+		}
+	}
+	writeError(c, http.StatusBadGateway, failure.errType, failure.message)
+	if !observed {
+		return nil, failure.err
+	}
+	return result, failure.err
+}
+
 // writeAnthropicCompatCCStreamFailure 向 Chat Completions 流写出终止错误帧，
 // 并标记响应已提交，handler 不再追加兜底错误。
 func writeAnthropicCompatCCStreamFailure(c *gin.Context, failure *anthropicCompatStreamFailure) {

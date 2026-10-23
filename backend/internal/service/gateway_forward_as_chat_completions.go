@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -186,18 +185,18 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
 	var result *ForwardResult
 	var handleErr error
+	writerSizeBeforeStream := c.Writer.Size()
 	if clientStream {
-		writerSizeBeforeStream := c.Writer.Size()
 		result, handleErr = s.handleCCStreamingFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
-		var sseErr *sseStreamErrorEventError
-		switch {
-		case errors.As(handleErr, &sseErr):
-			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
-		case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
-			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
-		}
 	} else {
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+	}
+	var sseErr *sseStreamErrorEventError
+	switch {
+	case errors.As(handleErr, &sseErr):
+		return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
+	case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
+		s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 	}
 
 	return result, handleErr
@@ -237,28 +236,41 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	scanner := bufio.NewScanner(resp.Body)
-	maxLineSize := defaultMaxLineSize
-	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
-		maxLineSize = s.cfg.Gateway.MaxLineSize
-	}
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
-
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	stream := newAnthropicCompatStream(s.cfg, c, resp, "forward_as_cc buffered", requestID)
+	defer stream.stop()
+
+	resultWithUsage := func() *ForwardResult {
+		return &ForwardResult{
+			RequestID:       requestID,
+			UpstreamHeaders: resp.Header,
+			Usage:           usage,
+			Model:           originalModel,
+			UpstreamModel:   mappedModel,
+			ReasoningEffort: reasoningEffort,
+			Stream:          false,
+			Duration:        time.Since(startTime),
+		}
+	}
+
+	for {
+		line, ok := stream.nextLine()
+		if !ok {
+			break
+		}
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
 		// 返回紧凑格式，严格匹配 "event: " 会丢弃全部事件（#4653 同根因）。
 		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 		}
 
-		if !scanner.Scan() {
+		dataLine, ok := stream.nextLine()
+		if !ok {
 			break
 		}
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
 			continue
 		}
@@ -266,6 +278,11 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+
+		stream.observe(&event, payload)
+		if stream.upstreamErrType != "" {
+			break
 		}
 
 		// message_start carries the initial response structure and cache usage
@@ -301,13 +318,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_cc buffered: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
-		}
+	if failure := stream.failure(); failure != nil {
+		return finishAnthropicCompatBufferedFailure(c, failure, resultWithUsage(), writeGatewayCCError)
 	}
 
 	if finalResp == nil {
@@ -347,16 +359,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		c.JSON(http.StatusOK, ccResp)
 	}
 
-	return &ForwardResult{
-		RequestID:       requestID,
-		UpstreamHeaders: resp.Header,
-		Usage:           usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          false,
-		Duration:        time.Since(startTime),
-	}, nil
+	return resultWithUsage(), nil
 }
 
 // handleCCStreamingFromAnthropic reads Anthropic SSE events, converts each
