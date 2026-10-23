@@ -955,6 +955,31 @@ export default {
         enabled: 'Enable Subscription Expiry Reminder',
         enabledHint: 'When enabled, the system sends reminders 7, 3, and 1 day before expiry.'
       },
+      emailProvider: {
+        title: 'Email Provider',
+        description: 'Choose the email service used for verification codes, notifications, and subscription reminders.',
+        smtp: 'SMTP',
+        smtpHint: 'Send email through your own or third-party SMTP service.',
+        cloudflare: 'Cloudflare',
+        cloudflareDescription: 'Send email through Cloudflare Email Service.'
+      },
+      cloudflareEmail: {
+        title: 'Cloudflare Email Settings',
+        description: 'Configure Cloudflare Email Service delivery.',
+        accountId: 'Account ID',
+        accountIdPlaceholder: 'Cloudflare Account ID',
+        accountIdHint: 'Found in the Cloudflare dashboard URL or account overview.',
+        apiToken: 'API Token',
+        apiTokenPlaceholder: 'Cloudflare API Token',
+        apiTokenHint: 'Requires permission to send through Email Service.',
+        apiTokenConfiguredPlaceholder: 'Configured. Leave empty to keep unchanged.',
+        apiTokenConfiguredHint: 'API token configured. Leave empty to keep the current value.',
+        fromEmail: 'From Email',
+        fromEmailPlaceholder: "welcome{'@'}example.com",
+        fromEmailHint: 'Must belong to a domain already onboarded to Email Sending.',
+        fromName: 'From Name',
+        fromNamePlaceholder: 'Sub2API'
+      },
       smtp: {
         title: 'SMTP Settings',
         description: 'Configure email sending for verification codes',
