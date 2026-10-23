@@ -76,6 +76,8 @@ func ParseSchedulerBucket(raw string) (SchedulerBucket, bool) {
 // SchedulerCache 负责调度快照与账号快照的缓存读写。
 type SchedulerCache interface {
 	// GetSnapshot 读取快照并返回命中与否（ready + active + 数据完整）。
+	// 返回的账号对象由本次调用独占，可以修改其顶层字段；map、切片底层数组与指针指向的值
+	// 与其它调用共享，不得原地修改。
 	GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error)
 	// CaptureBucketWriteToken captures the current open epoch without changing
 	// retirement state. A tombstoned bucket returns ErrSchedulerBucketRetired.
