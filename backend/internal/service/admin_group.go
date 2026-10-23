@@ -391,6 +391,8 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
 }
 
+// CreateGroup validates group policies and client defaults before persisting the
+// group and binding any requested source accounts through the repositories.
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && NormalizeGroupPlatform(input.Platform) == PlatformComposite {
 		return nil, infraerrors.BadRequest("SIMPLE_MODE_GROUP_NOT_BINDABLE", "composite groups are not supported in simple mode")
@@ -628,6 +630,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
+		ClientExportConfig:              input.ClientExportConfig,
 		ModelAllowlist:                  modelAllowlist,
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
@@ -643,6 +646,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		group.AllowLive = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
+	if err := s.validateGroupClientExport(ctx, group); err != nil {
+		return nil, err
+	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -764,6 +770,8 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	return nil
 }
 
+// UpdateGroup applies a partial policy update. Omitted client defaults are
+// preserved; explicit selections are validated before persistence/cache invalidation.
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
@@ -1025,6 +1033,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
+	if input.ClientExportConfig != nil {
+		group.ClientExportConfig = *input.ClientExportConfig
+	} else if input.Platform != "" && input.Platform != previousPlatform {
+		group.ClientExportConfig = GroupClientExportConfig{}
+	}
 	if input.ModelAllowlist != nil {
 		modelAllowlist, err := normalizeGroupModelAllowlist(*input.ModelAllowlist)
 		if err != nil {
@@ -1075,6 +1088,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 
+	if input.ClientExportConfig != nil || input.ModelAllowlist != nil || input.SupportedModelScopes != nil {
+		if err := s.validateGroupClientExport(ctx, group); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}

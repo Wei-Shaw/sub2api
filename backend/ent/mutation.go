@@ -22165,6 +22165,7 @@ type GroupMutation struct {
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
+	client_export_config                    *domain.GroupClientExportConfig
 	model_allowlist                         *domain.GroupModelAllowlist
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
 	rpm_limit                               *int
@@ -25201,6 +25202,42 @@ func (m *GroupMutation) ResetMessagesDispatchModelConfig() {
 	m.messages_dispatch_model_config = nil
 }
 
+// SetClientExportConfig sets the "client_export_config" field.
+func (m *GroupMutation) SetClientExportConfig(dcec domain.GroupClientExportConfig) {
+	m.client_export_config = &dcec
+}
+
+// ClientExportConfig returns the value of the "client_export_config" field in the mutation.
+func (m *GroupMutation) ClientExportConfig() (r domain.GroupClientExportConfig, exists bool) {
+	v := m.client_export_config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientExportConfig returns the old "client_export_config" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldClientExportConfig(ctx context.Context) (v domain.GroupClientExportConfig, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientExportConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientExportConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientExportConfig: %w", err)
+	}
+	return oldValue.ClientExportConfig, nil
+}
+
+// ResetClientExportConfig resets all changes to the "client_export_config" field.
+func (m *GroupMutation) ResetClientExportConfig() {
+	m.client_export_config = nil
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (m *GroupMutation) SetModelAllowlist(dma domain.GroupModelAllowlist) {
 	m.model_allowlist = &dma
@@ -25958,7 +25995,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 67)
+	fields := make([]string, 0, 68)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26133,6 +26170,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.messages_dispatch_model_config != nil {
 		fields = append(fields, group.FieldMessagesDispatchModelConfig)
 	}
+	if m.client_export_config != nil {
+		fields = append(fields, group.FieldClientExportConfig)
+	}
 	if m.model_allowlist != nil {
 		fields = append(fields, group.FieldModelAllowlist)
 	}
@@ -26284,6 +26324,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultMappedModel()
 	case group.FieldMessagesDispatchModelConfig:
 		return m.MessagesDispatchModelConfig()
+	case group.FieldClientExportConfig:
+		return m.ClientExportConfig()
 	case group.FieldModelAllowlist:
 		return m.ModelAllowlist()
 	case group.FieldCodexModelsManifestConfig:
@@ -26427,6 +26469,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultMappedModel(ctx)
 	case group.FieldMessagesDispatchModelConfig:
 		return m.OldMessagesDispatchModelConfig(ctx)
+	case group.FieldClientExportConfig:
+		return m.OldClientExportConfig(ctx)
 	case group.FieldModelAllowlist:
 		return m.OldModelAllowlist(ctx)
 	case group.FieldCodexModelsManifestConfig:
@@ -26859,6 +26903,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMessagesDispatchModelConfig(v)
+		return nil
+	case group.FieldClientExportConfig:
+		v, ok := value.(domain.GroupClientExportConfig)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientExportConfig(v)
 		return nil
 	case group.FieldModelAllowlist:
 		v, ok := value.(domain.GroupModelAllowlist)
@@ -27607,6 +27658,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMessagesDispatchModelConfig:
 		m.ResetMessagesDispatchModelConfig()
+		return nil
+	case group.FieldClientExportConfig:
+		m.ResetClientExportConfig()
 		return nil
 	case group.FieldModelAllowlist:
 		m.ResetModelAllowlist()
