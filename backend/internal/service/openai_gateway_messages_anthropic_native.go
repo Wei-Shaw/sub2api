@@ -47,6 +47,21 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
+	requestedReasoningEffort := RequestedReasoningEffortFromContext(ctx)
+	if requestedReasoningEffort == nil {
+		requestedReasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String())
+	}
+	if IsCNProvider(account.Platform) {
+		policyBody, _, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+		if policyErr != nil {
+			if IsReasoningEffortPolicyDenied(policyErr) {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			}
+			return nil, policyErr
+		}
+		body = policyBody
+	}
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -64,9 +79,8 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	// 记录客户端请求的推理强度：优先 Claude 协议的 output_config.effort；
 	// 缺失且 thinking 已启用时，按国产 passback-required 模型兜底为 high
 	// （对齐 Anthropic 网关 gateway_handler 的记录语义，避免该路径长期落 NULL）。
-	requestedReasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String())
 	reasoningEffort := ApplyThinkingEnabledFallback(
-		requestedReasoningEffort,
+		NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String()),
 		body,
 		billingModel,
 	)
@@ -116,10 +130,16 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
+	var result *OpenAIForwardResult
 	if clientStream {
-		return s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+		result, err = s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+	} else {
+		result, err = s.handleNativeAnthropicBufferedResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
 	}
-	return s.handleNativeAnthropicBufferedResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+	if result != nil {
+		result.RequestedReasoningEffort = requestedReasoningEffort
+	}
+	return result, err
 }
 
 // nativeAnthropicTargetURL 组装国产供应商原生 Anthropic messages 端点。

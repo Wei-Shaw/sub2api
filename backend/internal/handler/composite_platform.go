@@ -68,7 +68,7 @@ func openAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKe
 		return "", nil, "", false
 	}
 	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
-	if effectivePlatform != service.PlatformAnthropic && effectivePlatform != service.PlatformOpenAI {
+	if effectivePlatform != service.PlatformAnthropic && effectivePlatform != service.PlatformOpenAI && !service.IsCNProvider(effectivePlatform) {
 		return "", nil, "", false
 	}
 	maxEffort, mappings := apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings
@@ -85,7 +85,7 @@ func anthropicReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.AP
 	if apiKey.Group.Platform != service.PlatformAnthropic && apiKey.Group.Platform != service.PlatformComposite {
 		return "", nil, "", false
 	}
-	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformAnthropic {
+	if platform := effectiveAPIKeyPlatform(c, apiKey); platform != service.PlatformAnthropic && !service.IsCNProvider(platform) {
 		return "", nil, "", false
 	}
 	maxEffort, mappings := anthropicCompatibleReasoningEffortPolicy(apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings)
@@ -173,6 +173,9 @@ func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *s
 	maxEffort, mappings, overLimit, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
 	if !ok {
 		return
+	}
+	if service.IsCNProvider(effectiveAPIKeyPlatform(c, apiKey)) {
+		maxEffort, mappings = anthropicCompatibleReasoningEffortPolicy(maxEffort, mappings)
 	}
 	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings, overLimit))
 }

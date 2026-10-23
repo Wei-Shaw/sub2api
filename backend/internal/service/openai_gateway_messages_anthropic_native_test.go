@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -42,6 +43,96 @@ func nativeAnthropicGLMTestAccount() *Account {
 	account.Name = "zhipu-native"
 	account.Platform = PlatformZhipu
 	return account
+}
+
+func TestNativeAnthropicBoundReasoningEffortPolicy(testContext *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, test := range []struct {
+			name       string
+			platform   string
+			maxEffort  string
+			overLimit  string
+			to         string
+			bound      bool
+			omitEffort bool
+			wantEffort string
+			requested  string
+			deny       bool
+		}{
+			{name: "deepseek low to max", platform: PlatformDeepseek, to: "max", bound: true, wantEffort: "max"},
+			{name: "kimi low to max", platform: PlatformKimi, to: "max", bound: true, wantEffort: "max"},
+			{name: "zhipu low to max", platform: PlatformZhipu, to: "max", bound: true, wantEffort: "max"},
+			{name: "minimax low to max", platform: PlatformMiniMax, to: "max", bound: true, wantEffort: "max"},
+			{name: "mapped ceiling", platform: PlatformDeepseek, to: "max", maxEffort: "high", bound: true, wantEffort: "high"},
+			{name: "mapping deny", platform: PlatformDeepseek, to: ReasoningEffortMappingDeny, bound: true, deny: true},
+			{name: "ceiling deny", platform: PlatformDeepseek, to: "max", maxEffort: "high", overLimit: ReasoningEffortOverLimitDeny, bound: true, deny: true},
+			{name: "unbound", platform: PlatformDeepseek, wantEffort: "low"},
+			{name: "empty policy", platform: PlatformDeepseek, bound: true, wantEffort: "low"},
+			{name: "original context effort", platform: PlatformDeepseek, to: "max", bound: true, requested: "minimal", wantEffort: "max"},
+			{name: "non CN", platform: PlatformOpenCodeGo, to: "max", bound: true, wantEffort: "low"},
+			{name: "no synthesis", platform: PlatformDeepseek, to: "max", maxEffort: "low", bound: true, omitEffort: true},
+		} {
+			testContext.Run(fmt.Sprintf("%s/stream=%v", test.name, stream), func(testContext *testing.T) {
+				effortJSON := `,"output_config":{"effort":"low"}`
+				if test.omitEffort {
+					effortJSON = ""
+				}
+				body := []byte(fmt.Sprintf(`{"model":"deepseek-flash","max_tokens":32,"stream":%v,"messages":[{"role":"user","content":"hi"}]%s}`, stream, effortJSON))
+				ctx := context.Background()
+				if test.requested != "" {
+					ctx = WithRequestedReasoningEffort(ctx, test.requested)
+				}
+				if test.bound {
+					var mappings []ReasoningEffortMapping
+					if test.to != "" {
+						mappings = []ReasoningEffortMapping{{From: "low", To: test.to, MatchType: "exact", Model: "deepseek-flash"}}
+					}
+					ctx = WithOpenAIReasoningEffortPolicy(ctx, test.maxEffort, mappings, test.overLimit)
+				}
+				response := nativeAnthropicBufferedResponse()
+				if stream {
+					response = nativeAnthropicStreamResponse()
+				}
+				upstream := &httpUpstreamRecorder{resp: response}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				account := nativeAnthropicTestAccount()
+				account.Platform = test.platform
+				recorder := httptest.NewRecorder()
+				ginContext, _ := gin.CreateTestContext(recorder)
+				ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body))).WithContext(ctx)
+				result, err := svc.ForwardAsAnthropic(ctx, ginContext, account, body, "", "upstream-rewritten-model")
+				if test.deny {
+					require.Error(testContext, err)
+					require.True(testContext, IsReasoningEffortPolicyDenied(err))
+					require.Nil(testContext, result)
+					require.Empty(testContext, upstream.requests)
+					require.Equal(testContext, http.StatusForbidden, ginContext.Writer.Status())
+					require.Equal(testContext, "error", gjson.GetBytes(recorder.Body.Bytes(), "type").String())
+					require.Equal(testContext, "forbidden_error", gjson.GetBytes(recorder.Body.Bytes(), "error.type").String())
+					return
+				}
+				require.NoError(testContext, err)
+				require.NotNil(testContext, result)
+				require.Equal(testContext, stream, result.Stream)
+				require.Equal(testContext, "upstream-rewritten-model", gjson.GetBytes(upstream.lastBody, "model").String())
+				require.Equal(testContext, test.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+				if test.omitEffort {
+					require.Nil(testContext, result.RequestedReasoningEffort)
+					require.Nil(testContext, result.ReasoningEffort)
+				} else {
+					wantRequested := test.requested
+					if wantRequested == "" {
+						wantRequested = "low"
+					}
+					require.NotNil(testContext, result.RequestedReasoningEffort)
+					require.NotNil(testContext, result.ReasoningEffort)
+					require.Equal(testContext, wantRequested, *result.RequestedReasoningEffort)
+					require.Equal(testContext, test.wantEffort, *result.ReasoningEffort)
+				}
+			})
+		}
+	}
 }
 
 func nativeAnthropicBufferedResponse() *http.Response {
