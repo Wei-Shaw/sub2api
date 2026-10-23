@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -128,6 +129,109 @@ func antigravityCompatSuccessResponse() *http.Response {
 			"X-Request-Id": []string{"request-3757"},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func TestAntigravitySystemIdentityAcrossProtocols(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const task = "\nKeep GPT-5.6, gpt-6 and Claude model ids unchanged."
+	for _, identity := range []string{"You are Codex, based on GPT-5.6.", "You are Codex, an agent based on GPT-6.", "You are GPT-6 running in the Codex CLI.", "You are Claude Code, Anthropic's official CLI for Claude."} {
+		for _, model := range []string{"gemini-3.1-pro-high", "claude-sonnet-4-6"} {
+			for _, protocol := range []string{"responses", "chat", "messages"} {
+				for _, arraySystem := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/%s/array=%t", identity, model, protocol, arraySystem), func(t *testing.T) {
+						text := "x-anthropic-billing-header: cc_version=example;\n" + identity + task
+						var system any = text
+						if arraySystem {
+							system = []map[string]any{{"type": "text", "text": text}}
+						}
+						request := map[string]any{"model": model, "max_tokens": 128}
+						switch protocol {
+						case "responses":
+							request["input"] = identity
+							request["instructions"] = text
+							if arraySystem {
+								delete(request, "instructions")
+								request["input"] = []map[string]any{
+									{"type": "message", "role": "developer", "content": []map[string]string{{"type": "input_text", "text": text}}},
+									{"type": "message", "role": "user", "content": identity},
+								}
+							}
+						case "chat":
+							request["messages"] = []map[string]any{{"role": "system", "content": system}, {"role": "user", "content": identity}}
+						case "messages":
+							request["system"] = system
+							request["messages"] = []map[string]any{{"role": "user", "content": identity}}
+						}
+						body, err := json.Marshal(request)
+						require.NoError(t, err)
+						var forwarded []byte
+						upstream := &queuedHTTPUpstreamStub{
+							responses: []*http.Response{antigravityCompatSuccessResponse()},
+							onCall: func(req *http.Request, _ *queuedHTTPUpstreamStub) {
+								forwarded, err = io.ReadAll(req.Body)
+								require.NoError(t, err)
+							},
+						}
+						svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+						account := newAntigravityCompatAccount(AccountTypeOAuth)
+						c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/"+protocol, body)
+						switch protocol {
+						case "responses":
+							_, err = svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+						case "chat":
+							_, err = svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+						case "messages":
+							_, err = svc.Forward(context.Background(), c, account, body, false)
+						}
+						require.NoError(t, err)
+						systemText := gjson.GetBytes(forwarded, "request.systemInstruction.parts").Raw
+						require.Contains(t, systemText, "You are an AI agent.")
+						require.Contains(t, systemText, "Keep GPT-5.6, gpt-6 and Claude model ids unchanged.")
+						require.NotContains(t, systemText, identity)
+						require.NotContains(t, systemText, "x-anthropic-billing-header:")
+						require.Equal(t, identity, gjson.GetBytes(forwarded, "request.contents.0.parts.0.text").String())
+						require.Equal(t, model, gjson.GetBytes(forwarded, "model").String())
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestInjectAntigravityGeminiSystemIdentity(t *testing.T) {
+	const identity = "You are Codex, based on GPT-6."
+	const mention = "Example: You are GPT-5.6 running in the Codex CLI."
+	for _, existingIdentity := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existing identity=%t", existingIdentity), func(t *testing.T) {
+			parts := []map[string]any{
+				{"text": "x-anthropic-billing-header: cc_version=example;"},
+				{"text": identity, "custom": "preserved"},
+				{"text": mention},
+				{"text": `"You are Codex, based on GPT-6."`},
+			}
+			if existingIdentity {
+				parts = append([]map[string]any{{"text": "You are Antigravity."}}, parts...)
+			}
+			body, err := json.Marshal(map[string]any{
+				"systemInstruction": map[string]any{"parts": parts},
+				"contents":          []map[string]any{{"role": "user", "parts": []map[string]string{{"text": identity}}}},
+				"tools":             []map[string]any{{"functionDeclarations": []map[string]string{{"name": "example", "description": identity}}}},
+			})
+			require.NoError(t, err)
+			got, err := injectIdentityPatchToGeminiRequest(body)
+			require.NoError(t, err)
+			require.Equal(t, "You are an AI agent.", gjson.GetBytes(got, "systemInstruction.parts.2.text").String())
+			require.Equal(t, "preserved", gjson.GetBytes(got, "systemInstruction.parts.2.custom").String())
+			require.Equal(t, mention, gjson.GetBytes(got, "systemInstruction.parts.3.text").String())
+			require.Equal(t, `"You are Codex, based on GPT-6."`, gjson.GetBytes(got, "systemInstruction.parts.4.text").String())
+			for _, field := range []string{"contents", "tools"} {
+				require.JSONEq(t, gjson.GetBytes(body, field).Raw, gjson.GetBytes(got, field).Raw)
+			}
+			again, err := injectIdentityPatchToGeminiRequest(got)
+			require.NoError(t, err)
+			require.Equal(t, string(got), string(again))
+		})
 	}
 }
 
