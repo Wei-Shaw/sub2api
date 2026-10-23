@@ -68,6 +68,28 @@
           </p>
         </template>
 
+        <template v-else-if="currentAction === 'set_quota_windows'">
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.subscriptions.bulk.setWindowsHint') }}
+          </p>
+          <label class="input-label" for="bulk-weekly-window">{{ t('admin.subscriptions.weeklyWindowStart') }}</label>
+          <input
+            id="bulk-weekly-window"
+            v-model="weeklyWindowInput"
+            type="datetime-local"
+            class="input"
+            :disabled="parametersLocked"
+          />
+          <label class="input-label" for="bulk-monthly-window">{{ t('admin.subscriptions.monthlyWindowStart') }}</label>
+          <input
+            id="bulk-monthly-window"
+            v-model="monthlyWindowInput"
+            type="datetime-local"
+            class="input"
+            :disabled="parametersLocked"
+          />
+        </template>
+
         <p v-else class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
           {{ t(`admin.subscriptions.bulk.${currentAction}Hint`) }}
         </p>
@@ -121,6 +143,7 @@ import { adminAPI } from '@/api/admin'
 import type { SubscriptionBulkAction, SubscriptionBulkActionRequest, SubscriptionBulkActionResult } from '@/api/admin/subscriptions'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { UserSubscription } from '@/types'
+import { dateTimeLocalInputToISO, formatDateTimeLocalInputFromISO } from '@/utils/datetimeLocal'
 import { completeBulkSubscriptionOperation, prepareBulkSubscriptionOperation, type BulkSubscriptionOperation } from './bulkSubscriptionOperation'
 
 const props = defineProps<{
@@ -138,6 +161,8 @@ const { t } = useI18n()
 const quotaWindows = ['daily', 'weekly', 'monthly'] as const
 const days = ref<number | string>(30)
 const windows = reactive({ daily: true, weekly: true, monthly: true })
+const weeklyWindowInput = ref('')
+const monthlyWindowInput = ref('')
 const submitting = ref(false)
 const requestError = ref('')
 const result = shallowRef<SubscriptionBulkActionResult | null>(null)
@@ -161,6 +186,13 @@ const validationError = computed(() => {
   if (currentAction.value === 'reset_quota' && !quotaWindows.some(window => windows[window])) {
     return t('admin.subscriptions.bulk.selectWindow')
   }
+  if (currentAction.value === 'set_quota_windows') {
+    const weekly = dateTimeLocalInputToISO(weeklyWindowInput.value)
+    const monthly = dateTimeLocalInputToISO(monthlyWindowInput.value)
+    if (!weekly && !monthly) {
+      return t('admin.subscriptions.bulk.selectWindowStart')
+    }
+  }
   return ''
 })
 
@@ -172,6 +204,11 @@ watch(() => props.subscriptions, subscriptions => {
     group: subscription.group?.name,
     groupId: subscription.group_id
   }))
+  const first = subscriptions[0]
+  if (first && !weeklyWindowInput.value) {
+    weeklyWindowInput.value = formatDateTimeLocalInputFromISO(first.weekly_window_start)
+    monthlyWindowInput.value = formatDateTimeLocalInputFromISO(first.monthly_window_start)
+  }
 }, { immediate: true })
 
 function handleClose() {
@@ -193,6 +230,12 @@ async function submit() {
     }
     if (request.action === 'extend') request.days = Number(days.value)
     if (request.action === 'reset_quota') Object.assign(request, { ...windows })
+    if (request.action === 'set_quota_windows') {
+      const weekly = dateTimeLocalInputToISO(weeklyWindowInput.value)
+      const monthly = dateTimeLocalInputToISO(monthlyWindowInput.value)
+      if (weekly) request.weekly_window_start = weekly
+      if (monthly) request.monthly_window_start = monthly
+    }
     pendingOperation.value = prepareBulkSubscriptionOperation(request)
     submittedAction.value = request.action
   }
