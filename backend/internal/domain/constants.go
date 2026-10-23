@@ -37,7 +37,10 @@ const (
 	PlatformCommandCode = "command_code"
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
-	PlatformCline     = "cline"
+	PlatformCline = "cline"
+	// PlatformDimAgent 是 DimAgent 订阅网关。它只提供 OpenAI Chat Completions
+	// 协议；服务端持有并注入订阅 access token，调用方永远只使用 Sub2API API Key。
+	PlatformDimAgent  = "dimagent"
 	PlatformComposite = "composite"
 )
 

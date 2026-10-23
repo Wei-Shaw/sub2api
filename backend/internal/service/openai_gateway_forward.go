@@ -1345,7 +1345,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 }
 
 func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
-	if account == nil || account.Type != AccountTypeAPIKey {
+	if account == nil {
+		return false
+	}
+	// DimAgent's OAuth subscription relay only exposes Chat Completions. It
+	// deliberately follows the same raw fallback path as API-key-compatible
+	// providers after inbound protocol conversion.
+	if account.IsDimAgent() && account.Type == AccountTypeOAuth {
+		return true
+	}
+	if account.Type != AccountTypeAPIKey {
 		return false
 	}
 	if account.routesByModel() {
