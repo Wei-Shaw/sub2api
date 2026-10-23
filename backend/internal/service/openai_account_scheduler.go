@@ -1778,7 +1778,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
 		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
-			return false, "account_model_not_owned"
+			if (req.RequiredImageCapability == "" && !OpenAIImagesEndpointFromContext(ctx)) || !chatGPTWebImageOwnsNativeModel(account, publicModel) {
+				return false, "account_model_not_owned"
+			}
 		}
 	}
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
@@ -1812,7 +1814,13 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
-	if req.RequestedModel != "" && !supportsOpenAIRequestModel(account, req.RequestedModel, req.RequireCompact) {
+	imageRequest := req.RequiredImageCapability != "" || OpenAIImagesEndpointFromContext(ctx)
+	if imageRequest {
+		if reason := chatGPTWebImageSchedulingFailureReason(ctx, account, req.RequestedModel); reason != "" {
+			return false, reason
+		}
+	}
+	if req.RequestedModel != "" && (!imageRequest || !isFreeChatGPTWebImageAccount(account)) && !supportsOpenAIRequestModel(account, req.RequestedModel, req.RequireCompact) {
 		return false, "model_not_supported"
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
@@ -2142,6 +2150,13 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// Carry image authorization through legacy selection, sticky bindings,
+	// snapshot refreshes and DB rechecks as well as the advanced scheduler.
+	ctx = WithOpenAIImagesEndpoint(ctx)
+	// Forwarding authorizes the channel-mapped compatibility model. Keep that
+	// authorization separate from the public model used by ordinary routing.
+	channelMapping, _ := s.ResolveChannelMappingAndRestrict(ctx, groupID, requestedModel)
+	ctx = context.WithValue(ctx, chatGPTWebImageSchedulingModelContextKey{}, strings.TrimSpace(channelMapping.MappedModel))
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
 	if err == nil && selection != nil && selection.Account != nil {
 		return selection, decision, nil

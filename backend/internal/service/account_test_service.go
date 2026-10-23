@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -14,7 +15,7 @@ import (
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io"
 	"log"
 	"mime/multipart"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptwebimage"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -50,12 +52,15 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Code     string `json:"code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	ActualModel    string `json:"actual_model,omitempty"`
+	CapabilityOnly bool   `json:"capability_only,omitempty"`
+	Type           string `json:"type"`
+	Text           string `json:"text,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Code           string `json:"code,omitempty"`
+	ImageURL       string `json:"image_url,omitempty"`
 	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
 	AudioURL string `json:"audio_url,omitempty"`
 	VideoURL string `json:"video_url,omitempty"`
@@ -68,6 +73,9 @@ type TestEvent struct {
 // AccountTestOptions carries optional media for admin connectivity tests.
 // ImageDataURL / AudioDataURL are full data URLs (data:<mime>;base64,...).
 type AccountTestOptions struct {
+	// ActorScope must be supplied by the authenticated admin handler, never bound from JSON.
+	ActorScope   string
+	OperationID  string
 	ImageDataURL string
 	AudioDataURL string
 }
@@ -225,7 +233,7 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 		}
 		for _, model := range openai.DefaultModels {
 			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
-				if !passthrough && !IsGPTImageGenerationModel(account.GetMappedModel(model.ID)) {
+				if !isFreeChatGPTWebImageAccount(account) && !passthrough && !IsGPTImageGenerationModel(account.GetMappedModel(model.ID)) {
 					continue
 				}
 				payload.Data = append(payload.Data, model)
@@ -254,7 +262,44 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			seen[publicID] = true
 		}
 	}
+	payload.Data = FilterOpenAIAccountTestModels(account, payload.Data)
 	return payload.Data, nil
+}
+
+// FilterOpenAIAccountTestModels applies web image eligibility to both discovery
+// and the local fallback picker. It leaves ordinary text/native accounts alone.
+func FilterOpenAIAccountTestModels(account *Account, models []openai.Model) []openai.Model {
+	if !isFreeChatGPTWebImageAccount(account) {
+		return models
+	}
+	filtered := make([]openai.Model, 0, len(models))
+	seen := make(map[string]bool, len(models))
+	enabled := validateChatGPTWebImageAccount(account) == nil
+	for _, model := range models {
+		if strings.Contains(model.ID, "*") {
+			continue
+		}
+		if _, image := chatGPTWebImageModelID(account, model.ID); image && !enabled {
+			continue
+		}
+		filtered = append(filtered, model)
+		seen[model.ID] = true
+	}
+	if enabled {
+		for _, model := range openai.DefaultModels {
+			if IsGPTImageGenerationModel(model.ID) && !seen[model.ID] {
+				filtered = append(filtered, model)
+				seen[model.ID] = true
+			}
+		}
+		for alias := range account.GetModelMapping() {
+			if _, image := chatGPTWebImageModelID(account, alias); image && !strings.Contains(alias, "*") && !seen[alias] {
+				filtered = append(filtered, openai.Model{ID: alias, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(alias)})
+				seen[alias] = true
+			}
+		}
+	}
+	return filtered
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -391,7 +436,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
 		case APIProtocolResponses:
-			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), testOpts)
 		case APIProtocolChatCompletions:
 			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
 		case APIProtocolAnthropic:
@@ -400,7 +445,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	if account.IsOpenAI() {
-		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), testOpts)
 	}
 
 	if account.IsGemini() {
@@ -797,7 +842,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 }
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
@@ -805,6 +850,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	testModelID := modelID
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+	}
+
+	// Free native image names always select the web provider, even if an old
+	// account mapping points at a text model. Unset/disabled bridges fail here.
+	_, webImageModel := chatGPTWebImageModelID(account, testModelID)
+	if isFreeChatGPTWebImageAccount(account) && webImageModel {
+		if mode != AccountTestModeDefault {
+			return s.sendErrorAndEnd(c, "ChatGPT web image tests require the default test mode")
+		}
+		return s.testChatGPTWebImage(c, account, testModelID, prompt, firstAccountTestOptions(opts))
 	}
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
@@ -3117,6 +3172,126 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	return nil
 }
 
+const accountTestCapabilityOnlyContextKey = "sub2api.internal.account_test_capability_only"
+
+// AccountTestAllowsRecovery is based only on a marker set by the test dispatcher.
+// Request headers, JSON fields and upstream SSE cannot turn a capability probe
+// into proof that the separate Codex chat quota/error state has recovered.
+func AccountTestAllowsRecovery(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	capabilityOnly, _ := c.Get(accountTestCapabilityOnlyContextKey)
+	return capabilityOnly != true
+}
+
+func adminWebImageTestJobKey(actorScope, operationID string, accountID int64, modelID, prompt string) string {
+	scope, _ := json.Marshal([]any{"admin-web-image-test-v1", actorScope, operationID, accountID, modelID, prompt})
+	digest := sha256.Sum256(scope)
+	return hex.EncodeToString(digest[:])
+}
+
+func (s *AccountTestService) testChatGPTWebImage(c *gin.Context, account *Account, modelID, prompt string, opts AccountTestOptions) error {
+	c.Set(accountTestCapabilityOnlyContextKey, true)
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("X-Accel-Buffering", "no")
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID, Provider: chatGPTWebImageProvider, CapabilityOnly: true})
+	model, err := resolveChatGPTWebImageModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	if s.openaiGatewayService == nil {
+		return s.sendErrorAndEnd(c, "ChatGPT web image service is unavailable")
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		prompt = defaultOpenAIImageTestPrompt
+	}
+	if len(prompt) > 64<<10 {
+		return s.sendErrorAndEnd(c, "prompt exceeds the ChatGPT web image size limit")
+	}
+	if opts.ImageDataURL != "" || opts.AudioDataURL != "" {
+		return s.sendErrorAndEnd(c, "ChatGPT web image tests currently support text-to-image only")
+	}
+	operationID := strings.TrimSpace(opts.OperationID)
+	if len(operationID) > 128 {
+		return s.sendErrorAndEnd(c, "operation_id exceeds 128 characters")
+	}
+	if operationID == "" {
+		operationID = uuid.NewString()
+	}
+	actorScope := opts.ActorScope
+	if actorScope == "" {
+		// Internal/background tests have no authenticated admin actor. Give this
+		// invocation a distinct namespace, never impersonate a user/API key.
+		actorScope = "internal:" + uuid.NewString()
+	}
+	key := adminWebImageTestJobKey(actorScope, operationID, account.ID, model.RequestedModel, prompt)
+	store, err := configuredWebImageJobStore()
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Image job storage is unavailable; no image was requested")
+	}
+	s.sendEvent(c, TestEvent{Type: "content", Model: model.RequestedModel, Provider: chatGPTWebImageProvider, CapabilityOnly: true,
+		Text: fmt.Sprintf("Calling ChatGPT web image generation (automatic model selection); compatibility entry: %s. This creates regular ChatGPT conversation history.\n", model.RequestedModel)})
+	type generationOutcome struct {
+		result chatgptwebimage.Result
+		err    error
+	}
+	done := make(chan generationOutcome, 1)
+	ctx := c.Request.Context()
+	go func() {
+		result, err := store.run(ctx, key, func(jobCtx context.Context) (chatgptwebimage.Result, error) {
+			return s.openaiGatewayService.generateWebImage(jobCtx, account, prompt)
+		})
+		done <- generationOutcome{result, err}
+	}()
+	heartbeat := time.NewTicker(10 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(c.Writer, ": web-image-test pending\n\n"); err != nil {
+				return err
+			}
+			c.Writer.Flush()
+		case outcome := <-done:
+			if outcome.err != nil {
+				return s.sendErrorAndEnd(c, chatGPTWebImagePublicError(outcome.err).Message)
+			}
+			if err := validateAccountTestWebImageResult(outcome.result); err != nil {
+				return s.sendErrorAndEnd(c, err.Error())
+			}
+			for _, item := range outcome.result.Images {
+				s.sendEvent(c, TestEvent{Type: "image", Model: model.RequestedModel, Provider: chatGPTWebImageProvider, ActualModel: outcome.result.ObservedImageModel, CapabilityOnly: true,
+					ImageURL: "data:" + openAIImageOutputMIMEType(item.Format) + ";base64," + base64.StdEncoding.EncodeToString(item.Bytes), MimeType: openAIImageOutputMIMEType(item.Format)})
+			}
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true, Model: model.RequestedModel, Provider: chatGPTWebImageProvider, ActualModel: outcome.result.ObservedImageModel, CapabilityOnly: true})
+			return nil
+		}
+	}
+}
+
+func validateAccountTestWebImageResult(result chatgptwebimage.Result) error {
+	if len(result.Images) != 1 {
+		return errors.New("ChatGPT web image generation did not return exactly one image")
+	}
+	img := result.Images[0]
+	if img.Format != "png" || len(img.Bytes) == 0 || int64(len(img.Bytes)) > openAIImageMaxDownloadBytes {
+		return errors.New("ChatGPT web image generation returned invalid image data")
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(img.Bytes))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 32*1024*1024 {
+		return errors.New("ChatGPT web image generation returned invalid PNG dimensions")
+	}
+	if _, err := png.Decode(bytes.NewReader(img.Bytes)); err != nil {
+		return errors.New("ChatGPT web image generation did not return a valid PNG")
+	}
+	return nil
+}
+
 // OAuth 图片测试与正式转发共用 Codex Images / Responses 分流规则。
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	credentialAccount := account
@@ -3294,6 +3469,10 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	return s.runTestBackground(ctx, accountID, modelID, AccountTestOptions{})
+}
+
+func (s *AccountTestService) runTestBackground(ctx context.Context, accountID int64, modelID string, opts AccountTestOptions) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
@@ -3301,7 +3480,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 	ginCtx.Set(accountTestBackgroundKey, true)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
+	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault, opts)
 
 	finishedAt := time.Now()
 	body := w.Body.String()
@@ -3316,12 +3495,13 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	}
 
 	return &ScheduledTestResult{
-		Status:       status,
-		ResponseText: responseText,
-		ErrorMessage: errMsg,
-		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
-		StartedAt:    startedAt,
-		FinishedAt:   finishedAt,
+		capabilityOnly: !AccountTestAllowsRecovery(ginCtx),
+		Status:         status,
+		ResponseText:   responseText,
+		ErrorMessage:   errMsg,
+		LatencyMs:      finishedAt.Sub(startedAt).Milliseconds(),
+		StartedAt:      startedAt,
+		FinishedAt:     finishedAt,
 	}, nil
 }
 

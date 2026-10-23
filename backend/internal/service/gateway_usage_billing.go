@@ -73,6 +73,8 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
+	// Set only by a verified internal web image job ref.
+	webImageBillingID     string
 	Cost                  *CostBreakdown
 	User                  *User
 	APIKey                *APIKey
@@ -238,7 +240,8 @@ func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string)
 
 func isForcedUsageBillingRequestID(requestID string) bool {
 	id := strings.TrimSpace(requestID)
-	return strings.HasPrefix(id, "web_search:") ||
+	return isWebImageBillingRequestID(id) ||
+		strings.HasPrefix(id, "web_search:") ||
 		strings.HasPrefix(id, "grok-video:") ||
 		strings.HasPrefix(id, "grok_audio:") ||
 		strings.HasPrefix(id, "grok_realtime:") ||
@@ -298,6 +301,13 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		AccountID:          p.Account.ID,
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+	}
+	// An image job can be retrieved through another pool account or planner
+	// attempt. Its immutable, server-issued job ID defines the money event.
+	// This also closes the SQL-commit/local-marker crash window without a
+	// fingerprint conflict from changed planner token counts or account IDs.
+	if p.webImageBillingID != "" && p.webImageBillingID == requestID {
+		cmd.RequestFingerprint = webImageBillingFingerprint(requestID, p.APIKey.ID)
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model

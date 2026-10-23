@@ -1,5 +1,6 @@
 <template>
   <div>
+    <p v-if="webImageCompatibility" data-testid="free-web-image-model-policy" class="mb-3 text-xs leading-5 text-emerald-700 dark:text-emerald-300">{{ t('admin.accounts.openai.webImageModelPolicy') }}</p>
     <!-- Multi-select Dropdown -->
     <div class="relative mb-3">
       <div
@@ -15,8 +16,10 @@
             <span class="flex items-center gap-1 truncate">
               <ModelIcon :model="model" size="14px" />
               <span class="truncate">{{ model }}</span>
+              <span v-if="isWebImageOption(model)" class="shrink-0 text-[10px] text-emerald-700 dark:text-emerald-300">{{ t(isAutomaticWebImage(model) ? 'admin.accounts.openai.webImageAutomatic' : 'admin.accounts.openai.webImageEntryBadge') }}</span>
             </span>
             <button
+              v-if="!isAutomaticWebImage(model)"
               type="button"
               @click.stop="removeModel(model)"
               class="shrink-0 rounded-full hover:bg-gray-200 dark:hover:bg-dark-500"
@@ -56,10 +59,13 @@
             <button
               type="button"
               data-testid="select-model"
+              :disabled="isAutomaticWebImage(model.value)"
               class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
               @click="toggleModel(model.value)"
             >
               <span
+                v-if="!isAutomaticWebImage(model.value)"
+                data-testid="model-checkbox"
                 :class="[
                   'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                   modelValue.includes(model.value)
@@ -73,6 +79,7 @@
               </span>
               <ModelIcon :model="model.value" size="18px" />
               <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
+              <span v-if="isWebImageOption(model.value)" class="shrink-0 text-[10px] text-emerald-700 dark:text-emerald-300">{{ t(isAutomaticWebImage(model.value) ? 'admin.accounts.openai.webImageAutomatic' : 'admin.accounts.openai.webImageEntryBadge') }}</span>
             </button>
             <button
               type="button"
@@ -161,6 +168,8 @@ const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: string[]
+  webImageCompatibility?: boolean
+  webImageBridgeEnabled?: boolean
   modelMappings?: { from: string; to: string }[]
   platform?: string
   platforms?: string[]
@@ -180,6 +189,15 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
+
+const isWebImageOption = (model: string) => {
+  if (!props.webImageCompatibility) return false
+  const explicit = props.modelMappings?.find(mapping => mapping.from.trim() === model)
+  return model.toLowerCase().startsWith('gpt-image-') ||
+    (explicit?.to.trim() || '').toLowerCase().startsWith('gpt-image-')
+}
+
+const isAutomaticWebImage = (model: string) => props.webImageBridgeEnabled === true && isWebImageOption(model)
 
 const showDropdown = ref(false)
 const searchQuery = ref('')
@@ -243,10 +261,12 @@ const toggleDropdown = () => {
 }
 
 const removeModel = (model: string) => {
+  if (isAutomaticWebImage(model)) return
   emit('update:modelValue', props.modelValue.filter(m => m !== model))
 }
 
 const toggleModel = (model: string) => {
+  if (isAutomaticWebImage(model)) return
   if (props.modelValue.includes(model)) {
     removeModel(model)
   } else {
@@ -261,6 +281,10 @@ const copyModelId = async (model: string) => {
 const addCustom = () => {
   const model = customModel.value.trim()
   if (!model) return
+  if (isAutomaticWebImage(model)) {
+    appStore.showInfo(t('admin.accounts.openai.webImageModelPolicy'))
+    return
+  }
   if (props.modelValue.includes(model)) {
     appStore.showInfo(t('admin.accounts.modelExists'))
     return
@@ -282,7 +306,7 @@ const fillRelated = () => {
   const newModels = [...props.modelValue]
   for (const platform of normalizedPlatforms.value) {
     for (const model of getModelsByPlatform(platform)) {
-      if (!newModels.includes(model)) {
+      if (!isAutomaticWebImage(model) && !newModels.includes(model)) {
         newModels.push(model)
       }
     }
@@ -317,7 +341,7 @@ const syncUpstreamModels = async () => {
     const newModels = [...props.modelValue]
     let addedCount = 0
     for (const model of upstreamModels) {
-      if (!newModels.includes(model)) {
+      if (!isAutomaticWebImage(model) && !newModels.includes(model)) {
         newModels.push(model)
         addedCount += 1
       }
@@ -352,6 +376,7 @@ const syncUpstreamModels = async () => {
 }
 
 const clearAll = () => {
+  // An explicit clear retains the existing empty-list (unrestricted chat) semantics.
   emit('update:modelValue', [])
 }
 
