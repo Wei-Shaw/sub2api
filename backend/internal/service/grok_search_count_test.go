@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func TestCountGrokNativeSearchCallsFromJSONBytes(t *testing.T) {
 		{"type":"function_call","name":"tool_search","call_id":"ts1"},
 		{"type":"function_call","name":"lookup","call_id":"other"}
 	]}`)
-	require.Equal(t, 3, countGrokNativeSearchCallsFromJSONBytes(body))
+	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes(body))
 }
 
 func TestCountGrokNativeSearchCallsFromJSONBytes_PrefersNestedResponse(t *testing.T) {
@@ -74,6 +75,31 @@ func TestCountGrokNativeSearchCallsInSSEDataDedup_MultipleNoIDCalls(t *testing.T
 	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(firstDone, seen))
 	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(secondDone, seen))
 	require.Equal(t, 0, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+}
+
+func TestCountGrokNativeSearchCallsExcludesClientTools(t *testing.T) {
+	t.Parallel()
+	for _, item := range []string{
+		`{"type":"function_call","name":"web_search","call_id":"client"}`,
+		`{"type":"function_call","name":"x_search","call_id":"client"}`,
+		`{"type":"function_call","name":"tool_search","call_id":"client"}`,
+		`{"type":"custom_tool_call","name":"web_search","call_id":"client"}`,
+		`{"type":"custom_tool_call","name":"x_search","call_id":"client"}`,
+		`{"type":"custom_tool_call","name":"tool_search","call_id":"client"}`,
+		`{"type":"tool_search_call","execution":"client","call_id":"client"}`,
+	} {
+		t.Run(item, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"output":[%s,{"type":"web_search_call","id":"server"}]}`, item))
+			require.Equal(t, 1, countGrokNativeSearchCallsFromJSONBytes(body))
+			done := []byte(fmt.Sprintf(`{"type":"response.output_item.done","item":%s}`, item))
+			completed := []byte(fmt.Sprintf(`{"type":"response.completed","response":%s}`, body))
+			seen := make(map[string]struct{})
+			require.Zero(t, countGrokNativeSearchCallsInSSEDataDedup(done, seen))
+			require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+			require.Zero(t, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+			require.Equal(t, 1, countGrokNativeSearchCallsFromSSEBody(stringsJoin("data: "+string(done), "data: "+string(completed))))
+		})
+	}
 }
 
 func stringsJoin(lines ...string) string {
