@@ -303,6 +303,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 		c.Status(http.StatusOK)
 	}
 	session := newAntigravityCompatStreamSession(originalModel, startTime, adapter, writer)
+	session.processor.SetToolProgressFallback(c.GetBool("antigravity_tool_progress_fallback"))
 	session.preContentKeepaliveInterval = interval
 	events, stopScanner, maxLineSize := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
