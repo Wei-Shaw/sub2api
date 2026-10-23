@@ -867,6 +867,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	agentTaskRecoveryTried := false
+	oauthRecoveryTried := false
 	var upstreamConn openAIWSClientConn
 	statusCode := 0
 	var handshakeHeaders http.Header
@@ -887,6 +888,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			responseBody = handshakeErr.Body
 		}
 		dialErr := &openAIWSDialError{StatusCode: statusCode, ResponseHeaders: cloneHeader(handshakeHeaders), ResponseBody: responseBody, Err: err}
+		if statusCode == http.StatusUnauthorized && !oauthRecoveryTried {
+			oauthRecoveryTried = true
+			if freshToken, refreshed := s.tryRefreshOpenAIOAuth401(ctx, account, statusCode, responseBody, strings.TrimPrefix(headers.Get("Authorization"), "Bearer ")); refreshed {
+				headers = headers.Clone()
+				headers.Set("Authorization", "Bearer "+freshToken)
+				continue
+			}
+		}
 		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
