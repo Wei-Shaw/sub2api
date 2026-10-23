@@ -1035,7 +1035,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
 		// Build upstream request
-		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamCtx, releaseUpstreamCtx, linkedUpstream := openAIHTTPUpstreamContext(ctx, account)
 		var headerGuard *openAIFirstOutputHeaderGuard
 		if firstOutputTimeout > 0 {
 			upstreamCtx, headerGuard = newOpenAIFirstOutputHeaderGuard(
@@ -1043,7 +1043,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			)
 		}
 		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
-		if headerGuard == nil {
+		if headerGuard == nil && (!linkedUpstream || err != nil) {
 			releaseUpstreamCtx()
 		}
 		if err != nil {
@@ -1080,6 +1080,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if headerGuard != nil {
 				headerGuard.close()
+			} else if linkedUpstream {
+				releaseUpstreamCtx()
+			}
+			if openAIDownstreamGone(ctx, account) {
+				// The client left before upstream headers: no failover, no account
+				// penalty, consumption unknown.
+				return nil, newOpenAIDeliveryError(ctx, OpenAIDeliveryPhaseBeforeHeaders, err)
 			}
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
@@ -1088,6 +1095,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if headerGuard != nil {
 			resp.Body = &openAIRequestContextReadCloser{ReadCloser: resp.Body, cleanup: headerGuard.close}
+		} else if linkedUpstream {
+			bindOpenAIUpstreamBodyCancel(resp, releaseUpstreamCtx)
 		}
 
 		// Handle error response
@@ -1221,9 +1230,53 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		searchCount := 0
 		var imageOutputSizes []string
+		// Covered GPT errors after upstream acceptance keep the observed usage
+		// and outcome instead of discarding them with a nil result.
+		partialResult := func(outcome ResponseOutcome, partialUsage *OpenAIUsage, partialFirstTokenMs *int, partialResponseID string, partialImageCount, partialSearchCount int, partialImageOutputSizes []string) *OpenAIForwardResult {
+			if partialUsage == nil {
+				partialUsage = &OpenAIUsage{}
+			}
+			partial := &OpenAIForwardResult{
+				RequestID:                     resp.Header.Get("x-request-id"),
+				UpstreamHeaders:               resp.Header,
+				ResponseID:                    strings.TrimSpace(partialResponseID),
+				Usage:                         *partialUsage,
+				Model:                         originalModel,
+				BillingModel:                  billingModel,
+				UpstreamModel:                 upstreamModel,
+				UpstreamResponseModel:         observedUpstreamResponseModel(c),
+				UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+				UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+				ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+				ReasoningEffort:               reasoningEffort,
+				Stream:                        reqStream,
+				Duration:                      time.Since(startTime),
+				FirstTokenMs:                  partialFirstTokenMs,
+				ResponseOutcome:               outcome,
+				ClientDisconnect:              outcome == ResponseOutcomeClientCancelled || outcome == ResponseOutcomeWriteFailed,
+			}
+			if partialImageCount > 0 {
+				partial.ImageCount = partialImageCount
+				partial.ImageSize = imageSizeTier
+				partial.ImageInputSize = imageInputSize
+				partial.ImageOutputSizes = partialImageOutputSizes
+				partial.BillingModel = imageBillingModel
+			}
+			if partialSearchCount > 0 && account.IsGrok() {
+				partial.SearchCount = partialSearchCount
+			}
+			stampOpenAIResponsesUpstreamEndpoint(c, partial)
+			return partial
+		}
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
+				if streamResult != nil {
+					if outcome, outErr, ok := openAIHTTPErrorOutcome(c, account, err, streamResult.usage); ok {
+						return partialResult(outcome, streamResult.usage, streamResult.firstTokenMs, streamResult.responseID,
+							streamResult.imageCount, streamResult.searchCount, streamResult.imageOutputSizes), outErr
+					}
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
@@ -1234,6 +1287,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 						upstreamModel = fallbackModel
 						compactModelFallbackRetried = true
 						SetOpsUpstreamModel(c, fallbackModel)
+						if linkedUpstream {
+							_ = resp.Body.Close() // releases this attempt's linked context
+						}
 						continue
 					}
 					if resp.Body != nil {
@@ -1269,7 +1325,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageOutputSizes = streamResult.imageOutputSizes
 			searchCount = streamResult.searchCount
 		} else {
+			var firstOutput *openAIFirstOutputObserver
+			if account.IsOpenAI() {
+				firstOutput = newOpenAIFirstOutputObserver(resp.Body, startTime)
+				resp.Body = firstOutput
+			}
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			firstTokenMs = firstOutput.FirstOutputMs()
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
@@ -1281,7 +1343,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 						upstreamModel = fallbackModel
 						compactModelFallbackRetried = true
 						SetOpsUpstreamModel(c, fallbackModel)
+						if linkedUpstream {
+							_ = resp.Body.Close() // releases this attempt's linked context
+						}
 						continue
+					}
+				}
+				if nonStreamResult != nil {
+					if outcome, outErr, ok := openAIHTTPErrorOutcome(c, account, err, nonStreamResult.usage); ok {
+						return partialResult(outcome, nonStreamResult.usage, firstTokenMs, nonStreamResult.responseID,
+							nonStreamResult.imageCount, nonStreamResult.searchCount, nonStreamResult.imageOutputSizes), outErr
 					}
 				}
 				return nil, err
@@ -1326,6 +1397,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
+		if account.IsOpenAI() {
+			forwardResult.ResponseOutcome = ResponseOutcomeWritten
+		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
 			forwardResult.ImageSize = imageSizeTier
@@ -1342,6 +1416,33 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		stampOpenAIResponsesUpstreamEndpoint(c, forwardResult)
 		return forwardResult, nil
 	}
+}
+
+// openAIHTTPErrorOutcome classifies an error after a covered GPT HTTP request
+// was accepted upstream. Delivery failures keep their outcome; other errors
+// are upstream failures. A failover error is only converted (and failover
+// stopped) when the supplier already reported nonzero usage, because usage
+// dedup is request_id+api_key_id with no attempt dimension: a retry could not
+// record this attempt's consumption. Local estimates never count as usage.
+// Compact-fallback and cyber paths keep the legacy nil result.
+func openAIHTTPErrorOutcome(c *gin.Context, account *Account, err error, usage *OpenAIUsage) (ResponseOutcome, error, bool) {
+	if account == nil || !account.IsOpenAI() || err == nil || GetOpsCyberPolicy(c) != nil {
+		return "", err, false
+	}
+	if deliveryErr, ok := AsOpenAIDeliveryError(err); ok {
+		return deliveryErr.Outcome, err, true
+	}
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) {
+		if !openAIUsageHasTokens(usage) {
+			return "", err, false
+		}
+		return ResponseOutcomeUpstreamFailed, &OpenAIUpstreamFailedWithUsageError{Failover: failoverErr}, true
+	}
+	if _, ok := asOpenAICompactFallbackSignal(err); ok {
+		return "", err, false
+	}
+	return ResponseOutcomeUpstreamFailed, err, true
 }
 
 func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
