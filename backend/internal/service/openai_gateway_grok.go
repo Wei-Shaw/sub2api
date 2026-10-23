@@ -2070,6 +2070,11 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.rateLimitGrok(ctx, account, grokSpendingLimitResetAt(account, time.Now()))
 			return
 		}
+		// A 403 that does not identify the account is a request failure. Cooling
+		// it as an entitlement denial lets one request quarantine the failover chain.
+		if isGrokUnrecognizedForbidden(statusCode, responseBody) {
+			return
+		}
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs rate-limit state for non-pool accounts.
