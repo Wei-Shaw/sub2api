@@ -219,6 +219,48 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.text()).not.toContain('x2')
   })
 
+  it('displays cache hit rate in token tooltip when cache read tokens are present', async () => {
+    const DataTableWithTokensStub = {
+      props: ['data'],
+      template: `
+        <div>
+          <div v-for="row in data" :key="row.request_id">
+            <slot name="cell-tokens" :row="row" />
+          </div>
+        </div>
+      `,
+    }
+    const row = {
+      ...baseImageRow,
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 6452,
+      output_tokens: 168,
+      cache_read_tokens: 93824,
+      cache_creation_tokens: 0,
+    }
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableWithTokensStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: false,
+        },
+      },
+    })
+
+    const tokenTrigger = wrapper.find('.group.relative')
+    await tokenTrigger.trigger('mouseenter')
+
+    expect(document.body.textContent).toContain('93.57%')
+  })
+
   it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
     const DataTableStreamStub = {
       props: ['data'],
