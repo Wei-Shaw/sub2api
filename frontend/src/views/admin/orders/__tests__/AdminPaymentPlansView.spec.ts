@@ -103,4 +103,40 @@ describe('AdminPaymentPlansView', () => {
     expect(wrapper.text()).toContain('¥599.00')
     expect(wrapper.text()).toContain('$10.00')
   })
+
+  it('refresh button reloads groups, payment config and plans together', async () => {
+    const wrapper = mount(AdminPaymentPlansView, {
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          DataTable: DataTableStub,
+          ConfirmDialog: true,
+          GroupBadge: true,
+          Icon: true,
+          PlanEditDialog: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    // 以「点击刷新」为基准取增量（mock 调用次数跨用例累计，不做绝对值断言）
+    const groupsBefore = getGroups.mock.calls.length
+    const configBefore = getConfig.mock.calls.length
+    const plansBefore = getPlans.mock.calls.length
+
+    // 页头刷新按钮：三个数据源都要重载，否则分组改名/停用后不 F5 就看不到
+    const refreshBtn = wrapper
+      .findAll('button')
+      .find((b) => b.attributes('title') === 'common.refresh')
+    expect(refreshBtn).toBeDefined()
+
+    await refreshBtn!.trigger('click')
+    await flushPromises()
+
+    expect(getGroups.mock.calls.length - groupsBefore).toBe(1)
+    expect(getConfig.mock.calls.length - configBefore).toBe(1)
+    expect(getPlans.mock.calls.length - plansBefore).toBe(1)
+  })
 })
