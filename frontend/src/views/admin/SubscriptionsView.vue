@@ -755,8 +755,36 @@
       :confirm-text="t('admin.subscriptions.resetQuota')"
       :cancel-text="t('common.cancel')"
       @confirm="confirmResetQuota"
-      @cancel="showResetQuotaConfirm = false"
-    />
+      @cancel="closeResetQuotaConfirm"
+    >
+      <fieldset class="space-y-2">
+        <legend class="text-sm font-medium text-gray-700 dark:text-gray-200">
+          {{ t('admin.subscriptions.bulk.resetWindows') }}
+        </legend>
+        <div class="flex flex-wrap gap-5">
+          <label
+            v-for="window in resetQuotaWindows"
+            :key="window"
+            class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+          >
+            <input
+              v-model="resetWindows[window]"
+              :name="`reset-${window}`"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :disabled="resettingQuota"
+            />
+            {{ t(`admin.subscriptions.${window}`) }}
+          </label>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.subscriptions.bulk.resetHint') }}
+        </p>
+      </fieldset>
+      <p v-if="resetQuotaError" role="alert" class="text-sm text-red-600 dark:text-red-400">
+        {{ resetQuotaError }}
+      </p>
+    </ConfirmDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -1089,6 +1117,10 @@ const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
+// 单订阅额度重置：日/周/月分项勾选（默认全选，保持既有行为；至少勾选一项才可提交）
+const resetQuotaWindows = ['daily', 'weekly', 'monthly'] as const
+const resetWindows = reactive({ daily: true, weekly: true, monthly: true })
+const resetQuotaError = ref('')
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
@@ -1471,17 +1503,37 @@ const confirmRestore = async () => {
 
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
+  // 每次打开都回到「全选」默认（与既有行为一致），并清掉上一次的校验提示
+  resetQuotaWindows.forEach((window) => {
+    resetWindows[window] = true
+  })
+  resetQuotaError.value = ''
   showResetQuotaConfirm.value = true
+}
+
+const closeResetQuotaConfirm = () => {
+  showResetQuotaConfirm.value = false
+  resetQuotaError.value = ''
 }
 
 const confirmResetQuota = async () => {
   if (!resettingSubscription.value) return
   if (resettingQuota.value) return
+  // 至少勾选一个窗口才可提交（后端同样拒绝全 false）
+  if (!resetQuotaWindows.some((window) => resetWindows[window])) {
+    resetQuotaError.value = t('admin.subscriptions.bulk.selectWindow')
+    return
+  }
+  resetQuotaError.value = ''
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, {
+      daily: resetWindows.daily,
+      weekly: resetWindows.weekly,
+      monthly: resetWindows.monthly,
+    })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
-    showResetQuotaConfirm.value = false
+    closeResetQuotaConfirm()
     resettingSubscription.value = null
     await loadSubscriptions()
   } catch (error: any) {
