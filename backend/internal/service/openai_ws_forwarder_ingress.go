@@ -583,7 +583,86 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		bridgeReplayInputExists := false
 		var bridgeAccountFailoverInput []json.RawMessage
 		bridgeAccountFailoverInputExists := false
+		// readNextBridgePayload 读取下一条客户端请求；客户端正常断开时 closed=true。
+		readNextBridgePayload := func(nextTurn int) (payload openAIWSClientPayload, closed bool, err error) {
+			nextClientMessage, readErr := readClientMessage()
+			if readErr != nil {
+				if isOpenAIWSSessionPreempted(ctx) {
+					return payload, false, errOpenAIWSSessionPreempted
+				}
+				if isOpenAIWSClientDisconnectError(readErr) {
+					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
+					logOpenAIWSModeInfo(
+						"ingress_ws_http_bridge_client_closed account_id=%d close_status=%s close_reason=%s",
+						account.ID,
+						closeStatus,
+						truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
+					)
+					return payload, true, nil
+				}
+				return payload, false, fmt.Errorf("read client websocket request: %w", readErr)
+			}
+			payload, err = parseClientPayload(nextTurn, nextClientMessage)
+			return payload, false, err
+		}
+		// upstreamTurn 只计实际发往上游的轮次：本地应答的预热不算，
+		// 预热后的首个真实请求仍按首轮处理（首轮换号、首输出前暂存）。
+		upstreamTurn := 0
 		for turn := 1; ; turn++ {
+			if isOpenAIWSHTTPBridgePrewarmPayload(currentBridgePayload.payloadRaw) {
+				// 预热不发上游、不记用量，只在本地应答，并把预热携带的 input 记入
+				// replay 历史，供下一轮 previous_response_id 续接。
+				// 预热 input 会随下一轮发往上游，入历史前须和普通后续轮一样过准入/内容审计
+				// （首帧已在握手时检查）。
+				if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
+					if err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel); err != nil {
+						return err
+					}
+				}
+				prewarmItems, prewarmItemsExist, extractErr := openAIWSExtractNormalizedInputSequence(
+					currentBridgePayload.payloadRaw,
+				)
+				if extractErr != nil {
+					return fmt.Errorf("build websocket http bridge prewarm input: %w", extractErr)
+				}
+				hasPrevious := currentBridgePayload.previousResponseID != ""
+				bridgeReplayInput, bridgeReplayInputExists = buildOpenAIWSReplayInputSequenceFromItems(
+					bridgeReplayInput, bridgeReplayInputExists, prewarmItems, prewarmItemsExist, hasPrevious,
+				)
+				bridgeAccountFailoverInput, bridgeAccountFailoverInputExists = buildOpenAIWSReplayInputSequenceFromItems(
+					bridgeAccountFailoverInput, bridgeAccountFailoverInputExists, prewarmItems, prewarmItemsExist, hasPrevious,
+				)
+				prewarmResponseID, prewarmEvents, buildErr := buildOpenAIWSHTTPBridgePrewarmEvents(
+					currentBridgePayload.originalModel,
+				)
+				if buildErr != nil {
+					return fmt.Errorf("build websocket http bridge prewarm response: %w", buildErr)
+				}
+				for _, event := range prewarmEvents {
+					if writeErr := writeClientMessage(event); writeErr != nil {
+						return fmt.Errorf("write websocket http bridge prewarm response: %w", writeErr)
+					}
+				}
+				logOpenAIWSModeInfo(
+					"ingress_ws_http_bridge_prewarm_local account_id=%d turn=%d response_id=%s input_items=%d previous_response_id_present=%v",
+					account.ID,
+					turn,
+					prewarmResponseID,
+					len(prewarmItems),
+					hasPrevious,
+				)
+				// 握手时占的并发槽要在这里释放（result 为 nil 时 AfterTurn 只放槽、不记用量），
+				// 否则预热后迟迟不发请求的空闲连接会一直占着账号槽。
+				if hooks != nil && hooks.AfterTurn != nil {
+					hooks.AfterTurn(turn, nil, nil)
+				}
+				nextPayload, closed, nextErr := readNextBridgePayload(turn + 1)
+				if nextErr != nil || closed {
+					return nextErr
+				}
+				currentBridgePayload = nextPayload
+				continue
+			}
 			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
 				if err := hooks.BeforeRequest(turn, currentBridgePayload.rawForHash, currentBridgePayload.originalModel); err != nil {
 					return err
@@ -676,6 +755,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
 				}
 			}
+			upstreamTurn++
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
 				ctx,
 				c,
@@ -688,7 +768,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				currentBridgePayload.imageSizeTier,
 				currentBridgePayload.imageInputSize,
 				grokCacheIdentity,
-				turn,
+				upstreamTurn,
 				writeClientMessage,
 			)
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
@@ -699,6 +779,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if bridgeErr != nil {
 				var failoverErr *UpstreamFailoverError
+				// 首帧是本地应答的预热时，预热后的首个真实请求（upstreamTurn==1）
+				// 也走这里：只能按当前轮重放，不能重放预热首帧。
 				if turn > 1 && errors.As(bridgeErr, &failoverErr) && failoverErr != nil {
 					retryPayload, retrySafe, retryPayloadErr := buildOpenAIWSCurrentTurnRetryPayload(
 						currentBridgePayload.accountIdentitySourceRaw,
@@ -746,26 +828,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				ttl := s.openAIWSResponseStickyTTL()
 				logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 			}
-			nextClientMessage, readErr := readClientMessage()
-			if readErr != nil {
-				if isOpenAIWSSessionPreempted(ctx) {
-					return errOpenAIWSSessionPreempted
-				}
-				if isOpenAIWSClientDisconnectError(readErr) {
-					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
-					logOpenAIWSModeInfo(
-						"ingress_ws_http_bridge_client_closed account_id=%d close_status=%s close_reason=%s",
-						account.ID,
-						closeStatus,
-						truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
-					)
-					return nil
-				}
-				return fmt.Errorf("read client websocket request: %w", readErr)
-			}
-			nextPayload, parseErr := parseClientPayload(turn+1, nextClientMessage)
-			if parseErr != nil {
-				return parseErr
+			nextPayload, closed, nextErr := readNextBridgePayload(turn + 1)
+			if nextErr != nil || closed {
+				return nextErr
 			}
 			currentBridgePayload = nextPayload
 		}
