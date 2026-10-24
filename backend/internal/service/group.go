@@ -84,8 +84,8 @@ type Group struct {
 
 	// 模型路由配置
 	// key: 模型匹配模式（支持 * 通配符，如 "claude-opus-*"）
-	// value: 优先账号 ID 列表
-	ModelRouting        map[string][]int64
+	// value: 优先池规则（合计并发 + 账号优先级/并发）
+	ModelRouting        domain.ModelRoutingMap
 	ModelRoutingEnabled bool
 
 	// MCP XML 协议注入开关（仅 antigravity 平台使用）
@@ -240,42 +240,28 @@ func IsGroupContextValid(group *Group) bool {
 	return true
 }
 
+// GetMatchingRoutingRule 根据请求模型获取匹配的模型路由规则（含 pattern）。
+func (g *Group) GetMatchingRoutingRule(requestedModel string) (domain.MatchedModelRoutingRule, bool) {
+	if g == nil || !g.ModelRoutingEnabled {
+		return domain.MatchedModelRoutingRule{}, false
+	}
+	return domain.MatchModelRouting(g.ModelRouting, requestedModel)
+}
+
 // GetRoutingAccountIDs 根据请求模型获取路由账号 ID 列表
 // 返回匹配的优先账号 ID 列表，如果没有匹配规则则返回 nil
 func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
-	if !g.ModelRoutingEnabled || len(g.ModelRouting) == 0 || requestedModel == "" {
+	matched, ok := g.GetMatchingRoutingRule(requestedModel)
+	if !ok {
 		return nil
 	}
-
-	// 1. 精确匹配优先
-	if accountIDs, ok := g.ModelRouting[requestedModel]; ok && len(accountIDs) > 0 {
-		return accountIDs
-	}
-
-	// 2. 通配符匹配（前缀匹配）
-	for pattern, accountIDs := range g.ModelRouting {
-		if matchModelPattern(pattern, requestedModel) && len(accountIDs) > 0 {
-			return accountIDs
-		}
-	}
-
-	return nil
+	return matched.Rule.AccountIDs()
 }
 
 // matchModelPattern 检查模型是否匹配模式
 // 支持 * 通配符，如 "claude-opus-*" 匹配 "claude-opus-4-20250514"
 func matchModelPattern(pattern, model string) bool {
-	if pattern == model {
-		return true
-	}
-
-	// 处理 * 通配符（仅支持末尾通配符）
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(model, prefix)
-	}
-
-	return false
+	return domain.MatchModelPattern(pattern, model)
 }
 
 // parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439），格式非法返回 (0,false)。

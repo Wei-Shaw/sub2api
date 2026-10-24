@@ -22,6 +22,7 @@ import (
 const (
 	openAIAccountScheduleLayerPreviousResponse = "previous_response_id"
 	openAIAccountScheduleLayerGuardianParent   = "guardian_parent"
+	openAIAccountScheduleLayerModelRouting     = "model_routing"
 	openAIAccountScheduleLayerSessionSticky    = "session_hash"
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
 	openAIAdvancedSchedulerSettingKey          = "openai_advanced_scheduler_enabled"
@@ -450,6 +451,19 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			decision.SelectedAccountType = selection.Account.Type
 			return selection, decision, nil
 		}
+	}
+
+	// Model routing preferred pool (priority + optional route concurrency) before sticky/LB.
+	if selection, hit, err := s.selectByModelRouting(ctx, req); err != nil {
+		return nil, decision, err
+	} else if hit {
+		decision.Layer = openAIAccountScheduleLayerModelRouting
+		decision.SelectedAccountID = selection.Account.ID
+		decision.SelectedAccountType = selection.Account.Type
+		if req.StickyAccountID > 0 && selection.Account.ID == req.StickyAccountID {
+			decision.StickySessionHit = true
+		}
+		return selection, decision, nil
 	}
 
 	if !req.StickyWeighted {
@@ -2373,6 +2387,38 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		legacySessionHash := sessionHash
 		if preserveGuardianParentBinding {
 			legacySessionHash = ""
+		}
+		{
+			var stickyAccountID int64
+			if legacySessionHash != "" && s.cache != nil {
+				if accountID, err := s.getStickySessionAccountID(ctx, groupID, legacySessionHash); err == nil && accountID > 0 {
+					stickyAccountID = accountID
+				}
+			}
+			legacyScheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
+			if selection, hit, err := legacyScheduler.selectByModelRouting(ctx, OpenAIAccountScheduleRequest{
+				GroupID:                 groupID,
+				Platform:                platform,
+				SessionHash:             legacySessionHash,
+				StickyAccountID:         stickyAccountID,
+				RequirePrivacySet:       s.openAIGroupRequiresPrivacySet(ctx, groupID),
+				RequestedModel:          requestedModel,
+				RequiredTransport:       requiredTransport,
+				RequiredCapability:      requiredCapability,
+				RequiredImageCapability: requiredImageCapability,
+				RequireCompact:          requireCompact,
+				ExcludedIDs:             excludedIDs,
+			}); err != nil {
+				return nil, decision, err
+			} else if hit {
+				decision.Layer = openAIAccountScheduleLayerModelRouting
+				decision.SelectedAccountID = selection.Account.ID
+				decision.SelectedAccountType = selection.Account.Type
+				if stickyAccountID > 0 && selection.Account.ID == stickyAccountID {
+					decision.StickySessionHit = true
+				}
+				return selection, decision, nil
+			}
 		}
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)

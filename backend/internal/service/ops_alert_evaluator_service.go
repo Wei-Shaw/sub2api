@@ -655,17 +655,17 @@ func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes i
 	if rule == nil {
 		return ""
 	}
-	scope := "overall"
+	scope := "全局"
 	if strings.TrimSpace(platform) != "" {
-		scope = fmt.Sprintf("platform=%s", strings.TrimSpace(platform))
+		scope = fmt.Sprintf("平台=%s", strings.TrimSpace(platform))
 	}
 	if groupID != nil && *groupID > 0 {
-		scope = fmt.Sprintf("%s group_id=%d", scope, *groupID)
+		scope = fmt.Sprintf("%s 分组=%d", scope, *groupID)
 	}
 	if windowMinutes <= 0 {
 		windowMinutes = 1
 	}
-	return fmt.Sprintf("%s %s %.2f (current %.2f) over last %dm (%s)",
+	return fmt.Sprintf("%s %s %.2f（当前 %.2f）近 %d 分钟（%s）",
 		strings.TrimSpace(rule.MetricType),
 		strings.TrimSpace(rule.Operator),
 		rule.Threshold,
@@ -707,7 +707,8 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 	// Apply/update rate limiter.
 	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
 
-	subject := fmt.Sprintf("[Ops Alert][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
+	locale := notificationEmailLocaleChinese
+	subject := fmt.Sprintf("[运维告警][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
 	body := buildOpsAlertEmailBody(rule, event)
 
 	anySent := false
@@ -722,6 +723,7 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		if s.emailService.notificationEmailService != nil {
 			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
 				Event:          NotificationEmailEventOpsAlert,
+				Locale:         locale,
 				RecipientEmail: addr,
 				RecipientName:  emailRecipientName(addr),
 				SourceType:     "ops_alert",
@@ -770,7 +772,7 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 		}
 	}
 	if event != nil {
-		variables["alert_status"] = strings.TrimSpace(event.Status)
+		variables["alert_status"] = localizeOpsAlertStatus(event.Status)
 		if event.MetricValue != nil {
 			variables["metric_value"] = fmt.Sprintf("%.2f", *event.MetricValue)
 		}
@@ -787,6 +789,22 @@ func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string
 	return variables
 }
 
+func localizeOpsAlertStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case OpsAlertStatusFiring:
+		return "告警中"
+	case OpsAlertStatusResolved:
+		return "已恢复"
+	case OpsAlertStatusManualResolved:
+		return "已手动恢复"
+	default:
+		if strings.TrimSpace(status) == "" {
+			return "-"
+		}
+		return strings.TrimSpace(status)
+	}
+}
+
 func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
 	if rule == nil || event == nil {
 		return ""
@@ -801,20 +819,20 @@ func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
 		threshold = fmt.Sprintf("%.2f", *event.ThresholdValue)
 	}
 	return fmt.Sprintf(`
-<h2>Ops Alert</h2>
-<p><b>Rule</b>: %s</p>
-<p><b>Severity</b>: %s</p>
-<p><b>Status</b>: %s</p>
-<p><b>Metric</b>: %s %s %s</p>
-<p><b>Fired at</b>: %s</p>
-<p><b>Description</b>: %s</p>
+<h2>运维告警</h2>
+<p><b>规则</b>：%s</p>
+<p><b>严重级别</b>：%s</p>
+<p><b>状态</b>：%s</p>
+<p><b>指标</b>：%s %s %s</p>
+<p><b>触发时间</b>：%s</p>
+<p><b>说明</b>：%s</p>
 `,
 		htmlEscape(rule.Name),
 		htmlEscape(rule.Severity),
-		htmlEscape(event.Status),
+		htmlEscape(localizeOpsAlertStatus(event.Status)),
 		htmlEscape(metric),
 		htmlEscape(rule.Operator),
-		htmlEscape(fmt.Sprintf("%s (threshold %s)", value, threshold)),
+		htmlEscape(fmt.Sprintf("%s（阈值 %s）", value, threshold)),
 		event.FiredAt.Format(time.RFC3339),
 		htmlEscape(event.Description),
 	)

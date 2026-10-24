@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -229,7 +230,7 @@ type CreateGroupRequest struct {
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting        map[string][]int64 `json:"model_routing"`
+	ModelRouting        domain.ModelRoutingMap `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
@@ -305,7 +306,7 @@ type UpdateGroupRequest struct {
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting        map[string][]int64 `json:"model_routing"`
+	ModelRouting        domain.ModelRoutingMap `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
@@ -665,6 +666,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	if err := validateModelRoutingMap(req.ModelRouting); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	req.ModelRouting = domain.NormalizeModelRoutingMap(req.ModelRouting)
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
@@ -810,6 +816,13 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 	if h.isSimpleMode() {
 		sanitizeUpdateGroupRequestForSimpleMode(&req)
+	}
+	if req.ModelRouting != nil {
+		if err := validateModelRoutingMap(req.ModelRouting); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		req.ModelRouting = domain.NormalizeModelRoutingMap(req.ModelRouting)
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
@@ -1153,4 +1166,38 @@ func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Sort order updated successfully"})
+}
+
+func validateModelRoutingMap(routing domain.ModelRoutingMap) error {
+	if len(routing) == 0 {
+		return nil
+	}
+	for pattern, rule := range routing {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("model_routing pattern must not be empty")
+		}
+		if rule.MaxConcurrency < 0 {
+			return fmt.Errorf("model_routing[%s].max_concurrency must be >= 0", pattern)
+		}
+		if len(rule.Accounts) == 0 {
+			return fmt.Errorf("model_routing[%s].accounts must not be empty", pattern)
+		}
+		seen := make(map[int64]struct{}, len(rule.Accounts))
+		for i, acc := range rule.Accounts {
+			if acc.ID <= 0 {
+				return fmt.Errorf("model_routing[%s].accounts[%d].id must be > 0", pattern, i)
+			}
+			if _, dup := seen[acc.ID]; dup {
+				return fmt.Errorf("model_routing[%s] has duplicate account id %d", pattern, acc.ID)
+			}
+			seen[acc.ID] = struct{}{}
+			if acc.Priority < 0 {
+				return fmt.Errorf("model_routing[%s].accounts[%d].priority must be >= 0", pattern, i)
+			}
+			if acc.Concurrency < 0 {
+				return fmt.Errorf("model_routing[%s].accounts[%d].concurrency must be >= 0", pattern, i)
+			}
+		}
+	}
+	return nil
 }

@@ -85,6 +85,33 @@ export default {
     copyCodeFailed: '失败'
   },
 
+  // Support tickets (user)
+  tickets: {
+    title: '工单中心',
+    description: '提交问题并与管理员沟通',
+    create: '新建工单',
+    searchPlaceholder: '搜索工单标题...',
+    empty: '暂无工单',
+    subject: '标题',
+    content: '内容',
+    reply: '发送回复',
+    replyPlaceholder: '输入回复内容...',
+    closeTicket: '关闭工单',
+    closedHint: '该工单已关闭',
+    createSuccess: '工单已创建',
+    fillRequired: '请填写标题和内容',
+    messagesCount: '{count} 条消息',
+    admin: '管理员',
+    me: '我',
+    statusAll: '全部状态',
+    status: {
+      open: '待处理',
+      waiting_admin: '等待管理员',
+      answered: '已回复',
+      closed: '已关闭'
+    }
+  },
+
   // Announcements Page
   announcements: {
     title: '公告',

@@ -1536,6 +1536,38 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
+// tryAcquireAccountSlotWithModelRoute acquires the account slot then optional model-route caps.
+func (s *OpenAIGatewayService) tryAcquireAccountSlotWithModelRoute(
+	ctx context.Context,
+	accountID int64,
+	accountConcurrency int,
+	groupID int64,
+	pattern string,
+	routeAccountMax int,
+	routeTotalMax int,
+) (*AcquireResult, error) {
+	result, err := s.tryAcquireAccountSlot(ctx, accountID, accountConcurrency)
+	if err != nil || result == nil || !result.Acquired {
+		return result, err
+	}
+	if s.concurrencyService == nil || (routeAccountMax <= 0 && routeTotalMax <= 0) || groupID <= 0 || pattern == "" {
+		return result, nil
+	}
+	routeResult, routeErr := s.concurrencyService.AcquireModelRouteSlot(ctx, groupID, pattern, accountID, routeAccountMax, routeTotalMax)
+	if routeErr != nil {
+		result.ReleaseFunc()
+		return nil, routeErr
+	}
+	if routeResult == nil || !routeResult.Acquired {
+		result.ReleaseFunc()
+		return &AcquireResult{Acquired: false}, nil
+	}
+	return &AcquireResult{
+		Acquired:    true,
+		ReleaseFunc: chainReleaseFuncs(result.ReleaseFunc, routeResult.ReleaseFunc),
+	}, nil
+}
+
 func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
 	fresh := s.resolveFreshSchedulableOpenAIAccountBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability)
 	if fresh == nil {
@@ -1739,6 +1771,7 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 	if err != nil {
 		return nil, err
 	}
+	hydrated = pinAccountAPIKey(hydrated)
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 		Account:     hydrated,
 		Acquired:    acquired,

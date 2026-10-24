@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -439,6 +440,10 @@ var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICo
 // ErrNoAvailableCompactAccounts indicates a legacy /responses/compact request
 // needs compact support but no compatible account is available.
 var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /responses/compact")
+
+func (s *OpenAIGatewayService) debugModelRoutingEnabled() bool {
+	return parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING"))
+}
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
@@ -1260,6 +1265,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 		}
 		return accessToken, "oauth", nil
 	case AccountTypeAPIKey:
+		account = pinAccountAPIKey(account)
 		if account.Platform == PlatformGrok {
 			apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 			if apiKey == "" {

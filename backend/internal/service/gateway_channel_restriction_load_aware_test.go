@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ type loadAwareRestrictionFixture struct {
 	concurrencyCache *mockConcurrencyCache
 }
 
-func newLoadAwareRestrictionFixture(t *testing.T, restrict bool, sessionBindings map[string]int64, routing map[string][]int64) *loadAwareRestrictionFixture {
+func newLoadAwareRestrictionFixture(t *testing.T, restrict bool, sessionBindings map[string]int64, routing domain.ModelRoutingMap) *loadAwareRestrictionFixture {
 	t.Helper()
 
 	groupID := int64(10)
@@ -134,7 +135,7 @@ func TestSelectAccountWithLoadAwareness_UpstreamRestrictionIgnoresStickyAccount(
 func TestSelectAccountWithLoadAwareness_UpstreamRestrictionFiltersRoutedAccounts(t *testing.T) {
 	t.Parallel()
 
-	f := newLoadAwareRestrictionFixture(t, true, nil, map[string][]int64{"claude-fable-5-1": {1}})
+	f := newLoadAwareRestrictionFixture(t, true, nil, domain.LegacyModelRouting(map[string][]int64{"claude-fable-5-1": {1}}))
 	result, err := f.svc.SelectAccountWithLoadAwareness(f.ctx, &f.groupID, "", "claude-fable-5-1", nil, "", 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -145,7 +146,7 @@ func TestSelectAccountWithLoadAwareness_UpstreamRestrictionFiltersRoutedAccounts
 func TestSelectAccountWithLoadAwareness_UpstreamRestrictionRoutedStickyAccountNotHonored(t *testing.T) {
 	t.Parallel()
 
-	f := newLoadAwareRestrictionFixture(t, true, map[string]int64{"sticky": 1}, map[string][]int64{"claude-fable-5-1": {1, 2}})
+	f := newLoadAwareRestrictionFixture(t, true, map[string]int64{"sticky": 1}, domain.LegacyModelRouting(map[string][]int64{"claude-fable-5-1": {1, 2}}))
 	result, err := f.svc.SelectAccountWithLoadAwareness(f.ctx, &f.groupID, "sticky", "claude-fable-5-1", nil, "", 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)

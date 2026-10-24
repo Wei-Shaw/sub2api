@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -252,9 +253,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// 获取模型路由配置（anthropic / openai 目标平台；composite 分组按目标平台判断）
 	var routingAccountIDs []int64
+	var matchedRouting domain.MatchedModelRoutingRule
+	var hasMatchedRouting bool
 	if group != nil && requestedModel != "" &&
 		modelRoutingAppliesToPlatform(platform, group.Platform) {
-		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
+		matchedRouting, hasMatchedRouting = group.GetMatchingRoutingRule(requestedModel)
+		if hasMatchedRouting {
+			routingAccountIDs = matchedRouting.Rule.AccountIDs()
+		}
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
 				group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), routingAccountIDs, shortSessionHash(sessionHash), stickyAccountID)
@@ -275,6 +281,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// ============ Layer 1: 模型路由优先选择（优先级高于粘性会话） ============
 	if len(routingAccountIDs) > 0 && s.concurrencyService != nil {
+		routingGroupID := int64(0)
+		if group != nil {
+			routingGroupID = group.ID
+		} else if groupID != nil {
+			routingGroupID = *groupID
+		}
+		if hasMatchedRouting && s.concurrencyService.ModelRouteRuleSaturated(ctx, routingGroupID, matchedRouting.Pattern, matchedRouting.Rule.MaxConcurrency) {
+			if s.debugModelRoutingEnabled() {
+				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] rule total saturated: group_id=%d model=%s pattern=%s max=%d",
+					routingGroupID, requestedModel, matchedRouting.Pattern, matchedRouting.Rule.MaxConcurrency)
+			}
+			logger.LegacyPrintf("service.gateway", "[ModelRouting] Rule concurrency saturated for model=%s, falling back to normal selection", requestedModel)
+		} else {
 		// 1. 过滤出路由列表中可调度的账号
 		var routingCandidates []*Account
 		var filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredChannelRestricted, filteredWindowCost int
@@ -326,6 +345,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if !s.isAccountSchedulableForRPM(ctx, account, false) {
 				continue
 			}
+			if hasMatchedRouting {
+				_, routeAccMax := modelRouteLimitsForAccount(matchedRouting.Rule, account.ID)
+				if s.concurrencyService.ModelRouteAccountSaturated(ctx, routingGroupID, matchedRouting.Pattern, account.ID, routeAccMax) {
+					continue
+				}
+			}
 			routingCandidates = append(routingCandidates, account)
 		}
 
@@ -340,6 +365,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		if len(routingCandidates) > 0 {
+			routePattern := ""
+			routeTotalMax := 0
+			if hasMatchedRouting {
+				routePattern = matchedRouting.Pattern
+				routeTotalMax = matchedRouting.Rule.MaxConcurrency
+			}
+
 			// 1.5. 在路由账号范围内检查粘性会话
 			if sessionHash != "" && stickyAccountID > 0 {
 				slog.Debug("sticky.layer1_5_checking",
@@ -353,6 +385,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
 						var stickyCacheMissReason string
+						stickyRouteAccMax := 0
+						if hasMatchedRouting {
+							_, stickyRouteAccMax = modelRouteLimitsForAccount(matchedRouting.Rule, stickyAccountID)
+						}
 
 						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isGatewayAccountProfitEligible(ctx, stickyAccount) &&
@@ -361,12 +397,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							!isChannelRestricted(stickyAccount) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
+							!s.concurrencyService.ModelRouteAccountSaturated(ctx, routingGroupID, routePattern, stickyAccountID, stickyRouteAccMax)
 
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+							result, err := s.tryAcquireAccountSlotWithModelRoute(ctx, stickyAccountID, stickyAccount.Concurrency, routingGroupID, routePattern, stickyRouteAccMax, routeTotalMax)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
@@ -387,25 +424,30 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							}
 
 							if stickyCacheMissReason == "" {
-								waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
-								if waitingCount < cfg.StickySessionMaxWaiting {
-									// 会话数量限制检查（等待计划也需要占用会话配额）
-									if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
-										stickyCacheMissReason = "session_limit"
-										// 会话限制已满，继续到负载感知选择
-									} else {
-										// 必须走 newSelectionResult 以 hydrate 账号凭证：
-										// 调度快照中的账号是精简版（OAuth token 等被剥离），
-										// 直接返回会导致后续转发缺少凭证而鉴权失败。
-										return s.newSelectionResult(ctx, stickyAccount, false, nil, &AccountWaitPlan{
-											AccountID:      stickyAccountID,
-											MaxConcurrency: stickyAccount.Concurrency,
-											Timeout:        cfg.StickySessionWaitTimeout,
-											MaxWaiting:     cfg.StickySessionMaxWaiting,
-										})
-									}
+								// 规则级并发打满或不支持 WaitPlan 占路由槽时，不排队
+								if stickyRouteAccMax > 0 || routeTotalMax > 0 {
+									stickyCacheMissReason = "model_route_concurrency"
 								} else {
-									stickyCacheMissReason = "wait_queue_full"
+									waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+									if waitingCount < cfg.StickySessionMaxWaiting {
+										// 会话数量限制检查（等待计划也需要占用会话配额）
+										if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+											stickyCacheMissReason = "session_limit"
+											// 会话限制已满，继续到负载感知选择
+										} else {
+											// 必须走 newSelectionResult 以 hydrate 账号凭证：
+											// 调度快照中的账号是精简版（OAuth token 等被剥离），
+											// 直接返回会导致后续转发缺少凭证而鉴权失败。
+											return s.newSelectionResult(ctx, stickyAccount, false, nil, &AccountWaitPlan{
+												AccountID:      stickyAccountID,
+												MaxConcurrency: stickyAccount.Concurrency,
+												Timeout:        cfg.StickySessionWaitTimeout,
+												MaxWaiting:     cfg.StickySessionMaxWaiting,
+											})
+										}
+									} else {
+										stickyCacheMissReason = "wait_queue_full"
+									}
 								}
 							}
 							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
@@ -456,11 +498,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 
 			if len(routingAvailable) > 0 {
-				// 排序：优先级 > 负载率 > 最后使用时间
+				// 排序：规则内优先级 > 负载率 > 最后使用时间
 				sort.SliceStable(routingAvailable, func(i, j int) bool {
 					a, b := routingAvailable[i], routingAvailable[j]
-					if a.account.Priority != b.account.Priority {
-						return a.account.Priority < b.account.Priority
+					aPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, a.account.ID)
+					bPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, b.account.ID)
+					if aPriority != bPriority {
+						return aPriority < bPriority
 					}
 					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -478,9 +522,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				})
 				shuffleWithinSortGroups(routingAvailable)
 
-				// 4. 尝试获取槽位
+				// 4. 尝试获取槽位（账号全局并发 + 模型路由并发）
 				for _, item := range routingAvailable {
-					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+					_, routeAccMax := modelRouteLimitsForAccount(matchedRouting.Rule, item.account.ID)
+					result, err := s.tryAcquireAccountSlotWithModelRoute(ctx, item.account.ID, item.account.Concurrency, routingGroupID, routePattern, routeAccMax, routeTotalMax)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
@@ -497,27 +542,41 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 				}
 
-				// 5. 所有路由账号槽位满，尝试返回等待计划（选择负载最低的）
-				// 遍历找到第一个满足会话限制的账号
-				for _, item := range routingAvailable {
-					if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
-						continue // 会话限制已满，尝试下一个
+				// 5. 所有路由账号槽位满：无模型路由并发上限时返回等待计划；
+				// 有规则/账号路由并发时直接回落普通池，避免 WaitPlan 只占账号槽未占路由槽。
+				if routeTotalMax <= 0 {
+					anyRouteAccountCap := false
+					if hasMatchedRouting {
+						for _, ref := range matchedRouting.Rule.Accounts {
+							if ref.Concurrency > 0 {
+								anyRouteAccountCap = true
+								break
+							}
+						}
 					}
-					if s.debugModelRoutingEnabled() {
-						logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+					if !anyRouteAccountCap {
+						for _, item := range routingAvailable {
+							if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
+								continue
+							}
+							if s.debugModelRoutingEnabled() {
+								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+							}
+							return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
+								AccountID:      item.account.ID,
+								MaxConcurrency: item.account.Concurrency,
+								Timeout:        cfg.StickySessionWaitTimeout,
+								MaxWaiting:     cfg.StickySessionMaxWaiting,
+							})
+						}
 					}
-					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
-						AccountID:      item.account.ID,
-						MaxConcurrency: item.account.Concurrency,
-						Timeout:        cfg.StickySessionWaitTimeout,
-						MaxWaiting:     cfg.StickySessionMaxWaiting,
-					})
 				}
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 			}
 			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
 			logger.LegacyPrintf("service.gateway", "[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
 		}
+		} // end else (!rule saturated)
 	}
 
 	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置时生效） ============
@@ -892,16 +951,16 @@ func modelRoutingAppliesToTargetPlatform(targetPlatform string) bool {
 	}
 }
 
-func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
+func (s *GatewayService) matchingRoutingRuleForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) (domain.MatchedModelRoutingRule, bool) {
 	if groupID == nil || requestedModel == "" || !modelRoutingAppliesToTargetPlatform(platform) {
-		return nil
+		return domain.MatchedModelRoutingRule{}, false
 	}
 	group, err := s.resolveGroupByID(ctx, *groupID)
 	if err != nil || group == nil {
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] resolve group failed: group_id=%v model=%s platform=%s err=%v", derefGroupID(groupID), requestedModel, platform, err)
 		}
-		return nil
+		return domain.MatchedModelRoutingRule{}, false
 	}
 	// 路由规则适用于解析到 Anthropic 或 OpenAI 的请求；composite 分组在其模型解析到
 	// 上述平台后同样可以复用这些规则。
@@ -909,14 +968,22 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] skip: group platform not eligible: group_id=%d group_platform=%s target_platform=%s model=%s", group.ID, group.Platform, platform, requestedModel)
 		}
-		return nil
+		return domain.MatchedModelRoutingRule{}, false
 	}
-	ids := group.GetRoutingAccountIDs(requestedModel)
+	matched, ok := group.GetMatchingRoutingRule(requestedModel)
 	if s.debugModelRoutingEnabled() {
 		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
-			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
+			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), matched.Rule.AccountIDs())
 	}
-	return ids
+	return matched, ok
+}
+
+func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
+	matched, ok := s.matchingRoutingRuleForRequest(ctx, groupID, requestedModel, platform)
+	if !ok {
+		return nil
+	}
+	return matched.Rule.AccountIDs()
 }
 
 func (s *GatewayService) resolveGatewayGroup(ctx context.Context, groupID *int64) (*Group, *int64, error) {
@@ -1195,6 +1262,49 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+}
+
+// tryAcquireAccountSlotWithModelRoute acquires the account slot then optional model-route caps.
+// On model-route failure the account slot is released and Acquired=false is returned.
+func (s *GatewayService) tryAcquireAccountSlotWithModelRoute(
+	ctx context.Context,
+	accountID int64,
+	accountConcurrency int,
+	groupID int64,
+	pattern string,
+	routeAccountMax int,
+	routeTotalMax int,
+) (*AcquireResult, error) {
+	result, err := s.tryAcquireAccountSlot(ctx, accountID, accountConcurrency)
+	if err != nil || result == nil || !result.Acquired {
+		return result, err
+	}
+	if s.concurrencyService == nil || (routeAccountMax <= 0 && routeTotalMax <= 0) || groupID <= 0 || pattern == "" {
+		return result, nil
+	}
+	routeResult, routeErr := s.concurrencyService.AcquireModelRouteSlot(ctx, groupID, pattern, accountID, routeAccountMax, routeTotalMax)
+	if routeErr != nil {
+		result.ReleaseFunc()
+		return nil, routeErr
+	}
+	if routeResult == nil || !routeResult.Acquired {
+		result.ReleaseFunc()
+		return &AcquireResult{Acquired: false}, nil
+	}
+	return &AcquireResult{
+		Acquired:    true,
+		ReleaseFunc: chainReleaseFuncs(result.ReleaseFunc, routeResult.ReleaseFunc),
+	}, nil
+}
+
+func modelRouteLimitsForAccount(rule domain.ModelRoutingRule, accountID int64) (priority int, accountMax int) {
+	priority = domain.DefaultModelRoutingAccountPriority
+	for _, acc := range rule.Accounts {
+		if acc.ID == accountID {
+			return acc.Priority, acc.Concurrency
+		}
+	}
+	return priority, 0
 }
 
 type usageLogWindowStatsBatchProvider interface {
@@ -1589,6 +1699,7 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	if err != nil {
 		return nil, err
 	}
+	hydrated = pinAccountAPIKey(hydrated)
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 		Account:     hydrated,
 		Acquired:    acquired,
@@ -1903,7 +2014,11 @@ func shuffleWithinPriority(accounts []*Account) {
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, platform string) (*Account, error) {
 	preferOAuth := platform == PlatformGemini
-	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
+	matchedRouting, hasMatchedRouting := s.matchingRoutingRuleForRequest(ctx, groupID, requestedModel, platform)
+	var routingAccountIDs []int64
+	if hasMatchedRouting {
+		routingAccountIDs = matchedRouting.Rule.AccountIDs()
+	}
 
 	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
@@ -1917,6 +2032,14 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	// ============ Model Routing (legacy path): apply before sticky session ============
 	// When load-awareness is disabled (e.g. concurrency service not configured), we still honor model routing
 	// so switching model can switch upstream account within the same sticky session.
+	if len(routingAccountIDs) > 0 {
+		routingGroupID := derefGroupID(groupID)
+		if hasMatchedRouting && s.concurrencyService != nil &&
+			s.concurrencyService.ModelRouteRuleSaturated(ctx, routingGroupID, matchedRouting.Pattern, matchedRouting.Rule.MaxConcurrency) {
+			logger.LegacyPrintf("service.gateway", "[ModelRouting] Rule concurrency saturated for model=%s, falling back to normal selection", requestedModel)
+			routingAccountIDs = nil
+		}
+	}
 	if len(routingAccountIDs) > 0 {
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
@@ -2006,13 +2129,21 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 			}
+			if hasMatchedRouting && s.concurrencyService != nil {
+				_, routeAccMax := modelRouteLimitsForAccount(matchedRouting.Rule, acc.ID)
+				if s.concurrencyService.ModelRouteAccountSaturated(ctx, derefGroupID(groupID), matchedRouting.Pattern, acc.ID, routeAccMax) {
+					continue
+				}
+			}
 			if selected == nil {
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			accPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, acc.ID)
+			selectedPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, selected.ID)
+			if accPriority < selectedPriority {
 				selected = acc
-			} else if acc.Priority == selected.Priority {
+			} else if accPriority == selectedPriority {
 				switch {
 				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 					selected = acc
@@ -2169,7 +2300,11 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 // 查询原生平台账户 + 启用 mixed_scheduling 的 antigravity 账户
 func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, nativePlatform string) (*Account, error) {
 	preferOAuth := nativePlatform == PlatformGemini
-	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
+	matchedRouting, hasMatchedRouting := s.matchingRoutingRuleForRequest(ctx, groupID, requestedModel, nativePlatform)
+	var routingAccountIDs []int64
+	if hasMatchedRouting {
+		routingAccountIDs = matchedRouting.Rule.AccountIDs()
+	}
 
 	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
@@ -2181,6 +2316,13 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	accountsLoaded := false
 
 	// ============ Model Routing (legacy path): apply before sticky session ============
+	if len(routingAccountIDs) > 0 {
+		if hasMatchedRouting && s.concurrencyService != nil &&
+			s.concurrencyService.ModelRouteRuleSaturated(ctx, derefGroupID(groupID), matchedRouting.Pattern, matchedRouting.Rule.MaxConcurrency) {
+			logger.LegacyPrintf("service.gateway", "[ModelRouting] Rule concurrency saturated for model=%s, falling back to normal selection", requestedModel)
+			routingAccountIDs = nil
+		}
+	}
 	if len(routingAccountIDs) > 0 {
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
@@ -2272,13 +2414,21 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 			}
+			if hasMatchedRouting && s.concurrencyService != nil {
+				_, routeAccMax := modelRouteLimitsForAccount(matchedRouting.Rule, acc.ID)
+				if s.concurrencyService.ModelRouteAccountSaturated(ctx, derefGroupID(groupID), matchedRouting.Pattern, acc.ID, routeAccMax) {
+					continue
+				}
+			}
 			if selected == nil {
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			accPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, acc.ID)
+			selectedPriority, _ := modelRouteLimitsForAccount(matchedRouting.Rule, selected.ID)
+			if accPriority < selectedPriority {
 				selected = acc
-			} else if acc.Priority == selected.Priority {
+			} else if accPriority == selectedPriority {
 				switch {
 				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 					selected = acc

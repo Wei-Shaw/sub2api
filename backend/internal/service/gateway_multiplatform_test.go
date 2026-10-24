@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"errors"
 	"testing"
@@ -847,9 +848,9 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedStickySessionCle
 				Status:              StatusActive,
 				Hydrated:            true,
 				ModelRoutingEnabled: true,
-				ModelRouting: map[string][]int64{
+				ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 					requestedModel: {1, 2},
-				},
+				}),
 			},
 		},
 	}
@@ -898,9 +899,9 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedStickySessionHit
 				Status:              StatusActive,
 				Hydrated:            true,
 				ModelRoutingEnabled: true,
-				ModelRouting: map[string][]int64{
+				ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 					requestedModel: {1, 2},
-				},
+				}),
 			},
 		},
 	}
@@ -945,9 +946,9 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedFallbackToNormal
 				Status:              StatusActive,
 				Hydrated:            true,
 				ModelRoutingEnabled: true,
-				ModelRouting: map[string][]int64{
+				ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 					requestedModel: {99},
-				},
+				}),
 			},
 		},
 	}
@@ -1472,9 +1473,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {2},
-					},
+					}),
 				},
 			},
 		}
@@ -1519,9 +1520,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {2},
-					},
+					}),
 				},
 			},
 		}
@@ -1564,9 +1565,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {99},
-					},
+					}),
 				},
 			},
 		}
@@ -1609,9 +1610,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {2},
-					},
+					}),
 				},
 			},
 		}
@@ -1680,9 +1681,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {1, 2, 3, 4, 5, 6, 7},
-					},
+					}),
 				},
 			},
 		}
@@ -1882,9 +1883,9 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						requestedModel: {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2287,10 +2288,10 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-a": {1},
 						"claude-b": {2},
-					},
+					}),
 				},
 			},
 		}
@@ -2683,9 +2684,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2741,9 +2742,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2795,9 +2796,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2848,9 +2849,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2905,9 +2906,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -2963,9 +2964,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2},
-					},
+					}),
 				},
 			},
 		}
@@ -3135,9 +3136,9 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 					Status:              StatusActive,
 					Hydrated:            true,
 					ModelRoutingEnabled: true,
-					ModelRouting: map[string][]int64{
+					ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 						"claude-3-5-sonnet-20241022": {1, 2, 3, 4, 5, 6},
-					},
+					}),
 				},
 			},
 		}
@@ -3567,9 +3568,9 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedOpenAIGroup(t *t
 				Status:              StatusActive,
 				Hydrated:            true,
 				ModelRoutingEnabled: true,
-				ModelRouting: map[string][]int64{
+				ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 					requestedModel: {2},
-				},
+				}),
 			},
 		},
 	}
