@@ -94,6 +94,7 @@ const (
 	openAI403CooldownMinutesDefault = 10
 	openAI403DisableThreshold       = 3
 	openAI403CounterWindowMinutes   = 180
+	default402CooldownMinutes       = 30
 )
 
 // NewRateLimitService 创建RateLimitService实例
@@ -315,6 +316,9 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 			s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return ErrorPolicyTempUnscheduled
 		}
+		if statusCode == http.StatusPaymentRequired && s.handle402PaymentRequired(ctx, account, extractUpstreamErrorMessage(responseBody), responseBody) {
+			return ErrorPolicyTempUnscheduled
+		}
 		return ErrorPolicySkipped
 	}
 	// The global overload cooldown is the default for ordinary accounts. Explicit
@@ -323,6 +327,10 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		return ErrorPolicyMatched
 	}
 	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
+		return ErrorPolicyTempUnscheduled
+	}
+	if statusCode == http.StatusPaymentRequired && s.shouldUse402TempUnschedulable(account) &&
+		s.handle402PaymentRequired(ctx, account, extractUpstreamErrorMessage(responseBody), responseBody) {
 		return ErrorPolicyTempUnscheduled
 	}
 	return ErrorPolicyNone
@@ -343,6 +351,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if tempUnschedRulesApply(account, statusCode, responseBody, tempUnschedulableModel(ctx, nil)) &&
 			s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
+		}
+		if statusCode == http.StatusPaymentRequired {
+			return s.handle402PaymentRequired(ctx, account, extractUpstreamErrorMessage(responseBody), responseBody)
 		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
@@ -552,6 +563,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			msg := "Workspace deactivated (402): workspace has been deactivated"
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
+			break
+		}
+		// 若启用了 402 临时不可调度冷却（或为池模式账号），走自动临时不可调度
+		if s.shouldUse402TempUnschedulable(account) {
+			shouldDisable = s.handle402PaymentRequired(ctx, account, upstreamMsg, responseBody)
 			break
 		}
 		// 支付要求：余额不足或计费问题，停止调度
@@ -967,6 +983,95 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 		return 5 * time.Minute
 	}
 	return s.geminiQuotaService.CooldownForAccount(ctx, account)
+}
+
+func (s *RateLimitService) paymentRequired402CooldownDuration() time.Duration {
+	minutes := default402CooldownMinutes
+	if s != nil && s.cfg != nil && s.cfg.RateLimit.PaymentRequired402CooldownMinutes > 0 {
+		minutes = s.cfg.RateLimit.PaymentRequired402CooldownMinutes
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+func (s *RateLimitService) shouldUse402TempUnschedulable(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsPoolMode() {
+		return true
+	}
+	return s != nil && s.cfg != nil && s.cfg.RateLimit.PaymentRequired402CooldownMinutes > 0
+}
+
+func (s *RateLimitService) handle402PaymentRequired(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsCline() {
+		_ = s.handleClineError(ctx, account, http.StatusPaymentRequired, responseBody, upstreamMsg)
+		return false
+	}
+	if account.IsCNProvider() || account.IsOpenCodeZen() || account.IsCommandCode() {
+		s.handleCNProviderInsufficientBalance(ctx, account, upstreamMsg)
+		return true
+	}
+	if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
+		msg := "Workspace deactivated (402): workspace has been deactivated"
+		s.handleAuthError(ctx, account, msg)
+		return true
+	}
+
+	cooldown := s.paymentRequired402CooldownDuration()
+	now := time.Now()
+	until := now.Add(cooldown)
+
+	errMsg := truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes)
+	if errMsg == "" && upstreamMsg != "" {
+		errMsg = upstreamMsg
+	}
+
+	state := &TempUnschedState{
+		UntilUnix:       until.Unix(),
+		TriggeredAtUnix: now.Unix(),
+		StatusCode:      http.StatusPaymentRequired,
+		MatchedKeyword:  "payment_required",
+		RuleIndex:       -1,
+		ErrorMessage:    errMsg,
+		Scope:           TempUnschedScopeAccount,
+	}
+
+	reason := ""
+	if raw, err := json.Marshal(state); err == nil {
+		reason = string(raw)
+	}
+	if reason == "" {
+		reason = fmt.Sprintf("Payment required (402): %s", upstreamMsg)
+	}
+
+	account.TempUnschedulableUntil = &until
+	account.TempUnschedulableReason = reason
+	s.notifyAccountSchedulingBlocked(account, until, "payment_required_402")
+
+	if s.accountRepo != nil {
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+			slog.Warn("payment_required_402_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		}
+	}
+
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("payment_required_402_cache_set_failed", "account_id", account.ID, "error", err)
+		}
+	}
+
+	slog.Warn("account_temp_unschedulable_402",
+		"account_id", account.ID,
+		"platform", account.Platform,
+		"until", until.UTC(),
+		"cooldown_minutes", int(cooldown.Minutes()),
+		"error", upstreamMsg,
+	)
+	return true
 }
 
 // handleAuthError 处理认证类错误(401/403)，停止账号调度
