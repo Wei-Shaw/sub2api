@@ -520,6 +520,53 @@ export function isPersistableImageUrl(value: string): boolean {
   return Boolean(value) && !value.startsWith('data:')
 }
 
+/**
+ * 把跨域的图片直链改写成**同源**地址，用来绕过 CORS。
+ *
+ * 【为什么需要】图片存在 `img.chenshuapi.com`，和页面（`chenshuapi.com`）不同源。
+ * 那个域名没有发 `Access-Control-Allow-Origin`，所以页面里 `fetch()` 那张图会被拦，
+ * 拿不到字节 → 读不到像素 → **canvas 加水印做不了**（2026-10-24 主人报的就是这个）。
+ *
+ * 解法：Caddy 里加了一条反代 `chenshuapi.com/img-proxy/*` → `img.chenshuapi.com/*`。
+ * 从同源地址取字节就不受 CORS 限制，canvas 也不会被污染。
+ *
+ * 注意：只处理 http(s) 直链；`data:` / `blob:` 开头的原样返回，本来就不跨域。
+ */
+export function toSameOriginImageUrl(url: string): string {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url
+  try {
+    const parsed = new URL(url, window.location.origin)
+    // 本来就同源（比如以后图片改到主域名下），不用改写。
+    if (parsed.origin === window.location.origin) return url
+    return `/img-proxy${parsed.pathname}${parsed.search}`
+  } catch {
+    return url
+  }
+}
+
+/**
+ * 取一张图的字节。
+ *
+ * 顺序：**先走同源反代**（能读到像素，加水印靠这个）→ 再试直连（万一以后图片域名配了 CORS）。
+ * 两边都失败就抛错，调用方去走「直接下载」的兜底。
+ */
+export async function fetchImageBlob(url: string): Promise<Blob> {
+  const proxied = toSameOriginImageUrl(url)
+  if (proxied !== url) {
+    try {
+      const viaProxy = await fetch(proxied)
+      if (viaProxy.ok) return await viaProxy.blob()
+    } catch {
+      // 反代不可用（比如还没配），继续试直连
+    }
+  }
+  const direct = await fetch(url)
+  if (!direct.ok) {
+    throw new AIImageError('download failed', String(direct.status), direct.status)
+  }
+  return direct.blob()
+}
+
 /** 把返回项转成可下载的 Blob。 */
 export async function toBlob(image: AIImageGenerationResultImage): Promise<Blob> {
   if (image.b64_json) {
@@ -528,9 +575,7 @@ export async function toBlob(image: AIImageGenerationResultImage): Promise<Blob>
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
     return new Blob([bytes], { type: 'image/png' })
   }
-  const response = await fetch(image.url as string)
-  if (!response.ok) throw new AIImageError('download failed', String(response.status), response.status)
-  return response.blob()
+  return fetchImageBlob(image.url as string)
 }
 
 export interface KeyValidationResult {

@@ -130,6 +130,8 @@ export default {
       noResult: 'None of these images produced a layout. Try different images, or check the vision model.',
       oneFailed: 'One image failed and was skipped (the rest continued): {reason}',
       step1: 'Step 1: add the competitor bestseller images, then dissect them',
+      // Bestseller clone also needs a vision-model picker: the default gemini-3.5-flash sometimes fails.
+      visionModelHint: 'If the default model cannot read the images, switch to another one (shared with "Image set").',
       step2: 'Step 2: add a photo of your own product',
       // Both images go to the vision model together: the reference fixes the layout,
       // this photo fixes what the copy should say and which product gets drawn.
@@ -166,7 +168,7 @@ export default {
       download: 'Download with watermark',
       done: 'Watermarked and downloading.',
       corsBlocked:
-        'The image server does not allow this page to read the pixels, so the watermark cannot be applied in the browser. The original image was downloaded instead. To restore "Download with watermark", add a CORS rule for img.chenshuapi.com.',
+        'Could not read the image this time (the image relay may be briefly unavailable), so the original was downloaded instead without a watermark. Clicking again in a moment usually works.',
       hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image. Leave the text empty and no watermark is applied \u2014 the button is hidden.',
       note:
         'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
@@ -283,6 +285,8 @@ export default {
       // Script card editing (owner: "generate what I edited, not the original template").
       // Title of the script list inside each feature panel (above "this feature's results").
       cardsTitle: 'Scripts from this run',
+      // Generation order preview (owner asked to know the order up front, 2026-10-24).
+      planTitle: 'Generation order for this {count}-card set (shown before you generate):',
       editedTag: 'Edited',
       saveEdit: 'Save changes',
       generateThis: 'Generate just this one',

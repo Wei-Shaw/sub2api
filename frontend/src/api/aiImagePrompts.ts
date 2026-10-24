@@ -51,7 +51,11 @@ export const PRODUCT_LOCK =
 export const OZON_SYSTEM_PROMPT = `Ozon 商品主图，3:4 竖版。
 - 画面文字一律用俄语，不出现中文
 - 文字和图形配色不超过 3 种
+- **配色跟着商品走**：文字、图标、色块、背景元素都取商品主体的主色调（同色系的深浅变化），
+  不要用和商品无关的颜色。例：紫色芭蕾包 → 标题和图标都用紫，背景也带一点淡紫
 - 商品保持原样，只换背景、排版和文字
+- 一张图只画一个画面：一件商品、一个视角。禁止拼图、三联图、九宫格、多视角拼贴；
+  只有「对比图」才允许左右各一件，而且必须是同一件商品
 - 不要添加原图没有的数字和尺寸
 `
 
@@ -71,7 +75,9 @@ export const OZON_SYSTEM_PROMPT = `Ozon 商品主图，3:4 竖版。
 export const OZON_SYSTEM_PROMPT_EN = `Ozon product main image, 3:4 portrait.
 - Every piece of text rendered on the image must be Russian. Never render Chinese.
 - Use at most 3 colors for text and graphic elements.
+- **Derive the palette from the product**: the headline, icons, colour blocks and background elements should all use the product's own dominant hue (different shades of the same family); never use colours unrelated to the product. Example: a purple ballet bag gets purple type and icons, and a faintly purple-tinted background.
 - Keep the product exactly as in the reference; only change background, layout and text.
+- One frame, one picture: a single product and a single viewpoint. Never make a collage, triptych, nine-grid or multi-view montage; only the comparison card may show two items side by side, and they must be the same product.
 - Do not add numbers or dimensions that are not present in the reference image.
 `
 
@@ -219,8 +225,16 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
   const sp1 = (ctx.sp1 || '').trim() || 'feature 1'
   const sp2 = (ctx.sp2 || '').trim() || 'feature 2'
   const sp3 = (ctx.sp3 || '').trim() || 'feature 3'
-  const pain = (ctx.pain || '').trim() || 'daily hassle'
-  const diff = (ctx.diff || '').trim() || 'better material'
+  /**
+   * ⚠️ `ctx.pain` 和 `ctx.diff` **故意不再拼进任何一张卡片**。
+   *
+   * 原因：这两个字段是**中文**（界面里填「用户痛点」「差异化」），
+   * 一旦拼进提示词正文，模型就会把汉字当成「要画上去的内容」——
+   * 2026-10-19 那次「图上出现一整段中文」就是这么来的。
+   *
+   * 现在第 1 张（主图）和第 2 张（对比图）的文案都交给模型按商品自己写俄语，
+   * 不再把中文原文喂进去。表单字段保留着（用户仍可填），只是不参与出图。
+   */
   const sceneZh = (ctx.sceneZh || '').trim() || '真实生活场景'
   const sceneEn = (ctx.sceneEn || '').trim() || DEFAULT_SCENE[0]
 
@@ -241,57 +255,103 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     /** 只有尺寸规格图要写数字，需要临时覆盖「不要添加原图没有的数字」那条规范。 */
     allowDimensions?: boolean
   }> = [
+    /**
+     * 【2026-10-24 主人重排整套顺序 + 逐张改要求】
+     *
+     * 新的 9 张顺序（也就是出图顺序）：
+     *   1. 主图（商品原样 + 俄语卖点大字）
+     *   2. 痛点对比（**同一件商品**的两种状态）
+     *   3. 模特使用场景
+     *   4. 生活场景
+     *   5. 细节①材质纹理
+     *   6. 细节②结构部位
+     *   7. 细节③功能效果（防水/防油污，一擦即净）
+     *   8. 尺寸规格图（**要有背景**、只许一件商品）
+     *   9. 联系卖家提醒图（只留一张，只表达「有问题先联系卖家」）
+     *
+     * 和上一版的差别：
+     *   - 第 1 张从「卖点+痛点合成」改成**主图**（商品不许改，空白处放大字俄语）；
+     *     痛点对比回到独立的一张，因为主人要求「对比必须是同一件商品」，
+     *     混在合成图里模型很容易拿别的东西当「普通款」。
+     *   - 原来第 8 张「售后保障图」删掉，只保留第 9 张联系卖家图，且大幅简化。
+     *   - 三张细节图明确分工：角度不同、部位不同、无 logo、材质观感一致，第三张必须做出功能效果。
+     */
     {
-      /**
-       * 【2026-10-19 主人要求】「核心痛点和痛点对比合为一张图片」。
-       *
-       * 原来是分开的两张：第 1 张「核心卖点信息图」、第 4 张「痛点对比图」。
-       * 合成一张之后整套从 10 张变 9 张，省一张的钱，而且「先戳痛点、再给卖点」
-       * 本来就是同一块信息，拆两张反而重复。
-       *
-       * 版面 = 三段式：上 18% 痛点头条 / 中 50% 左右对比 / 下 32% 三组卖点。
-       */
-      key: '01_value_pain',
-      title: '第 1 张 · 核心卖点 + 痛点对比（合成一张）',
+      key: '01_main_image',
+      title: '第 1 张 · 主图（商品原样 + 俄语卖点大字）',
       bodyZh:
-        `第1张：核心卖点与痛点对比合成图。产品：${product}。` +
-        '镜头：平视，画面竖着分三段，从上到下依次是「痛点头条 → 左右对比 → 三组卖点」。' +
-        '背景：整体浅色干净；右侧明亮通透，左侧偏暗偏冷。' +
-        '光线：右侧明亮自然光，左侧低对比阴天感。' +
-        '构图：① 顶部 18% 放一行痛点头条，字号是整张最大的；' +
-        '② 中部 50% 左右分屏，中间一条细分隔线；左侧 45% 画「普通款」，偏暗偏闷、背景杂乱；' +
-        '右侧 55% 画「我们的产品」，明亮清爽，产品占右侧区域的 70%；' +
-        '③ 底部 32% 三组卖点横排，每组一个小图标加一句短俄语，均匀分布。' +
-        `文案：顶部俄语主文案是「Ты тоже ${pain}?」；右侧角标补一句俄语差异化：${diff}；` +
-        `底部三组俄语卖点：${sp1} / ${sp2} / ${sp3}，主推 ${sp1}。` +
-        '禁忌：不要写成长段说明文字；两侧产品不要画得一模一样；卖点不要超过三组的范围。',
+        `第1张：主图。产品：${product}。` +
+        '镜头：平视略高机位，商品完整居中偏右，占画面 55-62%。' +
+        '**商品本身一个像素都不许改**：形状、颜色、材质、图案、配件、比例全部保持参考图原样。' +
+        '背景：干净的浅色实景底（浅木桌面或浅灰布面），有柔和的空间层次，不要纯白、不要渐变纸。' +
+        '光线：左前方柔和窗光，右侧一点补光，商品表面有自然高光，投影淡淡落在右下方。' +
+        '文字排版（本张重点：**字体要大，要占满空白处**）：' +
+        '① 左上方 30% 区域：2-3 行大号俄语主标题，字号是整张最大的，粗体，颜色取商品同色系的深色；' +
+        '② 主标题下面：一行手写体俄语副标题，字号约为主标题的 45%；' +
+        '③ 左侧中部竖排三组「实心圆形图标 + 两行俄语」，图标直径约画布宽度的 7%，' +
+        `文字字号不小于画布宽度的 3.5%，内容分别是：${sp1} / ${sp2} / ${sp3}；` +
+        '④ 左下角一个圆形局部放大镜（直径约画布宽度 22%），里面放商品最值得说的一处细节，配一行俄语标注；' +
+        '⑤ 底部一条圆角胶囊条，一行俄语短句，字号中等。' +
+        '硬规则：所有文字必须真的写出来、必须清晰可读、必须是俄语；' +
+        '所有文字都排在**空白处**，不许压在商品主体上；画面里只能出现**一件商品**。' +
+        '禁忌：不要中文；不要把文字排得很小；不要纯白背景；不要第二件商品；不要边框和台标。',
       bodyEn:
-        `Card 1: combined selling points and pain comparison. Product: ${product}. ` +
-        'Camera: eye level; the frame is split vertically into three bands — pain headline, then the left/right comparison, then three selling points. ' +
-        'Background: clean and pale overall; the right side bright and airy, the left side dim and cool. ' +
-        'Lighting: bright natural light on the right, a low-contrast overcast feel on the left. ' +
-        'Composition: (1) the top 18% carries a single pain headline in the largest type on the card; ' +
-        '(2) the middle 50% is split left/right by a thin divider: the left 45% shows "the ordinary version", dim, dull and cluttered; ' +
-        'the right 55% shows "our product", bright and fresh, with the product taking 70% of that side; ' +
-        '(3) the bottom 32% is a row of three selling points, each with one small icon and one short Russian phrase, evenly spaced. ' +
-        `Text: the Russian headline at the top is "Ты тоже ${pain}?"; one Russian differentiator badge sits on the right side: ${diff}; ` +
-        `the three Russian selling points at the bottom are ${sp1} / ${sp2} / ${sp3}, leading with ${sp1}. ` +
-        'Forbidden: paragraphs of explanation; the two sides looking identical; more than three selling points.',
+        `Card 1: main image. Product: ${product}. ` +
+        'Camera: eye level, slightly high. The product is complete, centred slightly right, occupying 55-62% of the frame. ' +
+        '**Do not change the product itself at all**: shape, colour, material, pattern, accessories and proportions must all match the reference exactly. ' +
+        'Background: a clean pale real-world surface (light wood or light grey cloth) with soft spatial depth; not pure white, not a gradient backdrop. ' +
+        'Lighting: soft window light from the front-left, a little fill from the right, natural highlights on the product, a faint shadow falling to the lower right. ' +
+        'Typography (the point of this card: **large type, filling the empty areas**): ' +
+        '(1) upper-left 30% area: a 2-3 line large Russian headline, the biggest type on the card, bold, in a dark tone from the product palette; ' +
+        '(2) below it: one line of handwritten-style Russian subtitle at about 45% of the headline size; ' +
+        '(3) mid-left, three stacked rows of "filled circular icon + two lines of Russian"; icon diameter about 7% of the canvas width, ' +
+        `text no smaller than 3.5% of the canvas width; the three items are: ${sp1} / ${sp2} / ${sp3}; ` +
+        '(4) lower-left: a circular magnifier inset (diameter about 22% of the canvas width) showing the single most convincing detail, with one Russian caption; ' +
+        '(5) bottom: a rounded pill bar with one short Russian sentence at medium size. ' +
+        'Hard rules: every piece of text must actually be rendered, must be clearly legible, and must be Russian; ' +
+        'all text sits **in the empty areas** and must never overlap the product; only **one product** in the frame. ' +
+        'Forbidden: Chinese text; tiny type; pure white background; a second product; borders or channel badges.',
     },
     {
-      /**
-       * 【2026-10-17 主人要求】原来第 2 张是「白底合规主图」。
-       * 主人说「那个白底图片换成对应风格的模特使用的场景，这样显得不单调，重点是突出产品」，
-       * 所以换成**模特使用场景**，但产品仍然是画面主角（模特只做陪衬）。
-       *
-       * ⚠️ 注意：Ozon/WB 的**第 1 张主图**通常要求白底。这张改成场景图之后，
-       * 整套里就没有白底图了。如果平台审核卡这一条，需要单独补一张白底。
-       */
-      key: '02_model_scene',
-      title: '第 2 张 · 模特使用场景',
+      key: '02_pain_compare',
+      title: '第 2 张 · 痛点对比（同一件商品）',
       bodyZh:
-        `第2张：模特使用场景。产品：${product}。` +
-        '镜头：平视略低机位，产品占画面 55-65%，模特在画面一侧，只占 25-30%，不要抢主体。' +
+        `第2张：痛点对比图。产品：${product}。` +
+        '**本张最关键的一条：左右两侧必须是同一件商品**——形状、颜色、材质、图案、配件完全一致，' +
+        '**而且都必须是参考图里那一件商品**（不是别的类目、不是别的款式），' +
+        '只是呈现状态不同。严禁出现第二种商品（桌布、收纳箱之类的东西一律不许出现），这一条压过其它所有要求。' +
+        '镜头：平视，左右各占 40% 画面，中间一条细分隔线，两侧商品大小一致。' +
+        '背景：左侧是杂乱的室内一角（偏暗、偏冷、有杂物），右侧是同一位置但收拾干净、明亮通透——' +
+        '左右必须是同一个空间，只是状态不同，不要换成两个不同的房间。' +
+        '光线：左侧低对比阴天感，右侧明亮自然光，两侧色温一致。' +
+        '左侧（普通款 / 糟糕状态）：同一件商品，表面有污渍磨损、摆放随意、整体低对比；' +
+        '右侧（我们的产品）：同一件商品，干净崭新、摆放讲究、背景明亮通透、有柔和反光。' +
+        '文案：顶部一行大号俄语痛点问句（字号最大）；左侧角标一个红色叉号配一行俄语短句；' +
+        '右侧角标一个绿色对勾配一行俄语短句；底部一行俄语结论。' +
+        '硬规则：文字必须真的写出来、必须是俄语、必须清晰；左右两件商品的外形要一眼看出是同一款。' +
+        '禁忌：不要中文；不要让两侧变成两种不同的商品；不要写成长段说明。',
+      bodyEn:
+        `Card 2: pain comparison. Product: ${product}. ` +
+        '**The single most important rule on this card: both sides must be the same product** — identical shape, colour, material, pattern and accessories, ' +
+        '**and both must be the product shown in the reference image** (not another category, not another style), with only the condition differing. ' +
+        'Never introduce a second kind of product (no tablecloths, no storage boxes, nothing unrelated); this rule overrides everything else. ' +
+        'Camera: eye level, each side taking 40% of the frame, a thin divider between them, both products at the same scale. ' +
+        'Background: the left side is a cluttered corner of a room (dim, cool, with odds and ends); the right side is the same corner tidied up, bright and airy — ' +
+        'both sides must be the same space in a different state, never two different rooms. ' +
+        'Lighting: low-contrast overcast feel on the left, bright natural light on the right, the same colour temperature on both sides. ' +
+        'Left (the ordinary one / bad condition): the same product with stains and wear, casually placed, low contrast overall; ' +
+        'right (our product): the same product, clean and new, neatly placed, bright airy background, soft reflections. ' +
+        'Text: one large Russian pain-point question across the top (largest type); a small red cross badge with one short Russian line on the left; ' +
+        'a small green check badge with one short Russian line on the right; one Russian conclusion line at the bottom. ' +
+        'Hard rules: every line must actually be rendered, must be Russian, must be legible; the two products must obviously be the same model. ' +
+        'Forbidden: Chinese text; two different products; paragraphs of explanation.',
+    },
+    {
+      key: '03_model_scene',
+      title: '第 3 张 · 模特使用场景',
+      bodyZh:
+        `第3张：模特使用场景。产品：${product}。` +
+        '镜头：平视略低机位，产品占画面 55-65%，模特在画面一侧只占 25-30%，不要抢主体。' +
         `背景：与产品调性一致的真实生活场景（${sceneZh}），有空间层次和自然光。` +
         '光线：自然窗光或柔和环境光，模特脸上有柔和轮廓光，不要硬闪。' +
         '人物：一位符合目标市场的俄罗斯模特，穿着与产品调性匹配，动作自然正在使用产品，' +
@@ -300,7 +360,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '文字：画面不要任何文字，保持干净。' +
         '禁忌：不要纯白底，不要产品像贴上去的，不要模特占满画面。',
       bodyEn:
-        `Card 2: model lifestyle scene. Product: ${product}. ` +
+        `Card 3: model lifestyle scene. Product: ${product}. ` +
         'Camera: eye level, slightly low angle. Product occupies 55-65% of the frame; the model sits to one side taking only 25-30% and must not dominate. ' +
         `Background: a real-life setting matching the product (${sceneEn}), with spatial depth and natural light. ` +
         'Lighting: natural window light or soft ambient light; a soft rim light on the model, no harsh flash. ' +
@@ -311,10 +371,10 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: plain white background, product that looks pasted in, model filling the frame.',
     },
     {
-      key: '03_lifestyle',
-      title: '第 3 张 · 生活场景图',
+      key: '04_lifestyle',
+      title: '第 4 张 · 生活场景图',
       bodyZh:
-        `第3张：生活场景图。产品：${product}。` +
+        `第4张：生活场景图。产品：${product}。` +
         '镜头：平视，产品占画面 50-60%，不要占满画面。' +
         `背景：${sceneZh}，要有真实的空间层次（近景道具 / 中景产品 / 远景环境）。` +
         '光线：自然侧光（窗边光），有明确的方向感和柔和投影。' +
@@ -322,7 +382,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '文字：画面不要任何文字，保持干净。' +
         '禁忌：不要摆拍感，不要产品像贴上去的，不要纯色背景。',
       bodyEn:
-        `Card 3: lifestyle scene. Product: ${product}. ` +
+        `Card 4: lifestyle scene. Product: ${product}. ` +
         'Camera: eye level. Product occupies 50-60% of the frame; do not fill the frame. ' +
         `Background: ${sceneEn}, with real spatial depth (near props / mid-ground product / far environment). ` +
         'Lighting: natural side light from a window, with a clear direction and soft shadows. ' +
@@ -330,211 +390,180 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Text: no text at all; keep it clean. ' +
         'Forbidden: staged look, product that looks pasted in, plain solid background.',
     },
+    /**
+     * 三张细节图的分工（主人 2026-10-24 要求「三个不同角度、细节位置不能一样、
+     * 不要有品牌标识、材质看起来要一致，并且能突出商品特性」）：
+     *   5 = 材质纹理（45 度斜上方）
+     *   6 = 结构做工（正侧面贴近）
+     *   7 = 功能效果（俯视贴近，防水/防油污一擦即净）
+     * 三张都必须**看不到完整商品**，所以不加构图安全区。
+     */
     {
-      key: '04_material_macro',
-      title: '第 4 张 · 细节·材质微距',
-      // 微距卡片**不加**构图安全区：它本来就要「看不到完整商品」。
+      key: '05_detail_texture',
+      title: '第 5 张 · 细节①材质纹理',
       cropSafe: false,
       bodyZh:
-        `第4张：材质微距特写。产品：${product}。` +
-        '镜头：微距怼近，只拍一个局部，局部占画面 95%，**看不到完整商品**。' +
-        '焦点：材质纹理（金属拉丝、磨砂、织物、硅胶等），纹理必须清晰可辨。' +
-        '背景：完全虚化，只留一片柔和的同色系底色，不能有任何可辨识的物体。' +
-        '光线：侧逆光掠过表面，把纹理的凹凸勾出来。' +
-        '景深：浅景深，只有对焦那一小块清晰。' +
-        '文字：一个俄语短标注，用引线指向纹理位置。' +
-        '禁忌：不要出现完整商品，不要出现场景，不要平光把纹理拍平。',
+        `第5张：细节图①——材质纹理。产品：${product}。` +
+        '镜头：**45 度斜上方微距**，怼近到只看得见一小块表面，这一块占画面 92%，**看不到完整商品**。' +
+        '位置：拍**商品的主表面**（最大的那块面），不要拍边角、不要拍接口。' +
+        '焦点：材质的真实质感（织物经纬、皮面颗粒、磨砂、拉丝、涂层），清晰到能数清纹理。' +
+        '背景：完全虚化的同色系柔光底，不能有任何可辨识的物体。' +
+        '光线：侧逆光掠过表面，把纹理的凹凸勾出来，高光细而长。' +
+        '景深：浅景深，只有对焦那一小块锐利。' +
+        '文字：一个小号俄语标注，一条细引线指向纹理，只写材质名，不写品牌。' +
+        '硬规则：**不要出现任何 logo、商标、烫印文字、吊牌**——如果有，移出画面或彻底虚化；' +
+        '这一张的材质观感必须和第 6、7 张完全一致（同样的颜色、同样的质感），不能看起来像两种材料。' +
+        '禁忌：不要完整商品；不要场景；不要平光把纹理拍平；不要 logo。',
       bodyEn:
-        `Card 4: material macro close-up. Product: ${product}. ` +
-        'Camera: macro, extremely close. Only one local area is shown, filling 95% of the frame; **the whole product is not visible**. ' +
-        'Focus: material texture (brushed metal, matte finish, fabric weave, silicone, etc.); the texture must be clearly readable. ' +
-        'Background: fully blurred, just a soft same-tone surface; nothing recognisable. ' +
-        'Lighting: side-backlight raking across the surface to reveal the relief of the texture. ' +
+        `Card 5: detail ① - material texture. Product: ${product}. ` +
+        'Camera: **45-degree macro from above**, so close that only one small patch of surface is visible, filling 92% of the frame; **the whole product is not visible**. ' +
+        'Position: shoot **the main surface** (the largest face), not a corner and not a joint. ' +
+        'Focus: the real material character (fabric weave, leather grain, matte finish, brushed metal, coating); sharp enough to count the texture. ' +
+        'Background: fully blurred soft same-tone ground; nothing recognisable. ' +
+        'Lighting: side-backlight raking across the surface to reveal the relief; a thin long highlight. ' +
         'Depth of field: shallow; only the focused patch is sharp. ' +
-        'Text: one short Russian annotation with a leader line pointing at the texture. ' +
-        'Forbidden: the whole product, any scene, flat lighting that kills the texture.',
+        'Text: one small Russian annotation with a thin leader line naming the material only, no brand. ' +
+        'Hard rules: **no logo, trademark, embossed lettering or hang tag anywhere** — move them out of frame or blur them completely; ' +
+        'the material must look identical to cards 6 and 7 (same colour, same texture), never like a different material. ' +
+        'Forbidden: the whole product, any scene, flat lighting that kills the texture, any logo.',
     },
     {
-      key: '05_structure_closeup',
-      title: '第 5 张 · 细节·结构特写',
+      key: '06_detail_structure',
+      title: '第 6 张 · 细节②结构部位',
       cropSafe: false,
       bodyZh:
-        `第5张：结构特写。产品：${product}。` +
-        '镜头：俯视 45 度局部特写，只拍结构部位，占画面 95%，**看不到完整商品**。' +
-        '焦点：接口、螺纹、卡扣、密封圈、铰链等结构件，要看得出装配关系。' +
-        '背景：纯深色或纯浅色单色底，完全虚化，用来把结构件托出来。' +
-        '光线：硬侧光，强调层次和缝隙深度。' +
-        '景深：中等景深，结构件全部清晰。' +
-        '文字：俄语标注结构名称，一条引线。' +
-        '禁忌：不要拍成整机图，不要平光。',
+        `第6张：细节图②——结构与做工。产品：${product}。` +
+        '镜头：**正侧面贴近微距**（必须和第 5 张的 45 度斜上方不同），只拍一个结构部位，占画面 92%，**看不到完整商品**。' +
+        '位置：拍**和第 5 张不同的地方**——接缝、走线、拉链、包边、扣件、底部收口，任选一处最有说服力的。' +
+        '焦点：结构关系要看得出来（怎么缝的、怎么扣的、怎么加固的）。' +
+        '背景：纯深色或纯浅色单色底，完全虚化。' +
+        '光线：硬侧光，强调缝线起伏和部件厚度。' +
+        '景深：中等景深，结构部位全部清晰。' +
+        '文字：一个俄语标注写结构名称，一条引线。' +
+        '硬规则：**不要出现任何 logo、商标、烫印文字、吊牌**；材质观感必须和第 5、7 张一致；' +
+        `如果卖点里有讲结实/耐用/做工的（现在是「${sp2}」），往那个方向拍；没有就拍最能体现做工的一处。` +
+        '禁忌：不要拍成整机图；不要平光；不要和第 5 张拍同一个位置；不要 logo。',
       bodyEn:
-        `Card 5: structural close-up. Product: ${product}. ` +
-        'Camera: 45-degree top-down close-up. Only the structural part is shown, filling 95% of the frame; **the whole product is not visible**. ' +
-        'Focus: connector, thread, clip, sealing ring, hinge and similar parts; the assembly relationship must be visible. ' +
-        'Background: a single flat tone (dark or light), fully blurred, to lift the structural part out. ' +
-        'Lighting: hard side light to emphasise layering and the depth of seams. ' +
-        'Depth of field: medium; the structural part is entirely sharp. ' +
+        `Card 6: detail ② - structure and build. Product: ${product}. ` +
+        'Camera: **close macro from the side** (must differ from card 5\'s 45-degree top view); one structural area only, filling 92% of the frame; **the whole product is not visible**. ' +
+        'Position: shoot **a different area from card 5** — seam, stitching, zip, piping, fastener or bottom hem; pick the most convincing one. ' +
+        'Focus: the construction must be readable (how it is stitched, fastened, reinforced). ' +
+        'Background: a single flat tone (dark or light), fully blurred. ' +
+        'Lighting: hard side light to emphasise stitch relief and part thickness. ' +
+        'Depth of field: medium; the structural area entirely sharp. ' +
         'Text: one Russian annotation naming the structure, with one leader line. ' +
-        'Forbidden: showing the whole product, flat lighting.',
+        'Hard rules: **no logo, trademark, embossed lettering or hang tag**; the material must match cards 5 and 7; ' +
+        `if one of the selling points is about durability or build quality (currently "${sp2}"), lean that way; otherwise shoot the most telling piece of construction. ` +
+        'Forbidden: the whole product, flat lighting, the same position as card 5, any logo.',
     },
     {
-      key: '06_craft_closeup',
-      title: '第 6 张 · 细节·工艺特写',
+      key: '07_detail_feature',
+      title: '第 7 张 · 细节③功能效果（防水/防油污）',
       cropSafe: false,
       bodyZh:
-        `第6张：工艺特写。产品：${product}。` +
-        '镜头：微距，占画面 95%，只拍工艺细节，**看不到完整商品**。' +
-        '焦点：缝线、焊点、表面处理、logo 雕刻、边角收口。' +
-        '背景：完全虚化的单色底，不要出现任何场景元素。' +
-        '光线：斜射光，让工艺痕迹立体。' +
-        '景深：浅景深，焦点落在工艺细节上。' +
-        '文字：俄语短标注，一条引线。' +
-        '禁忌：不要拍成整机图，不要用柔光把细节磨掉。',
+        `第7张：细节图③——功能实测效果。产品：${product}。` +
+        '镜头：**俯视贴近微距**（必须和第 5、6 张的角度都不同），画面 92% 是商品的表面，**看不到完整商品**。' +
+        '位置：拍**商品的表面**，并在表面上方做出「功能正在生效」的效果。' +
+        '核心画面：表面落了一滴水或一摊油污，旁边一块干净的布或纸巾刚刚擦过，' +
+        '**擦过的地方明显干净、没有残留、没有渗进去**，和没擦的地方形成清晰对比。' +
+        '焦点：擦过与没擦过的交界线要锐利，一眼看出「一擦就干净」。' +
+        '背景：完全虚化的单色底。' +
+        '光线：侧光加一点顶光，让水珠/油滴有立体感，让干净区域有清爽的高光。' +
+        '文字：一个俄语标注写功能点（防水 / 防油污 / 一擦即净），一条引线。' +
+        '硬规则：**不要出现任何 logo、商标、吊牌**；材质观感必须和第 5、6 张一致；' +
+        `如果卖点里有讲防水/防油污/易清洁/耐脏的（现在是「${sp3}」），就做那个效果；` +
+        '没有就默认做「表面一擦就干净」；干净区域要看起来是真的干净，不能只是颜色浅。' +
+        '禁忌：不要完整商品；不要场景；不要拍成一片狼藉；不要 logo。',
       bodyEn:
-        `Card 6: craftsmanship close-up. Product: ${product}. ` +
-        'Camera: macro, filling 95% of the frame; only the craft detail is shown; **the whole product is not visible**. ' +
-        'Focus: stitching, weld points, surface treatment, engraved logo, edge finishing. ' +
-        'Background: fully blurred single tone; no scene elements at all. ' +
-        'Lighting: raking light so the craft marks read as three-dimensional. ' +
-        'Depth of field: shallow, focused on the craft detail. ' +
-        'Text: one short Russian annotation with one leader line. ' +
-        'Forbidden: showing the whole product, soft light that erases the detail.',
+        `Card 7: detail ③ - functional proof. Product: ${product}. ` +
+        'Camera: **close macro from directly above** (must differ from both card 5 and card 6); 92% of the frame is the product surface; **the whole product is not visible**. ' +
+        'Position: shoot **the product surface** and show the feature taking effect on it. ' +
+        'Core scene: a water droplet or an oil patch sits on the surface; a clean cloth or paper towel has just wiped across it; ' +
+        '**the wiped area is obviously clean, with no residue and nothing soaked in**, in clear contrast with the untouched area. ' +
+        'Focus: the boundary between wiped and un-wiped must be razor sharp so "wipe once and it is clean" is instantly readable. ' +
+        'Background: fully blurred single tone. ' +
+        'Lighting: side light plus a little top light so the droplet or oil reads three-dimensional and the clean area has a fresh highlight. ' +
+        'Text: one Russian annotation naming the feature (water-repellent / oil-repellent / wipes clean), with one leader line. ' +
+        'Hard rules: **no logo, trademark or hang tag**; the material must match cards 5 and 6; ' +
+        `if one of the selling points is about water- or oil-repellency, easy cleaning or stain resistance (currently "${sp3}"), illustrate that one; ` +
+        'otherwise default to "the surface wipes clean in one pass"; the clean area must look genuinely clean, not merely lighter in colour. ' +
+        'Forbidden: the whole product, any scene, a messy surface, any logo.',
     },
     {
-      key: '07_size_chart',
-      title: '第 7 张 · 尺寸规格图',
+      key: '08_size_chart',
+      title: '第 8 张 · 尺寸规格图',
       // 尺寸图必须写数字，要临时覆盖「不要添加原图没有的数字和尺寸」那条规范。
       allowDimensions: true,
       bodyZh:
-        `第7张：尺寸规格图。产品：${product}。` +
-        '镜头：正视图平视，产品占画面 60%，四周留出标注空间。' +
-        '背景：纯白或极浅灰网格底，不要有场景。' +
-        '光线：均匀平光，不要强烈投影，避免干扰标注线。' +
-        '表现：产品实拍 + 半透明线稿轮廓叠加，标出关键尺寸。' +
-        '标题：俄语「Размеры, см」，放在画面上方。' +
+        `第8张：尺寸规格图。产品：${product}。` +
+        '镜头：正视图平视，**画面里只有一件商品、一个视角**，商品占画面 55%，四周留出标注空间。' +
+        '背景：**必须有真实背景，不能是空白**——商品放在浅木桌面或浅灰台面上，' +
+        '背后是同色系柔和的离焦环境（一点绿植、一块布、一面浅墙都可以），整体明亮干净；' +
+        '不要纯白、不要纯灰、不要网格底、不要渐变纸。' +
+        '光线：均匀柔光，投影很淡，不要压住标注线。' +
+        '表现：商品实拍 + 半透明线稿轮廓叠加，标出关键尺寸。' +
+        '标题：俄语「Размеры, см」，放在画面上方，字号大。' +
         '**每个尺寸都必须写出具体数值，格式是「俄语名称：阿拉伯数字 + см」**，' +
         '例如 «Высота: 12 см»、«Ширина: 8.5 см»、«Глубина: 4 см»。' +
         '数值用阿拉伯数字（12、8.5 这种），单位只写 см。' +
         '每个尺寸配一条双向箭头，箭头两端落在实际测量点上（顶部到顶部、左侧到左侧）。' +
         '数值按参考图里商品的实际长宽比例估算，小数点最多一位。' +
-        '**禁止只写文字标签不写数字**，也禁止写成空箭头。' +
-        '禁忌：不要出现英制单位（in、inch、дюйм），不要堆无关参数。',
+        '**本张最重要的一条：画面里只许出现一件商品、一个视角。' +
+        '禁止拼图、禁止三联图、禁止九宫格、禁止分屏、禁止在主图里再嵌小图。**' +
+        '即使参考图本身是拼好的多视角图，本张也只画其中一个完整视角。' +
+        '禁忌：不要出现英制单位（in、inch、дюйм）；不要空白背景；不要多视角拼贴；不要堆无关参数。',
       bodyEn:
-        `Card 7: size specification. Product: ${product}. ` +
-        'Camera: front view at eye level, product occupying 60% of the frame, with margin around for annotations. ' +
-        'Background: pure white or a very light grey grid; no scene. ' +
-        'Lighting: even flat light without strong shadows, so it does not fight the annotation lines. ' +
+        `Card 8: size specification. Product: ${product}. ` +
+        'Camera: front view at eye level; **only one product, one viewpoint**, occupying 55% of the frame, with margin around for annotations. ' +
+        'Background: **a real background is required, never blank** — the product sits on a light wood tabletop or a pale grey surface, ' +
+        'with a soft out-of-focus same-tone environment behind it (a little greenery, a cloth, a pale wall all work); bright and clean overall; ' +
+        'not pure white, not plain grey, not a grid, not a gradient sheet. ' +
+        'Lighting: even soft light with a faint shadow that never fights the annotation lines. ' +
         'Presentation: the real photo with a semi-transparent line-art outline overlaid, marking key dimensions. ' +
-        'Heading: Russian "Размеры, см" across the top. ' +
+        'Heading: Russian "Размеры, см" across the top, in large type. ' +
         '**Every dimension must carry an explicit value, formatted as "Russian label: Arabic numeral + см"**, ' +
         'for example «Высота: 12 см», «Ширина: 8.5 см», «Глубина: 4 см». ' +
         'Use Arabic numerals (12, 8.5) and the unit см only. ' +
         'Each dimension gets a double-headed arrow whose ends sit on the real measuring points (top to top, left to left). ' +
         'Estimate the values from the real proportions of the product in the reference image; at most one decimal place. ' +
-        '**Never draw a label without a number**, and never leave an empty arrow. ' +
-        'Forbidden: imperial units (in, inch, дюйм), unrelated specifications.',
-    },
-    /**
-     * 【2026-10-19 主人要求】原来第 9、10 张是「正俯视 / 正侧视」两个角度图，
-     * 主人说「第九张第十张的角度取消，换为如图片中的内容」——
-     * 也就是换成两张**售后/客服引导图**（主人给了两张同类卖家的成品参考图）。
-     *
-     * 这两张是纯信息图，不是商品实拍，所以不加构图安全区。
-     * 但图标里的元素必须长在**这件商品**上（比如「Упаковка」那一格画这个商品的包装），
-     * 否则会像从别的类目拼过来的，主人原话是「不能有很大的违和感」。
-     */
-    {
-      key: '08_after_sales',
-      title: '第 8 张 · 售后保障图（先别急着差评）',
-      cropSafe: false,
-      bodyZh:
-        `第8张：售后保障图。产品：${product}。` +
-        '整体：3:4 竖版，干净浅色底（纯白或极浅灰），不要纹理、不要场景、不要照片背景。' +
-        '版式从上到下严格按这六段，位置和占比不要变：' +
-        '① 顶部 22%：三行大标题，粗体、点缀色（红或本品牌色）、居中，断成三行：' +
-        '«ДОРОГИЕ ПОКУПАТЕЛИ,» / «У ВАС ЕСТЬ ПРЕТЕНЗИЯ» / «К ЗАКАЗУ?»；' +
-        '② 中部 30%：等宽三列，每列一个**实心圆形图标**（点缀色圆底 + 白色描边图形），' +
-        '圆形下面两行俄语说明，列与列之间一条极细竖线：' +
-        '左列 «Упаковка» + «На упаковке обнаружены следы повреждения?»；' +
-        '中列 «Товар» + «Привезли не тот товар?»；' +
-        '右列 «Доставка» + «Задержалась доставка, или привезли не туда?»；' +
-        '三个圆形里的图形要贴合本商品——左列画**本商品的包装/外箱**、中列画**本商品本体**、右列画一个快递箱加时钟；' +
-        '③ 中下部 12%：两行居中、常规字重俄语：' +
-        '«Не спешите оставлять негативный отзыв,» / «доставкой товара занимается маркетплейс»；' +
-        '④ 下部 10%：两行居中、全大写、加粗俄语：' +
-        '«СВЯЖИТЕСЬ С ПОДДЕРЖКОЙ» / «В ЛИЧНОМ КАБИНЕТЕ, И ВАМ ПОМОГУТ!»；' +
-        '⑤ 底部 12%：一条**点缀色圆角胶囊条**横贯画面，左端压一个白色圆形加心形图标，' +
-        '胶囊条里两行白色俄语：«Используйте отзывы для оценки качества нашего товара»；' +
-        '⑥ 最底 4%：一条浅色横带，一行小字俄语 «С любовью и заботой о вас!»，**不要画任何品牌 logo**。' +
-        '硬规则：所有文字必须是俄语而且必须真的写出来（不许留空、不许画成横线代替）；' +
-        '层级要明显（大标题 > 三列小标题 > 说明 > 底部小字）；整张配色最多四种：底色 + 点缀色 + 白 + 一处中性灰。' +
-        '禁忌：不要中文，不要二维码、电话、网址，不要把三列画成两列或四列。',
-      bodyEn:
-        `Card 8: after-sales care card. Product: ${product}. ` +
-        'Overall: 3:4 portrait, clean pale ground (pure white or very light grey); no texture, no scene, no photographic backdrop. ' +
-        'Layout top to bottom, keep these six bands in this order with these proportions: ' +
-        '(1) top 22%: a three-line bold headline in the accent colour (red or the brand colour), centred, broken into exactly three lines: ' +
-        '"ДОРОГИЕ ПОКУПАТЕЛИ," / "У ВАС ЕСТЬ ПРЕТЕНЗИЯ" / "К ЗАКАЗУ?"; ' +
-        '(2) middle 30%: three equal columns, each a **filled circular badge** (accent-colour disc with a white outlined glyph), ' +
-        'two lines of Russian underneath, separated by very thin vertical rules: ' +
-        'left "Упаковка" + "На упаковке обнаружены следы повреждения?"; ' +
-        'centre "Товар" + "Привезли не тот товар?"; ' +
-        'right "Доставка" + "Задержалась доставка, или привезли не туда?"; ' +
-        'the glyphs must belong to this product — left shows **this product packaging / shipping box**, centre shows **the product itself**, right shows a parcel with a clock; ' +
-        '(3) lower middle 12%: two centred lines of regular-weight Russian: ' +
-        '"Не спешите оставлять негативный отзыв," / "доставкой товара занимается маркетплейс"; ' +
-        '(4) lower 10%: two centred lines, all caps, bold Russian: ' +
-        '"СВЯЖИТЕСЬ С ПОДДЕРЖКОЙ" / "В ЛИЧНОМ КАБИНЕТЕ, И ВАМ ПОМОГУТ!"; ' +
-        '(5) bottom 12%: an **accent-colour rounded pill bar** spanning the width, with a white circular heart badge overlapping its left end, ' +
-        'and two lines of white Russian inside the pill: "Используйте отзывы для оценки качества нашего товара"; ' +
-        '(6) very bottom 4%: a pale band with one line of small Russian "С любовью и заботой о вас!"; **do not draw any brand logo**. ' +
-        'Hard rules: every piece of text must be Russian and must actually be rendered (never leave it blank, never replace it with a line); ' +
-        'the type hierarchy must be obvious (headline > column titles > captions > footer); use at most four colours in total: ground + accent + white + one neutral grey. ' +
-        'Forbidden: Chinese text, QR codes, phone numbers, URLs, and any deviation from three columns.',
+        '**The single most important rule here: only one product and one viewpoint may appear. ' +
+        'No collage, no three-panel layout, no nine-grid, no split screen, no inset thumbnails inside the main image.** ' +
+        'Even if the reference image is itself a multi-view collage, draw only one complete viewpoint on this card. ' +
+        'Forbidden: imperial units (in, inch, дюйм); a blank background; multi-view collage; unrelated specifications.',
     },
     {
+      /**
+       * 【2026-10-24 主人要求】「最后两张可以只保留联系卖家图，图中只需要有
+       * 『产品有问题请及时与卖家联系不要给差评』的表达的俄语文字就可以，文字内容不需要一致」。
+       *
+       * 所以原来的第 8 张「售后保障图」整张删掉，这一张也大幅简化：
+       * 只要一句核心意思，不要求三列图标、不要求步骤编号、不要求手机界面。
+       */
       key: '09_contact_seller',
-      title: '第 9 张 · 联系卖家步骤图',
+      title: '第 9 张 · 联系卖家提醒图',
       cropSafe: false,
       bodyZh:
-        `第9张：联系卖家步骤图（怎么找到客服）。产品：${product}。` +
-        '整体：3:4 竖版，**竖向渐变**底色（深→浅，深色用本商品主色或其深色版），不要照片背景。' +
-        '版式从上到下严格按这八段，位置和占比不要变：' +
-        '① 10%：一行大标题，白色粗体居中：«УВАЖАЕМЫЕ ПОКУПАТЕЛИ!»；' +
-        '② 10%：两行白色常规字重居中：«Не торопитесь оставлять негативный отзыв.» / «Мы сможем Вам помочь!»；' +
-        '③ 8%：一条**纯白圆角长条**，左中右留边一致，条内深色俄语粗体居中：«ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ»；' +
-        '④ 14%：等宽三列，白色细线图标 + 两行白色说明：' +
-        '«Повреждена упаковка» / «Перепутан товар» / «Задержалась доставка»；' +
-        '三个图标分别画：破损的外箱、被翻转的包裹、带时钟的货车；第一个图标要画成**本商品的箱子**；' +
-        '⑤ 8%：第二条**纯白圆角长条**：«НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА»；' +
-        '⑥ 8%：一行三步流程，白色小图标 + 白色文字，中间用右箭头连接：«Профиль → Сообщения → Поддержка»；' +
-        '⑦ 8%：第三条**纯白圆角长条**：«ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ»；' +
-        '⑧ 26%：左半是三行编号步骤，白色大字，行距均匀：' +
-        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»；' +
-        '右半是一个**简化的手机界面示意卡**：白色圆角卡片，上方一行俄语商品名（用本商品的名称），' +
-        '中间一行小评分和一个 «Вопросы» 按钮，底部一条蓝色 «В корзину» 按钮。' +
-        '硬规则：所有文字必须是俄语而且必须真的写出来；白字压在渐变上要够对比；三条白长条必须等宽、圆角一致、左右留边一致。' +
-        '禁忌：不要中文，不要真实平台 logo，不要把三条白色长条合成一句，不要把步骤写成一段。',
+        `第9张：联系卖家提醒图。产品：${product}。` +
+        '整体：3:4 竖版，简洁干净的信息图。**这一张只表达一件事**：产品如果有问题，请先联系卖家，不要直接给差评。' +
+        '背景：商品同色系的柔和渐变，或干净的浅色实底；不要照片、不要复杂装饰。' +
+        '版式只有三块，从上到下：' +
+        '① 顶部：一行俄语大标题（粗体，字号是整张最大的），意思是「产品有问题，请先联系我们」；' +
+        '② 中部：2-3 行俄语正文，意思是「不要急着留差评，先联系卖家，我们会帮你解决」；' +
+        '③ 底部：一条圆角胶囊条，里面一行俄语短句（例如「我们随时在线」）。' +
+        '**文字内容不需要和上面写的俄语一字不差，只要意思对就行**，但必须是俄语、必须清晰可读、字号要够大。' +
+        '硬规则：画面里不要出现三列图标、不要出现步骤编号、不要出现手机界面、不要出现二维码/电话/网址。' +
+        '禁忌：不要中文；不要长段落；不要画太满，留白要多。',
       bodyEn:
-        `Card 9: how-to-contact-the-seller card. Product: ${product}. ` +
-        'Overall: 3:4 portrait with a **vertical gradient** ground (dark to light, the dark end taken from the product accent colour), no photographic backdrop. ' +
-        'Layout top to bottom, keep these eight bands in this order with these proportions: ' +
-        '(1) 10%: one bold white headline, centred: "УВАЖАЕМЫЕ ПОКУПАТЕЛИ!"; ' +
-        '(2) 10%: two centred lines of regular white Russian: "Не торопитесь оставлять негативный отзыв." / "Мы сможем Вам помочь!"; ' +
-        '(3) 8%: a **pure white rounded bar** with equal side margins, containing dark bold Russian, centred: "ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ"; ' +
-        '(4) 14%: three equal columns, white thin-line glyphs with two lines of white Russian: ' +
-        '"Повреждена упаковка" / "Перепутан товар" / "Задержалась доставка"; ' +
-        'the three glyphs are: a dented shipping box, an overturned parcel, a van with a clock; the first box must look like **this product packaging**; ' +
-        '(5) 8%: a second **pure white rounded bar**: "НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА"; ' +
-        '(6) 8%: a single three-step row, small white glyphs with white labels joined by right arrows: "Профиль → Сообщения → Поддержка"; ' +
-        '(7) 8%: a third **pure white rounded bar**: "ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ"; ' +
-        '(8) 26%: the left half holds three numbered steps in large white type with even leading: ' +
-        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»; ' +
-        'the right half is a **simplified phone-UI mock**: a white rounded card with one line of Russian product name on top (use this product name), ' +
-        'a small rating row and a "Вопросы" button in the middle, and a blue "В корзину" button along the bottom. ' +
-        'Hard rules: every piece of text must be Russian and must actually be rendered; white type over the gradient must stay legible; ' +
-        'the three white bars must share one width, one corner radius and equal side margins. ' +
-        'Forbidden: Chinese text, real marketplace logos, merging the three white bars into one sentence, writing the steps as a paragraph.',
+        `Card 9: contact-the-seller notice. Product: ${product}. ` +
+        'Overall: 3:4 portrait, a clean minimal infographic. **This card says exactly one thing**: if something is wrong with the product, contact the seller first — do not leave a negative review straight away. ' +
+        'Background: a soft gradient in the product palette, or a clean pale solid; no photo, no busy decoration. ' +
+        'Only three blocks, top to bottom: ' +
+        '(1) top: one large Russian headline (bold, the biggest type on the card) meaning "something wrong with the product? contact us first"; ' +
+        '(2) middle: 2-3 lines of Russian body copy meaning "do not rush to leave a bad review, contact the seller and we will help"; ' +
+        '(3) bottom: a rounded pill bar with one short Russian line (for example "we are always online"). ' +
+        '**The wording does not have to match the Russian above word for word** as long as the meaning is right, but it must be Russian, clearly legible and large enough. ' +
+        'Hard rules: no three-column icons, no numbered steps, no phone-UI mock, no QR code, phone number or URL. ' +
+        'Forbidden: Chinese text, long paragraphs, a crowded layout — leave plenty of white space.',
     },
   ]
 
@@ -569,6 +598,20 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     }
   })
 }
+
+/**
+ * 这套脚本的「目录」：每一张的编号和标题，按**出图顺序**排。
+ *
+ * 【2026-10-24 主人要求】「重新排版套图的生成图片的顺序，顺序需要提前让我知道」——
+ * 界面在点「生成脚本」之前就把这 9 行按顺序列出来，用户先看清顺序再决定。
+ *
+ * 放在这里而不是界面里手写一份，是因为手写的那份迟早会和真正生成的卡片脱节；
+ * 这里直接从同一个 `buildOzonScript` 推导，改模板时目录自动跟着变。
+ * 标题跟商品名无关，所以用一个空上下文算一次就够了。
+ */
+export const OZON_CARD_PLAN: ReadonlyArray<{ key: string; title: string }> = buildOzonScript({
+  product: '',
+}).map(({ key, title }) => ({ key, title }))
 
 /** 视觉模型列表（原程序下拉里的）。 */
 export const VISION_MODEL_OPTIONS = [

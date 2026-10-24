@@ -300,6 +300,19 @@
           <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.options.modelHint') }}</span>
         </div>
 
+        <!-- 视觉模型：和「套图」共用同一个 `visionModel`。
+             主人 2026-10-24 要求「爆款复刻没有添加切换视觉模型的渠道，
+             当默认渠道识别不了时候需要切换渠道」。
+             共用一个变量是有意的：默认的 gemini-3.5-flash 偶尔会调不通，
+             用户在这个页面换一个能用的，切到套图就不用再换一遍。 -->
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label class="text-gray-500 dark:text-gray-400">{{ t('aiImage.visionKey.modelLabel') }}</label>
+          <select v-model="visionModel" class="input w-48 text-sm" data-testid="hot-vision-model-select">
+            <option v-for="item in VISION_MODEL_OPTIONS" :key="item" :value="item">{{ item }}</option>
+          </select>
+          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.visionModelHint') }}</span>
+        </div>
+
         <!-- 第 1 步：放同行的爆款参考图并拆解。
              一张参考图 = 一张脚本 = 一张出图，所以这里放几张就出几张。 -->
         <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step1') }}</p>
@@ -753,6 +766,21 @@
           </p>
         </div>
 
+        <!-- 出图顺序预告。
+             主人 2026-10-24 要求「重新排版套图的生成图片的顺序，顺序需要提前让我知道」，
+             所以点「生成脚本」之前就把这 9 行按顺序列出来。
+             内容来自 OZON_CARD_PLAN（和真正生成的卡片是同一份数据，不会脱节）。 -->
+        <div class="mt-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-900" data-testid="script-plan">
+          <p class="text-xs font-medium text-gray-600 dark:text-gray-300">
+            {{ t('aiImage.script.planTitle', { count: OZON_CARD_PLAN.length }) }}
+          </p>
+          <ol class="mt-1 flex flex-col gap-0.5 text-xs text-gray-500 dark:text-gray-400">
+            <li v-for="(item, i) in OZON_CARD_PLAN" :key="item.key" class="truncate" :title="item.title">
+              {{ i + 1 }}. {{ item.title }}
+            </li>
+          </ol>
+        </div>
+
         <p v-if="scriptNotice" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ scriptNotice }}</p>
         <p v-if="scriptError" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ scriptError }}</p>
 
@@ -1052,6 +1080,7 @@ import {
   AIImageError,
   extractSellingPoints,
   analyzeHotStyle,
+  fetchImageBlob,
   generateAIImage,
   isImagePermissionError,
   isPersistableImageUrl,
@@ -1064,6 +1093,7 @@ import {
 import {
   DEFAULT_SCENE,
   OZON_CARD_COUNT,
+  OZON_CARD_PLAN,
   OZON_SIZE_OPTIONS,
   OZON_SYSTEM_PROMPT_EN,
   PRODUCT_LOCK,
@@ -1632,12 +1662,14 @@ async function onMultiReferencePicked(event: Event) {
 /**
  * 给一张图片地址加水印并下载。
  *
- * 注意：加水印必须**读到图片像素**，而图片域名没有跨域许可，
- * 浏览器会拦掉 fetch，canvas 也会被污染。所以这条路径在没有 CORS 时
- * 只能退化成「下载原图（没水印）」并说清原因。
+ * 加水印必须**读到图片像素**。图片在 `img.chenshuapi.com`，和页面不同源，
+ * 直接 fetch 会被 CORS 拦掉、canvas 也会被污染。
  *
- * 【2026-10-22】兜底从「新开标签页」改成**当前页跳转** —— 后端给图加了
- * `Content-Disposition: attachment`，跳过去会直接下载，页面不会离开。
+ * 【2026-10-24 修好】取字节改成走 `fetchImageBlob()` —— 它会先把地址改写成
+ * 同源的 `/img-proxy/...`（Caddy 反代到图片域名），从同源地址取字节就不受 CORS 限制，
+ * canvas 也是干净的，**水印这才真的加得上**（主人报「下载时没有加上水印」就是这个原因）。
+ *
+ * 只有反代和直连都失败时，才退化成「下载原图（没水印）」并说明原因。
  */
 async function downloadWithWatermark(record: AIImageRecord) {
   const url = record.images[0]
@@ -1645,9 +1677,7 @@ async function downloadWithWatermark(record: AIImageRecord) {
   watermarkNotice.value = ''
   watermarking.value = true
   try {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const source = await response.blob()
+    const source = await fetchImageBlob(url)
     const output = await watermarkImageBlob(source, watermark.value)
     const objectUrl = URL.createObjectURL(output)
     const link = document.createElement('a')
