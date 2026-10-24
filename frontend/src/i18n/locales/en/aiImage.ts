@@ -287,6 +287,9 @@ export default {
       pain: 'Customer pain',
       diff: 'Differentiator',
       scene: 'Auto-matched scene',
+      // Read out during AI extraction; card 1 derives its type and background colours from it.
+      mainColor: 'Product colour',
+      mainColorHint: 'Read during "Extract selling points"; card 1 matches its headline and background to it',
       scenePlaceholder: 'Filled automatically from the product name',
       build: 'Build {count} prompts',
       built: 'Built {count} prompts. Click any one to expand and edit it.',

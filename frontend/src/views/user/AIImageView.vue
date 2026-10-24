@@ -754,6 +754,24 @@
           <span class="text-gray-400 dark:text-gray-500">（{{ matchedScene.en }}）</span>
         </div>
 
+        <!-- 商品主色：AI 识别卖点时顺手读出来，第 1 张主图会按它配文字和背景色。
+             主人 2026-10-24 问过「是否保证了背景、文字与商品颜色一致」——
+             有具体色值才谈得上一致，所以把读到的色明摆出来给用户看。 -->
+        <div
+          v-if="mainColor.hex"
+          class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+          data-testid="script-main-color"
+        >
+          <span>{{ t('aiImage.script.mainColor') }}：</span>
+          <span
+            class="inline-block h-3.5 w-3.5 rounded border border-gray-300 dark:border-dark-600"
+            :style="{ backgroundColor: mainColor.hex }"
+          />
+          <span class="font-medium text-gray-700 dark:text-gray-200">{{ mainColor.name || mainColor.hex }}</span>
+          <span class="text-gray-400 dark:text-gray-500">{{ mainColor.hex }}</span>
+          <span class="text-gray-400 dark:text-gray-500">· {{ t('aiImage.script.mainColorHint') }}</span>
+        </div>
+
         <!-- 视觉模型 + AI 识别 -->
         <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
           <div class="flex flex-wrap items-center gap-2">
@@ -1372,6 +1390,14 @@ const scriptForm = ref({
   pain: '',
   diff: '',
 })
+
+/**
+ * AI 识别出来的商品主色。
+ *
+ * 只影响第 1 张主图（主人 2026-10-24：「主图实现即可，也就是第一张图」）。
+ * 文本按主色算深/中/浅三个具体色值，比「取商品同色调」这种话管用得多。
+ */
+const mainColor = ref<{ name: string; hex: string }>({ name: '', hex: '' })
 const scriptCards = ref<OzonScriptCard[]>([])
 /**
  * 这一批脚本的**原始模板快照**（按 key 索引）。
@@ -2370,6 +2396,9 @@ function buildScript() {
       diff: scriptForm.value.diff,
       sceneEn: matchedScene.value.en,
       sceneZh: matchedScene.value.zh,
+      // 识别到的主色只喂给第 1 张主图用（别的卡不吃这个参数）。
+      mainColorName: mainColor.value.name || undefined,
+      mainColorHex: mainColor.value.hex || undefined,
     }),
   )
   // 商品一致性锁定不在这里拼：它取决于「这次到底带没带参考图」，
@@ -2504,6 +2533,12 @@ async function aiExtract() {
     if (result.sp3_ru) scriptForm.value.sp3Ru = result.sp3_ru
     if (result.pain) scriptForm.value.pain = result.pain
     if (result.diff) scriptForm.value.diff = result.diff
+    // 主色：识别到就存下来，第 1 张主图会按它配文字与背景的色（识别不到就退回笼统要求）。
+    if (result.main_color_hex) {
+      mainColor.value = { name: result.main_color || '', hex: result.main_color_hex }
+    } else {
+      mainColor.value = { name: '', hex: '' }
+    }
     scriptNotice.value = t('aiImage.script.aiExtracted')
   } catch (error) {
     const reason = errorMessage(error)
@@ -2521,6 +2556,7 @@ async function aiExtract() {
 
 function clearScript() {
   scriptForm.value = { product: '', sp1: '', sp2: '', sp3: '', sp1Ru: '', sp2Ru: '', sp3Ru: '', pain: '', diff: '' }
+  mainColor.value = { name: '', hex: '' }
   setScriptCards([])
   scriptNotice.value = ''
   scriptError.value = ''

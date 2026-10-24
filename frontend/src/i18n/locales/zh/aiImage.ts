@@ -231,6 +231,9 @@ export default {
       pain: '用户痛点',
       diff: '差异化',
       scene: '自动匹配场景',
+      // 2026-10-24：AI 识别卖点时顺手读出的商品主色，第 1 张主图按它配色
+      mainColor: '商品主色',
+      mainColorHint: '点「AI 识别卖点」时顺便读出，第 1 张主图的标题和背景会按它配同色系',
       scenePlaceholder: '填产品名称后自动匹配',
       build: '生成 {count} 张脚本',
       built: '已生成 {count} 张，点任意一张可以展开改提示词。',

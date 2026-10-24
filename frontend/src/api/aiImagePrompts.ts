@@ -215,6 +215,41 @@ const MAIN_IMAGE_LAYOUT_SPEC: Record<MainImageLayout, { zh: string; en: string }
   },
 }
 
+/** 把色板写成一段能直接塞进提示词的话（中文）。 */
+export function describePaletteZh(p: ProductPalette): string {
+  if (p.neutral) {
+    return (
+      `**配色（本张重点，必须严格照做）**：商品本身是灰/白/黑这类中性色（${p.name} ${p.hex}），没有色相可用。` +
+      `大标题和胶囊条用深灰 ${p.ink}；副标题和三组图标圆底用中灰 ${p.accent}；背景用极浅暖灰 ${p.tint}（不要做成纯白）。` +
+      '整张唯一的彩色只能取自商品自身的一个点缀（拉链、配件、包装上的颜色），没有就不加彩色。'
+    )
+  }
+  return (
+    `**配色（本张重点，必须严格照做）**：商品主色是${p.name}（${p.hex}）。` +
+    `大标题和胶囊条用它的深色 ${p.ink}；副标题和三组图标圆底用 ${p.accent}；` +
+    `背景用极淡的同色 ${p.tint} 做柔和渐变（**不要做成白色或灰色**）。` +
+    '除了这几个颜色和黑白，不要再引入别的颜色。'
+  )
+}
+
+/** 把色板写成一段能直接塞进提示词的话（英文，真正发给模型的那份）。 */
+export function describePaletteEn(p: ProductPalette): string {
+  if (p.neutral) {
+    return (
+      `**Palette (the key of this card, follow it strictly)**: the product itself is neutral grey/white/black (${p.name} ${p.hex}), so there is no usable hue. ` +
+      `Use dark grey ${p.ink} for the headline and the pill bar; mid grey ${p.accent} for the subtitle and the three icon discs; ` +
+      `use a very pale warm grey ${p.tint} for the background (not pure white). ` +
+      'The only chromatic accent allowed must come from the product itself (zip, fittings, packaging); if there is none, add no colour at all.'
+    )
+  }
+  return (
+    `**Palette (the key of this card, follow it strictly)**: the product's dominant colour is ${p.name} (${p.hex}). ` +
+    `Use its dark shade ${p.ink} for the headline and the pill bar; ${p.accent} for the subtitle and the three icon discs; ` +
+    `use a very pale tint ${p.tint} of the same hue for a soft gradient background (**never white or grey**). ` +
+    'Do not introduce any colour beyond these and black/white.'
+  )
+}
+
 /** 生成脚本时用的产品资料。 */
 export interface OzonScriptContext {
   product: string
@@ -231,6 +266,135 @@ export interface OzonScriptContext {
    * 测试里传死值，免得随机导致用例飘。
    */
   mainLayout?: MainImageLayout
+  /**
+   * 商品主色（视觉模型识别出来的）。
+   *
+   * 【2026-10-24 主人问「是否保证了背景、文字与商品颜色一致或相近」】
+   * 原来只有一句「取商品主体的主色调」，模型得自己猜是什么色，遵守率不高。
+   * 现在把识别出来的**具体颜色**写进提示词，从「你猜」变成「照这个用」。
+   * 只用在第 1 张主图上（主人指定「主图实现即可」）。
+   */
+  mainColorName?: string
+  /** 形如 #C8B6E2。传了就按它算深/中/浅三个派生色。 */
+  mainColorHex?: string
+}
+
+/** 商品主色的派生色板（只给第 1 张主图用）。 */
+export interface ProductPalette {
+  /** 颜色叫法，例如「淡紫色」 */
+  name: string
+  /** 原色 #RRGGBB */
+  hex: string
+  /** 大标题、胶囊条用的深色 */
+  ink: string
+  /** 副标题、图标圆底用的中间色 */
+  accent: string
+  /** 背景用的极淡同色 */
+  tint: string
+  /** 商品本身是灰/白/黑，没有可用色相 */
+  neutral: boolean
+}
+
+function clampByte(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)))
+}
+
+/** 把 "#c8b6e2" / "c8b6e2" / "#C8B6E2" 规整成 "#C8B6E2"；认不出来返回 null。 */
+export function normalizeHex(input?: string): string | null {
+  const raw = (input || '').trim().replace(/^#/, '')
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null
+  return `#${raw.toUpperCase()}`
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '')
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('').toUpperCase()}`
+}
+
+/** RGB → HSL，h 是 0-360，s/l 是 0-1。 */
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const rr = r / 255
+  const gg = g / 255
+  const bb = b / 255
+  const max = Math.max(rr, gg, bb)
+  const min = Math.min(rr, gg, bb)
+  const l = (max + min) / 2
+  if (max === min) return { h: 0, s: 0, l }
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h: number
+  if (max === rr) h = ((gg - bb) / d + (gg < bb ? 6 : 0)) * 60
+  else if (max === gg) h = ((bb - rr) / d + 2) * 60
+  else h = ((rr - gg) / d + 4) * 60
+  return { h, s, l }
+}
+
+/** HSL → RGB（h 0-360，s/l 0-1）。 */
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const hp = (((h % 360) + 360) % 360) / 60
+  const x = c * (1 - Math.abs((hp % 2) - 1))
+  let r = 0
+  let g = 0
+  let b = 0
+  if (hp < 1) [r, g, b] = [c, x, 0]
+  else if (hp < 2) [r, g, b] = [x, c, 0]
+  else if (hp < 3) [r, g, b] = [0, c, x]
+  else if (hp < 4) [r, g, b] = [0, x, c]
+  else if (hp < 5) [r, g, b] = [x, 0, c]
+  else [r, g, b] = [c, 0, x]
+  const m = l - c / 2
+  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 }
+}
+
+/**
+ * 从商品主色推出「深 / 中 / 浅」三个能直接写进提示词的颜色。
+ *
+ * 为什么要推三个而不是直接说「用商品主色」：
+ * 大标题压在浅色背景上必须够深才读得清，背景又必须够淡才不抢商品，
+ * 只给一个色值模型还是会自己乱调。给死三个值，遵守率高得多。
+ *
+ * 商品是灰/白/黑时（饱和度过低）**没有色相可用**，这时退化成中性灰阶，
+ * 并明确要求从商品上挑一个点缀色当唯一彩色——否则模型会自己编一个颜色上去。
+ */
+export function buildProductPalette(name?: string, hex?: string): ProductPalette | null {
+  const normalized = normalizeHex(hex)
+  if (!normalized) return null
+
+  const { r, g, b } = hexToRgb(normalized)
+  const { h, s, l } = rgbToHsl(r, g, b)
+
+  if (s < 0.08) {
+    return {
+      name: (name || '').trim() || '中性色',
+      hex: normalized,
+      ink: '#2B2B2B',
+      accent: '#8A8A8A',
+      tint: '#F3F2F0',
+      neutral: true,
+    }
+  }
+
+  const inkRgb = hslToRgb(h, Math.min(1, s * 0.9), Math.min(0.3, Math.max(0.16, l * 0.45)))
+  const accentRgb = hslToRgb(h, Math.min(1, s), Math.min(0.6, Math.max(0.42, l * 0.8)))
+  const tintRgb = hslToRgb(h, Math.min(0.5, s * 0.45), 0.94)
+
+  return {
+    name: (name || '').trim() || normalized,
+    hex: normalized,
+    ink: rgbToHex(inkRgb.r, inkRgb.g, inkRgb.b),
+    accent: rgbToHex(accentRgb.r, accentRgb.g, accentRgb.b),
+    tint: rgbToHex(tintRgb.r, tintRgb.g, tintRgb.b),
+    neutral: false,
+  }
 }
 
 export interface OzonScriptCard {
@@ -301,6 +465,22 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
   const mainLayout: MainImageLayout =
     ctx.mainLayout ?? MAIN_IMAGE_LAYOUTS[Math.floor(Math.random() * MAIN_IMAGE_LAYOUTS.length)]
   const layoutSpec = MAIN_IMAGE_LAYOUT_SPEC[mainLayout]
+
+  /**
+   * 商品主色的具体色板（有识别结果才有）。
+   *
+   * 【2026-10-24 主人问「是否保证了背景、文字与商品颜色一致或相近」】
+   * 只有一句「取商品主色调」时，模型得自己猜色，遵守率不高。
+   * 识别到主色之后就把深/中/浅三个具体色值写进第 1 张主图，
+   * 从「你猜」变成「照这个用」。没有识别结果就退回原来那句笼统要求。
+   */
+  const palette = buildProductPalette(ctx.mainColorName, ctx.mainColorHex)
+  const paletteZh = palette
+    ? describePaletteZh(palette)
+    : '配色：文字、图标、色块、背景都取商品主体的主色调（同色系深浅），不要用和商品无关的颜色。'
+  const paletteEn = palette
+    ? describePaletteEn(palette)
+    : 'Palette: use the product’s own dominant hue for type, icons, colour blocks and background; never use colours unrelated to the product. '
   /**
    * ⚠️ `ctx.pain` 和 `ctx.diff` **故意不再拼进任何一张卡片**。
    *
@@ -373,9 +553,10 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '**商品本身一个像素都不许改**：形状、颜色、材质、图案、配件、比例全部保持参考图原样。' +
         '**画面里不要出现人物、模特、手**——这一张只讲商品和文字。' +
         layoutSpec.zh +
-        '背景：干净的浅色实景底（浅木桌面或浅灰布面），有柔和的空间层次，不要纯白、不要渐变纸。' +
+        paletteZh +
+        `背景：${palette ? `在 ${palette.tint} 的基础上做的极淡同色柔光（浅木/浅灰的质感可以保留，但整体要偏向这个色）` : '干净的浅色实景底（浅木桌面或浅灰布面），有柔和的空间层次'}，不要纯白、不要渐变纸。` +
         '文字内容（本张重点：**字体要大，要占满留白**）：' +
-        '① 俄语主标题：字号是整张最大的（约画布宽度的 9-12%），粗体，颜色取商品同色系的深色，2-3 行；' +
+        '① 俄语主标题：字号是整张最大的（约画布宽度的 9-12%），粗体，2-3 行；' +
         '② 俄语副标题：一行手写体，字号约为主标题的 45%；' +
         '③ 三组「实心圆形图标 + 两行俄语」卖点：图标直径约画布宽度的 7%，' +
         `文字字号不小于画布宽度的 3.5%，内容分别是：${sp1} / ${sp2} / ${sp3}；` +
@@ -390,9 +571,10 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '**Do not change the product itself at all**: shape, colour, material, pattern, accessories and proportions must all match the reference exactly. ' +
         '**No people, no models, no hands in this card** — this one is only about the product and the type. ' +
         layoutSpec.en +
-        'Background: a clean pale real-world surface (light wood or light grey cloth) with soft spatial depth; not pure white, not a gradient backdrop. ' +
+        paletteEn +
+        `Background: ${palette ? `built on ${palette.tint} with a very faint same-hue glow (a light wood or pale cloth texture may remain, but the overall cast must lean to that colour)` : 'a clean pale real-world surface (light wood or light grey cloth) with soft spatial depth'}; not pure white, not a gradient backdrop. ` +
         'Copy (the point of this card: **large type, filling the empty space**): ' +
-        '(1) Russian headline: the biggest type on the card (about 9-12% of the canvas width), bold, in a dark tone from the product palette, 2-3 lines; ' +
+        '(1) Russian headline: the biggest type on the card (about 9-12% of the canvas width), bold, 2-3 lines; ' +
         '(2) Russian subtitle: one handwritten line at about 45% of the headline size; ' +
         '(3) three "filled circular icon + two lines of Russian" selling points: icon diameter about 7% of the canvas width, ' +
         `text no smaller than 3.5% of the canvas width; the three items are: ${sp1} / ${sp2} / ${sp3}; ` +
@@ -727,13 +909,20 @@ export const VISION_DEFAULT_MODEL = 'gemini-3.5-flash'
  *   - `sp1_ru/sp2_ru/sp3_ru` 俄语 —— 给**图**用的，这段文字会印在图上。
  * 为什么不直接用中文出图：Ozon/WB 是俄语市场，图上出现中文会被判不合格。
  * 所以显示用中文、出图用俄语，两套都得要。
+ *
+ * 【2026-10-24 加了 main_color / main_color_hex】
+ * 主人问「是否保证了背景、文字与商品颜色一致或相近」。
+ * 光靠提示词喊「取商品主色」模型得自己猜，所以让视觉模型**顺手把主色读出来**，
+ * 再把具体色值写进第 1 张主图的提示词。同一次请求多返回两个字段，不额外花钱。
  */
 export const VISION_EXTRACT_PROMPT =
   'Ты эксперт по продажам на Ozon/Wildberries. Проанализируй товар на фото и выведи СТРОГО JSON без пояснений: ' +
   '{"product":"中文产品名","audience":"目标人群中文","sp1":"卖点1中文","sp2":"卖点2中文","sp3":"卖点3中文",' +
-  '"sp1_ru":"卖点1俄语","sp2_ru":"卖点2俄语","sp3_ru":"卖点3俄语","pain":"用户痛点中文","diff":"差异化中文"}. ' +
+  '"sp1_ru":"卖点1俄语","sp2_ru":"卖点2俄语","sp3_ru":"卖点3俄语","pain":"用户痛点中文","diff":"差异化中文",' +
+  '"main_color":"商品主体主色的中文叫法（如 淡紫色 / 雾霾蓝 / 米白）","main_color_hex":"该主色的十六进制，格式 #RRGGBB"}. ' +
   'sp1/sp2/sp3 — по-китайски (для интерфейса). sp1_ru/sp2_ru/sp3_ru — тот же смысл по-русски ' +
   '(этот текст печатается на картинке, поэтому обязательно по-русски). ' +
+  'main_color_hex — это доминирующий цвет САМОГО ТОВАРА (не фона фото), возьми средний цвет его основной поверхности. ' +
   'Не выдумывай, опирайся на фото.'
 
 export interface SellingPoints {
@@ -749,6 +938,10 @@ export interface SellingPoints {
   sp3_ru?: string
   pain?: string
   diff?: string
+  /** 商品主体主色的叫法（中文），例如「淡紫色」 */
+  main_color?: string
+  /** 商品主体主色的十六进制，形如 #C8B6E2 */
+  main_color_hex?: string
 }
 
 /**
