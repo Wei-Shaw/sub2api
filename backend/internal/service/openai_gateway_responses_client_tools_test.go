@@ -60,6 +60,26 @@ func TestAdaptOpenAIResponsesClientToolsLeavesNamespaceOnlyBodyUnchanged(t *test
 	require.False(t, mapping.ToolSearch)
 }
 
+func TestAdaptOpenAIResponsesClientToolsLiftsResponsesLiteAdditionalTools(t *testing.T) {
+	body := []byte(`{
+		"model": "deepseek-chat",
+		"input": [{"type": "additional_tools", "role": "developer", "tools": [
+			{"type": "custom", "name": "exec"},
+			{"type": "function", "name": "lookup", "parameters": {"type": "object"}}
+		]}, {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]}]
+	}`)
+
+	adapted, mapping, err := adaptOpenAIResponsesClientTools(body)
+
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.False(t, gjson.GetBytes(adapted, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "function", gjson.GetBytes(adapted, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(adapted, "tools.0.name").String())
+	require.Equal(t, "function", gjson.GetBytes(adapted, "tools.1.type").String())
+	require.Equal(t, "lookup", gjson.GetBytes(adapted, "tools.1.name").String())
+}
+
 func TestAdaptOpenAIResponsesClientToolsRejectsTrailingData(t *testing.T) {
 	tests := map[string][]byte{
 		"trailing garbage":     append(openAIClientToolsRequest(false), []byte(` garbage`)...),
@@ -189,6 +209,45 @@ func TestDeepSeekAdaptiveResponsesForwardRestoresClientToolsNonStreaming(t *test
 	require.Equal(t, "pwd", gjson.Get(recorder.Body.String(), "output.0.input").String())
 	require.Equal(t, "custom_tool_call", gjson.Get(recorder.Body.String(), "output.1.type").String())
 	require.Equal(t, "*** Begin Patch", gjson.Get(recorder.Body.String(), "output.1.input").String())
+}
+
+func TestDeepSeekResponsesForwardLiftsResponsesLiteClientToolsNonStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"deepseek-chat","stream":false,"input":[
+		{"type":"additional_tools","role":"developer","tools":[{"type":"custom","name":"exec"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"run pwd"}]}
+	]}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_ds_lite_tools","status":"completed","output":[
+			{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":"{\"input\":\"pwd\"}"}],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}
+	svc := openAIClientToolsTestService(upstream)
+	account := &Account{
+		ID:       5664,
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":      "test-key",
+			"api_protocol": APIProtocolResponses,
+			"base_url":     "https://relay.example",
+		},
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "custom_tool_call", gjson.Get(recorder.Body.String(), "output.0.type").String())
+	require.Equal(t, "pwd", gjson.Get(recorder.Body.String(), "output.0.input").String())
 }
 
 func TestDeepSeekResponsesCompactSkipsClientToolAdaptation(t *testing.T) {
