@@ -16,10 +16,15 @@ var defaultSensitiveKeys = map[string]struct{}{
 	"code":               {},
 	"code_verifier":      {},
 	"access_token":       {},
+	"account_email":      {},
+	"email":              {},
+	"email_address":      {},
 	"refresh_token":      {},
 	"id_token":           {},
 	"client_secret":      {},
 	"password":           {},
+	"proxy":              {},
+	"proxy_url":          {},
 }
 
 var defaultSensitiveKeyList = []string{
@@ -27,10 +32,15 @@ var defaultSensitiveKeyList = []string{
 	"code",
 	"code_verifier",
 	"access_token",
+	"account_email",
+	"email",
+	"email_address",
 	"refresh_token",
 	"id_token",
 	"client_secret",
 	"password",
+	"proxy",
+	"proxy_url",
 }
 
 type textRedactPatterns struct {
@@ -40,8 +50,13 @@ type textRedactPatterns struct {
 }
 
 var (
-	reGOCSPX = regexp.MustCompile(`GOCSPX-[0-9A-Za-z_-]{24,}`)
-	reAIza   = regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)
+	reGOCSPX           = regexp.MustCompile(`GOCSPX-[0-9A-Za-z_-]{24,}`)
+	reAIza             = regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)
+	reEmail            = regexp.MustCompile(`(?i)\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b`)
+	reProxyCredentials = regexp.MustCompile(
+		`(?i)\b((?:https?|socks5h?|socks4a?)://)[^/@\s:]+:[^/@\s]+@`,
+	)
+
 	// Gemini auth key：AQ.Ab 前缀 + 48 位，长度放宽以覆盖格式变体。
 	reGeminiAuthKey = regexp.MustCompile(`AQ\.Ab[0-9A-Za-z_-]{40,}`)
 
@@ -102,6 +117,8 @@ func RedactText(input string, extraKeys ...string) string {
 	out = reGOCSPX.ReplaceAllString(out, "GOCSPX-***")
 	out = reAIza.ReplaceAllString(out, "AIza***")
 	out = reGeminiAuthKey.ReplaceAllString(out, "AQ.***")
+	out = reProxyCredentials.ReplaceAllString(out, `${1}***:***@`)
+	out = reEmail.ReplaceAllString(out, "<email-redacted>")
 	out = patterns.reJSONLike.ReplaceAllString(out, `$1***$3`)
 	out = patterns.reQueryLike.ReplaceAllString(out, `$1=***`)
 	out = patterns.rePlain.ReplaceAllString(out, `$1$2***`)
@@ -220,6 +237,8 @@ func redactValueWithDepth(value any, keys map[string]struct{}, depth int) any {
 			out[i] = redactValueWithDepth(item, keys, depth+1)
 		}
 		return out
+	case string:
+		return RedactText(v)
 	default:
 		return value
 	}
