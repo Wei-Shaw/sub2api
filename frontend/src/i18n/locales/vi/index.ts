@@ -1,3 +1,4 @@
+import adminAccessKeys from './adminAccessKeys'
 import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
@@ -29,6 +30,7 @@ const completedAdmin = mergeLocaleMessages(
 
 export default mergeLocaleMessages(
   {
+    adminAccessKeys,
     ...landing,
     ...common,
     ...dashboard,
