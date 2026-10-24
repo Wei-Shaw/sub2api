@@ -795,10 +795,11 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Anthropic OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="((account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth') || (account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token'))"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-mapping-section"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -868,6 +869,7 @@
                 <input
                   v-model="mapping.from"
                   type="text"
+                  data-testid="oauth-model-mapping-from"
                   class="input flex-1"
                   :placeholder="t('admin.accounts.requestModel')"
                 />
@@ -887,11 +889,13 @@
                 <input
                   v-model="mapping.to"
                   type="text"
+                  data-testid="oauth-model-mapping-to"
                   class="input flex-1"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
                   type="button"
+                  data-testid="oauth-model-mapping-remove"
                   @click="removeModelMapping(index)"
                   class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                 >
@@ -4704,8 +4708,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    // Load model mappings for OpenAI/Grok/Anthropic OAuth accounts
+    if (
+      newAccount.platform === 'anthropic' &&
+      (newAccount.type === 'oauth' || newAccount.type === 'setup-token') &&
+      newAccount.credentials
+    ) {
+      const oauthCredentials = newAccount.credentials as Record<string, unknown>
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+    } else if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -5660,8 +5671,11 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    // OpenAI/Grok/Anthropic OAuth: persist model mapping to credentials
+    if (
+      ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') ||
+      (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
+    ) {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
