@@ -155,6 +155,13 @@ export default {
         enableRegistrationHint: '允许新用户注册',
         emailVerification: '邮箱验证',
         emailVerificationHint: '新用户注册时需要验证邮箱',
+        reviewEnabled: '注册审核',
+        reviewEnabledHint:
+          '开启后新注册用户需填写申请理由，管理员在用户列表中审核（通过/拒绝）后方可登录',
+        reviewInstructions: '申请要求',
+        reviewInstructionsHint: '向申请者说明需要填写的内容；留空使用默认提示，最多 5000 字。',
+        reasonMaxLength: '申请理由字数上限',
+        reasonMaxLengthHint: '请输入 1～10000 之间的整数，默认 500 字。',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
           "仅允许使用指定域名的邮箱注册账号；留空则不限制（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",

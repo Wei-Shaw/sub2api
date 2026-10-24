@@ -34,7 +34,7 @@
         @error="onTurnstileError"
       />
     </div>
-    <div v-if="emailVerifyEnabled" class="flex gap-3">
+    <div class="flex gap-3">
       <input
         v-model="verifyCode"
         :data-testid="`${testIdPrefix}-create-account-verify-code`"
@@ -61,10 +61,10 @@
         }}
       </button>
     </div>
-    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
+    <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input
@@ -76,11 +76,19 @@
       :placeholder="t('auth.invitationCodePlaceholder')"
       :disabled="isSubmitting"
     />
+    <RegistrationReasonField
+      :instructions="registrationReviewInstructions"
+      :max-length="registrationReasonMaxLength"
+      v-if="registrationReviewEnabled"
+      v-model="registrationReason"
+      :id="`${testIdPrefix}-create-account-registration-reason`"
+      :disabled="isSubmitting"
+    />
     <button
       :data-testid="`${testIdPrefix}-create-account-submit`"
       type="button"
       class="btn btn-primary w-full"
-      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim()) || (turnstileEnabled && !turnstileToken)"
+      :disabled="isSubmitting || !email.trim() || password.length < 6 || !verifyCode.trim() || (registrationReviewEnabled && !!registrationReasonError(registrationReason)) || (invitationCodeEnabled && !invitationCode.trim()) || (turnstileEnabled && !turnstileToken)"
       @click="handleSubmit"
     >
       {{ isSubmitting ? t('common.processing') : t('auth.createAccount') }}
@@ -97,8 +105,10 @@
 </template>
 
 <script setup lang="ts">
+import { useRegistrationReview } from '@/composables/useRegistrationReview'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import RegistrationReasonField from './RegistrationReasonField.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
@@ -111,6 +121,7 @@ export type PendingOAuthCreateAccountPayload = {
   tencentCaptchaTicket?: string
   tencentCaptchaRandstr?: string
   invitationCode?: string
+  registrationReason?: string
 }
 
 const props = defineProps<{
@@ -118,6 +129,7 @@ const props = defineProps<{
   testIdPrefix: string
   isSubmitting: boolean
   errorMessage?: string
+  registrationReviewEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -132,12 +144,15 @@ const email = ref('')
 const password = ref('')
 const verifyCode = ref('')
 const invitationCode = ref('')
+const { registrationReviewSettings, registrationReviewInstructions, registrationReasonMaxLength, registrationReasonError } = useRegistrationReview()
+const registrationReason = ref('')
+const publicRegistrationReviewEnabled = ref(false)
+const registrationReviewEnabled = computed(() => props.registrationReviewEnabled === true || publicRegistrationReviewEnabled.value)
 const isSendingCode = ref(false)
 const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
 const invitationCodeEnabled = ref(false)
-const emailVerifyEnabled = ref(true)
 const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
 const tencentCaptchaEnabled = ref(false)
@@ -308,6 +323,18 @@ async function handleSubmit() {
     return
   }
 
+  if (registrationReviewEnabled.value && registrationReasonError(registrationReason.value)) {
+    sendCodeError.value = registrationReasonError(registrationReason.value)
+    return
+  }
+
+  // A locally supplied OAuth email always needs proof of ownership, independently
+  // of the verification setting for ordinary email/password registration.
+  if (!verifyCode.value.trim()) {
+    sendCodeError.value = t('auth.codeRequired')
+    return
+  }
+
   // Turnstile 票据一次性：发送验证码已消耗上一枚，reset 后要等新票据回调。
   // 缺票时不能提交——create-account 端点会校验验证码，空 token 直接被判失败。
   // 表单的隐式提交（输入框回车）绕得过按钮的 disabled，所以这里必须再挡一次。
@@ -323,7 +350,7 @@ async function handleSubmit() {
   emit('submit', {
     email: trimmedEmail,
     password: password.value,
-    verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
+    verifyCode: verifyCode.value.trim(),
     ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) && turnstileToken.value
       ? { turnstileToken: turnstileToken.value }
       : {}),
@@ -333,6 +360,7 @@ async function handleSubmit() {
           tencentCaptchaRandstr: tencentCaptchaRandstr.value
         }
       : {}),
+    ...(registrationReviewEnabled.value ? { registrationReason: registrationReason.value.trim() } : {}),
     invitationCode: invitationCode.value.trim() || undefined
   })
 
@@ -348,8 +376,9 @@ function emitSwitchToBind() {
 onMounted(async () => {
   try {
     const settings = await getPublicSettings()
+    registrationReviewSettings.value = settings
+    publicRegistrationReviewEnabled.value = settings.registration_review_enabled === true
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
-    emailVerifyEnabled.value = settings.email_verify_enabled !== false
     turnstileEnabled.value = settings.turnstile_enabled === true
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
@@ -361,7 +390,6 @@ onMounted(async () => {
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
   } catch {
     invitationCodeEnabled.value = false
-    emailVerifyEnabled.value = true
     turnstileEnabled.value = false
     turnstileSiteKey.value = ''
     tencentCaptchaEnabled.value = false

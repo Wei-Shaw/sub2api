@@ -155,6 +155,13 @@ export default {
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
+        reviewEnabled: 'Registration Review',
+        reviewEnabledHint:
+          'New registrations must submit an application reason and be approved by an admin in the users list before they can log in',
+        reviewInstructions: 'Application requirements',
+        reviewInstructionsHint: 'Tell applicants what to include. Leave empty for the default prompt; up to 5000 characters.',
+        reasonMaxLength: 'Application reason character limit',
+        reasonMaxLengthHint: 'Enter a whole number from 1 to 10000. Default: 500 characters.',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
           "Only email addresses from the specified domains can register; leave empty for no restriction (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn)",

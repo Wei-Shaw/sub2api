@@ -120,6 +120,11 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+
+		// 注册审核：用户注册时填写的申请理由，管理员审核参考。
+		field.String("registration_reason").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Default(""),
 	}
 }
 

@@ -69,6 +69,25 @@ export function isTotp2FARequired(response: LoginResponse): response is TotpLogi
 }
 
 /**
+ * 注册审核：注册成功但需等待管理员审核专用错误。
+ * error_code 固定为 REGISTRATION_PENDING，便于调用方（含 i18n 映射）识别。
+ */
+export class RegistrationPendingReviewError extends Error {
+  readonly code = 'REGISTRATION_PENDING'
+
+  constructor(message = 'REGISTRATION_PENDING') {
+    super(message)
+    this.name = 'RegistrationPendingReviewError'
+  }
+}
+
+export function throwIfRegistrationPendingReview(response: { pending_review?: boolean; message?: string }): void {
+  if (response.pending_review === true) {
+    throw new RegistrationPendingReviewError(response.message || 'REGISTRATION_PENDING')
+  }
+}
+
+/**
  * Store authentication token in localStorage
  */
 export function setAuthToken(token: string): void {
@@ -170,10 +189,18 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
 /**
  * User registration
  * @param userData - Registration data (username, email, password)
- * @returns Authentication response with token and user data
+ * @returns Authentication response with token and user data.
+ * When registration review is enabled the backend returns `pending_review: true`
+ * without tokens; in that case a `RegistrationPendingReviewError` is thrown so
+ * callers can route the user to a "waiting for approval" notice instead of a login flow.
  */
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/register', userData)
+  const { data } = await apiClient.post<
+    AuthResponse & { pending_review?: boolean; message?: string }
+  >('/auth/register', userData)
+
+  // 注册审核：无 token，等待管理员审核
+  throwIfRegistrationPendingReview(data)
 
   // Store token and user data
   setAuthToken(data.access_token)
@@ -220,6 +247,8 @@ export async function logout(): Promise<void> {
  * Refresh token response
  */
 export interface OAuthTokenResponse {
+  pending_review?: boolean
+  message?: string
   access_token: string
   refresh_token?: string
   expires_in?: number
@@ -227,6 +256,7 @@ export interface OAuthTokenResponse {
 }
 
 export interface PendingOAuthBindLoginResponse extends Partial<OAuthTokenResponse> {
+  registration_review_enabled?: boolean
   auth_result?: string
   redirect?: string
   error?: string
@@ -586,9 +616,10 @@ export async function resetPassword(request: ResetPasswordRequest): Promise<Rese
 export async function completeLinuxDoOAuthRegistration(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<OAuthTokenResponse> {
-  return createPendingLinuxDoOAuthAccount(invitationCode, decision, affiliateCode)
+  return createPendingLinuxDoOAuthAccount(invitationCode, decision, affiliateCode, registrationReason)
 }
 
 /**
@@ -599,67 +630,76 @@ export async function completeLinuxDoOAuthRegistration(
 export async function completeOIDCOAuthRegistration(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<OAuthTokenResponse> {
-  return createPendingOIDCOAuthAccount(invitationCode, decision, affiliateCode)
+  return createPendingOIDCOAuthAccount(invitationCode, decision, affiliateCode, registrationReason)
 }
 
 export async function completeWeChatOAuthRegistration(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<OAuthTokenResponse> {
-  return createPendingWeChatOAuthAccount(invitationCode, decision, affiliateCode)
+  return createPendingWeChatOAuthAccount(invitationCode, decision, affiliateCode, registrationReason)
 }
 
 async function createPendingOAuthAccount(
   provider: 'linuxdo' | 'oidc' | 'wechat' | 'dingtalk',
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
   const normalizedAffiliateCode = affiliateCode?.trim()
   const { data } = await apiClient.post<PendingOAuthCreateAccountResponse>(
     `/auth/oauth/${provider}/complete-registration`,
     {
       invitation_code: invitationCode,
+      ...(registrationReason?.trim() ? { registration_reason: registrationReason.trim() } : {}),
       ...(normalizedAffiliateCode ? { aff_code: normalizedAffiliateCode } : {}),
       ...serializeOAuthAdoptionDecision(decision)
     }
   )
+  throwIfRegistrationPendingReview(data)
   return data
 }
 
 export async function createPendingLinuxDoOAuthAccount(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
-  return createPendingOAuthAccount('linuxdo', invitationCode, decision, affiliateCode)
+  return createPendingOAuthAccount('linuxdo', invitationCode, decision, affiliateCode, registrationReason)
 }
 
 export async function createPendingOIDCOAuthAccount(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
-  return createPendingOAuthAccount('oidc', invitationCode, decision, affiliateCode)
+  return createPendingOAuthAccount('oidc', invitationCode, decision, affiliateCode, registrationReason)
 }
 
 export async function createPendingWeChatOAuthAccount(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
-  return createPendingOAuthAccount('wechat', invitationCode, decision, affiliateCode)
+  return createPendingOAuthAccount('wechat', invitationCode, decision, affiliateCode, registrationReason)
 }
 
 export async function createPendingDingTalkOAuthAccount(
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
-  affiliateCode?: string
+  affiliateCode?: string,
+  registrationReason?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
-  return createPendingOAuthAccount('dingtalk', invitationCode, decision, affiliateCode)
+  return createPendingOAuthAccount('dingtalk', invitationCode, decision, affiliateCode, registrationReason)
 }
 
 export async function completePendingOAuthBindLogin(
@@ -669,6 +709,7 @@ export async function completePendingOAuthBindLogin(
     '/auth/oauth/pending/exchange',
     serializeOAuthAdoptionDecision(decision)
   )
+  throwIfRegistrationPendingReview(data)
   return data
 }
 

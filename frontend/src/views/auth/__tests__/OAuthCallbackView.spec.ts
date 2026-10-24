@@ -98,6 +98,29 @@ describe('OAuthCallbackView', () => {
     window.sessionStorage.clear()
   })
 
+  it('submits the review reason and returns pending applicants to login without setting a token', async () => {
+    routeState.path = '/auth/oauth/callback'
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'registration_completion_required', provider: 'google',
+      resolved_email: 'applicant@example.com', registration_review_enabled: true,
+    })
+    apiPostMock.mockResolvedValue({ data: { pending_review: true, message: 'Submitted' } })
+    const wrapper = mount(OAuthCallbackView)
+    await vi.dynamicImportSettled()
+    const passwords = wrapper.findAll('input[type="password"]')
+    await passwords[0].setValue('secret-123')
+    await passwords[1].setValue('secret-123')
+    await wrapper.get('textarea').setValue(' Research access ')
+    await wrapper.get('button').trigger('click')
+    await vi.dynamicImportSettled()
+    expect(apiPostMock).toHaveBeenCalledWith('/auth/oauth/google/complete-registration', {
+      password: 'secret-123', registration_reason: 'Research access'
+    })
+    expect(setTokenMock).not.toHaveBeenCalled()
+    expect(showSuccessMock).toHaveBeenCalledWith('auth.registrationPendingReviewSuccess')
+    expect(routerReplaceMock).toHaveBeenCalledWith('/login')
+  })
+
   it('renders localized callback copy actions', () => {
     routeState.query = {
       code: 'oauth-code',

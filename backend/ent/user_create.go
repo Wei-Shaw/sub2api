@@ -368,6 +368,20 @@ func (_c *UserCreate) SetNillableRpmLimit(v *int) *UserCreate {
 	return _c
 }
 
+// SetRegistrationReason sets the "registration_reason" field.
+func (_c *UserCreate) SetRegistrationReason(v string) *UserCreate {
+	_c.mutation.SetRegistrationReason(v)
+	return _c
+}
+
+// SetNillableRegistrationReason sets the "registration_reason" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRegistrationReason(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRegistrationReason(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -674,6 +688,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.RegistrationReason(); !ok {
+		v := user.DefaultRegistrationReason
+		_c.mutation.SetRegistrationReason(v)
+	}
 	return nil
 }
 
@@ -765,6 +783,9 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "User.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.RegistrationReason(); !ok {
+		return &ValidationError{Name: "registration_reason", err: errors.New(`ent: missing required field "User.registration_reason"`)}
 	}
 	return nil
 }
@@ -892,6 +913,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.RegistrationReason(); ok {
+		_spec.SetField(user.FieldRegistrationReason, field.TypeString, value)
+		_node.RegistrationReason = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1517,6 +1542,18 @@ func (u *UserUpsert) AddRpmLimit(v int) *UserUpsert {
 	return u
 }
 
+// SetRegistrationReason sets the "registration_reason" field.
+func (u *UserUpsert) SetRegistrationReason(v string) *UserUpsert {
+	u.Set(user.FieldRegistrationReason, v)
+	return u
+}
+
+// UpdateRegistrationReason sets the "registration_reason" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRegistrationReason() *UserUpsert {
+	u.SetExcluded(user.FieldRegistrationReason)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1979,6 +2016,20 @@ func (u *UserUpsertOne) AddRpmLimit(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRpmLimit() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetRegistrationReason sets the "registration_reason" field.
+func (u *UserUpsertOne) SetRegistrationReason(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegistrationReason(v)
+	})
+}
+
+// UpdateRegistrationReason sets the "registration_reason" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRegistrationReason() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegistrationReason()
 	})
 }
 
@@ -2610,6 +2661,20 @@ func (u *UserUpsertBulk) AddRpmLimit(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRpmLimit() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetRegistrationReason sets the "registration_reason" field.
+func (u *UserUpsertBulk) SetRegistrationReason(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegistrationReason(v)
+	})
+}
+
+// UpdateRegistrationReason sets the "registration_reason" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRegistrationReason() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegistrationReason()
 	})
 }
 

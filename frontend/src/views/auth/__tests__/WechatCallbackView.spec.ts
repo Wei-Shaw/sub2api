@@ -513,7 +513,7 @@ describe('WechatCallbackView', () => {
     expect(completeWeChatOAuthRegistrationMock).toHaveBeenCalledWith('INVITE-CODE', {
       adoptDisplayName: false,
       adoptAvatar: true,
-    })
+    }, undefined, undefined)
     expect(setTokenMock).toHaveBeenCalledWith('wechat-invite-token')
     expect(replaceMock).toHaveBeenCalledWith('/subscriptions')
   })
@@ -555,7 +555,7 @@ describe('WechatCallbackView', () => {
     expect(completeWeChatOAuthRegistrationMock).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: true,
       adoptAvatar: true,
-    })
+    }, undefined, undefined)
     expect(setTokenMock).not.toHaveBeenCalled()
     expect(replaceMock).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="wechat-choice-bind-existing"]').exists()).toBe(true)
@@ -764,6 +764,7 @@ describe('WechatCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('existing@example.com')
     await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wechat-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
     await flushPromises()
 
@@ -793,6 +794,7 @@ describe('WechatCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('new@example.com')
     await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wechat-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
     await flushPromises()
 

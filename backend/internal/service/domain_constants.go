@@ -14,6 +14,7 @@ const (
 	StatusUnused   = domain.StatusUnused
 	StatusUsed     = domain.StatusUsed
 	StatusExpired  = domain.StatusExpired
+	StatusPending  = domain.StatusPending
 )
 
 // Role constants
@@ -217,8 +218,12 @@ const DingTalkConnectSyntheticEmailDomain = "@dingtalk-connect.invalid"
 // Setting keys
 const (
 	// 注册设置
-	SettingKeyRegistrationEnabled              = "registration_enabled"                // 是否开放注册
-	SettingKeyEmailVerifyEnabled               = "email_verify_enabled"                // 是否开启邮件验证
+	SettingKeyRegistrationEnabled = "registration_enabled" // 是否开放注册
+	SettingKeyEmailVerifyEnabled  = "email_verify_enabled" // 是否开启邮件验证
+	// 注册审核：开启后新注册用户进入 pending 状态，管理员在后台审核通过后方可登录。
+	SettingKeyRegistrationReviewEnabled        = "registration_review_enabled" // 是否启用注册审核
+	SettingKeyRegistrationReviewInstructions   = "registration_review_instructions"
+	SettingKeyRegistrationReasonMaxLength      = "registration_reason_max_length"
 	SettingKeyRegistrationEmailSuffixWhitelist = "registration_email_suffix_whitelist" // 注册邮箱后缀白名单（JSON 数组）
 	// 白名单非空时，是否放行非白名单域名按主域名限量注册（每域名 1 个账户）。
 	// 默认 false：非白名单域名直接拒绝（白名单严格模式）。

@@ -164,6 +164,20 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 注册设置
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
+	updates[SettingKeyRegistrationReviewEnabled] = strconv.FormatBool(settings.RegistrationReviewEnabled)
+	if settings.RegistrationReasonMaxLength == 0 {
+		settings.RegistrationReasonMaxLength = DefaultRegistrationReasonMaxLength
+	}
+	if settings.RegistrationReasonMaxLength < 1 || settings.RegistrationReasonMaxLength > 10000 {
+		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_REASON_MAX_LENGTH", "registration reason limit must be between 1 and 10000")
+	}
+	settings.RegistrationReviewInstructions = strings.TrimSpace(settings.RegistrationReviewInstructions)
+	if len([]rune(settings.RegistrationReviewInstructions)) > 5000 {
+		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_REVIEW_INSTRUCTIONS", "registration instructions must not exceed 5000 characters")
+	}
+	updates[SettingKeyRegistrationReviewInstructions] = settings.RegistrationReviewInstructions
+	updates[SettingKeyRegistrationReasonMaxLength] = strconv.Itoa(settings.RegistrationReasonMaxLength)
+
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)

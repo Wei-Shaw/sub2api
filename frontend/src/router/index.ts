@@ -451,6 +451,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/users/:id/registration-review',
+    name: 'AdminUserRegistrationReview',
+    component: () => import('@/views/admin/UserRegistrationReviewView.vue'),
+    props: true,
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Registration Application',
+      titleKey: 'admin.users.reviewDetails'
+    }
+  },
+  {
     path: '/admin/groups',
     name: 'AdminGroups',
     component: () => import('@/views/admin/GroupsView.vue'),

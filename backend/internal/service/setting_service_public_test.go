@@ -309,3 +309,18 @@ func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *te
 		})
 	}
 }
+
+func TestSettingService_GetPublicSettings_RegistrationReviewPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want int
+	}{{"", 500}, {"1200", 1200}, {"-1", 500}, {"10001", 500}, {"bad", 500}} {
+		t.Run(tc.raw, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{"registration_review_instructions": "  Team name\nUse case  ", "registration_reason_max_length": tc.raw}}, &config.Config{})
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, "Team name\nUse case", settings.RegistrationReviewInstructions)
+			require.Equal(t, tc.want, settings.RegistrationReasonMaxLength)
+		})
+	}
+}

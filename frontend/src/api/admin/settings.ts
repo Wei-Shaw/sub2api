@@ -406,6 +406,9 @@ export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean;
   email_verify_enabled: boolean;
+  registration_review_enabled: boolean;
+  registration_review_instructions?: string;
+  registration_reason_max_length?: number;
   registration_email_suffix_whitelist: string[];
   registration_email_domain_quota_enabled: boolean;
   promo_code_enabled: boolean;
@@ -764,6 +767,9 @@ export interface SystemSettings {
 export interface UpdateSettingsRequest {
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
+  registration_review_enabled?: boolean;
+  registration_review_instructions?: string;
+  registration_reason_max_length?: number;
   registration_email_suffix_whitelist?: string[];
   registration_email_domain_quota_enabled?: boolean;
   promo_code_enabled?: boolean;

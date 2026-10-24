@@ -196,6 +196,32 @@ describe('EmailVerifyView', () => {
     }))
   })
 
+  it('submits the OAuth review reason and returns pending applicants to login without tokens', async () => {
+    authStoreState.pendingAuthSession = { token: '', token_field: 'pending_oauth_token', provider: 'oidc', redirect: '/profile' }
+    getPublicSettingsMock.mockResolvedValue({ registration_review_enabled: true, turnstile_enabled: false })
+    sessionStorage.setItem('register_data', JSON.stringify({ email: 'fresh@example.com', password: 'secret-123' }))
+    apiClientPostMock.mockResolvedValue({ data: { pending_review: true } })
+    const wrapper = mount(EmailVerifyView, {
+      global: { stubs: { AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: true, TurnstileWidget: true, transition: false } }
+    })
+    await flushPromises()
+    await wrapper.get('#code').setValue('123456')
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(apiClientPostMock).not.toHaveBeenCalled()
+    await wrapper.get('textarea').setValue(' Team research ')
+    expect(JSON.parse(sessionStorage.getItem('register_data')!).registration_reason).toBe(' Team research ')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/create-account', expect.objectContaining({ registration_reason: 'Team research' }))
+    expect(setTokenMock).not.toHaveBeenCalled()
+    expect(persistOAuthTokenContextMock).not.toHaveBeenCalled()
+    expect(showSuccessMock).toHaveBeenCalledWith('auth.registrationPendingReviewSuccess')
+    expect(clearPendingAuthSessionMock).toHaveBeenCalled()
+    expect(pushMock).toHaveBeenCalledWith('/login')
+    expect(sessionStorage.getItem('register_data')).toBeNull()
+    wrapper.unmount()
+  })
+
   it('uses the pending oauth verify-code endpoint when register data carries a pending auth session', async () => {
     authStoreState.pendingAuthSession = {
       token: 'pending-token-1',

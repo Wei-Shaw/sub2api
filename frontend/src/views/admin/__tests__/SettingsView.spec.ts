@@ -724,6 +724,24 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("loads and saves configurable registration review requirements", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, registration_review_enabled: true, registration_review_instructions: "Original requirement", registration_reason_max_length: 800 });
+    const wrapper = mountView();
+    await flushPromises();
+    expect((wrapper.get("#registration_review_instructions").element as HTMLTextAreaElement).value).toBe("Original requirement");
+    await wrapper.get("#registration_review_instructions").setValue("Tell us your purpose");
+    await wrapper.get("#registration_reason_max_length").setValue("1200");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ registration_review_instructions: "Tell us your purpose", registration_reason_max_length: 1200 }));
+    updateSettings.mockClear();
+    await wrapper.get("#registration_reason_max_length").setValue("0");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

@@ -155,7 +155,7 @@ func TestAuthService_Register_InvitationCodeSingleUseUnderConcurrency(t *testing
 			defer wg.Done()
 			<-start
 			email := fmt.Sprintf("race-%d@example.com", i)
-			_, _, err := svc.RegisterWithVerification(ctx, email, "Password123!", "", "", code, "")
+			_, _, err := svc.RegisterWithVerification(ctx, email, "Password123!", "", "", code, "", "")
 			results <- err
 		}(i)
 	}
@@ -205,7 +205,7 @@ func TestAuthService_Register_InvitationCodeRejectedWhenAlreadyUsed(t *testing.T
 		&userPlatformQuotaRepoStub{},
 	)
 
-	_, _, err := svc.RegisterWithVerification(context.Background(), "later@example.com", "Password123!", "", "", code, "")
+	_, _, err := svc.RegisterWithVerification(context.Background(), "later@example.com", "Password123!", "", "", code, "", "")
 	require.ErrorIs(t, err, ErrInvitationCodeInvalid)
 }
 
@@ -227,7 +227,7 @@ func TestAuthService_Register_InvitationCodeMissingWhenEnabled(t *testing.T) {
 		&userPlatformQuotaRepoStub{},
 	)
 
-	_, _, err := svc.RegisterWithVerification(context.Background(), "no-invite@example.com", "Password123!", "", "", "", "")
+	_, _, err := svc.RegisterWithVerification(context.Background(), "no-invite@example.com", "Password123!", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrInvitationCodeRequired)
 
 	ok, err := userRepo.ExistsByEmail(context.Background(), "no-invite@example.com")

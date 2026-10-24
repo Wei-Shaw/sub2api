@@ -383,7 +383,7 @@ describe('OidcCallbackView', () => {
     expect(completeOIDCOAuthRegistration).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: true,
       adoptAvatar: false
-    })
+    }, undefined, undefined)
   })
 
   it('keeps the oauth flow active when complete-registration returns another pending step', async () => {
@@ -423,7 +423,7 @@ describe('OidcCallbackView', () => {
     expect(completeOIDCOAuthRegistration).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: true,
       adoptAvatar: true
-    })
+    }, undefined, undefined)
     expect(setToken).not.toHaveBeenCalled()
     expect(replace).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('auth.oauthFlow.bindExistingAccount')
@@ -517,6 +517,7 @@ describe('OidcCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('existing@example.com')
     await wrapper.get('[data-testid="oidc-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="oidc-create-account-submit"]').trigger('click')
     await flushPromises()
 
@@ -546,6 +547,7 @@ describe('OidcCallbackView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('new@example.com')
     await wrapper.get('[data-testid="oidc-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="oidc-create-account-submit"]').trigger('click')
     await flushPromises()
 
