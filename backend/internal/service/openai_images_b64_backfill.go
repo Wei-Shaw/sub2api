@@ -21,12 +21,67 @@ import (
 // b64_json 缺失或为空但 url 非空的图片项，由网关下载 url 内容并以 base64 回填到 b64_json。
 const AccountExtraImagesURLToB64JSON = "images_url_to_b64_json"
 
+// AccountExtraImagesStripUpstreamURLs 是账户 extra 中的开关键。开启后，Images 端点的非流式响应里
+// 已带 b64_json 的图片项会去掉值为 http(s) 链接的字段（url，以及上游私有的 native_url 等），
+// 避免把上游的图片存储地址透给客户端。
+const AccountExtraImagesStripUpstreamURLs = "images_strip_upstream_urls"
+
 // openAIImageURLDownloadTimeout 是单张图片 url 下载的超时上限。
 const openAIImageURLDownloadTimeout = 60 * time.Second
 
 // ImagesURLToB64JSONEnabled 返回账户是否开启了 url 转 b64_json 回填。
 func ImagesURLToB64JSONEnabled(account *Account) bool {
 	return account != nil && account.getExtraBool(AccountExtraImagesURLToB64JSON)
+}
+
+// ImagesStripUpstreamURLsEnabled 返回账户是否开启了去除上游图片链接。
+func ImagesStripUpstreamURLsEnabled(account *Account) bool {
+	return account != nil && account.getExtraBool(AccountExtraImagesStripUpstreamURLs)
+}
+
+// stripOpenAIImagesUpstreamURLs 对 Images 端点的非流式响应去除上游图片链接。
+//
+// 只处理 data[i].b64_json 非空的项，删除其中值为 http(s) 链接的字段；没有 b64_json 的项
+// 原样保留，否则客户端拿不到图片。客户端显式要求 response_format=url 时不处理。
+func stripOpenAIImagesUpstreamURLs(account *Account, parsed *OpenAIImagesRequest, body []byte) []byte {
+	if !ImagesStripUpstreamURLsEnabled(account) {
+		return body
+	}
+	if parsed != nil && parsed.ResponseFormat == "url" {
+		return body
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+	items := gjson.GetBytes(body, "data")
+	if !items.IsArray() {
+		return body
+	}
+	for index, item := range items.Array() {
+		if !item.IsObject() || strings.TrimSpace(item.Get("b64_json").String()) == "" {
+			continue
+		}
+		var fields []string
+		item.ForEach(func(key, value gjson.Result) bool {
+			if value.Type == gjson.String && isHTTPURLString(value.String()) {
+				fields = append(fields, key.String())
+			}
+			return true
+		})
+		for _, field := range fields {
+			updated, err := sjson.DeleteBytes(body, fmt.Sprintf("data.%d.%s", index, gjson.Escape(field)))
+			if err != nil {
+				continue
+			}
+			body = updated
+		}
+	}
+	return body
+}
+
+func isHTTPURLString(raw string) bool {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
 }
 
 // backfillOpenAIImagesB64JSON 对 Images 端点的非流式响应做 url 转 b64_json 回填。
