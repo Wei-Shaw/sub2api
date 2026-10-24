@@ -489,6 +489,7 @@ export default {
       qrFailed: '未能获取微信支付二维码',
     },
     subscribeNow: '立即开通',
+    resetQuotaOnRenewalNotice: '续费后立即重置额度并开始新周期，当前订阅剩余时间及额度将作废。',
     renewNow: '续费',
     selectPlan: '选择套餐',
     planFeatures: '功能特性',

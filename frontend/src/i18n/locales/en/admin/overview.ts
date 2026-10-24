@@ -1066,6 +1066,8 @@ export default {
         typeNotEditable: 'Billing type cannot be changed after group creation.',
         standard: 'Standard (Balance)',
         subscription: 'Subscription (Quota)',
+        resetQuotaOnRenewal: 'Restart subscription on renewal',
+        resetQuotaOnRenewalHint: 'Each successful purchase or positive subscription redemption resets daily, weekly and monthly usage and starts a new term immediately. Remaining time and quota from the old term are discarded. When disabled, renewals only extend the expiry.',
         dailyLimit: 'Daily Limit (USD)',
         weeklyLimit: 'Weekly Limit (USD)',
         monthlyLimit: 'Monthly Limit (USD)',

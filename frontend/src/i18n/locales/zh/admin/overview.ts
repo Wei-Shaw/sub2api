@@ -1063,6 +1063,8 @@ export default {
         typeNotEditable: '分组创建后无法修改计费类型。',
         standard: '标准（余额）',
         subscription: '订阅（配额）',
+        resetQuotaOnRenewal: '续费时重新开始订阅',
+        resetQuotaOnRenewalHint: '每次成功购买或兑换正天数订阅时，清零日、周、月用量，并立即开始新周期；旧周期剩余时间及额度作废。关闭时仅延长有效期。',
         dailyLimit: '每日限额（USD）',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',

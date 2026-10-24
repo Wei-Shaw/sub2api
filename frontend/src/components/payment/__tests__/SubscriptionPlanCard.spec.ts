@@ -52,6 +52,12 @@ const mountPlanCard = (groupPlatform: string, overrides: Partial<SubscriptionPla
   });
 
 describe("SubscriptionPlanCard", () => {
+  it("discloses forfeiture before buying a restart-on-renewal plan", () => {
+    expect(mountPlanCard("openai").find('[role="note"]').exists()).toBe(false);
+    const wrapper = mountPlanCard("openai", { reset_quota_on_renewal: true });
+    expect(wrapper.get('[role="note"]').text()).toContain("payment.resetQuotaOnRenewalNotice");
+  });
+
   it("does not show Antigravity model scopes for OpenAI plans", () => {
     const text = mountPlanCard("openai").text();
 

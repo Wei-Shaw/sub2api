@@ -525,13 +525,14 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 			if validityDays == 0 {
 				validityDays = 30
 			}
-			_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
-				UserID:       userID,
-				GroupID:      *redeemCode.GroupID,
-				ValidityDays: validityDays,
-				AssignedBy:   0, // 系统分配
-				Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
-			})
+			_, _, err := s.subscriptionService.assignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+				ApplyRenewalPolicy: true,
+				UserID:             userID,
+				GroupID:            *redeemCode.GroupID,
+				ValidityDays:       validityDays,
+				AssignedBy:         0, // 系统分配
+				Notes:              fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
+			}, true)
 			if err != nil {
 				return nil, fmt.Errorf("assign or extend subscription: %w", err)
 			}
@@ -588,6 +589,11 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 	case RedeemTypeSubscription:
 		if s.authCacheInvalidator != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+		}
+		if s.subscriptionService != nil && redeemCode.GroupID != nil {
+			if err := s.subscriptionService.invalidateSubscriptionCaches(userID, *redeemCode.GroupID); err != nil {
+				logger.LegacyPrintf("service.redeem", "subscription cache invalidation after redemption failed: %v", err)
+			}
 		}
 		if s.billingCacheService == nil {
 			return

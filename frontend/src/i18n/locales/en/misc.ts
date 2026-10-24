@@ -465,6 +465,7 @@ export default {
       qrFailed: 'Failed to get WeChat Pay QR code',
     },
     subscribeNow: 'Subscribe Now',
+    resetQuotaOnRenewalNotice: 'Renewing immediately resets your quotas and starts a new term. Unused time and quota from your current subscription will be forfeited.',
     renewNow: 'Renew',
     selectPlan: 'Select Plan',
     planFeatures: 'Features',

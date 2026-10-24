@@ -238,6 +238,20 @@ func (_c *GroupCreate) SetNillableSubscriptionType(v *string) *GroupCreate {
 	return _c
 }
 
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (_c *GroupCreate) SetResetQuotaOnRenewal(v bool) *GroupCreate {
+	_c.mutation.SetResetQuotaOnRenewal(v)
+	return _c
+}
+
+// SetNillableResetQuotaOnRenewal sets the "reset_quota_on_renewal" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableResetQuotaOnRenewal(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetResetQuotaOnRenewal(*v)
+	}
+	return _c
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_c *GroupCreate) SetDailyLimitUsd(v float64) *GroupCreate {
 	_c.mutation.SetDailyLimitUsd(v)
@@ -1093,6 +1107,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultSubscriptionType
 		_c.mutation.SetSubscriptionType(v)
 	}
+	if _, ok := _c.mutation.ResetQuotaOnRenewal(); !ok {
+		v := group.DefaultResetQuotaOnRenewal
+		_c.mutation.SetResetQuotaOnRenewal(v)
+	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
@@ -1299,6 +1317,9 @@ func (_c *GroupCreate) check() error {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.ResetQuotaOnRenewal(); !ok {
+		return &ValidationError{Name: "reset_quota_on_renewal", err: errors.New(`ent: missing required field "Group.reset_quota_on_renewal"`)}
 	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
@@ -1521,6 +1542,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
 		_node.SubscriptionType = value
+	}
+	if value, ok := _c.mutation.ResetQuotaOnRenewal(); ok {
+		_spec.SetField(group.FieldResetQuotaOnRenewal, field.TypeBool, value)
+		_node.ResetQuotaOnRenewal = value
 	}
 	if value, ok := _c.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
@@ -2071,6 +2096,18 @@ func (u *GroupUpsert) SetSubscriptionType(v string) *GroupUpsert {
 // UpdateSubscriptionType sets the "subscription_type" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateSubscriptionType() *GroupUpsert {
 	u.SetExcluded(group.FieldSubscriptionType)
+	return u
+}
+
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (u *GroupUpsert) SetResetQuotaOnRenewal(v bool) *GroupUpsert {
+	u.Set(group.FieldResetQuotaOnRenewal, v)
+	return u
+}
+
+// UpdateResetQuotaOnRenewal sets the "reset_quota_on_renewal" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateResetQuotaOnRenewal() *GroupUpsert {
+	u.SetExcluded(group.FieldResetQuotaOnRenewal)
 	return u
 }
 
@@ -3219,6 +3256,20 @@ func (u *GroupUpsertOne) SetSubscriptionType(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateSubscriptionType() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSubscriptionType()
+	})
+}
+
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (u *GroupUpsertOne) SetResetQuotaOnRenewal(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetResetQuotaOnRenewal(v)
+	})
+}
+
+// UpdateResetQuotaOnRenewal sets the "reset_quota_on_renewal" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateResetQuotaOnRenewal() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateResetQuotaOnRenewal()
 	})
 }
 
@@ -4679,6 +4730,20 @@ func (u *GroupUpsertBulk) SetSubscriptionType(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateSubscriptionType() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSubscriptionType()
+	})
+}
+
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (u *GroupUpsertBulk) SetResetQuotaOnRenewal(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetResetQuotaOnRenewal(v)
+	})
+}
+
+// UpdateResetQuotaOnRenewal sets the "reset_quota_on_renewal" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateResetQuotaOnRenewal() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateResetQuotaOnRenewal()
 	})
 }
 

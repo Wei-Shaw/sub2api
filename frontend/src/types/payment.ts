@@ -123,6 +123,7 @@ export interface PaymentOrder {
 // ==================== Plans & Channels ====================
 
 export interface SubscriptionPlan {
+  reset_quota_on_renewal?: boolean
   id: number
   group_id: number
   group_platform?: string

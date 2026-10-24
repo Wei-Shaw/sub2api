@@ -243,6 +243,20 @@ func (_u *GroupUpdate) SetNillableSubscriptionType(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (_u *GroupUpdate) SetResetQuotaOnRenewal(v bool) *GroupUpdate {
+	_u.mutation.SetResetQuotaOnRenewal(v)
+	return _u
+}
+
+// SetNillableResetQuotaOnRenewal sets the "reset_quota_on_renewal" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableResetQuotaOnRenewal(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetResetQuotaOnRenewal(*v)
+	}
+	return _u
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_u *GroupUpdate) SetDailyLimitUsd(v float64) *GroupUpdate {
 	_u.mutation.ResetDailyLimitUsd()
@@ -1626,6 +1640,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ResetQuotaOnRenewal(); ok {
+		_spec.SetField(group.FieldResetQuotaOnRenewal, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
 	}
@@ -2442,6 +2459,20 @@ func (_u *GroupUpdateOne) SetSubscriptionType(v string) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableSubscriptionType(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetSubscriptionType(*v)
+	}
+	return _u
+}
+
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (_u *GroupUpdateOne) SetResetQuotaOnRenewal(v bool) *GroupUpdateOne {
+	_u.mutation.SetResetQuotaOnRenewal(v)
+	return _u
+}
+
+// SetNillableResetQuotaOnRenewal sets the "reset_quota_on_renewal" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableResetQuotaOnRenewal(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetResetQuotaOnRenewal(*v)
 	}
 	return _u
 }
@@ -3858,6 +3889,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResetQuotaOnRenewal(); ok {
+		_spec.SetField(group.FieldResetQuotaOnRenewal, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
