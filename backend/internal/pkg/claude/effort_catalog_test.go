@@ -34,6 +34,43 @@ func TestEffortLevelsForModel(t *testing.T) {
 	}
 }
 
+func TestRequiresAdaptiveThinking(t *testing.T) {
+	t.Parallel()
+	for _, model := range []string{
+		"claude-opus-4-7",
+		"claude-opus-4-8",
+		"us.anthropic.claude-opus-4-7-v1",
+		"claude-opus-5",
+		"us.anthropic.claude-opus-5-v1",
+		"claude-opus-5-5",
+		"anthropic/claude-opus-5.5",
+		"claude-sonnet-5",
+		"us.anthropic.claude-sonnet-5-v1",
+		"claude-sonnet-5-5",
+		"global.anthropic.claude-sonnet-5-5",
+		"claude-haiku-5-5",
+		"anthropic.claude-haiku-5-5",
+		"global.anthropic.claude-haiku-5-5",
+		"claude-fable-5",
+		"claude-fable-5-1",
+		"anthropic.claude-mythos-5",
+	} {
+		require.True(t, RequiresAdaptiveThinking(model), model)
+	}
+	for _, model := range []string{
+		"claude-opus-4-6",
+		"us.anthropic.claude-opus-4-6-v1",
+		"claude-opus-4-5-20251101",
+		"claude-sonnet-4-6",
+		"claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001",
+		"claude-mythos-preview",
+		"gpt-5.6",
+	} {
+		require.False(t, RequiresAdaptiveThinking(model), model)
+	}
+}
+
 func TestIsOpus55OpenRouterExactAlias(t *testing.T) {
 	t.Parallel()
 	for _, model := range []string{"claude-opus-5-5", "anthropic/claude-opus-5.5"} {
