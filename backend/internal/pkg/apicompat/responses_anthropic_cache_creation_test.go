@@ -138,13 +138,13 @@ func TestAnthropicEventToResponsesEvents_MergesCacheCreationBreakdown(t *testing
 		{"explicit_5m_zero", `{"cache_creation":{"ephemeral_5m_input_tokens":0}}`, 0, 3, 3},
 		{"omitted_details", `{}`, 2, 3, 5},
 		{"empty_details", `{"cache_creation":{}}`, 2, 3, 5},
-		{"legacy_aggregate_after_details", `{"cache_creation_input_tokens":99}`, 2, 3, 5},
-		{"explicit_both_zero", `{"cache_creation_input_tokens":99,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}`, 0, 0, 0},
+		{"legacy_aggregate_after_details", `{"cache_creation_input_tokens":99}`, 2, 3, 99},
+		{"explicit_both_zero", `{"cache_creation_input_tokens":99,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}`, 0, 0, 99},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var startUsage, deltaUsage AnthropicUsage
-			require.NoError(t, json.Unmarshal([]byte(`{"input_tokens":10,"cache_read_input_tokens":4,"cache_creation_input_tokens":99,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3}}`), &startUsage))
+			require.NoError(t, json.Unmarshal([]byte(`{"input_tokens":10,"cache_read_input_tokens":4,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3}}`), &startUsage))
 			require.NoError(t, json.Unmarshal([]byte(test.delta), &deltaUsage))
 			state := NewAnthropicEventToResponsesState()
 			AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
@@ -159,7 +159,7 @@ func TestAnthropicEventToResponsesEvents_MergesCacheCreationBreakdown(t *testing
 			assert.Equal(t, test.want1h, *state.CacheCreation.Ephemeral1hInputTokens)
 			assert.Equal(t, test.wantTotal, state.CacheCreationInputTokens)
 			AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
-				Type: "message_delta", Usage: &AnthropicUsage{OutputTokens: 7, CacheCreationInputTokens: 99},
+				Type: "message_delta", Usage: &AnthropicUsage{OutputTokens: 7},
 			}, state)
 
 			events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)

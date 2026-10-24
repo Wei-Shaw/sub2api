@@ -30,6 +30,9 @@ func encodeAnthropicThinking(block AnthropicContentBlock) string {
 }
 
 func anthropicCacheCreationInputTokens(usage AnthropicUsage) int {
+	if usage.HasCacheCreationInputTokens() {
+		return max(usage.CacheCreationInputTokens, 0)
+	}
 	if usage.CacheCreation != nil && (usage.CacheCreation.Ephemeral5mInputTokens != nil || usage.CacheCreation.Ephemeral1hInputTokens != nil) {
 		cacheCreationTokens := 0
 		if usage.CacheCreation.Ephemeral5mInputTokens != nil {
@@ -235,6 +238,8 @@ type AnthropicEventToResponsesState struct {
 	CacheCreationInputTokens int
 	CacheCreation            AnthropicCacheCreation
 
+	cacheCreationInputTokensPresent bool
+
 	StopReason string
 }
 
@@ -246,6 +251,10 @@ func NewAnthropicEventToResponsesState() *AnthropicEventToResponsesState {
 }
 
 func (state *AnthropicEventToResponsesState) mergeCacheCreationUsage(usage AnthropicUsage) {
+	if usage.HasCacheCreationInputTokens() {
+		state.CacheCreationInputTokens = max(usage.CacheCreationInputTokens, 0)
+		state.cacheCreationInputTokensPresent = true
+	}
 	if usage.CacheCreation != nil {
 		if usage.CacheCreation.Ephemeral5mInputTokens != nil {
 			tokens := max(*usage.CacheCreation.Ephemeral5mInputTokens, 0)
@@ -256,10 +265,8 @@ func (state *AnthropicEventToResponsesState) mergeCacheCreationUsage(usage Anthr
 			state.CacheCreation.Ephemeral1hInputTokens = &tokens
 		}
 	}
-	if state.CacheCreation.Ephemeral5mInputTokens != nil || state.CacheCreation.Ephemeral1hInputTokens != nil {
+	if !state.cacheCreationInputTokensPresent && (state.CacheCreation.Ephemeral5mInputTokens != nil || state.CacheCreation.Ephemeral1hInputTokens != nil) {
 		state.CacheCreationInputTokens = anthropicCacheCreationInputTokens(AnthropicUsage{CacheCreation: &state.CacheCreation})
-	} else if usage.CacheCreationInputTokens > 0 {
-		state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 	}
 }
 

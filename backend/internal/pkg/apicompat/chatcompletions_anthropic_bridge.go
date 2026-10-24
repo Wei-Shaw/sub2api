@@ -540,10 +540,11 @@ func chatUsageToAnthropicUsage(usage *ChatUsage) AnthropicUsage {
 	}
 
 	return AnthropicUsage{
-		InputTokens:              inputTokens,
-		OutputTokens:             usage.CompletionTokens,
-		CacheReadInputTokens:     cachedTokens,
-		CacheCreationInputTokens: cacheCreationTokens,
+		InputTokens:                     inputTokens,
+		OutputTokens:                    usage.CompletionTokens,
+		CacheReadInputTokens:            cachedTokens,
+		CacheCreationInputTokens:        cacheCreationTokens,
+		CacheCreationInputTokensPresent: true,
 	}
 }
 
@@ -714,10 +715,11 @@ func FinalizeChatCompletionsAnthropicStream(state *ChatCompletionsToAnthropicStr
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:              state.InputTokens,
-				OutputTokens:             state.OutputTokens,
-				CacheReadInputTokens:     state.CacheReadInputTokens,
-				CacheCreationInputTokens: state.CacheCreationInputTokens,
+				InputTokens:                     state.InputTokens,
+				OutputTokens:                    state.OutputTokens,
+				CacheReadInputTokens:            state.CacheReadInputTokens,
+				CacheCreationInputTokens:        state.CacheCreationInputTokens,
+				CacheCreationInputTokensPresent: true,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},

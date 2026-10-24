@@ -369,6 +369,30 @@ func TestHandleResponsesStreamingResponse_NormalizesTerminalUsage(t *testing.T) 
 			wantOutput:        30,
 			wantCacheCreation: 800,
 		},
+		{
+			name:       "explicit aggregate caps contradictory TTL breakdown",
+			startUsage: `"input_tokens":10,"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}`,
+			deltaUsage: `"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":200}`,
+			wantInput:  10, wantOutput: 7, wantCacheCreation: 100,
+		},
+		{
+			name:       "explicit zero survives contradictory TTL breakdown",
+			startUsage: `"input_tokens":10,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}`,
+			deltaUsage: `"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":200}`,
+			wantInput:  10, wantOutput: 7,
+		},
+		{
+			name:       "null aggregate and TTL preserve partial snapshots",
+			startUsage: `"input_tokens":10,"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":null}`,
+			deltaUsage: `"output_tokens":7,"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":30}`,
+			wantInput:  10, wantOutput: 7, wantCacheCreation: 50,
+		},
+		{
+			name:       "null does not clear explicit aggregate zero",
+			startUsage: `"input_tokens":10,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}`,
+			deltaUsage: `"output_tokens":7,"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_1h_input_tokens":null}`,
+			wantInput:  10, wantOutput: 7,
+		},
 	}
 
 	for _, tt := range tests {
