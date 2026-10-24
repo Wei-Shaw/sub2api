@@ -22,6 +22,7 @@ import (
 // longContextPricingEnabled 表示上游是否对本次请求收取长上下文费率，用于优先级 3；
 // 由 accountStatsLongContextPricingEnabled 按账号开关得出，不受分组售价开关影响。
 // reasoningEffort 是最终转发等级；按账号统计定价中配置的等级倍率计费。
+// composite 分组的规则按 ctx 中的 ResolvedTargetPlatform 匹配，调用方必须带上目标平台。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
@@ -49,7 +50,13 @@ func resolveAccountStatsCost(
 		return nil
 	}
 
+	// composite 分组在缓存里登记的平台是 "composite"，规则条目的平台却是具体平台。
+	// 不换成实际目标平台，规则就永远匹配不上，账号成本会静默落到优先级 3 的模型定价文件。
+	// 其它分组保持分组平台不变。
 	platform := channelService.GetGroupPlatform(ctx, groupID)
+	if platform == PlatformComposite {
+		platform = channelLookupPlatform(ctx, platform)
+	}
 
 	// 优先级 1：自定义规则（始终尝试）
 	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount, reasoningEffort); cost != nil {
