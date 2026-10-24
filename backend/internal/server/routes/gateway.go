@@ -52,6 +52,8 @@ func RegisterGatewayRoutes(
 	}
 	countTokensHandler := func(c *gin.Context) {
 		switch platform := getGroupPlatform(c); {
+		case platform == service.PlatformMuse:
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "code": "muse_capability_unsupported", "message": "Token counting is not supported by the Muse app provider"}})
 		case platform == service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
 		case domain.UsesOpenAIGateway(platform):
@@ -186,6 +188,16 @@ func RegisterGatewayRoutes(
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
+	gateway.Use(func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMuse {
+			path := c.Request.URL.Path
+			if c.Request.Method == http.MethodGet && strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/responses/compact") || strings.Contains(path, "/live") || strings.HasSuffix(path, "/alpha/search") {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "code": "muse_capability_unsupported", "message": "This endpoint is not supported by the Muse app provider"}})
+				return
+			}
+		}
+		c.Next()
+	})
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform

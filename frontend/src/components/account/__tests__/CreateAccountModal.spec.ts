@@ -43,6 +43,10 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    users: {
+      list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getById: vi.fn().mockResolvedValue({ id: 10, email: 'owner@example.com', status: 'active' }),
+    },
     accounts: {
       create: createAccountMock,
       probeUpstreamBilling: probeUpstreamBillingMock,
@@ -138,7 +142,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = []) {
+function mountModal(groups: any[] = [], renderPlatformIcons = false) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
     global: {
@@ -148,7 +152,7 @@ function mountModal(groups: any[] = []) {
         ConfirmDialog: true,
         Select: true,
         Icon: true,
-        PlatformIcon: true,
+        PlatformIcon: !renderPlatformIcons,
         ProxySelector: true,
         ProxyAdBanner: true,
         GroupSelector: GroupSelectorStub,
@@ -200,6 +204,19 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it('places Meta Muse at the end of the first provider row with its app icon and export instructions', async () => {
+    const wrapper = mountModal([], true)
+    const firstRow = wrapper.get('[data-tour="account-form-platform"]')
+    const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
+    expect(muse).toBeDefined()
+    expect(firstRow.findAll('button').map(button => button.text())).toEqual([
+      'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok', 'TypeSafe / Jev', 'Meta Muse',
+    ])
+    expect(muse.get('img').attributes('src')).toContain('muse.png')
+    await muse.trigger('click')
+    expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
+  })
   beforeEach(() => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })

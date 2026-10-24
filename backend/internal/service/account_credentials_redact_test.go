@@ -29,6 +29,17 @@ func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *
 	require.Equal(t, map[string]any{"foo": "bar"}, out["model_mapping"])
 }
 
+func TestMergePreservingSensitiveCreds_MuseSessionSurvivesRedactedEdit(t *testing.T) {
+	bundle := map[string]any{"session": "test-only-session"}
+	existing := map[string]any{"muse_session": bundle}
+	out := MergePreservingSensitiveCreds(existing, map[string]any{"expires_at": "updated"})
+	require.Equal(t, bundle, out["muse_session"])
+	require.Equal(t, "updated", out["expires_at"])
+	replacement := map[string]any{"session": "rotated-test-session"}
+	out = MergePreservingSensitiveCreds(existing, map[string]any{"muse_session": replacement})
+	require.Equal(t, replacement, out["muse_session"])
+}
+
 func TestMergePreservingSensitiveCreds_OverwritesWhenIncomingProvidesSensitive(t *testing.T) {
 	existing := map[string]any{
 		"refresh_token": "rt-old",
