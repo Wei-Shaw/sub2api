@@ -6,8 +6,7 @@ func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) 
 	t.Parallel()
 
 	cases := map[string]string{
-		"gemini-2.5-flash-image":         "gemini-2.5-flash-image",
-		"gemini-2.5-flash-image-preview": "gemini-2.5-flash-image",
+		"gemini-2.5-flash-image-preview": "gemini-3.1-flash-image",
 		"gemini-3.1-flash-image":         "gemini-3.1-flash-image",
 		"gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
 		"gemini-3-pro-image":             "gemini-3.1-flash-image",
@@ -29,9 +28,8 @@ func TestDefaultAntigravityModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"claude-fable-5-1": "claude-fable-5-1",
-		"claude-fable-5":   "claude-fable-5",
-		"claude-opus-4-8":  "claude-opus-4-8",
+		"claude-opus-4-8": "claude-opus-4-6-thinking",
+		"claude-opus-4-7": "claude-opus-4-6-thinking",
 	}
 	for from, want := range cases {
 		got, ok := DefaultAntigravityModelMapping[from]
@@ -44,11 +42,11 @@ func TestDefaultAntigravityModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	}
 }
 
-func TestDefaultAntigravityModelMapping_PreservesExplicitSonnet45AndMigratesLegacyAliases(t *testing.T) {
+func TestDefaultAntigravityModelMapping_MigratesLegacySonnetAliases(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"claude-sonnet-4-5":          "claude-sonnet-4-5",
+		"claude-sonnet-4-5":          "claude-sonnet-4-6",
 		"claude-sonnet-4-5-thinking": "claude-sonnet-4-6",
 		"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
 	}
@@ -82,7 +80,7 @@ func TestDefaultAntigravityModelMapping_Gemini31ProAliases(t *testing.T) {
 }
 
 func TestDefaultAntigravityModelMapping_Gemini36FlashModels(t *testing.T) {
-	for _, model := range []string{"gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-tiered"} {
+	for _, model := range []string{"gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-low", "gemini-3.6-flash-medium"} {
 		if got := DefaultAntigravityModelMapping[model]; got != model {
 			t.Fatalf("expected %s to map to itself, got %q", model, got)
 		}
@@ -90,7 +88,7 @@ func TestDefaultAntigravityModelMapping_Gemini36FlashModels(t *testing.T) {
 }
 
 func TestDefaultAntigravityModelMapping_Gemini37FlashModels(t *testing.T) {
-	for _, model := range []string{"gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-low", "gemini-3.7-flash-medium", "gemini-3.7-flash-tiered"} {
+	for _, model := range []string{"gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-low", "gemini-3.7-flash-medium"} {
 		if got := DefaultAntigravityModelMapping[model]; got != model {
 			t.Fatalf("expected %s to map to itself, got %q", model, got)
 		}

@@ -654,6 +654,8 @@ type ModelQuotaInfo struct {
 
 // ModelInfo 模型信息
 type ModelInfo struct {
+	Disabled           bool            `json:"disabled,omitempty"`
+	IsInternal         bool            `json:"isInternal,omitempty"`
 	QuotaInfo          *ModelQuotaInfo `json:"quotaInfo,omitempty"`
 	DisplayName        string          `json:"displayName,omitempty"`
 	SupportsImages     *bool           `json:"supportsImages,omitempty"`
@@ -771,6 +773,15 @@ func (c *Client) fetchAvailableModels(ctx context.Context, availableURLs []strin
 		// 解析原始 JSON 为 map
 		var rawResp map[string]any
 		_ = json.Unmarshal(respBodyBytes, &rawResp)
+		// Permission placeholders are not callable models. Filter both views at
+		// the shared parsing boundary so catalog sync and connection tests agree.
+		rawModels, _ := rawResp["models"].(map[string]any)
+		for id, model := range modelsResp.Models {
+			if strings.HasSuffix(id, "-disabled") || model.Disabled || model.IsInternal {
+				delete(modelsResp.Models, id)
+				delete(rawModels, id)
+			}
+		}
 
 		// 标记成功的 URL，下次优先使用
 		DefaultURLAvailability.MarkSuccess(baseURL)

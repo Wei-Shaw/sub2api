@@ -94,10 +94,10 @@ func TestHandleSmartRetry_503_LongDelay_SingleAccountRetry_RetryInPlace(t *testi
 			"code": 503,
 			"status": "UNAVAILABLE",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-pro-agent"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"}
 			],
-			"message": "No capacity available for model gemini-3-pro-high on the server"
+			"message": "No capacity available for model gemini-pro-agent on the server"
 		}
 	}`)
 	resp := &http.Response{
@@ -160,7 +160,7 @@ func TestHandleSmartRetry_503_LongDelay_NoSingleAccountRetry_StillSwitches(t *te
 			"code": 503,
 			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-pro-agent"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"}
 			]
 		}
@@ -198,7 +198,7 @@ func TestHandleSmartRetry_503_LongDelay_NoSingleAccountRetry_StillSwitches(t *te
 	// 对照：多账号模式应设模型限流
 	require.Len(t, repo.modelRateLimitCalls, 2,
 		"multi-account mode SHOULD set model rate limit")
-	require.Equal(t, "gemini-3-pro-high", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "gemini-pro-agent", repo.modelRateLimitCalls[0].modelKey)
 	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
@@ -219,7 +219,7 @@ func TestHandleSmartRetry_429_LongDelay_SingleAccountRetry_StillSwitches(t *test
 		"error": {
 			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"}
 			]
 		}
@@ -693,7 +693,7 @@ func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *test
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -709,7 +709,7 @@ func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *test
 		action:         "generateContent",
 		body:           []byte(`{"input":"test"}`),
 		httpUpstream:   upstream,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -737,7 +737,7 @@ func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -753,7 +753,7 @@ func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(
 		action:         "generateContent",
 		body:           []byte(`{"input":"test"}`),
 		httpUpstream:   upstream,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -765,7 +765,7 @@ func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(
 	var switchErr *AntigravityAccountSwitchError
 	require.ErrorAs(t, err, &switchErr, "should return AntigravityAccountSwitchError")
 	require.Equal(t, account.ID, switchErr.OriginalAccountID)
-	require.Equal(t, "claude-sonnet-4-5", switchErr.RateLimitedModel)
+	require.Equal(t, "claude-sonnet-4-6", switchErr.RateLimitedModel)
 
 	// upstream 不应被调用（预检查就短路了）
 	require.Equal(t, 0, upstream.calls, "upstream should NOT be called when pre-check blocks")
