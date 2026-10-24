@@ -248,6 +248,77 @@ func TestAnthropicCompositePolicyClampsUnsupportedMinimalToLow(t *testing.T) {
 	require.Equal(t, []service.ReasoningEffortMapping{{From: "max", To: "low"}}, mappings)
 }
 
+func TestCompositeCNReasoningEffortPolicies(testContext *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, platform := range []string{service.PlatformDeepseek, service.PlatformKimi, service.PlatformZhipu, service.PlatformMiniMax, service.PlatformGrok, service.PlatformGemini, service.PlatformOpenCodeGo, service.PlatformCommandCode, service.PlatformCline} {
+		testContext.Run(platform, func(testContext *testing.T) {
+			ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ginContext.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+			ginContext.Request = ginContext.Request.WithContext(service.WithResolvedTargetPlatform(ginContext.Request.Context(), platform))
+			apiKey := &service.APIKey{Group: &service.Group{
+				Platform: service.PlatformComposite,
+				ReasoningEffortMappings: []service.ReasoningEffortMapping{
+					{From: "low", To: "max", MatchType: "exact", Model: "deepseek-flash"},
+				},
+			}}
+			body := []byte(`{"model":"deepseek-flash","output_config":{"effort":"low"}}`)
+			wantEffort := "low"
+			if service.IsCNProvider(platform) {
+				wantEffort = "max"
+			}
+			for _, apply := range []func(*gin.Context, *service.APIKey, []byte) ([]byte, bool, error){applyOpenAIReasoningEffortPolicyForRequest, applyAnthropicReasoningEffortPolicyForRequest} {
+				got, changed, err := apply(ginContext, apiKey, body)
+				require.NoError(testContext, err)
+				require.Equal(testContext, service.IsCNProvider(platform), changed)
+				require.Equal(testContext, wantEffort, gjson.GetBytes(got, "output_config.effort").String())
+			}
+			bindOpenAIReasoningEffortPolicyForMessagesRequest(ginContext, apiKey, body)
+			got, _, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(ginContext.Request.Context(), body)
+			require.NoError(testContext, err)
+			require.Equal(testContext, wantEffort, gjson.GetBytes(got, "output_config.effort").String())
+			if !service.IsCNProvider(platform) {
+				return
+			}
+			require.Equal(testContext, "low", *service.RequestedReasoningEffortFromContext(ginContext.Request.Context()))
+			apiKey.Group.ReasoningEffortMappings[0].To = "minimal"
+			openAIBody, _, err := applyOpenAIReasoningEffortPolicyForRequest(ginContext, apiKey, []byte(`{"model":"deepseek-flash","reasoning_effort":"low"}`))
+			require.NoError(testContext, err)
+			require.Equal(testContext, "minimal", gjson.GetBytes(openAIBody, "reasoning_effort").String())
+			bindOpenAIReasoningEffortPolicyForMessagesRequest(ginContext, apiKey, body)
+			got, _, err = service.ApplyOpenAIReasoningEffortPolicyFromContext(ginContext.Request.Context(), body)
+			require.NoError(testContext, err)
+			require.Equal(testContext, "low", gjson.GetBytes(got, "output_config.effort").String())
+			require.Equal(testContext, "minimal", apiKey.Group.ReasoningEffortMappings[0].To)
+			apiKey.Group.MaxReasoningEffort = "minimal"
+			maxEffort, _, _, ok := anthropicReasoningEffortPolicyForRequest(ginContext, apiKey)
+			require.True(testContext, ok)
+			require.Equal(testContext, "low", maxEffort)
+			ceilingBody := []byte(`{"model":"deepseek-flash","output_config":{"effort":"max"}}`)
+			bindOpenAIReasoningEffortPolicyForMessagesRequest(ginContext, apiKey, ceilingBody)
+			got, _, err = service.ApplyOpenAIReasoningEffortPolicyFromContext(ginContext.Request.Context(), ceilingBody)
+			require.NoError(testContext, err)
+			require.Equal(testContext, "low", gjson.GetBytes(got, "output_config.effort").String())
+			fresh, _ := gin.CreateTestContext(httptest.NewRecorder())
+			fresh.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+			fresh.Request = fresh.Request.WithContext(service.WithResolvedTargetPlatform(fresh.Request.Context(), platform))
+			omitted := []byte(`{"model":"deepseek-flash","thinking":{"type":"enabled"}}`)
+			bindOpenAIReasoningEffortPolicyForMessagesRequest(fresh, apiKey, omitted)
+			got, changed, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(fresh.Request.Context(), omitted)
+			require.NoError(testContext, err)
+			require.False(testContext, changed)
+			require.Equal(testContext, omitted, got)
+			apiKey.Group.MaxReasoningEffort = ""
+			apiKey.Group.ReasoningEffortMappings = nil
+			for _, apply := range []func(*gin.Context, *service.APIKey, []byte) ([]byte, bool, error){applyOpenAIReasoningEffortPolicyForRequest, applyAnthropicReasoningEffortPolicyForRequest} {
+				got, changed, err := apply(fresh, apiKey, body)
+				require.NoError(testContext, err)
+				require.False(testContext, changed)
+				require.Equal(testContext, body, got)
+			}
+		})
+	}
+}
+
 func TestClientRequestedModelUsesCompositePublicModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

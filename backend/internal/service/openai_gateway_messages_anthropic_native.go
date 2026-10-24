@@ -47,6 +47,21 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
+	requestedReasoningEffort := RequestedReasoningEffortFromContext(ctx)
+	if requestedReasoningEffort == nil {
+		requestedReasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String())
+	}
+	if IsCNProvider(account.Platform) {
+		policyBody, _, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+		if policyErr != nil {
+			if IsReasoningEffortPolicyDenied(policyErr) {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			}
+			return nil, policyErr
+		}
+		body = policyBody
+	}
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -59,14 +74,36 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	}
 	if normalized, changed := NormalizeGLM53AnthropicThinking(body, upstreamModel); changed {
 		body = normalized
+		if ctx != nil {
+			if policy, bound := ctx.Value(openAIReasoningEffortPolicyContextKey{}).(openAIReasoningEffortPolicy); bound && IsCNProvider(account.Platform) {
+				// Final pass is cap-only: nil mappings avoid remapping the original client effort already mapped above.
+				capped, _, policyErr := ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, nil, policy.overLimit)
+				if policyErr == nil {
+					// low/high/max are the existing NormalizeGLM53AnthropicThinking contract.
+					switch effort := gjson.GetBytes(capped, "output_config.effort").String(); effort {
+					case "low", "high", "max":
+						body = capped
+					default:
+						policyErr = fmt.Errorf("GLM-5.3 does not support capped reasoning effort %q (supported: low, high, max): %w", effort,
+							&ReasoningEffortOverLimitError{Requested: gjson.GetBytes(body, "output_config.effort").String(), Max: NormalizeMaxReasoningEffort(policy.maxEffort)})
+					}
+				}
+				if policyErr != nil {
+					if IsReasoningEffortPolicyDenied(policyErr) {
+						MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+						writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+					}
+					return nil, policyErr
+				}
+			}
+		}
 	}
 
 	// 记录客户端请求的推理强度：优先 Claude 协议的 output_config.effort；
 	// 缺失且 thinking 已启用时，按国产 passback-required 模型兜底为 high
 	// （对齐 Anthropic 网关 gateway_handler 的记录语义，避免该路径长期落 NULL）。
-	requestedReasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String())
 	reasoningEffort := ApplyThinkingEnabledFallback(
-		requestedReasoningEffort,
+		NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String()),
 		body,
 		billingModel,
 	)
@@ -116,10 +153,16 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
+	var result *OpenAIForwardResult
 	if clientStream {
-		return s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+		result, err = s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+	} else {
+		result, err = s.handleNativeAnthropicBufferedResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
 	}
-	return s.handleNativeAnthropicBufferedResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+	if result != nil {
+		result.RequestedReasoningEffort = requestedReasoningEffort
+	}
+	return result, err
 }
 
 // nativeAnthropicTargetURL 组装国产供应商原生 Anthropic messages 端点。
