@@ -1033,6 +1033,45 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
+	recoverInvalidEncryptedContentHTTP := func(resp *http.Response) (bool, error) {
+		if httpInvalidEncryptedContentRetryTried || ctx.Err() != nil || !openAIRequestHasEncryptedReasoning(body) {
+			return false, nil
+		}
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return false, decodeErr
+		}
+		if !trimOpenAIEncryptedReasoningItems(decoded) {
+			return false, nil
+		}
+		body, err = marshalOpenAIUpstreamJSON(decoded)
+		if err != nil {
+			return false, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
+		}
+		if invalidDigests := collectOpenAIEncryptedContentDigestsRaw(lineageEntryBody); len(invalidDigests) > 0 {
+			if lineageSessionHash == "" {
+				lineageSessionHash = s.GenerateSessionHash(c, lineageEntryBody)
+			}
+			s.markOpenAIWSInvalidEncryptedContentLineage(lineageGroupID, lineageSessionHash, invalidDigests)
+		}
+		httpInvalidEncryptedContentRetryTried = true
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
+		rejectedFieldRetryState.remember(body)
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			UpstreamStatusCode: resp.StatusCode, UpstreamRequestID: resp.Header.Get("x-request-id"),
+			Kind: "retry", Reason: "invalid_encrypted_content",
+			Message: "Upstream rejected encrypted reasoning; retrying once after sanitization",
+		})
+		beginUpstreamResponseModelObservation(c)
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+		return true, nil
+	}
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -1109,34 +1148,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
-			invalidEncryptedContentError := upstreamCode == "invalid_encrypted_content" ||
-				(upstreamCode == "thinking_signature_invalid" &&
-					strings.Contains(upstreamMsg, "The encrypted content") &&
-					strings.Contains(upstreamMsg, "could not be verified") &&
-					strings.Contains(upstreamMsg, "could not be decrypted or parsed"))
-			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && invalidEncryptedContentError {
-				decoded, decodeErr := ensureReqBody()
-				if decodeErr != nil {
-					return nil, decodeErr
-				}
-				invalidDigests := collectOpenAIEncryptedContentDigestsRaw(lineageEntryBody)
-				if trimOpenAIEncryptedReasoningItems(decoded) {
-					body, err = marshalOpenAIUpstreamJSON(decoded)
-					if err != nil {
-						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
-					}
-					if len(invalidDigests) > 0 {
-						if lineageSessionHash == "" {
-							lineageSessionHash = s.GenerateSessionHash(c, lineageEntryBody)
-						}
-						s.markOpenAIWSInvalidEncryptedContentLineage(lineageGroupID, lineageSessionHash, invalidDigests)
-					}
-					httpInvalidEncryptedContentRetryTried = true
-					rejectedFieldRetryState.remember(body)
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+			if resp.StatusCode == http.StatusBadRequest && isOpenAIInvalidEncryptedContentError(upstreamCode, upstreamMsg) {
+				if retry, retryErr := recoverInvalidEncryptedContentHTTP(resp); retryErr != nil {
+					return nil, retryErr
+				} else if retry {
 					continue
 				}
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
 			}
 			if retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, respBody); retryErr != nil {
 				return nil, fmt.Errorf("normalize rejected Responses field retry body: %w", retryErr)
@@ -1222,8 +1239,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		searchCount := 0
 		var imageOutputSizes []string
 		if reqStream {
-			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+			streamCtx := context.WithValue(ctx, openAIEncryptedContentRecoveryContextKey{},
+				!httpInvalidEncryptedContentRetryTried && openAIRequestHasEncryptedReasoning(body))
+			streamResult, err := s.handleStreamingResponseWithReasoning(streamCtx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
+				var encryptedSignal *openAIEncryptedContentRecoverySignal
+				if errors.As(err, &encryptedSignal) {
+					if retry, retryErr := recoverInvalidEncryptedContentHTTP(resp); retryErr != nil {
+						return nil, retryErr
+					} else if retry {
+						continue
+					}
+					// Cancellation can revoke recovery after the signal was raised.
+					// Deliver the original terminal through the normal error path.
+					_ = resp.Body.Close()
+					resp.Body = io.NopCloser(strings.NewReader("event: " + encryptedSignal.eventType + "\ndata: " + string(encryptedSignal.payload) + "\n\n"))
+					_, terminalErr := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+					return nil, terminalErr
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
