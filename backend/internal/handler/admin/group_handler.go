@@ -141,6 +141,9 @@ type simpleModeGroupResponse struct {
 	Description string `json:"description"`
 	Platform    string `json:"platform"`
 	Status      string `json:"status"`
+	// Codex config overrides are user-facing display settings, so simple mode keeps them in the response.
+	CodexConfigDefaultModel string `json:"codex_config_default_model"`
+	CodexConfigReviewModel  string `json:"codex_config_review_model"`
 
 	I18n service.GroupI18n `json:"i18n,omitempty"`
 
@@ -158,10 +161,12 @@ func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
 	}
 	return &simpleModeGroupResponse{
 		ID: group.ID, Name: group.Name, Description: group.Description, Platform: group.Platform,
-		Status:             group.Status,
-		I18n:               group.I18n,
-		AccountCount:       group.AccountCount,
-		ActiveAccountCount: group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
+		Status:                  group.Status,
+		I18n:                    group.I18n,
+		CodexConfigDefaultModel: group.CodexConfigDefaultModel,
+		CodexConfigReviewModel:  group.CodexConfigReviewModel,
+		AccountCount:            group.AccountCount,
+		ActiveAccountCount:      group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
 		SortOrder: group.SortOrder, CreatedAt: group.CreatedAt, UpdatedAt: group.UpdatedAt,
 	}
 }
@@ -170,7 +175,11 @@ func sanitizeCreateGroupRequestForSimpleMode(req *CreateGroupRequest) {
 	if req == nil {
 		return
 	}
-	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n, Platform: req.Platform}
+	allowed := CreateGroupRequest{
+		Name: req.Name, Description: req.Description, I18n: req.I18n, Platform: req.Platform,
+		CodexConfigDefaultModel: req.CodexConfigDefaultModel,
+		CodexConfigReviewModel:  req.CodexConfigReviewModel,
+	}
 	allowed.RateMultiplier = 1
 	allowed.SubscriptionType = service.SubscriptionTypeStandard
 	*req = allowed
@@ -180,7 +189,11 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	if req == nil {
 		return
 	}
-	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n}
+	*req = UpdateGroupRequest{
+		Name: req.Name, Description: req.Description, I18n: req.I18n,
+		CodexConfigDefaultModel: req.CodexConfigDefaultModel,
+		CodexConfigReviewModel:  req.CodexConfigReviewModel,
+	}
 }
 
 // CreateGroupRequest represents create group request
@@ -246,6 +259,10 @@ type CreateGroupRequest struct {
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
 	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
+	// 分组级 Codex 配置首选模型；空字符串表示使用平台默认值。
+	CodexConfigDefaultModel string `json:"codex_config_default_model"`
+	// 分组级 Codex review 模型；空字符串使用显式首选模型，首选模型也为空时使用硬编码平台默认。
+	CodexConfigReviewModel string `json:"codex_config_review_model"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
 	// Anthropic/OpenAI 请求推理强度上限，空字符串表示不限制。
@@ -322,6 +339,10 @@ type UpdateGroupRequest struct {
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
 	// 固定账号 manifest 配置；nil 表示不修改。
 	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
+	// 指针用于区分省略字段和显式清空。
+	CodexConfigDefaultModel *string `json:"codex_config_default_model"`
+	// 指针用于区分省略字段和显式清空。
+	CodexConfigReviewModel *string `json:"codex_config_review_model"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
 	// Anthropic/OpenAI 请求推理强度上限；空字符串清除，nil 不修改。
@@ -723,6 +744,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
+		CodexConfigDefaultModel:         req.CodexConfigDefaultModel,
+		CodexConfigReviewModel:          req.CodexConfigReviewModel,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
@@ -870,6 +893,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
+		CodexConfigDefaultModel:         req.CodexConfigDefaultModel,
+		CodexConfigReviewModel:          req.CodexConfigReviewModel,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,

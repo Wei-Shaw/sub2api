@@ -11,14 +11,16 @@ import (
 
 func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T) {
 	group := &dbent.Group{
-		ID:                    1,
-		Name:                  "openai-dispatch",
-		Platform:              service.PlatformOpenAI,
-		Status:                service.StatusActive,
-		SubscriptionType:      service.SubscriptionTypeStandard,
-		RateMultiplier:        1,
-		AllowMessagesDispatch: true,
-		DefaultMappedModel:    "gpt-5.4",
+		ID:                      1,
+		Name:                    "openai-dispatch",
+		Platform:                service.PlatformOpenAI,
+		Status:                  service.StatusActive,
+		SubscriptionType:        service.SubscriptionTypeStandard,
+		RateMultiplier:          1,
+		AllowMessagesDispatch:   true,
+		DefaultMappedModel:      "gpt-5.4",
+		CodexConfigDefaultModel: "custom-codex-model",
+		CodexConfigReviewModel:  "custom-codex-review-model",
 		VideoModelPrices: map[string]map[string]float64{
 			service.VideoPriceFamilyGrokImagineVideo15: {service.VideoBillingResolution720P: 0.14},
 		},
@@ -76,4 +78,6 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
+	require.Equal(t, group.CodexConfigDefaultModel, got.Group.CodexConfigDefaultModel)
+	require.Equal(t, group.CodexConfigReviewModel, got.Group.CodexConfigReviewModel)
 }

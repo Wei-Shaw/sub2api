@@ -630,6 +630,8 @@ export interface Group {
   allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  codex_config_default_model?: string
+  codex_config_review_model?: string
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -856,6 +858,8 @@ export interface CreateGroupRequest {
   allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  codex_config_default_model?: string
+  codex_config_review_model?: string
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
@@ -923,6 +927,8 @@ export interface UpdateGroupRequest {
   allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  codex_config_default_model?: string
+  codex_config_review_model?: string
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number

@@ -178,6 +178,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 			ExactModelMappings: map[string]string{"claude-special": "gpt-special"},
 		},
 		ModelAllowlist:              GroupModelAllowlist{Enabled: true, Models: []string{"gpt-5.4", "gpt-5-mini"}},
+		CodexConfigDefaultModel:     "custom-model",
+		CodexConfigReviewModel:      "custom-review-model",
 		RPMLimit:                    99,
 		MaxReasoningEffort:          "medium",
 		MaxReasoningEffortOverLimit: ReasoningEffortOverLimitDeny,
@@ -218,6 +220,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.ForceOpenAIFast, duplicate.ForceOpenAIFast)
 	require.Equal(t, source.FreeOpenAIFast, duplicate.FreeOpenAIFast)
 	require.Equal(t, source.ModelAllowlist, duplicate.ModelAllowlist)
+	require.Equal(t, source.CodexConfigDefaultModel, duplicate.CodexConfigDefaultModel)
+	require.Equal(t, source.CodexConfigReviewModel, duplicate.CodexConfigReviewModel)
 	require.Equal(t, source.RPMLimit, duplicate.RPMLimit)
 	require.Equal(t, source.MaxReasoningEffort, duplicate.MaxReasoningEffort)
 	require.Equal(t, source.MaxReasoningEffortOverLimit, duplicate.MaxReasoningEffortOverLimit)
