@@ -55,7 +55,8 @@ export const OZON_SYSTEM_PROMPT = `Ozon 商品主图，3:4 竖版。
   不要用和商品无关的颜色。例：紫色芭蕾包 → 标题和图标都用紫，背景也带一点淡紫
 - 商品保持原样，只换背景、排版和文字
 - 一张图只画一个画面：一件商品、一个视角。禁止拼图、三联图、九宫格、多视角拼贴；
-  只有「对比图」才允许左右各一件，而且必须是同一件商品
+  只有「对比图」才允许左右各一件：两件必须是同一类产品的两个档次（一件普通款、一件我们的），
+  既不能是完全不相干的品类，也不能一模一样看不出差别
 - 不要添加原图没有的数字和尺寸
 `
 
@@ -77,7 +78,7 @@ export const OZON_SYSTEM_PROMPT_EN = `Ozon product main image, 3:4 portrait.
 - Use at most 3 colors for text and graphic elements.
 - **Derive the palette from the product**: the headline, icons, colour blocks and background elements should all use the product's own dominant hue (different shades of the same family); never use colours unrelated to the product. Example: a purple ballet bag gets purple type and icons, and a faintly purple-tinted background.
 - Keep the product exactly as in the reference; only change background, layout and text.
-- One frame, one picture: a single product and a single viewpoint. Never make a collage, triptych, nine-grid or multi-view montage; only the comparison card may show two items side by side, and they must be the same product.
+- One frame, one picture: a single product and a single viewpoint. Never make a collage, triptych, nine-grid or multi-view montage; only the comparison card may show two items side by side, and they must be two grades of the same product category (an ordinary version and ours) — never an unrelated category, and never two identical items.
 - Do not add numbers or dimensions that are not present in the reference image.
 `
 
@@ -481,6 +482,20 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
   const paletteEn = palette
     ? describePaletteEn(palette)
     : 'Palette: use the product’s own dominant hue for type, icons, colour blocks and background; never use colours unrelated to the product. '
+
+  /**
+   * 第 8 张（售后/联系卖家图）的底色说明。
+   *
+   * 【2026-10-24 主人】「页面的颜色依照产品主体的颜色来定」——
+   * 样例里粉色椅子的售后图整张是粉的、绿色鱼缸的整张是绿的。
+   * 所以底色不再固定，而是从商品主色推出来的深→浅竖向渐变。
+   */
+  const paletteGroundZh = palette
+    ? `底色（必须照做）：从 ${palette.ink} 到 ${palette.tint} 的**竖向渐变**（上方深、下方浅），整张只走这一个色系；不要换成别的颜色。`
+    : '底色：用商品主体主色的深→浅竖向渐变，颜色要跟商品主体一致，不要用和商品无关的颜色。'
+  const paletteGroundEn = palette
+    ? `Ground (follow strictly): a **vertical gradient** from ${palette.ink} at the top to ${palette.tint} at the bottom; stay inside that one hue family and use no other background colour. `
+    : 'Ground: a vertical gradient from the product’s own dominant hue (dark at the top, pale at the bottom); never a background colour unrelated to the product. '
   /**
    * ⚠️ `ctx.pain` 和 `ctx.diff` **故意不再拼进任何一张卡片**。
    *
@@ -586,38 +601,58 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: Chinese text; tiny type; pure white background; a second product; any person or hand; borders or channel badges.',
     },
     {
+      /**
+       * 【2026-10-24 主人第三次改这一张】
+       *
+       * 第一版：「普通款 vs 我们的产品」，模型自由发挥 → 出现了桌布、收纳箱这种完全不相干的东西。
+       * 第二版（我上一步）：收紧成「左右必须是同一件商品」，结果又太死——两边一模一样，看不出差别。
+       * 第三版（主人这张图的定稿）：
+       *   「对比图片可以是同一类产品，不能是完全不相干的产品，也不能是完全一致的产品」
+       *
+       * 也就是：**同一类目、明显差一档的另一个款**。
+       * 遮阳棚对比廉价款遮阳棚、垃圾桶对比普通白桶、鱼缸对比有边条的老款——
+       * 都还是同一类东西，但一眼能看出谁好谁差。
+       */
       key: '02_pain_compare',
-      title: '第 2 张 · 痛点对比（同一件商品）',
+      title: '第 2 张 · 痛点对比（同类不同款）',
       bodyZh:
         `第2张：痛点对比图。产品：${product}。` +
-        '**本张最关键的一条：左右两侧必须是同一件商品**——形状、颜色、材质、图案、配件完全一致，' +
-        '**而且都必须是参考图里那一件商品**（不是别的类目、不是别的款式），' +
-        '只是呈现状态不同。严禁出现第二种商品（桌布、收纳箱之类的东西一律不许出现），这一条压过其它所有要求。' +
-        '镜头：平视，左右各占 40% 画面，中间一条细分隔线，两侧商品大小一致。' +
-        '背景：左侧是杂乱的室内一角（偏暗、偏冷、有杂物），右侧是同一位置但收拾干净、明亮通透——' +
-        '左右必须是同一个空间，只是状态不同，不要换成两个不同的房间。' +
+        '**本张最关键的一条：左边必须是「同一类产品的普通款」，不是别的东西。**' +
+        '左边要和右边是同一个类目（同一个用途），但**明显更差一档**——' +
+        '材质更廉价、做工更糙、设计更老、或者用了很久显旧；让人一眼看出「普通款差在哪、我们的好在哪」。' +
+        '三个都禁止：① 完全不相干的品类（比如卖垃圾桶却画桌布、卖收纳箱却画别的家居）——绝对不行；' +
+        '② 和右边一模一样、看不出差别的同一件商品——也不行，那就没有对比意义；' +
+        '③ 把右边那件商品画成另一个完全不同的款式（形状、颜色、功能都变了）——也不行。' +
+        '镜头：平视，左右各占 40% 画面，中间一条细分隔线，两侧商品在画面里的大小一致。' +
+        '背景：左侧是杂乱的室内/户外一角（偏暗、偏冷、有杂物），右侧是同一位置但收拾干净、明亮通透——' +
+        '左右必须是同一类空间，只是状态不同，不要换成两个完全不同的场景。' +
         '光线：左侧低对比阴天感，右侧明亮自然光，两侧色温一致。' +
-        '左侧（普通款 / 糟糕状态）：同一件商品，表面有污渍磨损、摆放随意、整体低对比；' +
-        '右侧（我们的产品）：同一件商品，干净崭新、摆放讲究、背景明亮通透、有柔和反光。' +
-        '文案：顶部一行大号俄语痛点问句（字号最大）；左侧角标一个红色叉号配一行俄语短句；' +
-        '右侧角标一个绿色对勾配一行俄语短句；底部一行俄语结论。' +
-        '硬规则：文字必须真的写出来、必须是俄语、必须清晰；左右两件商品的外形要一眼看出是同一款。' +
-        '禁忌：不要中文；不要让两侧变成两种不同的商品；不要写成长段说明。',
+        '左侧（普通款）：同类产品的廉价款——样式普通、材质一般、颜色发灰发旧、摆放随意、整体低对比；' +
+        '右侧（我们的产品）：**就是参考图里那一件商品**，颜色、材质、设计保持原样，干净崭新、摆放讲究、背景明亮通透、有柔和反光。' +
+        '角标：左侧「Обычная версия」或「Обычная модель」，右侧「Наша продукция」或「Наш продукт」，都是俄语圆角小标签；' +
+        '右侧再补一个小气泡框，用俄语简短说明它强在哪。' +
+        '文案：顶部 2-3 行大号俄语痛点问句（字号最大）；底部一排三组「细线图标 + 两行俄语」卖点。' +
+        '硬规则：文字必须真的写出来、必须是俄语、必须清晰；左右两件商品要让人看出是「同类，但档次不同」。' +
+        '禁忌：不要中文；不要出现不相干的品类；不要让左右一模一样；不要写成长段说明。',
       bodyEn:
         `Card 2: pain comparison. Product: ${product}. ` +
-        '**The single most important rule on this card: both sides must be the same product** — identical shape, colour, material, pattern and accessories, ' +
-        '**and both must be the product shown in the reference image** (not another category, not another style), with only the condition differing. ' +
-        'Never introduce a second kind of product (no tablecloths, no storage boxes, nothing unrelated); this rule overrides everything else. ' +
-        'Camera: eye level, each side taking 40% of the frame, a thin divider between them, both products at the same scale. ' +
-        'Background: the left side is a cluttered corner of a room (dim, cool, with odds and ends); the right side is the same corner tidied up, bright and airy — ' +
-        'both sides must be the same space in a different state, never two different rooms. ' +
+        '**The single most important rule on this card: the left side must be "the ordinary version of the same product category" — not something else.** ' +
+        'The left item must belong to the same category and serve the same purpose as the right one, but be **clearly one grade worse** — ' +
+        'cheaper material, rougher build, older design, or visibly worn; the viewer must instantly see what the ordinary version lacks and why ours is better. ' +
+        'Three things are forbidden: (1) an unrelated category (selling a bin but drawing a tablecloth, selling a storage box but drawing something else) — never; ' +
+        '(2) an item identical to the right side with no visible difference — also no, that defeats the comparison; ' +
+        '(3) turning the right-hand product into a completely different model (shape, colour and function all changed) — also no. ' +
+        'Camera: eye level, each side taking 40% of the frame, a thin divider between them, both items at the same visual scale. ' +
+        'Background: the left side is a cluttered indoor/outdoor corner (dim, cool, with odds and ends); the right side is the same kind of spot tidied up, bright and airy — ' +
+        'both sides must be the same kind of space in a different state, never two unrelated scenes. ' +
         'Lighting: low-contrast overcast feel on the left, bright natural light on the right, the same colour temperature on both sides. ' +
-        'Left (the ordinary one / bad condition): the same product with stains and wear, casually placed, low contrast overall; ' +
-        'right (our product): the same product, clean and new, neatly placed, bright airy background, soft reflections. ' +
-        'Text: one large Russian pain-point question across the top (largest type); a small red cross badge with one short Russian line on the left; ' +
-        'a small green check badge with one short Russian line on the right; one Russian conclusion line at the bottom. ' +
-        'Hard rules: every line must actually be rendered, must be Russian, must be legible; the two products must obviously be the same model. ' +
-        'Forbidden: Chinese text; two different products; paragraphs of explanation.',
+        'Left (the ordinary version): a budget item of the same category — plain styling, mediocre material, greyed and dated colour, casually placed, low contrast overall; ' +
+        'right (our product): **exactly the product in the reference image**, keeping its colour, material and design, clean and new, neatly placed, bright airy background, soft reflections. ' +
+        'Badges: a Russian rounded tag on the left reading "Обычная версия" or "Обычная модель", and on the right "Наша продукция" or "Наш продукт"; ' +
+        'add one small Russian speech bubble on the right briefly explaining why it is better. ' +
+        'Copy: a 2-3 line large Russian pain-point question across the top (largest type); a row of three "thin-line icon + two lines of Russian" selling points at the bottom. ' +
+        'Hard rules: every line must actually be rendered, must be Russian, must be legible; the two items must read as "same category, different grade". ' +
+        'Forbidden: Chinese text; an unrelated category; two identical sides; paragraphs of explanation.',
     },
     {
       /**
@@ -641,10 +676,28 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '半身或大半身构图都可以（露到腰或胸以上即可，不要求全身）；人物占画面 35-45%，商品占 35-45%。' +
         '**商品必须是画面里最清晰、最亮的部分**，人物可以稍微柔一点；两者不要互相遮挡，' +
         '模特的手要真的接触或操作到商品，不能悬空摆姿势。' +
+        /**
+         * 【2026-10-24 主人要求】「模特的使用可以按照商品的比例去修改人物手的比例，
+         * 避免出现买家到手后觉得和图片上的不一样」
+         *
+         * 这是电商图最常见的一个坑：为了把商品画得显眼，把模特的手画小了，
+         * 结果商品看起来比真的大一圈，买家收到说「和图上不一样」。
+         * 所以这一条必须把「手与商品的相对大小」写死，并且明确要求按真实比例。
+         */
+        '**手的比例必须按商品的真实尺寸来定（这一条很重要）**：' +
+        '先按这件商品的实际大小去推算手掌和手指该有多大，再画手，' +
+        '让手看起来是**正常成年人**的手（成年女性手掌宽约 7-8 厘米），' +
+        '**不许为了让商品显大就把手画小**，也**不许为了让商品显小就把手画大**。' +
+        '握持处的细节要合理：手指该被商品挡住就挡住、指节要有自然的弯曲和受力，' +
+        '商品被手捏住的地方可以有轻微形变或遮挡，但不能变形到认不出。' +
+        '最终效果必须是：**买家拿到手之后，商品的大小和图上看到的一致**。' +
+        '如果商品很小（首饰、口红这类），手可以占更大面积、按钮级别的细节就是主角；' +
+        '如果商品很大（垃圾桶、收纳箱这类），手只占商品的一小部分，别把手画得像巨人的手。' +
         '道具：场景里放 2-3 个相关道具，轻微虚化，不要抢主体。' +
         '文字：画面不要任何文字，保持干净。' +
         '禁忌：不要产品孤零零摆着；不要只有一只手没有人物；不要模特在摆拍而没有真的在用；' +
-        '不要产品像贴上去的；不要纯色背景；不要中文。',
+        '不要产品像贴上去的；不要纯色背景；不要中文；' +
+        '**不要手和商品比例失真**（手太小显得商品虚大、手太大显得商品虚小都不行）。',
       bodyEn:
         `Card 3: lifestyle scene with a model using the product. Product: ${product}. ` +
         `Background: ${sceneEn}, with real spatial depth (near props / mid-ground person and product / far environment). ` +
@@ -655,10 +708,20 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'A half or three-quarter figure is enough (waist-up or chest-up; no full body required); the person takes 35-45% of the frame and the product 35-45%. ' +
         '**The product must be the sharpest, brightest element**; the person may be slightly softer. They must not block each other, ' +
         'and the model hands must genuinely touch or operate the product — never floating in a pose. ' +
+        '**Hand scale must follow the product’s real size (this matters a lot)**: ' +
+        'work out how large a palm and fingers would actually be for this product, then draw the hand at that size, ' +
+        'so it reads as a **normal adult hand** (an adult woman’s palm is about 7-8 cm wide). ' +
+        '**Never shrink the hand to make the product look bigger**, and **never enlarge the hand to make the product look smaller**. ' +
+        'Contact details must be plausible: fingers correctly occluded by the product, knuckles naturally bent and bearing weight, ' +
+        'and the product may show slight compression where it is gripped — but it must stay recognisable. ' +
+        'The end result must be: **the product looks the same size in real life as it does in the picture**. ' +
+        'If the product is small (jewellery, a lipstick), the hand may take more area and button-level detail becomes the hero; ' +
+        'if the product is large (a bin, a storage box), the hand covers only a small part of it — do not draw a giant’s hand. ' +
         'Props: 2-3 relevant props in the scene, slightly out of focus; they must not compete with the product. ' +
         'Text: no text at all; keep it clean. ' +
         'Forbidden: the product standing alone; a lone hand without a person; a model posing instead of really using it; ' +
-        'a product that looks pasted in; a plain solid background; Chinese text.',
+        'a product that looks pasted in; a plain solid background; Chinese text; ' +
+        '**a distorted hand-to-product scale** (a small hand faking a bigger product, or a big hand faking a smaller one).',
     },
     /**
      * 三张细节图的分工（主人 2026-10-24 要求「三个不同角度、细节位置不能一样、
@@ -807,37 +870,63 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     },
     {
       /**
-       * 【2026-10-24 主人要求】「最后两张可以只保留联系卖家图，图中只需要有
-       * 『产品有问题请及时与卖家联系不要给差评』的表达的俄语文字就可以，文字内容不需要一致」。
+       * 【2026-10-24 主人又改回来了】
        *
-       * 所以原来的第 4 张「售后保障图」整张删掉，这一张也大幅简化：
-       * 只要一句核心意思，不要求三列图标、不要求步骤编号、不要求手机界面。
+       * 先是要求「最后两张只保留联系卖家图，只要一句俄语就行」，我照做简化成三块。
+       * 当天下午主人给了两张成品图，说：
+       *   「售后的生图要求按照之前的那一版生成如后两张一样，页面的颜色依照产品主体的颜色来定」
+       *
+       * 所以把 0.2.9.36 那版详细的「联系卖家步骤图」整张恢复回来，
+       * 并且底色明确跟着**商品主体主色**的深→浅渐变走（有识别到主色就用具体色值）。
+       *
+       * 版式就是那八段：标题 / 副标题 / 白条 1 / 三列图标 / 白条 2 / 三步流程 / 白条 3 / 编号步骤 + 手机卡。
        */
       key: '08_contact_seller',
-      title: '第 8 张 · 联系卖家提醒图',
+      title: '第 8 张 · 售后与联系卖家图',
       cropSafe: false,
       bodyZh:
-        `第8张：联系卖家提醒图。产品：${product}。` +
-        '整体：3:4 竖版，简洁干净的信息图。**这一张只表达一件事**：产品如果有问题，请先联系卖家，不要直接给差评。' +
-        '背景：商品同色系的柔和渐变，或干净的浅色实底；不要照片、不要复杂装饰。' +
-        '版式只有三块，从上到下：' +
-        '① 顶部：一行俄语大标题（粗体，字号是整张最大的），意思是「产品有问题，请先联系我们」；' +
-        '② 中部：2-3 行俄语正文，意思是「不要急着留差评，先联系卖家，我们会帮你解决」；' +
-        '③ 底部：一条圆角胶囊条，里面一行俄语短句（例如「我们随时在线」）。' +
-        '**文字内容不需要和上面写的俄语一字不差，只要意思对就行**，但必须是俄语、必须清晰可读、字号要够大。' +
-        '硬规则：画面里不要出现三列图标、不要出现步骤编号、不要出现手机界面、不要出现二维码/电话/网址。' +
-        '禁忌：不要中文；不要长段落；不要画太满，留白要多。',
+        `第8张：售后与联系卖家图（怎么找到客服）。产品：${product}。` +
+        '整体：3:4 竖版，**竖向渐变**底色，不要照片背景、不要纹理。' +
+        paletteGroundZh +
+        '版式从上到下严格按这八段，位置和占比不要变：' +
+        '① 10%：一行大标题，白色粗体居中：«УВАЖАЕМЫЕ ПОКУПАТЕЛИ!»；' +
+        '② 10%：两行白色常规字重居中：«Не торопитесь оставлять негативный отзыв.» / «Мы сможем Вам помочь!»；' +
+        '③ 8%：一条**纯白圆角长条**，左右留边一致，条内深色俄语粗体居中：«ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ»；' +
+        '④ 14%：等宽三列，白色细线图标 + 两行白色说明：' +
+        '«Повреждена упаковка» / «Перепутан товар» / «Задержалась доставка»；' +
+        '三个图标分别画：破损的外箱、被翻转的包裹、带时钟的货车；第一个图标要画成**本商品的箱子**；' +
+        '⑤ 8%：第二条**纯白圆角长条**：«НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА»；' +
+        '⑥ 8%：一行三步流程，白色小图标 + 白色文字，中间用右箭头连接：«Профиль → Сообщения → Поддержка»；' +
+        '⑦ 8%：第三条**纯白圆角长条**：«ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ»；' +
+        '⑧ 26%：左半是三行编号步骤，白色大字，行距均匀：' +
+        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»；' +
+        '右半是一个**简化的手机界面示意卡**：白色圆角卡片，上方一行俄语商品名（用本商品的名称），' +
+        '中间一行小评分和一个 «Вопросы» 按钮，底部一条蓝色 «В корзину» 按钮。' +
+        '硬规则：所有文字必须是俄语而且必须真的写出来；白字压在渐变上要够对比；三条白长条必须等宽、圆角一致、左右留边一致。' +
+        '禁忌：不要中文；不要真实平台 logo；不要把三条白色长条合成一句；不要把步骤写成一段；' +
+        '不要把底色做成和商品无关的颜色。',
       bodyEn:
-        `Card 8: contact-the-seller notice. Product: ${product}. ` +
-        'Overall: 3:4 portrait, a clean minimal infographic. **This card says exactly one thing**: if something is wrong with the product, contact the seller first — do not leave a negative review straight away. ' +
-        'Background: a soft gradient in the product palette, or a clean pale solid; no photo, no busy decoration. ' +
-        'Only three blocks, top to bottom: ' +
-        '(1) top: one large Russian headline (bold, the biggest type on the card) meaning "something wrong with the product? contact us first"; ' +
-        '(2) middle: 2-3 lines of Russian body copy meaning "do not rush to leave a bad review, contact the seller and we will help"; ' +
-        '(3) bottom: a rounded pill bar with one short Russian line (for example "we are always online"). ' +
-        '**The wording does not have to match the Russian above word for word** as long as the meaning is right, but it must be Russian, clearly legible and large enough. ' +
-        'Hard rules: no three-column icons, no numbered steps, no phone-UI mock, no QR code, phone number or URL. ' +
-        'Forbidden: Chinese text, long paragraphs, a crowded layout — leave plenty of white space.',
+        `Card 8: after-sales and how-to-contact-the-seller card. Product: ${product}. ` +
+        'Overall: 3:4 portrait with a **vertical gradient** ground; no photographic backdrop, no texture. ' +
+        paletteGroundEn +
+        'Layout top to bottom, keep these eight bands in this order with these proportions: ' +
+        '(1) 10%: one bold white headline, centred: "УВАЖАЕМЫЕ ПОКУПАТЕЛИ!"; ' +
+        '(2) 10%: two centred lines of regular white Russian: "Не торопитесь оставлять негативный отзыв." / "Мы сможем Вам помочь!"; ' +
+        '(3) 8%: a **pure white rounded bar** with equal side margins, containing dark bold Russian, centred: "ЕСЛИ У ВАС ВОЗНИКЛИ ВОПРОСЫ"; ' +
+        '(4) 14%: three equal columns, white thin-line glyphs with two lines of white Russian: ' +
+        '"Повреждена упаковка" / "Перепутан товар" / "Задержалась доставка"; ' +
+        'the three glyphs are: a dented shipping box, an overturned parcel, a van with a clock; the first box must look like **this product packaging**; ' +
+        '(5) 8%: a second **pure white rounded bar**: "НАПИШИТЕ В ПОДДЕРЖКУ МАРКЕТПЛЕЙСА"; ' +
+        '(6) 8%: a single three-step row, small white glyphs with white labels joined by right arrows: "Профиль → Сообщения → Поддержка"; ' +
+        '(7) 8%: a third **pure white rounded bar**: "ЧТОБЫ СВЯЗАТЬСЯ С ПРОДАВЦОМ"; ' +
+        '(8) 26%: the left half holds three numbered steps in large white type with even leading: ' +
+        '«1. Зайдите в карточку товара» / «2. Нажмите "вопросы"» / «3. Выбрать "Задать вопрос"»; ' +
+        'the right half is a **simplified phone-UI mock**: a white rounded card with one line of Russian product name on top (use this product name), ' +
+        'a small rating row and a "Вопросы" button in the middle, and a blue "В корзину" button along the bottom. ' +
+        'Hard rules: every piece of text must be Russian and must actually be rendered; white type over the gradient must stay legible; ' +
+        'the three white bars must share one width, one corner radius and equal side margins. ' +
+        'Forbidden: Chinese text; real marketplace logos; merging the three white bars into one sentence; writing the steps as a paragraph; ' +
+        'a background colour unrelated to the product.',
     },
   ]
 
@@ -874,18 +963,12 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
 }
 
 /**
- * 这套脚本的「目录」：每一张的编号和标题，按**出图顺序**排。
+ * 【2026-10-24 主人要求】「套图不显示出图顺序这些内容，防止别的照抄」。
  *
- * 【2026-10-24 主人要求】「重新排版套图的生成图片的顺序，顺序需要提前让我知道」——
- * 界面在点「生成脚本」之前就把这 9 行按顺序列出来，用户先看清顺序再决定。
- *
- * 放在这里而不是界面里手写一份，是因为手写的那份迟早会和真正生成的卡片脱节；
- * 这里直接从同一个 `buildOzonScript` 推导，改模板时目录自动跟着变。
- * 标题跟商品名无关，所以用一个空上下文算一次就够了。
+ * 原来这里导出一个 OZON_CARD_PLAN，界面拿它把 8 张的标题按顺序列出来。
+ * 那等于把整套配方摊在界面上，截个图就能被同行照做，所以整块去掉。
+ * 顺序仍然固定写在下面的 tasks 数组里，只是不再暴露到界面。
  */
-export const OZON_CARD_PLAN: ReadonlyArray<{ key: string; title: string }> = buildOzonScript({
-  product: '',
-}).map(({ key, title }) => ({ key, title }))
 
 /** 视觉模型列表（原程序下拉里的）。 */
 export const VISION_MODEL_OPTIONS = [

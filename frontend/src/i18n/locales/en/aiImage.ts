@@ -298,8 +298,6 @@ export default {
       // Script card editing (owner: "generate what I edited, not the original template").
       // Title of the script list inside each feature panel (above "this feature's results").
       cardsTitle: 'Scripts from this run',
-      // Generation order preview (owner asked to know the order up front, 2026-10-24).
-      planTitle: 'Generation order for this {count}-card set (shown before you generate):',
       editedTag: 'Edited',
       saveEdit: 'Save changes',
       generateThis: 'Generate just this one',
