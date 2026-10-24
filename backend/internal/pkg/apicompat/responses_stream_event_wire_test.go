@@ -122,6 +122,20 @@ func TestWire_CustomToolCallInputIndexPresentAtZero(t *testing.T) {
 	require.NotContains(t, done, "delta")
 }
 
+func TestWire_CustomToolCallItemPreservesNamespace(t *testing.T) {
+	m := marshalEvent(t, ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type: "custom_tool_call", ID: "ct_1", CallID: "call_1",
+			Name: "exec", Namespace: "functions", Input: "pwd", Status: "completed",
+		},
+	})
+	item, ok := m["item"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "functions", item["namespace"])
+}
+
 // TestWire_UnknownEventFallsBackToDefault ensures non-streamed event types keep
 // default marshalling (the response object is preserved).
 func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {
