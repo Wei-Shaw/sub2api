@@ -191,10 +191,11 @@ export interface OzonScriptCard {
 
 /**
  * 一套脚本的张数。
- * 单独导出，是为了让界面按钮上的「生成 9 张脚本」不会写死之后再跟模板脱节
- * （2026-10-19 把 10 张改成 9 张时，按钮文案就是靠它自动跟上的）。
+ * 单独导出，是为了让界面按钮上的「生成 N 张脚本」不会写死之后再跟模板脱节
+ * （2026-10-19 把 10 张改成 9 张、2026-10-24 又改成 8 张时，
+ * 按钮文案就是靠它自动跟上的）。
  */
-export const OZON_CARD_COUNT = 9
+export const OZON_CARD_COUNT = 8
 
 /**
  * 生成 Ozon 主图脚本（**9 张**）。
@@ -209,7 +210,7 @@ export const OZON_CARD_COUNT = 9
  *      所以总数从 10 张变 9 张；
  *   ② 「第九张第十张的角度取消，换为如图片中的内容」——
  *      原来的「正俯视 / 正侧视」两个角度图换成两张售后/客服引导图：
- *      第 8 张售后保障图、第 9 张联系卖家步骤图。
+ *      第 4 张售后保障图、第 4 张联系卖家步骤图。
  *
  * 现在的顺序：**卖点+痛点 → 模特场景 → 生活场景 → 三张细节微距 → 尺寸 → 售后保障 → 联系卖家**。
  *
@@ -256,33 +257,41 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     allowDimensions?: boolean
   }> = [
     /**
-     * 【2026-10-24 主人重排整套顺序 + 逐张改要求】
+     * 【2026-10-24 主人重排整套顺序 + 逐张改要求，当天下午再减到 8 张】
      *
-     * 新的 9 张顺序（也就是出图顺序）：
-     *   1. 主图（商品原样 + 俄语卖点大字）
+     * 现在的 8 张顺序（也就是出图顺序）：
+     *   1. 主图（商品原样 + 模特在使用 + 俄语卖点大字）
      *   2. 痛点对比（**同一件商品**的两种状态）
-     *   3. 模特使用场景
-     *   4. 生活场景
-     *   5. 细节①材质纹理
-     *   6. 细节②结构部位
-     *   7. 细节③功能效果（防水/防油污，一擦即净）
-     *   8. 尺寸规格图（**要有背景**、只许一件商品）
-     *   9. 联系卖家提醒图（只留一张，只表达「有问题先联系卖家」）
+     *   3. 生活场景（**产品正在使用中**，不是摆着看）
+     *   4. 细节①材质纹理
+     *   5. 细节②结构部位（结构点由模型按商品自行判断）
+     *   6. 细节③功能效果（防水/防油污，一擦即净，功能点也自行判断）
+     *   7. 尺寸规格图（**要有背景**、只许一件商品）
+     *   8. 联系卖家提醒图（只表达「有问题先联系卖家」）
      *
-     * 和上一版的差别：
-     *   - 第 1 张从「卖点+痛点合成」改成**主图**（商品不许改，空白处放大字俄语）；
-     *     痛点对比回到独立的一张，因为主人要求「对比必须是同一件商品」，
-     *     混在合成图里模型很容易拿别的东西当「普通款」。
-     *   - 原来第 8 张「售后保障图」删掉，只保留第 9 张联系卖家图，且大幅简化。
-     *   - 三张细节图明确分工：角度不同、部位不同、无 logo、材质观感一致，第三张必须做出功能效果。
+     * 演变过程（免得下一个人以为是随手砍的）：
+     *   - 原第 1 张「卖点+痛点合成」拆成「主图」+「痛点对比」两张，
+     *     因为主人要求「对比必须是同一件商品」，混在合成图里模型容易串货；
+     *   - 原来的「售后保障图」整张删掉，只留「联系卖家提醒图」并大幅简化；
+     *   - 2026-10-24 下午：主人转达「模特使用场景跟主图融合就行，不用单另张」，
+     *     于是独立的「模特使用场景」取消、模特并进主图，总数 9 → 8；
+     *   - 三张细节图分工：角度不同、部位不同、无 logo、材质观感一致，最后一张做功能效果。
      */
     {
+      /**
+       * 【2026-10-24 主人转达的修改意见】「模特使用场景跟主图融合就行，不用单另张」、
+       * 「主图加上模特」。所以原来独立的「模特使用场景」整张取消，
+       * 模特改成主图里的陪衬：站在商品右后方、轻微虚化、正在使用商品，
+       * 这样既有人物温度，又不抢商品主体，左侧还是留给大字卖点。
+       */
       key: '01_main_image',
-      title: '第 1 张 · 主图（商品原样 + 俄语卖点大字）',
+      title: '第 1 张 · 主图（商品 + 模特使用 + 俄语卖点大字）',
       bodyZh:
         `第1张：主图。产品：${product}。` +
-        '镜头：平视略高机位，商品完整居中偏右，占画面 55-62%。' +
+        '镜头：平视略高机位，商品完整居中偏右，占画面 50-58%。' +
         '**商品本身一个像素都不许改**：形状、颜色、材质、图案、配件、比例全部保持参考图原样。' +
+        '模特：右后方一位俄罗斯模特，轻微虚化（比商品模糊一档），正在自然地**使用**这件商品，' +
+        '只占画面 18-25%，**不许抢主体**；手和视线都指向商品。模特不要挡住商品，也不要压到左侧文字区。' +
         '背景：干净的浅色实景底（浅木桌面或浅灰布面），有柔和的空间层次，不要纯白、不要渐变纸。' +
         '光线：左前方柔和窗光，右侧一点补光，商品表面有自然高光，投影淡淡落在右下方。' +
         '文字排版（本张重点：**字体要大，要占满空白处**）：' +
@@ -293,12 +302,14 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '④ 左下角一个圆形局部放大镜（直径约画布宽度 22%），里面放商品最值得说的一处细节，配一行俄语标注；' +
         '⑤ 底部一条圆角胶囊条，一行俄语短句，字号中等。' +
         '硬规则：所有文字必须真的写出来、必须清晰可读、必须是俄语；' +
-        '所有文字都排在**空白处**，不许压在商品主体上；画面里只能出现**一件商品**。' +
-        '禁忌：不要中文；不要把文字排得很小；不要纯白背景；不要第二件商品；不要边框和台标。',
+        '所有文字都排在**空白处**，不许压在商品主体上，也不许压在模特脸上；画面里只能出现**一件商品**。' +
+        '禁忌：不要中文；不要把文字排得很小；不要纯白背景；不要第二件商品；不要模特占满画面；不要边框和台标。',
       bodyEn:
         `Card 1: main image. Product: ${product}. ` +
-        'Camera: eye level, slightly high. The product is complete, centred slightly right, occupying 55-62% of the frame. ' +
+        'Camera: eye level, slightly high. The product is complete, centred slightly right, occupying 50-58% of the frame. ' +
         '**Do not change the product itself at all**: shape, colour, material, pattern, accessories and proportions must all match the reference exactly. ' +
+        'Model: one Russian model in the right background, slightly out of focus (one step softer than the product), naturally **using** the product, ' +
+        'taking only 18-25% of the frame and **never dominating**; hands and gaze point at the product. The model must not cover the product or intrude into the left text area. ' +
         'Background: a clean pale real-world surface (light wood or light grey cloth) with soft spatial depth; not pure white, not a gradient backdrop. ' +
         'Lighting: soft window light from the front-left, a little fill from the right, natural highlights on the product, a faint shadow falling to the lower right. ' +
         'Typography (the point of this card: **large type, filling the empty areas**): ' +
@@ -309,8 +320,8 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '(4) lower-left: a circular magnifier inset (diameter about 22% of the canvas width) showing the single most convincing detail, with one Russian caption; ' +
         '(5) bottom: a rounded pill bar with one short Russian sentence at medium size. ' +
         'Hard rules: every piece of text must actually be rendered, must be clearly legible, and must be Russian; ' +
-        'all text sits **in the empty areas** and must never overlap the product; only **one product** in the frame. ' +
-        'Forbidden: Chinese text; tiny type; pure white background; a second product; borders or channel badges.',
+        'all text sits **in the empty areas** and must never overlap the product or the model face; only **one product** in the frame. ' +
+        'Forbidden: Chinese text; tiny type; pure white background; a second product; a model filling the frame; borders or channel badges.',
     },
     {
       key: '02_pain_compare',
@@ -347,63 +358,49 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Forbidden: Chinese text; two different products; paragraphs of explanation.',
     },
     {
-      key: '03_model_scene',
-      title: '第 3 张 · 模特使用场景',
+      /**
+       * 【2026-10-24 主人转达的修改意见】「生活场景图要使用产品，不要光放着」。
+       * 所以这张明确要求画面里**有人在用**这件商品，产品不是静物摆件。
+       */
+      key: '03_lifestyle',
+      title: '第 3 张 · 生活场景图（正在使用中）',
       bodyZh:
-        `第3张：模特使用场景。产品：${product}。` +
-        '镜头：平视略低机位，产品占画面 55-65%，模特在画面一侧只占 25-30%，不要抢主体。' +
-        `背景：与产品调性一致的真实生活场景（${sceneZh}），有空间层次和自然光。` +
-        '光线：自然窗光或柔和环境光，模特脸上有柔和轮廓光，不要硬闪。' +
-        '人物：一位符合目标市场的俄罗斯模特，穿着与产品调性匹配，动作自然正在使用产品，' +
-        '**手和眼神都要指向产品**，让视线落到产品上。' +
-        '重点：产品必须是画面最亮、最清晰、最抓眼的部分；模特虚化一点没关系。' +
-        '文字：画面不要任何文字，保持干净。' +
-        '禁忌：不要纯白底，不要产品像贴上去的，不要模特占满画面。',
-      bodyEn:
-        `Card 3: model lifestyle scene. Product: ${product}. ` +
-        'Camera: eye level, slightly low angle. Product occupies 55-65% of the frame; the model sits to one side taking only 25-30% and must not dominate. ' +
-        `Background: a real-life setting matching the product (${sceneEn}), with spatial depth and natural light. ` +
-        'Lighting: natural window light or soft ambient light; a soft rim light on the model, no harsh flash. ' +
-        'Model: one Russian model matching the target market, dressed to match the product, naturally using the product. ' +
-        '**Hands and gaze must point at the product** so the eye lands on it. ' +
-        'Priority: the product must be the brightest, sharpest, most eye-catching element; the model may be slightly out of focus. ' +
-        'Text: no text at all; keep it clean. ' +
-        'Forbidden: plain white background, product that looks pasted in, model filling the frame.',
-    },
-    {
-      key: '04_lifestyle',
-      title: '第 4 张 · 生活场景图',
-      bodyZh:
-        `第4张：生活场景图。产品：${product}。` +
-        '镜头：平视，产品占画面 50-60%，不要占满画面。' +
+        `第3张：生活场景图。产品：${product}。` +
+        '镜头：平视，产品占画面 45-55%，不要占满画面。' +
         `背景：${sceneZh}，要有真实的空间层次（近景道具 / 中景产品 / 远景环境）。` +
         '光线：自然侧光（窗边光），有明确的方向感和柔和投影。' +
+        '**关键：产品不能只是摆着看——画面里必须有人在用它**（手正在接触/操作商品，' +
+        '动作要自然，比如正在取用、正在开合、正在使用），让「这个场景里它真的在用」一眼看得出来。' +
+        '只露出手臂或半个人都可以，不必露全脸；人物不要抢主体，商品仍然是最清晰的。' +
         '道具：场景里放 2-3 个相关道具，轻微虚化，不要抢主体。' +
         '文字：画面不要任何文字，保持干净。' +
-        '禁忌：不要摆拍感，不要产品像贴上去的，不要纯色背景。',
+        '禁忌：不要产品孤零零摆着；不要摆拍感；不要产品像贴上去的；不要纯色背景。',
       bodyEn:
-        `Card 4: lifestyle scene. Product: ${product}. ` +
-        'Camera: eye level. Product occupies 50-60% of the frame; do not fill the frame. ' +
+        `Card 3: lifestyle scene. Product: ${product}. ` +
+        'Camera: eye level. Product occupies 45-55% of the frame; do not fill the frame. ' +
         `Background: ${sceneEn}, with real spatial depth (near props / mid-ground product / far environment). ` +
         'Lighting: natural side light from a window, with a clear direction and soft shadows. ' +
+        '**Critical: the product must not just sit there as a still life — someone must be using it in the frame** ' +
+        '(a hand touching or operating the product, a natural everyday action such as taking from it, opening it, using it), so it is obvious at a glance that it is in use. ' +
+        'Only an arm or half a person needs to be visible; no full face required. The person must not dominate; the product stays the sharpest element. ' +
         'Props: 2-3 relevant props in the scene, slightly out of focus; they must not compete with the product. ' +
         'Text: no text at all; keep it clean. ' +
-        'Forbidden: staged look, product that looks pasted in, plain solid background.',
+        'Forbidden: the product standing alone; a staged look; a product that looks pasted in; a plain solid background.',
     },
     /**
      * 三张细节图的分工（主人 2026-10-24 要求「三个不同角度、细节位置不能一样、
      * 不要有品牌标识、材质看起来要一致，并且能突出商品特性」）：
-     *   5 = 材质纹理（45 度斜上方）
-     *   6 = 结构做工（正侧面贴近）
-     *   7 = 功能效果（俯视贴近，防水/防油污一擦即净）
+     *   4 = 材质纹理（45 度斜上方）
+     *   5 = 结构做工（正侧面贴近）
+     *   6 = 功能效果（俯视贴近，防水/防油污一擦即净）
      * 三张都必须**看不到完整商品**，所以不加构图安全区。
      */
     {
-      key: '05_detail_texture',
-      title: '第 5 张 · 细节①材质纹理',
+      key: '04_detail_texture',
+      title: '第 4 张 · 细节①材质纹理',
       cropSafe: false,
       bodyZh:
-        `第5张：细节图①——材质纹理。产品：${product}。` +
+        `第4张：细节图①——材质纹理。产品：${product}。` +
         '镜头：**45 度斜上方微距**，怼近到只看得见一小块表面，这一块占画面 92%，**看不到完整商品**。' +
         '位置：拍**商品的主表面**（最大的那块面），不要拍边角、不要拍接口。' +
         '焦点：材质的真实质感（织物经纬、皮面颗粒、磨砂、拉丝、涂层），清晰到能数清纹理。' +
@@ -412,10 +409,10 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '景深：浅景深，只有对焦那一小块锐利。' +
         '文字：一个小号俄语标注，一条细引线指向纹理，只写材质名，不写品牌。' +
         '硬规则：**不要出现任何 logo、商标、烫印文字、吊牌**——如果有，移出画面或彻底虚化；' +
-        '这一张的材质观感必须和第 6、7 张完全一致（同样的颜色、同样的质感），不能看起来像两种材料。' +
+        '这一张的材质观感必须和第 5、6 张完全一致（同样的颜色、同样的质感），不能看起来像两种材料。' +
         '禁忌：不要完整商品；不要场景；不要平光把纹理拍平；不要 logo。',
       bodyEn:
-        `Card 5: detail ① - material texture. Product: ${product}. ` +
+        `Card 4: detail ① - material texture. Product: ${product}. ` +
         'Camera: **45-degree macro from above**, so close that only one small patch of surface is visible, filling 92% of the frame; **the whole product is not visible**. ' +
         'Position: shoot **the main surface** (the largest face), not a corner and not a joint. ' +
         'Focus: the real material character (fabric weave, leather grain, matte finish, brushed metal, coating); sharp enough to count the texture. ' +
@@ -424,27 +421,28 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Depth of field: shallow; only the focused patch is sharp. ' +
         'Text: one small Russian annotation with a thin leader line naming the material only, no brand. ' +
         'Hard rules: **no logo, trademark, embossed lettering or hang tag anywhere** — move them out of frame or blur them completely; ' +
-        'the material must look identical to cards 6 and 7 (same colour, same texture), never like a different material. ' +
+        'the material must look identical to cards 5 and 6 (same colour, same texture), never like a different material. ' +
         'Forbidden: the whole product, any scene, flat lighting that kills the texture, any logo.',
     },
     {
-      key: '06_detail_structure',
-      title: '第 6 张 · 细节②结构部位',
+      key: '05_detail_structure',
+      title: '第 5 张 · 细节②结构部位',
       cropSafe: false,
       bodyZh:
-        `第6张：细节图②——结构与做工。产品：${product}。` +
-        '镜头：**正侧面贴近微距**（必须和第 5 张的 45 度斜上方不同），只拍一个结构部位，占画面 92%，**看不到完整商品**。' +
-        '位置：拍**和第 5 张不同的地方**——接缝、走线、拉链、包边、扣件、底部收口，任选一处最有说服力的。' +
+        `第5张：细节图②——结构与做工。产品：${product}。` +
+        '镜头：**正侧面贴近微距**（必须和第 4 张的 45 度斜上方不同），只拍一个结构部位，占画面 92%，**看不到完整商品**。' +
+        '位置：拍**和第 4 张不同的地方**——接缝、走线、拉链、包边、扣件、底部收口，任选一处最有说服力的。' +
         '焦点：结构关系要看得出来（怎么缝的、怎么扣的、怎么加固的）。' +
         '背景：纯深色或纯浅色单色底，完全虚化。' +
         '光线：硬侧光，强调缝线起伏和部件厚度。' +
         '景深：中等景深，结构部位全部清晰。' +
         '文字：一个俄语标注写结构名称，一条引线。' +
-        '硬规则：**不要出现任何 logo、商标、烫印文字、吊牌**；材质观感必须和第 5、7 张一致；' +
-        `如果卖点里有讲结实/耐用/做工的（现在是「${sp2}」），往那个方向拍；没有就拍最能体现做工的一处。` +
-        '禁忌：不要拍成整机图；不要平光；不要和第 5 张拍同一个位置；不要 logo。',
+        '硬规则：**不要出现任何 logo、商标、烫印文字、吊牌**；材质观感必须和第 4、6 张一致；' +
+        '**结构点由你自己按这件商品判断**：挑一处最能体现做工或结实程度的地方拍' +
+        '（缝线、加固、接口、卡扣、包边、底部收口都行），不要写死某一种。' +
+        '禁忌：不要拍成整机图；不要平光；不要和第 4 张拍同一个位置；不要 logo。',
       bodyEn:
-        `Card 6: detail ② - structure and build. Product: ${product}. ` +
+        `Card 5: detail ② - structure and build. Product: ${product}. ` +
         'Camera: **close macro from the side** (must differ from card 5\'s 45-degree top view); one structural area only, filling 92% of the frame; **the whole product is not visible**. ' +
         'Position: shoot **a different area from card 5** — seam, stitching, zip, piping, fastener or bottom hem; pick the most convincing one. ' +
         'Focus: the construction must be readable (how it is stitched, fastened, reinforced). ' +
@@ -452,17 +450,18 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Lighting: hard side light to emphasise stitch relief and part thickness. ' +
         'Depth of field: medium; the structural area entirely sharp. ' +
         'Text: one Russian annotation naming the structure, with one leader line. ' +
-        'Hard rules: **no logo, trademark, embossed lettering or hang tag**; the material must match cards 5 and 7; ' +
-        `if one of the selling points is about durability or build quality (currently "${sp2}"), lean that way; otherwise shoot the most telling piece of construction. ` +
-        'Forbidden: the whole product, flat lighting, the same position as card 5, any logo.',
+        'Hard rules: **no logo, trademark, embossed lettering or hang tag**; the material must match cards 4 and 6; ' +
+        '**decide the structural point yourself from this product**: pick whatever best proves the build quality or strength ' +
+        '(stitching, reinforcement, joint, clip, piping, bottom hem — any of them); do not hardcode one kind. ' +
+        'Forbidden: the whole product, flat lighting, the same position as card 4, any logo.',
     },
     {
-      key: '07_detail_feature',
-      title: '第 7 张 · 细节③功能效果（防水/防油污）',
+      key: '06_detail_feature',
+      title: '第 6 张 · 细节③功能效果（防水/防油污）',
       cropSafe: false,
       bodyZh:
-        `第7张：细节图③——功能实测效果。产品：${product}。` +
-        '镜头：**俯视贴近微距**（必须和第 5、6 张的角度都不同），画面 92% 是商品的表面，**看不到完整商品**。' +
+        `第6张：细节图③——功能实测效果。产品：${product}。` +
+        '镜头：**俯视贴近微距**（必须和第 4、5 张的角度都不同），画面 92% 是商品的表面，**看不到完整商品**。' +
         '位置：拍**商品的表面**，并在表面上方做出「功能正在生效」的效果。' +
         '核心画面：表面落了一滴水或一摊油污，旁边一块干净的布或纸巾刚刚擦过，' +
         '**擦过的地方明显干净、没有残留、没有渗进去**，和没擦的地方形成清晰对比。' +
@@ -470,13 +469,14 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '背景：完全虚化的单色底。' +
         '光线：侧光加一点顶光，让水珠/油滴有立体感，让干净区域有清爽的高光。' +
         '文字：一个俄语标注写功能点（防水 / 防油污 / 一擦即净），一条引线。' +
-        '硬规则：**不要出现任何 logo、商标、吊牌**；材质观感必须和第 5、6 张一致；' +
-        `如果卖点里有讲防水/防油污/易清洁/耐脏的（现在是「${sp3}」），就做那个效果；` +
-        '没有就默认做「表面一擦就干净」；干净区域要看起来是真的干净，不能只是颜色浅。' +
+        '硬规则：**不要出现任何 logo、商标、吊牌**；材质观感必须和第 4、5 张一致；' +
+        '**功能点由你自己按这件商品判断**：挑一个它最可能具备的功能来演示' +
+        '（防水 / 防油污 / 易清洁 / 耐磨 / 一擦即净），实在判断不出来就做「表面一擦就干净」；' +
+        '干净区域要看起来是真的干净，不能只是颜色浅。' +
         '禁忌：不要完整商品；不要场景；不要拍成一片狼藉；不要 logo。',
       bodyEn:
-        `Card 7: detail ③ - functional proof. Product: ${product}. ` +
-        'Camera: **close macro from directly above** (must differ from both card 5 and card 6); 92% of the frame is the product surface; **the whole product is not visible**. ' +
+        `Card 6: detail ③ - functional proof. Product: ${product}. ` +
+        'Camera: **close macro from directly above** (must differ from both card 4 and card 5); 92% of the frame is the product surface; **the whole product is not visible**. ' +
         'Position: shoot **the product surface** and show the feature taking effect on it. ' +
         'Core scene: a water droplet or an oil patch sits on the surface; a clean cloth or paper towel has just wiped across it; ' +
         '**the wiped area is obviously clean, with no residue and nothing soaked in**, in clear contrast with the untouched area. ' +
@@ -484,18 +484,19 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Background: fully blurred single tone. ' +
         'Lighting: side light plus a little top light so the droplet or oil reads three-dimensional and the clean area has a fresh highlight. ' +
         'Text: one Russian annotation naming the feature (water-repellent / oil-repellent / wipes clean), with one leader line. ' +
-        'Hard rules: **no logo, trademark or hang tag**; the material must match cards 5 and 6; ' +
-        `if one of the selling points is about water- or oil-repellency, easy cleaning or stain resistance (currently "${sp3}"), illustrate that one; ` +
-        'otherwise default to "the surface wipes clean in one pass"; the clean area must look genuinely clean, not merely lighter in colour. ' +
+        'Hard rules: **no logo, trademark or hang tag**; the material must match cards 4 and 5; ' +
+        '**decide the feature yourself from this product**: demonstrate whichever benefit it most plausibly has ' +
+        '(water-repellent / oil-repellent / easy to clean / scratch-resistant / wipes clean), ' +
+        'and if nothing is obvious default to "the surface wipes clean in one pass"; the clean area must look genuinely clean, not merely lighter in colour. ' +
         'Forbidden: the whole product, any scene, a messy surface, any logo.',
     },
     {
-      key: '08_size_chart',
-      title: '第 8 张 · 尺寸规格图',
+      key: '07_size_chart',
+      title: '第 7 张 · 尺寸规格图',
       // 尺寸图必须写数字，要临时覆盖「不要添加原图没有的数字和尺寸」那条规范。
       allowDimensions: true,
       bodyZh:
-        `第8张：尺寸规格图。产品：${product}。` +
+        `第7张：尺寸规格图。产品：${product}。` +
         '镜头：正视图平视，**画面里只有一件商品、一个视角**，商品占画面 55%，四周留出标注空间。' +
         '背景：**必须有真实背景，不能是空白**——商品放在浅木桌面或浅灰台面上，' +
         '背后是同色系柔和的离焦环境（一点绿植、一块布、一面浅墙都可以），整体明亮干净；' +
@@ -513,7 +514,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '即使参考图本身是拼好的多视角图，本张也只画其中一个完整视角。' +
         '禁忌：不要出现英制单位（in、inch、дюйм）；不要空白背景；不要多视角拼贴；不要堆无关参数。',
       bodyEn:
-        `Card 8: size specification. Product: ${product}. ` +
+        `Card 7: size specification. Product: ${product}. ` +
         'Camera: front view at eye level; **only one product, one viewpoint**, occupying 55% of the frame, with margin around for annotations. ' +
         'Background: **a real background is required, never blank** — the product sits on a light wood tabletop or a pale grey surface, ' +
         'with a soft out-of-focus same-tone environment behind it (a little greenery, a cloth, a pale wall all work); bright and clean overall; ' +
@@ -536,14 +537,14 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
        * 【2026-10-24 主人要求】「最后两张可以只保留联系卖家图，图中只需要有
        * 『产品有问题请及时与卖家联系不要给差评』的表达的俄语文字就可以，文字内容不需要一致」。
        *
-       * 所以原来的第 8 张「售后保障图」整张删掉，这一张也大幅简化：
+       * 所以原来的第 4 张「售后保障图」整张删掉，这一张也大幅简化：
        * 只要一句核心意思，不要求三列图标、不要求步骤编号、不要求手机界面。
        */
-      key: '09_contact_seller',
-      title: '第 9 张 · 联系卖家提醒图',
+      key: '08_contact_seller',
+      title: '第 8 张 · 联系卖家提醒图',
       cropSafe: false,
       bodyZh:
-        `第9张：联系卖家提醒图。产品：${product}。` +
+        `第8张：联系卖家提醒图。产品：${product}。` +
         '整体：3:4 竖版，简洁干净的信息图。**这一张只表达一件事**：产品如果有问题，请先联系卖家，不要直接给差评。' +
         '背景：商品同色系的柔和渐变，或干净的浅色实底；不要照片、不要复杂装饰。' +
         '版式只有三块，从上到下：' +
@@ -554,7 +555,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '硬规则：画面里不要出现三列图标、不要出现步骤编号、不要出现手机界面、不要出现二维码/电话/网址。' +
         '禁忌：不要中文；不要长段落；不要画太满，留白要多。',
       bodyEn:
-        `Card 9: contact-the-seller notice. Product: ${product}. ` +
+        `Card 8: contact-the-seller notice. Product: ${product}. ` +
         'Overall: 3:4 portrait, a clean minimal infographic. **This card says exactly one thing**: if something is wrong with the product, contact the seller first — do not leave a negative review straight away. ' +
         'Background: a soft gradient in the product palette, or a clean pale solid; no photo, no busy decoration. ' +
         'Only three blocks, top to bottom: ' +

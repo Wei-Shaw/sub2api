@@ -165,13 +165,23 @@ export default {
       alpha: 'Strength',
       fontSize: 'Font size',
       auto: '(0 = auto)',
+      // Owner's request 2026-10-24: any one of the four corners, or bottom centre.
+      placement: 'Position',
+      placements: {
+        bottomRight: 'Bottom right',
+        bottomLeft: 'Bottom left',
+        bottomCenter: 'Bottom centre',
+        topRight: 'Top right',
+        topLeft: 'Top left',
+        tile: 'Tiled over the whole image (old style)',
+      },
       download: 'Download with watermark',
       done: 'Watermarked and downloading.',
       corsBlocked:
         'Could not read the image this time (the image relay may be briefly unavailable), so the original was downloaded instead without a watermark. Clicking again in a moment usually works.',
       hint: 'The watermark is stamped only on download and never alters a generated image. Use the "Download with watermark" button under an image. Leave the text empty and no watermark is applied \u2014 the button is hidden.',
       note:
-        'Two deliberate differences from the desktop app: the watermark is a straight staggered grid (the desktop settings window says "diagonal", but its code never rotates), and references always use the clean pre-watermark image so the result carries only one watermark instead of two.',
+        'By default the watermark is a single small semi-transparent stamp in the position you pick (bottom right), so it never covers the Russian copy inside the image. Pick "Tiled over the whole image" in Position for the old full-coverage style.',
     },
 
     filter: {

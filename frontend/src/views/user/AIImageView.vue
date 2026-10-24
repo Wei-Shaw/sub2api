@@ -637,6 +637,16 @@
             <input v-model.number="watermark.fontSize" type="number" min="0" max="200" class="input w-full text-sm" />
             <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.watermark.auto') }}</span>
           </div>
+          <!-- 位置：主人 2026-10-24 要求「四个角随便一个地方，或者最下面正中间」，
+               并且不能压住图里的文字。所以默认右下角单章，平铺降级成一个选项。 -->
+          <div class="flex items-center gap-2">
+            <label class="w-16 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.watermark.placement') }}</label>
+            <select v-model="watermark.placement" class="input w-full text-sm" data-testid="watermark-placement">
+              <option v-for="item in WATERMARK_PLACEMENTS" :key="item" :value="item">
+                {{ t(`aiImage.watermark.placements.${item}`) }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <!-- 说清楚「水印只在下载时叠加」，免得用户以为要在这里生成一次 -->
@@ -1086,6 +1096,7 @@ import {
   isPersistableImageUrl,
   normalizeAIImageModel,
   toBlob,
+  toSameOriginImageUrl,
   toDisplayUrl,
   validateAIImageKey,
   validateVisionKey,
@@ -1116,6 +1127,7 @@ import {
   DEFAULT_WATERMARK,
   WATERMARK_ALPHA_MAX,
   WATERMARK_ALPHA_MIN,
+  WATERMARK_PLACEMENTS,
   shouldApplyWatermark,
   watermarkImageBlob,
   type WatermarkOptions,
@@ -2559,15 +2571,12 @@ async function downloadRecord(record: AIImageRecord) {
 /**
  * 当前页跳转去下载。
  *
- * 用 `location.href` 而不是 `<a target="_blank">`：
- *   - attachment 响应下，浏览器只触发下载，**页面不会离开**（实测）；
- *   - 不会多留一个空白标签页。
- *
- * 用 `location.assign` 而不是直接赋值，是为了让「这是有意导航」更明确，
- * 也方便测试里替换。
+ * 目标地址用**同源反代** `/img-proxy/...`，因为 2026-10-24 起图片直链
+ * 不再带 `Content-Disposition: attachment`（那是为了让外部系统能正常抓图），
+ * 只有反代那一层加了这个头。直接用原直链跳转会把页面导航到图片上。
  */
 function navigateToDownload(href: string) {
-  window.location.assign(href)
+  window.location.assign(toSameOriginImageUrl(href))
 }
 
 function removeRecord(record: AIImageRecord) {
