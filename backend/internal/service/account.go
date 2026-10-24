@@ -2437,6 +2437,20 @@ func (a *Account) GetWebSearchEmulationMode() string {
 	}
 }
 
+const extraKeyWebSearchCapable = "web_search_capable"
+
+// SupportsWebSearch reports whether the account is explicitly marked as capable
+// of serving native web search. The flag is admin-declared and independent of
+// the account protocol; callers still combine it with a native Anthropic
+// protocol check before forwarding a web_search turn.
+func (a *Account) SupportsWebSearch() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[extraKeyWebSearchCapable].(bool)
+	return ok && enabled
+}
+
 // IsCodexCLIOnlyEnabled 返回 OpenAI OAuth 账号是否启用"仅允许 Codex 官方客户端"。
 // 字段：accounts.extra.codex_cli_only。
 // 字段缺失或类型不正确时，按 false（关闭）处理。

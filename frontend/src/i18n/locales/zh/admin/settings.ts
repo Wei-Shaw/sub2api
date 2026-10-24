@@ -595,6 +595,10 @@ export default {
         description: '为不原生支持搜索的 Anthropic API Key 账号注入 web search 能力',
         enabled: '启用 Web Search 模拟',
         enabledHint: '全局开关。关闭后所有渠道和账号的 web search 模拟均不生效。',
+        managedAccount: '托管搜索账号 ID',
+        managedAccountHint:
+          '可选。填写后，纯 web_search 请求优先由该账号的原生 Anthropic 端点执行；用户仍使用自己的 API Key，无需单独配置搜索端点或密钥。',
+        managedAccountPlaceholder: '例如 918',
         providers: '搜索服务商',
         addProvider: '添加服务商',
         providerType: '服务商类型',

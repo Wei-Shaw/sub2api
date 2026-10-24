@@ -5945,6 +5945,31 @@
                 <Toggle v-model="webSearchConfig.enabled" />
               </div>
 
+              <!-- Managed native search account -->
+              <div>
+                <label
+                  class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.webSearchEmulation.managedAccount") }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t("admin.settings.webSearchEmulation.managedAccountHint")
+                  }}
+                </p>
+                <input
+                  v-model.number="webSearchConfig.managed_account_id"
+                  type="number"
+                  min="1"
+                  class="input mt-2 w-48 text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.webSearchEmulation.managedAccountPlaceholder',
+                    )
+                  "
+                />
+              </div>
+
               <!-- Providers -->
               <div v-if="webSearchConfig.enabled" class="space-y-4">
                 <div class="flex items-center justify-between">
@@ -10299,6 +10324,7 @@ const DEFAULT_WEB_SEARCH_QUOTA_LIMIT = 1000;
 
 const webSearchConfig = reactive<WebSearchEmulationConfig>({
   enabled: false,
+  managed_account_id: null,
   providers: [],
 });
 
@@ -10428,6 +10454,7 @@ async function loadWebSearchConfig() {
     ]);
     if (resp) {
       webSearchConfig.enabled = resp.enabled || false;
+      webSearchConfig.managed_account_id = resp.managed_account_id ?? null;
       webSearchConfig.providers = resp.providers || [];
     }
     webSearchProxies.value = proxiesResp.items || [];
@@ -10459,6 +10486,10 @@ async function saveWebSearchConfig(): Promise<boolean> {
     );
     await adminAPI.settings.updateWebSearchEmulationConfig({
       enabled: webSearchConfig.enabled,
+      managed_account_id:
+        Number(webSearchConfig.managed_account_id) > 0
+          ? Number(webSearchConfig.managed_account_id)
+          : null,
       providers,
     });
     return true;

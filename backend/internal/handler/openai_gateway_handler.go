@@ -1297,6 +1297,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
+	// 托管网页搜索：纯 web_search 请求优先由全局配置的原生搜索账号执行。
+	// 用户仍使用自己的 sub2api Key，不需要额外配置搜索端点或搜索密钥。
+	if managedAccount := h.gatewayService.ManagedWebSearchAccount(c.Request.Context(), apiKey.GroupID, body); managedAccount != nil {
+		h.handleManagedWebSearch(c, reqLog, apiKey, subscription, managedAccount, body, reqModel, reqStream, service.HashUsageRequestPayload(body), channelMappingMsg, pricingAt, &streamStarted)
+		return
+	}
+
 	for {
 		if failoverClientGone(c) {
 			return
@@ -3466,6 +3473,98 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(parent context.Context, tas
 		}
 	}()
 	task(ctx)
+}
+
+// handleManagedWebSearch forwards one pure web_search turn to the globally
+// configured managed search account. That account uses a provider-native
+// Anthropic protocol, so the web_search_20250305 tool and the structured
+// web_search_tool_result blocks pass through untouched. Usage is recorded
+// against the managed account while the user is billed through their own key.
+func (h *OpenAIGatewayHandler) handleManagedWebSearch(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subscription *service.UserSubscription,
+	account *service.Account,
+	body []byte,
+	reqModel string,
+	reqStream bool,
+	requestPayloadHash string,
+	channelMapping service.ChannelMappingResult,
+	pricingAt time.Time,
+	streamStarted *bool,
+) {
+	if account == nil {
+		h.anthropicErrorResponse(c, http.StatusServiceUnavailable, "api_error", "Managed web search account is unavailable")
+		return
+	}
+	maxConcurrency := account.Concurrency
+	if maxConcurrency <= 0 {
+		maxConcurrency = 1
+	}
+	release, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, maxConcurrency, reqStream, streamStarted)
+	if err != nil {
+		h.handleConcurrencyError(c, err, "account", *streamStarted)
+		return
+	}
+	defer release()
+
+	reqLog.Info("openai_messages.managed_web_search_start",
+		zap.Int64("account_id", account.ID),
+		zap.String("model", reqModel),
+	)
+	res, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, "", reqModel)
+	if err != nil {
+		reqLog.Warn("openai_messages.managed_web_search_failed",
+			zap.Int64("account_id", account.ID),
+			zap.Error(err),
+		)
+		if c.Writer.Written() {
+			return
+		}
+		h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", err.Error(), *streamStarted)
+		return
+	}
+	if res == nil {
+		return
+	}
+	stampOpenAIRequestedReasoningEffort(res, c)
+	if strings.TrimSpace(res.UpstreamModel) == "" {
+		res.UpstreamModel = reqModel
+	}
+	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, res)
+	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	sessionID := service.ExtractClientSessionID(c)
+	h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
+		if recordErr := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			Result:             res,
+			APIKey:             apiKey,
+			User:               apiKey.User,
+			Account:            account,
+			Subscription:       subscription,
+			InboundEndpoint:    inboundEndpoint,
+			UpstreamEndpoint:   upstreamEndpoint,
+			UserAgent:          c.GetHeader("User-Agent"),
+			IPAddress:          ip.GetClientIP(c),
+			RequestPayloadHash: requestPayloadHash,
+			APIKeyService:      h.apiKeyService,
+			QuotaPlatform:      quotaPlatform,
+			SessionID:          sessionID,
+			ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
+			PricingAt:          pricingAt,
+		}); recordErr != nil {
+			logger.L().With(
+				zap.String("component", "handler.openai_gateway.managed_web_search"),
+				zap.Int64("api_key_id", apiKey.ID),
+				zap.Int64("account_id", account.ID),
+			).Error("openai_messages.managed_web_search_record_usage_failed", zap.Error(recordErr))
+		}
+	})
+	reqLog.Info("openai_messages.managed_web_search_done",
+		zap.Int64("account_id", account.ID),
+		zap.Int("web_search_calls", res.WebSearchCalls),
+	)
 }
 
 func (h *OpenAIGatewayHandler) submitOpenAIUsageRecordTask(parent context.Context, result *service.OpenAIForwardResult, task service.UsageRecordTask) {
