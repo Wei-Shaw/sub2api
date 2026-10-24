@@ -295,6 +295,11 @@ func ForceOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
 }
 
+// AllowOpenaiFastDowngrade applies equality check predicate on the "allow_openai_fast_downgrade" field. It's identical to AllowOpenaiFastDowngradeEQ.
+func AllowOpenaiFastDowngrade(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowOpenaiFastDowngrade, v))
+}
+
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
@@ -2293,6 +2298,16 @@ func ForceOpenaiFastEQ(v bool) predicate.Group {
 // ForceOpenaiFastNEQ applies the NEQ predicate on the "force_openai_fast" field.
 func ForceOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiFast, v))
+}
+
+// AllowOpenaiFastDowngradeEQ applies the EQ predicate on the "allow_openai_fast_downgrade" field.
+func AllowOpenaiFastDowngradeEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowOpenaiFastDowngrade, v))
+}
+
+// AllowOpenaiFastDowngradeNEQ applies the NEQ predicate on the "allow_openai_fast_downgrade" field.
+func AllowOpenaiFastDowngradeNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowOpenaiFastDowngrade, v))
 }
 
 // FreeOpenaiFastEQ applies the EQ predicate on the "free_openai_fast" field.

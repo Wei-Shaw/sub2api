@@ -1272,6 +1272,8 @@ export default {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',
         hint: 'Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.',
+        allowDowngrade: 'Allow Fast downgrade',
+        allowDowngradeHint: 'For Composite groups, remove service_tier when the selected account does not advertise Fast. The global policy still applies, and Force Fast always takes precedence.',
         free: 'Free Fast',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },

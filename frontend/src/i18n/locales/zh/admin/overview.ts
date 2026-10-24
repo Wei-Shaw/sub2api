@@ -1270,6 +1270,8 @@ export default {
         title: 'OpenAI Fast 模式',
         force: '强制使用 Fast（priority）',
         hint: '开启后，此分组的 OpenAI 请求会强制写入 service_tier=priority；全局 Fast/Flex 策略仍可过滤或拦截。保存后新请求立即生效，已建立的 WebSocket 会话需重连。',
+        allowDowngrade: '允许 Fast 降级',
+        allowDowngradeHint: '仅对 Composite 分组生效：选中账号不支持 Fast 时移除 service_tier。全局策略仍然生效，强制 Fast 始终优先。',
         free: '免费 Fast',
         freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },

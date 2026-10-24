@@ -1163,6 +1163,32 @@ func TestSyncUpstreamModelCatalogAstraPartialRefreshPreservesKnownCapabilities(t
 	require.NotNil(t, repo.updates)
 }
 
+func TestSyncUpstreamModelCatalogPersistsOpenAIOAuthSpeedTierCapabilities(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			"{\"data\":[{\"id\":\"gpt-6-astra\",\"reasoning\":true," +
+				"\"supported_reasoning_levels\":[{\"effort\":\"low\"}]," +
+				"\"input_modalities\":[\"text\",\"image\"],\"context_window\":1050000," +
+				"\"max_context_window\":1050000,\"max_output_tokens\":128000," +
+				"\"service_tiers\":[{\"id\":\"priority\",\"name\":\"Fast\"}]," +
+				"\"additional_speed_tiers\":[\"fast\"]}]}")),
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{ID: 115, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "fixture-token"}}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-6-astra"}, catalog.Models)
+	metadata := account.GetUpstreamModelMetadataSnapshot().Models["gpt-6-astra"]
+	require.JSONEq(t, "[{\"id\":\"priority\",\"name\":\"Fast\"}]", string(metadata.CodexToolCapabilities["service_tiers"]))
+	require.JSONEq(t, "[\"fast\"]", string(metadata.CodexToolCapabilities["additional_speed_tiers"]))
+	require.NotNil(t, repo.updates)
+}
+
 func TestMatchModelsDevProviderOfficialHostsWithoutAPI(t *testing.T) {
 	registry := map[string]modelsDevProvider{
 		"openai": {ID: "openai", Models: map[string]modelsDevModel{"gpt-6-astra": {ID: "gpt-6-astra"}}},

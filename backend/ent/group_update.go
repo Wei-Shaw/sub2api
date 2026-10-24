@@ -1009,6 +1009,20 @@ func (_u *GroupUpdate) SetNillableForceOpenaiFast(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetAllowOpenaiFastDowngrade sets the "allow_openai_fast_downgrade" field.
+func (_u *GroupUpdate) SetAllowOpenaiFastDowngrade(v bool) *GroupUpdate {
+	_u.mutation.SetAllowOpenaiFastDowngrade(v)
+	return _u
+}
+
+// SetNillableAllowOpenaiFastDowngrade sets the "allow_openai_fast_downgrade" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowOpenaiFastDowngrade(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowOpenaiFastDowngrade(*v)
+	}
+	return _u
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_u *GroupUpdate) SetFreeOpenaiFast(v bool) *GroupUpdate {
 	_u.mutation.SetFreeOpenaiFast(v)
@@ -1869,6 +1883,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowOpenaiFastDowngrade(); ok {
+		_spec.SetField(group.FieldAllowOpenaiFastDowngrade, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -3212,6 +3229,20 @@ func (_u *GroupUpdateOne) SetNillableForceOpenaiFast(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// SetAllowOpenaiFastDowngrade sets the "allow_openai_fast_downgrade" field.
+func (_u *GroupUpdateOne) SetAllowOpenaiFastDowngrade(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowOpenaiFastDowngrade(v)
+	return _u
+}
+
+// SetNillableAllowOpenaiFastDowngrade sets the "allow_openai_fast_downgrade" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowOpenaiFastDowngrade(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowOpenaiFastDowngrade(*v)
+	}
+	return _u
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_u *GroupUpdateOne) SetFreeOpenaiFast(v bool) *GroupUpdateOne {
 	_u.mutation.SetFreeOpenaiFast(v)
@@ -4102,6 +4133,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowOpenaiFastDowngrade(); ok {
+		_spec.SetField(group.FieldAllowOpenaiFastDowngrade, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)

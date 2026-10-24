@@ -8,3 +8,15 @@ export function normalizeGroupOpenAIFast(
 ): boolean {
   return supportsGroupOpenAIFast(platform) && enabled;
 }
+
+export function supportsGroupOpenAIFastDowngrade(platform: string): boolean {
+  return platform === "composite";
+}
+
+export function normalizeGroupOpenAIFastDowngrade(
+  platform: string,
+  enabled: boolean,
+  forceFast: boolean,
+): boolean {
+  return supportsGroupOpenAIFastDowngrade(platform) && !forceFast && enabled;
+}

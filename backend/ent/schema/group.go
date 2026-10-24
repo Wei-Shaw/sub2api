@@ -250,6 +250,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("force_openai_fast").
 			Default(false).
 			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
+		field.Bool("allow_openai_fast_downgrade").
+			Default(false).
+			Comment("Composite 分组遇到不支持 Fast 的账号时是否移除 service_tier；Force Fast 优先"),
 		field.Bool("free_openai_fast").
 			Default(false).
 			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),

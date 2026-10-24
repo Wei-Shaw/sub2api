@@ -656,8 +656,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
-			switch action {
-			case BetaPolicyActionBlock:
+			if action == BetaPolicyActionBlock {
 				msg := errMsg
 				if msg == "" {
 					msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, upstreamModel)
@@ -665,20 +664,35 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				blocked := &OpenAIFastBlockedError{Message: msg}
 				writeOpenAIFastPolicyBlockedResponse(c, blocked)
 				return nil, blocked
-			case BetaPolicyActionFilter:
+			}
+			effectiveTier, remove, err := s.resolveOpenAIServiceTierForAccount(ctx, account, upstreamModel, action, normTier)
+			if err != nil {
+				var blocked *OpenAIFastBlockedError
+				if errors.As(err, &blocked) {
+					writeOpenAIFastPolicyBlockedResponse(c, blocked)
+				}
+				return nil, err
+			}
+			if remove {
 				markPatchDelete("service_tier")
-			case OpenAIFastPolicyActionForcePriority:
-				if rawTier != OpenAIFastTierPriority {
-					markPatchSet("service_tier", OpenAIFastTierPriority)
-				}
-			default:
-				if normTier != rawTier {
-					markPatchSet("service_tier", normTier)
-				}
+			} else if effectiveTier != rawTier {
+				markPatchSet("service_tier", effectiveTier)
 			}
 		}
 	} else if s.shouldForceOpenAIFastPriorityForMissingTier(ctx, account, upstreamModel) {
-		markPatchSet("service_tier", OpenAIFastTierPriority)
+		effectiveTier, remove, err := s.resolveOpenAIServiceTierForAccount(
+			ctx, account, upstreamModel, OpenAIFastPolicyActionForcePriority, OpenAIFastTierPriority,
+		)
+		if err != nil {
+			var blocked *OpenAIFastBlockedError
+			if errors.As(err, &blocked) {
+				writeOpenAIFastPolicyBlockedResponse(c, blocked)
+			}
+			return nil, err
+		}
+		if !remove {
+			markPatchSet("service_tier", effectiveTier)
+		}
 	}
 
 	if account.UsesOpenAICodexProtocol() {
