@@ -19,6 +19,8 @@ const (
 	PlatformGatewayGemini PlatformGateway = "gemini"
 	// PlatformGatewayAntigravity 由 Antigravity 网关处理。
 	PlatformGatewayAntigravity PlatformGateway = "antigravity"
+	// PlatformGatewayCursor 由 Cursor 网关处理（AgentService/Run）。
+	PlatformGatewayCursor PlatformGateway = "cursor"
 )
 
 // PlatformSpec 描述一个具体（非 composite）平台。
@@ -40,6 +42,10 @@ var platformList = []PlatformSpec{
 	{ID: PlatformGemini, DisplayName: "Gemini", Gateway: PlatformGatewayGemini, LiteLLMProvider: "gemini"},
 	{ID: PlatformAntigravity, DisplayName: "Antigravity", Gateway: PlatformGatewayAntigravity, LiteLLMProvider: "anthropic"},
 	{ID: PlatformGrok, DisplayName: "Grok", Gateway: PlatformGatewayOpenAI, LiteLLMProvider: "xai"},
+	// Cursor Pro 订阅（Connect-RPC AgentService/Run 网关，PR #6289）。
+	// 不参与 composite：其 picker 模型名与 grok 等平台重叠，组合归属会把
+	// cursor 的模型抢给同名平台。
+	{ID: PlatformCursor, DisplayName: "Cursor", Gateway: PlatformGatewayCursor},
 	{ID: PlatformKimi, DisplayName: "Kimi", Gateway: PlatformGatewayOpenAI, CNProvider: true, LiteLLMProvider: "moonshot"},
 	{ID: PlatformZhipu, DisplayName: "Zhipu GLM", Gateway: PlatformGatewayOpenAI, CNProvider: true, LiteLLMProvider: "zhipu"},
 	{ID: PlatformDeepseek, DisplayName: "DeepSeek", Gateway: PlatformGatewayOpenAI, CNProvider: true, LiteLLMProvider: "deepseek"},
@@ -107,6 +113,8 @@ var compositePrecedenceHead = []string{PlatformAnthropic, PlatformGemini, Platfo
 // CompositePrecedencePlatformIDs 返回按平台依次回退时的顺序：组合分组在请求目标
 // 解析前逐平台查找定价 / 模型映射（先命中者生效）、拼接默认模型列表，以及调度快照
 // 遍历。沿用历史顺序 anthropic、gemini、openai，其余按展示顺序，新登记的平台追加在末尾。
+// Cursor 除外：其 picker 模型名与 grok 等平台重叠，参与组合回退会把 cursor 的
+// 模型抢给同名平台。
 func CompositePrecedencePlatformIDs() []string {
 	out := make([]string, 0, len(platformList))
 	seen := make(map[string]struct{}, len(platformList))
@@ -117,11 +125,19 @@ func CompositePrecedencePlatformIDs() []string {
 		}
 	}
 	for _, spec := range platformList {
+		if spec.ID == PlatformCursor {
+			continue
+		}
 		if _, ok := seen[spec.ID]; !ok {
 			out = append(out, spec.ID)
 		}
 	}
 	return out
+}
+
+// IsCompositeRouteTarget 报告平台是否可作为组合路由目标。Cursor 排除（同上）。
+func IsCompositeRouteTarget(id string) bool {
+	return IsConcretePlatform(id) && id != PlatformCursor
 }
 
 // UsesOpenAIGateway 报告平台是否由 OpenAI 网关处理。
