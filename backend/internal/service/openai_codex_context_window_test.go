@@ -114,7 +114,7 @@ func TestCodexContextWindowRegistryEnrichment(t *testing.T) {
 	}{
 		{"preserve upstream limits", `"context_window":272000,"max_context_window":872000`, 272000, 872000},
 		{"upstream default remains ceiling", `"context_window":272000`, 272000, 272000},
-		{"registry supplies missing limits", `"description":"Model without context metadata"`, 1050000, 1050000},
+		{"registry capacity does not raise Codex defaults", `"description":"Model without context metadata"`, 272000, 872000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			account := codexContextWindowAccount(t, 1, `"context_window":64000`)
@@ -149,6 +149,83 @@ func TestCodexContextWindowRegistryEnrichment(t *testing.T) {
 			require.EqualValues(t, tc.wantWindow, model["context_window"])
 			require.EqualValues(t, tc.wantMax, model["max_context_window"])
 		})
+	}
+}
+
+func TestCodexAstraCatalogContextMetadataSources(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		accountType string
+		baseURL     string
+		source      string
+		fields      string
+		wantWindow  int64
+		wantMax     int64
+	}{
+		{"native OAuth limits", AccountTypeOAuth, "", "upstream", `"context_window":272000,"max_context_window":872000`, 272000, 872000},
+		{"native OAuth larger limits", AccountTypeOAuth, "", "upstream", `"context_window":1050000,"max_context_window":1050000`, 1050000, 1050000},
+		{"official API capacity", AccountTypeAPIKey, "https://api.openai.com/v1", "upstream", `"context_window":1050000,"max_context_window":1050000`, 272000, 872000},
+		{"registry capacity on API key", AccountTypeAPIKey, "https://provider.example/v1", "models.dev", `"context_window":1050000,"max_context_window":1050000`, 272000, 872000},
+		{"registry capacity on OAuth", AccountTypeOAuth, "", "models.dev", `"context_window":1050000,"max_context_window":1050000`, 272000, 872000},
+		{"custom provider explicit limits", AccountTypeAPIKey, "https://provider.example/v1", "upstream", `"context_window":1050000,"max_context_window":1050000`, 1050000, 1050000},
+		{"official API smaller limits", AccountTypeAPIKey, "https://api.openai.com/v1", "upstream", `"context_window":128000,"max_context_window":128000`, 128000, 128000},
+		{"official API smaller maximum", AccountTypeAPIKey, "https://api.openai.com/v1", "upstream", `"context_window":1050000,"max_context_window":512000`, 272000, 512000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := codexContextWindowAccount(t, 1, tc.fields)
+			account.Type = tc.accountType
+			if tc.baseURL != "" {
+				account.Credentials["base_url"] = tc.baseURL
+			}
+			snapshot := account.GetUpstreamModelMetadataSnapshot()
+			snapshot.Source = tc.source
+			account.SetUpstreamModelMetadataSnapshot(*snapshot)
+			model := codexContextWindowManifest(t, []Account{account})
+			require.EqualValues(t, tc.wantWindow, model["context_window"])
+			require.EqualValues(t, tc.wantMax, model["max_context_window"])
+		})
+	}
+}
+
+func TestCodexAstraAPIKeyModelListDoesNotUseAPICapacityAsDefault(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "test-key", "base_url": "https://api.openai.com/v1",
+	}}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Source: "models.dev",
+		Models: map[string]UpstreamModelMetadata{"gpt-6-astra": {
+			ID: "gpt-6-astra", ContextWindow: 1050000, MaxContextWindow: 1050000,
+		}},
+	})
+	svc := &OpenAIGatewayService{}
+	list := []byte(`{"object":"list","data":[{"id":"gpt-6-astra","object":"model"}]}`)
+	manifest := &OpenAIModelsResponse{Body: list, upstreamSourceBody: list, convertedFromOpenAIModelList: true}
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+	model := decodeCodexManifestModels(t, manifest.Body)[0]
+	require.EqualValues(t, 272000, model["context_window"])
+	require.EqualValues(t, 872000, model["max_context_window"])
+
+	// A native provider manifest is authoritative even when a generic snapshot exists.
+	manifest = &OpenAIModelsResponse{Body: []byte(`{"models":[{
+		"slug":"gpt-6-astra","context_window":1050000,"max_context_window":1050000
+	}]}`)}
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+	model = decodeCodexManifestModels(t, manifest.Body)[0]
+	require.EqualValues(t, 1050000, model["context_window"])
+	require.EqualValues(t, 1050000, model["max_context_window"])
+
+	for _, withSnapshot := range []bool{false, true} {
+		providerAccount := *account
+		if !withSnapshot {
+			providerAccount.Extra = nil
+		}
+		manifest = &OpenAIModelsResponse{Body: []byte(`{"models":[{
+			"slug":"gpt-6-astra","context_window":1050000
+		}]}`)}
+		require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, &providerAccount))
+		model = decodeCodexManifestModels(t, manifest.Body)[0]
+		require.EqualValues(t, 1050000, model["context_window"])
+		require.EqualValues(t, 1050000, model["max_context_window"])
 	}
 }
 
