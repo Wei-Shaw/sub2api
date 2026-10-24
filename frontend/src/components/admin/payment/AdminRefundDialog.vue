@@ -33,17 +33,10 @@
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
           <span class="font-mono text-gray-900 dark:text-white">#{{ order?.id }}</span>
         </div>
-        <div class="mt-1 flex justify-between text-sm">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order?.amount?.toFixed(2) }}</span>
-        </div>
-        <div class="mt-1 flex justify-between text-sm">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ order?.pay_amount?.toFixed(2) }}</span>
-        </div>
+        <OrderAmountDetails v-if="order" :order="order" />
         <div v-if="actuallyRefunded > 0" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') }}</span>
-          <span class="font-medium text-red-600 dark:text-red-400">{{ creditedAmountSymbol }}{{ actuallyRefunded.toFixed(2) }}</span>
+          <span class="font-medium text-red-600 dark:text-red-400">{{ order ? formatOrderAmount(order, actuallyRefunded) : '' }}</span>
         </div>
       </div>
 
@@ -57,20 +50,20 @@
             class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
           <label for="deduct-balance" class="text-sm text-gray-700 dark:text-gray-300">
-            {{ t('payment.admin.deductBalance') }}
+            {{ t(isSubscription ? 'payment.admin.deductSubscription' : 'payment.admin.deductBalance') }}
           </label>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.deductBalanceHint') }}</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(isSubscription ? 'payment.admin.deductSubscriptionHint' : 'payment.admin.deductBalanceHint') }}</span>
         </div>
 
         <!-- User Balance Info (when deduct_balance is checked) -->
-        <div v-if="form.deduct_balance && userBalance != null" class="mt-3 grid grid-cols-2 gap-3">
+        <div v-if="!isSubscription && form.deduct_balance && userBalance != null" class="mt-3 grid grid-cols-2 gap-3">
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
             <div class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.userBalance') }}</div>
             <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ userBalance.toFixed(2) }}</div>
           </div>
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
             <div class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderAmount') }}</div>
-            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order?.amount?.toFixed(2) }}</div>
+            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ order ? formatOrderAmount(order) : '' }}</div>
           </div>
         </div>
 
@@ -87,7 +80,7 @@
           v-if="!form.deduct_balance"
           class="mt-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
         >
-          {{ t('payment.admin.noDeduction') }}
+          {{ t(isSubscription ? 'payment.admin.noSubscriptionDeduction' : 'payment.admin.noDeduction') }}
         </div>
       </div>
 
@@ -95,7 +88,7 @@
       <div>
         <label class="input-label">{{ t('payment.admin.refundAmount') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ creditedAmountSymbol }}</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ orderAmountSymbol }}</span>
           <input
             v-model.number="form.amount"
             type="number"
@@ -107,7 +100,7 @@
           />
         </div>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('payment.admin.maxRefundable') }}: {{ creditedAmountSymbol }}{{ maxRefundable.toFixed(2) }}
+          {{ t('payment.admin.maxRefundable') }}: {{ order ? formatOrderAmount(order, maxRefundable) : '' }}
         </p>
       </div>
 
@@ -170,6 +163,8 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
+import { formatOrderAmount } from '@/components/payment/orderAmounts'
+import OrderAmountDetails from '@/components/payment/OrderAmountDetails.vue'
 
 const { t } = useI18n()
 
@@ -189,7 +184,7 @@ const emit = defineEmits<{
 
 const creditedAmountSymbol = currencySymbol('USD')
 
-const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
+const orderAmountSymbol = computed(() => props.order?.order_type === 'balance' ? currencySymbol('USD') : props.order?.subscription_plan_snapshot?.currency ? currencySymbol(props.order.subscription_plan_snapshot.currency) : '')
 
 const form = reactive({
   amount: 0,
@@ -212,7 +207,10 @@ const maxRefundable = computed(() => {
   return props.order.amount - actuallyRefunded.value
 })
 
+const isSubscription = computed(() => props.order?.order_type === 'subscription')
+
 const balanceInsufficient = computed(() => {
+  if (isSubscription.value) return false
   if (props.userBalance == null || !props.order) return false
   return props.userBalance < form.amount
 })

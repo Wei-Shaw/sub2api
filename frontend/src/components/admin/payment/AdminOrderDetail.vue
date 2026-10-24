@@ -17,26 +17,7 @@
             {{ t('payment.status.' + order.status.toLowerCase(), order.status) }}
           </span>
         </div>
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ baseAmount.toFixed(2) }}</p>
-        </div>
-        <div v-if="order.fee_rate > 0">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ feeAmount.toFixed(2) }}</p>
-        </div>
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ order.pay_amount.toFixed(2) }}</p>
-        </div>
-        <div v-if="(order.bonus_amount ?? 0) > 0">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.bonusAmount') }}</p>
-          <p class="text-sm font-medium text-amber-600 dark:text-amber-400">+{{ creditedAmountSymbol }}{{ (order.bonus_amount ?? 0).toFixed(2) }}</p>
-        </div>
-        <div v-if="order.amount !== order.pay_amount || (order.bonus_amount ?? 0) > 0">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order.amount.toFixed(2) }}</p>
-        </div>
+        <OrderAmountDetails class="col-span-2" :order="order" />
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p>
           <p class="text-sm text-gray-700 dark:text-gray-300">
@@ -81,7 +62,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') }}:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ creditedAmountSymbol }}{{ order.refund_amount.toFixed(2) }}</span>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ formatOrderAmount(order, order.refund_amount) }}</span>
           </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') }}:</span>
@@ -118,39 +99,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import OrderAmountDetails from '@/components/payment/OrderAmountDetails.vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
-import { currencySymbol } from '@/components/payment/currency'
+import { formatOrderAmount } from '@/components/payment/orderAmounts'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+defineProps<{
   show: boolean
   order: PaymentOrder | null
 }>()
-
-const creditedAmountSymbol = currencySymbol('USD')
-
-const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
-
-/** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
-const baseAmount = computed(() => {
-  if (!props.order) return 0
-  const feeRate = Number(props.order.fee_rate) || 0
-  if (feeRate <= 0) return props.order.pay_amount
-  return props.order.pay_amount / (1 + feeRate / 100)
-})
-
-/** 手续费 = pay_amount - baseAmount */
-const feeAmount = computed(() => {
-  if (!props.order) return 0
-  const feeRate = Number(props.order.fee_rate) || 0
-  if (feeRate <= 0) return 0
-  return props.order.pay_amount - baseAmount.value
-})
 
 const emit = defineEmits<{
   (e: 'close'): void
