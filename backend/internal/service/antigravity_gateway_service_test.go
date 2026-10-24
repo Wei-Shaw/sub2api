@@ -1781,14 +1781,14 @@ func TestExtractSSEUsage(t *testing.T) {
 		{
 			name:     "top-level usage with all fields",
 			line:     `data: {"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":3}}`,
-			expected: ClaudeUsage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5, CacheCreationInputTokens: 3},
+			expected: ClaudeUsage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5, CacheCreationInputTokens: 3, cacheCreationInputTokensPresent: true},
 		},
 		{
 			// Anthropic message_start 把 usage 嵌套在 message.usage 下，
 			// 必须从这里提取输入侧字段（含 cache_read/cache_creation_input_tokens）。
 			name:     "message_start nested usage with input/cache tokens",
 			line:     `data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":35576,"cache_creation_input_tokens":0,"cache_read_input_tokens":12000,"output_tokens":1}}}`,
-			expected: ClaudeUsage{InputTokens: 35576, OutputTokens: 1, CacheReadInputTokens: 12000},
+			expected: ClaudeUsage{InputTokens: 35576, OutputTokens: 1, CacheReadInputTokens: 12000, cacheCreationInputTokensPresent: true},
 		},
 		{
 			// message_start.message.usage.cache_creation 内的 5m/1h 明细也要解析。
