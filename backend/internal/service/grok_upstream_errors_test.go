@@ -312,6 +312,40 @@ func TestGrokPermissionDeniedContentRefusalDoesNotMutateOrFailover(t *testing.T)
 	require.False(t, svc.shouldFailoverGrokUpstreamError(http.StatusForbidden, body))
 }
 
+func TestHandleGrokAccountUpstreamErrorUnrecognized402DoesNotQuarantine(t *testing.T) {
+	for _, body := range [][]byte{
+		nil,
+		[]byte("402 Payment Required"),
+		[]byte("<html>402 Payment Required</html>"),
+	} {
+		repo := &grokQuotaAccountRepo{}
+		svc := &OpenAIGatewayService{accountRepo: repo}
+		account := &Account{ID: 4820, Platform: PlatformGrok, Type: AccountTypeOAuth}
+
+		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, body)
+
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Zero(t, repo.rateLimitedCalls)
+		require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.False(t, svc.shouldFailoverGrokUpstreamError(http.StatusPaymentRequired, body))
+	}
+}
+
+func TestHandleGrokAccountUpstreamErrorRecognized402StillCools(t *testing.T) {
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 4821, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	body := []byte(`{"error":{"message":"You have run out of credits or need a Grok subscription"}}`)
+	before := time.Now()
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, body)
+
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusPaymentRequired, body))
+	require.Greater(t, repo.lastRateLimitResetAt, before)
+}
+
 func TestHandleGrokAccountUpstreamErrorEntitlement403KeepsDefaultCooldown(t *testing.T) {
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
@@ -348,6 +382,9 @@ func TestHandleGrokAccountUpstreamErrorDefaultCooldownsRespectPoolMode(t *testin
 				},
 			}
 			body := []byte(`{"error":{"message":"grok access or entitlement denied"}}`)
+			if statusCode == http.StatusPaymentRequired {
+				body = []byte(`{"error":{"message":"You have run out of credits or need a Grok subscription"}}`)
+			}
 
 			svc.handleGrokAccountUpstreamError(
 				context.Background(), account, statusCode, nil, body,
