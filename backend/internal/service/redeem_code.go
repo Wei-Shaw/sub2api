@@ -20,6 +20,8 @@ type RedeemCode struct {
 
 	GroupID      *int64
 	ValidityDays int
+	BatchID      *string
+	OnlyOncePerAccount bool
 
 	User  *User
 	Group *Group

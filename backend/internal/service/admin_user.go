@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1272,6 +1274,11 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 		}
 	}
 
+	// 为本批次生成唯一的批次标识 BatchID
+	randBytes := make([]byte, 8)
+	_, _ = rand.Read(randBytes)
+	batchID := fmt.Sprintf("b_%s_%s", time.Now().UTC().Format("20060102150405"), hex.EncodeToString(randBytes))
+
 	codes := make([]RedeemCode, 0, input.Count)
 	for i := 0; i < input.Count; i++ {
 		codeValue, err := GenerateRedeemCode()
@@ -1279,11 +1286,13 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			return nil, err
 		}
 		code := RedeemCode{
-			Code:      codeValue,
-			Type:      input.Type,
-			Value:     input.Value,
-			Status:    StatusUnused,
-			ExpiresAt: input.ExpiresAt,
+			Code:               codeValue,
+			Type:               input.Type,
+			Value:              input.Value,
+			Status:             StatusUnused,
+			ExpiresAt:          input.ExpiresAt,
+			BatchID:            &batchID,
+			OnlyOncePerAccount: input.OnlyOncePerAccount,
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {

@@ -77,6 +77,15 @@ func (r *redeemRejectRepo) SumPositiveBalanceByUser(ctx context.Context, userID 
 	panic("unexpected SumPositiveBalanceByUser call")
 }
 
+func (r *redeemRejectRepo) HasUserRedeemedBatch(ctx context.Context, batchID string, userID int64) (bool, error) {
+	if r.code.BatchID != nil && *r.code.BatchID == batchID && r.code.OnlyOncePerAccount {
+		if r.code.UsedBy != nil && *r.code.UsedBy == userID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func TestRedeemRejectsInvitationCodeBeforeTransaction(t *testing.T) {
 	ctx := context.Background()
 	redeemRepo := &redeemRejectRepo{
@@ -99,4 +108,32 @@ func TestRedeemRejectsInvitationCodeBeforeTransaction(t *testing.T) {
 	require.False(t, redeemRepo.useCalled)
 	require.Equal(t, StatusUnused, redeemRepo.code.Status)
 	require.Nil(t, redeemRepo.code.UsedBy)
+}
+
+func TestRedeemBatchOncePerAccountConstraint(t *testing.T) {
+	ctx := context.Background()
+	batchID := "batch_test_123"
+	userID := int64(999)
+
+	redeemRepo := &redeemRejectRepo{
+		code: RedeemCode{
+			ID:                 10,
+			Code:               "BATCH-LIMITED-001",
+			Type:               RedeemTypeBalance,
+			Value:              10.0,
+			Status:             StatusUnused,
+			BatchID:            &batchID,
+			OnlyOncePerAccount: true,
+			UsedBy:             &userID, // 模拟该用户在此批次已经核销过一张码
+		},
+	}
+	redeemService := NewRedeemService(redeemRepo, nil, nil, nil, nil, nil, nil, nil)
+
+	got, err := redeemService.Redeem(ctx, userID, redeemRepo.code.Code)
+
+	require.Nil(t, got)
+	require.Error(t, err)
+	require.True(t, infraerrors.IsConflict(err))
+	require.Equal(t, "REDEEM_BATCH_ALREADY_USED", infraerrors.Reason(err))
+	require.False(t, redeemRepo.useCalled)
 }
