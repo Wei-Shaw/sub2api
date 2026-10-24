@@ -485,6 +485,7 @@ const DummyThoughtSignature = "skip_thought_signature_validator"
 // allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
 func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, bool, error) {
 	var parts []GeminiPart
+	var toolResults []GeminiPart
 	strippedThinking := false
 
 	// 尝试解析为字符串
@@ -579,7 +580,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			// 解析 content
 			resultContent := parseToolResultContent(block.Content, block.IsError)
 
-			parts = append(parts, GeminiPart{
+			toolResults = append(toolResults, GeminiPart{
 				FunctionResponse: &GeminiFunctionResponse{
 					Name: funcName,
 					Response: map[string]any{
@@ -592,7 +593,8 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 		}
 	}
 
-	return parts, strippedThinking, nil
+	// Upstream treats an image/text part as the end of the parallel tool results.
+	return append(toolResults, parts...), strippedThinking, nil
 }
 
 // parseToolResultContent 解析 tool_result 的 content
