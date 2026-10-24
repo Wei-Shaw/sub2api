@@ -1408,15 +1408,9 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 	modelsListCacheMissTotal.Add(1)
 
-	var accounts []Account
-	var err error
-
-	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
-	} else {
-		accounts, err = s.accountRepo.ListSchedulable(ctx)
-	}
-
+	// Catalog membership follows persistent configuration. Temporary quota,
+	// balance, and rate-limit blocks affect routing, not model identity.
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, groupID, domain.ConcretePlatformIDs(), true)
 	if err != nil || len(accounts) == 0 {
 		return nil
 	}
@@ -1570,21 +1564,14 @@ func (s *GatewayService) FilterCompositeCodexModels(ctx context.Context, groupID
 	return s.compositeResolver.FilterCodexModels(ctx, groupID, models)
 }
 
-// GetSchedulablePlatforms returns the concrete platforms that currently have
-// schedulable accounts in the target group.
-func (s *GatewayService) GetSchedulablePlatforms(ctx context.Context, groupID *int64) map[string]struct{} {
+// GetModelCatalogPlatforms returns platforms with persistently enabled accounts.
+func (s *GatewayService) GetModelCatalogPlatforms(ctx context.Context, groupID *int64) map[string]struct{} {
 	platforms := make(map[string]struct{})
 	if s == nil || s.accountRepo == nil {
 		return platforms
 	}
 
-	var accounts []Account
-	var err error
-	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
-	} else {
-		accounts, err = s.accountRepo.ListSchedulable(ctx)
-	}
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, groupID, domain.ConcretePlatformIDs(), true)
 	if err != nil {
 		return platforms
 	}
