@@ -1267,11 +1267,17 @@ export default {
         enableAnyway: '仍然开启'
       },
       openaiFast: {
-        title: 'OpenAI Fast 模式',
-        force: '强制使用 Fast（priority）',
-        hint: '开启后，此分组的 OpenAI 请求会强制写入 service_tier=priority；全局 Fast/Flex 策略仍可过滤或拦截。保存后新请求立即生效，已建立的 WebSocket 会话需重连。',
+        title: 'OpenAI 服务档位',
+        tier: '处理方式',
+        tierFollow: '跟随请求',
+        tierStandard: '强制 Standard',
+        tierFast: '强制 Fast',
+        tierUltrafast: '强制 Ultra Fast',
+        hint: '跟随请求时按客户端传入的 service_tier 转发；选择强制档位会覆盖请求值，全局 Fast/Flex 策略仍可过滤或拦截。强制 Ultra Fast 仅对 gpt-6-astra、gpt-6.1-sol 与 gpt-5.6-sol 生效，其余模型按请求原样透传。保存后新请求立即生效，已建立的 WebSocket 会话需重连。',
         free: '免费 Fast',
-        freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
+        freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。',
+        freeUltrafast: '免费 Ultra Fast',
+        freeUltrafastHint: '该分组的 Ultra Fast 请求仍使用 ultrafast 档位，但客户实际费用按 Standard 价格计算。'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

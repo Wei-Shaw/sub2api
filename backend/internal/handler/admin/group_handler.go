@@ -183,6 +183,34 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n}
 }
 
+// resolveCreateForcedServiceTier applies the deprecated force_openai_fast
+// alias only when the explicit tier is empty.
+func resolveCreateForcedServiceTier(explicit string, legacy *bool) string {
+	if explicit != "" {
+		return explicit
+	}
+	if legacy != nil && *legacy {
+		return service.OpenAIFastTierPriority
+	}
+	return ""
+}
+
+// resolveUpdateForcedServiceTier returns nil when neither field is present, so
+// an omitted update keeps the stored tier.
+func resolveUpdateForcedServiceTier(explicit *string, legacy *bool) *string {
+	if explicit != nil {
+		return explicit
+	}
+	if legacy == nil {
+		return nil
+	}
+	tier := ""
+	if *legacy {
+		tier = service.OpenAIFastTierPriority
+	}
+	return &tier
+}
+
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
@@ -235,10 +263,13 @@ type CreateGroupRequest struct {
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
-	AllowLive                   bool                                      `json:"allow_live"`
-	ForceOpenAIFast             bool                                      `json:"force_openai_fast"`
+	AllowMessagesDispatch bool   `json:"allow_messages_dispatch"`
+	AllowLive             bool   `json:"allow_live"`
+	ForcedServiceTier     string `json:"forced_service_tier"`
+	// ForceOpenAIFast 是已弃用的兼容字段；优先使用 ForcedServiceTier。
+	ForceOpenAIFast             *bool                                     `json:"force_openai_fast"`
 	FreeOpenAIFast              bool                                      `json:"free_openai_fast"`
+	FreeOpenAIUltrafast         bool                                      `json:"free_openai_ultrafast"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
@@ -311,10 +342,13 @@ type UpdateGroupRequest struct {
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
-	AllowLive                   *bool                                      `json:"allow_live"`
+	AllowMessagesDispatch *bool   `json:"allow_messages_dispatch"`
+	AllowLive             *bool   `json:"allow_live"`
+	ForcedServiceTier     *string `json:"forced_service_tier"`
+	// ForceOpenAIFast 是已弃用的兼容字段；优先使用 ForcedServiceTier。
 	ForceOpenAIFast             *bool                                      `json:"force_openai_fast"`
 	FreeOpenAIFast              *bool                                      `json:"free_openai_fast"`
+	FreeOpenAIUltrafast         *bool                                      `json:"free_openai_ultrafast"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
@@ -715,8 +749,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
-		ForceOpenAIFast:                 req.ForceOpenAIFast,
+		ForcedServiceTier:               resolveCreateForcedServiceTier(req.ForcedServiceTier, req.ForceOpenAIFast),
 		FreeOpenAIFast:                  req.FreeOpenAIFast,
+		FreeOpenAIUltrafast:             req.FreeOpenAIUltrafast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
@@ -862,8 +897,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
-		ForceOpenAIFast:                 req.ForceOpenAIFast,
+		ForcedServiceTier:               resolveUpdateForcedServiceTier(req.ForcedServiceTier, req.ForceOpenAIFast),
 		FreeOpenAIFast:                  req.FreeOpenAIFast,
+		FreeOpenAIUltrafast:             req.FreeOpenAIUltrafast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,

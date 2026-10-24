@@ -78,7 +78,7 @@ const sourceGroup = {
   weekly_limit_usd: null,
   monthly_limit_usd: null,
   long_context_pricing_enabled: true,
-  force_openai_fast: false,
+  forced_service_tier: "", free_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [],
   profit_control_enabled: false,

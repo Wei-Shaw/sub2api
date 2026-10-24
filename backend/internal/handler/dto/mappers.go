@@ -148,8 +148,10 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
-		ForceOpenAIFast:             g.ForceOpenAIFast,
+		ForcedServiceTier:           g.ForcedServiceTier,
+		ForceOpenAIFast:             g.ForcedServiceTier == service.OpenAIFastTierPriority,
 		FreeOpenAIFast:              g.FreeOpenAIFast,
+		FreeOpenAIUltrafast:         g.FreeOpenAIUltrafast,
 		ProfitControlEnabled:        g.ProfitControlEnabled,
 		ProfitMinMargin:             g.ProfitMinMargin,
 		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,

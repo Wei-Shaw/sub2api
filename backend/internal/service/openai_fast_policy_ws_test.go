@@ -122,11 +122,37 @@ func TestWSResponseCreate_ForcePriorityRewritesKnownTier(t *testing.T) {
 	}
 }
 
+func TestWSResponseCreate_ForcedTierModes(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	for _, tt := range []struct {
+		name   string
+		forced string
+		model  string
+		frame  string
+		want   string
+	}{
+		{name: "standard", forced: OpenAIFastTierDefault, model: "gpt-6.1-sol", frame: `{"type":"response.create","service_tier":"ultrafast"}`, want: OpenAIFastTierDefault},
+		{name: "ultrafast supported", forced: OpenAIFastTierUltrafast, model: "gpt-6.1-sol", frame: `{"type":"response.create"}`, want: OpenAIFastTierUltrafast},
+		{name: "ultrafast passes unsupported model", forced: OpenAIFastTierUltrafast, model: "gpt-6-luna", frame: `{"type":"response.create","service_tier":"flex"}`, want: OpenAIFastTierFlex},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+				ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: tt.forced,
+			})
+			updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, tt.model, []byte(tt.frame))
+			require.NoError(t, err)
+			require.Nil(t, blocked)
+			require.Equal(t, tt.want, gjson.GetBytes(updated, "service_tier").String())
+		})
+	}
+}
+
 func TestWSResponseCreate_GroupForceInjectsMissingTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 	frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]}`)
 
@@ -158,7 +184,7 @@ func TestWSResponseCreate_GroupForceDoesNotTouchOtherFrames(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 	frame := []byte(`{"type":"response.cancel","model":"gpt-5.6-sol"}`)
 

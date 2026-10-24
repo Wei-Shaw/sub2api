@@ -693,6 +693,7 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 // anthropic-beta header 换成 body 的 service_tier 字段。
 const (
 	OpenAIFastTierAny       = "all"       // 匹配任意已识别的 service_tier
+	OpenAIFastTierDefault   = "default"   // OpenAI 标准档位
 	OpenAIFastTierPriority  = "priority"  // 仅匹配 fast（priority）
 	OpenAIFastTierUltrafast = "ultrafast" // 仅匹配 ultrafast
 	OpenAIFastTierFlex      = "flex"      // 仅匹配 flex
