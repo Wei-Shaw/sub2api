@@ -1399,7 +1399,7 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools, functionTool
 	if reasoning != "" {
 		outputs = append(outputs, ResponsesOutput{
 			Type: "reasoning",
-			ID:   generateItemID(),
+			ID:   generateReasoningItemID(),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
 				Text: reasoning,
@@ -1892,7 +1892,7 @@ func ensureChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []Res
 		return nil
 	}
 	state.ReasoningOpen = true
-	state.ReasoningItemID = generateItemID()
+	state.ReasoningItemID = generateReasoningItemID()
 	state.ReasoningIndex = state.allocOutputIndex()
 	return []ResponsesStreamEvent{
 		chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -2169,7 +2169,7 @@ func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutp
 	if state.Reasoning.Len() > 0 {
 		outputs = append(outputs, ResponsesOutput{
 			Type: "reasoning",
-			ID:   generateItemID(),
+			ID:   nonEmpty(state.ReasoningItemID, generateReasoningItemID()),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
 				Text: state.Reasoning.String(),
