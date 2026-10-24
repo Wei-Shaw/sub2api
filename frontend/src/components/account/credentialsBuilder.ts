@@ -259,7 +259,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
-export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'stepfun'
 
 /** adaptive 按入站协议（或按模型规则）选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
@@ -268,7 +268,7 @@ export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 const NATIVE_API_PROTOCOLS: CnNativeApiProtocol[] = ['chat_completions', 'anthropic', 'responses']
 
 export function isCNProviderPlatform(platform: string): platform is CnProviderPlatform {
-  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
+  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'stepfun'
 }
 
 /** 平台是否为多协议 API Key 供应商（平台清单中带 profile）。 */
@@ -481,6 +481,14 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'anthropic', label: 'DeepSeek Anthropic', url: 'https://api.deepseek.com/anthropic' },
     { mode: 'payg', protocol: 'responses', label: 'DeepSeek Responses', url: 'https://api.deepseek.com' }
   ],
+  stepfun: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'StepFun', url: 'https://api.stepfun.com/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'StepFun Anthropic', url: 'https://api.stepfun.com' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Step Plan', url: 'https://api.stepfun.com/step_plan/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Step Plan Anthropic', url: 'https://api.stepfun.com/step_plan' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Step Plan Intl', url: 'https://api.stepfun.ai/step_plan/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Step Plan Intl Anthropic', url: 'https://api.stepfun.ai/step_plan' }
+  ],
   minimax: [
     { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax CN', url: 'https://api.minimaxi.com/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'MiniMax CN Anthropic', url: 'https://api.minimaxi.com/anthropic' },
@@ -589,10 +597,28 @@ function officialAccountAPISupported(account: CNUsageCellAccount, mode: string):
   }
 }
 
+/** Step Plan 只允许官方 .com / .ai 的 /step_plan[/v1] 端点查询用量。 */
+function officialStepPlanAPISupported(account: CNUsageCellAccount, mode: string): boolean {
+  if (account.type !== 'apikey') return false
+  try {
+    const target = new URL(accountChatBaseUrl(account, mode))
+    const path = target.pathname.replace(/\/+$/, '')
+    return target.protocol === 'https:' &&
+      (target.hostname === 'api.stepfun.com' || target.hostname === 'api.stepfun.ai') &&
+      (target.port === '' || target.port === '443') &&
+      target.username === '' && target.password === '' &&
+      target.search === '' && target.hash === '' &&
+      (path === '/step_plan' || path === '/step_plan/v1')
+  } catch {
+    return false
+  }
+}
+
 export function cnQuotaCellVisible(account: CNUsageCellAccount): boolean {
   const { platform } = account
   const mode = cnUsageCellAccountMode(account)
   if (platform === 'opencode_go') return mode !== 'zen'
+  if (platform === 'stepfun') return mode === 'coding' && officialStepPlanAPISupported(account, mode)
   // Command Code、Cline：订阅窗口与积分由一次探测同时刷新。
   if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(platform)) return officialAccountAPISupported(account, mode)
   return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && mode === 'coding'

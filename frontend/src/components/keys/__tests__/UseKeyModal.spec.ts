@@ -913,9 +913,20 @@ describe('UseKeyModal', () => {
       .toContain('%userprofile%\\.codex\\codex-models.json')
   })
 
-  it.each(['anthropic', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const)(
+  it.each([
+    ['anthropic', 'claude-sonnet-4-6'],
+    ['gemini', 'gemini-2.5-pro'],
+    ['antigravity', 'claude-sonnet-4-6'],
+    ['grok', 'grok-4.5'],
+    ['kimi', 'kimi-k2.5'],
+    ['zhipu', 'glm-4.7'],
+    ['deepseek', 'deepseek-v4-pro'],
+    ['minimax', 'MiniMax-M3'],
+    ['stepfun', 'step-3.5-flash'],
+    ['opencode_go', 'glm-5.3'],
+  ] as const)(
     'offers Codex catalog configuration for the %s routed group',
-    async (platform) => {
+    async (platform, expectedModel) => {
       const wrapper = mount(UseKeyModal, {
         props: {
           show: true,
@@ -950,6 +961,7 @@ describe('UseKeyModal', () => {
       expect(config).not.toContain('model_catalog_json')
       expect(config).toContain('base_url = "https://example.com/v1"')
       expect(config).toContain('wire_api = "responses"')
+      expect(config).toContain(`model = "${expectedModel}"`)
     }
   )
 

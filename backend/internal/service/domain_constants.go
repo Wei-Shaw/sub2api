@@ -48,6 +48,7 @@ const (
 	PlatformZhipu       = domain.PlatformZhipu
 	PlatformDeepseek    = domain.PlatformDeepseek
 	PlatformMiniMax     = domain.PlatformMiniMax
+	PlatformStepfun     = domain.PlatformStepfun
 	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
@@ -84,6 +85,9 @@ const (
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
 	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
+	// StepFun 按量付费与 Step Plan 的 Key 不互通：Step Plan 走 /step_plan 前缀。
+	DefaultStepFunPayGBaseURL   = "https://api.stepfun.com/v1"
+	DefaultStepFunCodingBaseURL = "https://api.stepfun.com/step_plan/v1"
 	// OpenCode Go：Chat Completions / Responses / models 共用 /v1 基址。
 	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
 	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
@@ -97,11 +101,13 @@ const (
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
-	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	DefaultKimiPayGAnthropicBaseURL      = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL    = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL         = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL      = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL       = "https://api.minimaxi.com/anthropic"
+	DefaultStepFunPayGAnthropicBaseURL   = "https://api.stepfun.com"
+	DefaultStepFunCodingAnthropicBaseURL = "https://api.stepfun.com/step_plan"
 	// OpenCode Go Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
 	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
@@ -142,6 +148,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformMiniMax,
+	PlatformStepfun,
 	PlatformOpenCodeGo,
 	PlatformCommandCode,
 }

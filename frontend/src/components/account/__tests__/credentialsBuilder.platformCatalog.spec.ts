@@ -58,7 +58,7 @@ const legacyZenRules = [
 ]
 
 function legacyIsMultiProtocol(platform: string): boolean {
-  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)
+  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'stepfun', 'opencode_go', 'command_code', 'cline'].includes(platform)
 }
 
 function legacySupportsResponses(platform: string): boolean {
@@ -66,7 +66,7 @@ function legacySupportsResponses(platform: string): boolean {
 }
 
 function legacyHeaderOverride(platform: string, type: string): boolean {
-  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
+  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'stepfun', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
     return type === 'apikey'
   }
   if (platform === 'grok') return type === 'apikey' || type === 'oauth'
@@ -84,6 +84,8 @@ function legacyDefaultCNBaseUrl(platform: string, mode: string, protocol: CnApiP
         return 'https://api.deepseek.com/anthropic'
       case 'minimax':
         return 'https://api.minimaxi.com/anthropic'
+      case 'stepfun':
+        return mode === 'coding' ? 'https://api.stepfun.com/step_plan' : 'https://api.stepfun.com'
       case 'opencode_go':
         return mode === 'zen' ? legacyOpenCode.zenAnthropic : legacyOpenCode.goAnthropic
       default:
@@ -99,6 +101,8 @@ function legacyDefaultCNBaseUrl(platform: string, mode: string, protocol: CnApiP
       return 'https://api.deepseek.com'
     case 'minimax':
       return 'https://api.minimaxi.com/v1'
+    case 'stepfun':
+      return mode === 'coding' ? 'https://api.stepfun.com/step_plan/v1' : 'https://api.stepfun.com/v1'
     case 'opencode_go':
       return mode === 'zen' ? legacyOpenCode.zenBase : legacyOpenCode.goBase
     default:
@@ -120,6 +124,7 @@ const legacyModes: Record<string, string[]> = {
   zhipu: ['payg', 'coding'],
   deepseek: ['payg'],
   minimax: ['payg', 'coding'],
+  stepfun: ['payg', 'coding'],
   opencode_go: ['go', 'zen']
 }
 
@@ -224,6 +229,13 @@ describe('credentialsBuilder built-in Command Code provider', () => {
     expect(cnBalanceCellVisible(account({ account_mode: 'payg' }, 'oauth'))).toBe(false)
     expect(cnQuotaCellVisible({ platform: 'deepseek', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
     expect(cnBalanceCellVisible({ platform: 'zhipu', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'coding' } })).toBe(true)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'coding', base_url: 'https://api.stepfun.ai/step_plan/v1' } })).toBe(true)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'coding', base_url: 'https://api.stepfun.com:443/step_plan/v1' } })).toBe(true)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'coding', base_url: 'https://api.stepfun.com:8443/step_plan/v1' } })).toBe(false)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'coding', base_url: 'https://relay.example.com/step_plan/v1' } })).toBe(false)
+    expect(cnQuotaCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
+    expect(cnBalanceCellVisible({ platform: 'stepfun', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
   })
 })
 

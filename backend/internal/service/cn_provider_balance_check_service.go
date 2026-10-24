@@ -21,12 +21,12 @@ const cnQuotaProbeConcurrency = 4
 
 // CNProviderBalanceCheckService 周期性探测国产供应商账号：
 //   - payg（按量付费）：余额低于阈值则临时停调，恢复则清除（仅清除本服务写入的停调）；
-//   - coding plan：调用 CNProviderQuotaService 探测 5h/weekly 滚动窗口并落 extra 快照，
-//     调度阈值评估（cnProviderThresholdCandidates）据此自动停调/恢复。
+//   - coding plan：调用 CNProviderQuotaService 探测 5h/weekly/monthly 滚动窗口并落
+//     extra 快照，调度阈值评估（cnProviderThresholdCandidates）据此自动停调/恢复。
 //
 // 克隆自 AccountExpiryService 的 Start/Stop/runOnce + ticker 骨架。
 // 余额探测仅覆盖有公开余额端点的 kimi / deepseek；智谱无余额端点，仅靠响应式 429/402。
-// 额度探测覆盖 kimi / zhipu 的 coding plan 账号（deepseek 无 coding 套餐）。
+// 额度探测覆盖 kimi / zhipu / minimax / stepfun 的 coding plan 账号。
 // Command Code 账号一次探测同时刷新窗口快照与积分余额，积分低于阈值时同样临时停调。
 // Cline 账号同样一次探测刷新 ClinePass 窗口与积分，只冷却用完的一边（见 cline_usage.go）。
 type CNProviderBalanceCheckService struct {
@@ -125,12 +125,19 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 			// coding 账号：探测滚动窗口并落快照（不要求 Schedulable——已被
 			// 阈值停调的账号也需要新鲜快照决定是否续停）。
 			if account.IsCodingPlan() {
+				// StepFun 只认官方 Step Plan 地址，并尊重账号级自动刷新开关。
+				// GetCodingPlanProvider 同时排除了 payg 与自定义中转。
+				if platform == PlatformStepfun {
+					if account.GetCodingPlanProvider() != PlatformStepfun || !stepFunUsageAutoRefreshEnabled(account) {
+						continue
+					}
+				}
 				quotaTargets = append(quotaTargets, quotaTarget{id: account.ID, platform: account.Platform})
 				continue
 			}
-			// payg 余额探测仅 kimi/deepseek（智谱 / MiniMax 无公开余额端点，
-			// payg 账号依赖响应式 402/429 处理）。
-			if platform != PlatformZhipu && platform != PlatformMiniMax && account.Schedulable {
+			// payg 余额探测仅 kimi/deepseek（智谱 / MiniMax / StepFun 无公开
+			// 余额端点，payg 账号依赖响应式 402/429 处理）。
+			if platform != PlatformZhipu && platform != PlatformMiniMax && platform != PlatformStepfun && account.Schedulable {
 				paygTargets = append(paygTargets, account)
 			}
 		}
@@ -143,9 +150,9 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 		}
 		collect(platform, accounts)
 	}
-	// 智谱 / MiniMax 无余额端点，仅进额度探测。
+	// 智谱 / MiniMax / StepFun 无余额端点，仅进额度探测。
 	if s.quotaService != nil {
-		for _, platform := range []string{PlatformZhipu, PlatformMiniMax} {
+		for _, platform := range []string{PlatformZhipu, PlatformMiniMax, PlatformStepfun} {
 			accounts, err := s.accountRepo.ListByPlatform(context.Background(), platform)
 			if err != nil {
 				log.Printf("[CNBalance] list %s accounts failed: %v", platform, err)

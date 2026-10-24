@@ -22,6 +22,7 @@ import {
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
+  PROVIDER_STEPFUN,
   PROVIDER_OPENCODE_GO,
   PROVIDERS,
   STATUS_OPERATIONAL,
@@ -118,6 +119,8 @@ export function useChannelMonitorFormat() {
         return 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
       case PROVIDER_MINIMAX:
         return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+      case PROVIDER_STEPFUN:
+        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
       case PROVIDER_OPENCODE_GO:
         return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
       default:
@@ -184,6 +187,10 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:text-rose-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-rose-500/50'
+      case PROVIDER_STEPFUN:
+        return active
+          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-emerald-500/50'
       case PROVIDER_OPENCODE_GO:
         return active
           ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400'
@@ -274,6 +281,8 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-500/10 dark:to-teal-500/20'
     case PROVIDER_MINIMAX:
       return 'bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-500/10 dark:to-rose-500/20'
+    case PROVIDER_STEPFUN:
+      return 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20'
     case PROVIDER_OPENCODE_GO:
       return 'bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-500/10 dark:to-amber-500/20'
     default:

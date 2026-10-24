@@ -309,6 +309,66 @@ describe('MonitorFormDialog linked account selector', () => {
     expect(accountTrigger(wrapper).text()).toContain('linkedAccountPlaceholder')
   })
 
+  it('only offers official StepFun coding accounts as quota sources', async () => {
+    accountsList.mockResolvedValue({ items: [
+      {
+        id: 1,
+        name: 'official coding',
+        platform: 'stepfun',
+        type: 'apikey',
+        credentials: { account_mode: 'coding', base_url: 'https://api.stepfun.com/step_plan/v1' },
+      },
+      {
+        id: 2,
+        name: 'payg account',
+        platform: 'stepfun',
+        type: 'apikey',
+        credentials: { account_mode: 'payg', base_url: 'https://api.stepfun.com/v1' },
+      },
+      {
+        id: 3,
+        name: 'custom relay',
+        platform: 'stepfun',
+        type: 'apikey',
+        credentials: { account_mode: 'coding', base_url: 'https://relay.example.com/step_plan/v1' },
+      },
+    ] })
+    const wrapper = mountDialog(makeMonitor({
+      provider: 'stepfun',
+      check_mode: 'quota',
+      account_id: null,
+      endpoint: '',
+      primary_model: 'quota',
+    }))
+    await flushPromises()
+
+    const dropdown = await openAccountDropdown(wrapper)
+    expect(dropdown.textContent).toContain('official coding (#1)')
+    expect(dropdown.textContent).not.toContain('payg account (#2)')
+    expect(dropdown.textContent).not.toContain('custom relay (#3)')
+  })
+
+  it('clears a bound StepFun account that is no longer an eligible quota source', async () => {
+    accountsGetById.mockResolvedValue({
+      id: 9,
+      name: 'former step plan',
+      platform: 'stepfun',
+      type: 'apikey',
+      credentials: { account_mode: 'payg', base_url: 'https://api.stepfun.com/v1' },
+    })
+    const wrapper = mountDialog(makeMonitor({
+      provider: 'stepfun',
+      check_mode: 'quota',
+      account_id: 9,
+      endpoint: '',
+      primary_model: 'quota',
+    }))
+    await flushPromises()
+
+    expect(accountTrigger(wrapper).text()).toContain('linkedAccountPlaceholder')
+    expect(wrapper.text()).toContain('admin.channelMonitor.form.linkedAccountMissing')
+  })
+
   // P2-7(b)：antigravity 强制的 quota 在切走时要对称还原，占位模型一并清掉。
   it('restores probe mode and clears the quota placeholder when switching away from antigravity', async () => {
     accountsGetById.mockRejectedValue(new Error('gone'))

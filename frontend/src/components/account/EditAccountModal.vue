@@ -2115,6 +2115,13 @@
         @updated="handleOllamaCloudUsageUpdated"
       />
 
+      <StepPlanUsageSettings
+        v-if="stepPlanPanelVisible"
+        :account="account"
+        :eligible="stepPlanPanelVisible"
+        @updated="handleStepPlanUsageUpdated"
+      />
+
       <section
         v-if="account?.opencode_go_usage?.eligible"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3271,6 +3278,7 @@ import {
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import StepPlanUsageSettings from '@/components/account/StepPlanUsageSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3295,6 +3303,7 @@ import {
   splitHeaderOverridesObject,
   validateHeaderOverrideRows,
   cnSupportsNativeResponses,
+  cnQuotaCellVisible,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isCNProviderPlatform,
@@ -3376,6 +3385,10 @@ const hideAccountLongContextBilling = computed(() => {
 
 const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
   if (props.account) emit('updated', { ...props.account, ollama_cloud_usage: state })
+}
+
+const handleStepPlanUsageUpdated = (account: Account) => {
+  emit('updated', account)
 }
 
 // OpenCode Go usage panel state
@@ -3537,6 +3550,22 @@ const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
   responses: ''
+})
+// Step Plan 面板只读取已保存账号的用量，但可见性必须跟随当前编辑草稿：
+// 用户把官方 coding 改成 payg/自定义中转后，不应继续查询旧身份。
+const stepPlanPanelVisible = computed(() => {
+  const account = props.account
+  if (!account || account.platform !== 'stepfun') return false
+  return cnQuotaCellVisible({
+    ...account,
+    credentials: {
+      ...account.credentials,
+      account_mode: editAccountMode.value,
+      api_protocol: editApiProtocol.value,
+      base_url: editBaseUrl.value,
+      api_base_urls: editAdaptiveBaseUrls.value
+    }
+  })
 })
 // 回填窗口标志：syncFormFromAccount 会同步改写 editAccountMode / editApiProtocol，
 // 而 watcher（pre-flush）在同步代码执行完之后才触发——若不抑制，会把刚恢复的

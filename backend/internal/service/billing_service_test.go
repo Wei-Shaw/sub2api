@@ -800,6 +800,36 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedCacheRead: floatPtr(0.14e-6),
 		},
 
+		// ---- StepFun Step 系列 ----
+		{
+			name:              "stepfun step 5 preview",
+			model:             "step-5-preview",
+			expectedInput:     0.98e-6,
+			expectedOutput:    floatPtr(2.80e-6),
+			expectedCacheRead: floatPtr(0.10e-6),
+		},
+		{
+			name:              "stepfun step 3.7 flash",
+			model:             "stepfun/step-3.7-flash",
+			expectedInput:     0.19e-6,
+			expectedOutput:    floatPtr(1.13e-6),
+			expectedCacheRead: floatPtr(0.04e-6),
+		},
+		{
+			name:              "stepfun step 3.5 flash default test model",
+			model:             "step-3.5-flash",
+			expectedInput:     0.10e-6,
+			expectedOutput:    floatPtr(0.30e-6),
+			expectedCacheRead: floatPtr(0.02e-6),
+		},
+		{
+			name:              "stepfun step 3.5 flash dated model",
+			model:             "step-3.5-flash-2603",
+			expectedInput:     0.10e-6,
+			expectedOutput:    floatPtr(0.30e-6),
+			expectedCacheRead: floatPtr(0.02e-6),
+		},
+
 		// ---- MiniMax M 系列 ----
 		{
 			name:              "minimax m3",

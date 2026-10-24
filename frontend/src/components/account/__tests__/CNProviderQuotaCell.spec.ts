@@ -84,6 +84,21 @@ describe('CNProviderQuotaCell', () => {
     expect(bars[1].props('resetsAt')).toBe('2026-08-22T00:00:00+08:00')
   })
 
+  it('keeps unknown upstream window labels instead of mislabelling them as 5h', async () => {
+    queryQuota.mockResolvedValue({
+      success: true,
+      tiers: [{ window: 'bonus_window', used_percent: 5 }]
+    })
+    const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+    await flushPromises()
+
+    await wrapper.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+    await flushPromises()
+
+    const bar = wrapper.getComponent(UsageProgressBar)
+    expect(bar.props('label')).toBe('bonus_window')
+  })
+
   it('labels the refresh control with an explicit action verb, not a data caption', async () => {
     const wrapper = mount(CNProviderQuotaCell, { props: { account } })
     await flushPromises()

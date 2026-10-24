@@ -511,8 +511,11 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	cn := admin.Group("/cn-providers")
 	{
-		// Coding Plan 滚动窗口用量（kimi/zhipu coding 账号）。
+		// Coding Plan 滚动窗口用量（kimi/zhipu/minimax/stepfun coding 账号）。
 		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
+		// Step Plan 持久化探测状态与账号级自动刷新开关。
+		cn.GET("/accounts/:id/quota/state", h.Admin.CNProvider.GetStepPlanUsageState)
+		cn.PUT("/accounts/:id/quota/auto-refresh", h.Admin.CNProvider.SetStepPlanUsageAutoRefresh)
 		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
 		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
 	}

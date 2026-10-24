@@ -167,6 +167,28 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformStepfun: {
+		Platform:         PlatformStepfun,
+		DefaultMode:      AccountModePayG,
+		Routing:          ProviderRoutingByInbound,
+		DefaultTestModel: DefaultStepFunTestModel,
+		// Step Plan 只提供 Chat Completions 与 Anthropic Messages，没有原生
+		// Responses 端点；Codex 入站由既有 Responses→Chat 转换链处理。
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultStepFunPayGBaseURL,
+					APIProtocolAnthropic:       DefaultStepFunPayGAnthropicBaseURL,
+				},
+			},
+			AccountModeCoding: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultStepFunCodingBaseURL,
+					APIProtocolAnthropic:       DefaultStepFunCodingAnthropicBaseURL,
+				},
+			},
+		},
+	},
 	PlatformOpenCodeGo: {
 		Platform:         PlatformOpenCodeGo,
 		DefaultMode:      AccountModeGo,

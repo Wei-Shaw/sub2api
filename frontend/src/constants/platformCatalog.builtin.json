@@ -143,6 +143,33 @@
       }
     },
     {
+      "id": "stepfun",
+      "display_name": "StepFun",
+      "gateway": "openai",
+      "cn_provider": true,
+      "litellm_provider": "stepfun",
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://api.stepfun.com",
+              "chat_completions": "https://api.stepfun.com/v1"
+            }
+          },
+          {
+            "mode": "coding",
+            "base_urls": {
+              "anthropic": "https://api.stepfun.com/step_plan",
+              "chat_completions": "https://api.stepfun.com/step_plan/v1"
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "opencode_go",
       "display_name": "OpenCode",
       "gateway": "openai",
@@ -290,6 +317,7 @@
     "zhipu",
     "deepseek",
     "minimax",
+    "stepfun",
     "opencode_go",
     "typesafe",
     "command_code",

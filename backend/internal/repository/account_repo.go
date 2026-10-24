@@ -72,6 +72,104 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 	"session_window_utilization": {},
 }
 
+const (
+	stepFunDefaultCodingBaseURL = "https://api.stepfun.com/step_plan/v1"
+	// 与 service.isStepFunCodingBaseURL 保持同一资格边界：仅官方 StepFun 域名、
+	// HTTPS、精确的 /step_plan[/v1] 路径；host 按 URL 语义大小写不敏感。
+	stepFunCodingBaseURLRegexSQL = `^https://[aA][pP][iI]\.([sS][tT][eE][pP][fF][uU][nN])\.([cC][oO][mM]|[aA][iI])(:[4][4][3])?/step_plan(/v1)?/?$`
+)
+
+var stepPlanManagedExtraKeys = []string{
+	service.StepFunUsageAutoRefreshExtraKey,
+	service.StepFunUsageSnapshotExtraKey,
+	service.StepFunUsageAttemptSeqExtraKey,
+	"stepfun_5h_used_percent",
+	"stepfun_5h_reset_at",
+	"stepfun_weekly_used_percent",
+	"stepfun_weekly_reset_at",
+	"stepfun_monthly_used_percent",
+	"stepfun_monthly_reset_at",
+	"stepfun_usage_updated_at",
+}
+
+// stepFunUsageBaseURLSQL 镜像 Account.GetOpenAIBaseURL 对 StepFun 的有效 Chat
+// base 选择：adaptive + 非空 api_base_urls.chat_completions 优先，否则使用
+// 顶层 base_url；缺失/空白时回退 coding 默认地址。
+func stepFunUsageBaseURLSQL(credentialsExpr string) string {
+	adaptiveBase := "btrim((" + credentialsExpr + ") #>> '{api_base_urls,chat_completions}')"
+	baseURL := "COALESCE(NULLIF(btrim((" + credentialsExpr + ") ->> 'base_url'), ''), '" + stepFunDefaultCodingBaseURL + "')"
+	return "CASE WHEN btrim((" + credentialsExpr + ") ->> 'api_protocol') = 'adaptive'" +
+		" AND jsonb_typeof((" + credentialsExpr + ") #> '{api_base_urls,chat_completions}') = 'string'" +
+		" AND NULLIF(" + adaptiveBase + ", '') IS NOT NULL" +
+		" THEN " + adaptiveBase + " ELSE " + baseURL + " END"
+}
+
+func stepFunUsageEligibleSQL(credentialsExpr string) string {
+	return "(platform = 'stepfun' AND type = 'apikey'" +
+		" AND btrim((" + credentialsExpr + ") ->> 'account_mode') = 'coding'" +
+		" AND (" + stepFunUsageBaseURLSQL(credentialsExpr) + ") ~ '" + stepFunCodingBaseURLRegexSQL + "')"
+}
+
+// stepFunUsageIdentityUnchangedSQL 与 service.stepFunUsageIdentity 对齐：新旧行
+// 都必须仍是官方 Step Plan coding API Key，且 API Key 与有效 base URL 不变。
+func stepFunUsageIdentityUnchangedSQL(oldCredentialsExpr, newCredentialsExpr string) string {
+	return "(" + stepFunUsageEligibleSQL(oldCredentialsExpr) +
+		" AND " + stepFunUsageEligibleSQL(newCredentialsExpr) +
+		" AND COALESCE((" + oldCredentialsExpr + ") ->> 'api_key', '') IS NOT DISTINCT FROM COALESCE((" + newCredentialsExpr + ") ->> 'api_key', '')" +
+		" AND (" + stepFunUsageBaseURLSQL(oldCredentialsExpr) + ") IS NOT DISTINCT FROM (" + stepFunUsageBaseURLSQL(newCredentialsExpr) + "))"
+}
+
+func deleteStepPlanManagedExtraKeysFromMap(extra map[string]any) {
+	for _, key := range stepPlanManagedExtraKeys {
+		delete(extra, key)
+	}
+}
+
+// stripForgedStepPlanManagedExtra 丢弃普通 BulkUpdate 携带的非 nil 运行态值，
+// 但保留显式 nil（service 身份变更清理使用 JSONB merge 写 null）。
+func stripForgedStepPlanManagedExtra(extra map[string]any) map[string]any {
+	if extra == nil {
+		return nil
+	}
+	strip := false
+	for _, key := range stepPlanManagedExtraKeys {
+		if value, ok := extra[key]; ok && value != nil {
+			strip = true
+			break
+		}
+	}
+	if !strip {
+		return extra
+	}
+	filtered := make(map[string]any, len(extra))
+	for key, value := range extra {
+		if value != nil {
+			managed := false
+			for _, managedKey := range stepPlanManagedExtraKeys {
+				if key == managedKey {
+					managed = true
+					break
+				}
+			}
+			if managed {
+				continue
+			}
+		}
+		filtered[key] = value
+	}
+	return filtered
+}
+
+func clearStepPlanManagedExtraSQL(extraExpr string) string {
+	cleared := "(" + extraExpr + ")"
+	for _, key := range stepPlanManagedExtraKeys {
+		cleared += " - '" + key + "'"
+	}
+	// StepFun 专用 CASE 会先于通用 API-key 分支命中；凭证变化时必须在这里
+	// 一并丢弃上游倍率探测快照，否则旧快照仍会参与调度成本排序。
+	return cleared + " - '" + service.UpstreamBillingProbeExtraKey + "'"
+}
+
 const postgresParameterBatchSize = 50000
 
 const codexFingerprintSeedCanonicalPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -680,7 +778,25 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
+			extra -> 'opencode_go_usage_snapshot',
+			COALESCE(
+				$2 = 'stepfun'
+				AND $3 = 'apikey'
+				AND `+stepFunUsageIdentityUnchangedSQL("credentials", "$4::jsonb")+`,
+				false
+			),
+			jsonb_strip_nulls(jsonb_build_object(
+				'stepfun_usage_auto_refresh', extra -> 'stepfun_usage_auto_refresh',
+				'stepfun_usage_snapshot', extra -> 'stepfun_usage_snapshot',
+				'stepfun_usage_attempt_seq', extra -> 'stepfun_usage_attempt_seq',
+				'stepfun_5h_used_percent', extra -> 'stepfun_5h_used_percent',
+				'stepfun_5h_reset_at', extra -> 'stepfun_5h_reset_at',
+				'stepfun_weekly_used_percent', extra -> 'stepfun_weekly_used_percent',
+				'stepfun_weekly_reset_at', extra -> 'stepfun_weekly_reset_at',
+				'stepfun_monthly_used_percent', extra -> 'stepfun_monthly_used_percent',
+				'stepfun_monthly_reset_at', extra -> 'stepfun_monthly_reset_at',
+				'stepfun_usage_updated_at', extra -> 'stepfun_usage_updated_at'
+			))
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -709,6 +825,8 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		stepfunGroupIdentityUnchanged  bool
+		currentStepfunManagedExtra     []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -723,6 +841,8 @@ func lockAndMergeAccountProbeExtra(
 		&opencodeGroupIdentityUnchanged,
 		&currentOpenCodeAutoRefresh,
 		&currentOpenCodeSnapshot,
+		&stepfunGroupIdentityUnchanged,
+		&currentStepfunManagedExtra,
 	); err != nil {
 		return nil, err
 	}
@@ -743,6 +863,7 @@ func lockAndMergeAccountProbeExtra(
 	} {
 		delete(extra, key)
 	}
+	deleteStepPlanManagedExtraKeysFromMap(extra)
 	probeAccount := service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
 	probeEnabled := false
 	probeEnabledPresent := false
@@ -836,6 +957,23 @@ func lockAndMergeAccountProbeExtra(
 			}
 		}
 	}
+	// StepPlan 受管状态按锁定 DB 行回填：身份未变时恢复服务端最新值，防止普通
+	// 编辑携带的脱敏/伪造值覆盖并发探测；身份变化或不再 eligible 时保持删除态。
+	if stepfunGroupIdentityUnchanged {
+		if managed, ok, err := decodeAccountExtraJSON(currentStepfunManagedExtra); err != nil {
+			return nil, err
+		} else if ok {
+			managedExtra, isMap := managed.(map[string]any)
+			if !isMap {
+				return nil, errors.New("stepfun managed extra is not a JSON object")
+			}
+			for _, key := range stepPlanManagedExtraKeys {
+				if value, exists := managedExtra[key]; exists {
+					extra[key] = value
+				}
+			}
+		}
+	}
 	return extra, nil
 }
 
@@ -916,6 +1054,13 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
+				-- StepPlan 身份未变时保留探测/阈值运行态；任何 API Key、有效
+				-- base URL 或 coding 资格变化都在同一 UPDATE 内清除。
+				WHEN platform = 'stepfun'
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND (`+stepFunUsageIdentityUnchangedSQL("credentials", "$1::jsonb")+`) IS NOT TRUE
+				THEN `+clearStepPlanManagedExtraSQL("COALESCE(extra, '{}'::jsonb)")+`
 				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
 				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
 				WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
@@ -2847,6 +2992,121 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	return nil
 }
 
+// NextStepPlanUsageAttemptSeq allocates a process-independent ordering token.
+// Probes reserve the token before contacting upstream, so a completion that was
+// started later always wins even when application clocks disagree.
+func (r *accountRepository) NextStepPlanUsageAttemptSeq(ctx context.Context) (int64, error) {
+	if r == nil || r.sql == nil {
+		return 0, errors.New("account repository sql executor is not configured")
+	}
+	var seq int64
+	if err := scanSingleRow(ctx, r.sql, `SELECT nextval('stepfun_usage_attempt_seq')`, nil, &seq); err != nil {
+		return 0, err
+	}
+	return seq, nil
+}
+
+// UpdateStepPlanExtraIfIdentityUnchanged merges Step Plan runtime state only
+// while the row is still the same official coding API-key identity that started
+// the probe, and no probe with a newer database sequence has been persisted.
+// The predicates and merge live in one UPDATE, so identity rotation or an
+// out-of-order probe completion cannot overwrite current state.
+func (r *accountRepository) UpdateStepPlanExtraIfIdentityUnchanged(
+	ctx context.Context,
+	accountID int64,
+	expectedAPIKey string,
+	expectedBaseURL string,
+	updates map[string]any,
+	attemptSeq int64,
+) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	if attemptSeq > 0 {
+		// The token is part of the CAS payload, not merely a caller assertion.
+		copied := make(map[string]any, len(updates)+1)
+		for key, value := range updates {
+			copied[key] = value
+		}
+		copied[service.StepFunUsageAttemptSeqExtraKey] = attemptSeq
+		updates = copied
+	}
+	payload, err := json.Marshal(updates)
+	if err != nil {
+		return err
+	}
+
+	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if durableSchedulerChange && contextTx == nil && r.client != nil {
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+
+	var exec sqlExecutor
+	if client != nil {
+		exec = client
+	} else {
+		exec = r.sql
+	}
+	if exec == nil {
+		return errors.New("account repository sql executor is not configured")
+	}
+
+	result, err := exec.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND `+stepFunUsageEligibleSQL("credentials")+`
+			AND COALESCE(credentials ->> 'api_key', '') = $3
+				AND (`+stepFunUsageBaseURLSQL("credentials")+`) IS NOT DISTINCT FROM $4
+				AND ($5::bigint <= 0 OR
+					CASE WHEN COALESCE(extra ->> 'stepfun_usage_attempt_seq', '') ~ '^[0-9]+$'
+						THEN (extra ->> 'stepfun_usage_attempt_seq')::bigint
+						ELSE 0
+					END < $5::bigint)
+		`, string(payload), accountID, expectedAPIKey, expectedBaseURL, attemptSeq)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrCNQuotaIdentityChanged
+	}
+
+	if durableSchedulerChange {
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+			return err
+		}
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				return err
+			}
+		}
+		if contextTx == nil {
+			r.syncSchedulerAccountSnapshot(baseCtx, accountID)
+		}
+	} else if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(ctx, accountID)
+	}
+	return nil
+}
+
 // UpdateUpstreamBillingProbeSnapshot stores a probe result only while the
 // network identity used by that probe is still current.
 func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
@@ -3049,6 +3309,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		return 0, nil
 	}
 	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
+	updates.Extra = stripForgedStepPlanManagedExtra(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
@@ -3126,6 +3387,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		idx++
 	}
 
+	// StepPlan 与 Ollama/OpenCode 使用同一把锁内身份语义，但资格固定为
+	// StepFun 官方 Step Plan coding API Key。生效后的 credentials 仍由旧的
+	// JSONB 行与本次 merge payload 组合计算，避免把身份变化后的旧快照留住。
+	stepfunIdentityChanged := ""
+	if credentialPlaceholder != "" {
+		nextCredentialsExpr := "COALESCE(credentials, '{}'::jsonb) || " + credentialPlaceholder + "::jsonb"
+		stepfunIdentityChanged = "(platform = 'stepfun' AND type = 'apikey'" +
+			" AND (" + stepFunUsageIdentityUnchangedSQL("credentials", nextCredentialsExpr) + ") IS NOT TRUE)"
+	}
+
 	ollamaGroupIdentityChanges := make([]string, 0, 2)
 	if _, ok := updates.Credentials["api_key"]; ok {
 		ollamaGroupIdentityChanges = append(ollamaGroupIdentityChanges, "credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
@@ -3168,7 +3439,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND COALESCE(btrim("+credentialPlaceholder+"::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || stepfunIdentityChanged != "" || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -3228,7 +3499,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				opencodeSnapshotIdentityChanged = "(" + opencodeSnapshotIdentityChanged + " OR " + opencodeProxyChanged + ")"
 			}
 		}
-		caseBranches := make([]string, 0, 4)
+		caseBranches := make([]string, 0, 5)
+		if stepfunIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+stepfunIdentityChanged+" THEN "+clearStepPlanManagedExtraSQL(extraExpression))
+		}
 		if opencodeGroupIdentityChanged != "" {
 			caseBranches = append(caseBranches,
 				" WHEN "+opencodeGroupIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")

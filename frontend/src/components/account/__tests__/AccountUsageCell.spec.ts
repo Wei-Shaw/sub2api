@@ -178,7 +178,7 @@ describe('AccountUsageCell', () => {
     expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax', 'stepfun'] as const)(
     '%s apikey 账号 Ollama Cloud eligible 时渲染 Ollama 用量单元格并跳过 CN 子单元格',
     async (platform) => {
       const wrapper = mount(AccountUsageCell, {
@@ -264,7 +264,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
   })
 
-  it.each(['opencode_go', 'kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
+  it.each(['opencode_go', 'kimi', 'zhipu', 'deepseek', 'minimax', 'stepfun'] as const)(
     '%s 平台 OpenCode Go eligible 时只渲染 OpenCode 用量单元格并跳过 CN 子单元格',
     async (platform) => {
       const wrapper = mount(AccountUsageCell, {

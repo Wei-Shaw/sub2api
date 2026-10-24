@@ -369,6 +369,7 @@ func TestProviderProbeCapabilityMatrix(t *testing.T) {
 	for _, p := range []string{
 		MonitorProviderOpenAI, MonitorProviderAnthropic, MonitorProviderGemini,
 		MonitorProviderGrok, MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
+		"stepfun",
 	} {
 		require.True(t, providerSupportsProbe(p), p)
 	}
@@ -376,9 +377,63 @@ func TestProviderProbeCapabilityMatrix(t *testing.T) {
 		MonitorProviderOpenAI, MonitorProviderAnthropic, MonitorProviderGemini,
 		MonitorProviderGrok, MonitorProviderAntigravity,
 		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
+		"stepfun",
 	} {
 		require.NoError(t, validateProvider(p), p)
 	}
+}
+
+func TestValidateCreateParams_AllowsStepFunQuotaMode(t *testing.T) {
+	accountID := int64(31)
+	err := validateCreateParams(ChannelMonitorCreateParams{
+		Provider:        "stepfun",
+		CheckMode:       MonitorCheckModeQuota,
+		IntervalSeconds: 60,
+		AccountID:       &accountID,
+	})
+	require.NoError(t, err)
+}
+
+func TestValidateLinkedAccount_StepFunRequiresOfficialCodingPlan(t *testing.T) {
+	svc := NewChannelMonitorService(nil, nil)
+	svc.SetQuotaFetcher(newQuotaModeFetcher(map[int64]*Account{
+		1: {
+			ID:       1,
+			Platform: domain.PlatformStepfun,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"account_mode": AccountModeCoding,
+				"base_url":     "https://api.stepfun.com/step_plan/v1",
+			},
+		},
+		2: {
+			ID:       2,
+			Platform: domain.PlatformStepfun,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"account_mode": AccountModePayG,
+				"base_url":     "https://api.stepfun.com/v1",
+			},
+		},
+		3: {
+			ID:       3,
+			Platform: domain.PlatformStepfun,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"account_mode": AccountModeCoding,
+				"base_url":     "https://relay.example.com/step_plan/v1",
+			},
+		},
+	}, nil))
+
+	require.NoError(t, svc.validateLinkedAccount(context.Background(), "stepfun", int64Ptr(1)))
+	require.ErrorIs(t, svc.validateLinkedAccount(context.Background(), "stepfun", int64Ptr(2)), ErrChannelMonitorAccountNotSupportable)
+	require.ErrorIs(t, svc.validateLinkedAccount(context.Background(), "stepfun", int64Ptr(3)), ErrChannelMonitorAccountNotSupportable)
+}
+
+func TestStepFunValidationErrorsListStepFun(t *testing.T) {
+	require.Contains(t, ErrChannelMonitorInvalidProvider.Error(), "stepfun")
+	require.Contains(t, ErrChannelMonitorAccountNotSupportable.Error(), "stepfun")
 }
 
 // --- 关联账号校验 ---

@@ -254,6 +254,7 @@ import {
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
+  PROVIDER_STEPFUN,
   PROVIDER_OPENCODE_GO,
   PROVIDERS,
   API_MODE_CHAT_COMPLETIONS,
@@ -281,6 +282,7 @@ const providerTabs = computed<{ value: Provider; label: string }[]>(() => [
   { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') },
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_MINIMAX, label: t('monitorCommon.providers.minimax') },
+  { value: PROVIDER_STEPFUN, label: t('monitorCommon.providers.stepfun') },
   { value: PROVIDER_OPENCODE_GO, label: t('monitorCommon.providers.opencode_go') },
 ])
 

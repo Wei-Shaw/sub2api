@@ -42,13 +42,15 @@ export type SchedulingThresholdPlatformType =
   | "kimi"
   | "zhipu"
   | "minimax"
+  | "stepfun"
   | "opencode_go"
   | "command_code"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan、OpenCode GO 与 Command Code 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan、StepFun Step Plan、OpenCode GO 与
+// Command Code 有滚动窗口）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -56,6 +58,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "kimi",
   "zhipu",
   "minimax",
+  "stepfun",
   "opencode_go",
   "command_code",
 ]

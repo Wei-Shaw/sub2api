@@ -913,3 +913,147 @@ func TestCreateAccountDropsOpenCodeGoManagedKeys(t *testing.T) {
 	require.NotContains(t, created.Extra, OpenCodeGoUsageSnapshotExtraKey)
 	require.Equal(t, "value", created.Extra["custom"])
 }
+
+func stepPlanAdminUsageAccount(id int64) *Account {
+	return &Account{
+		ID:       id,
+		Platform: PlatformStepfun,
+		Type:     AccountTypeAPIKey,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"account_mode": AccountModeCoding,
+			"api_key":      "sk-stepfun",
+			"base_url":     DefaultStepFunCodingBaseURL,
+		},
+		Extra: map[string]any{
+			StepFunUsageAutoRefreshExtraKey: false,
+			StepFunUsageSnapshotExtraKey: &StepFunUsageSnapshot{
+				Status:          StepFunUsageStatusOK,
+				CredentialValid: true,
+			},
+			"stepfun_monthly_used_percent": 42.0,
+			"custom":                       "keep",
+		},
+	}
+}
+
+func TestUpdateAccountPreservesStepPlanManagedStateForUnrelatedEdit(t *testing.T) {
+	accountID := int64(310)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: stepPlanAdminUsageAccount(accountID),
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Extra: map[string]any{
+			StepFunUsageAutoRefreshExtraKey: true,
+			StepFunUsageSnapshotExtraKey:    map[string]any{"status": "forged"},
+			"custom":                        "value",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, false, updated.Extra[StepFunUsageAutoRefreshExtraKey])
+	snapshot, ok := updated.Extra[StepFunUsageSnapshotExtraKey].(*StepFunUsageSnapshot)
+	require.True(t, ok)
+	require.Equal(t, StepFunUsageStatusOK, snapshot.Status)
+	require.Equal(t, 42.0, updated.Extra["stepfun_monthly_used_percent"])
+	require.Equal(t, "value", updated.Extra["custom"])
+}
+
+func TestManagedExtraEntrypointsDropStepPlanRuntimeKeys(t *testing.T) {
+	accountID := int64(311)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: stepPlanAdminUsageAccount(accountID),
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+	forged := func() map[string]any {
+		return map[string]any{
+			StepFunUsageAutoRefreshExtraKey: true,
+			StepFunUsageSnapshotExtraKey:    map[string]any{"status": "forged"},
+			"stepfun_monthly_used_percent":  99.0,
+			"custom":                        "value",
+		}
+	}
+
+	require.NoError(t, svc.UpdateAccountExtra(context.Background(), accountID, forged()))
+	require.Len(t, repo.updates[accountID], 1)
+	for key := range map[string]struct{}{
+		StepFunUsageAutoRefreshExtraKey: {},
+		StepFunUsageSnapshotExtraKey:    {},
+		"stepfun_monthly_used_percent":  {},
+	} {
+		require.NotContains(t, repo.updates[accountID][0], key)
+	}
+
+	_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{accountID},
+		Extra:      forged(),
+	})
+	require.NoError(t, err)
+	require.Len(t, repo.bulkUpdates, 1)
+	for key := range map[string]struct{}{
+		StepFunUsageAutoRefreshExtraKey: {},
+		StepFunUsageSnapshotExtraKey:    {},
+		"stepfun_monthly_used_percent":  {},
+	} {
+		require.NotContains(t, repo.bulkUpdates[0].Extra, key)
+	}
+}
+
+func TestCreateAccountDropsStepPlanManagedKeys(t *testing.T) {
+	repo := &upstreamBillingProbeAccountRepo{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "step plan",
+		Platform:             PlatformStepfun,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"account_mode": AccountModeCoding, "api_key": "sk-stepfun", "base_url": DefaultStepFunCodingBaseURL},
+		SkipDefaultGroupBind: true,
+		Extra: map[string]any{
+			StepFunUsageAutoRefreshExtraKey: true,
+			StepFunUsageSnapshotExtraKey:    map[string]any{"status": "forged"},
+			"stepfun_monthly_used_percent":  99.0,
+			"custom":                        "value",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotContains(t, created.Extra, StepFunUsageAutoRefreshExtraKey)
+	require.NotContains(t, created.Extra, StepFunUsageSnapshotExtraKey)
+	require.NotContains(t, created.Extra, "stepfun_monthly_used_percent")
+	require.Equal(t, "value", created.Extra["custom"])
+}
+
+func TestUpdateAccountClearsStepPlanManagedStateWhenIdentityChanges(t *testing.T) {
+	accountID := int64(320)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: stepPlanAdminUsageAccount(accountID),
+	}}
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Credentials: map[string]any{"api_key": "sk-new"},
+	})
+
+	require.NoError(t, err)
+	require.NotContains(t, updated.Extra, StepFunUsageAutoRefreshExtraKey)
+	require.NotContains(t, updated.Extra, StepFunUsageSnapshotExtraKey)
+	require.NotContains(t, updated.Extra, "stepfun_monthly_used_percent")
+}
+
+func TestBulkUpdateAccountsStepPlanIdentityChangeUsesSingleRepositoryUpdate(t *testing.T) {
+	accountID := int64(321)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: stepPlanAdminUsageAccount(accountID),
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{accountID},
+		Credentials: map[string]any{"api_key": "sk-new"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Len(t, repo.bulkUpdates, 1, "repository must perform StepPlan managed-state cleanup in the same atomic update")
+	require.Equal(t, "sk-new", repo.bulkUpdates[0].Credentials["api_key"])
+}

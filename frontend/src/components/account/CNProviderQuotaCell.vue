@@ -163,7 +163,8 @@ const truncatedError = computed(() => {
 const windowLabel = (window: string) => {
   if (window === 'weekly') return t('admin.accounts.cnProviders.windowWeekly')
   if (window === 'monthly') return t('admin.accounts.cnProviders.windowMonthly')
-  return t('admin.accounts.cnProviders.window5h')
+  if (window === '5h') return t('admin.accounts.cnProviders.window5h')
+  return window
 }
 
 const handleProbe = async () => {

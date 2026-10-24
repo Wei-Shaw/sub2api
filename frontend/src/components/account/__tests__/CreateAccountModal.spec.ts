@@ -659,7 +659,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const wrapper = mountModal()
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
-    expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
+    expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'StepFun'])
     expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
   })
 
