@@ -35,10 +35,12 @@ import (
 const geminiStickySessionTTL = time.Hour
 
 const (
-	geminiMaxRetries     = 5
-	geminiRetryBaseDelay = 1 * time.Second
-	geminiRetryMaxDelay  = 16 * time.Second
+	geminiMaxRetries    = 5
+	geminiRetryMaxDelay = 16 * time.Second
 )
+
+// Variable so retry-loop tests can use a short backoff.
+var geminiRetryBaseDelay = time.Second
 
 const (
 	// google.rpc.RetryInfo 的标准 @type（Vertex AI 429 响应携带，retryDelay 形如 "39s"）
@@ -833,10 +835,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				}
 				break
 			}
-			if resp.StatusCode == 429 {
-				// Apply account-scoped 429 handling early so concurrent requests avoid a rate-limited account.
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			// Persist account rate limits only after retries finish; a later success
+			// must not leave this account unschedulable.
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
@@ -1336,9 +1336,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				}
 				break
 			}
-			if resp.StatusCode == 429 {
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			// Persist account rate limits only after retries finish; a later success
+			// must not leave this account unschedulable.
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
