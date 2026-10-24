@@ -74,6 +74,29 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	}
 	if normalized, changed := NormalizeGLM53AnthropicThinking(body, upstreamModel); changed {
 		body = normalized
+		if ctx != nil {
+			if policy, bound := ctx.Value(openAIReasoningEffortPolicyContextKey{}).(openAIReasoningEffortPolicy); bound && IsCNProvider(account.Platform) {
+				// Final pass is cap-only: nil mappings avoid remapping the original client effort already mapped above.
+				capped, _, policyErr := ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, nil, policy.overLimit)
+				if policyErr == nil {
+					// low/high/max are the existing NormalizeGLM53AnthropicThinking contract.
+					switch effort := gjson.GetBytes(capped, "output_config.effort").String(); effort {
+					case "low", "high", "max":
+						body = capped
+					default:
+						policyErr = fmt.Errorf("GLM-5.3 does not support capped reasoning effort %q (supported: low, high, max): %w", effort,
+							&ReasoningEffortOverLimitError{Requested: gjson.GetBytes(body, "output_config.effort").String(), Max: NormalizeMaxReasoningEffort(policy.maxEffort)})
+					}
+				}
+				if policyErr != nil {
+					if IsReasoningEffortPolicyDenied(policyErr) {
+						MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+						writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+					}
+					return nil, policyErr
+				}
+			}
+		}
 	}
 
 	// 记录客户端请求的推理强度：优先 Claude 协议的 output_config.effort；

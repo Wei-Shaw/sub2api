@@ -135,6 +135,174 @@ func TestNativeAnthropicBoundReasoningEffortPolicy(testContext *testing.T) {
 	}
 }
 
+func TestNativeAnthropicGLM53OutboundReasoningEffortPolicy(testContext *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, test := range []struct {
+			name          string
+			effort        string
+			thinking      string
+			maxEffort     string
+			overLimit     string
+			mappings      []ReasoningEffortMapping
+			unbound       bool
+			requested     string
+			wantEffort    string
+			denyRequested string
+			denyMax       string
+			errorContains string
+		}{
+			{name: "max capped to high", effort: "max", maxEffort: "high", wantEffort: "high"},
+			{name: "max capped to low", effort: "max", maxEffort: "low", wantEffort: "low"},
+			{name: "max cap", effort: "max", maxEffort: "max", wantEffort: "max"},
+			{name: "max capped to unsupported medium", effort: "max", maxEffort: "medium", denyRequested: "high", denyMax: "medium", errorContains: `does not support capped reasoning effort "medium"`},
+			{name: "normalized medium exceeds medium cap", effort: "medium", maxEffort: "medium", denyRequested: "high", denyMax: "medium", errorContains: `does not support capped reasoning effort "medium"`},
+			{name: "xhigh cap incompatible with max", effort: "max", maxEffort: "xhigh", denyRequested: "max", denyMax: "xhigh", errorContains: `does not support capped reasoning effort "xhigh"`},
+			{name: "minimal cap incompatible with low", effort: "low", maxEffort: "minimal", denyRequested: "low", denyMax: "minimal", errorContains: `does not support capped reasoning effort "minimal"`},
+			{
+				name: "original medium mapped to low", effort: "medium", maxEffort: "medium", wantEffort: "low",
+				mappings: []ReasoningEffortMapping{{From: "medium", To: "low", MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "original medium mapped to low before incompatible cap", effort: "medium", maxEffort: "minimal", denyRequested: "low", denyMax: "minimal",
+				mappings: []ReasoningEffortMapping{{From: "medium", To: "low", MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "original medium mapping deny", effort: "medium", denyRequested: "medium",
+				mappings: []ReasoningEffortMapping{{From: "medium", To: ReasoningEffortMappingDeny, MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "mapping capped to high", effort: "low", maxEffort: "high", wantEffort: "high",
+				mappings: []ReasoningEffortMapping{{From: "low", To: "max", MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "chained mappings single hop", effort: "low", wantEffort: "high",
+				mappings: []ReasoningEffortMapping{
+					{From: "low", To: "medium", MatchType: "exact", Model: "public-glm"},
+					{From: "medium", To: "max", MatchType: "exact", Model: "public-glm"},
+				},
+			},
+			{
+				name: "mapped value not denied a second time", effort: "low", wantEffort: "high",
+				mappings: []ReasoningEffortMapping{
+					{From: "low", To: "high", MatchType: "exact", Model: "public-glm"},
+					{From: "high", To: ReasoningEffortMappingDeny, MatchType: "exact", Model: "public-glm"},
+				},
+			},
+			{
+				name: "normalized value not mapped again", effort: "medium", maxEffort: "high", wantEffort: "high",
+				mappings: []ReasoningEffortMapping{{From: "high", To: ReasoningEffortMappingDeny, MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "mapping deny", effort: "low", denyRequested: "low",
+				mappings: []ReasoningEffortMapping{{From: "low", To: ReasoningEffortMappingDeny, MatchType: "exact", Model: "public-glm"}},
+			},
+			{
+				name: "mapping ceiling deny", effort: "low", maxEffort: "high", overLimit: ReasoningEffortOverLimitDeny, denyRequested: "max", denyMax: "high",
+				mappings: []ReasoningEffortMapping{{From: "low", To: "max", MatchType: "exact", Model: "public-glm"}},
+			},
+			{name: "ceiling deny", effort: "max", maxEffort: "medium", overLimit: ReasoningEffortOverLimitDeny, denyRequested: "max", denyMax: "medium"},
+			{name: "normalized ceiling deny", effort: "medium", maxEffort: "medium", overLimit: ReasoningEffortOverLimitDeny, denyRequested: "high", denyMax: "medium"},
+			{name: "normalized xhigh ceiling deny", effort: "xhigh", maxEffort: "xhigh", overLimit: ReasoningEffortOverLimitDeny, denyRequested: "max", denyMax: "xhigh"},
+			{name: "low remains supported below medium cap", effort: "low", maxEffort: "medium", wantEffort: "low"},
+			{name: "unbound retains normalization", effort: "medium", unbound: true, wantEffort: "high"},
+			{name: "empty policy retains normalization", effort: "medium", wantEffort: "high"},
+			{name: "requested context preserved", effort: "max", requested: "minimal", maxEffort: "high", wantEffort: "high"},
+			{name: "unspecified effort not synthesized", maxEffort: "medium"},
+			{name: "unspecified effort not denied", maxEffort: "low", overLimit: ReasoningEffortOverLimitDeny},
+			{
+				name: "disabled thinking not mapped", thinking: "disabled", maxEffort: "medium", wantEffort: "low",
+				mappings: []ReasoningEffortMapping{{From: "low", To: ReasoningEffortMappingDeny, MatchType: "exact", Model: "public-glm"}},
+			},
+			{name: "disabled thinking unbound", thinking: "disabled", unbound: true, wantEffort: "low"},
+			{name: "disabled thinking incompatible cap", thinking: "disabled", maxEffort: "minimal", denyRequested: "low", denyMax: "minimal"},
+			{name: "explicit medium overrides disabled thinking", thinking: "disabled", effort: "medium", wantEffort: "high"},
+		} {
+			testContext.Run(fmt.Sprintf("%s/stream=%v", test.name, stream), func(testContext *testing.T) {
+				effortJSON := ""
+				if test.effort != "" {
+					effortJSON = fmt.Sprintf(`,"output_config":{"effort":%q}`, test.effort)
+				}
+				if test.thinking != "" {
+					effortJSON += fmt.Sprintf(`,"thinking":{"type":%q}`, test.thinking)
+				}
+				body := []byte(fmt.Sprintf(`{"model":"public-glm","max_tokens":32,"stream":%v,"messages":[{"role":"user","content":"hi"}]%s}`, stream, effortJSON))
+				ctx := context.Background()
+				if test.requested != "" {
+					ctx = WithRequestedReasoningEffort(ctx, test.requested)
+				}
+				if !test.unbound {
+					ctx = WithOpenAIReasoningEffortPolicy(ctx, test.maxEffort, test.mappings, test.overLimit)
+				}
+				response := nativeAnthropicBufferedResponse()
+				if stream {
+					response = nativeAnthropicStreamResponse()
+				}
+				upstream := &httpUpstreamRecorder{resp: response}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				recorder := httptest.NewRecorder()
+				ginContext, _ := gin.CreateTestContext(recorder)
+				ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body))).WithContext(ctx)
+				result, err := svc.ForwardAsAnthropic(ctx, ginContext, nativeAnthropicGLMTestAccount(), body, "", "glm-5.3")
+				if test.denyRequested != "" {
+					require.Error(testContext, err)
+					require.True(testContext, IsReasoningEffortPolicyDenied(err))
+					if test.denyMax != "" {
+						var denied *ReasoningEffortOverLimitError
+						require.ErrorAs(testContext, err, &denied)
+						require.Equal(testContext, test.denyRequested, denied.Requested)
+						require.Equal(testContext, test.denyMax, denied.Max)
+					} else {
+						var denied *ReasoningEffortMappingDeniedError
+						require.ErrorAs(testContext, err, &denied)
+						require.Equal(testContext, test.denyRequested, denied.Requested)
+					}
+					if test.errorContains != "" {
+						require.ErrorContains(testContext, err, test.errorContains)
+					}
+					require.Nil(testContext, result)
+					require.Empty(testContext, upstream.requests)
+					require.Equal(testContext, http.StatusForbidden, recorder.Code)
+					require.Equal(testContext, "forbidden_error", gjson.GetBytes(recorder.Body.Bytes(), "error.type").String())
+					require.Equal(testContext, err.Error(), gjson.GetBytes(recorder.Body.Bytes(), "error.message").String())
+					return
+				}
+				require.NoError(testContext, err)
+				require.NotNil(testContext, result)
+				require.Len(testContext, upstream.requests, 1)
+				require.Equal(testContext, http.MethodPost, upstream.lastReq.Method)
+				require.Equal(testContext, "/api/anthropic/v1/messages", upstream.lastReq.URL.Path)
+				require.Equal(testContext, "glm-5.3", gjson.GetBytes(upstream.lastBody, "model").String())
+				require.Equal(testContext, stream, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+				require.Equal(testContext, test.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+				require.Equal(testContext, stream, result.Stream)
+				require.Equal(testContext, "public-glm", result.Model)
+				require.Equal(testContext, "glm-5.3", result.UpstreamModel)
+				if test.effort == "" && test.thinking == "" {
+					require.False(testContext, gjson.GetBytes(upstream.lastBody, "output_config.effort").Exists())
+					require.False(testContext, gjson.GetBytes(upstream.lastBody, "thinking").Exists())
+					require.Nil(testContext, result.RequestedReasoningEffort)
+					require.Nil(testContext, result.ReasoningEffort)
+					return
+				}
+				require.Equal(testContext, "enabled", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+				wantRequested := test.effort
+				if test.requested != "" {
+					wantRequested = test.requested
+				}
+				require.NotNil(testContext, result.ReasoningEffort)
+				if wantRequested == "" {
+					require.Nil(testContext, result.RequestedReasoningEffort)
+				} else {
+					require.NotNil(testContext, result.RequestedReasoningEffort)
+					require.Equal(testContext, wantRequested, *result.RequestedReasoningEffort)
+				}
+				require.Equal(testContext, test.wantEffort, *result.ReasoningEffort)
+			})
+		}
+	}
+}
+
 func nativeAnthropicBufferedResponse() *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
