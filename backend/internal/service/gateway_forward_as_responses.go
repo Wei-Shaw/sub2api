@@ -336,6 +336,23 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
 	}
+
+	// The nested cache_creation object carries the 5m/1h split. Dropping it here
+	// left the aggregate as the only surviving count, and the billing layer then
+	// billed every cache write at the 5m price (see gateway_upstream_response.go
+	// parseSSEUsage*, which already reads this object for the passthrough paths).
+	// Guarded like the aggregate above so a later event that omits the split
+	// cannot erase detail an earlier event already reported; a genuinely
+	// contradictory split is capped at the aggregate by
+	// normalizeCacheCreationBreakdown at billing time.
+	if src.CacheCreation != nil {
+		if src.CacheCreation.Ephemeral5mInputTokens > 0 {
+			dst.CacheCreation5mTokens = src.CacheCreation.Ephemeral5mInputTokens
+		}
+		if src.CacheCreation.Ephemeral1hInputTokens > 0 {
+			dst.CacheCreation1hTokens = src.CacheCreation.Ephemeral1hInputTokens
+		}
+	}
 }
 
 func syncAnthropicResponsesUsage(state *apicompat.AnthropicEventToResponsesState, usage ClaudeUsage) {
