@@ -413,3 +413,40 @@ func maxLocalInt(a, b int) int {
 	}
 	return b
 }
+
+func TestPrepareOpenAIInputTokensCountRequestDestinationReasoningReplay(t *testing.T) {
+	for _, tc := range []struct {
+		name, signature string
+		want            bool
+	}{
+		{"native Claude filtered", "CAQS-native", false},
+		{"legacy OpenAI retained", "gAAAA-openai", true},
+		{"unknown opaque filtered", "enc-rs-1", false},
+		{"native envelope filtered", "anthropic-thinking-v1:payload", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+			body := []byte(fmt.Sprintf(`{"model":"claude-opus-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","signature":%q},{"type":"text","text":"visible"},{"type":"tool_use","id":"toolu_count","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_count","content":"result"}]}]}`, tc.signature))
+			prepared, err := prepareOpenAIInputTokensCountRequest(body, account, "gpt-6.1-sol")
+			require.NoError(t, err)
+			var items []apicompat.ResponsesInputItem
+			require.NoError(t, json.Unmarshal(prepared.Request.Input, &items))
+			count := 0
+			for _, item := range items {
+				if item.Type == "reasoning" {
+					count++
+					require.Equal(t, tc.signature, item.EncryptedContent)
+				}
+			}
+			want := 0
+			if tc.want {
+				want = 1
+			}
+			require.Equal(t, want, count)
+			require.Equal(t, "gpt-6.1-sol", prepared.Request.Model)
+			require.Contains(t, string(prepared.Request.Input), "visible")
+			require.Contains(t, string(prepared.Request.Input), "toolu_count")
+			require.Contains(t, string(prepared.Request.Input), "result")
+		})
+	}
+}

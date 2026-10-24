@@ -383,6 +383,15 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	if s != nil && s.service != nil {
+		if err := ValidateCompositeRouteScope(ctx, s.service.compositeRouteGroupRepository(), s.service.accountRepo); err != nil {
+			return nil, decision, err
+		}
+	}
+	if !CompositeRouteSourceGroupMatches(ctx, req.GroupID) {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	req.SessionHash = CompositeRouteStickyKey(ctx, req.SessionHash)
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
@@ -412,8 +421,8 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
 			hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
 			groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
-			if hasGroupMetadata && s.service != nil {
-				groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(selection.Account, req.GroupID)
+			if (hasGroupMetadata || HasCompositeRouteDestination(ctx)) && s.service != nil {
+				groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(ctx, selection.Account, req.GroupID)
 			}
 			if !groupCompatible ||
 				!compatible || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
@@ -540,7 +549,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, false, nil
 	}
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
-	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(ctx, account, req.GroupID) || !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		clearBinding()
 		return nil, false, nil
 	}
@@ -1296,7 +1305,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 			}
 			continue
 		}
-		if !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) {
+		if !s.service.openAIAccountMatchesSchedulingGroup(ctx, account, req.GroupID) {
 			if accountID == req.StickyAccountID && strings.TrimSpace(req.SessionHash) != "" {
 				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
 			}
@@ -1773,6 +1782,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 // openAISelectionFilterStats so that "no available accounts" errors state why
 // each candidate was dropped instead of failing silently (#4599).
 func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
+	if !CompositeRouteAccountAllowed(ctx, account) {
+		return false, "composite_route_destination_mismatch"
+	}
 	if account == nil {
 		return false, "account_nil"
 	}
@@ -2283,7 +2295,7 @@ func (s *OpenAIGatewayService) selectLegacyAccountByPreviousResponse(
 		ExcludedIDs:             excludedIDs,
 		RequirePrivacySet:       s.openAIGroupRequiresPrivacySet(ctx, groupID),
 	})
-	if !s.openAIAccountMatchesSchedulingGroup(account, groupID) || !compatible || !scheduler.isAccountTransportCompatible(account, requiredTransport) {
+	if !s.openAIAccountMatchesSchedulingGroup(ctx, account, groupID) || !compatible || !scheduler.isAccountTransportCompatible(account, requiredTransport) {
 		if selection.ReleaseFunc != nil {
 			selection.ReleaseFunc()
 		}
@@ -2310,6 +2322,13 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	if err := ValidateCompositeRouteScope(ctx, s.compositeRouteGroupRepository(), s.accountRepo); err != nil {
+		return nil, OpenAIAccountScheduleDecision{}, err
+	}
+	if !CompositeRouteSourceGroupMatches(ctx, groupID) {
+		return nil, OpenAIAccountScheduleDecision{}, ErrNoAvailableAccounts
+	}
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
 	ctx = s.withOpenAIGroupPrivacyRequirement(ctx, groupID)
 	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本

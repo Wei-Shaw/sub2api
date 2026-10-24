@@ -93,6 +93,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	if account != nil && (account.Platform == PlatformAnthropic || account.IsBedrock()) {
+		if body, changed := dropClearlyForeignAnthropicThinking(parsed.Body.Bytes()); changed {
+			cleaned, err := parsed.CloneForBody(body)
+			if err != nil {
+				return nil, fmt.Errorf("remove incompatible reasoning: %w", err)
+			}
+			cleaned.OnUpstreamAccepted = parsed.OnUpstreamAccepted
+			parsed = cleaned
+		}
+	}
 	// API-key mappings and OAuth native IDs are resolved before mimicry.
 	validationModel := parsed.Model
 	if account != nil {

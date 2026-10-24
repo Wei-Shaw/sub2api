@@ -113,19 +113,26 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			return decision, fmt.Errorf("list composite routes: %w", err)
 		}
 		if route, ok := matchCompositeRoute(routes, model, endpoint); ok {
+			if err := validateCompositeRouteDestinationIDs(groupID, route.TargetGroupID, route.TargetAccountID); err != nil {
+				return decision, fmt.Errorf("invalid composite destination: %w", err)
+			}
+			route.TargetGroupID = cloneCompositeRouteID(route.TargetGroupID)
+			route.TargetAccountID = cloneCompositeRouteID(route.TargetAccountID)
 			upstreamModel := strings.TrimSpace(route.UpstreamModel)
 			if upstreamModel == "" {
 				upstreamModel = model
 			}
 			return CompositeRouteDecision{
-				Matched:        true,
-				Source:         CompositeRouteSourceExplicit,
-				GroupID:        groupID,
-				PublicModel:    model,
-				TargetPlatform: route.TargetPlatform,
-				UpstreamModel:  upstreamModel,
-				Endpoint:       endpoint,
-				Route:          &route,
+				Matched:         true,
+				Source:          CompositeRouteSourceExplicit,
+				GroupID:         groupID,
+				PublicModel:     model,
+				TargetPlatform:  route.TargetPlatform,
+				TargetGroupID:   cloneCompositeRouteID(route.TargetGroupID),
+				TargetAccountID: cloneCompositeRouteID(route.TargetAccountID),
+				UpstreamModel:   upstreamModel,
+				Endpoint:        endpoint,
+				Route:           &route,
 			}, nil
 		}
 	}

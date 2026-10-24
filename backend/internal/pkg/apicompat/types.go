@@ -273,8 +273,10 @@ type ResponsesInputItem struct {
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
-	// type=reasoning (multi-turn replay of encrypted reasoning)
-	EncryptedContent string `json:"encrypted_content,omitempty"`
+	// type=reasoning (multi-turn replay of encrypted reasoning). RawMessage
+	// preserves an explicit empty array, which OpenAI requires on replay items.
+	EncryptedContent string          `json:"encrypted_content,omitempty"`
+	Summary          json.RawMessage `json:"summary,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`

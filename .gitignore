@@ -140,6 +140,8 @@ docs/*
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
+!docs/composite-cross-provider-routing.zh-CN.md
+!docs/cross-provider-verification.zh-CN.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md

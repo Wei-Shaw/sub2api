@@ -36,6 +36,17 @@ func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDeci
 	if ctx == nil || !decision.Matched {
 		return ctx
 	}
+	scope := CompositeRouteScope{SourceGroupID: decision.GroupID, TargetPlatform: decision.TargetPlatform, PublicModel: decision.PublicModel}
+	if decision.Route != nil {
+		scope.RouteID = decision.Route.ID
+	}
+	if decision.TargetGroupID != nil {
+		scope.TargetGroupID = *decision.TargetGroupID
+	}
+	if decision.TargetAccountID != nil {
+		scope.TargetAccountID = *decision.TargetAccountID
+	}
+	ctx = context.WithValue(ctx, compositeRouteScopeContextKey{}, scope)
 	ctx = WithResolvedTargetPlatform(ctx, decision.TargetPlatform)
 	if model := strings.TrimSpace(decision.UpstreamModel); model != "" {
 		ctx = context.WithValue(ctx, ctxkey.ResolvedUpstreamModel, model)
@@ -183,18 +194,32 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 		if resolvedModel, modelOK := ResolvedUpstreamModelFromContext(ctx); modelOK {
 			upstreamModel = resolvedModel
 		}
+		scope, hasScope := CompositeRouteScopeFromContext(ctx)
+		if !hasScope {
+			scope.PublicModel = requestedModel
+		}
+		var targetGroupID, targetAccountID *int64
+		if scope.TargetGroupID != 0 {
+			targetGroupID = &scope.TargetGroupID
+		}
+		if scope.TargetAccountID != 0 {
+			targetAccountID = &scope.TargetAccountID
+		}
 		source := CompositeRouteSourceDetector
 		if resolvedSource, sourceOK := CompositeRouteSourceFromContext(ctx); sourceOK {
 			source = resolvedSource
 		}
 		return CompositeRouteDecision{
-			Matched:        true,
-			Source:         source,
-			GroupID:        group.ID,
-			PublicModel:    requestedModel,
-			TargetPlatform: platform,
-			UpstreamModel:  upstreamModel,
-			Endpoint:       normalizeCompositeRouteEndpoint(endpoint),
+			Matched:         true,
+			Source:          source,
+			GroupID:         group.ID,
+			PublicModel:     scope.PublicModel,
+			Route:           &CompositeModelRoute{ID: scope.RouteID},
+			TargetPlatform:  platform,
+			TargetGroupID:   targetGroupID,
+			TargetAccountID: targetAccountID,
+			UpstreamModel:   upstreamModel,
+			Endpoint:        normalizeCompositeRouteEndpoint(endpoint),
 		}, true, nil
 	}
 	decision, err := s.compositeResolver.Resolve(ctx, group.ID, requestedModel, endpoint)

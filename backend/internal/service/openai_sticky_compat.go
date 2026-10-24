@@ -101,7 +101,7 @@ func (s *OpenAIGatewayService) openAILegacySessionCacheKey(ctx context.Context, 
 	if legacyHash == "" {
 		return ""
 	}
-	legacyKey := "openai:" + legacyHash
+	legacyKey := "openai:" + CompositeRouteStickyKey(ctx, legacyHash)
 	if legacyKey == s.openAISessionCacheKey(sessionHash) {
 		return ""
 	}
@@ -120,6 +120,7 @@ func (s *OpenAIGatewayService) openAIStickyLegacyTTL(ttl time.Duration) time.Dur
 }
 
 func (s *OpenAIGatewayService) getStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if s == nil || s.cache == nil {
 		return 0, nil
 	}
@@ -152,6 +153,7 @@ func (s *OpenAIGatewayService) getStickySessionAccountID(ctx context.Context, gr
 }
 
 func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if s == nil || s.cache == nil || accountID <= 0 {
 		return nil
 	}
@@ -179,6 +181,7 @@ func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, gr
 }
 
 func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, groupID *int64, sessionHash string, ttl time.Duration) error {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if s == nil || s.cache == nil {
 		return nil
 	}
@@ -200,6 +203,7 @@ func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, grou
 }
 
 func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) error {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if s == nil || s.cache == nil {
 		return nil
 	}

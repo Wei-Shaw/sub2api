@@ -19,10 +19,23 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 // AnthropicToResponsesWithMinOutputTokens converts an Anthropic request using
 // the supplied max_output_tokens floor.
 func AnthropicToResponsesWithMinOutputTokens(req *AnthropicRequest, minOutputTokens int) (*ResponsesRequest, error) {
+	// Historical callers used this bridge for Grok. Production callers must use
+	// explicit destination options instead of inferring provenance from a model.
+	return AnthropicToResponsesWithOptions(req, AnthropicToResponsesOptions{
+		MinOutputTokens: minOutputTokens, ReasoningReplayPolicy: ReasoningReplayGrokLegacy,
+	})
+}
+
+// AnthropicToResponsesWithOptions converts using an explicit destination policy.
+func AnthropicToResponsesWithOptions(req *AnthropicRequest, opts AnthropicToResponsesOptions) (*ResponsesRequest, error) {
+	minOutputTokens := opts.MinOutputTokens
+	if minOutputTokens <= 0 {
+		minOutputTokens = DefaultMinMaxOutputTokens
+	}
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
 		return nil, err
 	}
-	input, err := convertAnthropicToResponsesInput(req.System, req.Messages)
+	input, err := convertAnthropicToResponsesInputWithPolicy(req.System, req.Messages, opts.ReasoningReplayPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -123,9 +136,9 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 	}
 }
 
-// convertAnthropicToResponsesInput builds the Responses API input items array
-// from the Anthropic system field and message list.
-func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
+// convertAnthropicToResponsesInputWithPolicy builds Responses input using the
+// destination's replay policy for the Anthropic system field and message list.
+func convertAnthropicToResponsesInputWithPolicy(system json.RawMessage, msgs []AnthropicMessage, policy ReasoningReplayPolicy) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 
 	// System prompt → developer role input item. ChatGPT Codex SSE behaves like
@@ -147,7 +160,7 @@ func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMe
 	}
 
 	for _, m := range msgs {
-		items, err := anthropicMsgToResponsesItems(m)
+		items, err := anthropicMsgToResponsesItemsWithPolicy(m, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -184,14 +197,14 @@ func isAnthropicBillingHeaderText(text string) bool {
 	return strings.HasPrefix(text, "x-anthropic-billing-header: ")
 }
 
-// anthropicMsgToResponsesItems converts a single Anthropic message into one
-// or more Responses API input items.
-func anthropicMsgToResponsesItems(m AnthropicMessage) ([]ResponsesInputItem, error) {
+// anthropicMsgToResponsesItemsWithPolicy converts a single Anthropic message
+// into one or more Responses API input items.
+func anthropicMsgToResponsesItemsWithPolicy(m AnthropicMessage, policy ReasoningReplayPolicy) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "user":
 		return anthropicUserToResponses(m.Content)
 	case "assistant":
-		return anthropicAssistantToResponses(m.Content)
+		return anthropicAssistantToResponsesWithPolicy(m.Content, policy)
 	default:
 		return anthropicUserToResponses(m.Content)
 	}
@@ -264,13 +277,9 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 	return out, nil
 }
 
-// anthropicAssistantToResponses handles an Anthropic assistant message.
-// Text content → assistant message with output_text parts.
-// tool_use blocks → function_call items.
-// thinking blocks with signature → reasoning items (encrypted_content) so
-// multi-turn Grok/Codex prompt cache can reuse prior reasoning prefixes.
-// thinking without signature remains ignored (not accepted as plain text input).
-func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
+// anthropicAssistantToResponsesWithPolicy preserves assistant text and tool
+// order, replaying encrypted reasoning only when allowed by the destination.
+func anthropicAssistantToResponsesWithPolicy(raw json.RawMessage, policy ReasoningReplayPolicy) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -289,53 +298,41 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 
 	var items []ResponsesInputItem
 
-	// Preserve turn order: reasoning → assistant text → tool calls. xAI/Codex
-	// multi-turn cache and tool continuations expect reasoning before the
-	// assistant message that followed it.
-	for _, b := range blocks {
-		if b.Type != "thinking" {
-			continue
+	// Flush adjacent text together, but never move text across a tool call or
+	// retained reasoning item. IDs and tool-result pairing stay unchanged.
+	var textParts []string
+	flushText := func() {
+		if len(textParts) == 0 {
+			return
 		}
-		sig := strings.TrimSpace(b.Signature)
-		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
-		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
-		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
-			continue
-		}
-		items = append(items, ResponsesInputItem{
-			Type:             "reasoning",
-			EncryptedContent: sig,
-		})
-	}
-
-	// Text content → assistant message with output_text content parts.
-	text := extractAnthropicTextFromBlocks(blocks)
-	if text != "" {
-		parts := []ResponsesContentPart{{Type: "output_text", Text: text}}
-		partsJSON, err := json.Marshal(parts)
-		if err != nil {
-			return nil, err
-		}
+		partsJSON, _ := json.Marshal([]ResponsesContentPart{{Type: "output_text", Text: strings.Join(textParts, "\n\n")}})
 		items = append(items, ResponsesInputItem{Type: "message", Role: "assistant", Content: partsJSON})
+		textParts = nil
 	}
-
-	// tool_use → function_call items.
 	for _, b := range blocks {
-		if b.Type != "tool_use" {
-			continue
+		switch b.Type {
+		case "text":
+			if b.Text != "" {
+				textParts = append(textParts, b.Text)
+			}
+		case "thinking":
+			sig := strings.TrimSpace(b.Signature)
+			if policy.allowsSignature(sig) {
+				flushText()
+				items = append(items, ResponsesInputItem{Type: "reasoning", EncryptedContent: sig, Summary: json.RawMessage(`[]`)})
+			}
+		case "tool_use":
+			flushText()
+			args := "{}"
+			if len(b.Input) > 0 {
+				args = string(b.Input)
+			}
+			items = append(items, ResponsesInputItem{
+				Type: "function_call", CallID: toResponsesCallID(b.ID), Name: b.Name, Arguments: args,
+			})
 		}
-		args := "{}"
-		if len(b.Input) > 0 {
-			args = string(b.Input)
-		}
-		fcID := toResponsesCallID(b.ID)
-		items = append(items, ResponsesInputItem{
-			Type:      "function_call",
-			CallID:    fcID,
-			Name:      b.Name,
-			Arguments: args,
-		})
 	}
+	flushText()
 
 	return items, nil
 }

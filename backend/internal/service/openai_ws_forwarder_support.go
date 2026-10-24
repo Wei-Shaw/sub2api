@@ -600,7 +600,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
+		if !s.openAIAccountMatchesSchedulingGroup(ctx, latest, groupID) {
 			return 0, nil, "", nil
 		}
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !latest.IsPrivacySet() {

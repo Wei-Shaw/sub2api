@@ -451,6 +451,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 	}
+	sessionKey = service.CompositeRouteStickyKey(c.Request.Context(), sessionKey)
 
 	// 查询粘性会话绑定的账号 ID（用于检测账号切换）
 	var sessionBoundAccountID int64
@@ -472,7 +473,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	var geminiPrefixHash string
 	var geminiSessionUUID string
 	var matchedDigestChain string
-	useDigestFallback := sessionBoundAccountID == 0 && cachedContentBinding == nil
+	useDigestFallback := sessionBoundAccountID == 0 && cachedContentBinding == nil && !service.HasCompositeRouteDestination(c.Request.Context())
 
 	if useDigestFallback {
 		// 解析 Gemini 请求体
