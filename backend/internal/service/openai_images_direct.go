@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -161,6 +163,78 @@ func parseCodexDirectImagesResponse(body []byte) ([]openAIResponsesImageResult, 
 	}
 	reconcileOpenAIResponsesImageResultSizes(results, nil)
 	return results, nil
+}
+
+func isCodexDirectImagesJSONResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
+	return mediaType == "application/json"
+}
+
+// The native edits endpoint ignores stream=true and answers with one JSON
+// document. Re-emit it as the stream the client requested; the body is fully
+// validated before the first write so a failed response can still fail over.
+func (s *OpenAIGatewayService) handleCodexDirectImagesJSONAsStream(
+	resp *http.Response,
+	c *gin.Context,
+	startTime time.Time,
+	parsed *OpenAIImagesRequest,
+) (OpenAIUsage, int, []string, *int, error) {
+	// Keep size-limit failures uncommitted too; the caller owns the error response.
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
+	if err != nil {
+		if shouldClassifyOpenAIUpstreamStreamReadError(err) {
+			err = newOpenAIUpstreamStreamReadError(err)
+		}
+		return OpenAIUsage{}, 0, nil, nil, err
+	}
+	results, err := parseCodexDirectImagesResponse(body)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, nil, err
+	}
+	usage, _ := codexDirectImagesUsage(body)
+	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
+		observer.Observe(gjson.GetBytes(body, "model").String(), true)
+		for _, result := range results {
+			observer.Observe(result.Model, true)
+		}
+	}
+	clientModel := strings.TrimSpace(parsed.Model)
+	for i := range results {
+		if clientModel != "" {
+			results[i].Model = clientModel
+		}
+		if actualSize := detectOpenAIImageResultSize(results[i].Result); actualSize != "" {
+			results[i].Size = actualSize
+		}
+		if results[i].OutputFormat == "" {
+			results[i].OutputFormat = parsed.OutputFormat
+		}
+	}
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header("Content-Type", "text/event-stream")
+	c.Writer.Header().Del("Content-Length")
+	c.Status(resp.StatusCode)
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return OpenAIUsage{}, 0, nil, nil, fmt.Errorf("streaming is not supported by response writer")
+	}
+	firstTokenMs := int(time.Since(startTime).Milliseconds())
+	eventName := openAIImagesStreamPrefix(parsed) + ".completed"
+	createdAt := gjson.GetBytes(body, "created").Int()
+	usageRaw := []byte(gjson.GetBytes(body, "usage").Raw)
+	for _, img := range results {
+		payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, parsed.ResponseFormat, createdAt, usageRaw)
+		if err := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); err != nil {
+			// The upstream already produced the images; keep them billable.
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected while relaying JSON response")
+			break
+		}
+	}
+	return usage, len(results), openAIResponsesImageResultSizes(results), &firstTokenMs, nil
 }
 
 func codexDirectImageURL(body []byte, path, outputFormat string) []byte {
