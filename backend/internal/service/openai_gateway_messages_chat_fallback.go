@@ -140,6 +140,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
+	originalModel = compositeFallbackResponseModel(ctx, originalModel)
 	// 5. Convert response
 	if clientStream {
 		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)

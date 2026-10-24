@@ -3983,6 +3983,12 @@
                       <div class="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">
                         {{ route.upstream_model || route.public_model }}
                       </div>
+                      <ol v-if="route.fallback_targets?.length" class="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                        <li v-for="(target, index) in route.fallback_targets" :key="index" class="break-all">
+                          {{ t("admin.groups.compositeRoutes.fallbackOrder", { order: index + 1 }) }}:
+                          {{ formatCompositePlatform(target.target_platform) }} → {{ target.upstream_model }}
+                        </li>
+                      </ol>
                     </td>
                     <td class="px-3 py-2">
                       <div class="text-gray-700 dark:text-gray-300">
@@ -4113,6 +4119,19 @@
               </p>
             </div>
 
+            <fieldset class="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-dark-600" data-testid="composite-fallback-editor">
+              <legend class="px-1 text-sm font-medium">{{ t("admin.groups.compositeRoutes.fallbackTargets") }}</legend>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.compositeRoutes.fallbackHint") }}</p>
+              <div v-for="(target, index) in compositeRouteForm.fallback_targets" :key="index" class="space-y-2">
+                <label class="input-label">{{ t("admin.groups.compositeRoutes.fallbackOrder", { order: index + 1 }) }}</label>
+                <Select v-model="target.target_platform" :options="compositeRoutePlatformOptions" :aria-label="t('admin.groups.compositeRoutes.targetPlatform')" />
+                <input v-model.trim="target.upstream_model" type="text" class="input" :aria-label="t('admin.groups.compositeRoutes.upstreamModel')" />
+                <button type="button" class="btn btn-secondary btn-sm" @click="compositeRouteForm.fallback_targets.splice(index, 1)">{{ t("common.delete") }}</button>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="!compositeFallbackTargetPlatform || compositeRouteForm.fallback_targets.length > 0" @click="addCompositeFallbackTarget">{{ t("admin.groups.compositeRoutes.addFallback") }}</button>
+              <p v-if="compositeFallbackError" role="alert" class="text-xs text-red-600 dark:text-red-400">{{ t(`admin.groups.compositeRoutes.${compositeFallbackError}`) }}</p>
+            </fieldset>
+
             <div>
               <label class="input-label">{{
                 t("admin.groups.compositeRoutes.notes")
@@ -4208,6 +4227,7 @@
                   v-if="compositePreviewDecision.matched"
                   class="space-y-1 text-gray-700 dark:text-gray-300"
                 >
+                  <div class="font-medium">{{ t("admin.groups.compositeRoutes.primaryTarget") }}</div>
                   <div>
                     {{ t("admin.groups.compositeRoutes.targetPlatform") }}:
                     {{
@@ -4220,6 +4240,15 @@
                     {{ t("admin.groups.compositeRoutes.upstreamModel") }}:
                     {{ compositePreviewDecision.upstream_model }}
                   </div>
+                  <div class="font-medium">{{ t("admin.groups.compositeRoutes.fallbackTargets") }}</div>
+                  <ol v-if="compositePreviewDecision.route?.fallback_targets?.length" data-testid="composite-preview-fallbacks" class="space-y-1">
+                    <li v-for="(target, index) in compositePreviewDecision.route.fallback_targets" :key="index" class="break-all">
+                      {{ t("admin.groups.compositeRoutes.fallbackOrder", { order: index + 1 }) }}:
+                      {{ formatCompositePlatform(target.target_platform) }} → {{ target.upstream_model }}
+                    </li>
+                  </ol>
+                  <p v-else>{{ t("admin.groups.compositeRoutes.noFallback") }}</p>
+                  <p class="pt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.compositeRoutes.previewSavedHint") }}</p>
                 </div>
                 <div
                   v-else
@@ -4346,6 +4375,12 @@ import {
   setModelAllowlistCandidates,
 } from "./groupModelAllowlist";
 import { createModelAllowlistCandidatesTracker } from "./modelAllowlistCandidates";
+import {
+  compositeFallbackDefaultModelID,
+  compositeFallbackPlatform,
+  copyCompositeFallbackTargets,
+  validateCompositeFallback,
+} from "./groupsCompositeFallback";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
   isProfitControlPlatform,
@@ -4853,6 +4888,7 @@ type CompositeRouteFormState = {
   match_type: CompositeRouteMatchType;
   target_platform: ConcreteGroupPlatform;
   upstream_model: string;
+  fallback_targets: NonNullable<CompositeModelRouteInput['fallback_targets']>;
   endpoint: CompositeRouteEndpoint;
   priority: number;
   enabled: boolean;
@@ -4874,11 +4910,22 @@ const compositeRouteForm = reactive<CompositeRouteFormState>({
   match_type: "exact",
   target_platform: "openai",
   upstream_model: "",
+  fallback_targets: [],
   endpoint: "any",
   priority: 100,
   enabled: true,
   notes: "",
 });
+const compositeFallbackTargetPlatform = computed(() => compositeFallbackPlatform(compositeRouteForm));
+const compositeFallbackError = computed(() => validateCompositeFallback(compositeRouteForm));
+const addCompositeFallbackTarget = () => {
+  const platform = compositeFallbackTargetPlatform.value;
+  if (!platform || compositeRouteForm.fallback_targets.length) return;
+  compositeRouteForm.fallback_targets.push({
+    target_platform: platform,
+    upstream_model: compositeFallbackDefaultModelID(compositeRouteForm),
+  });
+};
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const createModelAllowlistState = reactive(createInitialModelAllowlistState());
@@ -6484,6 +6531,7 @@ const resetCompositeRouteForm = () => {
   compositeRouteForm.match_type = "exact";
   compositeRouteForm.target_platform = "openai";
   compositeRouteForm.upstream_model = "";
+  compositeRouteForm.fallback_targets = [];
   compositeRouteForm.endpoint = "any";
   compositeRouteForm.priority = 100;
   compositeRouteForm.enabled = true;
@@ -6495,6 +6543,7 @@ const toCompositeRouteInput = (): CompositeModelRouteInput => ({
   match_type: compositeRouteForm.match_type,
   target_platform: compositeRouteForm.target_platform,
   upstream_model: compositeRouteForm.upstream_model.trim(),
+  fallback_targets: copyCompositeFallbackTargets(compositeRouteForm.fallback_targets),
   endpoint: compositeRouteForm.endpoint,
   priority: Number(compositeRouteForm.priority) || 100,
   enabled: compositeRouteForm.enabled,
@@ -6548,6 +6597,7 @@ const editCompositeRoute = (route: CompositeModelRoute) => {
   compositeRouteForm.match_type = route.match_type;
   compositeRouteForm.target_platform = route.target_platform;
   compositeRouteForm.upstream_model = route.upstream_model;
+  compositeRouteForm.fallback_targets = copyCompositeFallbackTargets(route.fallback_targets);
   compositeRouteForm.endpoint = route.endpoint;
   compositeRouteForm.priority = route.priority || 100;
   compositeRouteForm.enabled = route.enabled;
@@ -6558,6 +6608,10 @@ const saveCompositeRoute = async () => {
   if (!compositeRoutesGroup.value) return;
   if (!compositeRouteForm.public_model.trim()) {
     appStore.showError(t("admin.groups.compositeRoutes.publicModelRequired"));
+    return;
+  }
+  if (compositeFallbackError.value) {
+    appStore.showError(t(`admin.groups.compositeRoutes.${compositeFallbackError.value}`));
     return;
   }
   compositeRouteSaving.value = true;
