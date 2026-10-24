@@ -1496,7 +1496,8 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
-  getPresetMappingsByPlatform
+  getPresetMappingsByPlatform,
+  removeModelMappingEntry
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
@@ -1839,7 +1840,9 @@ const addModelMapping = () => {
 }
 
 const removeModelMapping = (index: number) => {
-  modelMappings.value.splice(index, 1)
+  // 与编辑弹窗相同：删除重写只去掉改写，来源回到白名单。
+  // 映射模式下保存不写白名单（空映射=允许全部）；切回白名单后再保存会写成 X -> X。
+  removeModelMappingEntry(modelMappings.value, index, allowedModels.value)
 }
 
 const addOpenAICompactModelMapping = () => {
