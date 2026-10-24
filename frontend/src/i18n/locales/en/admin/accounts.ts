@@ -1656,6 +1656,7 @@ export default {
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
+        geminiQuotaGroup: 'Gemini',
         claude: 'Claude',
         grokRequests: 'Req',
         grokTokens: 'Tok',

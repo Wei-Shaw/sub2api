@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -3559,6 +3560,11 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 					}
 					signature, _ := bm["signature"].(string)
 					signature = strings.TrimSpace(signature)
+					if signature == "" && strings.TrimSpace(id) != "" {
+						// OpenAI/Anthropic 客户端协议里带不回上游真实签名：
+						// 优先回放上一轮缓存到的签名，缺失时才退回哨兵值。
+						signature = antigravity.LookupToolThoughtSignature(id)
+					}
 					if signature == "" {
 						signature = geminiDummyThoughtSignature
 					}

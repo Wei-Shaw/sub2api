@@ -285,6 +285,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		if cleaned, cleanErr := cleanGeminiRequest(body); cleanErr == nil {
 			body = cleaned
 		}
+		body = applyAntigravityGeminiThinkingConfig(body, claudeBody, mappedModel)
 		return s.wrapV1InternalRequest(projectID, mappedModel, body)
 	}
 
