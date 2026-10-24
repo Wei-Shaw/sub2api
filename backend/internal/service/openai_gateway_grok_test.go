@@ -2280,14 +2280,14 @@ func TestForwardGrokResponsesInvalidEncryptedContentRecoveryDoesNotOvermatch(t *
 	}
 }
 
-func TestGrokCompactionBlobRecoveryStripsCompactionItem(t *testing.T) {
+func TestGrokCompactionBlobRecoveryNeverDeletesCompactionItem(t *testing.T) {
 	body := []byte(`{"model":"grok","input":[{"type":"compaction","id":"cmp_1","encrypted_content":"blob"},{"type":"message","role":"user","content":"hi"}]}`)
 	require.True(t, isGrokInvalidEncryptedContentResponse(http.StatusUnprocessableEntity, []byte(`{"code":"invalid_compaction","error":"could not decode the compaction blob"}`)))
 	retry, changed, err := trimGrokInvalidEncryptedContentRetryBody(body)
 	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "message", gjson.GetBytes(retry, "input.0.type").String())
-	require.False(t, gjson.GetBytes(retry, "input.#(type==\"compaction\")").Exists())
+	require.False(t, changed)
+	require.Equal(t, "compaction", gjson.GetBytes(retry, "input.0.type").String())
+	require.Equal(t, "blob", gjson.GetBytes(retry, "input.0.encrypted_content").String())
 }
 
 func TestForwardGrokResponsesInvalidEncryptedContentRecoveryNestedErrorShape(t *testing.T) {

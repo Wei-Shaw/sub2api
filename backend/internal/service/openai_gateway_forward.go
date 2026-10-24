@@ -205,6 +205,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
 			originalModel = reqModel
 		}
+		normalizedAgentBody, agentChanged, agentErr := normalizeOpenAIResponsesAgentMessageReplay(body)
+		if agentErr != nil {
+			return nil, fmt.Errorf("normalize OpenAI Responses agent message replay: %w", agentErr)
+		}
+		if agentChanged {
+			body = normalizedAgentBody
+			originalBody = normalizedAgentBody
+			requestView = newOpenAIRequestView(normalizedAgentBody)
+			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+			originalModel = reqModel
+		}
 		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
 		if sanitizeErr != nil {
 			return nil, fmt.Errorf("sanitize OpenAI Responses input item IDs: %w", sanitizeErr)
@@ -842,6 +853,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if wsInvalidEncryptedContentRecoveryTried {
 				return false
 			}
+			if HasOpenAIEncryptedCompactionInput(body) {
+				logOpenAIWSModeInfo(
+					"reconnect_invalid_encrypted_content_recovery_skip account_id=%d attempt=%d reason=encrypted_native_compaction",
+					account.ID,
+					attempt,
+				)
+				return false
+			}
 			// 写入 lineage 后，同一失效密文在后续 turn 进场时被预剥离，不再重复
 			// 触发上游拒绝与重连。摘要取自进场形态的 body（密文项只可能来自
 			// 客户端进场请求，重复摘要幂等）。
@@ -1096,9 +1115,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-			upstreamCode := extractUpstreamErrorCode(respBody)
+			upstreamMsg, upstreamCode := extractOpenAIHTTPUpstreamError(respBody)
 			if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 				agentTaskRecoveryTried = true
 				expectedTaskID := account.GetCredential("task_id")
