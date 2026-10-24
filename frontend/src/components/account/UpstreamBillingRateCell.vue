@@ -1,29 +1,69 @@
 <template>
-  <div v-if="eligible" class="flex h-6 min-w-[7rem] items-center gap-1">
+  <div v-if="eligible" class="flex h-9 min-w-[9rem] items-center gap-1">
     <HelpTooltip class="-ml-1" width-class="w-max max-w-[calc(100vw-2rem)]" data-testid="upstream-billing-details">
       <template #trigger>
-        <span
-          class="cursor-help border-b border-dotted border-gray-300 text-sm font-medium dark:border-dark-600"
-          :class="hasEffectiveRate ? 'font-mono text-gray-800 dark:text-gray-200' : statusClass || 'text-gray-400 dark:text-gray-500'"
-          data-testid="upstream-billing-rate"
-        >
-          {{ primaryValue }}
+        <span class="flex w-[6.75rem] cursor-help flex-col justify-center leading-tight">
+          <span
+            class="w-fit border-b border-dotted border-gray-300 text-sm font-medium dark:border-dark-600"
+            :class="hasPrimaryValue ? 'font-mono text-gray-800 dark:text-gray-200' : statusClass || 'text-gray-400 dark:text-gray-500'"
+            data-testid="upstream-billing-rate"
+          >
+            {{ primaryValue }}
+          </span>
+          <span
+            v-if="deepSeekData"
+            class="mt-0.5 max-w-full truncate font-mono text-[11px]"
+            :class="deepSeekBalanceClass"
+            data-testid="upstream-billing-balance"
+          >
+            {{ deepSeekBalanceValue }}
+          </span>
         </span>
       </template>
       <div class="space-y-1">
-        <template v-if="hasEffectiveRate && data">
-          <p>{{ t('admin.accounts.upstreamBilling.groupRate', { value: data.group_rate_multiplier }) }}</p>
-          <p v-if="data.user_rate_multiplier != null">
-            {{ t('admin.accounts.upstreamBilling.userRate', { value: data.user_rate_multiplier }) }}
+        <template v-if="deepSeekData">
+          <p>{{ t('admin.accounts.upstreamBilling.configuredRate', { value: configuredRateDisplay }) }}</p>
+          <p>
+            {{
+              deepSeekData.is_available
+                ? t('admin.accounts.upstreamBilling.deepSeekAvailable')
+                : t('admin.accounts.upstreamBilling.deepSeekUnavailable')
+            }}
+          </p>
+          <template v-for="balance in deepSeekData.balance_infos" :key="balance.currency">
+            <p>
+              {{
+                t('admin.accounts.upstreamBilling.deepSeekTotalBalance', {
+                  currency: balance.currency,
+                  value: balance.total_balance
+                })
+              }}
+            </p>
+            <p>
+              {{
+                t('admin.accounts.upstreamBilling.deepSeekBalanceBreakdown', {
+                  granted: balance.granted_balance,
+                  toppedUp: balance.topped_up_balance
+                })
+              }}
+            </p>
+          </template>
+          <p v-if="statusLabel">{{ statusLabel }}</p>
+          <p>{{ t('admin.accounts.upstreamBilling.updatedAt', { value: formatDate(snapshot?.received_at) }) }}</p>
+        </template>
+        <template v-else-if="hasEffectiveRate && rateData">
+          <p>{{ t('admin.accounts.upstreamBilling.groupRate', { value: rateData.group_rate_multiplier }) }}</p>
+          <p v-if="rateData.user_rate_multiplier != null">
+            {{ t('admin.accounts.upstreamBilling.userRate', { value: rateData.user_rate_multiplier }) }}
           </p>
           <p>
             {{
-              data.peak_rate_enabled
+              rateData.peak_rate_enabled
                 ? t('admin.accounts.upstreamBilling.peakRate', {
-                    start: data.peak_start,
-                    end: data.peak_end,
-                    value: data.peak_rate_multiplier,
-                    timezone: data.timezone
+                    start: rateData.peak_start,
+                    end: rateData.peak_end,
+                    value: rateData.peak_rate_multiplier,
+                    timezone: rateData.timezone
                   })
                 : t('admin.accounts.upstreamBilling.noPeakRate')
             }}
@@ -65,7 +105,7 @@
         </p>
       </div>
     </HelpTooltip>
-    <span v-if="hasEffectiveRate && statusLabel" :class="statusClass" class="whitespace-nowrap text-[10px] font-medium">
+    <span v-if="hasDisplayValue && statusLabel" :class="statusClass" class="whitespace-nowrap text-[10px] font-medium">
       {{ statusLabel }}
     </span>
     <button
@@ -89,7 +129,7 @@ import { useI18n } from 'vue-i18n'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, DeepSeekBalanceInfo, DeepSeekUpstreamBillingData, UpstreamBillingProbeSnapshot } from '@/types'
 
 const props = withDefaults(defineProps<{
   account: Account
@@ -110,6 +150,32 @@ const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000
 const eligible = computed(() => props.account.type === 'apikey')
 const snapshot = computed<UpstreamBillingProbeSnapshot | undefined>(() => props.account.extra?.upstream_billing_probe)
 const data = computed(() => snapshot.value?.data)
+const rateData = computed(() => data.value?.object === 'sub2api.key_billing' ? data.value : undefined)
+const validDeepSeekBalance = (value: unknown): value is DeepSeekBalanceInfo => {
+  if (value == null || typeof value !== 'object') return false
+  const balance = value as Partial<DeepSeekBalanceInfo>
+  return (
+    typeof balance.currency === 'string' && /^[A-Z]{3}$/.test(balance.currency) &&
+    typeof balance.total_balance === 'string' && /^\d+(?:\.\d+)?$/.test(balance.total_balance) &&
+    typeof balance.granted_balance === 'string' && /^\d+(?:\.\d+)?$/.test(balance.granted_balance) &&
+    typeof balance.topped_up_balance === 'string' && /^\d+(?:\.\d+)?$/.test(balance.topped_up_balance)
+  )
+}
+const deepSeekData = computed<DeepSeekUpstreamBillingData | undefined>(() => {
+  const billing = data.value
+  if (
+    billing?.object !== 'deepseek.user_balance' ||
+    billing.schema_version !== 1 ||
+    billing.provider !== 'deepseek' ||
+    typeof billing.is_available !== 'boolean' ||
+    !Array.isArray(billing.balance_infos) ||
+    billing.balance_infos.length > 16 ||
+    !billing.balance_infos.every(validDeepSeekBalance) ||
+    new Set(billing.balance_infos.map(balance => balance.currency)).size !== billing.balance_infos.length ||
+    (billing.is_available && billing.balance_infos.length === 0)
+  ) return undefined
+  return billing
+})
 const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled === true)
 const nextProbeAt = computed(() => {
   const value = snapshot.value?.next_probe_at
@@ -159,7 +225,7 @@ const minuteInTimeZone = (timestamp: number, timeZone?: string) => {
   }
 }
 const currentEffectiveRate = computed(() => {
-  const billing = data.value
+  const billing = rateData.value
   if (!billing) return null
   if (billing.billing_scope !== 'token') return null
   const base = billing.resolved_rate_multiplier
@@ -175,7 +241,7 @@ const currentEffectiveRate = computed(() => {
   return Number.isFinite(value) ? value : null
 })
 const lastDetectedRate = computed(() => {
-  const value = data.value?.effective_rate_multiplier
+  const value = rateData.value?.effective_rate_multiplier
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Number(value.toPrecision(12))
     : null
@@ -209,7 +275,32 @@ const statusClass = computed(() => {
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')
-const primaryValue = computed(() => hasEffectiveRate.value ? effectiveRate.value : statusLabel.value || '-')
+const configuredRate = computed(() => {
+  const value = props.account.rate_multiplier ?? 1
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+})
+const configuredRateDisplay = computed(() => configuredRate.value == null ? '-' : formatMultiplier(configuredRate.value))
+const deepSeekBalanceValue = computed(() => {
+  const billing = deepSeekData.value
+  if (!billing) return ''
+  if (billing.balance_infos.length === 0) return t('admin.accounts.upstreamBilling.deepSeekUnavailableShort')
+  const first = billing.balance_infos[0]
+  const suffix = billing.balance_infos.length > 1 ? ` +${billing.balance_infos.length - 1}` : ''
+  return `${first.currency} ${first.total_balance}${suffix}`
+})
+const deepSeekBalanceClass = computed(() => {
+  const billing = deepSeekData.value
+  if (!billing?.is_available) return 'text-red-600 dark:text-red-400'
+  if (stale.value) return 'text-amber-600 dark:text-amber-400'
+  if (snapshot.value?.status === 'failed') return 'text-red-600 dark:text-red-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+})
+const hasPrimaryValue = computed(() => hasEffectiveRate.value || (deepSeekData.value != null && configuredRate.value != null))
+const hasDisplayValue = computed(() => hasEffectiveRate.value || deepSeekData.value != null)
+const primaryValue = computed(() => {
+  if (deepSeekData.value && configuredRate.value != null) return `${configuredRateDisplay.value}x`
+  return hasEffectiveRate.value ? effectiveRate.value : statusLabel.value || '-'
+})
 const formatDate = (value?: string) => value
   ? new Date(value).toLocaleString(undefined, {
       month: '2-digit',
