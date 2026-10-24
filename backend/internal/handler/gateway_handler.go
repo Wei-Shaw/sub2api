@@ -1198,7 +1198,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Fallback to default models
 	if platform == service.PlatformOpenAI {
-		writeModelsListResponse(c, openai.DefaultModels)
+		writeModelsList(c, service.PlatformOpenAI, openai.DefaultModelIDs())
 		return
 	}
 
@@ -1435,18 +1435,22 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 
 	models := make([]openai.Model, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
-		if model, ok := defaultsByID[modelID]; ok {
-			models = append(models, model)
-			continue
+		model, ok := defaultsByID[modelID]
+		if !ok {
+			model = openai.Model{
+				ID:          modelID,
+				Object:      "model",
+				Created:     1704067200,
+				OwnedBy:     "openai",
+				Type:        "model",
+				DisplayName: modelID,
+			}
 		}
-		models = append(models, openai.Model{
-			ID:          modelID,
-			Object:      "model",
-			Created:     1704067200,
-			OwnedBy:     "openai",
-			Type:        "model",
-			DisplayName: modelID,
-		})
+		// Advertise the same context windows the Codex models manifest reports
+		// so OpenAI-compatible clients relying on /v1/models metadata do not
+		// fall back to stale bundled catalogs.
+		model.ContextWindow, model.MaxContextWindow = service.CodexModelContextWindow(modelID)
+		models = append(models, model)
 	}
 	writeModelsListResponse(c, models)
 }
