@@ -50,6 +50,60 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 
 ## Docker Deployment (Recommended)
 
+### GitHub Actions VPS Deployment
+
+The repository includes a standalone workflow at `.github/workflows/sub2api-vps-deploy.yml`. It builds the Sub2API image in GitHub Actions, publishes immutable `sha-<commit>` tags to GHCR, and lets the VPS pull and run that image with PostgreSQL and Redis. The workflow does not depend on Discord, Cloudflare Tunnel, or any other application.
+
+#### One-time VPS setup
+
+Install Docker Engine and Compose v2, then create the deployment directory:
+
+```bash
+sudo install -d -m 0750 /opt/sub2api
+sudo cp deploy/.env.example /opt/sub2api/app.env
+sudo chmod 640 /opt/sub2api/app.env
+sudo nano /opt/sub2api/app.env
+```
+
+Set fixed values for `POSTGRES_PASSWORD`, `JWT_SECRET`, and `TOTP_ENCRYPTION_KEY`. Set `BIND_HOST=127.0.0.1` when a host reverse proxy owns the public listener; use `BIND_HOST=0.0.0.0` only when port `8080` is intentionally exposed. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` empty to have the first startup generate credentials in the application log.
+
+If `app.env` is missing at the first Actions deployment, `remote-deploy.sh` creates a minimal production file with generated persistent secrets. Existing `app.env` files are never overwritten.
+
+For a 2 GB VPS that also runs another service, keep the database footprint conservative:
+
+```dotenv
+POSTGRES_MAX_CONNECTIONS=200
+POSTGRES_SHARED_BUFFERS=128MB
+POSTGRES_EFFECTIVE_CACHE_SIZE=512MB
+POSTGRES_MAINTENANCE_WORK_MEM=64MB
+REDIS_POOL_SIZE=256
+REDIS_MIN_IDLE_CONNS=10
+```
+
+The SSH user used by Actions must be able to run Docker and write `/opt/sub2api`:
+
+```bash
+sudo useradd --create-home --shell /bin/bash sub2apideploy
+sudo usermod -aG docker sub2apideploy
+sudo chown -R sub2apideploy:sub2apideploy /opt/sub2api
+```
+
+Create a GitHub Environment named `sub2api_production` with these secrets:
+
+| Secret | Value |
+|--------|-------|
+| `VPS_HOST` | VPS address |
+| `VPS_USER` | `sub2apideploy` |
+| `VPS_SSH_PRIVATE_KEY` | SSH private key for that user |
+| `VPS_KNOWN_HOSTS` | Verified VPS host key |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare Tunnel token; optional until the tunnel is created |
+
+Pushes to `main` deploy `sha-<commit>`; version tags deploy the matching `v*` image tag. You can also run this workflow manually from the Actions tab. The remote script checks all three container health checks and restores the previous Sub2API image if startup fails. It keeps data under `/opt/sub2api/data`, `/opt/sub2api/postgres_data`, and `/opt/sub2api/redis_data`.
+
+#### Cloudflare Tunnel
+
+Create a remotely managed tunnel in Cloudflare Zero Trust, add a public hostname for your domain, and set its service to `http://sub2api:8080`. Add the tunnel token as the `CLOUDFLARE_TUNNEL_TOKEN` Environment secret. The workflow then starts `cloudflared` inside the Compose network; the VPS does not need port `8080` exposed publicly. Remove the secret to stop starting the tunnel while keeping the Sub2API deployment.
+
 ### Method 1: One-Click Deployment (Recommended)
 
 Use the automated preparation script for the easiest setup:

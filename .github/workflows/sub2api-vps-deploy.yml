@@ -1,0 +1,127 @@
+name: Sub2API VPS deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Check deployment scripts
+        run: |
+          bash -n deploy/remote-deploy.sh
+          docker compose --env-file deploy/.env.example -f deploy/docker-compose.local.yml config -q
+      - name: Build image
+        uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: local/sub2api:verify
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Extract image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: publish
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: sub2api_production
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: sub2api-production-deployment
+      cancel-in-progress: false
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v6
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      - name: Install VPS host key
+        shell: bash
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Upload deployment files
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp -o StrictHostKeyChecking=yes \
+            deploy/docker-compose.local.yml "$VPS_USER@$VPS_HOST:/opt/sub2api/docker-compose.yml"
+          scp -o StrictHostKeyChecking=yes \
+            deploy/remote-deploy.sh "$VPS_USER@$VPS_HOST:/opt/sub2api/remote-deploy.sh"
+      - name: Deploy immutable image
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_IMAGE_REPOSITORY: ${{ github.repository }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          IMAGE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('sha-{0}', github.sha) }}
+        run: |
+          printf 'GHCR_USERNAME=%s\nGHCR_TOKEN=%s\nGHCR_IMAGE_REPOSITORY=%s\nCLOUDFLARE_TUNNEL_TOKEN=%s\n' \
+            "$GHCR_USERNAME" "$GHCR_TOKEN" "$GHCR_IMAGE_REPOSITORY" "$CLOUDFLARE_TUNNEL_TOKEN" \
+            | ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" 'umask 077; cat > /tmp/sub2api-registry.env'
+          ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "trap 'rm -f /tmp/sub2api-registry.env' EXIT; chmod 700 /opt/sub2api/remote-deploy.sh; REGISTRY_ENV_FILE=/tmp/sub2api-registry.env /opt/sub2api/remote-deploy.sh '$IMAGE_TAG'"
