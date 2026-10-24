@@ -81,6 +81,7 @@ type Config struct {
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
+	Feishu                  FeishuConnectConfig           `mapstructure:"feishu_connect"`
 	DingTalk                DingTalkConnectConfig         `mapstructure:"dingtalk_connect"`
 	GitHubOAuth             EmailOAuthProviderConfig      `mapstructure:"github_oauth"`
 	GoogleOAuth             EmailOAuthProviderConfig      `mapstructure:"google_oauth"`
@@ -2201,6 +2202,12 @@ func setDefaults() {
 	viper.SetDefault("oidc_connect.userinfo_id_path", "")
 	viper.SetDefault("oidc_connect.userinfo_username_path", "")
 
+	viper.SetDefault("feishu_connect.enabled", false)
+	viper.SetDefault("feishu_connect.client_id", "")
+	viper.SetDefault("feishu_connect.client_secret", "")
+	viper.SetDefault("feishu_connect.redirect_url", "")
+	viper.SetDefault("feishu_connect.allowed_tenant_keys", []string{})
+
 	// DingTalk Connect OAuth 登录
 	viper.SetDefault("dingtalk_connect.enabled", false)
 	viper.SetDefault("dingtalk_connect.authorize_url", "https://login.dingtalk.com/oauth2/auth")
@@ -3782,6 +3789,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Grok.FreeQuotaStatsCacheSeconds < 0 {
 		return fmt.Errorf("gateway.grok.free_quota_stats_cache_seconds must be non-negative")
+	}
+	if err := ValidateFeishuConfig(c.Feishu); err != nil {
+		return fmt.Errorf("feishu_connect: %w", err)
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)

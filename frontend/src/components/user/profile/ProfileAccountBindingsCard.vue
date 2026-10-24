@@ -2,6 +2,7 @@
   <ProfileIdentityBindingsSection
     :user="user"
     :linuxdo-enabled="linuxdoEnabled"
+    :feishu-enabled="feishuEnabled"
     :dingtalk-enabled="dingtalkEnabled"
     :oidc-enabled="oidcEnabled"
     :oidc-provider-name="oidcProviderName"
@@ -19,6 +20,7 @@ withDefaults(
   defineProps<{
     user: User | null
     linuxdoEnabled?: boolean
+    feishuEnabled?: boolean
     dingtalkEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
@@ -28,6 +30,7 @@ withDefaults(
   }>(),
   {
     linuxdoEnabled: false,
+    feishuEnabled: false,
     dingtalkEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',

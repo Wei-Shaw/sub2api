@@ -254,6 +254,7 @@ import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   completeOIDCOAuthRegistration,
+  completeFeishuOAuthRegistration,
   exchangePendingOAuthCompletion,
   getOAuthCompletionKind,
   getPublicSettings,
@@ -270,6 +271,7 @@ import {
   oauthAffiliatePayload
 } from '@/utils/oauthAffiliate'
 
+const props = withDefaults(defineProps<{ provider?: 'oidc' | 'feishu' }>(), { provider: 'oidc' })
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -284,7 +286,8 @@ const invitationCode = ref('')
 const isSubmitting = ref(false)
 const invitationError = ref('')
 const redirectTo = ref('/dashboard')
-const providerName = ref('OIDC')
+const providerName = ref(props.provider === 'feishu' ? 'Feishu' : 'OIDC')
+const completeRegistration = props.provider === 'feishu' ? completeFeishuOAuthRegistration : completeOIDCOAuthRegistration
 const adoptionRequired = ref(false)
 const suggestedDisplayName = ref('')
 const suggestedAvatarUrl = ref('')
@@ -352,7 +355,7 @@ function persistPendingAuthSession(redirect?: string) {
   authStore.setPendingAuthSession({
     token: '',
     token_field: 'pending_oauth_token',
-    provider: 'oidc',
+    provider: props.provider,
     redirect: sanitizeRedirectPath(redirect || redirectTo.value)
   })
 }
@@ -401,6 +404,7 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
 }
 
 async function loadProviderName() {
+  if (props.provider === 'feishu') return
   try {
     const settings = await getPublicSettings()
     const name = settings.oidc_oauth_provider_name?.trim()
@@ -670,8 +674,8 @@ async function handleSubmitInvitation() {
           })
         ).data
       : affCode
-        ? await completeOIDCOAuthRegistration(invitationCode.value.trim(), decision, affCode)
-        : await completeOIDCOAuthRegistration(invitationCode.value.trim(), decision)
+        ? await completeRegistration(invitationCode.value.trim(), decision, affCode)
+        : await completeRegistration(invitationCode.value.trim(), decision)
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string } } }
@@ -775,8 +779,8 @@ onMounted(async () => {
   void loadProviderName()
 
   const params = parseFragmentParams()
-  const legacyLogin = readLegacyFragmentLogin(params)
-  const legacyPendingToken = params.get('pending_oauth_token')?.trim() || ''
+  const legacyLogin = props.provider === 'feishu' ? null : readLegacyFragmentLogin(params)
+  const legacyPendingToken = props.provider === 'oidc' ? params.get('pending_oauth_token')?.trim() || '' : ''
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
   const redirect = sanitizeRedirectPath(
