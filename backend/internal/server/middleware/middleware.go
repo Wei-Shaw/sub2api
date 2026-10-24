@@ -18,6 +18,14 @@ const (
 	ContextKeyUser ContextKey = "user"
 	// ContextKeyUserRole 当前用户角色（string）
 	ContextKeyUserRole ContextKey = "user_role"
+	// ContextKeyAuthKind 当前认证方式：jwt 或 oauth。
+	ContextKeyAuthKind ContextKey = "auth_kind"
+	// ContextKeyOAuthClientID OAuth access token 的 Client ID。
+	ContextKeyOAuthClientID ContextKey = "oauth_client_id"
+	// ContextKeyOAuthScopes OAuth access token 的 scope 集合。
+	ContextKeyOAuthScopes ContextKey = "oauth_scopes"
+	// ContextKeyOAuthTokenID OAuth access token 的数据库 ID。
+	ContextKeyOAuthTokenID ContextKey = "oauth_token_id"
 	// ContextKeyAPIKey API密钥上下文键
 	ContextKeyAPIKey ContextKey = "api_key"
 	// ContextKeySubscription 订阅上下文键

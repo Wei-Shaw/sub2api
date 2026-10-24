@@ -1,4 +1,37 @@
 export default {
+  oauth: {
+    authorize: {
+      loading: 'Loading authorization...',
+      unavailable: 'Authorization unavailable',
+      signInWith: 'Sign in with Sub2API',
+      requestAccess: 'This application is requesting access to your Sub2API account.',
+      requestedPermissions: 'Requested permissions',
+      revokeHint: 'You can revoke this application later from Connected Applications in your profile settings.',
+      authorizing: 'Authorizing...',
+      authorize: 'Authorize',
+      missingTransaction: 'Missing authorization transaction.',
+      invalidTransaction: 'Authorization transaction is invalid or expired.',
+      failed: 'Authorization failed.'
+    },
+    connectedApps: {
+      title: 'Connected Applications',
+      description: 'Third-party applications authorized to access your Sub2API account. Revoking disconnects the application immediately: its access tokens stop working.',
+      empty: 'No connected applications yet. When you authorize a desktop or web app through Sub2API sign-in, it will appear here.',
+      approvedAt: 'Approved {date}',
+      revoke: 'Revoke',
+      revoking: 'Revoking...',
+      loadFailed: 'Failed to load connected applications.',
+      revokeFailed: 'Failed to revoke the application.'
+    }
+  },
+  oauthScopes: {
+    openid: 'Identify your Sub2API account',
+    profile: 'Read your basic profile',
+    groupsRead: 'Read groups available to your account',
+    keysRead: 'Read your API keys, including key values',
+    keysCreate: 'Create API keys for an allowed group',
+    keysRevoke: 'Revoke your API keys'
+  },
   common: {
     loading: 'Loading...',
     submitting: 'Submitting...',

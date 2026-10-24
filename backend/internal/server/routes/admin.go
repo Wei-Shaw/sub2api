@@ -42,6 +42,16 @@ func RegisterAdminRoutes(
 		// 用户管理
 		registerUserManagementRoutes(admin, h)
 
+		// OAuth Provider 客户端管理（public 客户端；PKCE 强制）
+		if h.OAuth != nil {
+			oauthClients := admin.Group("/oauth-clients")
+			{
+				oauthClients.GET("", h.OAuth.AdminListClients)
+				oauthClients.PUT("/:clientId", h.OAuth.AdminUpsertClient)
+				oauthClients.DELETE("/:clientId", h.OAuth.AdminDeleteClient)
+			}
+		}
+
 		// 分组管理
 		registerGroupRoutes(admin, h)
 

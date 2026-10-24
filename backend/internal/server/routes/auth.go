@@ -22,6 +22,9 @@ func RegisterAuthRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *servermiddleware.PanelRateLimiter,
 ) {
+	if h.OAuth != nil {
+		jwtAuth = h.OAuth.AuthMiddleware(jwtAuth)
+	}
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
 

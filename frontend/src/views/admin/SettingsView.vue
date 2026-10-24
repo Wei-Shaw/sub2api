@@ -3782,6 +3782,11 @@
         </div>
         <!-- /Tab: Security — Registration, Turnstile, LinuxDo, OIDC -->
 
+        <!-- Tab: Security — OAuth Clients -->
+        <div v-show="activeTab === 'security'" class="space-y-6">
+          <OAuthClientsCard />
+        </div>
+
         <!-- Tab: Users -->
         <div v-show="activeTab === 'users'" class="space-y-6">
           <!-- Default Settings -->
@@ -8984,6 +8989,7 @@ import {
 } from "@/utils/siteBillingMode";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
+import OAuthClientsCard from "@/components/admin/settings/OAuthClientsCard.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";

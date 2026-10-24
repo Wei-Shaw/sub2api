@@ -1,4 +1,37 @@
 export default {
+  oauth: {
+    authorize: {
+      loading: '正在加载授权页面...',
+      unavailable: '授权不可用',
+      signInWith: '使用 Sub2API 登录',
+      requestAccess: '此应用正在请求访问您的 Sub2API 账户。',
+      requestedPermissions: '申请的权限',
+      revokeHint: '您之后可以在“个人资料”页面的“已连接的应用”中撤销此应用的访问权限。',
+      authorizing: '授权中...',
+      authorize: '授权',
+      missingTransaction: '缺少授权事务。',
+      invalidTransaction: '授权事务无效或已过期。',
+      failed: '授权失败。'
+    },
+    connectedApps: {
+      title: '已连接的应用',
+      description: '已授权访问您 Sub2API 账户的第三方应用。撤销后立即断开：该应用的访问令牌将全部失效。',
+      empty: '暂无已连接的应用。当您通过 Sub2API 登录授权桌面或网页应用后，它会显示在这里。',
+      approvedAt: '批准于 {date}',
+      revoke: '撤销',
+      revoking: '撤销中...',
+      loadFailed: '加载已连接应用失败。',
+      revokeFailed: '撤销失败。'
+    }
+  },
+  oauthScopes: {
+    openid: '识别您的 Sub2API 账户',
+    profile: '读取您的基本资料',
+    groupsRead: '读取您账户可用的分组',
+    keysRead: '读取您账户下的 API Key（含密钥明文）',
+    keysCreate: '为允许的分组创建 API Key',
+    keysRevoke: '撤销您账户下的 API Key'
+  },
   common: {
     loading: '加载中...',
     submitting: '提交中...',

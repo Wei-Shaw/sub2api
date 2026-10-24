@@ -2127,3 +2127,33 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(quotas["anthropic"]?.["daily"]).toBe(null);
   });
 });
+
+describe("admin SettingsView OAuth clients card", () => {
+  it("renders the OAuth clients management card at the end of the security tab", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    await openSecurityTab(wrapper);
+
+    // 卡片标题键按原样渲染（i18n mock 未映射该键时返回键名）
+    expect(wrapper.text()).toContain("admin.settings.oauthClients.title");
+    // 新增客户端按钮存在
+    expect(wrapper.text()).toContain("admin.settings.oauthClients.add");
+
+    // 卡片应位于 security 标签内容末尾：DOM 顺序在微信登录卡片（block ②）之后
+
+    const cards = Array.from(wrapper.element.querySelectorAll(".card"));
+    const oauthIndex = cards.findIndex((card) =>
+      card.textContent?.includes("admin.settings.oauthClients.title")
+    );
+    // spec 的 i18n mock 把微信卡片标题映射为中文值
+    const wechatIndex = cards.findIndex((card) =>
+      card.textContent?.includes("微信登录")
+    );
+    expect(oauthIndex).toBeGreaterThan(-1);
+    expect(wechatIndex).toBeGreaterThan(-1);
+    expect(oauthIndex).toBeGreaterThan(wechatIndex);
+
+    wrapper.unmount();
+  });
+});

@@ -142,6 +142,11 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
+	// OAuth 受控明文揭示：谁在何时读取了用户 API Key 的明文（第一版不区分创建来源）。
+	"POST /api/v1/keys/:id/reveal": "user.api_keys.reveal",
+	// OAuth 客户端管理：redirect URI / scope 的变更直接影响第三方能拿到什么。
+	"PUT /api/v1/admin/oauth-clients/:clientId":    "admin.oauth_clients.upsert",
+	"DELETE /api/v1/admin/oauth-clients/:clientId": "admin.oauth_clients.delete",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。

@@ -50,6 +50,24 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/oauth/authorize',
+    name: 'OAuthAuthorize',
+    component: () => import('@/views/oauth/AuthorizeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Authorize Application'
+    }
+  },
+  {
+    path: '/oauth/error',
+    name: 'OAuthError',
+    component: () => import('@/views/oauth/OAuthErrorView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Authorization Error'
+    }
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),

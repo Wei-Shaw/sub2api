@@ -20,7 +20,8 @@ import (
 
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
-	apiKeyService *service.APIKeyService
+	apiKeyService        *service.APIKeyService
+	oauthProviderService *service.OAuthProviderService
 }
 
 // NewAPIKeyHandler creates a new APIKeyHandler
@@ -28,6 +29,10 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
 	}
+}
+
+func (h *APIKeyHandler) SetOAuthProviderService(provider *service.OAuthProviderService) {
+	h.oauthProviderService = provider
 }
 
 // CreateAPIKeyRequest represents the create API key request payload
@@ -109,6 +114,10 @@ func (h *APIKeyHandler) List(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	if oauth, isOAuth := middleware2.GetOAuthAuthContext(c); isOAuth {
+		h.listOAuthKeys(c, subject.UserID, oauth.ClientID)
+		return
+	}
 
 	page, pageSize := response.ParsePagination(c)
 	params := pagination.PaginationParams{
@@ -173,6 +182,21 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 		response.NotFound(c, "API key not found")
 		return
 	}
+	if oauth, isOAuth := middleware2.GetOAuthAuthContext(c); isOAuth {
+		if h.oauthProviderService == nil {
+			response.InternalError(c, "OAuth provider is not ready")
+			return
+		}
+		owned, ownerErr := h.oauthProviderService.APIKeyOwnedByClient(c.Request.Context(), keyID, subject.UserID, oauth.ClientID)
+		if ownerErr != nil || !owned {
+			response.NotFound(c, "API key not found")
+			return
+		}
+		mapped := dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language"))
+		mapped.Key = ""
+		response.Success(c, mapped)
+		return
+	}
 
 	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
@@ -194,6 +218,12 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	if err := validateAPIKeyCreateRequest(req); err != nil {
 		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative, and expires_in_days must be greater than zero")
 		return
+	}
+	if _, isOAuth := middleware2.GetOAuthAuthContext(c); isOAuth {
+		if req.CustomKey != nil && strings.TrimSpace(*req.CustomKey) != "" {
+			response.BadRequest(c, "OAuth clients cannot provide custom API keys")
+			return
+		}
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
@@ -307,6 +337,21 @@ func (h *APIKeyHandler) Delete(c *gin.Context) {
 		response.BadRequest(c, "Invalid key ID")
 		return
 	}
+	if oauth, isOAuth := middleware2.GetOAuthAuthContext(c); isOAuth {
+		if h.oauthProviderService == nil {
+			response.InternalError(c, "OAuth provider is not ready")
+			return
+		}
+		owned, ownerErr := h.oauthProviderService.APIKeyOwnedByClient(c.Request.Context(), keyID, subject.UserID, oauth.ClientID)
+		if ownerErr != nil {
+			response.ErrorFrom(c, ownerErr)
+			return
+		}
+		if !owned {
+			response.NotFound(c, "API key not found")
+			return
+		}
+	}
 
 	err = h.apiKeyService.Delete(c.Request.Context(), keyID, subject.UserID)
 	if err != nil {
@@ -315,6 +360,86 @@ func (h *APIKeyHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "API key deleted successfully"})
+}
+
+func (h *APIKeyHandler) listOAuthKeys(c *gin.Context, userID int64, clientID string) {
+	if h.oauthProviderService == nil {
+		response.InternalError(c, "OAuth provider is not ready")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	var groupID *int64
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		if parsed, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
+			groupID = &parsed
+		}
+	}
+	limit := pageSize
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+	// Initial OAuth release lists all keys owned by the current user. The
+	// client_id argument remains for forward-compatible service APIs.
+	ids, total, err := h.oauthProviderService.ListAPIKeyIDs(c.Request.Context(), userID, clientID, strings.TrimSpace(c.Query("search")), strings.TrimSpace(c.Query("status")), groupID, limit, offset)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.APIKey, 0, len(ids))
+	for _, id := range ids {
+		key, err := h.apiKeyService.GetByID(c.Request.Context(), id)
+		if err != nil {
+			// The key vanished between COUNT and SELECT (e.g. a concurrent
+			// delete): skip it and keep total consistent with the returned
+			// items instead of silently shrinking the page unnoticed.
+			if errors.Is(err, service.ErrAPIKeyNotFound) {
+				total--
+				continue
+			}
+			response.ErrorFrom(c, err)
+			return
+		}
+		mapped := dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language"))
+		// Deliberately empty — never a masked pseudo-key. A non-empty value is
+		// indistinguishable from plaintext for clients (the sync engine would
+		// send it upstream and get 401s); plaintext rides POST /:id/reveal only.
+		mapped.Key = ""
+		out = append(out, *mapped)
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
+// RevealOAuth returns a user-owned key only through an explicit OAuth action.
+// The regular OAuth list and get endpoints answer with an empty key value;
+// plaintext rides exclusively through this audited, ownership-checked endpoint.
+func (h *APIKeyHandler) RevealOAuth(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	oauth, isOAuth := middleware2.GetOAuthAuthContext(c)
+	if !isOAuth || h.oauthProviderService == nil {
+		response.Forbidden(c, "OAuth client authorization is required")
+		return
+	}
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+	owned, err := h.oauthProviderService.APIKeyOwnedByClient(c.Request.Context(), keyID, subject.UserID, oauth.ClientID)
+	if err != nil || !owned {
+		response.NotFound(c, "API key not found")
+		return
+	}
+	key, err := h.apiKeyService.GetByID(c.Request.Context(), keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
 
 // GetAvailableGroups 获取用户可以绑定的分组列表
