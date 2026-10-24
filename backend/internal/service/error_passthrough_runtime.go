@@ -1,6 +1,9 @@
 package service
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/gin-gonic/gin"
+)
 
 const errorPassthroughServiceContextKey = "error_passthrough_service"
 
@@ -37,18 +40,35 @@ func applyErrorPassthroughRule(
 	defaultErrType string,
 	defaultErrMsg string,
 ) (status int, errType string, errMsg string, matched bool) {
+	status, errType, errMsg, rule := applyErrorPassthroughRuleWithRule(
+		c, platform, upstreamStatus, responseBody, defaultStatus, defaultErrType, defaultErrMsg,
+	)
+	return status, errType, errMsg, rule != nil
+}
+
+// applyErrorPassthroughRuleWithRule 与 applyErrorPassthroughRule 相同，额外返回命中的规则（未命中为 nil），
+// 供需要按规则选项（如 passthrough_body）细化响应体的调用方使用。
+func applyErrorPassthroughRuleWithRule(
+	c *gin.Context,
+	platform string,
+	upstreamStatus int,
+	responseBody []byte,
+	defaultStatus int,
+	defaultErrType string,
+	defaultErrMsg string,
+) (status int, errType string, errMsg string, rule *model.ErrorPassthroughRule) {
 	status = defaultStatus
 	errType = defaultErrType
 	errMsg = defaultErrMsg
 
 	svc := getBoundErrorPassthroughService(c)
 	if svc == nil {
-		return status, errType, errMsg, false
+		return status, errType, errMsg, nil
 	}
 
-	rule := svc.MatchRule(platform, upstreamStatus, responseBody)
+	rule = svc.MatchRule(platform, upstreamStatus, responseBody)
 	if rule == nil {
-		return status, errType, errMsg, false
+		return status, errType, errMsg, nil
 	}
 
 	status = upstreamStatus
@@ -66,7 +86,8 @@ func applyErrorPassthroughRule(
 		c.Set(OpsSkipPassthroughKey, true)
 	}
 
-	// 与现有 failover 场景保持一致：命中规则时统一返回 upstream_error。
+	// 与现有 failover 场景保持一致：命中规则时默认返回 upstream_error；
+	// OpenAI 路径在 passthrough_body=true 时会改用上游 type/code/param（见 writeOpenAIPassthroughRuleBodyError）。
 	errType = "upstream_error"
-	return status, errType, errMsg, true
+	return status, errType, errMsg, rule
 }
