@@ -155,6 +155,66 @@ export const OZON_SIZE_OPTIONS = [
   { label: '1500 × 2000（3:4 竖版，高清）', value: '1500x2000' },
 ]
 
+/**
+ * 主图的三种版式。
+ *
+ * 【2026-10-24 主人要求】「主体在图片中的位置可以按照排版换位置，
+ * 比如在图片的右边时候信息就在左边。更多的是灵活放置，所有都是同一个位置的话很单调。」
+ *
+ * 所以主图不再写死「商品居中偏右、文字在左」，而是每次生成脚本时**随机挑一种**，
+ * 这样连做几套不会每张都长一个样。挑中的那一种会写进提示词正文，
+ * 用户在脚本卡片里能看到，也能自己改。
+ */
+export type MainImageLayout = 'productRight' | 'productLeft' | 'productBottom'
+
+export const MAIN_IMAGE_LAYOUTS: MainImageLayout[] = ['productRight', 'productLeft', 'productBottom']
+
+/** 每种版式的「商品放哪 / 文字放哪 / 光从哪来」，中英各一份。 */
+const MAIN_IMAGE_LAYOUT_SPEC: Record<MainImageLayout, { zh: string; en: string }> = {
+  productRight: {
+    zh:
+      '版式：**商品在画面右侧**，完整入镜，占画面宽度 45-55%、高度 55-70%；左侧留出约 40% 的竖带专门放文字。' +
+      '光线：左前方柔和窗光，右侧补一点反光，投影落在右下。' +
+      '文字位置：① 左上角 2-3 行大号俄语主标题；② 主标题下一行手写体俄语副标题；' +
+      '③ 左侧中部竖排三组「实心圆形图标 + 两行俄语」；④ 左下角一个圆形局部放大镜；' +
+      '⑤ 底部一条圆角胶囊条，横跨画面下方。',
+    en:
+      'Layout: **the product sits on the RIGHT**, fully in frame, taking 45-55% of the width and 55-70% of the height; the left 40% is a vertical band reserved for type. ' +
+      'Lighting: soft window light from the front-left with a little bounce on the right; the shadow falls to the lower right. ' +
+      'Text placement: (1) 2-3 line large Russian headline at the upper left; (2) one line of handwritten Russian subtitle beneath it; ' +
+      '(3) three stacked rows of "filled circular icon + two lines of Russian" down the left-middle; (4) a circular detail magnifier at the lower left; ' +
+      '(5) a rounded pill bar across the bottom.',
+  },
+  productLeft: {
+    zh:
+      '版式：**商品在画面左侧**，完整入镜，占画面宽度 45-55%、高度 55-70%；右侧留出约 40% 的竖带专门放文字。' +
+      '光线：右前方柔和窗光，左侧补一点反光，投影落在左下。' +
+      '文字位置：① 右上角 2-3 行大号俄语主标题（右对齐）；② 主标题下一行手写体俄语副标题；' +
+      '③ 右侧中部竖排三组「实心圆形图标 + 两行俄语」（右对齐）；④ 右下角一个圆形局部放大镜；' +
+      '⑤ 底部一条圆角胶囊条，横跨画面下方。',
+    en:
+      'Layout: **the product sits on the LEFT**, fully in frame, taking 45-55% of the width and 55-70% of the height; the right 40% is a vertical band reserved for type. ' +
+      'Lighting: soft window light from the front-right with a little bounce on the left; the shadow falls to the lower left. ' +
+      'Text placement: (1) a 2-3 line large Russian headline at the upper right, right-aligned; (2) one line of handwritten Russian subtitle beneath it; ' +
+      '(3) three stacked rows of "filled circular icon + two lines of Russian" down the right-middle, right-aligned; (4) a circular detail magnifier at the lower right; ' +
+      '(5) a rounded pill bar across the bottom.',
+  },
+  productBottom: {
+    zh:
+      '版式：**商品在画面下半部居中**，完整入镜，占画面宽度 60-70%、高度 50-58%；上半部约 35% 留白专门放文字。' +
+      '光线：顶部柔和散射光加左侧一点窗光，投影落在商品正下方。' +
+      '文字位置：① 顶部居中 2-3 行大号俄语主标题；② 主标题右下方一行手写体俄语副标题；' +
+      '③ 商品左右两侧各排一到两组「实心圆形图标 + 两行俄语」，合计三组；④ 右下角一个圆形局部放大镜；' +
+      '⑤ 最底部一条圆角胶囊条。',
+    en:
+      'Layout: **the product sits centred in the LOWER half**, fully in frame, taking 60-70% of the width and 50-58% of the height; the upper 35% is reserved for type. ' +
+      'Lighting: soft diffused light from above plus a little window light from the left; the shadow falls directly under the product. ' +
+      'Text placement: (1) a 2-3 line large Russian headline centred across the top; (2) one line of handwritten Russian subtitle at its lower right; ' +
+      '(3) one or two rows of "filled circular icon + two lines of Russian" on each side of the product, three rows in total; (4) a circular detail magnifier at the lower right; ' +
+      '(5) a rounded pill bar along the very bottom.',
+  },
+}
+
 /** 生成脚本时用的产品资料。 */
 export interface OzonScriptContext {
   product: string
@@ -166,6 +226,11 @@ export interface OzonScriptContext {
   /** 自动匹配或用户指定的场景 */
   sceneEn?: string
   sceneZh?: string
+  /**
+   * 主图版式。不传就随机挑一种（主人要求「灵活放置，不要都是一个位置」）。
+   * 测试里传死值，免得随机导致用例飘。
+   */
+  mainLayout?: MainImageLayout
 }
 
 export interface OzonScriptCard {
@@ -227,6 +292,16 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
   const sp2 = (ctx.sp2 || '').trim() || 'feature 2'
   const sp3 = (ctx.sp3 || '').trim() || 'feature 3'
   /**
+   * 主图版式：调用方指定就用它，没指定就**随机挑一种**。
+   *
+   * 为什么随机：主人说「所有都是同一个位置的话很单调」。每次建脚本都在三个版式里
+   * 挑一个，连做几套就不会每张主图都长一个样。挑中的那一种会明明白白写进提示词，
+   * 用户在脚本卡片里看得到、也能自己改。
+   */
+  const mainLayout: MainImageLayout =
+    ctx.mainLayout ?? MAIN_IMAGE_LAYOUTS[Math.floor(Math.random() * MAIN_IMAGE_LAYOUTS.length)]
+  const layoutSpec = MAIN_IMAGE_LAYOUT_SPEC[mainLayout]
+  /**
    * ⚠️ `ctx.pain` 和 `ctx.diff` **故意不再拼进任何一张卡片**。
    *
    * 原因：这两个字段是**中文**（界面里填「用户痛点」「差异化」），
@@ -279,49 +354,54 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
      */
     {
       /**
-       * 【2026-10-24 主人转达的修改意见】「模特使用场景跟主图融合就行，不用单另张」、
-       * 「主图加上模特」。所以原来独立的「模特使用场景」整张取消，
-       * 模特改成主图里的陪衬：站在商品右后方、轻微虚化、正在使用商品，
-       * 这样既有人物温度，又不抢商品主体，左侧还是留给大字卖点。
+       * 【2026-10-24 主人的最终版本】
+       *
+       * 下午先说「主图加上模特」，过了两小时又改了：
+       * 「主图现在不加模特使用，更多的是在产品主体不变的情况下要大标题和介绍产品的详情，
+       *   比如卖点、材质等，主体在图片中的位置可以按照排版换位置，
+       *   比如在图片的右边时候信息就在左边。更多的是灵活放置，所有都是同一个位置的话很单调。」
+       *
+       * 所以这一张：
+       *   1. **不放模特**（模特挪到第 3 张生活场景去展示「正在使用」）；
+       *   2. 重点变成「商品原样 + 大标题 + 卖点/材质等详情文字」；
+       *   3. 版式在三种里随机挑一种（商品在右 / 在左 / 在下），避免每套都一个样。
        */
       key: '01_main_image',
-      title: '第 1 张 · 主图（商品 + 模特使用 + 俄语卖点大字）',
+      title: '第 1 张 · 主图（商品原样 + 大字卖点详情）',
       bodyZh:
         `第1张：主图。产品：${product}。` +
-        '镜头：平视略高机位，商品完整居中偏右，占画面 50-58%。' +
         '**商品本身一个像素都不许改**：形状、颜色、材质、图案、配件、比例全部保持参考图原样。' +
-        '模特：右后方一位俄罗斯模特，轻微虚化（比商品模糊一档），正在自然地**使用**这件商品，' +
-        '只占画面 18-25%，**不许抢主体**；手和视线都指向商品。模特不要挡住商品，也不要压到左侧文字区。' +
+        '**画面里不要出现人物、模特、手**——这一张只讲商品和文字。' +
+        layoutSpec.zh +
         '背景：干净的浅色实景底（浅木桌面或浅灰布面），有柔和的空间层次，不要纯白、不要渐变纸。' +
-        '光线：左前方柔和窗光，右侧一点补光，商品表面有自然高光，投影淡淡落在右下方。' +
-        '文字排版（本张重点：**字体要大，要占满空白处**）：' +
-        '① 左上方 30% 区域：2-3 行大号俄语主标题，字号是整张最大的，粗体，颜色取商品同色系的深色；' +
-        '② 主标题下面：一行手写体俄语副标题，字号约为主标题的 45%；' +
-        '③ 左侧中部竖排三组「实心圆形图标 + 两行俄语」，图标直径约画布宽度的 7%，' +
+        '文字内容（本张重点：**字体要大，要占满留白**）：' +
+        '① 俄语主标题：字号是整张最大的（约画布宽度的 9-12%），粗体，颜色取商品同色系的深色，2-3 行；' +
+        '② 俄语副标题：一行手写体，字号约为主标题的 45%；' +
+        '③ 三组「实心圆形图标 + 两行俄语」卖点：图标直径约画布宽度的 7%，' +
         `文字字号不小于画布宽度的 3.5%，内容分别是：${sp1} / ${sp2} / ${sp3}；` +
-        '④ 左下角一个圆形局部放大镜（直径约画布宽度 22%），里面放商品最值得说的一处细节，配一行俄语标注；' +
-        '⑤ 底部一条圆角胶囊条，一行俄语短句，字号中等。' +
+        '④ 一个圆形局部放大镜（直径约画布宽度 22%），里面放商品最值得说的一处细节，配一行俄语标注；' +
+        '⑤ 一条圆角胶囊条，一行俄语短句，字号中等。' +
+        '材质与细节的文字要具体（写清楚是什么材质、什么工艺、什么尺寸感），不要只写「高质量」这种空话。' +
         '硬规则：所有文字必须真的写出来、必须清晰可读、必须是俄语；' +
-        '所有文字都排在**空白处**，不许压在商品主体上，也不许压在模特脸上；画面里只能出现**一件商品**。' +
-        '禁忌：不要中文；不要把文字排得很小；不要纯白背景；不要第二件商品；不要模特占满画面；不要边框和台标。',
+        '所有文字都排在**留白处**，绝不压在商品主体上；画面里只能出现**一件商品**。' +
+        '禁忌：不要中文；不要把文字排得很小；不要纯白背景；不要第二件商品；不要人物或手；不要边框和台标。',
       bodyEn:
         `Card 1: main image. Product: ${product}. ` +
-        'Camera: eye level, slightly high. The product is complete, centred slightly right, occupying 50-58% of the frame. ' +
         '**Do not change the product itself at all**: shape, colour, material, pattern, accessories and proportions must all match the reference exactly. ' +
-        'Model: one Russian model in the right background, slightly out of focus (one step softer than the product), naturally **using** the product, ' +
-        'taking only 18-25% of the frame and **never dominating**; hands and gaze point at the product. The model must not cover the product or intrude into the left text area. ' +
+        '**No people, no models, no hands in this card** — this one is only about the product and the type. ' +
+        layoutSpec.en +
         'Background: a clean pale real-world surface (light wood or light grey cloth) with soft spatial depth; not pure white, not a gradient backdrop. ' +
-        'Lighting: soft window light from the front-left, a little fill from the right, natural highlights on the product, a faint shadow falling to the lower right. ' +
-        'Typography (the point of this card: **large type, filling the empty areas**): ' +
-        '(1) upper-left 30% area: a 2-3 line large Russian headline, the biggest type on the card, bold, in a dark tone from the product palette; ' +
-        '(2) below it: one line of handwritten-style Russian subtitle at about 45% of the headline size; ' +
-        '(3) mid-left, three stacked rows of "filled circular icon + two lines of Russian"; icon diameter about 7% of the canvas width, ' +
+        'Copy (the point of this card: **large type, filling the empty space**): ' +
+        '(1) Russian headline: the biggest type on the card (about 9-12% of the canvas width), bold, in a dark tone from the product palette, 2-3 lines; ' +
+        '(2) Russian subtitle: one handwritten line at about 45% of the headline size; ' +
+        '(3) three "filled circular icon + two lines of Russian" selling points: icon diameter about 7% of the canvas width, ' +
         `text no smaller than 3.5% of the canvas width; the three items are: ${sp1} / ${sp2} / ${sp3}; ` +
-        '(4) lower-left: a circular magnifier inset (diameter about 22% of the canvas width) showing the single most convincing detail, with one Russian caption; ' +
-        '(5) bottom: a rounded pill bar with one short Russian sentence at medium size. ' +
+        '(4) a circular detail magnifier (diameter about 22% of the canvas width) showing the single most convincing detail, with one Russian caption; ' +
+        '(5) a rounded pill bar with one short Russian sentence at medium size. ' +
+        'Material and detail copy must be specific (which material, which finish, what size it feels like) — never empty phrases like "high quality". ' +
         'Hard rules: every piece of text must actually be rendered, must be clearly legible, and must be Russian; ' +
-        'all text sits **in the empty areas** and must never overlap the product or the model face; only **one product** in the frame. ' +
-        'Forbidden: Chinese text; tiny type; pure white background; a second product; a model filling the frame; borders or channel badges.',
+        'all text sits **in the empty space** and must never overlap the product; only **one product** in the frame. ' +
+        'Forbidden: Chinese text; tiny type; pure white background; a second product; any person or hand; borders or channel badges.',
     },
     {
       key: '02_pain_compare',
@@ -359,33 +439,44 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
     },
     {
       /**
-       * 【2026-10-24 主人转达的修改意见】「生活场景图要使用产品，不要光放着」。
-       * 所以这张明确要求画面里**有人在用**这件商品，产品不是静物摆件。
+       * 【2026-10-24 主人的最终版本】
+       *   下午：「生活场景图要使用产品，不要光放着」
+       *   过两小时：「生活场景里面加入模特，最好展示出模特正在使用」
+       *
+       * 所以模特的主场挪到这一张（主图已经明确不放人）：
+       * 画面里是一个真实的俄罗斯模特，正在自然地**使用**这件商品，
+       * 商品仍然是最清晰的，但人物要有真实存在感，不是只露一只手。
        */
       key: '03_lifestyle',
-      title: '第 3 张 · 生活场景图（正在使用中）',
+      title: '第 3 张 · 生活场景图（模特正在使用）',
       bodyZh:
-        `第3张：生活场景图。产品：${product}。` +
-        '镜头：平视，产品占画面 45-55%，不要占满画面。' +
-        `背景：${sceneZh}，要有真实的空间层次（近景道具 / 中景产品 / 远景环境）。` +
-        '光线：自然侧光（窗边光），有明确的方向感和柔和投影。' +
-        '**关键：产品不能只是摆着看——画面里必须有人在用它**（手正在接触/操作商品，' +
-        '动作要自然，比如正在取用、正在开合、正在使用），让「这个场景里它真的在用」一眼看得出来。' +
-        '只露出手臂或半个人都可以，不必露全脸；人物不要抢主体，商品仍然是最清晰的。' +
+        `第3张：生活场景图（模特正在使用）。产品：${product}。` +
+        `背景：${sceneZh}，要有真实的空间层次（近景道具 / 中景人物与商品 / 远景环境）。` +
+        '光线：自然侧光（窗边光），有明确的方向感和柔和投影，人物脸上有柔和轮廓光，不要硬闪。' +
+        '人物：**画面里要有一位俄罗斯模特**（符合目标市场的样子，穿着与商品调性匹配、居家自然的衣服），' +
+        '动作必须是**正在使用这件商品**——拿在手里用、正在开合、正在取用、正在操作都行，' +
+        '身体朝向和视线都指向商品，让人一眼看出「她正在用它」，而不是站着摆拍。' +
+        '半身或大半身构图都可以（露到腰或胸以上即可，不要求全身）；人物占画面 35-45%，商品占 35-45%。' +
+        '**商品必须是画面里最清晰、最亮的部分**，人物可以稍微柔一点；两者不要互相遮挡，' +
+        '模特的手要真的接触或操作到商品，不能悬空摆姿势。' +
         '道具：场景里放 2-3 个相关道具，轻微虚化，不要抢主体。' +
         '文字：画面不要任何文字，保持干净。' +
-        '禁忌：不要产品孤零零摆着；不要摆拍感；不要产品像贴上去的；不要纯色背景。',
+        '禁忌：不要产品孤零零摆着；不要只有一只手没有人物；不要模特在摆拍而没有真的在用；' +
+        '不要产品像贴上去的；不要纯色背景；不要中文。',
       bodyEn:
-        `Card 3: lifestyle scene. Product: ${product}. ` +
-        'Camera: eye level. Product occupies 45-55% of the frame; do not fill the frame. ' +
-        `Background: ${sceneEn}, with real spatial depth (near props / mid-ground product / far environment). ` +
-        'Lighting: natural side light from a window, with a clear direction and soft shadows. ' +
-        '**Critical: the product must not just sit there as a still life — someone must be using it in the frame** ' +
-        '(a hand touching or operating the product, a natural everyday action such as taking from it, opening it, using it), so it is obvious at a glance that it is in use. ' +
-        'Only an arm or half a person needs to be visible; no full face required. The person must not dominate; the product stays the sharpest element. ' +
+        `Card 3: lifestyle scene with a model using the product. Product: ${product}. ` +
+        `Background: ${sceneEn}, with real spatial depth (near props / mid-ground person and product / far environment). ` +
+        'Lighting: natural side light from a window with a clear direction and soft shadows; a soft rim light on the model, no harsh flash. ' +
+        'Model: **a Russian model must be present in the frame** (matching the target market, in casual clothes that suit the product), ' +
+        'and her action must be **actually using the product** — holding it in use, opening it, taking from it, operating it — ' +
+        'with her body and gaze directed at the product so it reads instantly as "she is using it", not posing. ' +
+        'A half or three-quarter figure is enough (waist-up or chest-up; no full body required); the person takes 35-45% of the frame and the product 35-45%. ' +
+        '**The product must be the sharpest, brightest element**; the person may be slightly softer. They must not block each other, ' +
+        'and the model hands must genuinely touch or operate the product — never floating in a pose. ' +
         'Props: 2-3 relevant props in the scene, slightly out of focus; they must not compete with the product. ' +
         'Text: no text at all; keep it clean. ' +
-        'Forbidden: the product standing alone; a staged look; a product that looks pasted in; a plain solid background.',
+        'Forbidden: the product standing alone; a lone hand without a person; a model posing instead of really using it; ' +
+        'a product that looks pasted in; a plain solid background; Chinese text.',
     },
     /**
      * 三张细节图的分工（主人 2026-10-24 要求「三个不同角度、细节位置不能一样、
