@@ -74,12 +74,14 @@ func newInflightEstimateGateway(t *testing.T, channelService *ChannelService) *G
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, DefaultMaxTokens: 1000, MaxInputTokens: 200000, MaxOutputTokens: 128000}
 	billing := NewBillingService(cfg, nil)
-	return &GatewayService{
+	svc := &GatewayService{
 		cfg:            cfg,
 		billingService: billing,
 		resolver:       NewModelPricingResolver(channelService, billing),
 		channelService: channelService,
 	}
+	svc.userGroupRateResolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(cfg), &svc.userGroupRateSF, "service.gateway")
+	return svc
 }
 
 func TestInflightEstimate_ChannelAliasUsesMappedModel(t *testing.T) {

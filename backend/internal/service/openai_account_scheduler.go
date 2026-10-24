@@ -1812,6 +1812,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
+	if err := ValidateCompositeFallbackAccount(ctx, account, req.RequestedModel); err != nil {
+		return false, "composite_fallback_model_restricted"
+	}
 	if req.RequestedModel != "" && !supportsOpenAIRequestModel(account, req.RequestedModel, req.RequireCompact) {
 		return false, "model_not_supported"
 	}

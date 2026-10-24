@@ -173,10 +173,20 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(ccPricingCtx)
+	fallback := newCompositeHTTPFallback(c, body, false)
 
 	for {
 		if failoverClientGone(c) {
 			return
+		}
+		if model, mapping, targetBody, active, targetErr := h.prepareCompositeHTTPTarget(c, apiKey, subscription, body); active {
+			if targetErr != nil {
+				status, code, message, _ := billingErrorDetails(targetErr)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
+			forwardModel, channelMapping, body = model, mapping, targetBody
+			requestPlatform = openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 		}
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -202,6 +212,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if switchCount < maxAccountSwitches && fallback.advance(c, err, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			if len(failedAccountIDs) == 0 {
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 				cls = classifySelectionFailureError(err, cls)
@@ -220,6 +234,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if switchCount < maxAccountSwitches && fallback.advance(c, service.ErrNoAvailableAccounts, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -374,6 +392,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
+					if switchCount < maxAccountSwitches && switchCount >= maxAccountSwitches-1 && fallback.advance(c, nil, failoverErr) {
+						switchCount++
+						continue
+					}
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
