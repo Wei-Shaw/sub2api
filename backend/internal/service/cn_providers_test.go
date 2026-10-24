@@ -575,6 +575,37 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	require.Nil(t, cnProviderQuotaSnapshotReset(payg, now))
 }
 
+// 快照盲区与长窗口护栏：5h 重置点刚过期时只剩 weekly 在未来，选窗结果
+// 超过冷却上限需截断到 now+2h，真配额耗尽由周期探测+阈值评估兜底再停调。
+func TestCNProviderQuotaSnapshotReset_CapsBeyondTwoHours(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+
+	blindZone := &Account{
+		Platform:    PlatformMiniMax,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"minimax_5h_reset_at":     now.Add(-2 * time.Minute).Format(time.RFC3339),
+			"minimax_weekly_reset_at": now.Add(3 * 24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	gotCapped := cnProviderQuotaSnapshotReset(blindZone, now)
+	require.NotNil(t, gotCapped)
+	require.True(t, now.Add(cnQuotaSnapshotCooldownCap).Equal(*gotCapped))
+
+	// 上限内不截断：5h 重置点在 90 分钟后 → 原值。
+	nearCap := &Account{
+		Platform:    PlatformMiniMax,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"minimax_5h_reset_at": now.Add(90 * time.Minute).Format(time.RFC3339),
+		},
+	}
+	gotNear := cnProviderQuotaSnapshotReset(nearCap, now)
+	require.NotNil(t, gotNear)
+	require.True(t, now.Add(90*time.Minute).Equal(*gotNear))
+}
+
 // TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch 回归保护：
 // grok 与国产供应商原样保留，其余归一为 openai —— 保证 kimi/zhipu/deepseek 分组请求
 // 精确匹配同名账号（与 openai/grok 当前行为一致），不会错误并入 openai 池。

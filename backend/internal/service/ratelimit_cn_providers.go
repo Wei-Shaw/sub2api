@@ -47,6 +47,11 @@ const cnQuotaExhausted403ErrorType = "access_terminated_error"
 // cnQuotaExhaustedReasonPrefix 是配额耗尽 403 临时停调 reason 的稳定前缀。
 const cnQuotaExhaustedReasonPrefix = "cn_quota_exhausted"
 
+// cnQuotaSnapshotCooldownCap 是响应式 429/403 按用量快照选窗冷却的时长上限。
+// 响应式冷却「宁短勿长」：真撞上 weekly/monthly 重置点（可达数天）时截断到此上限，
+// 若确是配额耗尽，周期额度探测刷新快照后阈值评估会再次停调到正确的时间点。
+const cnQuotaSnapshotCooldownCap = 2 * time.Hour
+
 // isCNProviderQuotaExhausted403 识别 CN 供应商配额窗口耗尽的 403。
 // 先做廉价的文案子串匹配（usage limit / quota will reset），未命中再解析
 // 响应体匹配结构化错误类型（Kimi 的 access_terminated_error），以兼容同族
@@ -210,6 +215,15 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 			earliest = t
 		}
 	}
+	if earliest == nil {
+		return nil
+	}
+	// 快照盲区与长窗口护栏：5h 重置点刚过期（周期探测尚未刷新新值）时只剩
+	// weekly/monthly 在未来，会把与配额无关的 429 冷却放大到数天。
+	// 截断到上限后，真配额耗尽由周期探测 + 阈值评估兜底再停调。
+	if capped := now.Add(cnQuotaSnapshotCooldownCap); earliest.After(capped) {
+		earliest = &capped
+	}
 	return earliest
 }
 
@@ -252,6 +266,17 @@ func (s *RateLimitService) setCNProviderTempUnschedulable(ctx context.Context, a
 	)
 }
 
+// cnProviderResponseIndicatesOverloaded 识别上游临时过载类 429（与配额窗口无关，
+// 通常几分钟内自行恢复）。签名刻意收紧，只匹配确定性过载信号——Anthropic 语义
+// error.type=overloaded_error 与 "server is busy"——防止把真配额 429 误放行。
+func cnProviderResponseIndicatesOverloaded(responseBody []byte) bool {
+	if strings.EqualFold(gjson.GetBytes(responseBody, "error.type").String(), "overloaded_error") {
+		return true
+	}
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	return strings.Contains(msg, "server is busy")
+}
+
 // applyCNProviderReactive429 处理国产供应商的 429 响应。
 // 返回 true 表示已处理（调用方应 return），false 表示未命中、继续走默认 429 逻辑。
 func (s *RateLimitService) applyCNProviderReactive429(
@@ -260,6 +285,11 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	headers http.Header,
 	responseBody []byte,
 ) bool {
+	// 上游临时过载与配额无关：不进 opencode_go / Coding Plan 的快照选窗冷却
+	//（否则一次过载会被停调到数天后的窗口重置点），落默认 429 短冷却。
+	if cnProviderResponseIndicatesOverloaded(responseBody) {
+		return false
+	}
 	if account.IsOpenCodeGo() {
 		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "opencode_go_rate_limited") != nil {
 			return true
