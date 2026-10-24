@@ -220,6 +220,27 @@ services:
       start_period: 30s
 
   # ===========================================================================
+  # Optional Cloudflare Tunnel connector
+  # ===========================================================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: sub2api-cloudflared
+    profiles:
+      - cloudflare
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      sub2api:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+
+  # ===========================================================================
   # PostgreSQL Database
   # ===========================================================================
   postgres:

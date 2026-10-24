@@ -6,6 +6,7 @@ VERSION="${1:?usage: remote-deploy.sh <image-tag>}"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 REGISTRY_ENV_FILE="${REGISTRY_ENV_FILE:-$APP_DIR/registry.env}"
 SKIP_PULL="${SKIP_PULL:-0}"
+TUNNEL_ENABLED=0
 
 ensure_app_env() {
   [[ -f "$APP_DIR/app.env" ]] && return 0
@@ -55,6 +56,21 @@ if [[ "$SKIP_PULL" != "1" ]]; then
 fi
 : "${GHCR_IMAGE_REPOSITORY:?GHCR_IMAGE_REPOSITORY is required}"
 
+if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
+  if grep -q '^CLOUDFLARE_TUNNEL_TOKEN=' "$APP_DIR/app.env"; then
+    sed -i "s|^CLOUDFLARE_TUNNEL_TOKEN=.*|CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN|" "$APP_DIR/app.env"
+  else
+    printf '\nCLOUDFLARE_TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" >> "$APP_DIR/app.env"
+  fi
+  chmod 600 "$APP_DIR/app.env"
+  TUNNEL_ENABLED=1
+fi
+if [[ "$TUNNEL_ENABLED" == 1 ]]; then
+  export COMPOSE_PROFILES=cloudflare
+else
+  unset COMPOSE_PROFILES
+fi
+
 COMPOSE=(docker compose --project-name sub2api --env-file "$APP_DIR/app.env" -f "$COMPOSE_FILE")
 IMAGE="ghcr.io/${GHCR_IMAGE_REPOSITORY}:${VERSION}"
 PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' sub2api 2>/dev/null || true)"
@@ -62,12 +78,13 @@ PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' sub2api 2>/dev/nul
 wait_for_health() {
   local expected_image="$1"
   for _ in $(seq 1 45); do
-    local app_status postgres_status redis_status app_image
+    local app_status postgres_status redis_status tunnel_status app_image
     app_status="$(docker inspect --format '{{.State.Health.Status}}' sub2api 2>/dev/null || true)"
     postgres_status="$(docker inspect --format '{{.State.Health.Status}}' sub2api-postgres 2>/dev/null || true)"
     redis_status="$(docker inspect --format '{{.State.Health.Status}}' sub2api-redis 2>/dev/null || true)"
+    tunnel_status="$(docker inspect --format '{{.State.Status}}' sub2api-cloudflared 2>/dev/null || true)"
     app_image="$(docker inspect --format '{{.Config.Image}}' sub2api 2>/dev/null || true)"
-    if [[ "$app_status" == healthy && "$postgres_status" == healthy && "$redis_status" == healthy && "$app_image" == "$expected_image" ]]; then
+    if [[ "$app_status" == healthy && "$postgres_status" == healthy && "$redis_status" == healthy && "$app_image" == "$expected_image" && ( "$TUNNEL_ENABLED" != 1 || "$tunnel_status" == running ) ]]; then
       return 0
     fi
     sleep 2

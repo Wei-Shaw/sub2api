@@ -96,8 +96,13 @@ Create a GitHub Environment named `sub2api_production` with these secrets:
 | `VPS_USER` | `sub2apideploy` |
 | `VPS_SSH_PRIVATE_KEY` | SSH private key for that user |
 | `VPS_KNOWN_HOSTS` | Verified VPS host key |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare Tunnel token; optional until the tunnel is created |
 
 Pushes to `main` deploy `sha-<commit>`; version tags deploy the matching `v*` image tag. You can also run this workflow manually from the Actions tab. The remote script checks all three container health checks and restores the previous Sub2API image if startup fails. It keeps data under `/opt/sub2api/data`, `/opt/sub2api/postgres_data`, and `/opt/sub2api/redis_data`.
+
+#### Cloudflare Tunnel
+
+Create a remotely managed tunnel in Cloudflare Zero Trust, add a public hostname for your domain, and set its service to `http://sub2api:8080`. Add the tunnel token as the `CLOUDFLARE_TUNNEL_TOKEN` Environment secret. The workflow then starts `cloudflared` inside the Compose network; the VPS does not need port `8080` exposed publicly. Remove the secret to stop starting the tunnel while keeping the Sub2API deployment.
 
 ### Method 1: One-Click Deployment (Recommended)
 

@@ -117,10 +117,11 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_IMAGE_REPOSITORY: ${{ github.repository }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           IMAGE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('sha-{0}', github.sha) }}
         run: |
-          printf 'GHCR_USERNAME=%s\nGHCR_TOKEN=%s\nGHCR_IMAGE_REPOSITORY=%s\n' \
-            "$GHCR_USERNAME" "$GHCR_TOKEN" "$GHCR_IMAGE_REPOSITORY" \
+          printf 'GHCR_USERNAME=%s\nGHCR_TOKEN=%s\nGHCR_IMAGE_REPOSITORY=%s\nCLOUDFLARE_TUNNEL_TOKEN=%s\n' \
+            "$GHCR_USERNAME" "$GHCR_TOKEN" "$GHCR_IMAGE_REPOSITORY" "$CLOUDFLARE_TUNNEL_TOKEN" \
             | ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" 'umask 077; cat > /tmp/sub2api-registry.env'
           ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
             "trap 'rm -f /tmp/sub2api-registry.env' EXIT; chmod 700 /opt/sub2api/remote-deploy.sh; REGISTRY_ENV_FILE=/tmp/sub2api-registry.env /opt/sub2api/remote-deploy.sh '$IMAGE_TAG'"
