@@ -31,6 +31,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { isRuLocale, ruInline } from '@/i18n/ruInlineText'
 import { resolveWeChatOAuthStart, type OAuthLoginStart } from '@/api/auth'
 import { useAppStore } from '@/stores'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
@@ -52,6 +53,7 @@ const { t, locale } = useI18n()
 const providerName = computed(() => t('auth.wechatProviderName'))
 
 function localizeWeChatHint(zh: string, en: string): string {
+  if (isRuLocale(locale.value)) return ruInline(en)
   return locale.value.startsWith('zh') ? zh : en
 }
 
