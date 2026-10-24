@@ -87,6 +87,52 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesI
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
+func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_ReasoningUsesMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		clientModel   string
+		upstreamModel string
+		wantReasoning bool
+	}{
+		{clientModel: "grok-4.5", upstreamModel: "gpt-6-luna", wantReasoning: true},
+		{clientModel: "gpt-6-luna", upstreamModel: "grok-4.5", wantReasoning: false},
+	} {
+		t.Run(tc.clientModel+"_to_"+tc.upstreamModel, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"continue"},{"role":"assistant","content":[{"type":"thinking","thinking":"visible summary","signature":"gAAAA_PROVIDER_CIPHERTEXT"},{"type":"text","text":"ok"}]}]}`, tc.clientModel))
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"object":"response.input_tokens","input_tokens":42}`)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+				httpUpstream: upstream,
+			}
+			account := &Account{ID: 101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+				"api_key": "sk-test", "base_url": "https://upstream.example",
+				"model_mapping": map[string]any{tc.clientModel: tc.upstreamModel},
+			}}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
+			err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "/v1/responses/input_tokens", upstream.lastReq.URL.Path)
+			require.Equal(t, tc.upstreamModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			reasoning := gjson.GetBytes(upstream.lastBody, `input.#(type=="reasoning")`)
+			require.Equal(t, tc.wantReasoning, reasoning.Exists())
+			if tc.wantReasoning {
+				require.Equal(t, "gAAAA_PROVIDER_CIPHERTEXT", reasoning.Get("encrypted_content").String())
+				require.True(t, reasoning.Get("summary").IsArray())
+				require.Equal(t, "visible summary", reasoning.Get("summary.0.text").String())
+			} else {
+				require.NotContains(t, string(upstream.lastBody), "gAAAA_PROVIDER_CIPHERTEXT")
+			}
+		})
+	}
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPlatformEndpointUnsupported(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -275,6 +275,9 @@ type ResponsesInputItem struct {
 
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
+	// A reasoning input requires summary, including [] when no visible summary
+	// exists. A pointer keeps this field absent on other input item types.
+	Summary *[]ResponsesSummary `json:"summary,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
