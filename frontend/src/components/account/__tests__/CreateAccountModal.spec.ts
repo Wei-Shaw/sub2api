@@ -128,6 +128,8 @@ const ModelWhitelistSelectorStub = defineComponent({
       default: () => [],
     },
     platform: String,
+    accountType: String,
+    mappingMode: String,
     syncCredentials: Object,
   },
   emits: ['update:modelValue', 'upstream-synced'],
@@ -287,6 +289,29 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('does not reset another provider whitelist when switching credential types', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual(['public-glm'])
+    await selectButtonByText(wrapper, 'admin.accounts.claudeCode')
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual(['public-glm'])
+    wrapper.unmount()
+  })
+
+  it('keeps API-key prefills and passes account context to the selector', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+    expect(selector.props('accountType')).toBe('apikey')
+    expect(selector.props('mappingMode')).toBe('whitelist')
+    expect(selector.props('modelValue')).toContain('gpt-5.5')
+    expect(selector.props('modelValue')).toContain('gpt-image-2')
+    wrapper.unmount()
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
@@ -851,6 +876,10 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    const mapping = importCodexSessionMock.mock.calls[0]?.[0]?.credential_extras?.model_mapping
+    expect(mapping).not.toHaveProperty('gpt-5.5')
+    expect(mapping).toHaveProperty('gpt-image-2', 'gpt-image-2')
+    expect(mapping).toHaveProperty('gpt-6.1-sol', 'gpt-6.1-sol')
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
   })
 

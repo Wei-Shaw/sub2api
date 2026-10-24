@@ -153,7 +153,9 @@ import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { buildModelMappingObject } from '@/composables/useModelWhitelist'
+import type { ModelRestrictionMode } from '@/composables/useModelWhitelist'
+import { allModels, getModelsByPlatform, filterRetiredSubscriptionModels } from '@/composables/useModelWhitelist'
 import { supportsUpstreamModelSync } from '@/constants/platformCatalog'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -164,6 +166,10 @@ const props = defineProps<{
   modelMappings?: { from: string; to: string }[]
   platform?: string
   platforms?: string[]
+  accountType?: string
+  parentAccountId?: number | null
+  passthrough?: boolean
+  mappingMode?: ModelRestrictionMode
   accountId?: number
   syncCredentials?: {
     platform: string
@@ -214,6 +220,17 @@ const canSyncUpstream = computed(() => {
   return false
 })
 
+const accountContext = computed(() => ({
+  type: props.accountType ?? props.syncCredentials?.type,
+  parentAccountId: props.parentAccountId,
+  passthrough: props.passthrough,
+  mappingMode: props.mappingMode
+}))
+
+const filterModels = (models: string[]) => normalizedPlatforms.value.length === 1
+  ? filterRetiredSubscriptionModels(models, normalizedPlatforms.value[0], accountContext.value, props.modelMappings)
+  : models
+
 const availableOptions = computed(() => {
   if (normalizedPlatforms.value.length === 0) {
     return allModels
@@ -226,7 +243,8 @@ const availableOptions = computed(() => {
     }
   }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  const eligible = new Set(filterModels([...allowedModels]))
+  return allModels.filter(model => eligible.has(model.value))
 })
 
 const filteredModels = computed(() => {
@@ -278,6 +296,19 @@ const handleEnter = () => {
   if (!isComposing.value) addCustom()
 }
 
+const applySyncedModels = (models: string[]) => {
+  const eligibleModels = filterModels(models)
+  const remainingMapping = buildModelMappingObject(props.mappingMode ?? 'combined', eligibleModels, props.modelMappings ?? [])
+  if (models.length > 0 && eligibleModels.length === 0 && !remainingMapping) {
+    // Empty model_mapping means unrestricted. Keep the current restriction
+    // until an administrator selects an available replacement.
+    appStore.showWarning(t('admin.accounts.modelSyncWouldClearWhitelist'))
+    return null
+  }
+  emit('update:modelValue', eligibleModels)
+  return eligibleModels
+}
+
 const fillRelated = () => {
   const newModels = [...props.modelValue]
   for (const platform of normalizedPlatforms.value) {
@@ -287,7 +318,7 @@ const fillRelated = () => {
       }
     }
   }
-  emit('update:modelValue', newModels)
+  applySyncedModels(newModels)
 }
 
 const syncUpstreamModels = async () => {
@@ -305,6 +336,9 @@ const syncUpstreamModels = async () => {
     }
 
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
+    const newModels = Array.from(new Set([...props.modelValue, ...upstreamModels]))
+    const syncedModels = applySyncedModels(newModels)
+    if (!syncedModels) return
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
@@ -313,17 +347,7 @@ const syncUpstreamModels = async () => {
     if (!props.accountId) {
       emit('upstream-synced')
     }
-
-    const newModels = [...props.modelValue]
-    let addedCount = 0
-    for (const model of upstreamModels) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
-        addedCount += 1
-      }
-    }
-
-    emit('update:modelValue', newModels)
+    const addedCount = syncedModels.filter(model => !props.modelValue.includes(model)).length
     const warnings = result.warnings ?? []
     const hasPartialMetadata = warnings.some(
       warning => warning.code === 'upstream_model_metadata_partial'

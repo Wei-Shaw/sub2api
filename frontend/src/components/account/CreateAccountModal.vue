@@ -1663,6 +1663,9 @@
                 v-model="allowedModels"
                 :model-mappings="modelMappings"
                 :platform="form.platform"
+                :account-type="form.type"
+                :mapping-mode="modelRestrictionMode"
+                :passthrough="openaiPassthroughEnabled"
                 :sync-credentials="syncPreviewCredentials"
                 @upstream-synced="upstreamModelsPreviewed = true"
               />
@@ -2535,6 +2538,9 @@
               v-model="allowedModels"
               :model-mappings="modelMappings"
               :platform="form.platform"
+              :account-type="form.type"
+              :mapping-mode="modelRestrictionMode"
+              :passthrough="openaiPassthroughEnabled"
               :sync-credentials="syncPreviewCredentials"
               @upstream-synced="upstreamModelsPreviewed = true"
             />
@@ -5087,7 +5093,7 @@ watch(
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = [...getModelsByPlatform(form.platform, { type: form.type })]
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -5284,10 +5290,18 @@ watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = [...getModelsByPlatform(form.platform, { type: form.type })]
     }
   }
 )
+
+// Only OpenAI subscription eligibility changes with credential type. Changing
+// an unrelated provider's auth method must not reset its custom whitelist.
+watch(() => form.type, () => {
+  if (form.platform === 'openai' && modelRestrictionMode.value === 'whitelist') {
+    allowedModels.value = [...getModelsByPlatform(form.platform, { type: form.type })]
+  }
+})
 
 watch(
   [antigravityModelRestrictionMode, () => form.platform],

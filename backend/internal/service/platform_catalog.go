@@ -20,7 +20,8 @@ type PlatformCatalog struct {
 // PlatformCatalogEntry 描述一个具体平台；MultiProtocol 仅多协议 API Key 供应商有值。
 type PlatformCatalogEntry struct {
 	domain.PlatformSpec
-	MultiProtocol *ProviderProfileInfo `json:"multi_protocol,omitempty"`
+	MultiProtocol      *ProviderProfileInfo     `json:"multi_protocol,omitempty"`
+	SubscriptionModels *SubscriptionModelPolicy `json:"subscription_models,omitempty"`
 }
 
 // ProviderProfileInfo 是 ProviderProfile 的对外形状。
@@ -49,10 +50,14 @@ func BuildPlatformCatalog() PlatformCatalog {
 		CompositePrecedence: domain.CompositePrecedencePlatformIDs(),
 	}
 	for _, spec := range specs {
-		catalog.Platforms = append(catalog.Platforms, PlatformCatalogEntry{
+		entry := PlatformCatalogEntry{
 			PlatformSpec:  spec,
 			MultiProtocol: providerProfileInfo(LookupProviderProfile(spec.ID)),
-		})
+		}
+		if spec.ID == PlatformOpenAI {
+			entry.SubscriptionModels = openAISubscriptionModelPolicy()
+		}
+		catalog.Platforms = append(catalog.Platforms, entry)
 	}
 	return catalog
 }
