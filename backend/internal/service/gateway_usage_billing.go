@@ -1054,12 +1054,28 @@ func (s *GatewayService) calculateRecordUsageCost(
 	} else {
 		tokenCost = s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
 	}
-	if result.SearchCount > 0 {
-		price := groupSearchPricePer1kFromAPIKey(apiKey)
-		if price != nil && *price == 0 {
-			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, result.SearchCount)
+	// Anthropic usage.server_tool_use.web_search_requests is a per-search fee outside the token counts.
+	searchCount := result.SearchCount
+	if searchCount == 0 {
+		searchCount = result.Usage.WebSearchRequests
+	}
+	if iterTotal, iterActual := s.iterationSurcharge(ctx, result, apiKey, billingModel, multiplier, pricingAt); iterTotal > 0 || iterActual > 0 {
+		if tokenCost == nil {
+			tokenCost = &CostBreakdown{}
 		}
-		searchCost := s.billingService.CalculateSearchCost(result.SearchCount, price, multiplier)
+		tokenCost.TotalCost += iterTotal
+		tokenCost.ActualCost += iterActual
+	}
+	if searchCount > 0 {
+		price := groupSearchPricePer1kFromAPIKey(apiKey)
+		if price == nil && result.SearchCount == 0 {
+			anthropicSearchPer1k := 10.0 // Anthropic web search list price: $10 per 1,000 searches
+			price = &anthropicSearchPer1k
+		}
+		if price != nil && *price == 0 {
+			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, searchCount)
+		}
+		searchCost := s.billingService.CalculateSearchCost(searchCount, price, multiplier)
 		if searchCost != nil && (searchCost.TotalCost > 0 || searchCost.ActualCost > 0) {
 			if tokenCost == nil {
 				return searchCost
