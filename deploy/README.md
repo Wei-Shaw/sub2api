@@ -67,6 +67,8 @@ sudo nano /opt/sub2api/app.env
 
 Set fixed values for `POSTGRES_PASSWORD`, `JWT_SECRET`, and `TOTP_ENCRYPTION_KEY`. Set `BIND_HOST=127.0.0.1` when a host reverse proxy owns the public listener; use `BIND_HOST=0.0.0.0` only when port `8080` is intentionally exposed. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` empty to have the first startup generate credentials in the application log.
 
+If `app.env` is missing at the first Actions deployment, `remote-deploy.sh` creates a minimal production file with generated persistent secrets. Existing `app.env` files are never overwritten.
+
 For a 2 GB VPS that also runs another service, keep the database footprint conservative:
 
 ```dotenv

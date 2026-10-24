@@ -7,7 +7,41 @@ COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 REGISTRY_ENV_FILE="${REGISTRY_ENV_FILE:-$APP_DIR/registry.env}"
 SKIP_PULL="${SKIP_PULL:-0}"
 
-[[ -f "$APP_DIR/app.env" ]] || { echo "missing $APP_DIR/app.env" >&2; exit 1; }
+ensure_app_env() {
+  [[ -f "$APP_DIR/app.env" ]] && return 0
+  command -v openssl >/dev/null 2>&1 || {
+    echo "missing $APP_DIR/app.env and openssl is unavailable for first-run secret generation" >&2
+    exit 1
+  }
+
+  local postgres_password jwt_secret totp_encryption_key
+  postgres_password="$(openssl rand -hex 32)"
+  jwt_secret="$(openssl rand -hex 32)"
+  totp_encryption_key="$(openssl rand -hex 32)"
+  umask 077
+  cat > "$APP_DIR/app.env" <<EOF
+BIND_HOST=0.0.0.0
+SERVER_PORT=8080
+POSTGRES_USER=sub2api
+POSTGRES_PASSWORD=$postgres_password
+POSTGRES_DB=sub2api
+POSTGRES_MAX_CONNECTIONS=200
+POSTGRES_SHARED_BUFFERS=128MB
+POSTGRES_EFFECTIVE_CACHE_SIZE=512MB
+POSTGRES_MAINTENANCE_WORK_MEM=64MB
+DATABASE_MAX_OPEN_CONNS=50
+DATABASE_MAX_IDLE_CONNS=10
+REDIS_POOL_SIZE=256
+REDIS_MIN_IDLE_CONNS=10
+JWT_SECRET=$jwt_secret
+TOTP_ENCRYPTION_KEY=$totp_encryption_key
+TZ=Asia/Shanghai
+EOF
+  chmod 600 "$APP_DIR/app.env"
+  echo "created $APP_DIR/app.env with generated persistent secrets"
+}
+
+ensure_app_env
 [[ -f "$COMPOSE_FILE" ]] || { echo "missing $COMPOSE_FILE" >&2; exit 1; }
 
 if [[ "$SKIP_PULL" != "1" ]]; then
