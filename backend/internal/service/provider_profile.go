@@ -247,6 +247,9 @@ func (a *Account) defaultProviderBaseURL(protocol string) string {
 
 // providerSupportsProtocol 报告账号所在供应商在其 account_mode 下是否提供该协议的原生端点。
 func (a *Account) providerSupportsProtocol(protocol string) bool {
+	if a.IsOpenCodeFreeTier() && protocol != APIProtocolChatCompletions {
+		return false
+	}
 	profile := a.providerProfile()
 	return profile != nil && profile.SupportsProtocol(a.GetCredential("account_mode"), protocol)
 }

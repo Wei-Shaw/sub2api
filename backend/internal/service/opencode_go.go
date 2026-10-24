@@ -366,6 +366,10 @@ func (a *Account) IsOpenCodeGoPlan() bool {
 	return a.GetOpenCodeAccountMode() == AccountModeGo
 }
 
+func (a *Account) IsOpenCodeFreeTier() bool {
+	return a != nil && a.IsOpenCodeGo() && strings.EqualFold(strings.TrimSpace(a.GetCredential("api_key")), "public")
+}
+
 func (a *Account) IsMultiProtocolAPIKey() bool {
 	return a != nil && IsMultiProtocolAPIKeyProvider(a.Platform)
 }

@@ -2132,7 +2132,12 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	var payload map[string]any
+	if account != nil && account.IsOpenCodeGo() {
+		payload = createOpenCodeChatCompletionsTestPayload(testModelID, prompt)
+	} else {
+		payload = createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2148,7 +2153,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Authorization", "Bearer "+authToken)
 
 	// 官方 OpenCode / Command Code 上游收敛为规范客户端 UA，与真实转发路径一致。
-	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
+	applyOpenCodeUpstreamUserAgent(nil, account, apiURL, req.Header)
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
@@ -2817,6 +2822,26 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 			},
 		},
 		"stream": true,
+	}
+}
+
+func createOpenCodeChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "hi"
+	}
+
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": testPrompt,
+			},
+		},
+		"stream":      true,
+		"tool_choice": "auto",
+		"tools":       openCodeBuiltinTools,
 	}
 }
 
