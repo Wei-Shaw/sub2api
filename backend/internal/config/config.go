@@ -979,6 +979,10 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// AnthropicMCPServerName is loaded from the deployment's persisted settings
+	// during database bootstrap, before services start. It is not a config override.
+	AnthropicMCPServerName string `mapstructure:"-" json:"-" yaml:"-"`
+
 	// MinOutputTokens is the minimum max_output_tokens used when
 	// converting Chat Completions or Anthropic requests to Responses.
 	MinOutputTokens int `mapstructure:"min_output_tokens"`

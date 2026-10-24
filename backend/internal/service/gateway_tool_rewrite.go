@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"math/rand"
 	"sort"
 	"strings"
 
@@ -14,97 +13,136 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// toolNameRewriteKey 是 gin.Context 上存 ToolNameRewrite 映射的 key。
-// 请求阶段写入，响应阶段读取，用于 bytes 级逆向还原假名 → 真名。
+// toolNameRewriteKey is the gin.Context key for the request-scoped mapping.
 const toolNameRewriteKey = "claude_tool_name_rewrite"
 
-// staticToolNameRewrites 是"静态前缀映射"，与 Parrot src/transform/cc_mimicry.py
-// TOOL_NAME_REWRITES 完全一致。只有以这些前缀开头的工具会被重写。
-var staticToolNameRewrites = map[string]string{
-	"sessions_": "cc_sess_",
-	"session_":  "cc_ses_",
+func mcpToolPrefix(serverName string) string {
+	return "mcp__" + serverName + "__"
 }
 
-// fakeToolNamePrefixes 是"动态映射"的前缀池，与 Parrot _FAKE_PREFIXES 一致。
-// 当 tools 数量 > dynamicToolMapThreshold 时随机选用其中前缀生成可读假名。
-var fakeToolNamePrefixes = []string{
-	"analyze_", "compute_", "fetch_", "generate_", "lookup_", "modify_",
-	"process_", "query_", "render_", "resolve_", "sync_", "update_",
-	"validate_", "convert_", "extract_", "manage_", "monitor_", "parse_",
-	"review_", "search_", "transform_", "handle_", "invoke_", "notify_",
-}
-
-// dynamicToolMapThreshold 与 Parrot 一致：tools 数量超过 5 才启用动态映射。
-// 少量工具不需要混淆（一般是 Claude Code 自己的核心工具 bash/edit/read 等）。
-const dynamicToolMapThreshold = 5
-
-// ToolNameRewrite 是单次请求内的工具名混淆映射。
-//   - Forward: real → fake，请求阶段在 body 上应用。
-//   - Reverse: fake → real，响应阶段对每个 chunk 做 bytes.Replace 还原。
-//
-// ReverseOrdered 是按假名长度倒序的 (fake, real) 列表，用于防止短假名是长假名的
-// 子串时 bytes.Replace 先被吃掉（对齐 Parrot _restore_tool_names_in_chunk 的
-// `sorted(..., key=lambda x: len(x[1]), reverse=True)`）。
-type ToolNameRewrite struct {
-	Forward        map[string]string
-	Reverse        map[string]string
-	ReverseOrdered [][2]string
-}
-
-// buildDynamicToolMap 构造 tools 的动态假名映射。
-//
-// 与 Parrot _build_dynamic_tool_map 语义等价：
-//   - tools 数量 ≤ dynamicToolMapThreshold 时返回 nil（不做动态映射，走静态 fallback）
-//   - 同一组 tool_names 在同进程内映射稳定（保证 cache 命中）
-//
-// Parrot 用 `random.Random(hash(tuple(tool_names)))` 作 seed + shuffle 前缀池；
-// Go 无法字节级复刻 Python hash，但"稳定性"和"前缀池打散"两个不变量都保留：
-// 用 fnv64a(strings.Join(names, "\x00")) 作 seed 喂 math/rand.New。
-// 字节级不同不影响上游判定（Anthropic 不会验证我们的随机种子算法）。
-func buildDynamicToolMap(toolNames []string) map[string]string {
-	if len(toolNames) <= dynamicToolMapThreshold {
-		return nil
+func isMCPToolName(name string) bool {
+	if len(name) == 0 || len(name) > 64 || !strings.HasPrefix(name, "mcp__") {
+		return false
 	}
-	h := fnv.New64a()
-	for i, n := range toolNames {
-		if i > 0 {
-			_, _ = h.Write([]byte{0})
+	rest := strings.TrimPrefix(name, "mcp__")
+	separator := strings.Index(rest, "__")
+	if separator <= 0 || separator+2 >= len(rest) {
+		return false
+	}
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
 		}
-		_, _ = h.Write([]byte(n))
+		return false
 	}
-	rng := rand.New(rand.NewSource(int64(h.Sum64())))
+	return true
+}
 
-	available := make([]string, len(fakeToolNamePrefixes))
-	copy(available, fakeToolNamePrefixes)
-	rng.Shuffle(len(available), func(i, j int) { available[i], available[j] = available[j], available[i] })
+func buildMCPToolMap(toolNames []string, serverName string, reservedNames ...string) map[string]string {
+	reserved := make(map[string]bool, len(toolNames)*2+len(reservedNames))
+	for _, name := range reservedNames {
+		reserved[name] = true
+	}
+	for _, name := range toolNames {
+		reserved[name] = true
+	}
 
+	// Resolve sanitized-name collisions deterministically, independent of tools[] order.
+	ordered := append([]string(nil), toolNames...)
+	sort.Strings(ordered)
 	mapping := make(map[string]string, len(toolNames))
-	for i, name := range toolNames {
-		prefix := available[i%len(available)]
-		headLen := 3
-		if len(name) < 3 {
-			headLen = len(name)
+	for _, name := range ordered {
+		if name == "" || isMCPToolName(name) {
+			continue
 		}
-		fake := fmt.Sprintf("%s%s%02d", prefix, name[:headLen], i)
-		mapping[name] = fake
+		if _, exists := mapping[name]; exists {
+			continue
+		}
+		alias, ok := allocateMCPToolName(serverName, name, reserved)
+		if !ok {
+			continue
+		}
+		mapping[name] = alias
+		reserved[alias] = true
 	}
 	return mapping
 }
 
-// sanitizeToolName 把真名转成假名。
-// 与 Parrot _sanitize_tool_name 语义一致：动态映射优先，再走静态前缀映射。
-func sanitizeToolName(name string, dynamic map[string]string) string {
-	if dynamic != nil {
-		if fake, ok := dynamic[name]; ok {
-			return fake
+func allocateMCPToolName(serverName, original string, reserved map[string]bool) (string, bool) {
+	prefix := mcpToolPrefix(serverName)
+	semanticMaxLength := 64 - len(prefix)
+	if !isMCPToolName(prefix + "tool") {
+		return "", false
+	}
+
+	semantic, truncated := sanitizeMCPToolNameSuffix(original, semanticMaxLength)
+	if !truncated {
+		alias := prefix + semantic
+		if alias != original && !reserved[alias] && isMCPToolName(alias) {
+			return alias, true
 		}
 	}
-	for prefix, replacement := range staticToolNameRewrites {
-		if strings.HasPrefix(name, prefix) {
-			return replacement + name[len(prefix):]
+
+	const hashLength = 8
+	semanticMaxLength -= 1 + hashLength
+	if semanticMaxLength < len("tool") {
+		return "", false
+	}
+	semantic, _ = sanitizeMCPToolNameSuffix(original, semanticMaxLength)
+	for attempt := uint32(0); attempt < 1<<16; attempt++ {
+		alias := prefix + semantic + "_" + mcpToolHash(original, attempt)
+		if !reserved[alias] && isMCPToolName(alias) {
+			return alias, true
 		}
 	}
-	return name
+	return "", false
+}
+
+func sanitizeMCPToolNameSuffix(original string, maxLength int) (string, bool) {
+	if maxLength < 1 {
+		return "tool", true
+	}
+	var semantic strings.Builder
+	semantic.Grow(maxLength)
+	pendingSeparator := false
+	truncated := false
+	for _, r := range original {
+		valid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-'
+		if !valid {
+			pendingSeparator = semantic.Len() > 0
+			continue
+		}
+		if pendingSeparator && semantic.Len() > 0 && semantic.Len() < maxLength {
+			_ = semantic.WriteByte('_')
+		}
+		pendingSeparator = false
+		if semantic.Len() >= maxLength {
+			truncated = true
+			break
+		}
+		_, _ = semantic.WriteRune(r)
+	}
+	result := strings.Trim(semantic.String(), "_-")
+	if result == "" {
+		result = "tool"
+	}
+	return result, truncated
+}
+
+func mcpToolHash(original string, attempt uint32) string {
+	h := fnv.New32a()
+	_, _ = fmt.Fprintf(h, "%s\x00%d", original, attempt)
+	return fmt.Sprintf("%08x", h.Sum32())
+}
+
+// ToolNameRewrite is a request-scoped tool-name mapping.
+//   - Forward maps client names to MCP-style names for the upstream request.
+//   - Reverse maps MCP-style names back to client names in the response.
+type ToolNameRewrite struct {
+	Forward map[string]string
+	Reverse map[string]string
 }
 
 // shouldMimicToolName 指示某个 tool 是否需要重命名。
@@ -117,54 +155,46 @@ func shouldMimicToolName(toolType string) bool {
 	return false
 }
 
-// buildToolNameRewriteFromBody 扫描 body 的 tools[*].name，构造 ToolNameRewrite
-// 并返回它。若不需要混淆（tools 数量不足 + 没有匹配静态前缀的工具）返回 nil。
-//
-// 注意：只扫描，不改 body。真正的 body 改写在 applyToolNameRewriteToBody。
-func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
+// buildToolNameRewriteFromBody uses the namespace loaded from persistent
+// deployment settings at startup. Request paths never generate a new identity.
+func (s *GatewayService) buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
+	if s == nil || s.cfg == nil {
+		return nil
+	}
+	return buildToolNameRewriteFromBodyWithServerName(body, s.cfg.Gateway.AnthropicMCPServerName)
+}
+
+func buildToolNameRewriteFromBodyWithServerName(body []byte, serverName string) *ToolNameRewrite {
 	tools := gjson.GetBytes(body, "tools")
 	if !tools.IsArray() {
 		return nil
 	}
 
 	mimicableNames := make([]string, 0)
-	toolsArr := tools.Array()
-	for _, t := range toolsArr {
-		if !shouldMimicToolName(t.Get("type").String()) {
+	reservedNames := make([]string, 0)
+	for _, tool := range tools.Array() {
+		name := tool.Get("name")
+		if name.Type != gjson.String || name.String() == "" {
 			continue
 		}
-		name := t.Get("name").String()
-		if name == "" {
-			continue
+		reservedNames = append(reservedNames, name.String())
+		if shouldMimicToolName(tool.Get("type").String()) {
+			mimicableNames = append(mimicableNames, name.String())
 		}
-		mimicableNames = append(mimicableNames, name)
 	}
 
-	dynamic := buildDynamicToolMap(mimicableNames)
-
-	rw := &ToolNameRewrite{
-		Forward: make(map[string]string),
-		Reverse: make(map[string]string),
-	}
-	for _, name := range mimicableNames {
-		fake := sanitizeToolName(name, dynamic)
-		if fake == name {
-			continue
-		}
-		rw.Forward[name] = fake
-		rw.Reverse[fake] = name
-	}
-	if len(rw.Forward) == 0 {
+	mapping := buildMCPToolMap(mimicableNames, serverName, reservedNames...)
+	if len(mapping) == 0 {
 		return nil
 	}
 
-	rw.ReverseOrdered = make([][2]string, 0, len(rw.Reverse))
-	for fake, real := range rw.Reverse {
-		rw.ReverseOrdered = append(rw.ReverseOrdered, [2]string{fake, real})
+	rw := &ToolNameRewrite{
+		Forward: mapping,
+		Reverse: make(map[string]string, len(mapping)),
 	}
-	sort.SliceStable(rw.ReverseOrdered, func(i, j int) bool {
-		return len(rw.ReverseOrdered[i][0]) > len(rw.ReverseOrdered[j][0])
-	})
+	for original, alias := range mapping {
+		rw.Reverse[alias] = original
+	}
 
 	return rw
 }
@@ -178,10 +208,15 @@ type toolNameSpan struct {
 //
 //   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
 //   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
+//   - Rewrite context_management.edits[].exclude_tools for clear_tool_uses_20250919.
 //   - 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
+//   - 改写协议定义的 tool_reference.tool_name：
+//     $.messages[*].content[*].content[*]（type == "tool_result"），以及
+//     $.messages[*].content[*].content.tool_references[*]
+//     （type == "tool_search_tool_result" 且 content.type == "tool_search_tool_search_result"）
 //   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
 //
-// 响应侧 bytes.Replace 会连带还原假名 → 真名。
+// Response bytes are restored through the request-scoped alias mapping.
 func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 	if rw == nil || len(rw.Forward) == 0 {
 		body = applyToolsLastCacheBreakpoint(body)
@@ -206,6 +241,19 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 		}
 		edits = append(edits, toolNameSpan{name.Index, name.Index + len(name.Raw), encoded})
 	}
+	// Only the direct items of a protocol-defined tool_reference container are
+	// references; tool inputs, outputs and nested payloads stay opaque.
+	addToolReferences := func(refs gjson.Result) {
+		if !refs.IsArray() {
+			return
+		}
+		refs.ForEach(func(_, ref gjson.Result) bool {
+			if ref.Get("type").String() == "tool_reference" {
+				addName(ref.Get("tool_name"))
+			}
+			return true
+		})
+	}
 
 	tools := gjson.GetBytes(body, "tools")
 	if tools.IsArray() {
@@ -219,13 +267,35 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 	if choice := gjson.GetBytes(body, "tool_choice"); choice.Get("type").String() == "tool" {
 		addName(choice.Get("name"))
 	}
+	if contextEdits := gjson.GetBytes(body, "context_management.edits"); contextEdits.IsArray() {
+		contextEdits.ForEach(func(_, edit gjson.Result) bool {
+			if edit.Get("type").String() == "clear_tool_uses_20250919" {
+				if excluded := edit.Get("exclude_tools"); excluded.IsArray() {
+					excluded.ForEach(func(_, name gjson.Result) bool {
+						if name.Type == gjson.String {
+							addName(name)
+						}
+						return true
+					})
+				}
+			}
+			return true
+		})
+	}
 	if messages := gjson.GetBytes(body, "messages"); messages.IsArray() {
 		messages.ForEach(func(_, msg gjson.Result) bool {
 			content := msg.Get("content")
 			if content.IsArray() {
 				content.ForEach(func(_, block gjson.Result) bool {
-					if block.Get("type").String() == "tool_use" {
+					switch block.Get("type").String() {
+					case "tool_use":
 						addName(block.Get("name"))
+					case "tool_result":
+						addToolReferences(block.Get("content"))
+					case "tool_search_tool_result":
+						if result := block.Get("content"); result.Get("type").String() == "tool_search_tool_search_result" {
+							addToolReferences(result.Get("tool_references"))
+						}
 					}
 					return true
 				})
@@ -233,24 +303,25 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 			return true
 		})
 	}
-	if len(edits) != 0 {
-		sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
-		var out []byte
-		out = make([]byte, 0, len(body))
-		pos := 0
-		for _, edit := range edits {
-			if edit.start < pos { // Ignore any overlapping result from malformed JSON.
-				continue
-			}
-			out = append(out, body[pos:edit.start]...)
-			out = append(out, edit.value...)
-			pos = edit.end
-		}
-		body = append(out, body[pos:]...)
-	}
+	return applyToolsLastCacheBreakpoint(applyToolNameSpans(body, edits))
+}
 
-	body = applyToolsLastCacheBreakpoint(body)
-	return body
+func applyToolNameSpans(body []byte, edits []toolNameSpan) []byte {
+	if len(edits) == 0 {
+		return body
+	}
+	sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
+	out := make([]byte, 0, len(body))
+	pos := 0
+	for _, edit := range edits {
+		if edit.start < pos { // Ignore any overlapping result from malformed JSON.
+			continue
+		}
+		out = append(out, body[pos:edit.start]...)
+		out = append(out, edit.value...)
+		pos = edit.end
+	}
+	return append(out, body[pos:]...)
 }
 
 // applyToolsLastCacheBreakpoint 在最后一个非延迟加载工具上注入 cache_control
@@ -327,36 +398,6 @@ func stripDeferredToolCacheControl(body []byte) []byte {
 	return body
 }
 
-// restoreToolNamesInBytes 对 bytes chunk 做逆向还原：假名 → 真名。
-// 按 ReverseOrdered 的假名长度倒序逐个 bytes.Replace，防止子串冲突
-// （与 Parrot _restore_tool_names_in_chunk 的 sorted(..., reverse=True) 等价）。
-// 再做静态前缀还原（cc_sess_ → sessions_ / cc_ses_ → session_）。
-//
-// rw 可为 nil；nil 时仍会做静态前缀还原。
-func restoreToolNamesInBytes(data []byte, rw *ToolNameRewrite) []byte {
-	if rw != nil {
-		for _, pair := range rw.ReverseOrdered {
-			fake, real := pair[0], pair[1]
-			if fake == "" || fake == real {
-				continue
-			}
-			data = replaceAllBytes(data, fake, real)
-		}
-	}
-	for prefix, replacement := range staticToolNameRewrites {
-		data = replaceAllBytes(data, replacement, prefix)
-	}
-	return data
-}
-
-// replaceAllBytes 是 bytes.ReplaceAll 的便捷封装，避免每个调用点各自做 []byte 转换。
-func replaceAllBytes(data []byte, from, to string) []byte {
-	if len(data) == 0 || from == to || !strings.Contains(string(data), from) {
-		return data
-	}
-	return []byte(strings.ReplaceAll(string(data), from, to))
-}
-
 // toolNameRewriteFromContext 从 gin.Context 取出请求阶段保存的工具名映射。
 // 找不到（c==nil 或 key 不存在或类型不对）时返回 nil；调用方必须能处理 nil。
 func toolNameRewriteFromContext(c interface {
@@ -373,14 +414,10 @@ func toolNameRewriteFromContext(c interface {
 	return rw
 }
 
-// reverseToolNamesIfPresent 是响应侧 5 处注入点的统一封装：从 c 取出 mapping
-// 并对 chunk 做 bytes 级假名→真名替换。c 没有 mapping 时仍会做静态前缀还原。
+// reverseToolNamesIfPresent restores aliases only when the request stored a mapping.
 func reverseToolNamesIfPresent(c interface {
 	Get(string) (any, bool)
 }, chunk []byte) []byte {
 	rw := toolNameRewriteFromContext(c)
-	if rw == nil && len(staticToolNameRewrites) == 0 {
-		return chunk
-	}
 	return restoreToolNamesInBytes(chunk, rw)
 }
