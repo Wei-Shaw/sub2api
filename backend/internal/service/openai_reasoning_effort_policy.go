@@ -445,6 +445,22 @@ func WithOpenAIReasoningEffortPolicy(ctx context.Context, maxEffort string, mapp
 	return context.WithValue(ctx, openAIReasoningEffortPolicyContextKey{}, policy)
 }
 
+// WithOpenAIReasoningEffortPolicyForMessages preserves bridge defaults when the
+// client omits output_config.effort, binding only mappings for synthesized none.
+func WithOpenAIReasoningEffortPolicyForMessages(ctx context.Context, body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) context.Context {
+	if strings.TrimSpace(gjson.GetBytes(body, "output_config.effort").String()) == "" {
+		maxEffort = ""
+		noneMappings := make([]ReasoningEffortMapping, 0, len(mappings))
+		for _, mapping := range mappings {
+			if normalizeReasoningEffortMappingSource(mapping.From) == "none" {
+				noneMappings = append(noneMappings, mapping)
+			}
+		}
+		mappings = noneMappings
+	}
+	return WithOpenAIReasoningEffortPolicy(ctx, maxEffort, mappings, overLimit)
+}
+
 // ApplyOpenAIReasoningEffortPolicyFromContext applies a policy previously bound
 // to the request. An unbound request is returned byte-for-byte unchanged.
 func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byte) ([]byte, bool, error) {
