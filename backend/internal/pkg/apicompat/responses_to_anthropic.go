@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ---------------------------------------------------------------------------
@@ -478,7 +480,49 @@ func resToAnthRecoverText(text string, part responsesTextPart, state *ResponsesE
 	if text == delivered || !strings.HasPrefix(text, delivered) {
 		return nil
 	}
-	return resToAnthEmitText(text[len(delivered):], part, state)
+	// A done payload that begins with the delivered text has two shapes.
+	// "Hello wo" + done "Hello world" is one answer split across the stream,
+	// and the missing tail must be forwarded. "Hello." + done "Hello.\n</tag>"
+	// is the whole answer streamed, then repeated with a suffix that exists
+	// only in the finished payload: Grok's Responses stream does this, and
+	// forwarding the suffix inserts text the model never streamed. Clients
+	// replay that text on the next turn. A stream truncated inside a word or
+	// a UTF-8 sequence does not end on a boundary, and its done payload does
+	// not skip onto a new line, so that tail is still recovered. A part that
+	// sent no deltas is still recovered whole.
+	suffix := text[len(delivered):]
+	if delivered != "" && (endsOnTextBoundary(delivered) || startsNewLine(suffix)) {
+		return nil
+	}
+	return resToAnthEmitText(suffix, part, state)
+}
+
+// startsNewLine reports whether a done suffix begins a new line. A truncated
+// delta continues on the same line; a suffix the model attached only to the
+// finished payload is separated from the answer it already streamed.
+func startsNewLine(suffix string) bool {
+	return strings.HasPrefix(suffix, "\n") || strings.HasPrefix(suffix, "\r\n")
+}
+
+// endsOnTextBoundary reports whether delivered text ends where an upstream
+// would stop if it had finished the answer: after whitespace, punctuation, or
+// a CJK character. A cut inside an ASCII word or a multibyte sequence does
+// not, which is what a truncated delta looks like.
+func endsOnTextBoundary(delivered string) bool {
+	r, size := utf8.DecodeLastRuneInString(delivered)
+	if r == utf8.RuneError && size == 1 {
+		return false
+	}
+	if unicode.IsSpace(r) || unicode.Is(unicode.Han, r) {
+		return true
+	}
+	switch r {
+	case '.', ',', ';', ':', '!', '?', '…', '。', '，', '；', '：', '！', '？',
+		')', ']', '}', '）', '】', '》', '"', '\'', '“', '”', '’':
+		return true
+	default:
+		return false
+	}
 }
 
 // resToAnthHandleTextDone recovers text that upstream carried only on the done
