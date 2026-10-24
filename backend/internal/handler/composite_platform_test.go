@@ -147,7 +147,7 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 		response string
 		want     string
 	}{
-		{name: "default medium", request: `{"model":"gpt-5"}`, response: `{"reasoning":{"effort":"medium"}}`, want: "low"},
+		{name: "default medium", request: `{"model":"gpt-5"}`, response: `{"reasoning":{"effort":"medium"}}`, want: "medium"},
 		{name: "disabled thinking none", request: `{"model":"gpt-5","thinking":{"type":"disabled"}}`, response: `{"reasoning":{"effort":"none"}}`, want: "low"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 			bindOpenAIReasoningEffortPolicyForMessagesRequest(omittedCtx, synthesizedAPIKey, []byte(tc.request))
 			got, changed, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(omittedCtx.Request.Context(), []byte(tc.response))
 			require.NoError(t, err)
-			require.True(t, changed)
+			require.Equal(t, tc.want != "medium", changed)
 			require.Equal(t, tc.want, gjson.GetBytes(got, "reasoning.effort").String())
 		})
 	}
