@@ -2852,6 +2852,20 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Gemini accounts
 	if account.IsGemini() {
+		// Vertex Service Account accounts expose the models published in the
+		// configured project/region. Fall back to the curated catalog when the
+		// upstream model-list call is unavailable.
+		if account.IsVertexServiceAccount() && h.accountTestService != nil {
+			if modelIDs, fetchErr := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account); fetchErr == nil && len(modelIDs) > 0 {
+				models := make([]geminicli.Model, 0, len(modelIDs))
+				for _, modelID := range modelIDs {
+					models = append(models, geminicli.Model{ID: modelID, Type: "model", DisplayName: modelID})
+				}
+				response.Success(c, models)
+				return
+			}
+		}
+
 		// Consumer Google One OAuth still uses the legacy Gemini CLI / Code
 		// Assist channel. Do not advertise newer 3.x or image models that the
 		// channel cannot serve.
