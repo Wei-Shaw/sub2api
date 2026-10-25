@@ -81,6 +81,17 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
+	if IsCNProvider(account.Platform) {
+		policyBody, _, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+		if policyErr != nil {
+			if IsReasoningEffortPolicyDenied(policyErr) {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			}
+			return nil, policyErr
+		}
+		body = policyBody
+	}
 
 	startTime := time.Now()
 
@@ -298,12 +309,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			}
 		}
 	}
-	if account.Platform == PlatformOpenAI {
-		policyBody, changed, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, responsesBody)
+	if account.Platform == PlatformOpenAI || IsCNProvider(account.Platform) {
+		policyBody, changed, policyErr := applyMessagesConvertedReasoningEffortPolicy(ctx, account, responsesBody, upstreamModel)
 		if policyErr != nil {
 			if IsReasoningEffortPolicyDenied(policyErr) {
 				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			} else {
+				writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
 			}
 			return nil, policyErr
 		}
