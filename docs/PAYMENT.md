@@ -13,6 +13,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 - [Provider Instance Management](#provider-instance-management)
 - [Webhook Configuration](#webhook-configuration)
 - [Payment Flow](#payment-flow)
+- [Subscription renewal policy](#subscription-renewal-policy)
 - [Migrating from Sub2ApiPay](#migrating-from-sub2apipay)
 
 ---
@@ -259,6 +260,43 @@ User selects amount and payment method
 - Before marking an order as expired, the background job queries the upstream payment status first
 - If the user has actually paid but the callback was delayed, the system will reconcile automatically
 - The background job runs every 60 seconds to check for timed-out orders
+
+---
+
+## Subscription renewal policy
+
+Subscription groups default to extending the expiry on renewal, preserving quota
+usage and reset anchors. Administrators can enable **Restart subscription on
+renewal** in the group editor (`reset_quota_on_renewal: true` in the admin group
+API). Successful purchases and positive subscription-code redemptions then:
+
+- Replace the current term immediately, even if quota remains. The purchased
+  number of days starts at fulfillment; unused time and quota are forfeited.
+- Clear daily, weekly and monthly usage. Daily windows retain server-timezone
+  midnight alignment; weekly/monthly windows start with the new term.
+- Keep the subscription ID, notes, historical requests, billing and orders.
+  User balances, API keys and other subscription groups are unchanged.
+
+For example, repurchasing a 30-day subscription on October 10 starts a new term
+ending November 9. The previous term's day-30 boundary no longer grants another
+monthly allowance. Exact expiry does not grant a new monthly allowance; longer
+terms retain their existing periodic quota limits.
+
+The checkout card discloses forfeiture before purchase. Duplicate fulfillment of
+one payment order cannot clear usage or restart the term again. Failed/unpaid
+orders, signup/default grants, administrative assignment/day adjustments and
+negative subscription redemptions keep their existing behavior.
+
+Payment assignment audits record the resulting term. Refund deductions and
+pending-refund rollback are pinned to that term under a row lock, so an older
+purchase cannot change a replacement subscription. Refunds that exhaust a term
+expire its row, allowing failure to restore the exact original expiry. Legacy
+pending refunds use completion time to identify superseded purchases; records
+missing both term metadata and completion time retain the legacy path.
+
+Migration `247_group_reset_quota_on_renewal.sql` defaults existing groups to
+`false`. It does not retroactively modify subscriptions or quotas. Enable the
+option explicitly for the intended groups after upgrading.
 
 ---
 

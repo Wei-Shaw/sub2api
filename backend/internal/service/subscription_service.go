@@ -197,6 +197,9 @@ type AssignSubscriptionInput struct {
 	ValidityDays int
 	AssignedBy   int64
 	Notes        string
+	// ApplyRenewalPolicy is set only for purchases and positive redemptions.
+	// Default signup grants and administrative assignments keep their semantics.
+	ApplyRenewalPolicy bool
 }
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
@@ -210,7 +213,8 @@ func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *Ass
 
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
 // 如果用户已有同分组的订阅：
-//   - 未过期：从当前过期时间累加天数
+//   - 未过期：默认从当前过期时间累加天数；分组启用 reset_quota_on_renewal 时，
+//     立即清零日/周/月用量，并从本次续费生效时间重新计算期限，放弃旧周期剩余时间。
 //   - 已过期：从当前时间开始计算新的过期时间，并激活订阅
 //
 // 如果没有订阅：创建新订阅
@@ -245,7 +249,7 @@ func (s *SubscriptionService) assignOrExtendSubscription(ctx context.Context, in
 
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
-		if err := s.updateExistingSubscriptionTerm(ctx, existingSub.ID, validityDays, input.Notes, false); err != nil {
+		if err := s.updateExistingSubscriptionTerm(ctx, existingSub.ID, validityDays, input.Notes, false, input.ApplyRenewalPolicy && group.ResetQuotaOnRenewal); err != nil {
 			return nil, false, err
 		}
 
@@ -293,6 +297,7 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 	validityDays int,
 	notes string,
 	assignmentSemantics bool,
+	resetQuotaOnRenewal bool,
 ) error {
 	return s.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
 		existingSub, err := s.userSubRepo.GetByIDForUpdate(txCtx, subscriptionID)
@@ -313,7 +318,7 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 				(existingSub.Status != SubscriptionStatusSuspended && !existingSub.ExpiresAt.After(now))
 		}
 		newExpiresAt := existingSub.ExpiresAt.AddDate(0, 0, validityDays)
-		if isExpired {
+		if isExpired || resetQuotaOnRenewal {
 			newExpiresAt = now.AddDate(0, 0, validityDays)
 		}
 		if newExpiresAt.After(MaxExpiresAt) {
@@ -323,7 +328,7 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 			notes = ""
 		}
 
-		if isExpired {
+		if isExpired || resetQuotaOnRenewal {
 			renewed := renewedSubscriptionTerm(existingSub, notes, now, newExpiresAt)
 			if err := s.userSubRepo.Update(txCtx, renewed); err != nil {
 				return fmt.Errorf("renew expired subscription: %w", err)
@@ -527,7 +532,7 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 		if sub.Status == SubscriptionStatusExpired ||
 			(sub.Status != SubscriptionStatusSuspended && !sub.ExpiresAt.After(now)) {
 			validityDays := normalizeAssignValidityDays(input.ValidityDays)
-			if err := s.updateExistingSubscriptionTerm(ctx, sub.ID, validityDays, input.Notes, true); err != nil {
+			if err := s.updateExistingSubscriptionTerm(ctx, sub.ID, validityDays, input.Notes, true, false); err != nil {
 				return nil, false, err
 			}
 			s.maybeInvalidateAssignmentCaches(input.UserID, input.GroupID, false)

@@ -87,6 +87,9 @@ func (Group) Fields() []ent.Field {
 		field.String("subscription_type").
 			MaxLen(20).
 			Default(domain.SubscriptionTypeStandard),
+		field.Bool("reset_quota_on_renewal").
+			Default(false).
+			Comment("续费时重置额度并从当前时间重新计算有效期，放弃旧周期剩余时间"),
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().

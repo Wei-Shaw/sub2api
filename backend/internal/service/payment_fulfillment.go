@@ -630,6 +630,7 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 		return fmt.Errorf("check subscription assignment audit: %w", err)
 	}
 
+	var assignedSubscription *UserSubscription
 	recoveredFromNote := false
 	if !alreadyAssigned {
 		orderNote := paymentSubscriptionOrderNote(o.ID)
@@ -637,25 +638,35 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 		switch {
 		case lookupErr == nil && existing != nil && hasPaymentSubscriptionOrderNote(existing.Notes, orderNote):
 			recoveredFromNote = true
+			assignedSubscription = existing
 		case lookupErr != nil && !errors.Is(lookupErr, ErrSubscriptionNotFound):
 			return fmt.Errorf("check existing subscription assignment: %w", lookupErr)
 		default:
-			if _, _, err := s.subscriptionSvc.assignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
-				UserID:       o.UserID,
-				GroupID:      groupID,
-				ValidityDays: days,
-				AssignedBy:   0,
-				Notes:        orderNote,
-			}, true); err != nil {
-				return fmt.Errorf("assign subscription: %w", err)
+			var assignErr error
+			assignedSubscription, _, assignErr = s.subscriptionSvc.assignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+				UserID:             o.UserID,
+				GroupID:            groupID,
+				ValidityDays:       days,
+				AssignedBy:         0,
+				Notes:              orderNote,
+				ApplyRenewalPolicy: true,
+			}, true)
+			if assignErr != nil {
+				return fmt.Errorf("assign subscription: %w", assignErr)
 			}
 		}
 
-		detail, _ := json.Marshal(map[string]any{
+		detailFields := map[string]any{
 			"groupID":           groupID,
 			"validityDays":      days,
 			"recoveredFromNote": recoveredFromNote,
-		})
+		}
+		// A legacy note proves fulfillment, but not which term it created.
+		if !recoveredFromNote && assignedSubscription != nil {
+			detailFields["subscriptionStartsAt"] = assignedSubscription.StartsAt
+			detailFields["subscriptionExpiresAt"] = assignedSubscription.ExpiresAt
+		}
+		detail, _ := json.Marshal(detailFields)
 		if _, err := txClient.PaymentAuditLog.Create().
 			SetOrderID(strconv.FormatInt(o.ID, 10)).
 			SetAction("SUBSCRIPTION_ASSIGNED").

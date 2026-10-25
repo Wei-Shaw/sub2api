@@ -130,6 +130,11 @@ func SubscriptionType(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldSubscriptionType, v))
 }
 
+// ResetQuotaOnRenewal applies equality check predicate on the "reset_quota_on_renewal" field. It's identical to ResetQuotaOnRenewalEQ.
+func ResetQuotaOnRenewal(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldResetQuotaOnRenewal, v))
+}
+
 // DailyLimitUsd applies equality check predicate on the "daily_limit_usd" field. It's identical to DailyLimitUsdEQ.
 func DailyLimitUsd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDailyLimitUsd, v))
@@ -1113,6 +1118,16 @@ func SubscriptionTypeEqualFold(v string) predicate.Group {
 // SubscriptionTypeContainsFold applies the ContainsFold predicate on the "subscription_type" field.
 func SubscriptionTypeContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldSubscriptionType, v))
+}
+
+// ResetQuotaOnRenewalEQ applies the EQ predicate on the "reset_quota_on_renewal" field.
+func ResetQuotaOnRenewalEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldResetQuotaOnRenewal, v))
+}
+
+// ResetQuotaOnRenewalNEQ applies the NEQ predicate on the "reset_quota_on_renewal" field.
+func ResetQuotaOnRenewalNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldResetQuotaOnRenewal, v))
 }
 
 // DailyLimitUsdEQ applies the EQ predicate on the "daily_limit_usd" field.

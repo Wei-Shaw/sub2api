@@ -104,6 +104,7 @@ type Group struct {
 	I18n domain.GroupI18n `json:"i18n,omitempty"`
 
 	SubscriptionType          string   `json:"subscription_type"`
+	ResetQuotaOnRenewal       bool     `json:"reset_quota_on_renewal"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD            *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD           *float64 `json:"monthly_limit_usd"`

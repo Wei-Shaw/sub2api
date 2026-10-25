@@ -22099,6 +22099,7 @@ type GroupMutation struct {
 	duplicate_operation_id                  *string
 	platform                                *string
 	subscription_type                       *string
+	reset_quota_on_renewal                  *bool
 	daily_limit_usd                         *float64
 	adddaily_limit_usd                      *float64
 	weekly_limit_usd                        *float64
@@ -22953,6 +22954,42 @@ func (m *GroupMutation) OldSubscriptionType(ctx context.Context) (v string, err 
 // ResetSubscriptionType resets all changes to the "subscription_type" field.
 func (m *GroupMutation) ResetSubscriptionType() {
 	m.subscription_type = nil
+}
+
+// SetResetQuotaOnRenewal sets the "reset_quota_on_renewal" field.
+func (m *GroupMutation) SetResetQuotaOnRenewal(b bool) {
+	m.reset_quota_on_renewal = &b
+}
+
+// ResetQuotaOnRenewal returns the value of the "reset_quota_on_renewal" field in the mutation.
+func (m *GroupMutation) ResetQuotaOnRenewal() (r bool, exists bool) {
+	v := m.reset_quota_on_renewal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResetQuotaOnRenewal returns the old "reset_quota_on_renewal" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldResetQuotaOnRenewal(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResetQuotaOnRenewal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResetQuotaOnRenewal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResetQuotaOnRenewal: %w", err)
+	}
+	return oldValue.ResetQuotaOnRenewal, nil
+}
+
+// ResetResetQuotaOnRenewal resets all changes to the "reset_quota_on_renewal" field.
+func (m *GroupMutation) ResetResetQuotaOnRenewal() {
+	m.reset_quota_on_renewal = nil
 }
 
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
@@ -25958,7 +25995,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 67)
+	fields := make([]string, 0, 68)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26006,6 +26043,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.subscription_type != nil {
 		fields = append(fields, group.FieldSubscriptionType)
+	}
+	if m.reset_quota_on_renewal != nil {
+		fields = append(fields, group.FieldResetQuotaOnRenewal)
 	}
 	if m.daily_limit_usd != nil {
 		fields = append(fields, group.FieldDailyLimitUsd)
@@ -26200,6 +26240,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Platform()
 	case group.FieldSubscriptionType:
 		return m.SubscriptionType()
+	case group.FieldResetQuotaOnRenewal:
+		return m.ResetQuotaOnRenewal()
 	case group.FieldDailyLimitUsd:
 		return m.DailyLimitUsd()
 	case group.FieldWeeklyLimitUsd:
@@ -26343,6 +26385,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPlatform(ctx)
 	case group.FieldSubscriptionType:
 		return m.OldSubscriptionType(ctx)
+	case group.FieldResetQuotaOnRenewal:
+		return m.OldResetQuotaOnRenewal(ctx)
 	case group.FieldDailyLimitUsd:
 		return m.OldDailyLimitUsd(ctx)
 	case group.FieldWeeklyLimitUsd:
@@ -26565,6 +26609,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSubscriptionType(v)
+		return nil
+	case group.FieldResetQuotaOnRenewal:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResetQuotaOnRenewal(v)
 		return nil
 	case group.FieldDailyLimitUsd:
 		v, ok := value.(float64)
@@ -27481,6 +27532,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSubscriptionType:
 		m.ResetSubscriptionType()
+		return nil
+	case group.FieldResetQuotaOnRenewal:
+		m.ResetResetQuotaOnRenewal()
 		return nil
 	case group.FieldDailyLimitUsd:
 		m.ResetDailyLimitUsd()
