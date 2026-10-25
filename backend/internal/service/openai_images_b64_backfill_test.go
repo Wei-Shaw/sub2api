@@ -379,3 +379,46 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyLeavesURLOnlyResponseWhenDisabl
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, upstreamBody, rec.Body.String())
 }
+
+func TestImagesStripUpstreamURLsEnabled(t *testing.T) {
+	require.False(t, ImagesStripUpstreamURLsEnabled(nil))
+	require.False(t, ImagesStripUpstreamURLsEnabled(&Account{}))
+	require.False(t, ImagesStripUpstreamURLsEnabled(&Account{Extra: map[string]any{AccountExtraImagesStripUpstreamURLs: "true"}}))
+	require.True(t, ImagesStripUpstreamURLsEnabled(&Account{Extra: map[string]any{AccountExtraImagesStripUpstreamURLs: true}}))
+}
+
+func TestStripOpenAIImagesUpstreamURLs(t *testing.T) {
+	stripAccount := &Account{Extra: map[string]any{AccountExtraImagesStripUpstreamURLs: true}}
+	body := `{"created":1,"data":[` +
+		`{"b64_json":"aGVsbG8=","url":"http://203.0.113.7:33339/v1/images/a.png","native_url":"https://203.0.113.7/a.png","revised_prompt":"cat","size":"1024x1024","file":"a.png"},` +
+		`{"url":"https://cdn.example.com/b.png","revised_prompt":"dog"}` +
+		`],"usage":{"total_tokens":0}}`
+
+	tests := []struct {
+		name    string
+		account *Account
+		parsed  *OpenAIImagesRequest
+		want    string
+	}{
+		{
+			name:    "drops URL fields only from items that carry b64_json",
+			account: stripAccount,
+			want: `{"created":1,"data":[` +
+				`{"b64_json":"aGVsbG8=","revised_prompt":"cat","size":"1024x1024","file":"a.png"},` +
+				`{"url":"https://cdn.example.com/b.png","revised_prompt":"dog"}` +
+				`],"usage":{"total_tokens":0}}`,
+		},
+		{name: "disabled by default", account: &Account{}, want: body},
+		{name: "client asked for url", account: stripAccount, parsed: &OpenAIImagesRequest{ResponseFormat: "url"}, want: body},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripOpenAIImagesUpstreamURLs(tt.account, tt.parsed, []byte(body))
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+
+	for _, raw := range []string{"", "not json", `{"error":{"message":"x"}}`, `{"data":"x"}`} {
+		require.Equal(t, raw, string(stripOpenAIImagesUpstreamURLs(stripAccount, nil, []byte(raw))))
+	}
+}

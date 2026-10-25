@@ -785,12 +785,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(upstreamCtx, resp, c, account, parsed)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, inBandFailed, err := s.handleOpenAIImagesNonStreamingResponse(upstreamCtx, resp, c, account, parsed)
 		if err != nil {
 			return nil, err
 		}
 		usage = nonStreamUsage
-		if nonStreamCount > 0 {
+		if nonStreamCount > 0 || inBandFailed {
 			imageCount = nonStreamCount
 		}
 		return &OpenAIForwardResult{
@@ -963,12 +963,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 	c *gin.Context,
 	account *Account,
 	parsed *OpenAIImagesRequest,
-) (OpenAIUsage, int, []string, error) {
+) (OpenAIUsage, int, []string, bool, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return OpenAIUsage{}, 0, nil, err
+		return OpenAIUsage{}, 0, nil, false, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	body = stripOpenAIImagesUpstreamURLs(account, parsed, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -979,7 +980,63 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 	c.Data(resp.StatusCode, contentType, body)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
-	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+	imageCount := extractOpenAIImageCountFromJSONBytes(body)
+	inBandFailed := false
+	if imageCount == 0 {
+		if message, ok := openAIImagesInBandErrorMessage(body); ok {
+			inBandFailed = true
+			markOpenAIImagesInBandError(c, account, resp, message)
+		}
+	}
+	return usage, imageCount, collectOpenAIResponseImageOutputSizesFromJSONBytes(body), inBandFailed, nil
+}
+
+// openAIImagesInBandErrorMessage 判断 2xx 的 Images 响应体是否其实是失败结果：
+// 顶层带 error 且没有任何图片输出。部分 OpenAI 兼容上游对内容拦截就这样返回 HTTP 200。
+func openAIImagesInBandErrorMessage(body []byte) (string, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return "", false
+	}
+	errValue := gjson.GetBytes(body, "error")
+	if !errValue.Exists() || errValue.Type == gjson.Null {
+		return "", false
+	}
+	message := strings.TrimSpace(errValue.Get("message").String())
+	if message == "" && errValue.Type == gjson.String {
+		message = strings.TrimSpace(errValue.String())
+	}
+	if message == "" {
+		message = "Upstream returned an error in a successful images response"
+	}
+	return sanitizeUpstreamErrorMessage(message), true
+}
+
+// markOpenAIImagesInBandError 让 Ops 把「HTTP 200 + error 正文」记为失败请求；对客响应保持上游原样。
+func markOpenAIImagesInBandError(c *gin.Context, account *Account, resp *http.Response, message string) {
+	if c == nil {
+		return
+	}
+	event := OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "http_error",
+		Message:            message,
+	}
+	if account != nil {
+		event.Platform = account.Platform
+		event.AccountID = account.ID
+		event.AccountName = account.Name
+	}
+	appendOpsUpstreamError(c, event)
+	MarkOpsStreamErrorValue(c, OpsStreamError{
+		ErrType:         "upstream_error",
+		Message:         message,
+		IntendedStatus:  http.StatusBadGateway,
+		CountTowardsSLA: true,
+		NonStream:       true,
+	})
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
