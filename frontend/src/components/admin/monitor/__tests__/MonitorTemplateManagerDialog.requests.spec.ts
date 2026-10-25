@@ -27,6 +27,12 @@ function mountDialog() {
 }
 describe('monitor template list requests', () => {
   beforeEach(() => { vi.resetAllMocks() })
+  it('offers StepFun templates for Step Plan monitors', async () => {
+    list.mockResolvedValue(response('current-template'))
+    const wrapper = mountDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('monitorCommon.providers.stepfun')
+  })
   it.each(['resolve', 'reject'] as const)('ignores an old dialog request that %ss', async outcome => {
     const old = deferred<ReturnType<typeof response>>()
     list.mockReturnValueOnce(old.promise).mockResolvedValueOnce(response('current-template'))

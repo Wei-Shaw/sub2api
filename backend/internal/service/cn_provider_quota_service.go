@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -40,6 +41,27 @@ const (
 	cnExtraSuffixUsageUpdated = "usage_updated_at"
 )
 
+var ErrCNQuotaIdentityChanged = infraerrors.Conflict(
+	"CN_QUOTA_IDENTITY_CHANGED",
+	"Step Plan account identity changed or a newer usage attempt was already persisted; reload and retry",
+)
+
+// stepPlanUsageCASRepository is implemented by the production account
+// repository. Keeping it as a narrow capability avoids widening the shared
+// AccountRepository interface and makes every StepPlan runtime write go through
+// one identity-checked SQL statement.
+type stepPlanUsageCASRepository interface {
+	NextStepPlanUsageAttemptSeq(ctx context.Context) (int64, error)
+	UpdateStepPlanExtraIfIdentityUnchanged(
+		ctx context.Context,
+		accountID int64,
+		expectedAPIKey string,
+		expectedBaseURL string,
+		updates map[string]any,
+		attemptSeq int64,
+	) error
+}
+
 // cnExtraKey 拼接 provider 维度的 extra 键。
 func cnExtraKey(provider, suffix string) string { return provider + "_" + suffix }
 
@@ -67,8 +89,8 @@ type CNProviderQuotaProbeResult struct {
 	Balance *CNProviderBalanceResult `json:"balance,omitempty"`
 }
 
-// CNProviderQuotaService 探测 Kimi / Zhipu / MiniMax Coding Plan、OpenCode Go、
-// Command Code 与 Cline（ClinePass）的滚动窗口用量。
+// CNProviderQuotaService 探测 Kimi / Zhipu / MiniMax / StepFun Coding Plan、
+// OpenCode Go、Command Code 与 Cline（ClinePass）的滚动窗口用量。
 type CNProviderQuotaService struct {
 	accountRepo  AccountRepository
 	proxyRepo    ProxyRepository
@@ -141,8 +163,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	if provider == PlatformCline {
 		return s.queryClineUsage(ctx, account)
 	}
-	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan or opencode go account")
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformStepfun && provider != PlatformOpenCodeGo {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax/stepfun coding plan or opencode go account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -176,12 +198,38 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformMiniMax:
 		targetURL = minimaxQuotaURL(baseURL)
 		authHeader = "Bearer " + apiKey
+	case PlatformStepfun:
+		targetURL = stepfunQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	}
+	attemptSeq := int64(0)
+	if provider == PlatformStepfun {
+		repo, ok := s.accountRepo.(stepPlanUsageCASRepository)
+		if !ok {
+			return nil, infraerrors.New(http.StatusInternalServerError, "CN_QUOTA_CAS_UNAVAILABLE", "account repository does not support atomic Step Plan updates")
+		}
+		seq, seqErr := repo.NextStepPlanUsageAttemptSeq(ctx)
+		if seqErr != nil {
+			return nil, infraerrors.Newf(http.StatusInternalServerError, "CN_QUOTA_ATTEMPT_SEQ_FAILED", "allocate Step Plan usage attempt sequence: %v", seqErr)
+		}
+		attemptSeq = seq
+	}
+	now := time.Now().UTC()
+	result := &CNProviderQuotaProbeResult{
+		Provider:        provider,
+		Source:          "coding_plan",
+		CredentialValid: true,
+		FetchedAt:       now.Unix(),
 	}
 
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
 	// 端点多由账号 base_url 衍生，不得把 API key 发往策略外主机。
 	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
 	if err != nil {
+		result.Error = err.Error()
+		if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+			return nil, persistErr
+		}
 		return nil, infraerrors.New(http.StatusForbidden, "CN_QUOTA_URL_REJECTED", err.Error())
 	}
 	targetURL = validatedURL
@@ -191,6 +239,10 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	defer cancel()
 	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, targetURL, nil)
 	if err != nil {
+		result.Error = fmt.Sprintf("build request: %v", err)
+		if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+			return nil, persistErr
+		}
 		return nil, infraerrors.Newf(http.StatusInternalServerError, "CN_QUOTA_REQUEST_BUILD_FAILED", "build request: %v", err)
 	}
 	req.Header.Set("Authorization", authHeader)
@@ -210,26 +262,32 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
 	if err != nil {
+		result.Error = fmt.Sprintf("upstream request failed: %v", err)
+		if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+			return nil, persistErr
+		}
 		return nil, infraerrors.Newf(http.StatusBadGateway, "CN_QUOTA_REQUEST_FAILED", "upstream request failed: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, cnQuotaMaxBodyBytes))
 
-	now := time.Now().UTC()
-	result := &CNProviderQuotaProbeResult{
-		Provider:   provider,
-		Source:     "coding_plan",
-		FetchedAt:  now.Unix(),
-		StatusCode: resp.StatusCode,
-	}
+	result.StatusCode = resp.StatusCode
+	result.CredentialValid = resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		// 鉴权失败：不落快照（不覆盖之前的有效值），仅返回失败结果供前端提示。
+		// 鉴权失败：保留之前的有效窗口快照，但持久化失败状态供编辑面板展示。
+		result.CredentialValid = false
 		result.Error = fmt.Sprintf("Authentication failed (HTTP %d)", resp.StatusCode)
+		if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+			return nil, persistErr
+		}
 		return result, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		result.Error = fmt.Sprintf("API error (HTTP %d): %s", resp.StatusCode, truncate(strings.TrimSpace(string(bodyBytes)), 240))
+		if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+			return nil, persistErr
+		}
 		return result, nil
 	}
 
@@ -241,6 +299,19 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 				msg = "unknown zhipu quota error"
 			}
 			result.Error = "API error: " + msg
+			return result, nil
+		}
+	}
+
+	// Step Plan 的「未开通 / 不可用」由 quota.state / quota.allowed 表达，
+	// 判定与 cc-switch 的 usage_script 一致；HTTP 200 说明 Key 本身有效。
+	if provider == PlatformStepfun {
+		if reason := stepFunQuotaUnavailable(bodyBytes); reason != "" {
+			result.Error = reason
+			result.CredentialValid = true
+			if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+				return nil, persistErr
+			}
 			return result, nil
 		}
 	}
@@ -266,11 +337,35 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		}
 		tiers = parseMiniMaxUsageTiers(bodyBytes)
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "current_subscribe_title").String())
+	case PlatformStepfun:
+		tiers, result.PlanLevel = parseStepFunUsageTiers(bodyBytes)
+		if len(tiers) == 0 {
+			result.Error = "Step Plan quota response has no usable usage windows"
+			result.CredentialValid = true
+			if persistErr := s.persistStepFunUsageSnapshot(ctx, account, result, now, attemptSeq); persistErr != nil {
+				return nil, persistErr
+			}
+			return result, nil
+		}
 	}
 	result.Tiers = tiers
 	result.Success = true
 	result.CredentialValid = true
 
+	if provider == PlatformStepfun {
+		updates := stepFunQuotaExtraUpdates(tiers, now)
+		updates[StepFunUsageSnapshotExtraKey] = newStepFunUsageSnapshot(result, now)
+		updates[StepFunUsageAttemptSeqExtraKey] = attemptSeq
+		if err := s.updateStepPlanUsageExtra(ctx, account, updates, attemptSeq); err != nil {
+			slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
+			if errors.Is(err, ErrCNQuotaIdentityChanged) {
+				return nil, err
+			}
+		} else {
+			result.Persisted = true
+		}
+		return result, nil
+	}
 	updates := cnQuotaExtraUpdates(provider, tiers, now)
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
@@ -278,6 +373,217 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		result.Persisted = true
 	}
 	return result, nil
+}
+
+// persistStepFunUsageSnapshot 只为 Step Plan 写失败/不可用状态；成功结果与
+// 平铺窗口键合并后一次写入，避免两次 UpdateExtra 产生中间态。
+func (s *CNProviderQuotaService) persistStepFunUsageSnapshot(
+	ctx context.Context,
+	account *Account,
+	result *CNProviderQuotaProbeResult,
+	now time.Time,
+	attemptSeq int64,
+) error {
+	if account == nil || account.Platform != PlatformStepfun || result == nil {
+		return nil
+	}
+	snapshot := newStepFunUsageSnapshot(result, now)
+	if snapshot.Status != StepFunUsageStatusOK && account.Extra != nil {
+		previous := decodeStepFunUsageSnapshot(account.Extra)
+		if previous == nil {
+			previous = stepFunUsageSnapshotFromFlatExtra(account.Extra)
+		}
+		if previous != nil {
+			if len(snapshot.Tiers) == 0 {
+				snapshot.Tiers = append([]CNQuotaTier(nil), previous.Tiers...)
+			}
+			if snapshot.PlanLevel == "" {
+				snapshot.PlanLevel = previous.PlanLevel
+			}
+			if snapshot.FetchedAt == nil && previous.FetchedAt != nil {
+				fetchedAt := *previous.FetchedAt
+				snapshot.FetchedAt = &fetchedAt
+			}
+		}
+	}
+	updates := map[string]any{
+		StepFunUsageSnapshotExtraKey:   snapshot,
+		StepFunUsageAttemptSeqExtraKey: attemptSeq,
+	}
+	if err := s.updateStepPlanUsageExtra(ctx, account, updates, attemptSeq); err != nil {
+		slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", PlatformStepfun, "error", err)
+		if errors.Is(err, ErrCNQuotaIdentityChanged) {
+			return err
+		}
+		return nil
+	}
+	result.Persisted = true
+	return nil
+}
+
+func (s *CNProviderQuotaService) updateStepPlanUsageExtra(
+	ctx context.Context,
+	account *Account,
+	updates map[string]any,
+	attemptSeq int64,
+) error {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return infraerrors.New(http.StatusInternalServerError, "CN_QUOTA_NOT_CONFIGURED", "cn provider quota service is not configured")
+	}
+	repo, ok := s.accountRepo.(stepPlanUsageCASRepository)
+	if !ok {
+		return infraerrors.New(http.StatusInternalServerError, "CN_QUOTA_CAS_UNAVAILABLE", "account repository does not support atomic Step Plan updates")
+	}
+	return repo.UpdateStepPlanExtraIfIdentityUnchanged(
+		ctx,
+		account.ID,
+		account.GetCNAPIKey(),
+		account.GetOpenAIBaseURL(),
+		updates,
+		attemptSeq,
+	)
+}
+
+// GetStepPlanUsageState 返回账号最近一次 Step Plan 探测快照，不触发上游请求。
+func (s *CNProviderQuotaService) GetStepPlanUsageState(ctx context.Context, accountID int64) (*StepPlanUsageState, error) {
+	account, err := s.loadStepPlanAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return stepPlanUsageStateFromAccount(account), nil
+}
+
+// SetStepPlanUsageAutoRefresh 持久化账号级自动刷新开关并返回最新状态。
+func (s *CNProviderQuotaService) SetStepPlanUsageAutoRefresh(
+	ctx context.Context,
+	accountID int64,
+	enabled bool,
+) (*StepPlanUsageState, error) {
+	account, err := s.loadStepPlanAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.updateStepPlanUsageExtra(ctx, account, map[string]any{
+		StepFunUsageAutoRefreshExtraKey: enabled,
+	}, 0); err != nil {
+		return nil, err
+	}
+	// Re-read after the conditional write so the response cannot resurrect a
+	// snapshot that a periodic probe replaced while this request was in flight.
+	latest, err := s.loadStepPlanAccount(ctx, accountID)
+	if err != nil {
+		// The write already succeeded. Return a flag-only state rather than
+		// reporting a false save failure; clients merge the toggle and keep the
+		// snapshot they already have.
+		return &StepPlanUsageState{
+			AccountID:          account.ID,
+			Eligible:           true,
+			AutoRefreshEnabled: enabled,
+		}, nil
+	}
+	return stepPlanUsageStateFromAccount(latest), nil
+}
+
+func (s *CNProviderQuotaService) loadStepPlanAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "CN_QUOTA_NOT_CONFIGURED", "cn provider quota service is not configured")
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusNotFound, "CN_QUOTA_ACCOUNT_NOT_FOUND", "account not found: %v", err)
+	}
+	if err := validateCodingPlanAccount(account); err != nil {
+		return nil, err
+	}
+	if account.GetCodingPlanProvider() != PlatformStepfun {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not an official Step Plan account")
+	}
+	return account, nil
+}
+
+func stepPlanUsageStateFromAccount(account *Account) *StepPlanUsageState {
+	state := &StepPlanUsageState{
+		Eligible:           account != nil && account.GetCodingPlanProvider() == PlatformStepfun,
+		AutoRefreshEnabled: stepFunUsageAutoRefreshEnabled(account),
+	}
+	if account == nil {
+		return state
+	}
+	state.AccountID = account.ID
+	state.Snapshot = decodeStepFunUsageSnapshot(account.Extra)
+	if state.Snapshot == nil {
+		state.Snapshot = stepFunUsageSnapshotFromFlatExtra(account.Extra)
+	}
+	return state
+}
+
+func decodeStepFunUsageSnapshot(extra map[string]any) *StepFunUsageSnapshot {
+	if extra == nil {
+		return nil
+	}
+	value, ok := extra[StepFunUsageSnapshotExtraKey]
+	if !ok || value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var snapshot StepFunUsageSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil
+	}
+	switch snapshot.Status {
+	case StepFunUsageStatusOK, StepFunUsageStatusFailed, StepFunUsageStatusUnavailable:
+		return &snapshot
+	default:
+		return nil
+	}
+}
+
+// stepFunUsageSnapshotFromFlatExtra 兼容接入结构化快照前仅写入窗口键的账号。
+func stepFunUsageSnapshotFromFlatExtra(extra map[string]any) *StepFunUsageSnapshot {
+	if extra == nil {
+		return nil
+	}
+	readNumber := func(key string) (float64, bool) {
+		return cnParseF64(extra[key])
+	}
+	readString := func(key string) string {
+		value, _ := extra[key].(string)
+		return value
+	}
+	var tiers []CNQuotaTier
+	for _, item := range []struct {
+		window string
+		used   string
+		reset  string
+	}{
+		{window: "5h", used: cnExtraKey(PlatformStepfun, cnExtraSuffix5hUsed), reset: cnExtraKey(PlatformStepfun, cnExtraSuffix5hReset)},
+		{window: "weekly", used: cnExtraKey(PlatformStepfun, cnExtraSuffixWeeklyUsed), reset: cnExtraKey(PlatformStepfun, cnExtraSuffixWeeklyReset)},
+		{window: "monthly", used: cnExtraKey(PlatformStepfun, cnExtraSuffixMonthlyUsed), reset: cnExtraKey(PlatformStepfun, cnExtraSuffixMonthlyReset)},
+	} {
+		used, ok := readNumber(item.used)
+		if !ok {
+			continue
+		}
+		tiers = append(tiers, CNQuotaTier{Window: item.window, UsedPercent: used, ResetAt: readString(item.reset)})
+	}
+	if len(tiers) == 0 {
+		return nil
+	}
+	snapshot := &StepFunUsageSnapshot{
+		Status:          StepFunUsageStatusOK,
+		CredentialValid: true,
+		Tiers:           tiers,
+	}
+	updatedAt := readString(cnExtraKey(PlatformStepfun, cnExtraSuffixUsageUpdated))
+	if parsed, err := time.Parse(time.RFC3339, updatedAt); err == nil {
+		utc := parsed.UTC()
+		snapshot.FetchedAt = &utc
+		snapshot.LastAttemptAt = utc
+	}
+	return snapshot
 }
 
 func (s *CNProviderQuotaService) loadCodingPlanAccount(ctx context.Context, accountID int64) (*Account, error) {

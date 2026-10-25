@@ -221,6 +221,13 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
+	case domain.PlatformStepfun:
+		if account.IsCodingPlan() && account.GetCodingPlanProvider() == domain.PlatformStepfun {
+			return f.fetchCNQuota(ctx, account, now)
+		}
+		// StepFun payg 与自定义 relay 没有可用的 CN 余额/额度端点；创建期已拒绝，
+		// 这里保留运行期兜底，避免凭据被发往官方额度接口。
+		return quotaErrorSnapshot("usage", "stepfun quota requires official Step Plan coding account", now)
 	case domain.PlatformOpenCodeGo:
 		return f.fetchCNQuota(ctx, account, now)
 	default:

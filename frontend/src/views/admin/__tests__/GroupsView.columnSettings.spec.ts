@@ -48,6 +48,9 @@ const messages: Record<string, string> = {
   'admin.groups.usageToday': 'Today',
   'admin.groups.usageYesterday': 'Yesterday',
   'admin.groups.usageTotal': 'Total',
+  'admin.groups.sortOrder': 'Sort Order',
+  'admin.groups.sortOrderHint': 'Drag groups to adjust display order',
+  'common.cancel': 'Cancel',
 }
 
 vi.mock('@/api/admin', () => ({
@@ -160,6 +163,9 @@ const DataTableStub = {
     <div>
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
       <div data-test="rows">{{ data.map((row) => row.name).join(',') }}</div>
+      <div v-if="data.length" data-test="platform-cell">
+        <slot name="cell-platform" :value="data[0].platform" :row="data[0]" />
+      </div>
       <div v-if="data.length" data-test="usage-cell">
         <slot name="cell-usage" :row="data[0]" />
       </div>
@@ -184,7 +190,7 @@ const SelectStub = {
 
 const BaseDialogStub = {
   props: ['show'],
-  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+  template: '<div v-if="show" data-test="base-dialog"><slot /><slot name="footer" /></div>',
 }
 
 const IconStub = {
@@ -430,5 +436,40 @@ describe('admin GroupsView column settings', () => {
     expect(text).toContain('Total$9.75')
     expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
     expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))
+  })
+})
+
+describe('admin GroupsView StepFun platform badge', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    authState.isSimpleMode = false
+    getModelAllowlistCandidates.mockResolvedValue([])
+    getUsageSummary.mockResolvedValue([])
+    getCapacitySummary.mockResolvedValue([])
+    getLiveCapability.mockResolvedValue({ supported: false })
+    listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+    isCurrentStep.mockReturnValue(false)
+  })
+
+  it('uses the StepFun emerald color in the platform column and sort dialog', async () => {
+    const stepfunGroup = createGroup({ name: 'StepFun Group', platform: 'stepfun' })
+    listGroups.mockResolvedValue({
+      items: [stepfunGroup],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getAllGroups.mockResolvedValue([stepfunGroup])
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="platform-cell"]').html()).toContain('bg-emerald-100')
+
+    await wrapper.get('button[title="Sort Order"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="base-dialog"]').html()).toContain('bg-emerald-100')
   })
 })

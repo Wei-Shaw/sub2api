@@ -977,6 +977,7 @@ export default {
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
+        stepfun: 'StepFun',
         opencode_go: 'OpenCode',
         typesafe: 'TypeSafe / Jev',
         composite: 'Composite',

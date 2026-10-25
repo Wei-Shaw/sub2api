@@ -98,6 +98,35 @@ func TestCallProvider_BasePath(t *testing.T) {
 	}
 }
 
+func TestCallProvider_StepFunOpenAICompatiblePaths(t *testing.T) {
+	swapMonitorHTTPClient(t)
+	requests := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.RequestURI
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	for _, tc := range []struct {
+		name     string
+		basePath string
+		wantPath string
+	}{
+		{name: "payg or origin", wantPath: "/v1/chat/completions"},
+		{name: "step plan base", basePath: "/step_plan/v1", wantPath: "/step_plan/v1/chat/completions"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text, _, status, err := callProvider(context.Background(), "stepfun",
+				server.URL+tc.basePath, "test-key", "step-3.5-flash", "hello", &CheckOptions{APIMode: MonitorAPIModeChatCompletions})
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, "ok", text)
+			require.Equal(t, tc.wantPath, <-requests)
+		})
+	}
+}
+
 func TestMonitorRequestPath_Zhipu(t *testing.T) {
 	adapter := providerAdapters[MonitorProviderZhipu]
 	for endpoint, want := range map[string]string{

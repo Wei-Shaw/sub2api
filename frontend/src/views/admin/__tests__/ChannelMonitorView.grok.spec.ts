@@ -101,7 +101,7 @@ describe('channel monitor Grok provider', () => {
 
     expect(PROVIDERS).toContain(PROVIDER_GROK)
     const providerButtons = wrapper.findAll('[data-testid^="monitor-provider-"]')
-    expect(providerButtons).toHaveLength(10)
+    expect(providerButtons).toHaveLength(11)
     expect(providerButtons[0].element.parentElement?.className).toContain('grid-cols-2')
     expect(providerButtons[0].element.parentElement?.className).toContain('sm:grid-cols-4')
 
@@ -124,11 +124,11 @@ describe('channel monitor Grok provider', () => {
     await endpoint.setValue('https://gateway.example.com')
     await model.setValue('grok-custom')
     await wrapper.get('[data-testid="monitor-provider-openai"]').trigger('click')
-    expect((endpoint.element as HTMLInputElement).value).toBe('https://gateway.example.com')
-    expect((model.element as HTMLInputElement).value).toBe('grok-custom')
+    expect((endpoint.element as HTMLInputElement).value).toBe('')
+    expect((model.element as HTMLInputElement).value).toBe('')
   })
 
-  it('prefills only empty Grok fields and preserves existing provider values', async () => {
+  it('clears previous custom values before applying Grok defaults', async () => {
     const wrapper = mountDialog()
     await flushPromises()
 
@@ -139,17 +139,17 @@ describe('channel monitor Grok provider', () => {
 
     await endpoint.setValue('https://gateway.example.com')
     await grokButton.trigger('click')
-    expect((endpoint.element as HTMLInputElement).value).toBe('https://gateway.example.com')
+    expect((endpoint.element as HTMLInputElement).value).toBe(DEFAULT_GROK_ENDPOINT)
     expect((model.element as HTMLInputElement).value).toBe(DEFAULT_GROK_MODEL)
 
     await anthropicButton.trigger('click')
-    expect((endpoint.element as HTMLInputElement).value).toBe('https://gateway.example.com')
+    expect((endpoint.element as HTMLInputElement).value).toBe('')
     expect((model.element as HTMLInputElement).value).toBe('')
 
     await endpoint.setValue('')
     await model.setValue('grok-custom')
     await grokButton.trigger('click')
     expect((endpoint.element as HTMLInputElement).value).toBe(DEFAULT_GROK_ENDPOINT)
-    expect((model.element as HTMLInputElement).value).toBe('grok-custom')
+    expect((model.element as HTMLInputElement).value).toBe(DEFAULT_GROK_MODEL)
   })
 })

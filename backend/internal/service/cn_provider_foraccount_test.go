@@ -47,6 +47,7 @@ func TestValidateCodingPlanAccount_Matrix(t *testing.T) {
 		{name: "kimi coding ok", account: codingAccount(PlatformKimi)},
 		{name: "zhipu coding ok", account: codingAccount(PlatformZhipu)},
 		{name: "minimax coding ok", account: codingAccount(PlatformMiniMax)},
+		{name: "stepfun coding ok", account: codingAccount(PlatformStepfun)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

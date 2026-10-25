@@ -1,13 +1,16 @@
 /**
- * Admin CN providers (Kimi / Zhipu / DeepSeek) API endpoints.
- * Coding-plan rolling-window quota probe + payg balance probe.
+ * Admin CN providers (Kimi / Zhipu / MiniMax / StepFun / DeepSeek) API endpoints.
+ * Coding-plan quota probe, Step Plan state, and payg balance probe.
  */
 
+import type { StepPlanUsageState } from '@/types'
 import { apiClient } from '../client'
 
-/** 滚动用量窗口档（5 小时 / 每周），对齐后端 service.CNQuotaTier。 */
+export type { StepPlanUsageSnapshot, StepPlanUsageState, StepPlanUsageStatus } from '@/types'
+
+/** 滚动用量窗口档（5 小时 / 每周 / 每月或上游自定义），对齐后端 service.CNQuotaTier。 */
 export interface CNQuotaTier {
-  window: '5h' | 'weekly' | 'monthly'
+  window: string
   used_percent: number
   reset_at?: string
 }
@@ -50,7 +53,7 @@ export interface CNProviderBalanceResult {
   error?: string
 }
 
-/** 查询 Coding Plan 滚动窗口用量（5h + weekly）。 */
+/** 查询 Coding Plan / Step Plan 滚动窗口用量。 */
 export async function queryQuota(id: number): Promise<CNProviderQuotaProbeResult> {
   const { data } = await apiClient.get<CNProviderQuotaProbeResult>(
     `/admin/cn-providers/accounts/${id}/quota`
@@ -66,7 +69,29 @@ export async function queryBalance(id: number): Promise<CNProviderBalanceResult>
   return data
 }
 
+/** 读取 Step Plan 最近一次持久化探测状态。 */
+export async function getStepPlanUsageState(id: number): Promise<StepPlanUsageState> {
+  const { data } = await apiClient.get<StepPlanUsageState>(
+    `/admin/cn-providers/accounts/${id}/quota/state`
+  )
+  return data
+}
+
+/** 更新 Step Plan 账号级自动刷新开关。 */
+export async function setStepPlanUsageAutoRefresh(
+  id: number,
+  enabled: boolean
+): Promise<StepPlanUsageState> {
+  const { data } = await apiClient.put<StepPlanUsageState>(
+    `/admin/cn-providers/accounts/${id}/quota/auto-refresh`,
+    { enabled }
+  )
+  return data
+}
+
 export default {
   queryQuota,
-  queryBalance
+  queryBalance,
+  getStepPlanUsageState,
+  setStepPlanUsageAutoRefresh
 }

@@ -1,16 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const {
+  updateAccountMock,
+  checkMixedChannelRiskMock,
+  authIsSimpleMode,
+  getStepPlanUsageStateMock,
+  setStepPlanUsageAutoRefreshMock,
+  queryStepPlanQuotaMock
+} = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
-  authIsSimpleMode: { value: true }
+  authIsSimpleMode: { value: true },
+  getStepPlanUsageStateMock: vi.fn(),
+  setStepPlanUsageAutoRefreshMock: vi.fn(),
+  queryStepPlanQuotaMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -41,6 +51,11 @@ vi.mock('@/api/admin', () => ({
     },
     tlsFingerprintProfiles: {
       list: vi.fn().mockResolvedValue([])
+    },
+    cnProviders: {
+      getStepPlanUsageState: getStepPlanUsageStateMock,
+      setStepPlanUsageAutoRefresh: setStepPlanUsageAutoRefreshMock,
+      queryQuota: queryStepPlanQuotaMock
     }
   }
 }))
@@ -169,6 +184,31 @@ function buildAccount() {
     group_ids: [],
     expires_at: null,
     auto_pause_on_expired: false
+  } as any
+}
+
+function buildStepPlanAccount() {
+  return {
+    ...buildAccount(),
+    id: 31,
+    name: 'Step Plan',
+    platform: 'stepfun',
+    credentials: {
+      account_mode: 'coding',
+      api_key: 'sk-stepfun',
+      base_url: 'https://api.stepfun.com/step_plan/v1'
+    },
+    extra: {
+      stepfun_usage_auto_refresh: true,
+      stepfun_usage_snapshot: {
+        status: 'ok',
+        credential_valid: true,
+        plan_level: 'Plus',
+        tiers: [{ window: 'monthly', used_percent: 30 }],
+        fetched_at: new Date().toISOString(),
+        last_attempt_at: new Date().toISOString()
+      }
+    }
   } as any
 }
 
@@ -332,9 +372,102 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+    getStepPlanUsageStateMock.mockReset()
+    setStepPlanUsageAutoRefreshMock.mockReset()
+    queryStepPlanQuotaMock.mockReset()
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('renders Step Plan usage settings for official coding accounts', async () => {
+    const account = buildStepPlanAccount()
+    getStepPlanUsageStateMock.mockResolvedValue({
+      account_id: account.id,
+      eligible: true,
+      auto_refresh_enabled: true,
+      snapshot: account.extra.stepfun_usage_snapshot
+    })
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(true)
+  })
+
+  it('shows and hides Step Plan usage settings as the draft mode changes between payg and coding', async () => {
+    const account = buildStepPlanAccount()
+    account.credentials = {
+      ...account.credentials,
+      account_mode: 'payg',
+      base_url: 'https://api.stepfun.com/v1'
+    }
+    getStepPlanUsageStateMock.mockResolvedValue({
+      account_id: account.id,
+      eligible: true,
+      auto_refresh_enabled: true,
+      snapshot: account.extra.stepfun_usage_snapshot
+    })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(false)
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+
+    const codingButton = wrapper.findAll('button')
+      .find((button) => button.text() === 'admin.accounts.cnProviders.accountMode.coding')
+    expect(codingButton).toBeDefined()
+    await codingButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="step-plan-save-first"]').text()).toContain(
+      'admin.accounts.stepPlan.saveBeforeRefresh'
+    )
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+
+    const paygButton = wrapper.findAll('button')
+      .find((button) => button.text() === 'admin.accounts.cnProviders.accountMode.payg')
+    expect(paygButton).toBeDefined()
+    await paygButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(false)
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+  })
+
+  it('shows and hides Step Plan usage settings as the draft base URL changes between relay and official', async () => {
+    const account = buildStepPlanAccount()
+    account.credentials = {
+      ...account.credentials,
+      base_url: 'https://relay.example.com/step_plan/v1'
+    }
+    getStepPlanUsageStateMock.mockResolvedValue({
+      account_id: account.id,
+      eligible: true,
+      auto_refresh_enabled: true,
+      snapshot: account.extra.stepfun_usage_snapshot
+    })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(false)
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+
+    const baseUrlInput = wrapper.findAll('input[type="text"]')
+      .find((input) => (input.element as HTMLInputElement).value === 'https://relay.example.com/step_plan/v1')
+    expect(baseUrlInput).toBeDefined()
+    await baseUrlInput!.setValue('https://api.stepfun.com/step_plan/v1')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="step-plan-save-first"]').text()).toContain(
+      'admin.accounts.stepPlan.saveBeforeRefresh'
+    )
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+
+    await baseUrlInput!.setValue('https://relay.example.com/step_plan/v1')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="step-plan-usage-settings"]').exists()).toBe(false)
+    expect(getStepPlanUsageStateMock).not.toHaveBeenCalled()
+  })
 
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()

@@ -207,6 +207,45 @@ var (
 	}
 )
 
+// stepFunBuiltinPricingJSON 是 StepFun 的本地模型目录。远程 LiteLLM 目录通常未收录
+// StepFun，因此该目录用于补足同步模型列表和默认计费价；远程目录、fallback 文件和
+// override 文件中的同名模型始终优先。价格须与 BillingService 的 StepFun fallback
+// 保持一致，由 pricing_service_stepfun_test.go 锁定。
+const stepFunBuiltinPricingJSON = `{
+	"step-5-preview": {
+		"litellm_provider": "stepfun",
+		"mode": "chat",
+		"input_cost_per_token": 0.98e-06,
+		"output_cost_per_token": 2.80e-06,
+		"cache_read_input_token_cost": 0.10e-06,
+		"supports_prompt_caching": true
+	},
+	"step-3.7-flash": {
+		"litellm_provider": "stepfun",
+		"mode": "chat",
+		"input_cost_per_token": 0.19e-06,
+		"output_cost_per_token": 1.13e-06,
+		"cache_read_input_token_cost": 0.04e-06,
+		"supports_prompt_caching": true
+	},
+	"step-3.5-flash": {
+		"litellm_provider": "stepfun",
+		"mode": "chat",
+		"input_cost_per_token": 0.10e-06,
+		"output_cost_per_token": 0.30e-06,
+		"cache_read_input_token_cost": 0.02e-06,
+		"supports_prompt_caching": true
+	},
+	"step-3.5-flash-2603": {
+		"litellm_provider": "stepfun",
+		"mode": "chat",
+		"input_cost_per_token": 0.10e-06,
+		"output_cost_per_token": 0.30e-06,
+		"cache_read_input_token_cost": 0.02e-06,
+		"supports_prompt_caching": true
+	}
+}`
+
 // LiteLLMModelPricing LiteLLM价格数据结构
 // 只保留我们需要的字段，使用指针来处理可能缺失的值
 type LiteLLMModelPricing struct {
@@ -1050,8 +1089,34 @@ func (s *PricingService) buildPricingData(body []byte) (map[string]*LiteLLMModel
 		return nil, "", err
 	}
 	data = s.mergeFallbackPricingData(data)
+	data = s.mergeBuiltinStepFunPricingData(data)
 	data = s.mergeOverrideOnlyModels(data)
 	return data, fingerprint, nil
+}
+
+// mergeBuiltinStepFunPricingData 用内置 StepFun 目录补齐远程与 fallback 都缺失的模型。
+// 同名条目已存在时直接跳过，确保远程目录及 custom fallback/override 的优先级更高。
+func (s *PricingService) mergeBuiltinStepFunPricingData(data map[string]*LiteLLMModelPricing) map[string]*LiteLLMModelPricing {
+	if data == nil {
+		data = make(map[string]*LiteLLMModelPricing)
+	}
+	builtinData, err := s.parsePricingData([]byte(stepFunBuiltinPricingJSON))
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Built-in StepFun catalog skipped: %v", err)
+		return data
+	}
+	merged := 0
+	for modelName, pricing := range builtinData {
+		if _, ok := data[modelName]; ok {
+			continue
+		}
+		data[modelName] = pricing
+		merged++
+	}
+	if merged > 0 {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Merged %d built-in StepFun models", merged)
+	}
+	return data
 }
 
 // loadPricingData 从本地文件加载价格数据

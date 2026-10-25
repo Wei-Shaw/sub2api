@@ -27,6 +27,11 @@ func legacyProviderDefaultBaseURL(platform, mode, protocol string) string {
 			return DefaultDeepseekAnthropicBaseURL
 		case PlatformMiniMax:
 			return DefaultMiniMaxAnthropicBaseURL
+		case PlatformStepfun:
+			if coding {
+				return DefaultStepFunCodingAnthropicBaseURL
+			}
+			return DefaultStepFunPayGAnthropicBaseURL
 		case PlatformOpenCodeGo:
 			if zen {
 				return DefaultOpenCodeZenAnthropicBaseURL
@@ -34,10 +39,10 @@ func legacyProviderDefaultBaseURL(platform, mode, protocol string) string {
 			return DefaultOpenCodeGoAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
-		if platform == PlatformZhipu && protocol == APIProtocolResponses {
-			// 唯一的函数级差异：旧 switch 对智谱 Responses 也返回 CC 基址，profile
-			// 以"缺条目即不支持"建模后返回空串。所有运行时调用方都先经
-			// UsesNativeCNResponses / SupportsNativeCNResponses 守卫，智谱不会走到这里。
+		if (platform == PlatformZhipu || platform == PlatformStepfun) && protocol == APIProtocolResponses {
+			// 旧 switch 对无原生 Responses 的供应商也返回 CC 基址，profile 以
+			// "缺条目即不支持"建模后返回空串。运行时调用方都先经
+			// UsesNativeCNResponses / SupportsNativeCNResponses 守卫。
 			return ""
 		}
 		switch platform {
@@ -55,6 +60,11 @@ func legacyProviderDefaultBaseURL(platform, mode, protocol string) string {
 			return DefaultDeepseekBaseURL
 		case PlatformMiniMax:
 			return DefaultMiniMaxBaseURL
+		case PlatformStepfun:
+			if coding {
+				return DefaultStepFunCodingBaseURL
+			}
+			return DefaultStepFunPayGBaseURL
 		case PlatformOpenCodeGo:
 			if zen {
 				return DefaultOpenCodeZenBaseURL
@@ -68,7 +78,7 @@ func legacyProviderDefaultBaseURL(platform, mode, protocol string) string {
 func TestProviderProfile_DefaultBaseURLsMatchLegacySwitches(t *testing.T) {
 	t.Parallel()
 
-	platforms := []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo}
+	platforms := []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformStepfun, PlatformOpenCodeGo}
 	modes := []string{"", AccountModePayG, AccountModeCoding, AccountModeZen, AccountModeGo, " coding ", "unknown"}
 
 	for _, platform := range platforms {
@@ -110,7 +120,7 @@ func TestProviderProfile_ProfilesMatchMultiProtocolPlatforms(t *testing.T) {
 
 	for _, platform := range []string{
 		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformComposite, "",
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformStepfun, PlatformOpenCodeGo, PlatformComposite, "",
 	} {
 		want := IsCNProvider(platform) || platform == PlatformOpenCodeGo
 		require.Equal(t, want, IsMultiProtocolAPIKeyProvider(platform), platform)
@@ -134,7 +144,7 @@ func TestProviderProfile_NativeResponsesMatchesLegacy(t *testing.T) {
 		PlatformOpenCodeGo: true,
 	}
 	modes := []string{"", AccountModePayG, AccountModeCoding, AccountModeZen, AccountModeGo, "unknown"}
-	for _, platform := range []string{PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformStepfun, PlatformOpenCodeGo} {
 		for _, mode := range modes {
 			account := &Account{Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{"account_mode": mode}}
 			require.Equal(t, legacy[platform], account.SupportsNativeCNResponses(), platform+"/"+mode)

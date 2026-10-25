@@ -8,6 +8,7 @@ describe('cnSupportsNativeResponses', () => {
     expect(cnSupportsNativeResponses('kimi')).toBe(true)
     expect(cnSupportsNativeResponses('minimax')).toBe(true)
     expect(cnSupportsNativeResponses('zhipu')).toBe(false)
+    expect(cnSupportsNativeResponses('stepfun')).toBe(false)
     expect(cnSupportsNativeResponses('openai')).toBe(false)
   })
 })
@@ -44,6 +45,19 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       chat_completions: 'https://api.deepseek.com',
       anthropic: 'https://api.deepseek.com/anthropic',
       responses: 'https://api.deepseek.com'
+    })
+  })
+
+  it('resolves StepFun payg and Step Plan endpoints', () => {
+    expect(defaultCNAdaptiveBaseUrls('stepfun', 'payg')).toEqual({
+      chat_completions: 'https://api.stepfun.com/v1',
+      anthropic: 'https://api.stepfun.com',
+      responses: ''
+    })
+    expect(defaultCNAdaptiveBaseUrls('stepfun', 'coding')).toEqual({
+      chat_completions: 'https://api.stepfun.com/step_plan/v1',
+      anthropic: 'https://api.stepfun.com/step_plan',
+      responses: ''
     })
   })
 

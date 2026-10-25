@@ -69,6 +69,43 @@ func TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 4, 5}, prober.probed)
 }
 
+func TestCNProviderBalanceCheckRunOnceIncludesStepPlanAutoRefreshAccounts(t *testing.T) {
+	account := func(id int64, mode, baseURL string, extra map[string]any) Account {
+		return Account{
+			ID: id, Platform: PlatformStepfun, Type: AccountTypeAPIKey, Status: StatusActive,
+			Credentials: map[string]any{
+				"account_mode": mode,
+				"api_key":      "sk-stepfun",
+				"base_url":     baseURL,
+			},
+			Extra: extra,
+		}
+	}
+	defaultOn := account(11, AccountModeCoding, DefaultStepFunCodingBaseURL, nil)
+	explicitOn := account(12, AccountModeCoding, DefaultStepFunCodingBaseURL, map[string]any{
+		StepFunUsageAutoRefreshExtraKey: true,
+	})
+	explicitOff := account(13, AccountModeCoding, DefaultStepFunCodingBaseURL, map[string]any{
+		StepFunUsageAutoRefreshExtraKey: false,
+	})
+	payg := account(14, AccountModePayG, DefaultStepFunPayGBaseURL, nil)
+	customRelay := account(15, AccountModeCoding, "https://relay.example.com/step_plan/v1", nil)
+
+	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{
+		PlatformStepfun: {defaultOn, explicitOn, explicitOff, payg, customRelay},
+	}}
+	prober := &fakeCNQuotaProber{}
+	svc := &CNProviderBalanceCheckService{
+		accountRepo:  repo,
+		quotaService: prober,
+		cfg:          &config.Config{},
+	}
+
+	svc.runOnce()
+
+	require.ElementsMatch(t, []int64{11, 12}, prober.probed)
+}
+
 // runOnceZhipuQuota 在 quotaService 缺失时安全跳过（Start 门控不启动的老部署路径）。
 func TestCNProviderBalanceCheckRunOnceWithoutQuotaService(t *testing.T) {
 	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{

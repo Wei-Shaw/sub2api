@@ -236,6 +236,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { cnQuotaCellVisible } from '@/components/account/credentialsBuilder'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { keysAPI } from '@/api/keys'
@@ -270,6 +271,7 @@ import {
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
+  PROVIDER_STEPFUN,
   PROVIDER_OPENCODE_GO,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
@@ -282,6 +284,8 @@ import {
   DEFAULT_ZHIPU_ENDPOINT,
   DEFAULT_DEEPSEEK_ENDPOINT,
   DEFAULT_MINIMAX_ENDPOINT,
+  DEFAULT_STEPFUN_ENDPOINT,
+  DEFAULT_STEPFUN_MODEL,
   DEFAULT_OPENCODE_GO_ENDPOINT,
   DEFAULT_INTERVAL_SECONDS,
 } from '@/constants/channelMonitor'
@@ -478,16 +482,24 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') },
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_MINIMAX, label: t('monitorCommon.providers.minimax') },
+  { value: PROVIDER_STEPFUN, label: t('monitorCommon.providers.stepfun') },
   { value: PROVIDER_OPENCODE_GO, label: t('monitorCommon.providers.opencode_go') },
 ])
 
 // 国产 provider 预填的官方 endpoint（仅探活侧；配额模式 endpoint 可留空）。
 const PROVIDER_DEFAULT_ENDPOINTS: Partial<Record<Provider, string>> = {
+  [PROVIDER_GROK]: DEFAULT_GROK_ENDPOINT,
   [PROVIDER_KIMI]: DEFAULT_KIMI_ENDPOINT,
   [PROVIDER_ZHIPU]: DEFAULT_ZHIPU_ENDPOINT,
   [PROVIDER_DEEPSEEK]: DEFAULT_DEEPSEEK_ENDPOINT,
   [PROVIDER_MINIMAX]: DEFAULT_MINIMAX_ENDPOINT,
+  [PROVIDER_STEPFUN]: DEFAULT_STEPFUN_ENDPOINT,
   [PROVIDER_OPENCODE_GO]: DEFAULT_OPENCODE_GO_ENDPOINT,
+}
+
+const PROVIDER_DEFAULT_MODELS: Partial<Record<Provider, string>> = {
+  [PROVIDER_GROK]: DEFAULT_GROK_MODEL,
+  [PROVIDER_STEPFUN]: DEFAULT_STEPFUN_MODEL,
 }
 
 interface CheckModeOption {
@@ -532,6 +544,12 @@ function selectCheckMode(mode: CheckMode) {
   if (checkModeOptions.value.find((opt) => opt.value === mode)?.disabled) return
   form.check_mode = mode
   if (!usesQuotaMode.value) form.account_id = null
+  if ((mode === CHECK_MODE_PROBE || mode === CHECK_MODE_QUOTA_PROBE) && !form.endpoint.trim()) {
+    form.endpoint = PROVIDER_DEFAULT_ENDPOINTS[form.provider] ?? ''
+  }
+  if (mode !== CHECK_MODE_QUOTA && form.primary_model.trim() === 'quota') {
+    form.primary_model = PROVIDER_DEFAULT_MODELS[form.provider] ?? ''
+  }
 }
 
 // --- 关联账号选择器 ---
@@ -602,7 +620,9 @@ async function loadLinkedAccounts(search = '') {
       { signal: controller.signal },
     )
     if (seq !== accountSearchSeq) return
-    linkedAccounts.value = (res.items || []).map((a) => ({ id: a.id, name: a.name }))
+    linkedAccounts.value = (res.items || [])
+      .filter((a) => form.provider !== PROVIDER_STEPFUN || cnQuotaCellVisible(a))
+      .map((a) => ({ id: a.id, name: a.name }))
     await ensureSelectedAccountHydrated()
   } catch (err: unknown) {
     if (controller.signal.aborted) return
@@ -625,7 +645,9 @@ async function ensureSelectedAccountHydrated() {
   try {
     const account = await adminAPI.accounts.getById(id)
     if (form.account_id !== id) return
-    if (String(account.platform) !== form.provider) {
+    const platformMismatch = String(account.platform) !== form.provider
+    const stepFunIneligible = form.provider === PROVIDER_STEPFUN && !cnQuotaCellVisible(account)
+    if (platformMismatch || stepFunIneligible) {
       form.account_id = null
       pinnedAccount.value = null
       accountHydrationFailed.value = true
@@ -668,12 +690,6 @@ watch(
 function selectProvider(provider: Provider) {
   if (form.provider === provider) return
   const previousProvider = form.provider
-  const clearGrokEndpoint =
-    previousProvider === PROVIDER_GROK && form.endpoint === DEFAULT_GROK_ENDPOINT
-  const clearGrokModel =
-    previousProvider === PROVIDER_GROK && form.primary_model === DEFAULT_GROK_MODEL
-  const clearPrevDefaultEndpoint =
-    !!PROVIDER_DEFAULT_ENDPOINTS[previousProvider] && form.endpoint === PROVIDER_DEFAULT_ENDPOINTS[previousProvider]
   form.provider = provider
   // 关联账号与平台绑定：切换 provider 时显式清空（这是唯一主动清空的入口）。
   form.account_id = null
@@ -685,21 +701,19 @@ function selectProvider(provider: Provider) {
   }
   // 对称还原：从 antigravity 切走时撤掉强制 quota，否则编辑存量 antigravity
   // 监控换平台后仍停留在 quota（目标平台未必支持），update 会携带残留配置。
-  // 同步清掉 quota 占位模型（loadFromMonitor 回填的 'quota'），否则切回
-  // probe 后拿 'quota' 当探活模型（与离开 grok 清 DEFAULT_GROK_MODEL 同理）。
   if (previousProvider === PROVIDER_ANTIGRAVITY && form.check_mode === CHECK_MODE_QUOTA) {
     form.check_mode = CHECK_MODE_PROBE
-    if (form.primary_model.trim() === 'quota') form.primary_model = ''
   }
-  if (provider === PROVIDER_GROK) {
-    if (!form.endpoint.trim()) form.endpoint = DEFAULT_GROK_ENDPOINT
-    if (!form.primary_model.trim()) form.primary_model = DEFAULT_GROK_MODEL
-    return
-  }
-  if (clearGrokEndpoint || clearPrevDefaultEndpoint) form.endpoint = ''
-  if (clearGrokModel) form.primary_model = ''
+  // Endpoint, model and extra models are provider-owned probe configuration. A
+  // custom endpoint must not survive a provider switch, otherwise a newly
+  // entered API key could be sent to the previous provider/relay.
+  form.endpoint = ''
+  form.primary_model = ''
+  form.extra_models = []
   const defaultEndpoint = PROVIDER_DEFAULT_ENDPOINTS[provider]
-  if (defaultEndpoint && !form.endpoint.trim()) form.endpoint = defaultEndpoint
+  if (defaultEndpoint) form.endpoint = defaultEndpoint
+  const defaultModel = PROVIDER_DEFAULT_MODELS[provider]
+  if (defaultModel) form.primary_model = defaultModel
 }
 
 // Clear api_key whenever provider changes to avoid cross-provider key mismatch.

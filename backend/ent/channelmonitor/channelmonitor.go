@@ -183,6 +183,7 @@ const (
 	ProviderZhipu       Provider = "zhipu"
 	ProviderDeepseek    Provider = "deepseek"
 	ProviderMinimax     Provider = "minimax"
+	ProviderStepfun     Provider = "stepfun"
 	ProviderOpencodeGo  Provider = "opencode_go"
 )
 
@@ -193,7 +194,7 @@ func (pr Provider) String() string {
 // ProviderValidator is a validator for the "provider" field enum values. It is called by the builders before save.
 func ProviderValidator(pr Provider) error {
 	switch pr {
-	case ProviderOpenai, ProviderAnthropic, ProviderGemini, ProviderGrok, ProviderAntigravity, ProviderKimi, ProviderZhipu, ProviderDeepseek, ProviderMinimax, ProviderOpencodeGo:
+	case ProviderOpenai, ProviderAnthropic, ProviderGemini, ProviderGrok, ProviderAntigravity, ProviderKimi, ProviderZhipu, ProviderDeepseek, ProviderMinimax, ProviderStepfun, ProviderOpencodeGo:
 		return nil
 	default:
 		return fmt.Errorf("channelmonitor: invalid enum value for provider field: %q", pr)

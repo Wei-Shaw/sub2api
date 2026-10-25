@@ -702,7 +702,7 @@ func (s *BillingService) initFallbackPricing() {
 
 	// ============================================================
 	// 国产 LLM 兜底定价（数据源：各家官方定价页/USD 口径）
-	// 顺序：DeepSeek → 智谱 GLM → 月之暗面 Kimi → MiniMax
+	// 顺序：DeepSeek → 智谱 GLM → 月之暗面 Kimi → StepFun → MiniMax
 	// 覆盖逻辑见同文件 getFallbackPricing()
 	// ============================================================
 
@@ -886,6 +886,31 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken: 0.14e-6, // ¥1/百万
 		SupportsCacheBreakdown: false,
 	}
+
+	// ---- StepFun Step 系列 ----
+	// Source: StepFun 官方按量价目，CNY 按 1 USD ≈ 7.14 CNY 折算（与 CC-Switch
+	// 2026-10 价目一致）。Step Plan 订阅请求仍按 token 记录成本，供额度/利润统计；
+	// 不能因 LiteLLM 目录暂未收录而静默落成 zero cost。
+	s.fallbackPrices["step-5-preview"] = &ModelPricing{
+		InputPricePerToken:     0.98e-6, // ¥7/百万
+		OutputPricePerToken:    2.80e-6, // ¥20/百万
+		CacheReadPricePerToken: 0.10e-6, // ¥0.70/百万
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["step-3.7-flash"] = &ModelPricing{
+		InputPricePerToken:     0.19e-6,
+		OutputPricePerToken:    1.13e-6,
+		CacheReadPricePerToken: 0.04e-6,
+		SupportsCacheBreakdown: false,
+	}
+	step35FlashPricing := &ModelPricing{
+		InputPricePerToken:     0.10e-6,
+		OutputPricePerToken:    0.30e-6,
+		CacheReadPricePerToken: 0.02e-6,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["step-3.5-flash"] = step35FlashPricing
+	s.fallbackPrices["step-3.5-flash-2603"] = step35FlashPricing
 
 	// ---- MiniMax M 系列 ----
 	// Source: https://platform.minimax.io/docs/guides/pricing-paygo
@@ -1224,6 +1249,20 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "kimi-k2") || strings.Contains(modelLower, "kimi/k2") {
 		return s.fallbackPrices["kimi-k2"]
+	}
+
+	// StepFun Step 系列。带日期后缀的 2603 型号必须先于基础名匹配。
+	if strings.Contains(modelLower, "step-5-preview") {
+		return s.fallbackPrices["step-5-preview"]
+	}
+	if strings.Contains(modelLower, "step-3.7-flash") {
+		return s.fallbackPrices["step-3.7-flash"]
+	}
+	if strings.Contains(modelLower, "step-3.5-flash-2603") {
+		return s.fallbackPrices["step-3.5-flash-2603"]
+	}
+	if strings.Contains(modelLower, "step-3.5-flash") {
+		return s.fallbackPrices["step-3.5-flash"]
 	}
 
 	// MiniMax M 系列（M3 / M2.7 / M2.5 / M2.1 / M2；含 highspeed 变体）

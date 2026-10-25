@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -565,7 +568,7 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 	svc := service.NewPricingService(nil, nil)
 	router := setupSyncPricingModelsRouter(svc)
 
-	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity", "grok", "kimi", "zhipu", "deepseek", "minimax", "typesafe"} {
+	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity", "grok", "kimi", "zhipu", "deepseek", "minimax", "stepfun", "typesafe"} {
 		req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+platform, nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -580,6 +583,40 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
 	}
+}
+
+func TestSyncPricingModels_StepFunUsesBuiltinCatalogWithoutRemoteEntries(t *testing.T) {
+	dir := t.TempDir()
+	fallbackPath := filepath.Join(dir, "fallback.json")
+	require.NoError(t, os.WriteFile(fallbackPath, []byte(`{
+		"remote-model": {"litellm_provider": "test", "mode": "chat", "input_cost_per_token": 1e-06}
+	}`), 0644))
+
+	svc := service.NewPricingService(&config.Config{Pricing: config.PricingConfig{
+		DataDir:      dir,
+		FallbackFile: fallbackPath,
+	}}, nil)
+	require.NoError(t, svc.Initialize())
+	defer svc.Stop()
+
+	router := setupSyncPricingModelsRouter(svc)
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform=stepfun", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data struct {
+			Models []string `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, []string{
+		"step-3.5-flash",
+		"step-3.5-flash-2603",
+		"step-3.7-flash",
+		"step-5-preview",
+	}, body.Data.Models)
 }
 
 func setupModelDefaultPricingRouter() *gin.Engine {

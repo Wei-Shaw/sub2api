@@ -173,6 +173,67 @@ func TestQuotaFetcher_CodingPlanAccountUsesCNQuota(t *testing.T) {
 	require.Equal(t, 0, cnBalance.calls)
 }
 
+func TestQuotaFetcher_StepFunOfficialCodingUsesCNQuota(t *testing.T) {
+	fetcher, usage, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[31] = &Account{
+		ID:       31,
+		Platform: domain.PlatformStepfun,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"account_mode": AccountModeCoding,
+			"base_url":     "https://api.stepfun.ai/step_plan/v1",
+		},
+	}
+	cnQuota.result = &CNProviderQuotaProbeResult{
+		Success:         true,
+		CredentialValid: true,
+		Tiers: []CNQuotaTier{
+			{Window: "5h", UsedPercent: 25},
+		},
+	}
+
+	snapshot := fetcher.Fetch(context.Background(), 31)
+
+	require.True(t, snapshot.Success)
+	require.Equal(t, "cn_quota", snapshot.Source)
+	require.Equal(t, 1, cnQuota.calls)
+	require.Equal(t, 0, cnBalance.calls)
+	require.Equal(t, 0, usage.getCalls())
+}
+
+func TestQuotaFetcher_StepFunIneligibleAccountsDoNotUseCNAccountSources(t *testing.T) {
+	cases := []struct {
+		name        string
+		accountMode string
+		baseURL     string
+	}{
+		{name: "payg", accountMode: AccountModePayG, baseURL: "https://api.stepfun.com/v1"},
+		{name: "custom relay coding", accountMode: AccountModeCoding, baseURL: "https://relay.example.com/step_plan/v1"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fetcher, _, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+			accounts.accounts[32] = &Account{
+				ID:       32,
+				Platform: domain.PlatformStepfun,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"account_mode": tc.accountMode,
+					"base_url":     tc.baseURL,
+				},
+			}
+
+			snapshot := fetcher.Fetch(context.Background(), 32)
+
+			require.False(t, snapshot.Success)
+			require.Contains(t, snapshot.Error, "official Step Plan coding account")
+			require.Equal(t, 0, cnQuota.calls)
+			require.Equal(t, 0, cnBalance.calls)
+		})
+	}
+}
+
 func TestQuotaFetcher_MiniMaxCodingPlanUsesCNQuota(t *testing.T) {
 	fetcher, usage, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
 	accounts.accounts[19] = &Account{
