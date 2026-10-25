@@ -229,6 +229,7 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			"model_count", len(models),
 		)
 	}
+	models = filterRetiredOpenAIUpstreamModelIDs(account, models)
 	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
 	if len(body) > 0 {
 		_, directMetadata, parseErr := extractUpstreamModelCatalog(body, account != nil && account.IsGrok())
@@ -236,11 +237,17 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			catalog.Metadata = directMetadata
 		}
 	}
+	for model := range catalog.Metadata {
+		if isRetiredOpenAISubscriptionModel(account, model) {
+			delete(catalog.Metadata, model)
+		}
+	}
 
 	// Capability enrichment also covers concrete model_mapping targets. Admins may
 	// whitelist models that the live /models list omitted; those still need registry
 	// metadata so Codex catalogs can advertise reasoning and modalities.
 	enrichIDs := dedupeAndSortModelIDs(append(append([]string{}, models...), configuredUpstreamModelsForCapabilitySync(account)...))
+	enrichIDs = filterRetiredOpenAIUpstreamModelIDs(account, enrichIDs)
 	// Dedicated image/video generators are not Codex agent catalog entries and often
 	// omit context windows in public registries. Keep them out of completeness checks
 	// so they do not mask successful agent-model capability sync.
