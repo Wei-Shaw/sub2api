@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 本文件的夹具是 sqlite 内存库（newUserEntRepo），而集成 MySQL 模式下进程级
+// IsMySQL()==true 使仓库发出 MySQL 方言 SQL（ESCAPE '\\'、TRIM(TRAILING ...)），
+// sqlite 无法解析。别名逻辑的双方言分支由 PG 单测与仓库实现保证，MySQL 运行跳过。
+// （TestUserRepositoryExistsByEmailAliasIgnoresMalformedInput 不触库，无需跳过。）
+
 func seedUserForAliasTest(t *testing.T, repo *userRepository, email string) {
 	t.Helper()
 	require.NoError(t, repo.Create(context.Background(), &service.User{
@@ -46,6 +51,7 @@ func TestUserRepositoryExistsByEmailAlias(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			skipOnMySQL(t)
 			repo, _ := newUserEntRepo(t)
 			seedUserForAliasTest(t, repo, tc.stored)
 
@@ -66,6 +72,7 @@ func TestUserRepositoryExistsByEmailAliasIgnoresMalformedInput(t *testing.T) {
 }
 
 func TestUserRepositoryCreateWithEmailAliasGuard(t *testing.T) {
+	skipOnMySQL(t)
 	repo, _ := newUserEntRepo(t)
 	ctx := context.Background()
 	seedUserForAliasTest(t, repo, "d.axis.2026@gmail.com")
@@ -100,6 +107,7 @@ func TestUserRepositoryCreateWithEmailAliasGuard(t *testing.T) {
 }
 
 func TestUserRepositoryCountUsersByEmailDomain(t *testing.T) {
+	skipOnMySQL(t)
 	repo, _ := newUserEntRepo(t)
 	ctx := context.Background()
 
@@ -128,6 +136,7 @@ func TestUserRepositoryCountUsersByEmailDomain(t *testing.T) {
 }
 
 func TestUserRepositoryCreateWithEmailAliasGuardAndDomainLimit(t *testing.T) {
+	skipOnMySQL(t)
 	repo, _ := newUserEntRepo(t)
 	ctx := context.Background()
 	seedUserForAliasTest(t, repo, "first@custom.example.")
@@ -143,6 +152,7 @@ func TestUserRepositoryCreateWithEmailAliasGuardAndDomainLimit(t *testing.T) {
 }
 
 func TestUserRepositoryCountUsersByEmailDomainEscapesLikeWildcards(t *testing.T) {
+	skipOnMySQL(t)
 	repo, _ := newUserEntRepo(t)
 	ctx := context.Background()
 	seedUserForAliasTest(t, repo, "first@foo_bar.com")

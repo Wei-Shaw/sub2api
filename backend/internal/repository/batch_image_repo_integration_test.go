@@ -94,7 +94,7 @@ func TestBatchImageRepository_TransitionIncrementsVersionAndEvents(t *testing.T)
 	require.Equal(t, 1, job.Version)
 
 	var eventCount int
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM batch_image_events WHERE job_id = $1 AND event_type = 'status_changed'`, batchID).Scan(&eventCount)
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM batch_image_events WHERE job_id = `+ph(1)+` AND event_type = 'status_changed'`, batchID).Scan(&eventCount)
 	require.NoError(t, err)
 	require.Equal(t, 1, eventCount)
 }
@@ -287,7 +287,7 @@ func TestBatchImageRepository_MarkBatchImageJobSettled(t *testing.T) {
 	require.Equal(t, now, *job.SettledAt)
 
 	var eventCount int
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM batch_image_events WHERE job_id = $1 AND event_type = 'settlement_completed'`, batchID).Scan(&eventCount)
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM batch_image_events WHERE job_id = `+ph(1)+` AND event_type = 'settlement_completed'`, batchID).Scan(&eventCount)
 	require.NoError(t, err)
 	require.Equal(t, 1, eventCount)
 }
@@ -340,7 +340,7 @@ func TestBatchImageRepository_AppendEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	var payload string
-	err = tx.QueryRowContext(ctx, `SELECT payload::text FROM batch_image_events WHERE job_id = $1 AND event_type = 'job_created'`, batchID).Scan(&payload)
+	err = tx.QueryRowContext(ctx, `SELECT `+jsonTextExpr("payload")+` FROM batch_image_events WHERE job_id = `+ph(1)+` AND event_type = 'job_created'`, batchID).Scan(&payload)
 	require.NoError(t, err)
 	require.Contains(t, payload, batchID)
 }

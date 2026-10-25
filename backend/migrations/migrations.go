@@ -7,9 +7,13 @@
 //   - 便于版本控制和代码审查
 package migrations
 
-import "embed"
+import (
+	"embed"
+	"errors"
+	"io/fs"
+)
 
-// FS 包含本目录下所有嵌入的 SQL 迁移文件。
+// FS 包含本目录下所有嵌入的 SQL 迁移文件（PostgreSQL 方言）。
 //
 // 迁移命名规范：
 //   - 使用零填充的数字前缀确保正确的执行顺序
@@ -32,3 +36,22 @@ import "embed"
 //
 //go:embed *.sql
 var FS embed.FS
+
+// mysqlEmbed 包含 mysql/ 子目录下的 MySQL 方言迁移文件。
+// 文件名与 PostgreSQL 迁移一一对应（同名镜像），由迁移执行器按 driver 选择。
+//
+//go:embed mysql/*.sql
+var mysqlEmbed embed.FS
+
+// MySQLFS 是 MySQL 方言迁移文件集，根路径已剥离 mysql/ 前缀，
+// 使文件名与 FS（PostgreSQL）完全一致，方便对照与同步。
+var MySQLFS fs.FS = mustMysqlFS()
+
+func mustMysqlFS() fs.FS {
+	sub, err := fs.Sub(mysqlEmbed, "mysql")
+	if err != nil {
+		// go:embed 保证 mysql/ 目录存在且可访问，此处仅防御性处理。
+		panic(errors.New("migrations: embed mysql/*.sql unavailable: " + err.Error()))
+	}
+	return sub
+}

@@ -172,6 +172,12 @@ func authPendingIdentityAdvisoryLockHash(key string) int64 {
 func lockAuthPendingIdentityKeys(ctx context.Context, client *dbent.Client, keys ...string) (func(), error) {
 	release := authPendingIdentityScopedKeyLocks.lock(keys...)
 	normalized := normalizeAuthPendingIdentityLockKeys(keys...)
+	// 方言门：跨实例 DB 咨询锁仅 PG（pg_advisory_xact_lock）。
+	// REVIEW: MySQL 下此处仅保留进程内 authPendingIdentityScopedKeyLocks 互斥，
+	// 跨实例并发依赖下游唯一约束兜底（与 SQLite 等其他非 PG 方言既有行为一致；
+	// DIALECT_MYSQL_GUIDE 的 advisoryLockHash 进程内锁模式）。如需 MySQL 跨实例
+	// 互斥，须改为独立连接上的 GET_LOCK 持有至事务提交，此处仅有 ent client，
+	// 暂按保守现状处理。
 	if len(normalized) == 0 || client == nil || client.Driver().Dialect() != dialect.Postgres {
 		return release, nil
 	}

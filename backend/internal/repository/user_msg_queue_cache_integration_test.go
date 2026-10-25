@@ -55,10 +55,18 @@ func (s *UserMsgQueueCacheSuite) TestReconcileExpiredLockCandidatesRemovesNatura
 
 	_, err = s.rdb.ZScore(s.ctx, umqLockIndexKey, "702").Result()
 	require.NoError(s.T(), err)
-	require.Eventually(s.T(), func() bool {
+	if integrationMiniRedis != nil {
+		// miniredis 的 TTL 不随墙钟推进（只能 FastForward），无法观察「自然过期」；
+		// 快进超过锁 TTL 等价模拟锁到期被 Redis 淘汰。
+		integrationMiniRedis.FastForward(50 * time.Millisecond)
 		_, err := s.rdb.Get(s.ctx, umqLockKey(accountID)).Result()
-		return errors.Is(err, redis.Nil)
-	}, time.Second, 10*time.Millisecond)
+		require.ErrorIs(s.T(), err, redis.Nil)
+	} else {
+		require.Eventually(s.T(), func() bool {
+			_, err := s.rdb.Get(s.ctx, umqLockKey(accountID)).Result()
+			return errors.Is(err, redis.Nil)
+		}, time.Second, 10*time.Millisecond)
+	}
 
 	cleaned, err := s.cache.ReconcileExpiredLockCandidates(s.ctx, 1000)
 	require.NoError(s.T(), err)

@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -15,6 +16,34 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+// sqlmockPatternForDialect 把按 PG 形态书写的 sqlmock 期望正则转换为当前方言：
+// MySQL 分支的语句把 `$n` 占位一律替换为 `?`（正则转义为 `\?`），其余 SQL 文本
+// 两侧一致。PG 形态里的占位符写作正则转义的 `\$n`，翻译时连同前置反斜杠一起
+// 消费，避免残留成 `\\?`（正则语义会退化为"可选反斜杠"）。
+// 仅适用于除占位符外两侧文本完全相同的语句；结构不同的语句需按 IsMySQL()
+// 手写双份期望（见 requestType 过滤类测试）或 skipOnMySQL。
+func sqlmockPatternForDialect(pgPattern string) string {
+	if !IsMySQL() {
+		return pgPattern
+	}
+	return regexp.MustCompile(`\\\$[0-9]+`).ReplaceAllString(pgPattern, `\?`)
+}
+
+// requestTypeFilterArgs 组装带 request_type 过滤的 sqlmock 参数表：
+// prefix 是先于 request_type 条件出现的参数（如 created_at 时间窗），suffix 是
+// 其后的参数（如 LIMIT/OFFSET）。MySQL 方言下条件内 legacy request_type=0 也走
+// 占位参数，需在 requestType 后追加 int16(0)（对齐 buildRequestTypeFilterConditionMySQL）；
+// PG 形态下该分支是内联字面量，参数表不变。
+func requestTypeFilterArgs(prefix []driver.Value, requestTypeArg driver.Value, suffix ...driver.Value) []driver.Value {
+	out := make([]driver.Value, 0, len(prefix)+len(suffix)+2)
+	out = append(out, prefix...)
+	out = append(out, requestTypeArg)
+	if IsMySQL() {
+		out = append(out, int16(service.RequestTypeUnknown))
+	}
+	return append(out, suffix...)
+}
 
 func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 	db, mock := newSQLMock(t)
@@ -39,72 +68,80 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 		CreatedAt:      createdAt,
 	}
 
-	mock.ExpectQuery("INSERT INTO usage_logs").
-		WithArgs(
-			log.UserID,
-			log.APIKeyID,
-			log.AccountID,
-			log.RequestID,
-			log.Model,
-			log.RequestedModel,
-			sqlmock.AnyArg(), // upstream_model
-			sqlmock.AnyArg(), // upstream_response_model
-			sqlmock.AnyArg(), // upstream_model_mismatch
-			sqlmock.AnyArg(), // group_id
-			sqlmock.AnyArg(), // subscription_id
-			log.InputTokens,
-			log.OutputTokens,
-			log.CacheCreationTokens,
-			log.CacheReadTokens,
-			log.CacheCreation5mTokens,
-			log.CacheCreation1hTokens,
-			log.ImageOutputTokens,
-			log.ImageOutputCost,
-			log.ImageInputTokens,
-			log.ImageInputCost,
-			log.InputCost,
-			log.OutputCost,
-			log.CacheCreationCost,
-			log.CacheReadCost,
-			log.TotalCost,
-			log.ActualCost,
-			log.RateMultiplier,
-			log.AccountRateMultiplier,
-			log.BillingType,
-			int16(service.RequestTypeWSV2),
-			true,
-			true,
-			sqlmock.AnyArg(), // duration_ms
-			sqlmock.AnyArg(), // first_token_ms
-			sqlmock.AnyArg(), // user_agent
-			sqlmock.AnyArg(), // ip_address
-			log.ImageCount,
-			sqlmock.AnyArg(), // image_size
-			sqlmock.AnyArg(), // image_input_size
-			sqlmock.AnyArg(), // image_output_size
-			sqlmock.AnyArg(), // image_size_source
-			sqlmock.AnyArg(), // image_size_breakdown
-			sqlmock.AnyArg(), // video_count
-			sqlmock.AnyArg(), // video_resolution
-			sqlmock.AnyArg(), // video_duration_seconds
-			sqlmock.AnyArg(), // service_tier
-			sqlmock.AnyArg(), // reasoning_effort
-			sqlmock.AnyArg(), // requested_reasoning_effort
-			sqlmock.AnyArg(), // inbound_endpoint
-			sqlmock.AnyArg(), // upstream_endpoint
-			log.CacheTTLOverridden,
-			log.LongContextBillingApplied,
-			sqlmock.AnyArg(), // channel_id
-			sqlmock.AnyArg(), // model_mapping_chain
-			sqlmock.AnyArg(), // billing_tier
-			sqlmock.AnyArg(), // billing_mode
-			sqlmock.AnyArg(), // account_stats_cost
-			sqlmock.AnyArg(), // upstream_request_id
-			sqlmock.AnyArg(), // session_id
-			log.NativeCompactionV2,
-			createdAt,
-		).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
+	insertArgs := []driver.Value{
+		log.UserID,
+		log.APIKeyID,
+		log.AccountID,
+		log.RequestID,
+		log.Model,
+		log.RequestedModel,
+		sqlmock.AnyArg(), // upstream_model
+		sqlmock.AnyArg(), // upstream_response_model
+		sqlmock.AnyArg(), // upstream_model_mismatch
+		sqlmock.AnyArg(), // group_id
+		sqlmock.AnyArg(), // subscription_id
+		log.InputTokens,
+		log.OutputTokens,
+		log.CacheCreationTokens,
+		log.CacheReadTokens,
+		log.CacheCreation5mTokens,
+		log.CacheCreation1hTokens,
+		log.ImageOutputTokens,
+		log.ImageOutputCost,
+		log.ImageInputTokens,
+		log.ImageInputCost,
+		log.InputCost,
+		log.OutputCost,
+		log.CacheCreationCost,
+		log.CacheReadCost,
+		log.TotalCost,
+		log.ActualCost,
+		log.RateMultiplier,
+		log.AccountRateMultiplier,
+		log.BillingType,
+		int16(service.RequestTypeWSV2),
+		true,
+		true,
+		sqlmock.AnyArg(), // duration_ms
+		sqlmock.AnyArg(), // first_token_ms
+		sqlmock.AnyArg(), // user_agent
+		sqlmock.AnyArg(), // ip_address
+		log.ImageCount,
+		sqlmock.AnyArg(), // image_size
+		sqlmock.AnyArg(), // image_input_size
+		sqlmock.AnyArg(), // image_output_size
+		sqlmock.AnyArg(), // image_size_source
+		sqlmock.AnyArg(), // image_size_breakdown
+		sqlmock.AnyArg(), // video_count
+		sqlmock.AnyArg(), // video_resolution
+		sqlmock.AnyArg(), // video_duration_seconds
+		sqlmock.AnyArg(), // service_tier
+		sqlmock.AnyArg(), // reasoning_effort
+		sqlmock.AnyArg(), // requested_reasoning_effort
+		sqlmock.AnyArg(), // inbound_endpoint
+		sqlmock.AnyArg(), // upstream_endpoint
+		log.CacheTTLOverridden,
+		log.LongContextBillingApplied,
+		sqlmock.AnyArg(), // channel_id
+		sqlmock.AnyArg(), // model_mapping_chain
+		sqlmock.AnyArg(), // billing_tier
+		sqlmock.AnyArg(), // billing_mode
+		sqlmock.AnyArg(), // account_stats_cost
+		sqlmock.AnyArg(), // upstream_request_id
+		sqlmock.AnyArg(), // session_id
+		log.NativeCompactionV2,
+		createdAt,
+	}
+	if IsMySQL() {
+		// MySQL 插入路径是 Exec + ODKU no-op + LastInsertId（无 RETURNING）。
+		mock.ExpectExec("INSERT INTO usage_logs").
+			WithArgs(insertArgs...).
+			WillReturnResult(sqlmock.NewResult(99, 1))
+	} else {
+		mock.ExpectQuery("INSERT INTO usage_logs").
+			WithArgs(insertArgs...).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
+	}
 
 	inserted, err := repo.Create(context.Background(), log)
 	require.NoError(t, err)
@@ -134,72 +171,80 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 		CreatedAt:      createdAt,
 	}
 
-	mock.ExpectQuery("INSERT INTO usage_logs").
-		WithArgs(
-			log.UserID,
-			log.APIKeyID,
-			log.AccountID,
-			log.RequestID,
-			log.Model,
-			log.RequestedModel,
-			sqlmock.AnyArg(), // upstream_model
-			sqlmock.AnyArg(), // upstream_response_model
-			sqlmock.AnyArg(), // upstream_model_mismatch
-			sqlmock.AnyArg(), // group_id
-			sqlmock.AnyArg(), // subscription_id
-			log.InputTokens,
-			log.OutputTokens,
-			log.CacheCreationTokens,
-			log.CacheReadTokens,
-			log.CacheCreation5mTokens,
-			log.CacheCreation1hTokens,
-			log.ImageOutputTokens,
-			log.ImageOutputCost,
-			log.ImageInputTokens,
-			log.ImageInputCost,
-			log.InputCost,
-			log.OutputCost,
-			log.CacheCreationCost,
-			log.CacheReadCost,
-			log.TotalCost,
-			log.ActualCost,
-			log.RateMultiplier,
-			log.AccountRateMultiplier,
-			log.BillingType,
-			int16(service.RequestTypeSync),
-			false,
-			false,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			log.ImageCount,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(), // image_input_size
-			sqlmock.AnyArg(), // image_output_size
-			sqlmock.AnyArg(), // image_size_source
-			sqlmock.AnyArg(), // image_size_breakdown
-			sqlmock.AnyArg(), // video_count
-			sqlmock.AnyArg(), // video_resolution
-			sqlmock.AnyArg(), // video_duration_seconds
-			serviceTier,
-			sqlmock.AnyArg(), // reasoning_effort
-			sqlmock.AnyArg(), // requested_reasoning_effort
-			sqlmock.AnyArg(), // inbound_endpoint
-			sqlmock.AnyArg(), // upstream_endpoint
-			log.CacheTTLOverridden,
-			log.LongContextBillingApplied,
-			sqlmock.AnyArg(), // channel_id
-			sqlmock.AnyArg(), // model_mapping_chain
-			sqlmock.AnyArg(), // billing_tier
-			sqlmock.AnyArg(), // billing_mode
-			sqlmock.AnyArg(), // account_stats_cost
-			sqlmock.AnyArg(), // upstream_request_id
-			sqlmock.AnyArg(), // session_id
-			log.NativeCompactionV2,
-			createdAt,
-		).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
+	insertArgs := []driver.Value{
+		log.UserID,
+		log.APIKeyID,
+		log.AccountID,
+		log.RequestID,
+		log.Model,
+		log.RequestedModel,
+		sqlmock.AnyArg(), // upstream_model
+		sqlmock.AnyArg(), // upstream_response_model
+		sqlmock.AnyArg(), // upstream_model_mismatch
+		sqlmock.AnyArg(), // group_id
+		sqlmock.AnyArg(), // subscription_id
+		log.InputTokens,
+		log.OutputTokens,
+		log.CacheCreationTokens,
+		log.CacheReadTokens,
+		log.CacheCreation5mTokens,
+		log.CacheCreation1hTokens,
+		log.ImageOutputTokens,
+		log.ImageOutputCost,
+		log.ImageInputTokens,
+		log.ImageInputCost,
+		log.InputCost,
+		log.OutputCost,
+		log.CacheCreationCost,
+		log.CacheReadCost,
+		log.TotalCost,
+		log.ActualCost,
+		log.RateMultiplier,
+		log.AccountRateMultiplier,
+		log.BillingType,
+		int16(service.RequestTypeSync),
+		false,
+		false,
+		sqlmock.AnyArg(),
+		sqlmock.AnyArg(),
+		sqlmock.AnyArg(),
+		sqlmock.AnyArg(),
+		log.ImageCount,
+		sqlmock.AnyArg(),
+		sqlmock.AnyArg(), // image_input_size
+		sqlmock.AnyArg(), // image_output_size
+		sqlmock.AnyArg(), // image_size_source
+		sqlmock.AnyArg(), // image_size_breakdown
+		sqlmock.AnyArg(), // video_count
+		sqlmock.AnyArg(), // video_resolution
+		sqlmock.AnyArg(), // video_duration_seconds
+		serviceTier,
+		sqlmock.AnyArg(), // reasoning_effort
+		sqlmock.AnyArg(), // requested_reasoning_effort
+		sqlmock.AnyArg(), // inbound_endpoint
+		sqlmock.AnyArg(), // upstream_endpoint
+		log.CacheTTLOverridden,
+		log.LongContextBillingApplied,
+		sqlmock.AnyArg(), // channel_id
+		sqlmock.AnyArg(), // model_mapping_chain
+		sqlmock.AnyArg(), // billing_tier
+		sqlmock.AnyArg(), // billing_mode
+		sqlmock.AnyArg(), // account_stats_cost
+		sqlmock.AnyArg(), // upstream_request_id
+		sqlmock.AnyArg(), // session_id
+		log.NativeCompactionV2,
+		createdAt,
+	}
+	if IsMySQL() {
+		// MySQL 插入路径是 Exec + ODKU no-op + LastInsertId（无 RETURNING）。
+		mock.ExpectExec("INSERT INTO usage_logs").
+			WithArgs(insertArgs...).
+			WillReturnResult(sqlmock.NewResult(100, 1))
+	} else {
+		mock.ExpectQuery("INSERT INTO usage_logs").
+			WithArgs(insertArgs...).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
+	}
 
 	inserted, err := repo.Create(context.Background(), log)
 	require.NoError(t, err)
@@ -393,11 +438,19 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 		ExactTotal:  true,
 	}
 
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
-		WithArgs(requestType).
+	// PG 把 legacy request_type=0 分支内联为字面量；MySQL 两侧都走 ? 参数，
+	// 故 MySQL 下条件内有两个占位符，参数表在 request_type 后多一个 int16(0)。
+	countPattern := "SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)"
+	listPattern := "SELECT .* FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\$2 OFFSET \\$3"
+	if IsMySQL() {
+		countPattern = "SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\? OR \\(request_type = \\? AND openai_ws_mode = TRUE\\)\\)"
+		listPattern = "SELECT .* FROM usage_logs WHERE \\(request_type = \\? OR \\(request_type = \\? AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\? OFFSET \\?"
+	}
+	mock.ExpectQuery(countPattern).
+		WithArgs(requestTypeFilterArgs(nil, requestType)...).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
-		WithArgs(requestType, 20, 0).
+	mock.ExpectQuery(listPattern).
+		WithArgs(requestTypeFilterArgs(nil, requestType, 20, 0)...).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
@@ -414,10 +467,10 @@ func TestUsageLogRepositoryListWithFiltersNativeCompactionV2(t *testing.T) {
 	nativeCompactionV2 := true
 	filters := usagestats.UsageLogFilters{NativeCompactionV2: &nativeCompactionV2, ExactTotal: true}
 
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE native_compaction_v2 = \\$1").
+	mock.ExpectQuery(sqlmockPatternForDialect("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE native_compaction_v2 = \\$1")).
 		WithArgs(true).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE native_compaction_v2 = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("SELECT .* FROM usage_logs WHERE native_compaction_v2 = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3")).
 		WithArgs(true, 20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
@@ -434,7 +487,7 @@ func TestUsageLogRepositoryListWithFiltersRequestID(t *testing.T) {
 
 	filters := usagestats.UsageLogFilters{RequestID: " req-0123 "}
 
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE request_id = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("SELECT .* FROM usage_logs WHERE request_id = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3")).
 		WithArgs("req-0123", 21, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
@@ -454,7 +507,7 @@ func TestUsageLogRepositoryListWithFiltersRequestedModelSource(t *testing.T) {
 		ModelFilterSource: usagestats.ModelSourceRequested,
 	}
 
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("SELECT .* FROM usage_logs WHERE COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3")).
 		WithArgs("gpt-5", 21, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
@@ -474,8 +527,12 @@ func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testin
 	requestType := int16(service.RequestTypeStream)
 	stream := true
 
-	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)").
-		WithArgs(start, end, requestType).
+	trendPattern := "AND \\(request_type = \\$3 OR \\(request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)"
+	if IsMySQL() {
+		trendPattern = "AND \\(request_type = \\? OR \\(request_type = \\? AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)"
+	}
+	mock.ExpectQuery(trendPattern).
+		WithArgs(requestTypeFilterArgs([]driver.Value{start, end}, requestType)...).
 		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
 
 	trend, err := repo.GetUsageTrendWithFilters(context.Background(), start, end, "day", 0, 0, 0, 0, "", &requestType, &stream, nil)
@@ -495,7 +552,7 @@ func TestUsageLogRepositoryGetUsageTrendWithUsageFiltersRequestedModelSource(t *
 		ModelFilterSource: usagestats.ModelSourceRequested,
 	}
 
-	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3")).
 		WithArgs(start, end, "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
 
@@ -512,6 +569,9 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 	filters := usagestats.UsageLogFilters{NativeCompactionV2: &nativeCompactionV2}
 
 	t.Run("stats", func(t *testing.T) {
+		// PG 专属 GROUPING SETS 语句形状（MySQL 分支为 UNION ALL 派生表展开），
+		// 无法机械改写期望正则。
+		skipOnMySQL(t)
 		db, mock := newSQLMock(t)
 		repo := &usageLogRepository{sql: db}
 		mock.ExpectQuery("(?s)FROM usage_logs\\s+WHERE native_compaction_v2 = \\$1.*GROUP BY GROUPING SETS").
@@ -530,7 +590,7 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 	t.Run("trend bypasses preaggregate", func(t *testing.T) {
 		db, mock := newSQLMock(t)
 		repo := &usageLogRepository{sql: db}
-		mock.ExpectQuery("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3").
+		mock.ExpectQuery(sqlmockPatternForDialect("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3")).
 			WithArgs(start, end, true).
 			WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
 
@@ -542,7 +602,7 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 	t.Run("model", func(t *testing.T) {
 		db, mock := newSQLMock(t)
 		repo := &usageLogRepository{sql: db}
-		mock.ExpectQuery("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3").
+		mock.ExpectQuery(sqlmockPatternForDialect("(?s)FROM usage_logs.*AND native_compaction_v2 = \\$3")).
 			WithArgs(start, end, true).
 			WillReturnRows(sqlmock.NewRows([]string{
 				"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens",
@@ -557,7 +617,7 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 	t.Run("group", func(t *testing.T) {
 		db, mock := newSQLMock(t)
 		repo := &usageLogRepository{sql: db}
-		mock.ExpectQuery("(?s)FROM usage_logs ul.*AND ul.native_compaction_v2 = \\$3").
+		mock.ExpectQuery(sqlmockPatternForDialect("(?s)FROM usage_logs ul.*AND ul.native_compaction_v2 = \\$3")).
 			WithArgs(start, end, true).
 			WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "requests", "total_tokens", "cost", "actual_cost", "account_cost"}))
 
@@ -582,8 +642,12 @@ func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testin
 	requestType := int16(service.RequestTypeWSV2)
 	stream := false
 
-	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
-		WithArgs(start, end, requestType).
+	modelStatsPattern := "AND \\(request_type = \\$3 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)"
+	if IsMySQL() {
+		modelStatsPattern = "AND \\(request_type = \\? OR \\(request_type = \\? AND openai_ws_mode = TRUE\\)\\)"
+	}
+	mock.ExpectQuery(modelStatsPattern).
+		WithArgs(requestTypeFilterArgs([]driver.Value{start, end}, requestType)...).
 		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost"}))
 
 	stats, err := repo.GetModelStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, &requestType, &stream, nil)
@@ -599,7 +663,7 @@ func TestUsageLogRepositoryGetUserModelStatsUsesRequestedModel(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	mock.ExpectQuery("(?s)SELECT\\s+COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) as model,.*WHERE created_at >= \\$1 AND created_at < \\$2\\s+AND user_id = \\$3.*GROUP BY COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) ORDER BY total_tokens DESC").
+	mock.ExpectQuery(sqlmockPatternForDialect("(?s)SELECT\\s+COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) as model,.*WHERE created_at >= \\$1 AND created_at < \\$2\\s+AND user_id = \\$3.*GROUP BY COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) ORDER BY total_tokens DESC")).
 		WithArgs(start, end, int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "input_tokens", "output_tokens",
@@ -615,6 +679,8 @@ func TestUsageLogRepositoryGetUserModelStatsUsesRequestedModel(t *testing.T) {
 }
 
 func TestUsageLogRepositoryGetStatsWithFiltersRequestedModelSource(t *testing.T) {
+	// PG 专属 GROUPING SETS 聚合语句形状（MySQL 分支为 UNION ALL 派生表展开）。
+	skipOnMySQL(t)
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
 
@@ -654,6 +720,8 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestedModelSource(t *testing.T)
 }
 
 func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) {
+	// PG 专属 GROUPING SETS 聚合语句形状（MySQL 分支为 UNION ALL 派生表展开）。
+	skipOnMySQL(t)
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
 
@@ -728,7 +796,7 @@ func TestUsageLogRepositoryGetModelStatsWithUsageFiltersAppliesRequestedModelFil
 	end := start.Add(24 * time.Hour)
 	filters := usagestats.UsageLogFilters{Model: "gpt-5"}
 
-	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3")).
 		WithArgs(start, end, "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "input_tokens", "output_tokens",
@@ -780,7 +848,7 @@ func TestUsageLogRepositoryGetGroupStatsWithUsageFiltersAppliesRequestedModelFil
 	end := start.Add(24 * time.Hour)
 	filters := usagestats.UsageLogFilters{Model: "gpt-5"}
 
-	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(ul.requested_model\\), ''\\), ul.model\\) = \\$3").
+	mock.ExpectQuery(sqlmockPatternForDialect("AND COALESCE\\(NULLIF\\(TRIM\\(ul.requested_model\\), ''\\), ul.model\\) = \\$3")).
 		WithArgs(start, end, "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"group_id", "group_name", "requests", "total_tokens",
@@ -795,6 +863,8 @@ func TestUsageLogRepositoryGetGroupStatsWithUsageFiltersAppliesRequestedModelFil
 }
 
 func TestUsageLogRepositoryGetStatsWithFiltersAlwaysReturnsAccountCost(t *testing.T) {
+	// PG 专属 GROUPING SETS 聚合语句形状（MySQL 分支为 UNION ALL 派生表展开）。
+	skipOnMySQL(t)
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
 

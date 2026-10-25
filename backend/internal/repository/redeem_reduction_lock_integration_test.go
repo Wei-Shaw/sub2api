@@ -40,16 +40,22 @@ func newReductionLockFixture(t *testing.T, name string) (*service.RedeemService,
 	// Redemption commits its own transaction; remove fixtures explicitly so
 	// repository list/count tests cannot observe this test's subscriptions.
 	t.Cleanup(func() {
-		_, err := integrationDB.ExecContext(context.Background(), `DELETE FROM redeem_codes WHERE group_id=$1`, group.ID)
+		_, err := integrationDB.ExecContext(context.Background(), `DELETE FROM redeem_codes WHERE group_id=`+ph(1), group.ID)
 		require.NoError(t, err)
-		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM user_subscriptions WHERE user_id=$1`, user.ID)
+		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM user_subscriptions WHERE user_id=`+ph(1), user.ID)
 		require.NoError(t, err)
-		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM groups WHERE id=$1`, group.ID)
+		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM `+groupsTableRef()+` WHERE id=`+ph(1), group.ID)
 		require.NoError(t, err)
-		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM users WHERE id=$1`, user.ID)
+		_, err = integrationDB.ExecContext(context.Background(), `DELETE FROM users WHERE id=`+ph(1), user.ID)
 		require.NoError(t, err)
 	})
+	// PG timestamptz 为微秒精度；MySQL 侧时间列为 DATETIME(3)（毫秒）。夹具时间
+	// 按方言截断到列精度，保证 ExtendExpiry/扣减后的 expires_at 能与内存期望值
+	// 用 .Equal 精确比较（否则 MySQL 下毫秒截断会让断言恒差 <1ms）。
 	now := time.Now().UTC().Truncate(time.Microsecond)
+	if IsMySQL() {
+		now = now.Truncate(time.Millisecond)
+	}
 	sub, err := client.UserSubscription.Create().SetUserID(user.ID).SetGroupID(group.ID).SetStartsAt(now.Add(-time.Hour)).SetExpiresAt(now.AddDate(0, 0, 10)).SetStatus(service.SubscriptionStatusActive).SetNotes("initial").Save(ctx)
 	require.NoError(t, err)
 	repo := &lockedReductionReadRepo{UserSubscriptionRepository: NewUserSubscriptionRepository(client)}

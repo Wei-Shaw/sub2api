@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -46,7 +47,11 @@ func (r *pluginRepository) List(ctx context.Context) ([]*service.PluginInstallat
 }
 
 func (r *pluginRepository) GetByID(ctx context.Context, id int64) (*service.PluginInstallation, error) {
-	plugin, err := scanPlugin(r.db.QueryRowContext(ctx, pluginSelectSQL+` WHERE id = $1`, id))
+	query := pluginSelectSQL + ` WHERE id = $1`
+	if IsMySQL() {
+		query = pluginSelectSQL + ` WHERE id = ?`
+	}
+	plugin, err := scanPlugin(r.db.QueryRowContext(ctx, query, id))
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +60,11 @@ func (r *pluginRepository) GetByID(ctx context.Context, id int64) (*service.Plug
 }
 
 func (r *pluginRepository) GetByKey(ctx context.Context, key string) (*service.PluginInstallation, error) {
-	plugin, err := scanPlugin(r.db.QueryRowContext(ctx, pluginSelectSQL+` WHERE plugin_key = $1`, key))
+	query := pluginSelectSQL + ` WHERE plugin_key = $1`
+	if IsMySQL() {
+		query = pluginSelectSQL + ` WHERE plugin_key = ?`
+	}
+	plugin, err := scanPlugin(r.db.QueryRowContext(ctx, query, key))
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +73,9 @@ func (r *pluginRepository) GetByKey(ctx context.Context, key string) (*service.P
 }
 
 func (r *pluginRepository) Install(ctx context.Context, plugin *service.PluginInstallation, bindings []service.PluginBinding) (*service.PluginInstallation, error) {
+	if IsMySQL() {
+		return r.installMySQL(ctx, plugin, bindings)
+	}
 	manifestJSON, err := json.Marshal(plugin.Manifest)
 	if err != nil {
 		return nil, fmt.Errorf("序列化插件清单: %w", err)
@@ -122,18 +134,126 @@ func (r *pluginRepository) Install(ctx context.Context, plugin *service.PluginIn
 	return r.GetByID(ctx, id)
 }
 
+// installMySQL 是 Install 的 MySQL 实现。
+// PG 版是 `INSERT ... ON CONFLICT (plugin_key) DO UPDATE SET ... WHERE <既有行状态守卫>
+// RETURNING id`（守卫不满足时返回 0 行 → ErrPluginStateChanged）；MySQL 拆为
+// 「SELECT id/state FOR UPDATE（锁定读，评估守卫）→ INSERT 或条件 UPDATE」：
+//   - 无既有行 → INSERT（持锁后无冲突；并发首发竞态时 INSERT 报 1062，重试一次走更新路径）；
+//   - 既有行且守卫满足（state IN ('disabled','error','incompatible') 且无 enabled 绑定）
+//     → UPDATE 全部字段后取该行 id；
+//   - 守卫不满足 → ErrPluginStateChanged（行保持不动，对齐 PG 的 0 行返回）。
+//
+// 注意不能依赖条件 UPDATE 的 RowsAffected 判定守卫：MySQL 默认（CLIENT_FOUND_ROWS 关）
+// 返回的是“实际变化”行数，字段全同时为 0，与 PG 的命中即 RETURNING 语义不同。
+//
+// artifact_data 在 MySQL 为 LONGBLOB（migrations/mysql/230），[]byte 参数直传。
+func (r *pluginRepository) installMySQL(ctx context.Context, plugin *service.PluginInstallation, bindings []service.PluginBinding) (*service.PluginInstallation, error) {
+	manifestJSON, err := json.Marshal(plugin.Manifest)
+	if err != nil {
+		return nil, fmt.Errorf("序列化插件清单: %w", err)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var id int64
+	for attempt := 0; ; attempt++ {
+		var state sql.NullString
+		scanErr := tx.QueryRowContext(ctx,
+			`SELECT id, state FROM sub2api_plugin_installations WHERE plugin_key = ? FOR UPDATE`,
+			plugin.PluginKey).Scan(&id, &state)
+		switch {
+		case errors.Is(scanErr, sql.ErrNoRows):
+			insertRes, insertErr := tx.ExecContext(ctx, `
+				INSERT INTO sub2api_plugin_installations (
+					plugin_key, name, version, description, author, manifest, artifact_data,
+					artifact_path, install_path, binary_path, binary_sha256,
+					signature_status, state, last_error, installed_by, installed_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, '', ?, NOW(3), NOW(3))
+			`, plugin.PluginKey, plugin.Name, plugin.Version, plugin.Description, plugin.Author, manifestJSON, plugin.ArtifactData,
+				plugin.ArtifactPath, plugin.InstallPath, plugin.BinaryPath, plugin.BinarySHA256,
+				plugin.SignatureStatus, plugin.State, plugin.InstalledBy)
+			if insertErr != nil {
+				// 并发首发同一 plugin_key：唯一冲突后 FOR UPDATE 锁定读能看到已提交行，
+				// 重试走「既有行」路径（对齐 PG 的 ON CONFLICT DO UPDATE 语义）。
+				if isMySQLUniqueViolation(insertErr) && attempt == 0 {
+					continue
+				}
+				return nil, insertErr
+			}
+			id, err = insertRes.LastInsertId()
+			if err != nil {
+				return nil, err
+			}
+		case scanErr != nil:
+			return nil, scanErr
+		default:
+			// 既有行：评估 PG DO UPDATE ... WHERE 的守卫（锁定读上无并发窗口）。
+			var enabledBindings int64
+			if err := tx.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sub2api_plugin_bindings WHERE plugin_id = ? AND enabled = TRUE`,
+				id).Scan(&enabledBindings); err != nil {
+				return nil, err
+			}
+			switch state.String {
+			case "disabled", "error", "incompatible":
+			default:
+				return nil, service.ErrPluginStateChanged
+			}
+			if enabledBindings > 0 {
+				return nil, service.ErrPluginStateChanged
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE sub2api_plugin_installations
+				SET name = ?, version = ?, description = ?, author = ?, manifest = CAST(? AS JSON),
+					artifact_data = ?, artifact_path = ?, install_path = ?, binary_path = ?, binary_sha256 = ?,
+					signature_status = ?, state = ?, last_error = '', installed_by = ?,
+					installed_at = NOW(3), enabled_at = NULL, updated_at = NOW(3)
+				WHERE id = ?
+			`, plugin.Name, plugin.Version, plugin.Description, plugin.Author, manifestJSON, plugin.ArtifactData,
+				plugin.ArtifactPath, plugin.InstallPath, plugin.BinaryPath, plugin.BinarySHA256,
+				plugin.SignatureStatus, plugin.State, plugin.InstalledBy, id); err != nil {
+				return nil, err
+			}
+		}
+		break
+	}
+	if err := replacePluginBindings(ctx, tx, id, bindings); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetByID(ctx, id)
+}
+
 func (r *pluginRepository) GetArtifact(ctx context.Context, id int64) ([]byte, error) {
+	query := `SELECT artifact_data FROM sub2api_plugin_installations WHERE id = $1`
+	if IsMySQL() {
+		query = `SELECT artifact_data FROM sub2api_plugin_installations WHERE id = ?`
+	}
 	var artifact []byte
-	err := r.db.QueryRowContext(ctx, `SELECT artifact_data FROM sub2api_plugin_installations WHERE id = $1`, id).Scan(&artifact)
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&artifact)
 	return artifact, err
 }
 
 func (r *pluginRepository) Delete(ctx context.Context, id int64, expectedBinarySHA256 string) error {
-	result, err := r.db.ExecContext(ctx, `
+	query := `
 		DELETE FROM sub2api_plugin_installations p
 		WHERE p.id = $1 AND p.binary_sha256 = $2 AND p.state NOT IN ('starting', 'enabled')
 		  AND NOT EXISTS (SELECT 1 FROM sub2api_plugin_bindings b WHERE b.plugin_id = p.id AND b.enabled = TRUE)
-	`, id, expectedBinarySHA256)
+	`
+	if IsMySQL() {
+		// `DELETE FROM tbl alias WHERE ...` → `DELETE alias FROM tbl alias WHERE ...`。
+		query = `
+		DELETE p FROM sub2api_plugin_installations p
+		WHERE p.id = ? AND p.binary_sha256 = ? AND p.state NOT IN ('starting', 'enabled')
+		  AND NOT EXISTS (SELECT 1 FROM sub2api_plugin_bindings b WHERE b.plugin_id = p.id AND b.enabled = TRUE)
+	`
+	}
+	result, err := r.db.ExecContext(ctx, query, id, expectedBinarySHA256)
 	if err != nil {
 		return err
 	}
@@ -148,11 +268,19 @@ func (r *pluginRepository) Delete(ctx context.Context, id int64, expectedBinaryS
 }
 
 func (r *pluginRepository) BeginEnable(ctx context.Context, id int64, binarySHA256, expectedState string) error {
-	result, err := r.db.ExecContext(ctx, `
+	query := `
 		UPDATE sub2api_plugin_installations
 		SET state = 'starting', last_error = '', updated_at = NOW()
 		WHERE id = $1 AND binary_sha256 = $2 AND state = $3 AND state <> 'starting'
-	`, id, binarySHA256, expectedState)
+	`
+	if IsMySQL() {
+		query = `
+		UPDATE sub2api_plugin_installations
+		SET state = 'starting', last_error = '', updated_at = NOW(3)
+		WHERE id = ? AND binary_sha256 = ? AND state = ? AND state <> 'starting'
+	`
+	}
+	result, err := r.db.ExecContext(ctx, query, id, binarySHA256, expectedState)
 	if err != nil {
 		return err
 	}
@@ -167,12 +295,21 @@ func (r *pluginRepository) BeginEnable(ctx context.Context, id int64, binarySHA2
 }
 
 func (r *pluginRepository) MarkRuntimeHealthy(ctx context.Context, id int64, binarySHA256, configEncrypted string) error {
-	result, err := r.db.ExecContext(ctx, `
+	query := `
 		UPDATE sub2api_plugin_installations p
 		SET state = 'enabled', last_error = '', enabled_at = COALESCE(enabled_at, NOW()), updated_at = NOW()
 		WHERE p.id = $1 AND p.binary_sha256 = $2 AND p.config_encrypted = $3
 		  AND EXISTS (SELECT 1 FROM sub2api_plugin_bindings b WHERE b.plugin_id = p.id AND b.enabled = TRUE)
-	`, id, binarySHA256, configEncrypted)
+	`
+	if IsMySQL() {
+		query = `
+		UPDATE sub2api_plugin_installations p
+		SET state = 'enabled', last_error = '', enabled_at = COALESCE(enabled_at, NOW(3)), updated_at = NOW(3)
+		WHERE p.id = ? AND p.binary_sha256 = ? AND p.config_encrypted = ?
+		  AND EXISTS (SELECT 1 FROM sub2api_plugin_bindings b WHERE b.plugin_id = p.id AND b.enabled = TRUE)
+	`
+	}
+	result, err := r.db.ExecContext(ctx, query, id, binarySHA256, configEncrypted)
 	if err != nil {
 		return err
 	}
@@ -187,11 +324,24 @@ func (r *pluginRepository) MarkRuntimeHealthy(ctx context.Context, id int64, bin
 }
 
 func (r *pluginRepository) UpdateState(ctx context.Context, id int64, state, lastError string, enabledAt *time.Time, expectedBinarySHA256, expectedState string) error {
-	result, err := r.db.ExecContext(ctx, `
+	query := `
 		UPDATE sub2api_plugin_installations
 		SET state = $2, last_error = $3, enabled_at = $4, updated_at = NOW()
 		WHERE id = $1 AND binary_sha256 = $5 AND state = $6
-	`, id, state, lastError, enabledAt, expectedBinarySHA256, expectedState)
+	`
+	if IsMySQL() {
+		query = `
+		UPDATE sub2api_plugin_installations
+		SET state = ?, last_error = ?, enabled_at = ?, updated_at = NOW(3)
+		WHERE id = ? AND binary_sha256 = ? AND state = ?
+	`
+	}
+	// MySQL ? 按出现顺序绑定（SET 在 WHERE 前）：重排为 (state, last_error, enabled_at, id, binary_sha256, expected_state)。
+	args := []any{id, state, lastError, enabledAt, expectedBinarySHA256, expectedState}
+	if IsMySQL() {
+		args = []any{state, lastError, enabledAt, id, expectedBinarySHA256, expectedState}
+	}
+	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -206,11 +356,24 @@ func (r *pluginRepository) UpdateState(ctx context.Context, id int64, state, las
 }
 
 func (r *pluginRepository) UpdateConfig(ctx context.Context, id int64, encrypted, expectedBinarySHA256 string) error {
-	result, err := r.db.ExecContext(ctx, `
+	query := `
 		UPDATE sub2api_plugin_installations
 		SET config_encrypted = $2, updated_at = NOW()
 		WHERE id = $1 AND binary_sha256 = $3
-	`, id, encrypted, expectedBinarySHA256)
+	`
+	if IsMySQL() {
+		query = `
+		UPDATE sub2api_plugin_installations
+		SET config_encrypted = ?, updated_at = NOW(3)
+		WHERE id = ? AND binary_sha256 = ?
+	`
+	}
+	// MySQL ? 按出现顺序绑定（SET 在 WHERE 前）：重排为 (config_encrypted, id, binary_sha256)。
+	args := []any{id, encrypted, expectedBinarySHA256}
+	if IsMySQL() {
+		args = []any{encrypted, id, expectedBinarySHA256}
+	}
+	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -239,11 +402,25 @@ func (r *pluginRepository) UpdateBindingsAndState(
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `
+	updateStateSQL := `
 		UPDATE sub2api_plugin_installations
 		SET state = $2, last_error = $3, enabled_at = $4, updated_at = NOW()
 		WHERE id = $1 AND ($5 = '' OR state = $5) AND binary_sha256 = $6
-	`, pluginID, state, lastError, enabledAt, expectedState, expectedBinarySHA256)
+	`
+	if IsMySQL() {
+		updateStateSQL = `
+		UPDATE sub2api_plugin_installations
+		SET state = ?, last_error = ?, enabled_at = ?, updated_at = NOW(3)
+		WHERE id = ? AND (? = '' OR state = ?) AND binary_sha256 = ?
+	`
+	}
+	// MySQL ? 按出现顺序绑定（SET 在 WHERE 前），且 ($5 = '' OR state = $5) 的 $5 复用
+	// 需展开为两个占位符：重排为 (state, last_error, enabled_at, id, expected_state, expected_state, binary_sha256)。
+	args := []any{pluginID, state, lastError, enabledAt, expectedState, expectedBinarySHA256}
+	if IsMySQL() {
+		args = []any{state, lastError, enabledAt, pluginID, expectedState, expectedState, expectedBinarySHA256}
+	}
+	result, err := tx.ExecContext(ctx, updateStateSQL, args...)
 	if err != nil {
 		return err
 	}
@@ -265,15 +442,26 @@ type pluginBindingExecutor interface {
 }
 
 func replacePluginBindings(ctx context.Context, executor pluginBindingExecutor, pluginID int64, bindings []service.PluginBinding) error {
-	if _, err := executor.ExecContext(ctx, `DELETE FROM sub2api_plugin_bindings WHERE plugin_id = $1`, pluginID); err != nil {
-		return err
-	}
-	for _, binding := range bindings {
-		if _, err := executor.ExecContext(ctx, `
+	deleteSQL := `DELETE FROM sub2api_plugin_bindings WHERE plugin_id = $1`
+	insertSQL := `
 			INSERT INTO sub2api_plugin_bindings (
 				plugin_id, capability, platform, account_type, enabled, rollout_percent, created_at, updated_at
 			) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-		`, pluginID, binding.Capability, binding.Platform, binding.AccountType, binding.Enabled, binding.RolloutPercent); err != nil {
+		`
+	if IsMySQL() {
+		deleteSQL = `DELETE FROM sub2api_plugin_bindings WHERE plugin_id = ?`
+		insertSQL = `
+			INSERT INTO sub2api_plugin_bindings (
+				plugin_id, capability, platform, account_type, enabled, rollout_percent, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+		`
+	}
+	if _, err := executor.ExecContext(ctx, deleteSQL, pluginID); err != nil {
+		return err
+	}
+	for _, binding := range bindings {
+		if _, err := executor.ExecContext(ctx, insertSQL,
+			pluginID, binding.Capability, binding.Platform, binding.AccountType, binding.Enabled, binding.RolloutPercent); err != nil {
 			return err
 		}
 	}
@@ -310,11 +498,19 @@ func scanPlugin(scanner pluginScanner) (*service.PluginInstallation, error) {
 }
 
 func (r *pluginRepository) listBindings(ctx context.Context, pluginID int64) ([]service.PluginBinding, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	query := `
 		SELECT id, plugin_id, capability, platform, account_type, enabled,
 		       rollout_percent, created_at, updated_at
 		FROM sub2api_plugin_bindings WHERE plugin_id = $1 ORDER BY id
-	`, pluginID)
+	`
+	if IsMySQL() {
+		query = `
+		SELECT id, plugin_id, capability, platform, account_type, enabled,
+		       rollout_percent, created_at, updated_at
+		FROM sub2api_plugin_bindings WHERE plugin_id = ? ORDER BY id
+	`
+	}
+	rows, err := r.db.QueryContext(ctx, query, pluginID)
 	if err != nil {
 		return nil, err
 	}

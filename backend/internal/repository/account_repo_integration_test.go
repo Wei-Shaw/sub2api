@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+// acctITSQL 保留 PG 运行下的 $n 占位符；MySQL 方言运行（SUB2API_TEST_DB=mysql）
+// 时把测试内嵌 SQL 的 $n 改写为 ?（database/sql 驱动不做占位符翻译），并把
+// 保留字表名 groups 加反引号（与 PG 分支字节保持一致，仅 MySQL 运行时改写）。
+func acctITSQL(query string) string {
+	if !IsMySQL() {
+		return query
+	}
+	query = acctPGPlaceholderRegexp.ReplaceAllString(query, "?")
+	return strings.ReplaceAll(query, "FROM groups ", "FROM `groups` ")
+}
+
+var acctPGPlaceholderRegexp = regexp.MustCompile(`\$\d+`)
 
 type AccountRepoSuite struct {
 	suite.Suite
@@ -239,7 +253,7 @@ func (s *AccountRepoSuite) TestUpdateCredentials_SyncsSnapshotAndDurableOutbox()
 	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateCredentials(s.ctx, account.ID, map[string]any{"access_token": "new-token"}))
@@ -250,7 +264,7 @@ func (s *AccountRepoSuite) TestUpdateCredentials_SyncsSnapshotAndDurableOutbox()
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -994,11 +1008,11 @@ func (s *AccountRepoSuite) TestResetQuotaUsedAndClearRateLimitCooldownPreservesO
 	s.Require().Equal(float64(0), got.Extra["quota_weekly_used"])
 
 	var pendingEventExists bool
-	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, acctITSQL(`
 		SELECT EXISTS (
 			SELECT 1 FROM scheduler_outbox
 			WHERE event_type = $1 AND account_id = $2 AND dedup_key IS NOT NULL
-		)`, []any{service.SchedulerOutboxEventAccountChanged, account.ID}, &pendingEventExists))
+		)`), []any{service.SchedulerOutboxEventAccountChanged, account.ID}, &pendingEventExists))
 	s.Require().True(pendingEventExists)
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
@@ -1048,7 +1062,7 @@ func (s *AccountRepoSuite) TestSetTempUnschedulableSkipsOutboxWhenWindowDoesNotE
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
 
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	until := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
@@ -1117,7 +1131,7 @@ func (s *AccountRepoSuite) TestSetError() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-err", Status: service.StatusActive, Schedulable: true})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "something went wrong"))
@@ -1136,7 +1150,7 @@ func (s *AccountRepoSuite) TestSetError() {
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -1157,7 +1171,7 @@ func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_AppliesAn
 	s.Require().NoError(err)
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err = s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	applied, err := s.repo.SetGrokOAuthErrorIfCredentialsUnchanged(
@@ -1181,7 +1195,7 @@ func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_AppliesAn
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -1208,7 +1222,7 @@ func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_SkipsConc
 	}))
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err = s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	applied, err := s.repo.SetGrokOAuthErrorIfCredentialsUnchanged(
@@ -1231,7 +1245,7 @@ func (s *AccountRepoSuite) TestSetGrokOAuthErrorIfCredentialsUnchanged_SkipsConc
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -1256,7 +1270,7 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_AppliesAndP
 	s.Require().NoError(err)
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err = s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	applied, err := s.repo.UpdateGrokOAuthCredentialsIfUnchanged(
@@ -1284,7 +1298,7 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_AppliesAndP
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -1314,7 +1328,7 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcur
 	}))
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err = s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	applied, err := s.repo.UpdateGrokOAuthCredentialsIfUnchanged(
@@ -1340,7 +1354,7 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcur
 	err = scanSingleRow(
 		s.ctx,
 		s.repo.sql,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2"),
 		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
 		&outboxCount,
 	)
@@ -1349,6 +1363,9 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcur
 }
 
 func (s *AccountRepoSuite) TestGrokOAuthConditionalMutation_DetachesBoundedSnapshotSync() {
+	// 依赖 PG 可写 CTE 语句形状（cancelAfterAtomicMutationSQLExecutor 按
+	// "WITH updated AS ... INSERT INTO scheduler_outbox" 拦截）；MySQL 拆分语句无该形状。
+	skipOnMySQL(s.T())
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "grok-conditional-detached-sync",
 		Platform:    service.PlatformGrok,
@@ -1381,6 +1398,9 @@ func (s *AccountRepoSuite) TestGrokOAuthConditionalMutation_DetachesBoundedSnaps
 }
 
 func TestGrokOAuthConditionalMutationRollsBackWhenOutboxInsertFails(t *testing.T) {
+	// 依赖 PG 可写 CTE 语句形状（failAtomicSchedulerOutboxSQLExecutor 按
+	// "WITH updated AS ... INSERT INTO scheduler_outbox" 注入故障）；MySQL 拆分语句无该形状。
+	skipOnMySQL(t)
 	client := testEntClient(t)
 	account := mustCreateAccount(t, client, &service.Account{
 		Name:        "grok-conditional-atomic-outbox-failure",
@@ -1391,7 +1411,7 @@ func TestGrokOAuthConditionalMutationRollsBackWhenOutboxInsertFails(t *testing.T
 		Credentials: map[string]any{"access_token": "observed"},
 	})
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE account_id = $1", account.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM scheduler_outbox WHERE account_id = $1"), account.ID)
 		_ = client.Account.DeleteOneID(account.ID).Exec(context.Background())
 	})
 	repo := newAccountRepositoryWithSQL(client, &failAtomicSchedulerOutboxSQLExecutor{sqlExecutor: integrationDB}, nil)
@@ -1413,7 +1433,7 @@ func TestGrokOAuthConditionalMutationRollsBackWhenOutboxInsertFails(t *testing.T
 	var outboxCount int
 	require.NoError(t, integrationDB.QueryRowContext(
 		context.Background(),
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1",
+		acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1"),
 		account.ID,
 	).Scan(&outboxCount))
 	require.Zero(t, outboxCount)
@@ -1585,7 +1605,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
@@ -1610,7 +1630,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerRelevantStillEnqueuesOutbox(
 		Platform: service.PlatformAntigravity,
 		Extra:    map[string]any{},
 	})
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, truncateSchedulerOutboxSQL())
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{

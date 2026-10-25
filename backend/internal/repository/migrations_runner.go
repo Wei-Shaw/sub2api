@@ -8,14 +8,19 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
+
 	"github.com/Wei-Shaw/sub2api/migrations"
+
+	"github.com/go-sql-driver/mysql"
 )
 
-// schemaMigrationsTableDDL 定义迁移记录表的 DDL。
+// schemaMigrationsTableDDL 定义迁移记录表的 DDL（PostgreSQL 方言）。
 // 该表用于跟踪已应用的迁移文件及其校验和。
 // - filename: 迁移文件名，作为主键唯一标识每个迁移
 // - checksum: 文件内容的 SHA256 哈希值，用于检测迁移文件是否被篡改
@@ -25,6 +30,16 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 	filename   TEXT PRIMARY KEY,
 	checksum   TEXT NOT NULL,
 	applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`
+
+// schemaMigrationsTableDDLMySQL 为 MySQL 方言的迁移记录表 DDL。
+// 与 PostgreSQL 版语义一致：TIMESTAMPTZ→DATETIME(3)（毫秒精度）。
+const schemaMigrationsTableDDLMySQL = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+	filename   VARCHAR(255) NOT NULL PRIMARY KEY,
+	checksum   VARCHAR(64) NOT NULL,
+	applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 );
 `
 
@@ -45,10 +60,35 @@ CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 );
 `
 
+// atlasSchemaRevisionsTableDDLMySQL 为 MySQL 方言的 Atlas 基线表 DDL。
+// 注意：MySQL 的 TEXT 列不支持字面量默认值，hash 列省略 DEFAULT（插入时始终显式赋值）。
+const atlasSchemaRevisionsTableDDLMySQL = `
+CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
+	version VARCHAR(255) NOT NULL PRIMARY KEY,
+	description TEXT NOT NULL,
+	type INTEGER NOT NULL,
+	applied INTEGER NOT NULL DEFAULT 0,
+	total INTEGER NOT NULL DEFAULT 0,
+	executed_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	execution_time BIGINT NOT NULL DEFAULT 0,
+	error TEXT NULL,
+	error_stmt TEXT NULL,
+	hash TEXT NOT NULL,
+	partial_hashes JSON NULL,
+	operator_version TEXT NULL
+);
+`
+
 // migrationsAdvisoryLockID 是用于序列化迁移操作的 PostgreSQL Advisory Lock ID。
 // 在多实例部署场景下，该锁确保同一时间只有一个实例执行迁移。
 // 任何稳定的 int64 值都可以，只要不与同一数据库中的其他锁冲突即可。
 const migrationsAdvisoryLockID int64 = 694208311321144027
+
+// mysqlMigrationsLockName 是 MySQL 方言下迁移锁的 GET_LOCK 名称，
+// 与 migrationsAdvisoryLockID 语义对等（连接级命名锁）。
+const mysqlMigrationsLockName = "sub2api_migrations"
+const mysqlMigrationsLockTimeoutSeconds = 5
+
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
@@ -118,11 +158,27 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	return applyMigrationsFS(ctx, db, migrations.FS)
 }
 
-// applyMigrationsFS 是迁移执行的核心实现。
+// ApplyMigrationsWithDialect 将指定方言的嵌入迁移文件应用到数据库。
+// MySQL 方言使用 migrations.MySQLFS（mysql/ 子目录的同名镜像迁移），
+// 并以 GET_LOCK 替代 PostgreSQL Advisory Lock。
+func ApplyMigrationsWithDialect(ctx context.Context, db *sql.DB, dialectName string) error {
+	if db == nil {
+		return errors.New("nil sql db")
+	}
+	return applyMigrationsFSWithDialect(ctx, db, migrationsForDialect(dialectName), dialectName)
+}
+
+// applyMigrationsFS 是迁移执行的核心实现（PostgreSQL 方言默认入口，
+// 供既有调用方与测试使用；新代码请使用 applyMigrationsFSWithDialect）。
+func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+	return applyMigrationsFSWithDialect(ctx, db, fsys, dialect.Postgres)
+}
+
+// applyMigrationsFSWithDialect 是迁移执行的核心实现。
 // 它从指定的文件系统读取 SQL 迁移文件并按顺序应用。
 //
 // 迁移执行流程：
-//  1. 获取 PostgreSQL Advisory Lock，防止多实例并发迁移
+//  1. 获取迁移锁（PostgreSQL Advisory Lock / MySQL GET_LOCK），防止多实例并发迁移
 //  2. 确保 schema_migrations 表存在
 //  3. 按文件名排序读取所有 .sql 文件
 //  4. 对于每个迁移文件：
@@ -130,26 +186,33 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 //     - 检查该迁移是否已应用（通过 filename 查询）
 //     - 如果已应用，验证校验和是否匹配
 //     - 如果未应用，在事务中执行迁移并记录
-//  5. 释放 Advisory Lock
+//  5. 释放迁移锁
 //
 // 参数：
 //   - ctx: 上下文
 //   - db: 数据库连接
 //   - fsys: 包含迁移文件的文件系统（通常是 embed.FS）
-func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+//   - dialectName: SQL 方言（dialect.Postgres / dialect.MySQL）
+func applyMigrationsFSWithDialect(ctx context.Context, db *sql.DB, fsys fs.FS, dialectName string) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
+	isMySQL := dialectName == dialect.MySQL
 
 	// 获取分布式锁，确保多实例部署时只有一个实例执行迁移。
-	// 这是 PostgreSQL 特有的 Advisory Lock 机制。
 	lockConn, err := db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("acquire migrations lock connection: %w", err)
 	}
 	defer func() { _ = lockConn.Close() }()
-	if err := pgAdvisoryLock(ctx, lockConn); err != nil {
-		return err
+	if isMySQL {
+		if err := mysqlGetLock(ctx, lockConn); err != nil {
+			return err
+		}
+	} else {
+		if err := pgAdvisoryLock(ctx, lockConn); err != nil {
+			return err
+		}
 	}
 	defer func() {
 		// 无论迁移是否成功，都要释放锁。
@@ -157,17 +220,25 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		// 无限阻塞进程退出。
 		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
+		if isMySQL {
+			_ = mysqlReleaseLock(unlockCtx, lockConn)
+		} else {
+			_ = pgAdvisoryUnlock(unlockCtx, lockConn)
+		}
 	}()
 
 	// 创建迁移记录表（如果不存在）。
 	// 该表记录所有已应用的迁移及其校验和。
-	if _, err := lockConn.ExecContext(ctx, schemaMigrationsTableDDL); err != nil {
+	schemaMigrationsDDL := schemaMigrationsTableDDL
+	if isMySQL {
+		schemaMigrationsDDL = schemaMigrationsTableDDLMySQL
+	}
+	if _, err := lockConn.ExecContext(ctx, schemaMigrationsDDL); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
 	// 自动对齐 Atlas 基线（如果检测到 legacy schema_migrations 且缺失 atlas_schema_revisions）。
-	if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys); err != nil {
+	if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys, dialectName); err != nil {
 		return err
 	}
 
@@ -178,6 +249,10 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		return fmt.Errorf("list migrations: %w", err)
 	}
 	sort.Strings(files) // 确保按文件名顺序执行迁移
+
+	// 方言化占位符：PostgreSQL 用 $n，MySQL 用 ?。
+	ph1 := migrationPlaceholder(dialectName, 1)
+	ph1_2 := migrationPlaceholderList(dialectName, 2)
 
 	for _, name := range files {
 		// 读取迁移文件内容
@@ -198,7 +273,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 
 		// 检查该迁移是否已经应用
 		var existing string
-		rowErr := lockConn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE filename = $1", name).Scan(&existing)
+		rowErr := lockConn.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE filename = "+ph1, name).Scan(&existing)
 		if rowErr == nil {
 			// 迁移已应用，验证校验和是否匹配
 			if existing != checksum {
@@ -224,18 +299,19 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 			return fmt.Errorf("check migration %s: %w", name, rowErr)
 		}
 
-		nonTx, err := validateMigrationExecutionMode(name, content)
+		nonTx, err := validateMigrationExecutionMode(name, content, dialectName)
 		if err != nil {
 			return fmt.Errorf("validate migration %s: %w", name, err)
 		}
 
 		if nonTx {
-			if err := prepareNonTransactionalMigration(ctx, lockConn, name); err != nil {
+			if err := prepareNonTransactionalMigration(ctx, lockConn, name, dialectName); err != nil {
 				return fmt.Errorf("prepare migration %s: %w", name, err)
 			}
 
 			// *_notx.sql：用于 CREATE/DROP INDEX CONCURRENTLY 场景，必须非事务执行。
 			// 逐条语句执行，避免将多条 CONCURRENTLY 语句放入同一个隐式事务块。
+			// （MySQL 无 CONCURRENTLY 语法，DDL 本身即隐式提交，同样逐条执行。）
 			statements := splitSQLStatements(content)
 			for i, stmt := range statements {
 				trimmed := strings.TrimSpace(stmt)
@@ -249,26 +325,47 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
 				}
 			}
-			if _, err := lockConn.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+			if _, err := lockConn.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ("+ph1_2+")", name, checksum); err != nil {
 				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
 			}
 			continue
 		}
 
+		// 测试容错：无 SUPER 权限的 MySQL 测试库预先剥掉触发器 DDL（见上方注释）。
+		if isMySQL && mysqlTriggerFailureTolerant && strings.Contains(strings.ToUpper(content), "CREATE TRIGGER") {
+			stripped := stripMySQLTriggerDDL(content)
+			slog.Warn("mysql migration: applying without trigger DDL (test-tolerant mode)",
+				"migration", name)
+			content = stripped
+			if strings.TrimSpace(stripSQLLineComment(stripped)) == "" {
+				// 整个文件只有触发器：记录为已应用，跳过。
+				if _, err := lockConn.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ("+ph1_2+")", name, checksum); err != nil {
+					return fmt.Errorf("record migration %s (trigger-only): %w", name, err)
+				}
+				continue
+			}
+		}
+
 		// 默认迁移在事务中执行，确保原子性：要么完全成功，要么完全回滚。
+		// 注意（仅 MySQL）：DDL 语句会隐式提交，事务性仅覆盖 DML 部分；
+		// 因此 MySQL 迁移文件优先使用 IF NOT EXISTS / IF EXISTS 等幂等写法。
 		tx, err := lockConn.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
 		}
 
-		// 执行迁移 SQL
+		// 执行迁移 SQL。
+		// 测试专用容错（默认关闭）：MySQL 测试账号在 binlog 开启且无 SUPER 权限时，
+		// CREATE TRIGGER 报 1419。必须在执行前剥掉触发器定义——多语句批量一旦
+		// 中途失败，连接上会残留未读结果集，复用该连接会协议失步死锁。
+		// 生产路径（mysqlTriggerFailureTolerant=false）保持严格：触发器照常创建。
 		if _, err := tx.ExecContext(ctx, content); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", name, err)
 		}
 
 		// 记录迁移已完成，保存文件名和校验和
-		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ("+ph1_2+")", name, checksum); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("record migration %s: %w", name, err)
 		}
@@ -283,6 +380,119 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	return nil
 }
 
+// mysqlTriggerFailureTolerant 由测试 harness 打开：允许在无 SUPER 权限的
+// MySQL 测试库上跳过 CREATE TRIGGER（错误 1419）完成迁移引导。生产恒为 false。
+var mysqlTriggerFailureTolerant bool
+
+// isMySQLTriggerCreateFailure 判断错误是否为 binlog 环境下缺少触发器创建权限（1419）。
+func isMySQLTriggerCreateFailure(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1419
+}
+
+// stripMySQLTriggerDDL 从迁移内容中剥除 CREATE TRIGGER 语句块。
+// 触发器体为 BEGIN...END（体内含分号与 END IF）；本项目的触发器无嵌套
+// BEGIN 块，因此从 CREATE TRIGGER 起删到首个「后随词不是 IF 的 END」加上
+// 可选分号为止。其余语句原样保留。仅用于测试容错路径。
+func stripMySQLTriggerDDL(content string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(content) {
+		rel := indexWord(content[i:], "CREATE", "TRIGGER")
+		if rel < 0 {
+			out.WriteString(content[i:])
+			break
+		}
+		start := i + rel
+		out.WriteString(content[i:start])
+		end := endOfTriggerStatement(content[start:])
+		if end < 0 {
+			// 找不到终止符：保守保留原文。
+			out.WriteString(content[start:])
+			break
+		}
+		i = start + end
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// endOfTriggerStatement 返回触发器语句（含 CREATE TRIGGER ... END [;]）的长度。
+func endOfTriggerStatement(s string) int {
+	scan := 0
+	for scan < len(s) {
+		rel := indexWord(s[scan:], "END")
+		if rel < 0 {
+			return -1
+		}
+		pos := scan + rel
+		after := pos + len("END")
+		if !wordBoundary(s, after) || nextWordIs(s, after, "IF") {
+			scan = after
+			continue
+		}
+		// 吃掉 END 后的分号（若有）。
+		for after < len(s) && (s[after] == ' ' || s[after] == '\n' || s[after] == '\r' || s[after] == '\t') {
+			after++
+		}
+		if after < len(s) && s[after] == ';' {
+			after++
+		}
+		return after
+	}
+	return -1
+}
+
+// indexWord 在 s 中查找连续出现的多个单词（允许中间空白/换行），返回起始偏移。
+func indexWord(s string, words ...string) int {
+	search := 0
+	for {
+		first := strings.Index(strings.ToLower(s[search:]), strings.ToLower(words[0]))
+		if first < 0 {
+			return -1
+		}
+		pos := search + first
+		// 前边界同样必须成立：否则 "peak_end" 中的 "end" 会被当作独立单词命中。
+		if (pos == 0 || wordBoundary(s, pos-1)) && matchWordsAt(s, pos, words...) {
+			return pos
+		}
+		search = pos + 1
+	}
+}
+
+func matchWordsAt(s string, pos int, words ...string) bool {
+	i := pos
+	for wi, w := range words {
+		if wi > 0 {
+			for i < len(s) && (s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t') {
+				i++
+			}
+		}
+		if !strings.HasPrefix(strings.ToLower(s[i:]), strings.ToLower(w)) {
+			return false
+		}
+		if !wordBoundary(s, i+len(w)) {
+			return false
+		}
+		i += len(w)
+	}
+	return true
+}
+
+func wordBoundary(s string, i int) bool {
+	if i >= len(s) {
+		return true
+	}
+	c := s[i]
+	return !(c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z')
+}
+
+func nextWordIs(s string, i int, word string) bool {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t') {
+		i++
+	}
+	return strings.HasPrefix(strings.ToLower(s[i:]), strings.ToLower(word)) && wordBoundary(s, i+len(word))
+}
+
 type migrationConnection interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -290,31 +500,48 @@ type migrationConnection interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name string) error {
+// migrationPlaceholder 按方言返回第 n 个占位符（PostgreSQL "$n"，MySQL "?"）。
+func migrationPlaceholder(dialectName string, n int) string {
+	if dialectName == dialect.MySQL {
+		return "?"
+	}
+	return fmt.Sprintf("$%d", n)
+}
+
+// migrationPlaceholderList 按方言返回 n 个占位符列表（"$1, $2" 或 "?, ?"）。
+func migrationPlaceholderList(dialectName string, n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = migrationPlaceholder(dialectName, i+1)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name, dialectName string) error {
 	switch name {
 	case paymentOrdersOutTradeNoUniqueMigration:
-		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
+		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db, dialectName)
 	case schedulerOutboxPendingDedupKeyMigration:
-		return dropInvalidIndexIfPresent(ctx, db, schedulerOutboxPendingDedupKeyIndex)
+		return dropInvalidIndexIfPresent(ctx, db, schedulerOutboxPendingDedupKeyIndex, dialectName)
 	case latestAPIKeyIPIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, latestAPIKeyIPIndex)
+		return dropInvalidIndexIfPresent(ctx, db, latestAPIKeyIPIndex, dialectName)
 	case usageLogsUpstreamModelMismatchIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamModelMismatchIndex)
+		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamModelMismatchIndex, dialectName)
 	case usageLogsEffectiveModelIndexesMigration:
 		for _, indexName := range []string{usageLogsEffectiveRequestedModelIndex, usageLogsEffectiveUpstreamModelIndex} {
-			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName, dialectName); err != nil {
 				return err
 			}
 		}
 		return nil
 	case usageLogsUpstreamRequestIDIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
+		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex, dialectName)
 	default:
 		return nil
 	}
 }
 
-func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {
+func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection, dialectName string) error {
 	duplicates, err := findDuplicatePaymentOrderOutTradeNos(ctx, db)
 	if err != nil {
 		return fmt.Errorf("precheck duplicate out_trade_no: %w", err)
@@ -327,10 +554,15 @@ func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migra
 		)
 	}
 
-	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex, dialectName)
 }
 
-func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName string) error {
+func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName, dialectName string) error {
+	if dialectName == dialect.MySQL {
+		// MySQL 没有 PostgreSQL 的 invalid index 概念（无 CONCURRENTLY 建索引），
+		// 该预检仅适用于 PG。
+		return nil
+	}
 	invalid, err := indexIsInvalid(ctx, db, indexName)
 	if err != nil {
 		return fmt.Errorf("check invalid index %s: %w", indexName, err)
@@ -393,8 +625,8 @@ func indexIsInvalid(ctx context.Context, db migrationConnection, indexName strin
 	return invalid, err
 }
 
-func ensureAtlasBaselineAligned(ctx context.Context, db migrationConnection, fsys fs.FS) error {
-	hasLegacy, err := tableExists(ctx, db, "schema_migrations")
+func ensureAtlasBaselineAligned(ctx context.Context, db migrationConnection, fsys fs.FS, dialectName string) error {
+	hasLegacy, err := tableExists(ctx, db, "schema_migrations", dialectName)
 	if err != nil {
 		return fmt.Errorf("check schema_migrations: %w", err)
 	}
@@ -402,12 +634,16 @@ func ensureAtlasBaselineAligned(ctx context.Context, db migrationConnection, fsy
 		return nil
 	}
 
-	hasAtlas, err := tableExists(ctx, db, "atlas_schema_revisions")
+	hasAtlas, err := tableExists(ctx, db, "atlas_schema_revisions", dialectName)
 	if err != nil {
 		return fmt.Errorf("check atlas_schema_revisions: %w", err)
 	}
 	if !hasAtlas {
-		if _, err := db.ExecContext(ctx, atlasSchemaRevisionsTableDDL); err != nil {
+		atlasDDL := atlasSchemaRevisionsTableDDL
+		if dialectName == dialect.MySQL {
+			atlasDDL = atlasSchemaRevisionsTableDDLMySQL
+		}
+		if _, err := db.ExecContext(ctx, atlasDDL); err != nil {
 			return fmt.Errorf("create atlas_schema_revisions: %w", err)
 		}
 	}
@@ -427,22 +663,34 @@ func ensureAtlasBaselineAligned(ctx context.Context, db migrationConnection, fsy
 
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO atlas_schema_revisions (version, description, type, applied, total, executed_at, execution_time, hash)
-		VALUES ($1, $2, $3, 0, 0, NOW(), 0, $4)
+		VALUES (`+migrationPlaceholderList(dialectName, 3)+`, 0, 0, NOW(), 0, `+migrationPlaceholder(dialectName, 4)+`)
 	`, version, description, 1, hash); err != nil {
 		return fmt.Errorf("insert atlas baseline: %w", err)
 	}
 	return nil
 }
 
-func tableExists(ctx context.Context, db migrationConnection, tableName string) (bool, error) {
+func tableExists(ctx context.Context, db migrationConnection, tableName, dialectName string) (bool, error) {
 	var exists bool
-	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = $1
-		)
-	`, tableName).Scan(&exists)
+	var query string
+	if dialectName == dialect.MySQL {
+		query = `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.tables
+				WHERE table_schema = DATABASE() AND table_name = ?
+			)
+		`
+	} else {
+		query = `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name = $1
+			)
+		`
+	}
+	err := db.QueryRowContext(ctx, query, tableName).Scan(&exists)
 	return exists, err
 }
 
@@ -496,10 +744,11 @@ func isMigrationChecksumCompatible(name, dbChecksum, fileChecksum string) bool {
 	return fileOK
 }
 
-func validateMigrationExecutionMode(name, content string) (bool, error) {
+func validateMigrationExecutionMode(name, content, dialectName string) (bool, error) {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
 	upperContent := strings.ToUpper(content)
 	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
+	isMySQL := dialectName == dialect.MySQL
 
 	if !nonTx {
 		if strings.Contains(upperContent, "CONCURRENTLY") {
@@ -510,6 +759,12 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 
 	if strings.Contains(upperContent, "BEGIN") || strings.Contains(upperContent, "COMMIT") || strings.Contains(upperContent, "ROLLBACK") {
 		return false, errors.New("*_notx.sql must not contain transaction control statements (BEGIN/COMMIT/ROLLBACK)")
+	}
+
+	// MySQL 无 CONCURRENTLY 语法：_notx 文件是 PostgreSQL 文件名的镜像，
+	// 内容为普通 CREATE/DROP INDEX，逐条语句执行即可，跳过 CONCURRENTLY 专属校验。
+	if isMySQL {
+		return true, nil
 	}
 
 	statements := splitSQLStatements(content)
@@ -596,6 +851,55 @@ func pgAdvisoryUnlock(ctx context.Context, db advisoryLockConnection) error {
 	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationsAdvisoryLockID)
 	if err != nil {
 		return fmt.Errorf("release migrations lock: %w", err)
+	}
+	return nil
+}
+
+// mysqlGetLock 获取 MySQL 命名锁（GET_LOCK，连接级）。
+// 与 PostgreSQL Advisory Lock 语义对等：锁绑定在专用连接上，
+// 连接关闭时自动释放。超时后轮询重试，保证 ctx 可取消。
+func mysqlGetLock(ctx context.Context, db advisoryLockConnection) error {
+	if err := mysqlGetNamedLock(ctx, db, mysqlMigrationsLockName); err != nil {
+		return fmt.Errorf("acquire migrations lock: %w", err)
+	}
+	return nil
+}
+
+// mysqlGetNamedLock 获取 MySQL 命名锁（GET_LOCK，连接级），带轮询重试。
+// 供迁移执行器与备份等场景复用。
+func mysqlGetNamedLock(ctx context.Context, db advisoryLockConnection, name string) error {
+	ticker := time.NewTicker(migrationsLockRetryInterval)
+	defer ticker.Stop()
+
+	for {
+		var locked sql.NullInt64
+		if err := db.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", name, mysqlMigrationsLockTimeoutSeconds).Scan(&locked); err != nil {
+			return err
+		}
+		if locked.Valid && locked.Int64 == 1 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// mysqlReleaseLock 释放 MySQL 命名锁。
+func mysqlReleaseLock(ctx context.Context, db advisoryLockConnection) error {
+	if err := mysqlReleaseNamedLock(ctx, db, mysqlMigrationsLockName); err != nil {
+		return fmt.Errorf("release migrations lock: %w", err)
+	}
+	return nil
+}
+
+// mysqlReleaseNamedLock 释放指定名称的 MySQL 命名锁。
+func mysqlReleaseNamedLock(ctx context.Context, db advisoryLockConnection, name string) error {
+	var released sql.NullInt64
+	if err := db.QueryRowContext(ctx, "SELECT RELEASE_LOCK(?)", name).Scan(&released); err != nil {
+		return err
 	}
 	return nil
 }

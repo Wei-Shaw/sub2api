@@ -16,6 +16,7 @@ import (
 )
 
 func TestBulkUpdateEnsuresCodexFingerprintSeedWithPerRowSQL(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 
@@ -43,6 +44,7 @@ func TestBulkUpdateEnsuresCodexFingerprintSeedWithPerRowSQL(t *testing.T) {
 }
 
 func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyWhenEnabling(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -69,6 +71,7 @@ func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyWhenEnabling(t *testing
 }
 
 func TestBulkUpdateCodexFingerprintSeedRollsBackWhenUpdateFails(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -95,6 +98,7 @@ func TestBulkUpdateCodexFingerprintSeedRollsBackWhenUpdateFails(t *testing.T) {
 }
 
 func TestBulkUpdateCodexFingerprintSeedRollsBackWhenOutboxFails(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

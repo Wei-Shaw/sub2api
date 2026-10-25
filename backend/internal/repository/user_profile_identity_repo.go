@@ -622,10 +622,20 @@ func (r *userRepository) RecordProviderGrant(ctx context.Context, input Provider
 		return false, fmt.Errorf("sql executor is not configured")
 	}
 
-	result, err := exec.ExecContext(ctx, `
+	grantQuery := `
 INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
 VALUES ($1, $2, $3)
-ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
+ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`
+	if IsMySQL() {
+		// PG 的 ON CONFLICT..DO NOTHING → ODKU no-op；go-sql-driver 默认
+		// RowsAffected 语义下 1=新插入、0=冲突，与 PG 版 affected>0 判定一致
+		//（唯一索引 user_provider_default_grants_user_provider_reason_key）。
+		grantQuery = `
+INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
+VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE user_provider_default_grants.id = user_provider_default_grants.id`
+	}
+	result, err := exec.ExecContext(ctx, grantQuery,
 		input.UserID,
 		strings.TrimSpace(input.ProviderType),
 		string(input.GrantReason),
@@ -733,10 +743,17 @@ func (r *userRepository) GetUserAvatar(ctx context.Context, userID int64) (*serv
 		return nil, err
 	}
 
-	rows, err := exec.QueryContext(ctx, `
+	avatarQuery := `
 SELECT storage_provider, storage_key, url, content_type, byte_size, sha256
 FROM user_avatars
-WHERE user_id = $1`, userID)
+WHERE user_id = $1`
+	if IsMySQL() {
+		avatarQuery = `
+SELECT storage_provider, storage_key, url, content_type, byte_size, sha256
+FROM user_avatars
+WHERE user_id = ?`
+	}
+	rows, err := exec.QueryContext(ctx, avatarQuery, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -769,7 +786,7 @@ func (r *userRepository) UpsertUserAvatar(ctx context.Context, userID int64, inp
 		return nil, err
 	}
 
-	_, err = exec.ExecContext(ctx, `
+	upsertQuery := `
 INSERT INTO user_avatars (user_id, storage_provider, storage_key, url, content_type, byte_size, sha256, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 ON CONFLICT (user_id) DO UPDATE SET
@@ -779,7 +796,23 @@ ON CONFLICT (user_id) DO UPDATE SET
 	content_type = EXCLUDED.content_type,
 	byte_size = EXCLUDED.byte_size,
 	sha256 = EXCLUDED.sha256,
-	updated_at = NOW()`,
+	updated_at = NOW()`
+	if IsMySQL() {
+		// PG 的 ON CONFLICT(user_id) DO UPDATE → ODKU + VALUES()（唯一索引
+		// user_avatars_user_id_key）；NOW()→NOW(3) 对齐 DATETIME(3) 精度。
+		upsertQuery = `
+INSERT INTO user_avatars (user_id, storage_provider, storage_key, url, content_type, byte_size, sha256, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))
+ON DUPLICATE KEY UPDATE
+	storage_provider = VALUES(storage_provider),
+	storage_key = VALUES(storage_key),
+	url = VALUES(url),
+	content_type = VALUES(content_type),
+	byte_size = VALUES(byte_size),
+	sha256 = VALUES(sha256),
+	updated_at = NOW(3)`
+	}
+	_, err = exec.ExecContext(ctx, upsertQuery,
 		userID,
 		strings.TrimSpace(input.StorageProvider),
 		strings.TrimSpace(input.StorageKey),
@@ -807,7 +840,11 @@ func (r *userRepository) DeleteUserAvatar(ctx context.Context, userID int64) err
 	if err != nil {
 		return err
 	}
-	_, err = exec.ExecContext(ctx, `DELETE FROM user_avatars WHERE user_id = $1`, userID)
+	deleteQuery := `DELETE FROM user_avatars WHERE user_id = $1`
+	if IsMySQL() {
+		deleteQuery = `DELETE FROM user_avatars WHERE user_id = ?`
+	}
+	_, err = exec.ExecContext(ctx, deleteQuery, userID)
 	return err
 }
 

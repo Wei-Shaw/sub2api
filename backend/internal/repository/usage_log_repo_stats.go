@@ -18,6 +18,9 @@ import (
 
 // GetUserStatsAggregated returns aggregated usage statistics for a user using database-level aggregation
 func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	if IsMySQL() {
+		return scanUsageStatsAggregateMySQL(ctx, r.sql, `WHERE user_id = ? AND created_at >= ? AND created_at < ?`, []any{userID, startTime, endTime})
+	}
 	query := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -57,6 +60,9 @@ func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID 
 
 // GetAPIKeyStatsAggregated returns aggregated usage statistics for an API key using database-level aggregation
 func (r *usageLogRepository) GetAPIKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	if IsMySQL() {
+		return scanUsageStatsAggregateMySQL(ctx, r.sql, `WHERE api_key_id = ? AND created_at >= ? AND created_at < ?`, []any{apiKeyID, startTime, endTime})
+	}
 	query := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -106,6 +112,9 @@ func (r *usageLogRepository) GetAPIKeyStatsAggregated(ctx context.Context, apiKe
 // 2. 只返回单行聚合结果，大幅减少数据传输量
 // 3. 利用数据库索引优化聚合查询性能
 func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	if IsMySQL() {
+		return scanUsageStatsAggregateMySQL(ctx, r.sql, `WHERE account_id = ? AND created_at >= ? AND created_at < ?`, []any{accountID, startTime, endTime})
+	}
 	query := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -146,6 +155,11 @@ func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, acco
 // GetModelStatsAggregated 使用 SQL 聚合统计模型使用数据
 // 性能优化：数据库层聚合计算，避免应用层循环统计
 func (r *usageLogRepository) GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	if IsMySQL() {
+		return scanUsageStatsAggregateMySQL(ctx, r.sql,
+			fmt.Sprintf(`WHERE %s = ? AND created_at >= ? AND created_at < ?`, rawUsageLogModelColumn),
+			[]any{modelName, startTime, endTime})
+	}
 	query := fmt.Sprintf(`
 		SELECT
 			COUNT(*) as total_requests,
@@ -186,6 +200,9 @@ func (r *usageLogRepository) GetModelStatsAggregated(ctx context.Context, modelN
 // GetDailyStatsAggregated 使用 SQL 聚合统计用户的每日使用数据
 // 性能优化：使用 GROUP BY 在数据库层按日期分组聚合，避免应用层循环分组统计
 func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (result []map[string]any, err error) {
+	if IsMySQL() {
+		return r.getDailyStatsAggregatedMySQL(ctx, userID, startTime, endTime)
+	}
 	tzName := resolveUsageStatsTimezone()
 	query := `
 		SELECT
@@ -274,6 +291,9 @@ func resolveUsageStatsTimezone() string {
 
 // GetAccountTodayStats 获取账号今日统计
 func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
+	if IsMySQL() {
+		return scanAccountStatsAggregateMySQL(ctx, r.sql, `WHERE account_id = ? AND created_at >= ?`, []any{accountID, timezone.Today()})
+	}
 	today := timezone.Today()
 
 	query := `
@@ -306,6 +326,9 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 
 // GetAccountWindowStats 获取账号时间窗口内的统计
 func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
+	if IsMySQL() {
+		return scanAccountStatsAggregateMySQL(ctx, r.sql, `WHERE account_id = ? AND created_at >= ?`, []any{accountID, startTime})
+	}
 	query := `
 		SELECT
 			COUNT(*) as requests,
@@ -340,6 +363,9 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 	result := make(map[int64]*usagestats.AccountStats, len(accountIDs))
 	if len(accountIDs) == 0 {
 		return result, nil
+	}
+	if IsMySQL() {
+		return r.getAccountWindowStatsBatchMySQL(ctx, accountIDs, startTime)
 	}
 
 	query := `
@@ -393,6 +419,9 @@ func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, acco
 	result := make(map[int64]service.GeminiUsageTotals, len(accountIDs))
 	if len(accountIDs) == 0 {
 		return result, nil
+	}
+	if IsMySQL() {
+		return r.getGeminiUsageTotalsBatchMySQL(ctx, accountIDs, startTime, endTime)
 	}
 
 	query := `
@@ -491,6 +520,10 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		result[id] = &BatchUserUsageStats{UserID: id}
 	}
 
+	if IsMySQL() {
+		return r.getBatchUserUsageStatsMySQL(ctx, normalizedUserIDs, startTime, endTime)
+	}
+
 	// GROUP BY (user_id, effective_platform) 一次查询同时得到总值与按平台拆分。
 	// 应用层把同一 user_id 的多行累加为总值，并把非空 platform 行收集到 ByPlatform。
 	query := `
@@ -569,6 +602,10 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
 
+	if IsMySQL() {
+		return r.getBatchAPIKeyUsageStatsMySQL(ctx, normalizedAPIKeyIDs, startTime, endTime)
+	}
+
 	query := `
 		SELECT
 			api_key_id,
@@ -621,6 +658,38 @@ func resolveEndpointColumn(endpointType string) string {
 
 // GetGlobalStats gets usage statistics for all users within a time range
 func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*UsageStats, error) {
+	if IsMySQL() {
+		query := `
+			SELECT
+				COUNT(*) as total_requests,
+				COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+				COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+				COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+				COALESCE(SUM(total_cost), 0) as total_cost,
+				COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+				COALESCE(AVG(duration_ms), 0) as avg_duration_ms
+			FROM usage_logs
+			WHERE created_at >= ? AND created_at < ?
+		`
+		stats := &UsageStats{}
+		if err := scanSingleRow(
+			ctx,
+			r.sql,
+			query,
+			[]any{startTime, endTime},
+			&stats.TotalRequests,
+			&stats.TotalInputTokens,
+			&stats.TotalOutputTokens,
+			&stats.TotalCacheTokens,
+			&stats.TotalCost,
+			&stats.TotalActualCost,
+			&stats.AverageDurationMs,
+		); err != nil {
+			return nil, err
+		}
+		stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+		return stats, nil
+	}
 	query := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -656,6 +725,9 @@ func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endT
 
 // GetStatsWithFilters gets usage statistics with optional filters
 func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters UsageLogFilters) (*UsageStats, error) {
+	if IsMySQL() {
+		return r.getStatsWithFiltersMySQL(ctx, filters)
+	}
 	conditions := make([]string, 0, 9)
 	args := make([]any, 0, 9)
 
@@ -838,6 +910,9 @@ type AccountUsageStatsResponse = usagestats.AccountUsageStatsResponse
 type EndpointStat = usagestats.EndpointStat
 
 func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, modelSource string, requestType *int16, stream *bool, billingType *int8, billingMode string) (results []EndpointStat, err error) {
+	if IsMySQL() {
+		return r.getEndpointStatsByColumnWithFiltersMySQL(ctx, endpointColumn, startTime, endTime, userID, apiKeyID, accountID, groupID, model, modelSource, requestType, stream, billingType, billingMode)
+	}
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
 		actualCostExpr = "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
@@ -917,6 +992,9 @@ func (r *usageLogRepository) GetUpstreamEndpointStatsWithFilters(ctx context.Con
 
 // GetAccountUsageStats returns comprehensive usage statistics for an account over a time range
 func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (resp *AccountUsageStatsResponse, err error) {
+	if IsMySQL() {
+		return r.getAccountUsageStatsMySQL(ctx, accountID, startTime, endTime)
+	}
 	daysCount := int(endTime.Sub(startTime).Hours()/24) + 1
 	if daysCount <= 0 {
 		daysCount = 30
@@ -1001,6 +1079,979 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 	}
 
 	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3"
+	var avgDuration float64
+	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTime}, &avgDuration); err != nil {
+		return nil, err
+	}
+
+	summary := AccountUsageSummary{
+		Days:              daysCount,
+		ActualDaysUsed:    actualDaysUsed,
+		TotalCost:         totalAccountCost,
+		TotalUserCost:     totalUserCost,
+		TotalStandardCost: totalStandardCost,
+		TotalRequests:     totalRequests,
+		TotalTokens:       totalTokens,
+		AvgDailyCost:      totalAccountCost / float64(actualDaysUsed),
+		AvgDailyUserCost:  totalUserCost / float64(actualDaysUsed),
+		AvgDailyRequests:  float64(totalRequests) / float64(actualDaysUsed),
+		AvgDailyTokens:    float64(totalTokens) / float64(actualDaysUsed),
+		AvgDurationMs:     avgDuration,
+	}
+
+	todayStr := timezone.Now().Format("2006-01-02")
+	for i := range history {
+		if history[i].Date == todayStr {
+			summary.Today = &struct {
+				Date     string  `json:"date"`
+				Cost     float64 `json:"cost"`
+				UserCost float64 `json:"user_cost"`
+				Requests int64   `json:"requests"`
+				Tokens   int64   `json:"tokens"`
+			}{
+				Date:     history[i].Date,
+				Cost:     history[i].ActualCost,
+				UserCost: history[i].UserCost,
+				Requests: history[i].Requests,
+				Tokens:   history[i].Tokens,
+			}
+			break
+		}
+	}
+
+	if highestCostDay != nil {
+		summary.HighestCostDay = &struct {
+			Date     string  `json:"date"`
+			Label    string  `json:"label"`
+			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
+			Requests int64   `json:"requests"`
+		}{
+			Date:     highestCostDay.Date,
+			Label:    highestCostDay.Label,
+			Cost:     highestCostDay.ActualCost,
+			UserCost: highestCostDay.UserCost,
+			Requests: highestCostDay.Requests,
+		}
+	}
+
+	if highestRequestDay != nil {
+		summary.HighestRequestDay = &struct {
+			Date     string  `json:"date"`
+			Label    string  `json:"label"`
+			Requests int64   `json:"requests"`
+			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
+		}{
+			Date:     highestRequestDay.Date,
+			Label:    highestRequestDay.Label,
+			Requests: highestRequestDay.Requests,
+			Cost:     highestRequestDay.ActualCost,
+			UserCost: highestRequestDay.UserCost,
+		}
+	}
+
+	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, nil, nil, nil)
+	if err != nil {
+		models = []ModelStat{}
+	}
+	endpoints, endpointErr := r.GetEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil)
+	if endpointErr != nil {
+		logger.LegacyPrintf("repository.usage_log", "GetEndpointStatsWithFilters failed in GetAccountUsageStats: %v", endpointErr)
+		endpoints = []EndpointStat{}
+	}
+	upstreamEndpoints, upstreamEndpointErr := r.GetUpstreamEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil)
+	if upstreamEndpointErr != nil {
+		logger.LegacyPrintf("repository.usage_log", "GetUpstreamEndpointStatsWithFilters failed in GetAccountUsageStats: %v", upstreamEndpointErr)
+		upstreamEndpoints = []EndpointStat{}
+	}
+
+	resp = &AccountUsageStatsResponse{
+		History:           history,
+		Summary:           summary,
+		Models:            models,
+		Endpoints:         endpoints,
+		UpstreamEndpoints: upstreamEndpoints,
+	}
+	return resp, nil
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现。SELECT 列表与 PG 版逐字一致，仅占位符（$n → ?）、
+// PG 专属函数（TO_CHAR / FILTER / GROUPING SETS / ANY 数组）按规范替换。
+// ---------------------------------------------------------------------------
+
+// scanUsageStatsAggregateMySQL 执行 MySQL 版 9 列聚合统计（GetUserStatsAggregated /
+// GetAPIKeyStatsAggregated / GetAccountStatsAggregated / GetModelStatsAggregated 共用），
+// SELECT 列表与各 PG 版本一字不差，仅 where 由调用方按 ? 占位符拼接。
+func scanUsageStatsAggregateMySQL(ctx context.Context, sqlq sqlExecutor, where string, args []any) (*usagestats.UsageStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(cache_creation_tokens), 0) as total_cache_creation_tokens,
+			COALESCE(SUM(cache_read_tokens), 0) as total_cache_read_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		FROM usage_logs
+		` + where
+
+	var stats usagestats.UsageStats
+	if err := scanSingleRow(
+		ctx,
+		sqlq,
+		query,
+		args,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCacheCreationTokens,
+		&stats.TotalCacheReadTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
+		return nil, err
+	}
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+	return &stats, nil
+}
+
+// scanAccountStatsAggregateMySQL 执行 MySQL 版账号 5 列聚合统计
+// （GetAccountTodayStats / GetAccountWindowStats 共用，? 占位符）。
+func scanAccountStatsAggregateMySQL(ctx context.Context, sqlq sqlExecutor, where string, args []any) (*usagestats.AccountStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
+		FROM usage_logs
+		` + where
+
+	stats := &usagestats.AccountStats{}
+	if err := scanSingleRow(
+		ctx,
+		sqlq,
+		query,
+		args,
+		&stats.Requests,
+		&stats.Tokens,
+		&stats.Cost,
+		&stats.StandardCost,
+		&stats.UserCost,
+	); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
+// getDailyStatsAggregatedMySQL 是 GetDailyStatsAggregated 的 MySQL 实现：
+// TO_CHAR(created_at AT TIME ZONE $4, ...) → DATE_FORMAT(created_at, '%Y-%m-%d')，
+// 不再需要时区参数。MySQL 侧 created_at 为 DATETIME(3) 墙钟，且 DSN 会话 time_zone
+// 被固定为应用时区偏移（internal/config.MySQLConfig），因此按墙钟分组与
+// PG 按应用时区分组语义一致。
+// REVIEW: PG 版用 resolveUsageStatsTimezone()（应用时区名，TZ 环境变量兜底）分组；
+// MySQL 版依赖会话时区 = DSN 配置时区。仅当 timezone.Name() 为 Local/"" 且 TZ 环境变量
+// 与 DSN 时区不一致时两者才会产生日界差异。
+func (r *usageLogRepository) getDailyStatsAggregatedMySQL(ctx context.Context, userID int64, startTime, endTime time.Time) (result []map[string]any, err error) {
+	query := `
+		SELECT
+			DATE_FORMAT(created_at, '%Y-%m-%d') as date,
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		FROM usage_logs
+		WHERE user_id = ? AND created_at >= ? AND created_at < ?
+		GROUP BY 1
+		ORDER BY 1
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	result = make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			date              string
+			totalRequests     int64
+			totalInputTokens  int64
+			totalOutputTokens int64
+			totalCacheTokens  int64
+			totalCost         float64
+			totalActualCost   float64
+			avgDurationMs     float64
+		)
+		if err = rows.Scan(
+			&date,
+			&totalRequests,
+			&totalInputTokens,
+			&totalOutputTokens,
+			&totalCacheTokens,
+			&totalCost,
+			&totalActualCost,
+			&avgDurationMs,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]any{
+			"date":                date,
+			"total_requests":      totalRequests,
+			"total_input_tokens":  totalInputTokens,
+			"total_output_tokens": totalOutputTokens,
+			"total_cache_tokens":  totalCacheTokens,
+			"total_tokens":        totalInputTokens + totalOutputTokens + totalCacheTokens,
+			"total_cost":          totalCost,
+			"total_actual_cost":   totalActualCost,
+			"average_duration_ms": avgDurationMs,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// getAccountWindowStatsBatchMySQL 是 GetAccountWindowStatsBatch 的 MySQL 实现：
+// `= ANY($1)` + pq.Array 展开为 IN (?,?,...)，占位符改 ?。
+func (r *usageLogRepository) getAccountWindowStatsBatchMySQL(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error) {
+	result := make(map[int64]*usagestats.AccountStats, len(accountIDs))
+
+	query := `
+		SELECT
+			account_id,
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
+		FROM usage_logs
+		WHERE account_id IN (` + Placeholders(len(accountIDs)) + `) AND created_at >= ?
+		GROUP BY account_id
+	`
+	args := make([]any, 0, len(accountIDs)+1)
+	for _, id := range accountIDs {
+		args = append(args, id)
+	}
+	args = append(args, startTime)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var accountID int64
+		stats := &usagestats.AccountStats{}
+		if err := rows.Scan(
+			&accountID,
+			&stats.Requests,
+			&stats.Tokens,
+			&stats.Cost,
+			&stats.StandardCost,
+			&stats.UserCost,
+		); err != nil {
+			return nil, err
+		}
+		result[accountID] = stats
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, accountID := range accountIDs {
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = &usagestats.AccountStats{}
+		}
+	}
+	return result, nil
+}
+
+// getGeminiUsageTotalsBatchMySQL 是 GetGeminiUsageTotalsBatch 的 MySQL 实现：
+// `= ANY($1)` 展开为 IN (?,?,...)，其余聚合表达式两侧通用。
+func (r *usageLogRepository) getGeminiUsageTotalsBatchMySQL(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]service.GeminiUsageTotals, error) {
+	result := make(map[int64]service.GeminiUsageTotals, len(accountIDs))
+
+	query := `
+		SELECT
+			account_id,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 1 ELSE 0 END), 0) AS flash_requests,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE 1 END), 0) AS pro_requests,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) ELSE 0 END), 0) AS flash_tokens,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) END), 0) AS pro_tokens,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN actual_cost ELSE 0 END), 0) AS flash_cost,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE actual_cost END), 0) AS pro_cost
+		FROM usage_logs
+		WHERE account_id IN (` + Placeholders(len(accountIDs)) + `) AND created_at >= ? AND created_at < ?
+		GROUP BY account_id
+	`
+	args := make([]any, 0, len(accountIDs)+2)
+	for _, id := range accountIDs {
+		args = append(args, id)
+	}
+	args = append(args, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var accountID int64
+		var totals service.GeminiUsageTotals
+		if err := rows.Scan(
+			&accountID,
+			&totals.FlashRequests,
+			&totals.ProRequests,
+			&totals.FlashTokens,
+			&totals.ProTokens,
+			&totals.FlashCost,
+			&totals.ProCost,
+		); err != nil {
+			return nil, err
+		}
+		result[accountID] = totals
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, accountID := range accountIDs {
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = service.GeminiUsageTotals{}
+		}
+	}
+	return result, nil
+}
+
+// getBatchUserUsageStatsMySQL 是 GetBatchUserUsageStats 的 MySQL 实现：
+// `= ANY($1)` 展开为 IN；FILTER (WHERE ...) 聚合改 SUM(CASE WHEN ... ELSE 0 END)；
+// `groups` 是 MySQL 8 保留字，JOIN 时反引号。platform 维度表达式与 PG 共用
+// usageLogEffectivePlatformExpr（仅涉及普通列，两侧通用）。
+func (r *usageLogRepository) getBatchUserUsageStatsMySQL(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*BatchUserUsageStats, error) {
+	result := make(map[int64]*BatchUserUsageStats, len(userIDs))
+	for _, id := range userIDs {
+		result[id] = &BatchUserUsageStats{UserID: id}
+	}
+
+	query := `
+		SELECT
+			ul.user_id,
+			` + usageLogEffectivePlatformExpr + ` as platform,
+			COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) as today_cost
+		FROM usage_logs ul
+		LEFT JOIN ` + "`groups`" + ` g ON g.id = ul.group_id
+		LEFT JOIN accounts a ON a.id = ul.account_id
+		WHERE ul.user_id IN (` + Placeholders(len(userIDs)) + `)
+		  AND ul.created_at >= LEAST(?, ?)
+		  AND ` + usageLogSuccessFilterUL + `
+		GROUP BY ul.user_id, ` + usageLogEffectivePlatformExpr + `
+	`
+	today := timezone.Today()
+	args := make([]any, 0, len(userIDs)+5)
+	for _, id := range userIDs {
+		args = append(args, id)
+	}
+	args = append(args, startTime, endTime, today, startTime, today)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var userID int64
+		var platform sql.NullString
+		var total float64
+		var todayTotal float64
+		if err := rows.Scan(&userID, &platform, &total, &todayTotal); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		stats, ok := result[userID]
+		if !ok {
+			continue
+		}
+		stats.TotalActualCost += total
+		stats.TodayActualCost += todayTotal
+		if platform.Valid && platform.String != "" {
+			stats.ByPlatform = append(stats.ByPlatform, PlatformUsage{
+				Platform:        platform.String,
+				TotalActualCost: total,
+				TodayActualCost: todayTotal,
+			})
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// getBatchAPIKeyUsageStatsMySQL 是 GetBatchAPIKeyUsageStats 的 MySQL 实现：
+// `= ANY($1)` 展开为 IN；FILTER (WHERE ...) 聚合改 SUM(CASE WHEN ... ELSE 0 END)。
+func (r *usageLogRepository) getBatchAPIKeyUsageStatsMySQL(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*BatchAPIKeyUsageStats, error) {
+	result := make(map[int64]*BatchAPIKeyUsageStats, len(apiKeyIDs))
+	for _, id := range apiKeyIDs {
+		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
+	}
+
+	query := `
+		SELECT
+			api_key_id,
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN created_at >= ? THEN actual_cost ELSE 0 END), 0) as today_cost
+		FROM usage_logs
+		WHERE api_key_id IN (` + Placeholders(len(apiKeyIDs)) + `)
+		  AND created_at >= LEAST(?, ?)
+		GROUP BY api_key_id
+	`
+	today := timezone.Today()
+	args := make([]any, 0, len(apiKeyIDs)+4)
+	for _, id := range apiKeyIDs {
+		args = append(args, id)
+	}
+	args = append(args, startTime, endTime, today, startTime, today)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var apiKeyID int64
+		var total float64
+		var todayTotal float64
+		if err := rows.Scan(&apiKeyID, &total, &todayTotal); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if stats, ok := result[apiKeyID]; ok {
+			stats.TotalActualCost = total
+			stats.TodayActualCost = todayTotal
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// getStatsWithFiltersMySQL 是 GetStatsWithFilters 的 MySQL 实现：
+// GROUP BY GROUPING SETS + GROUPING() 在 MySQL 8 无对应语法，按规范展开为
+// 四个分组查询的 UNION ALL，并用字面量 1/0 对齐 PG GROUPING() 的
+// 「该维度被聚合掉时为 1」语义（扫描分支判断不变）。scoped CTE 被引用四次。
+func (r *usageLogRepository) getStatsWithFiltersMySQL(ctx context.Context, filters UsageLogFilters) (*UsageStats, error) {
+	conditions := make([]string, 0, 9)
+	args := make([]any, 0, 9)
+
+	if filters.UserID > 0 {
+		conditions = append(conditions, "user_id = ?")
+		args = append(args, filters.UserID)
+	}
+	if filters.APIKeyID > 0 {
+		conditions = append(conditions, "api_key_id = ?")
+		args = append(args, filters.APIKeyID)
+	}
+	if filters.AccountID > 0 {
+		conditions = append(conditions, "account_id = ?")
+		args = append(args, filters.AccountID)
+	}
+	if filters.GroupID > 0 {
+		conditions = append(conditions, "group_id = ?")
+		args = append(args, filters.GroupID)
+	}
+	conditions, args = appendUsageLogModelWhereConditionMySQL(conditions, args, filters.Model, filters.ModelFilterSource)
+	conditions, args = appendRequestTypeOrStreamWhereConditionMySQL(conditions, args, filters.RequestType, filters.Stream)
+	conditions, args = appendNativeCompactionV2WhereConditionMySQL(conditions, args, filters.NativeCompactionV2)
+	if filters.BillingType != nil {
+		conditions = append(conditions, "billing_type = ?")
+		args = append(args, int16(*filters.BillingType))
+	}
+	conditions, args = appendUsageLogBillingModeWhereConditionMySQL(conditions, args, filters.BillingMode)
+	if filters.UpstreamModelMismatch != nil {
+		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
+	}
+	if filters.StartTime != nil {
+		conditions = append(conditions, "created_at >= ?")
+		args = append(args, *filters.StartTime)
+	}
+	if filters.EndTime != nil {
+		conditions = append(conditions, "created_at < ?")
+		args = append(args, *filters.EndTime)
+	}
+
+	scopedSubquery := `
+			SELECT
+				COALESCE(NULLIF(TRIM(inbound_endpoint), ''), 'unknown') AS inbound_endpoint,
+				COALESCE(NULLIF(TRIM(upstream_endpoint), ''), 'unknown') AS upstream_endpoint,
+				input_tokens,
+				output_tokens,
+				cache_creation_tokens,
+				cache_read_tokens,
+				total_cost,
+				actual_cost,
+				COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) AS account_cost,
+				duration_ms
+			FROM usage_logs
+			` + buildWhere(conditions)
+	aggregateSelectList := `
+				COUNT(*) AS requests,
+				COALESCE(SUM(input_tokens), 0) AS input_tokens,
+				COALESCE(SUM(output_tokens), 0) AS output_tokens,
+				COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+				COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+				COALESCE(SUM(total_cost), 0) AS cost,
+				COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(account_cost), 0) AS account_cost,
+				COALESCE(AVG(duration_ms), 0) AS avg_duration_ms`
+	query := `
+			WITH scoped AS (` + scopedSubquery + `
+			)
+			SELECT
+				1 AS inbound_grouped,
+				1 AS upstream_grouped,
+				NULL AS inbound_endpoint,
+				NULL AS upstream_endpoint,
+` + aggregateSelectList + `
+			FROM scoped
+			UNION ALL
+			SELECT
+				0,
+				1,
+				inbound_endpoint,
+				NULL,
+` + aggregateSelectList + `
+			FROM scoped
+			GROUP BY inbound_endpoint
+			UNION ALL
+			SELECT
+				1,
+				0,
+				NULL,
+				upstream_endpoint,
+` + aggregateSelectList + `
+			FROM scoped
+			GROUP BY upstream_endpoint
+			UNION ALL
+			SELECT
+				0,
+				0,
+				inbound_endpoint,
+				upstream_endpoint,
+` + aggregateSelectList + `
+			FROM scoped
+			GROUP BY inbound_endpoint, upstream_endpoint
+	`
+
+	stats := &UsageStats{}
+	var totalAccountCost float64
+	useAccountCostForEndpoint := filters.AccountID > 0 && filters.UserID == 0 && filters.APIKeyID == 0
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			inboundGrouped, upstreamGrouped                                      int
+			inboundEndpoint, upstreamEndpoint                                    sql.NullString
+			requests, inputTokens, outputTokens, cacheCreationTokens, cacheReads int64
+			cost, actualCost, accountCost, averageDurationMs                     float64
+		)
+		if err := rows.Scan(
+			&inboundGrouped,
+			&upstreamGrouped,
+			&inboundEndpoint,
+			&upstreamEndpoint,
+			&requests,
+			&inputTokens,
+			&outputTokens,
+			&cacheCreationTokens,
+			&cacheReads,
+			&cost,
+			&actualCost,
+			&accountCost,
+			&averageDurationMs,
+		); err != nil {
+			return nil, err
+		}
+
+		totalTokens := inputTokens + outputTokens + cacheCreationTokens + cacheReads
+		endpointActualCost := actualCost
+		if useAccountCostForEndpoint {
+			endpointActualCost = accountCost
+		}
+
+		switch {
+		case inboundGrouped == 1 && upstreamGrouped == 1:
+			stats.TotalRequests = requests
+			stats.TotalInputTokens = inputTokens
+			stats.TotalOutputTokens = outputTokens
+			stats.TotalCacheCreationTokens = cacheCreationTokens
+			stats.TotalCacheReadTokens = cacheReads
+			stats.TotalCacheTokens = cacheCreationTokens + cacheReads
+			stats.TotalCost = cost
+			stats.TotalActualCost = actualCost
+			totalAccountCost = accountCost
+			stats.AverageDurationMs = averageDurationMs
+		case inboundGrouped == 0 && upstreamGrouped == 1:
+			stats.Endpoints = append(stats.Endpoints, EndpointStat{
+				Endpoint: inboundEndpoint.String, Requests: requests, TotalTokens: totalTokens,
+				Cost: cost, ActualCost: endpointActualCost,
+			})
+		case inboundGrouped == 1 && upstreamGrouped == 0:
+			stats.UpstreamEndpoints = append(stats.UpstreamEndpoints, EndpointStat{
+				Endpoint: upstreamEndpoint.String, Requests: requests, TotalTokens: totalTokens,
+				Cost: cost, ActualCost: endpointActualCost,
+			})
+		case inboundGrouped == 0 && upstreamGrouped == 0:
+			stats.EndpointPaths = append(stats.EndpointPaths, EndpointStat{
+				Endpoint: inboundEndpoint.String + " -> " + upstreamEndpoint.String,
+				Requests: requests, TotalTokens: totalTokens, Cost: cost, ActualCost: endpointActualCost,
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sortEndpointStats := func(values []EndpointStat) {
+		sort.Slice(values, func(i, j int) bool {
+			if values[i].Requests != values[j].Requests {
+				return values[i].Requests > values[j].Requests
+			}
+			return values[i].Endpoint < values[j].Endpoint
+		})
+	}
+	sortEndpointStats(stats.Endpoints)
+	sortEndpointStats(stats.UpstreamEndpoints)
+	sortEndpointStats(stats.EndpointPaths)
+
+	stats.TotalAccountCost = &totalAccountCost
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+
+	return stats, nil
+}
+
+// resolveModelDimensionExpressionMySQL 是 resolveModelDimensionExpression 的 MySQL 版：
+// mapping 维度的 PG `||` 字符串拼接改用 CONCAT（内层 COALESCE 保证两侧均非 NULL，
+// 与 PG `||` 的非空语义一致）。
+func resolveModelDimensionExpressionMySQL(modelType string) string {
+	requestedExpr := "COALESCE(NULLIF(TRIM(requested_model), ''), model)"
+	upstreamExpr := "COALESCE(NULLIF(TRIM(upstream_model), ''), model)"
+	switch usagestats.NormalizeModelSource(modelType) {
+	case usagestats.ModelSourceUpstream:
+		return upstreamExpr
+	case usagestats.ModelSourceMapping:
+		return "(CONCAT(" + requestedExpr + ", ' -> ', " + upstreamExpr + "))"
+	default:
+		return requestedExpr
+	}
+}
+
+// 以下 appendXxxWhereCondition/QueryFilterMySQL 是 usage_log_repo.go 中同名 $n 条件
+// 构造器的 MySQL 版（? 占位符），仅在本文件 MySQL 分支使用，语义逐条对应。
+func appendUsageLogModelWhereConditionMySQL(conditions []string, args []any, model string, source string) ([]string, []any) {
+	if strings.TrimSpace(source) == "" {
+		if strings.TrimSpace(model) == "" {
+			return conditions, args
+		}
+		conditions = append(conditions, rawUsageLogModelColumn+" = ?")
+		args = append(args, model)
+		return conditions, args
+	}
+	if strings.TrimSpace(model) == "" {
+		return conditions, args
+	}
+	conditions = append(conditions, resolveModelDimensionExpressionMySQL(source)+" = ?")
+	args = append(args, model)
+	return conditions, args
+}
+
+func appendUsageLogModelQueryFilterMySQL(query string, args []any, model string, source string) (string, []any) {
+	if strings.TrimSpace(source) == "" {
+		if strings.TrimSpace(model) == "" {
+			return query, args
+		}
+		query += " AND " + rawUsageLogModelColumn + " = ?"
+		args = append(args, model)
+		return query, args
+	}
+	if strings.TrimSpace(model) == "" {
+		return query, args
+	}
+	query += " AND " + resolveModelDimensionExpressionMySQL(source) + " = ?"
+	args = append(args, model)
+	return query, args
+}
+
+func appendUsageLogBillingModeWhereConditionMySQL(conditions []string, args []any, billingMode string) ([]string, []any) {
+	mode := strings.TrimSpace(billingMode)
+	if mode == "" {
+		return conditions, args
+	}
+	switch service.BillingMode(mode) {
+	case service.BillingModeImage:
+		conditions = append(conditions, "(billing_mode = ? OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) > 0))")
+	case service.BillingModeVideo:
+		conditions = append(conditions, "billing_mode = ?")
+	case service.BillingModeToken:
+		conditions = append(conditions, "(billing_mode = ? OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) <= 0))")
+	default:
+		conditions = append(conditions, "billing_mode = ?")
+	}
+	args = append(args, mode)
+	return conditions, args
+}
+
+func appendUsageLogBillingModeQueryFilterMySQL(query string, args []any, billingMode string) (string, []any) {
+	conditions, args := appendUsageLogBillingModeWhereConditionMySQL(nil, args, billingMode)
+	if len(conditions) == 0 {
+		return query, args
+	}
+	return query + " AND " + conditions[0], args
+}
+
+func appendRequestTypeOrStreamWhereConditionMySQL(conditions []string, args []any, requestType *int16, stream *bool) ([]string, []any) {
+	if requestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionMySQL(*requestType)
+		conditions = append(conditions, condition)
+		args = append(args, conditionArgs...)
+		return conditions, args
+	}
+	if stream != nil {
+		conditions = append(conditions, "stream = ?")
+		args = append(args, *stream)
+	}
+	return conditions, args
+}
+
+func appendRequestTypeOrStreamQueryFilterMySQL(query string, args []any, requestType *int16, stream *bool) (string, []any) {
+	if requestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionMySQL(*requestType)
+		query += " AND " + condition
+		args = append(args, conditionArgs...)
+		return query, args
+	}
+	if stream != nil {
+		query += " AND stream = ?"
+		args = append(args, *stream)
+	}
+	return query, args
+}
+
+// buildRequestTypeFilterConditionMySQL 是 buildRequestTypeFilterCondition 的 MySQL 版：
+// 仅占位符改 ?；TRUE/FALSE 布尔字面量两侧通用。
+func buildRequestTypeFilterConditionMySQL(requestType int16) (string, []any) {
+	normalized := service.RequestTypeFromInt16(requestType)
+	requestTypeArg := int16(normalized)
+	switch normalized {
+	case service.RequestTypeSync:
+		return "(request_type = ? OR (request_type = ? AND stream = FALSE AND openai_ws_mode = FALSE))", []any{requestTypeArg, int16(service.RequestTypeUnknown)}
+	case service.RequestTypeStream:
+		return "(request_type = ? OR (request_type = ? AND stream = TRUE AND openai_ws_mode = FALSE))", []any{requestTypeArg, int16(service.RequestTypeUnknown)}
+	case service.RequestTypeWSV2:
+		return "(request_type = ? OR (request_type = ? AND openai_ws_mode = TRUE))", []any{requestTypeArg, int16(service.RequestTypeUnknown)}
+	default:
+		return "request_type = ?", []any{requestTypeArg}
+	}
+}
+
+func appendNativeCompactionV2WhereConditionMySQL(conditions []string, args []any, nativeCompactionV2 *bool) ([]string, []any) {
+	if nativeCompactionV2 == nil {
+		return conditions, args
+	}
+	conditions = append(conditions, "native_compaction_v2 = ?")
+	args = append(args, *nativeCompactionV2)
+	return conditions, args
+}
+
+// getEndpointStatsByColumnWithFiltersMySQL 是 getEndpointStatsByColumnWithFilters 的
+// MySQL 实现（? 占位符）；endpointColumn 仅接受普通列名（调用方固定传
+// inbound_endpoint / upstream_endpoint，PG 专用拼接表达式不经过本函数）。
+func (r *usageLogRepository) getEndpointStatsByColumnWithFiltersMySQL(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, modelSource string, requestType *int16, stream *bool, billingType *int8, billingMode string) (results []EndpointStat, err error) {
+	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
+	if accountID > 0 && userID == 0 && apiKeyID == 0 {
+		actualCostExpr = "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(NULLIF(TRIM(%s), ''), 'unknown') AS endpoint,
+			COUNT(*) AS requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS total_tokens,
+			COALESCE(SUM(total_cost), 0) as cost,
+			%s
+		FROM usage_logs
+		WHERE created_at >= ? AND created_at < ?
+	`, endpointColumn, actualCostExpr)
+
+	args := []any{startTime, endTime}
+	if userID > 0 {
+		query += " AND user_id = ?"
+		args = append(args, userID)
+	}
+	if apiKeyID > 0 {
+		query += " AND api_key_id = ?"
+		args = append(args, apiKeyID)
+	}
+	if accountID > 0 {
+		query += " AND account_id = ?"
+		args = append(args, accountID)
+	}
+	if groupID > 0 {
+		query += " AND group_id = ?"
+		args = append(args, groupID)
+	}
+	query, args = appendUsageLogModelQueryFilterMySQL(query, args, model, modelSource)
+	query, args = appendRequestTypeOrStreamQueryFilterMySQL(query, args, requestType, stream)
+	if billingType != nil {
+		query += " AND billing_type = ?"
+		args = append(args, int16(*billingType))
+	}
+	query, args = appendUsageLogBillingModeQueryFilterMySQL(query, args, billingMode)
+	query += " GROUP BY endpoint ORDER BY requests DESC"
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]EndpointStat, 0)
+	for rows.Next() {
+		var row EndpointStat
+		if err := rows.Scan(&row.Endpoint, &row.Requests, &row.TotalTokens, &row.Cost, &row.ActualCost); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// getAccountUsageStatsMySQL 是 GetAccountUsageStats 的 MySQL 实现：
+// TO_CHAR(created_at, 'YYYY-MM-DD') → DATE_FORMAT(created_at, '%Y-%m-%d')。
+// MySQL 侧 created_at 为会话时区墙钟，与 PG 版按数据库会话时区分日语义一致；
+// 除占位符与日期格式化外与 PG 版逐行对应。
+func (r *usageLogRepository) getAccountUsageStatsMySQL(ctx context.Context, accountID int64, startTime, endTime time.Time) (resp *AccountUsageStatsResponse, err error) {
+	daysCount := int(endTime.Sub(startTime).Hours()/24) + 1
+	if daysCount <= 0 {
+		daysCount = 30
+	}
+
+	query := `
+		SELECT
+			DATE_FORMAT(created_at, '%Y-%m-%d') as date,
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(total_cost), 0) as cost,
+			COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
+		FROM usage_logs
+		WHERE account_id = ? AND created_at >= ? AND created_at < ?
+		GROUP BY date
+		ORDER BY date ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, accountID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			resp = nil
+		}
+	}()
+
+	history := make([]AccountUsageHistory, 0)
+	for rows.Next() {
+		var date string
+		var requests int64
+		var tokens int64
+		var cost float64
+		var actualCost float64
+		var userCost float64
+		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost, &userCost); err != nil {
+			return nil, err
+		}
+		t, _ := time.Parse("2006-01-02", date)
+		history = append(history, AccountUsageHistory{
+			Date:       date,
+			Label:      t.Format("01/02"),
+			Requests:   requests,
+			Tokens:     tokens,
+			Cost:       cost,
+			ActualCost: actualCost,
+			UserCost:   userCost,
+		})
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var totalAccountCost, totalUserCost, totalStandardCost float64
+	var totalRequests, totalTokens int64
+	var highestCostDay, highestRequestDay *AccountUsageHistory
+
+	for i := range history {
+		h := &history[i]
+		totalAccountCost += h.ActualCost
+		totalUserCost += h.UserCost
+		totalStandardCost += h.Cost
+		totalRequests += h.Requests
+		totalTokens += h.Tokens
+
+		if highestCostDay == nil || h.ActualCost > highestCostDay.ActualCost {
+			highestCostDay = h
+		}
+		if highestRequestDay == nil || h.Requests > highestRequestDay.Requests {
+			highestRequestDay = h
+		}
+	}
+
+	actualDaysUsed := len(history)
+	if actualDaysUsed == 0 {
+		actualDaysUsed = 1
+	}
+
+	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = ? AND created_at >= ? AND created_at < ?"
 	var avgDuration float64
 	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTime}, &avgDuration); err != nil {
 		return nil, err

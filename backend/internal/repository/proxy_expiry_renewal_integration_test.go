@@ -18,7 +18,7 @@ func (s *ProxyExpirySuite) TestSweep_SkipsChangedSnapshot() {
 			backup := s.mkProxy("snapshot-backup", service.FallbackModeNone, &future, nil)
 			source := s.mkProxy("snapshot-source", service.FallbackModeDirect, &past, nil)
 			if edit == "change backup" {
-				_, err := s.tx.ExecContext(s.ctx, `UPDATE proxies SET fallback_mode='proxy', backup_proxy_id=$1 WHERE id=$2`, backup, source)
+				_, err := s.tx.ExecContext(s.ctx, prxITSQL(`UPDATE proxies SET fallback_mode='proxy', backup_proxy_id=$1 WHERE id=$2`), backup, source)
 				s.Require().NoError(err)
 			}
 			account := s.mkAccountWithProxy(source)
@@ -53,7 +53,7 @@ func (s *ProxyExpirySuite) TestSweep_SkipsChangedSnapshot() {
 			s.Equal(updated.Status, got.Status)
 			s.Equal(&source, s.accountProxyID(account))
 			var origin *int64
-			s.Require().NoError(scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{account}, &origin))
+			s.Require().NoError(scanSingleRow(s.ctx, s.tx, prxITSQL(`SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`), []any{account}, &origin))
 			s.Nil(origin)
 			var eventsAfter int64
 			s.Require().NoError(scanSingleRow(s.ctx, s.tx, `SELECT COUNT(*) FROM scheduler_outbox`, nil, &eventsAfter))

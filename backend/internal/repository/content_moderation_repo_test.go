@@ -14,6 +14,7 @@ import (
 )
 
 func TestContentModerationRepositoryEngineMetaInsert(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING id, created_at / 参数形态），MySQL 分支语句形状不同
 	for _, meta := range []*service.ContentModerationEngineMeta{nil, {Engine: "typesafe", Model: "jev-fixed", RulesVersion: "rules-v1", SkippedImages: 1}} {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -86,6 +87,7 @@ func TestContentModerationRepositoryCountFlaggedByUserSince_ExcludesHashBlock(t 
 }
 
 func TestContentModerationRepositoryCountFlaggedByUserSince_ExcludesCyberPolicyWhenRequested(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（$n::bool 转型），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()

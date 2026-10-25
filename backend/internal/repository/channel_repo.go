@@ -45,11 +45,15 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 		if err != nil {
 			return err
 		}
-		err = tx.QueryRowContext(ctx,
-			`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			 RETURNING id, created_at, updated_at`,
-			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats,
-		).Scan(&channel.ID, &channel.CreatedAt, &channel.UpdatedAt)
+		if IsMySQL() {
+			err = insertChannelRowMySQL(ctx, tx, channel, modelMappingJSON, featuresConfigJSON)
+		} else {
+			err = tx.QueryRowContext(ctx,
+				`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+				 RETURNING id, created_at, updated_at`,
+				channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats,
+			).Scan(&channel.ID, &channel.CreatedAt, &channel.UpdatedAt)
+		}
 		if err != nil {
 			if isUniqueViolation(err) {
 				return service.ErrChannelExists
@@ -85,10 +89,13 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Channel, error) {
 	ch := &service.Channel{}
 	var modelMappingJSON, featuresConfigJSON []byte
-	err := r.db.QueryRowContext(ctx,
-		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at
-		 FROM channels WHERE id = $1`, id,
-	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt)
+	getByIDQuery := `SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at
+		 FROM channels WHERE id = $1`
+	if IsMySQL() {
+		getByIDQuery = `SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at
+		 FROM channels WHERE id = ?`
+	}
+	err := r.db.QueryRowContext(ctx, getByIDQuery, id).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, service.ErrChannelNotFound
 	}
@@ -129,9 +136,13 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 		if err != nil {
 			return err
 		}
-		result, err := tx.ExecContext(ctx,
-			`UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, features = $7, features_config = $8, apply_pricing_to_account_stats = $9, updated_at = NOW()
-			 WHERE id = $10`,
+		updateChannelQuery := `UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, features = $7, features_config = $8, apply_pricing_to_account_stats = $9, updated_at = NOW()
+			 WHERE id = $10`
+		if IsMySQL() {
+			updateChannelQuery = `UPDATE channels SET name = ?, description = ?, status = ?, model_mapping = ?, billing_model_source = ?, restrict_models = ?, features = ?, features_config = ?, apply_pricing_to_account_stats = ?, updated_at = NOW(3)
+			 WHERE id = ?`
+		}
+		result, err := tx.ExecContext(ctx, updateChannelQuery,
 			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats, channel.ID,
 		)
 		if err != nil {
@@ -171,7 +182,11 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 }
 
 func (r *channelRepository) Delete(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM channels WHERE id = $1`, id)
+	deleteQuery := `DELETE FROM channels WHERE id = $1`
+	if IsMySQL() {
+		deleteQuery = `DELETE FROM channels WHERE id = ?`
+	}
+	result, err := r.db.ExecContext(ctx, deleteQuery, id)
 	if err != nil {
 		return fmt.Errorf("delete channel: %w", err)
 	}
@@ -187,13 +202,23 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	args := []any{}
 	argIdx := 1
 
+	// MySQL 分支占位符统一为 ?，ILIKE → LIKE（utf8mb4_0900_ai_ci 天然大小写不敏感）。
+	statusCond := fmt.Sprintf("c.status = $%d", argIdx)
+	searchCond := fmt.Sprintf("(c.name ILIKE $%d OR c.description ILIKE $%d)", argIdx, argIdx)
+	limitOffsetClause := "LIMIT $%d OFFSET $%d"
+	if IsMySQL() {
+		statusCond = "c.status = ?"
+		searchCond = "(c.name LIKE ? OR c.description LIKE ?)"
+		limitOffsetClause = "LIMIT ? OFFSET ?"
+	}
+
 	if status != "" {
-		where = append(where, fmt.Sprintf("c.status = $%d", argIdx))
+		where = append(where, statusCond)
 		args = append(args, status)
 		argIdx++
 	}
 	if search != "" {
-		where = append(where, fmt.Sprintf("(c.name ILIKE $%d OR c.description ILIKE $%d)", argIdx, argIdx))
+		where = append(where, searchCond)
 		args = append(args, "%"+escapeLike(search)+"%")
 		argIdx++
 	}
@@ -220,6 +245,13 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 		 FROM channels c WHERE %s ORDER BY %s LIMIT $%d OFFSET $%d`,
 		whereClause, channelListOrderBy(params), argIdx, argIdx+1,
 	)
+	if IsMySQL() {
+		dataQuery = fmt.Sprintf(
+			`SELECT c.id, c.name, c.description, c.status, c.model_mapping, c.billing_model_source, c.restrict_models, c.features, c.features_config, c.apply_pricing_to_account_stats, c.created_at, c.updated_at
+			 FROM channels c WHERE %s ORDER BY %s `+limitOffsetClause,
+			whereClause, channelListOrderBy(params),
+		)
+	}
 	args = append(args, pageSize, offset)
 
 	rows, err := r.db.QueryContext(ctx, dataQuery, args...)
@@ -367,11 +399,18 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 
 // batchLoadGroupIDs 批量加载多个渠道的分组 ID
 func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []int64) (map[int64][]int64, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT channel_id, group_id FROM channel_groups
-		 WHERE channel_id = ANY($1) ORDER BY channel_id, group_id`,
-		pq.Array(channelIDs),
-	)
+	query := `SELECT channel_id, group_id FROM channel_groups
+		 WHERE channel_id = ANY($1) ORDER BY channel_id, group_id`
+	args := []any{pq.Array(channelIDs)}
+	if IsMySQL() {
+		query = `SELECT channel_id, group_id FROM channel_groups
+		 WHERE channel_id IN (` + Placeholders(len(channelIDs)) + `) ORDER BY channel_id, group_id`
+		args = make([]any, len(channelIDs))
+		for i, id := range channelIDs {
+			args[i] = id
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("batch load group ids: %w", err)
 	}
@@ -392,27 +431,33 @@ func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []
 }
 
 func (r *channelRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1)`
+	if IsMySQL() {
+		query = `SELECT EXISTS(SELECT 1 FROM channels WHERE name = ?)`
+	}
 	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1)`, name,
-	).Scan(&exists)
+	err := r.db.QueryRowContext(ctx, query, name).Scan(&exists)
 	return exists, err
 }
 
 func (r *channelRepository) ExistsByNameExcluding(ctx context.Context, name string, excludeID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1 AND id != $2)`
+	if IsMySQL() {
+		query = `SELECT EXISTS(SELECT 1 FROM channels WHERE name = ? AND id != ?)`
+	}
 	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1 AND id != $2)`, name, excludeID,
-	).Scan(&exists)
+	err := r.db.QueryRowContext(ctx, query, name, excludeID).Scan(&exists)
 	return exists, err
 }
 
 // --- 分组关联 ---
 
 func (r *channelRepository) GetGroupIDs(ctx context.Context, channelID int64) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT group_id FROM channel_groups WHERE channel_id = $1 ORDER BY group_id`, channelID,
-	)
+	query := `SELECT group_id FROM channel_groups WHERE channel_id = $1 ORDER BY group_id`
+	if IsMySQL() {
+		query = `SELECT group_id FROM channel_groups WHERE channel_id = ? ORDER BY group_id`
+	}
+	rows, err := r.db.QueryContext(ctx, query, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("get group ids: %w", err)
 	}
@@ -437,10 +482,12 @@ func (r *channelRepository) SetGroupIDs(ctx context.Context, channelID int64, gr
 }
 
 func (r *channelRepository) GetChannelIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	query := `SELECT channel_id FROM channel_groups WHERE group_id = $1`
+	if IsMySQL() {
+		query = `SELECT channel_id FROM channel_groups WHERE group_id = ?`
+	}
 	var channelID int64
-	err := r.db.QueryRowContext(ctx,
-		`SELECT channel_id FROM channel_groups WHERE group_id = $1`, groupID,
-	).Scan(&channelID)
+	err := r.db.QueryRowContext(ctx, query, groupID).Scan(&channelID)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
@@ -451,10 +498,17 @@ func (r *channelRepository) GetGroupsInOtherChannels(ctx context.Context, channe
 	if len(groupIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT group_id FROM channel_groups WHERE group_id = ANY($1) AND channel_id != $2`,
-		pq.Array(groupIDs), channelID,
-	)
+	query := `SELECT group_id FROM channel_groups WHERE group_id = ANY($1) AND channel_id != $2`
+	args := []any{pq.Array(groupIDs), channelID}
+	if IsMySQL() {
+		query = `SELECT group_id FROM channel_groups WHERE group_id IN (` + Placeholders(len(groupIDs)) + `) AND channel_id != ?`
+		args = make([]any, 0, len(groupIDs)+1)
+		for _, id := range groupIDs {
+			args = append(args, id)
+		}
+		args = append(args, channelID)
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get groups in other channels: %w", err)
 	}
@@ -526,10 +580,17 @@ func (r *channelRepository) GetGroupPlatforms(ctx context.Context, groupIDs []in
 	if len(groupIDs) == 0 {
 		return make(map[int64]string), nil
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, platform FROM groups WHERE id = ANY($1)`,
-		pq.Array(groupIDs),
-	)
+	// `groups` 是 MySQL 8 保留字，MySQL 分支表名必须反引号。
+	query := `SELECT id, platform FROM groups WHERE id = ANY($1)`
+	args := []any{pq.Array(groupIDs)}
+	if IsMySQL() {
+		query = `SELECT id, platform FROM ` + "`groups`" + ` WHERE id IN (` + Placeholders(len(groupIDs)) + `)`
+		args = make([]any, len(groupIDs))
+		for i, id := range groupIDs {
+			args[i] = id
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get group platforms: %w", err)
 	}
@@ -548,4 +609,29 @@ func (r *channelRepository) GetGroupPlatforms(ctx context.Context, groupIDs []in
 		return nil, fmt.Errorf("iterate group platforms: %w", err)
 	}
 	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。
+// ---------------------------------------------------------------------------
+
+// insertChannelRowMySQL 是 Create 内 INSERT..RETURNING id, created_at, updated_at 的
+// MySQL 实现：ExecContext + LastInsertId 取主键；created_at/updated_at 为数据库默认值
+// （CURRENT_TIMESTAMP(3)，应用侧未知），在同一事务（同连接）回查补齐。
+func insertChannelRowMySQL(ctx context.Context, tx *sql.Tx, channel *service.Channel, modelMappingJSON, featuresConfigJSON []byte) error {
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats,
+	)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	channel.ID = id
+	return tx.QueryRowContext(ctx,
+		`SELECT created_at, updated_at FROM channels WHERE id = ?`, id,
+	).Scan(&channel.CreatedAt, &channel.UpdatedAt)
 }

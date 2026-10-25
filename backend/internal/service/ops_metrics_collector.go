@@ -450,6 +450,14 @@ SELECT
   COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2`
+	if sqlDBIsMySQL(c.db) {
+		q = `
+SELECT
+  COALESCE(COUNT(*), 0) AS success_count,
+  COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
+FROM usage_logs
+WHERE created_at >= ? AND created_at < ?`
+	}
 
 	var tokens sql.NullInt64
 	if err := c.db.QueryRowContext(ctx, q, start, end).Scan(&successCount, &tokens); err != nil {
@@ -474,6 +482,28 @@ SELECT
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
   AND duration_ms IS NOT NULL`
+		if sqlDBIsMySQL(c.db) {
+			q = fmt.Sprintf(`
+SELECT
+  %s AS p50,
+  %s AS p90,
+  %s AS p95,
+  %s AS p99,
+  AVG(duration_ms) AS avg_ms,
+  MAX(duration_ms) AS max_ms
+FROM (
+  SELECT duration_ms,
+         ROW_NUMBER() OVER (ORDER BY duration_ms) AS d_rn,
+         COUNT(duration_ms) OVER () AS d_n
+  FROM usage_logs
+  WHERE created_at >= ? AND created_at < ?
+    AND duration_ms IS NOT NULL
+) w`,
+				opsMetricsPercentileMySQLExpr("duration_ms", "d_rn", "d_n", "0.50"),
+				opsMetricsPercentileMySQLExpr("duration_ms", "d_rn", "d_n", "0.90"),
+				opsMetricsPercentileMySQLExpr("duration_ms", "d_rn", "d_n", "0.95"),
+				opsMetricsPercentileMySQLExpr("duration_ms", "d_rn", "d_n", "0.99"))
+		}
 
 		var p50, p90, p95, p99 sql.NullFloat64
 		var avg sql.NullFloat64
@@ -507,6 +537,28 @@ SELECT
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
   AND first_token_ms IS NOT NULL`
+		if sqlDBIsMySQL(c.db) {
+			q = fmt.Sprintf(`
+SELECT
+  %s AS p50,
+  %s AS p90,
+  %s AS p95,
+  %s AS p99,
+  AVG(first_token_ms) AS avg_ms,
+  MAX(first_token_ms) AS max_ms
+FROM (
+  SELECT first_token_ms,
+         ROW_NUMBER() OVER (ORDER BY first_token_ms) AS t_rn,
+         COUNT(first_token_ms) OVER () AS t_n
+  FROM usage_logs
+  WHERE created_at >= ? AND created_at < ?
+    AND first_token_ms IS NOT NULL
+) w`,
+				opsMetricsPercentileMySQLExpr("first_token_ms", "t_rn", "t_n", "0.50"),
+				opsMetricsPercentileMySQLExpr("first_token_ms", "t_rn", "t_n", "0.90"),
+				opsMetricsPercentileMySQLExpr("first_token_ms", "t_rn", "t_n", "0.95"),
+				opsMetricsPercentileMySQLExpr("first_token_ms", "t_rn", "t_n", "0.99"))
+		}
 
 		var p50, p90, p95, p99 sql.NullFloat64
 		var avg sql.NullFloat64
@@ -551,6 +603,21 @@ SELECT
 FROM ops_error_logs
 WHERE created_at >= $1 AND created_at < $2
   AND is_count_tokens = FALSE`
+	if sqlDBIsMySQL(c.db) {
+		// FILTER (WHERE cond) 聚合 → SUM(CASE WHEN cond THEN 1 ELSE 0 END)
+		//（DIALECT_MYSQL_GUIDE「其他 PG 语法」）；布尔列/字面量两边通用。
+		q = `
+SELECT
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 THEN 1 ELSE 0 END), 0) AS error_total,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND NOT is_business_limited THEN 1 ELSE 0 END), 0) AS error_sla,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529) THEN 1 ELSE 0 END), 0) AS upstream_excl,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
+FROM ops_error_logs
+WHERE created_at >= ? AND created_at < ?
+  AND is_count_tokens = FALSE`
+	}
 
 	if err := c.db.QueryRowContext(ctx, q, start, end).Scan(
 		&errorTotal,
@@ -578,12 +645,57 @@ CROSS JOIN LATERAL jsonb_array_elements(
 ) AS ev
 WHERE o.created_at >= $1 AND o.created_at < $2
   AND o.is_count_tokens = FALSE`
+	if sqlDBIsMySQL(c.db) {
+		// CROSS JOIN LATERAL jsonb_array_elements → JSON_TABLE（行展开）；
+		// ev->>'kind' → JSON_UNQUOTE(JSON_EXTRACT(ev, '$.kind'))；
+		// split_part(s, ':', 1) → SUBSTRING_INDEX(SUBSTRING_INDEX(s, ':', 1), ':', -1)；
+		// 'null'::jsonb / '[]'::jsonb → CAST(... AS JSON)。upstream_errors 为
+		// JSON 列（SQL NULL 或 JSON null 均归一为空数组，与 PG 版一致：
+		// 空数组经 JSON_TABLE 展开为零行 = CROSS JOIN LATERAL 剔除该行）。
+		q = `
+SELECT
+  COALESCE(SUM(CASE
+    WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(JSON_UNQUOTE(JSON_EXTRACT(ev, '$.kind')), ':', 1), ':', -1) IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
+    ELSE 0
+  END), 0) AS switch_count
+FROM ops_error_logs o
+JOIN JSON_TABLE(
+  COALESCE(NULLIF(o.upstream_errors, CAST('null' AS JSON)), CAST('[]' AS JSON)),
+  '$[*]' COLUMNS (ev JSON PATH '$')
+) AS jt
+WHERE o.created_at >= ? AND o.created_at < ?
+  AND o.is_count_tokens = FALSE`
+	}
 
 	var count int64
 	if err := c.db.QueryRowContext(ctx, q, start, end).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+// opsMetricsPercentileMySQLExpr 生成 MySQL 版
+// `percentile_cont(p) WITHIN GROUP (ORDER BY valueCol)` 的等价聚合表达式
+// （复刻 repository 包 ops_repo_preagg.go opsPercentileContMySQLExpr 的模式：
+// MySQL 8 无有序集聚合，用窗口列 + 线性插值模拟，结果与 PG 连续百分位一致：
+// 排序后取第 idx = 1 + p*(n-1) 位，在 FLOOR(idx) 与 CEIL(idx) 两个值之间按
+// 小数部分插值）。前置条件：派生表提供
+// ROW_NUMBER() OVER (ORDER BY valueCol) AS rnCol 与 COUNT(valueCol) OVER () AS cntCol
+// （本文件调用处 WHERE 已过滤 NULL）。repository 包的同名 helper 为私有且
+// service 不能 import repository（import cycle），故本地复刻。
+func opsMetricsPercentileMySQLExpr(valueCol, rnCol, cntCol, p string) string {
+	// 与 repository.opsPercentileContMySQLExpr 同源（该文件版本修复过 1111）：
+	// cntCol 只允许出现在聚合函数实参内——MySQL 禁止聚合嵌套，
+	// 旧写法 MAX(CASE WHEN rn = FLOOR(1+p*(MAX(cnt)-1)) ...) 报
+	// Error 1111 Invalid use of group function。idx 含 cnt 的两处
+	// （CASE 实参、插值小数 MAX）均在聚合实参内，合法。
+	// 派生表已过滤 NULL 且无分组：空集时 MAX 为 NULL，表达式自然得 NULL，
+	// 与 PG percentile_cont 空集语义一致。
+	idx := "(1 + " + p + " * (" + cntCol + " - 1))"
+	vlo := "MAX(CASE WHEN " + rnCol + " = FLOOR" + idx + " THEN " + valueCol + " END)"
+	vhi := "MAX(CASE WHEN " + rnCol + " = CEIL" + idx + " THEN " + valueCol + " END)"
+	frac := "MAX(" + idx + " - FLOOR" + idx + ")"
+	return vlo + " + " + frac + " * (" + vhi + " - " + vlo + ")"
 }
 
 type opsCollectedSystemStats struct {

@@ -14,6 +14,10 @@ import (
 )
 
 func TestAuthCacheInvalidationOutboxRepository_ClaimUsesLeaseAndSkipLocked(t *testing.T) {
+	// sqlmock 固定的是 PG 版单条可写 CTE（UPDATE ... RETURNING）语句形状；
+	// MySQL 实现按 DIALECT_MYSQL_GUIDE 改走 sqlAtomicScope（BEGIN +
+	// SELECT ... FOR UPDATE SKIP LOCKED + UPDATE），非缺陷，跳过。
+	skipOnMySQL(t)
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
@@ -34,6 +38,8 @@ func TestAuthCacheInvalidationOutboxRepository_ClaimUsesLeaseAndSkipLocked(t *te
 }
 
 func TestAuthCacheInvalidationOutboxRepository_ClaimIsBoundedByDefault(t *testing.T) {
+	// 同上：sqlmock 固定 PG 单语句形状，MySQL 分支走事务拆分，跳过。
+	skipOnMySQL(t)
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()

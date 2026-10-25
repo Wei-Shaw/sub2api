@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -692,6 +693,17 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 			return []func(*entsql.Selector){dbent.Asc(dbuser.FieldID)}
 		}
 		if nullsLastField {
+			if IsMySQL() {
+				// MySQL 8 无 NULLS LAST：ASC 用（col IS NULL）前置分桶把 NULL 沉底，
+				// 与 PG 的 ASC NULLS LAST 一致。
+				// REVIEW: ent 的 OrderNullsLast 会无条件输出 " NULLS LAST"（MySQL 语法错误），
+				// 故 MySQL 分支改用 IS NULL 分桶（同型先例见 account_repo.go 排序分支）。
+				return []func(*entsql.Selector){
+					func(s *entsql.Selector) { s.OrderExpr(entsql.Expr(s.C(field) + " IS NULL")) },
+					dbent.Asc(field),
+					dbent.Asc(dbuser.FieldID),
+				}
+			}
 			return []func(*entsql.Selector){
 				entsql.OrderByField(field, entsql.OrderNullsLast()).ToFunc(),
 				dbent.Asc(dbuser.FieldID),
@@ -703,6 +715,11 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 		return []func(*entsql.Selector){dbent.Desc(dbuser.FieldID)}
 	}
 	if nullsLastField {
+		if IsMySQL() {
+			// MySQL 8 无 NULLS LAST：DESC 默认 NULL 排最后，与 PG 的 DESC NULLS LAST 一致。
+			// REVIEW: 等价性依赖 MySQL 默认空值排序（DESC 时 NULL 在末尾）。
+			return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)}
+		}
 		return []func(*entsql.Selector){
 			entsql.OrderByField(field, entsql.OrderDesc(), entsql.OrderNullsLast()).ToFunc(),
 			dbent.Desc(dbuser.FieldID),
@@ -720,14 +737,24 @@ func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs [
 		return nil, fmt.Errorf("sql executor is not configured")
 	}
 
-	const query = `
+	query := `
 		SELECT user_id, MAX(created_at) AS last_used_at
 		FROM usage_logs
 		WHERE user_id = ANY($1)
 		GROUP BY user_id
 	`
+	args := []any{pq.Array(userIDs)}
+	if IsMySQL() {
+		// = ANY($1) + pq.Array → IN 展开（Placeholders + int64Args，见 DIALECT_MYSQL_GUIDE.md）。
+		query = fmt.Sprintf(`
+		SELECT user_id, MAX(created_at) AS last_used_at
+		FROM usage_logs
+		WHERE user_id IN (%s)
+		GROUP BY user_id`, Placeholders(len(userIDs)))
+		args = int64Args(userIDs)
+	}
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -766,6 +793,22 @@ func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
 			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
 		}
 	}
+	orderExprMySQL := func(direction string, tieOrder func(string) string) func(*entsql.Selector) {
+		return func(s *entsql.Selector) {
+			subquery := fmt.Sprintf("(SELECT MAX(created_at) FROM usage_logs WHERE user_id = %s)", s.C(dbuser.FieldID))
+			// MySQL 8 无 NULLS FIRST/LAST，省略子句并依赖其默认空值排序：
+			// ASC 时 NULL 排最前（= PG ASC NULLS FIRST），DESC 时 NULL 排最后（= PG DESC NULLS LAST）。
+			// REVIEW: 与 PG 版的等价性建立在 MySQL 默认空值排序行为之上（同型先例见 account_repo.go 排序分支）。
+			s.OrderExpr(entsql.Expr(subquery + " " + direction))
+			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
+		}
+	}
+	if IsMySQL() {
+		if sortOrder == pagination.SortOrderAsc {
+			return []func(*entsql.Selector){orderExprMySQL("ASC", entsql.Asc)}
+		}
+		return []func(*entsql.Selector){orderExprMySQL("DESC", entsql.Desc)}
+	}
 
 	if sortOrder == pagination.SortOrderAsc {
 		return []func(*entsql.Selector){
@@ -791,20 +834,37 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 	args := make([]any, 0, len(attrs)*2+1)
 	argIndex := 1
 	for attrID, value := range attrs {
-		clauses = append(clauses, fmt.Sprintf("(attribute_id = $%d AND value ILIKE $%d)", argIndex, argIndex+1))
+		if IsMySQL() {
+			// ILIKE → LIKE（utf8mb4_0900_ai_ci 天然大小写不敏感）；$n → ?。
+			clauses = append(clauses, "(attribute_id = ? AND value LIKE ?)")
+		} else {
+			clauses = append(clauses, fmt.Sprintf("(attribute_id = $%d AND value ILIKE $%d)", argIndex, argIndex+1))
+		}
 		args = append(args, attrID, "%"+value+"%")
 		argIndex += 2
 	}
 
-	query := fmt.Sprintf(
-		`SELECT user_id
+	var query string
+	if IsMySQL() {
+		query = fmt.Sprintf(
+			`SELECT user_id
+		 FROM user_attribute_values
+		 WHERE %s
+		 GROUP BY user_id
+		 HAVING COUNT(DISTINCT attribute_id) = ?`,
+			strings.Join(clauses, " OR "),
+		)
+	} else {
+		query = fmt.Sprintf(
+			`SELECT user_id
 		 FROM user_attribute_values
 		 WHERE %s
 		 GROUP BY user_id
 		 HAVING COUNT(DISTINCT attribute_id) = $%d`,
-		strings.Join(clauses, " OR "),
-		argIndex,
-	)
+			strings.Join(clauses, " OR "),
+			argIndex,
+		)
+	}
 	args = append(args, len(attrs))
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
@@ -845,11 +905,19 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 }
 
 func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
-	const updateSQL = `
+	updateSQL := `
 		UPDATE users
 		SET balance = GREATEST(balance + $1, 0), updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 	`
+	if IsMySQL() {
+		// $n → ?；NOW() → NOW(3)（DATETIME(3) 毫秒精度对齐）；GREATEST 两边通用。
+		updateSQL = `
+		UPDATE users
+		SET balance = GREATEST(balance + ?, 0), updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL
+	`
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, updateSQL, delta, id)
 	if err != nil {
@@ -901,6 +969,9 @@ func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, a
 	if amount < 0 {
 		return 0, fmt.Errorf("deduction amount must be nonnegative")
 	}
+	if IsMySQL() {
+		return r.deductAvailableBalanceMySQL(ctx, id, amount)
+	}
 	const updateSQL = `
 		WITH target AS (
 			SELECT id, balance
@@ -937,10 +1008,69 @@ func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, a
 	return deducted, rows.Err()
 }
 
+// deductAvailableBalanceMySQL 是 DeductAvailableBalance 的 MySQL 实现：
+// 单事务内「FOR UPDATE 锁定读 → 计算扣减额 → 更新」，对齐 PG 单条语句的
+// 原子扣减语义（min(amount, max(balance, 0))，永不透支/回冲）。
+func (r *userRepository) deductAvailableBalanceMySQL(ctx context.Context, id int64, amount float64) (float64, error) {
+	scope, err := beginSQLAtomicScope(ctx, r.client, r.sql)
+	if err != nil {
+		return 0, err
+	}
+	defer scope.rollback()
+
+	rows, err := scope.query(ctx, "SELECT balance FROM users WHERE id = ? AND deleted_at IS NULL FOR UPDATE", id)
+	if err != nil {
+		return 0, err
+	}
+	var balance float64
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			_ = rows.Close()
+			return 0, rowsErr
+		}
+		_ = rows.Close()
+		return 0, service.ErrUserNotFound
+	}
+	if err := rows.Scan(&balance); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	deducted := math.Min(amount, math.Max(balance, 0))
+	if _, err := scope.exec(ctx,
+		"UPDATE users SET balance = balance - ?, updated_at = NOW(3) WHERE id = ?", deducted, id); err != nil {
+		return 0, err
+	}
+	if err := scope.commit(); err != nil {
+		return 0, err
+	}
+	return deducted, nil
+}
+
 // AdjustBalance 原子地把 delta 累加到余额上，结果为负时整条语句不生效。
 // 相比"读余额 → 算新值 → 整行写回"，这里把读与写压进同一条 UPDATE，
 // 并发的计费扣款不会被旧快照覆盖。
 func (r *userRepository) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	if IsMySQL() {
+		change, ok, err := r.adjustBalanceMySQL(ctx, id, delta)
+		if err != nil {
+			return service.BalanceChange{}, err
+		}
+		if ok {
+			return change, nil
+		}
+		current, err := r.currentBalanceMySQL(ctx, id)
+		if err != nil {
+			return service.BalanceChange{}, err
+		}
+		return service.BalanceChange{Old: current, New: current + delta}, service.ErrBalanceNegative
+	}
 	const updateSQL = `
 		UPDATE users
 		SET balance = balance + $1, updated_at = NOW()
@@ -963,6 +1093,89 @@ func (r *userRepository) AdjustBalance(ctx context.Context, id int64, delta floa
 	return service.BalanceChange{Old: current, New: current + delta}, service.ErrBalanceNegative
 }
 
+// adjustBalanceMySQL 是 AdjustBalance 的 MySQL 实现：
+// 单事务内「条件 UPDATE（余额不足时 0 行）→ 回查新余额」，旧余额按增量推得。
+// UPDATE 与 SELECT 在同一连接/事务上执行，避免并发写导致的快照错位。
+func (r *userRepository) adjustBalanceMySQL(ctx context.Context, id int64, delta float64) (service.BalanceChange, bool, error) {
+	scope, err := beginSQLAtomicScope(ctx, r.client, r.sql)
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	defer scope.rollback()
+
+	res, err := scope.exec(ctx,
+		"UPDATE users SET balance = balance + ?, updated_at = NOW(3) WHERE id = ? AND deleted_at IS NULL AND balance + ? >= 0",
+		delta, id, delta)
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	if affected == 0 {
+		return service.BalanceChange{}, false, nil
+	}
+
+	newBalance, ok, err := scanSingleFloatMySQL(ctx, scope, "SELECT balance FROM users WHERE id = ?", id)
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	if !ok {
+		// UPDATE 命中后行被并发硬删（FK 级联），交给上层按用户不存在处理。
+		return service.BalanceChange{}, false, nil
+	}
+	if err := scope.commit(); err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	return service.BalanceChange{Old: newBalance - delta, New: newBalance}, true, nil
+}
+
+// scanSingleFloatMySQL 从 scope 上查询单行单列 float 值。
+func scanSingleFloatMySQL(ctx context.Context, scope *sqlAtomicScope, query string, args ...any) (float64, bool, error) {
+	rows, err := scope.query(ctx, query, args...)
+	if err != nil {
+		return 0, false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return 0, false, rowsErr
+		}
+		return 0, false, nil
+	}
+	var value float64
+	if err := rows.Scan(&value); err != nil {
+		return 0, false, err
+	}
+	return value, true, rows.Err()
+}
+
+// currentBalanceMySQL 读取用户当前余额（MySQL 分支，? 占位符）。
+func (r *userRepository) currentBalanceMySQL(ctx context.Context, id int64) (float64, error) {
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
+		`SELECT balance FROM users WHERE id = ? AND deleted_at IS NULL`, id)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return 0, rowsErr
+		}
+		return 0, service.ErrUserNotFound
+	}
+	var v float64
+	if err := rows.Scan(&v); err != nil {
+		return 0, err
+	}
+	return v, rows.Err()
+}
+
 // SetBalance 原子地把余额置为 value，并返回变更前后的值。
 func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
 	if value < 0 {
@@ -972,6 +1185,16 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 			return service.BalanceChange{}, err
 		}
 		return service.BalanceChange{Old: current, New: value}, service.ErrBalanceNegative
+	}
+	if IsMySQL() {
+		change, ok, err := r.setBalanceMySQL(ctx, id, value)
+		if err != nil {
+			return service.BalanceChange{}, err
+		}
+		if !ok {
+			return service.BalanceChange{}, service.ErrUserNotFound
+		}
+		return change, nil
 	}
 	const updateSQL = `
 		UPDATE users AS u
@@ -990,10 +1213,42 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 	return change, nil
 }
 
+// setBalanceMySQL 是 SetBalance 的 MySQL 实现：
+// 单事务内「FOR UPDATE 锁定读旧值 → UPDATE 写新值」，对齐 PG 的
+// UPDATE..FROM..RETURNING 语义（不存在或已软删时 ok=false）。
+func (r *userRepository) setBalanceMySQL(ctx context.Context, id int64, value float64) (service.BalanceChange, bool, error) {
+	scope, err := beginSQLAtomicScope(ctx, r.client, r.sql)
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	defer scope.rollback()
+
+	oldBalance, ok, err := scanSingleFloatMySQL(ctx, scope, "SELECT balance FROM users WHERE id = ? AND deleted_at IS NULL FOR UPDATE", id)
+	if err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	if !ok {
+		return service.BalanceChange{}, false, nil
+	}
+	if _, err := scope.exec(ctx,
+		"UPDATE users SET balance = ?, updated_at = NOW(3) WHERE id = ?", value, id); err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	if err := scope.commit(); err != nil {
+		return service.BalanceChange{}, false, err
+	}
+	return service.BalanceChange{Old: oldBalance, New: value}, true, nil
+}
+
 // currentBalance 读取用户当前余额，用户不存在时返回 ErrUserNotFound。
+// 注意：SetBalance 的 value<0 早退路径在 IsMySQL 分流之前就会调用本函数，
+// 因此这里必须自身双方言（PG 用 $1，MySQL 用 ?）。
 func (r *userRepository) currentBalance(ctx context.Context, id int64) (balance float64, err error) {
-	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
-		`SELECT balance FROM users WHERE id = $1 AND deleted_at IS NULL`, id)
+	balanceQuery := `SELECT balance FROM users WHERE id = $1 AND deleted_at IS NULL`
+	if IsMySQL() {
+		balanceQuery = `SELECT balance FROM users WHERE id = ? AND deleted_at IS NULL`
+	}
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, balanceQuery, id)
 	if err != nil {
 		return 0, err
 	}
@@ -1050,11 +1305,19 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 }
 
 func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error {
-	const updateSQL = `
+	updateSQL := `
 		UPDATE users
 		SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 	`
+	if IsMySQL() {
+		// $n → ?；NOW() → NOW(3)；GREATEST 两边通用。
+		updateSQL = `
+		UPDATE users
+		SET concurrency = GREATEST(concurrency + ?, 0), updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL
+	`
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, updateSQL, delta, id)
 	if err != nil {
@@ -1077,9 +1340,16 @@ func (r *userRepository) BatchSetConcurrency(ctx context.Context, userIDs []int6
 	if value < 0 {
 		value = 0
 	}
-	res, err := r.sql.ExecContext(ctx,
-		"UPDATE users SET concurrency = $1, updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL",
-		value, pq.Array(userIDs))
+	query := "UPDATE users SET concurrency = $1, updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL"
+	args := []any{value, pq.Array(userIDs)}
+	if IsMySQL() {
+		// = ANY($2) + pq.Array → IN 展开；NOW() → NOW(3)。
+		query = fmt.Sprintf(
+			"UPDATE users SET concurrency = ?, updated_at = NOW(3) WHERE id IN (%s) AND deleted_at IS NULL",
+			Placeholders(len(userIDs)))
+		args = append([]any{value}, int64Args(userIDs)...)
+	}
+	res, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("batch set concurrency: %w", err)
 	}
@@ -1091,9 +1361,16 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 	if len(userIDs) == 0 {
 		return 0, nil
 	}
-	res, err := r.sql.ExecContext(ctx,
-		"UPDATE users SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL",
-		delta, pq.Array(userIDs))
+	query := "UPDATE users SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW() WHERE id = ANY($2) AND deleted_at IS NULL"
+	args := []any{delta, pq.Array(userIDs)}
+	if IsMySQL() {
+		// = ANY($2) + pq.Array → IN 展开；NOW() → NOW(3)；GREATEST 两边通用。
+		query = fmt.Sprintf(
+			"UPDATE users SET concurrency = GREATEST(concurrency + ?, 0), updated_at = NOW(3) WHERE id IN (%s) AND deleted_at IS NULL",
+			Placeholders(len(userIDs)))
+		args = append([]any{delta}, int64Args(userIDs)...)
+	}
+	res, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("batch add concurrency: %w", err)
 	}
@@ -1104,6 +1381,9 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 func (r *userRepository) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
 	if len(userIDs) == 0 || (concurrency == nil && rpmLimit == nil) {
 		return 0, nil
+	}
+	if IsMySQL() {
+		return r.batchUpdateLimitsMySQL(ctx, userIDs, concurrency, rpmLimit)
 	}
 
 	setClauses := make([]string, 0, 3)
@@ -1125,6 +1405,36 @@ func (r *userRepository) BatchUpdateLimits(ctx context.Context, userIDs []int64,
 		"UPDATE users SET %s WHERE id = ANY($%d) AND deleted_at IS NULL",
 		strings.Join(setClauses, ", "),
 		len(args),
+	)
+	res, err := r.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("batch update user limits: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
+// batchUpdateLimitsMySQL 是 BatchUpdateLimits 的 MySQL 实现：
+// 动态 SET 的 $n → ?、`= ANY($n)` + pq.Array → IN 展开、NOW() → NOW(3)，
+// 语义与 PG 版一致（concurrency/rpm_limit 取 max(v,0)，仅更新未软删用户）。
+func (r *userRepository) batchUpdateLimitsMySQL(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	setClauses := make([]string, 0, 3)
+	args := make([]any, 0, len(userIDs)+2)
+	if concurrency != nil {
+		args = append(args, max(*concurrency, 0))
+		setClauses = append(setClauses, "concurrency = ?")
+	}
+	if rpmLimit != nil {
+		args = append(args, max(*rpmLimit, 0))
+		setClauses = append(setClauses, "rpm_limit = ?")
+	}
+	setClauses = append(setClauses, "updated_at = NOW(3)")
+	args = append(args, int64Args(userIDs)...)
+
+	query := fmt.Sprintf(
+		"UPDATE users SET %s WHERE id IN (%s) AND deleted_at IS NULL",
+		strings.Join(setClauses, ", "),
+		Placeholders(len(userIDs)),
 	)
 	res, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -1272,10 +1582,35 @@ func dotStrippedEmailEQ(value string) predicate.User {
 	})
 }
 
+// likeEscapeSuffix 返回 LIKE 模式的 ESCAPE 子句：
+// PG ` ESCAPE '\'`；MySQL 字符串字面量中反斜杠是转义字符，必须翻倍为
+// ` ESCAPE '\\'`（否则 '\' 会吞掉收尾引号导致整条语句语法错误 1064）。
+func likeEscapeSuffix() string {
+	if IsMySQL() {
+		return ` ESCAPE '\\'`
+	}
+	return ` ESCAPE '\'`
+}
+
+// writeRtrimDotsExpr 向 b 追加「去掉尾部点号」的 PG/MySQL 方言表达式：
+// PG `RTRIM(inner, '.')`；MySQL 的 RTRIM 只接受单参数（两参报 1582），
+// 等价改写 `TRIM(TRAILING '.' FROM inner)`。
+func writeRtrimDotsExpr(b *entsql.Builder, inner func(*entsql.Builder)) {
+	if IsMySQL() {
+		b.WriteString("TRIM(TRAILING '.' FROM ")
+		inner(b)
+		b.WriteString(")")
+		return
+	}
+	b.WriteString("RTRIM(")
+	inner(b)
+	b.WriteString(", '.')")
+}
+
 func dotStrippedEmailLike(pattern string) predicate.User {
 	return predicate.User(func(s *entsql.Selector) {
 		s.Where(entsql.P(func(b *entsql.Builder) {
-			dotStrippedEmailExpr(b, s).WriteString(" LIKE ").Arg(pattern).WriteString(` ESCAPE '\'`)
+			dotStrippedEmailExpr(b, s).WriteString(" LIKE ").Arg(pattern).WriteString(likeEscapeSuffix())
 		}))
 	})
 }
@@ -1362,15 +1697,21 @@ func userEmailDomainPredicate(domain string) predicate.User {
 	subdomainPattern := "%@%." + escapedDomain
 	return predicate.User(func(s *entsql.Selector) {
 		s.Where(entsql.P(func(b *entsql.Builder) {
-			b.WriteString("(RTRIM(LOWER(TRIM(").
-				Ident(s.C(dbuser.FieldEmail)).
-				WriteString(")), '.') LIKE ").
+			lowerTrimmedEmail := func(b *entsql.Builder) {
+				b.WriteString("LOWER(TRIM(").
+					Ident(s.C(dbuser.FieldEmail)).
+					WriteString("))")
+			}
+			b.WriteString("(")
+			writeRtrimDotsExpr(b, lowerTrimmedEmail)
+			b.WriteString(" LIKE ").
 				Arg(exactPattern).
-				WriteString(` ESCAPE '\' OR RTRIM(LOWER(TRIM(`).
-				Ident(s.C(dbuser.FieldEmail)).
-				WriteString(")), '.') LIKE ").
+				WriteString(likeEscapeSuffix()).
+				WriteString(" OR ")
+			writeRtrimDotsExpr(b, lowerTrimmedEmail)
+			b.WriteString(" LIKE ").
 				Arg(subdomainPattern).
-				WriteString(` ESCAPE '\'`).
+				WriteString(likeEscapeSuffix()).
 				WriteString(")")
 		}))
 	})

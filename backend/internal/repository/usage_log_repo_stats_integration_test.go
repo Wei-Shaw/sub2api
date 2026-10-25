@@ -60,6 +60,12 @@ func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
 	require.Len(t, trend, 1)
 	require.Equal(t, int64(1), trend[0].Requests)
 
+	if IsMySQL() {
+		// 计划断言部分是 PG 专属：SET LOCAL enable_seqscan 与 EXPLAIN (COSTS OFF)
+		// 以及部分索引（partial index）验证均依赖 PG 查询规划器，MySQL 侧跳过；
+		// 上方的过滤行为断言双方言下均验证。
+		t.Skip("partial-index plan assertions are PostgreSQL-specific")
+	}
 	_, err = tx.ExecContext(ctx, "SET LOCAL enable_seqscan = off")
 	require.NoError(t, err)
 	assertPlanUsesIndex := func(query, indexName string, args ...any) {

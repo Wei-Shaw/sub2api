@@ -56,6 +56,9 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 	if log.UpstreamLatencyMS != nil {
 		latency = *log.UpstreamLatencyMS
 	}
+	if IsMySQL() {
+		return r.createLogMySQL(ctx, log, categoryScores, thresholdSnapshot, engineMeta, userID, apiKeyID, groupID, latency)
+	}
 	err = r.db.QueryRowContext(ctx, `
 INSERT INTO content_moderation_logs (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
@@ -79,8 +82,55 @@ INSERT INTO content_moderation_logs (
 	return nil
 }
 
+// createLogMySQL 是 CreateLog 的 MySQL 实现。
+// PG 版 `... $16::jsonb/$17::jsonb/$26::jsonb ... RETURNING id, created_at` 拆为
+// Exec + LastInsertId + 回查 created_at（列由数据库 CURRENT_TIMESTAMP(3) 生成）；
+// ::jsonb → CAST(? AS JSON)。
+func (r *contentModerationRepository) createLogMySQL(
+	ctx context.Context,
+	log *service.ContentModerationLog,
+	categoryScores, thresholdSnapshot []byte,
+	engineMeta, userID, apiKeyID, groupID, latency any,
+) error {
+	res, err := r.db.ExecContext(ctx, `
+INSERT INTO content_moderation_logs (
+    request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
+    endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
+    category_scores, threshold_snapshot, input_excerpt, upstream_latency_ms, error,
+    violation_count, auto_banned, email_sent, queue_delay_ms, matched_keyword, engine_meta
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?,
+    CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?,
+    ?, ?, ?, ?, ?, CAST(? AS JSON)
+)`,
+		log.RequestID, userID, log.UserEmail, apiKeyID, log.APIKeyName, groupID, log.GroupName,
+		log.Endpoint, log.Provider, log.Model, log.Mode, log.Action, log.Flagged, log.HighestCategory, log.HighestScore,
+		string(categoryScores), string(thresholdSnapshot), log.InputExcerpt, latency, log.Error,
+		log.ViolationCount, log.AutoBanned, log.EmailSent, nullableIntPtr(log.QueueDelayMS), log.MatchedKeyword, engineMeta,
+	)
+	if err != nil {
+		return fmt.Errorf("insert content moderation log: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert content moderation log: %w", err)
+	}
+	log.ID = id
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT created_at FROM content_moderation_logs WHERE id = ?`, id).Scan(&log.CreatedAt); err != nil {
+		return fmt.Errorf("insert content moderation log: %w", err)
+	}
+	return nil
+}
+
 func (r *contentModerationRepository) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
 	where, args := buildContentModerationLogWhere(filter)
+	limitClause := `LIMIT $` + fmt.Sprint(len(args)+1) + ` OFFSET $` + fmt.Sprint(len(args)+2)
+	if IsMySQL() {
+		where, args = buildContentModerationLogWhereMySQL(filter)
+		limitClause = `LIMIT ? OFFSET ?`
+	}
 	whereSQL := "WHERE " + strings.Join(where, " AND ")
 
 	var total int64
@@ -109,7 +159,7 @@ SELECT
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
-LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
+`+limitClause,
 		queryArgs...,
 	)
 	if err != nil {
@@ -200,7 +250,7 @@ func (r *contentModerationRepository) CountFlaggedByUserSince(ctx context.Contex
 	// 'cyber_log_only' matches service.ContentModerationModeCyberLogOnly; these
 	// events remain evidence but never become penalties after allowlist removal.
 	var count int
-	err := r.db.QueryRowContext(ctx, `
+	query := `
 WITH last_auto_ban AS (
     SELECT MAX(created_at) AS at
     FROM content_moderation_logs
@@ -216,7 +266,31 @@ WHERE user_id = $1
   AND ($3::bool IS FALSE OR action <> 'cyber_policy')
   AND created_at >= $2
   AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
-`, userID, since, excludeCyberPolicy).Scan(&count)
+`
+	if IsMySQL() {
+		// 只读 CTE（SELECT）MySQL 8 支持；$3::bool IS FALSE → ? IS FALSE；
+		// '-infinity'::timestamptz → DATETIME 下界哨兵 '1000-01-01'（created_at 恒大于之，
+		// 与 -infinity 的“无下限”语义等价）。
+		// REVIEW: 若未来 created_at 可为 1000-01-01 之前的值，哨兵需同步调整。
+		query = `
+WITH last_auto_ban AS (
+    SELECT MAX(created_at) AS at
+    FROM content_moderation_logs
+    WHERE user_id = ? AND auto_banned = TRUE
+)
+SELECT COUNT(*)
+FROM content_moderation_logs
+WHERE user_id = ?
+  AND flagged = TRUE
+  AND action <> 'hash_block'
+  AND mode <> 'cyber_log_only'
+  AND mode <> 'risk_control_log_only'
+  AND (? IS FALSE OR action <> 'cyber_policy')
+  AND created_at >= ?
+  AND created_at > COALESCE((SELECT at FROM last_auto_ban), '1000-01-01 00:00:00')
+`
+	}
+	err := r.db.QueryRowContext(ctx, query, userID, since, excludeCyberPolicy).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count user content moderation flagged logs: %w", err)
 	}
@@ -224,7 +298,11 @@ WHERE user_id = $1
 }
 
 func (r *contentModerationRepository) UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE content_moderation_logs SET email_sent = $1 WHERE id = $2`, sent, id)
+	query := `UPDATE content_moderation_logs SET email_sent = $1 WHERE id = $2`
+	if IsMySQL() {
+		query = `UPDATE content_moderation_logs SET email_sent = ? WHERE id = ?`
+	}
+	_, err := r.db.ExecContext(ctx, query, sent, id)
 	if err != nil {
 		return fmt.Errorf("update content moderation log email_sent: %w", err)
 	}
@@ -236,19 +314,31 @@ func (r *contentModerationRepository) CleanupExpiredLogs(ctx context.Context, hi
 	if r == nil || r.db == nil {
 		return result, nil
 	}
-	hitExec, err := r.db.ExecContext(ctx, `
+	hitQuery := `
 DELETE FROM content_moderation_logs
 WHERE flagged = TRUE AND created_at < $1
-`, hitBefore)
+`
+	nonHitQuery := `
+DELETE FROM content_moderation_logs
+WHERE flagged = FALSE AND created_at < $1
+`
+	if IsMySQL() {
+		hitQuery = `
+DELETE FROM content_moderation_logs
+WHERE flagged = TRUE AND created_at < ?
+`
+		nonHitQuery = `
+DELETE FROM content_moderation_logs
+WHERE flagged = FALSE AND created_at < ?
+`
+	}
+	hitExec, err := r.db.ExecContext(ctx, hitQuery, hitBefore)
 	if err != nil {
 		return nil, fmt.Errorf("delete expired hit content moderation logs: %w", err)
 	}
 	result.DeletedHit, _ = hitExec.RowsAffected()
 
-	nonHitExec, err := r.db.ExecContext(ctx, `
-DELETE FROM content_moderation_logs
-WHERE flagged = FALSE AND created_at < $1
-`, nonHitBefore)
+	nonHitExec, err := r.db.ExecContext(ctx, nonHitQuery, nonHitBefore)
 	if err != nil {
 		return nil, fmt.Errorf("delete expired non-hit content moderation logs: %w", err)
 	}
@@ -299,6 +389,45 @@ func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) (
 	}
 	if filter.To != nil && !filter.To.IsZero() {
 		add("l.created_at <= $%d", *filter.To)
+	}
+	return where, args
+}
+
+// buildContentModerationLogWhereMySQL 是 buildContentModerationLogWhere 的 MySQL 版本：
+// $n → ?；ILIKE → LIKE（utf8mb4_0900_ai_ci 大小写不敏感，子串匹配语义一致）。
+func buildContentModerationLogWhereMySQL(filter service.ContentModerationLogFilter) ([]string, []any) {
+	where := []string{"l.id IS NOT NULL"}
+	args := make([]any, 0)
+	add := func(expr string, value any) {
+		args = append(args, value)
+		where = append(where, expr)
+	}
+	switch strings.ToLower(strings.TrimSpace(filter.Result)) {
+	case "hit", "flagged":
+		where = append(where, "l.flagged = TRUE")
+	case "blocked", "block":
+		where = append(where, "l.action IN ('block', 'keyword_block', 'hash_block')")
+	case "pass", "allow":
+		where = append(where, "l.flagged = FALSE AND l.error = ''")
+	case "error":
+		where = append(where, "l.error <> ''")
+	}
+	if filter.GroupID != nil {
+		add("l.group_id = ?", *filter.GroupID)
+	}
+	if endpoint := strings.TrimSpace(filter.Endpoint); endpoint != "" {
+		add("l.endpoint = ?", endpoint)
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		like := "%" + search + "%"
+		args = append(args, like, like, like, like, like)
+		where = append(where, "(l.request_id LIKE ? OR l.user_email LIKE ? OR l.api_key_name LIKE ? OR l.model LIKE ? OR l.input_excerpt LIKE ?)")
+	}
+	if filter.From != nil && !filter.From.IsZero() {
+		add("l.created_at >= ?", *filter.From)
+	}
+	if filter.To != nil && !filter.To.IsZero() {
+		add("l.created_at <= ?", *filter.To)
 	}
 	return where, args
 }

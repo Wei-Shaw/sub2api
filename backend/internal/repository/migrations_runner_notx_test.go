@@ -6,37 +6,39 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"entgo.io/ent/dialect"
+
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestValidateMigrationExecutionMode(t *testing.T) {
 	t.Run("事务迁移包含CONCURRENTLY会被拒绝", func(t *testing.T) {
-		nonTx, err := validateMigrationExecutionMode("001_add_idx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);")
+		nonTx, err := validateMigrationExecutionMode("001_add_idx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);", dialect.Postgres)
 		require.False(t, nonTx)
 		require.Error(t, err)
 	})
 
 	t.Run("notx迁移要求CREATE使用IF NOT EXISTS", func(t *testing.T) {
-		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);")
+		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);", dialect.Postgres)
 		require.False(t, nonTx)
 		require.Error(t, err)
 	})
 
 	t.Run("notx迁移要求DROP使用IF EXISTS", func(t *testing.T) {
-		nonTx, err := validateMigrationExecutionMode("001_drop_idx_notx.sql", "DROP INDEX CONCURRENTLY idx_a;")
+		nonTx, err := validateMigrationExecutionMode("001_drop_idx_notx.sql", "DROP INDEX CONCURRENTLY idx_a;", dialect.Postgres)
 		require.False(t, nonTx)
 		require.Error(t, err)
 	})
 
 	t.Run("notx迁移禁止事务控制语句", func(t *testing.T) {
-		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "BEGIN; CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a); COMMIT;")
+		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "BEGIN; CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a); COMMIT;", dialect.Postgres)
 		require.False(t, nonTx)
 		require.Error(t, err)
 	})
 
 	t.Run("notx迁移禁止混用非CONCURRENTLY语句", func(t *testing.T) {
-		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a); UPDATE t SET a = 1;")
+		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a); UPDATE t SET a = 1;", dialect.Postgres)
 		require.False(t, nonTx)
 		require.Error(t, err)
 	})
@@ -45,7 +47,7 @@ func TestValidateMigrationExecutionMode(t *testing.T) {
 		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", `
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
 DROP INDEX CONCURRENTLY IF EXISTS idx_b;
-`)
+`, dialect.Postgres)
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})

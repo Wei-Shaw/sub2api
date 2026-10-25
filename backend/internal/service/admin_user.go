@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
@@ -812,6 +813,10 @@ func (s *adminServiceImpl) listAffiliateBalanceHistory(ctx context.Context, user
 		return nil, 0, nil
 	}
 
+	if entClientIsMySQL(s.entClient) {
+		return listAffiliateBalanceHistoryMySQL(ctx, s.entClient, userID, params)
+	}
+
 	rows, err := s.entClient.QueryContext(ctx, `
 SELECT id,
        amount::double precision,
@@ -860,6 +865,10 @@ LIMIT $3`, userID, params.Offset(), params.Limit())
 }
 
 func countAffiliateBalanceHistory(ctx context.Context, client *dbent.Client, userID int64) (int64, error) {
+	if entClientIsMySQL(client) {
+		return countAffiliateBalanceHistoryMySQL(ctx, client, userID)
+	}
+
 	rows, err := client.QueryContext(ctx, `
 SELECT COUNT(*)
 FROM user_affiliate_ledger
@@ -1325,4 +1334,96 @@ func (s *adminServiceImpl) ExpireRedeemCode(ctx context.Context, id int64) (*Red
 		return nil, err
 	}
 	return code, nil
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言分支（对应上方 user_affiliate_ledger 两处 PG 原生 SQL）。
+// ---------------------------------------------------------------------------
+
+// entClientIsMySQL 报告 ent 客户端底层方言是否为 MySQL。
+// service 包不能 import repository 取 IsMySQL()（repository 已 import service，
+// 会构成 import cycle），按 DIALECT_MYSQL_GUIDE 的 ent 场景改用
+// client.Driver().Dialect() 判定（同 payment_fulfillment.go 的 paymentAuditDialect 先例）。
+func entClientIsMySQL(client *dbent.Client) bool {
+	return client != nil && client.Driver() != nil && client.Driver().Dialect() == dialect.MySQL
+}
+
+// listAffiliateBalanceHistoryMySQL 是 listAffiliateBalanceHistory 的 MySQL 实现，语义与 PG 版一致：
+//   - 占位符 $1/$2/$3 → ?；
+//   - OFFSET/LIMIT 顺序调整为 LIMIT ? OFFSET ?（MySQL 语法 LIMIT 在前），参数顺序随之对调；
+//   - amount::double precision 省略：amount 为 DECIMAL(20,8)，database/sql 扫描到
+//     float64 时自动转换（见 DIALECT_MYSQL_GUIDE「特殊注意」），无需 CAST。
+func listAffiliateBalanceHistoryMySQL(ctx context.Context, client *dbent.Client, userID int64, params pagination.PaginationParams) ([]RedeemCode, int64, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT id,
+       amount,
+       created_at
+FROM user_affiliate_ledger
+WHERE user_id = ?
+  AND action = 'transfer'
+ORDER BY created_at DESC, id DESC
+LIMIT ? OFFSET ?`, userID, params.Limit(), params.Offset())
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	codes := make([]RedeemCode, 0, params.Limit())
+	for rows.Next() {
+		var id int64
+		var amount float64
+		var createdAt time.Time
+		if err := rows.Scan(&id, &amount, &createdAt); err != nil {
+			return nil, 0, err
+		}
+		usedBy := userID
+		usedAt := createdAt
+		codes = append(codes, RedeemCode{
+			ID:        -id,
+			Code:      fmt.Sprintf("AFF-%d", id),
+			Type:      RedeemTypeAffiliateBalance,
+			Value:     amount,
+			Status:    StatusUsed,
+			UsedBy:    &usedBy,
+			UsedAt:    &usedAt,
+			CreatedAt: createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	total, err := countAffiliateBalanceHistory(ctx, client, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return codes, total, nil
+}
+
+// countAffiliateBalanceHistoryMySQL 是 countAffiliateBalanceHistory 的 MySQL 实现：
+// 仅占位符 $1 → ?，其余与 PG 版一致。
+func countAffiliateBalanceHistoryMySQL(ctx context.Context, client *dbent.Client, userID int64) (int64, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT COUNT(*)
+FROM user_affiliate_ledger
+WHERE user_id = ?
+  AND action = 'transfer'`, userID)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var total sql.NullInt64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return total.Int64, nil
 }

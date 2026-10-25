@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -1548,6 +1549,8 @@ func (s *ServerConfig) Address() string {
 // DatabaseConfig 数据库连接配置
 // 性能优化：新增连接池参数，避免频繁创建/销毁连接
 type DatabaseConfig struct {
+	// Driver 数据库驱动类型："postgres"（默认）或 "mysql"
+	Driver   string `mapstructure:"driver"`
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	User     string `mapstructure:"user"`
@@ -1572,7 +1575,27 @@ type DatabaseConfig struct {
 	UserPlatformQuotaFlushBatchSize int `mapstructure:"user_platform_quota_flush_batch_size"`
 }
 
+// DriverName 返回规范化后的数据库驱动类型："postgres"（默认）或 "mysql"。
+func (d *DatabaseConfig) DriverName() string {
+	if strings.EqualFold(strings.TrimSpace(d.Driver), "mysql") {
+		return "mysql"
+	}
+	return "postgres"
+}
+
+// IsMySQL 报告是否使用 MySQL 驱动。
+func (d *DatabaseConfig) IsMySQL() bool {
+	return d.DriverName() == "mysql"
+}
+
 func (d *DatabaseConfig) DSN() string {
+	if d.IsMySQL() {
+		dsn, err := d.MySQLDSN("UTC")
+		if err != nil {
+			return ""
+		}
+		return dsn
+	}
 	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
 	if d.Password == "" {
 		return fmt.Sprintf(
@@ -1588,6 +1611,14 @@ func (d *DatabaseConfig) DSN() string {
 
 // DSNWithTimezone returns DSN with timezone setting
 func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
+	if d.IsMySQL() {
+		dsn, err := d.MySQLDSN(tz)
+		if err != nil {
+			// 理论不可达：InitEnt 会先经 timezone.Init 校验时区；此处退化为 UTC 保证可用性。
+			dsn, _ = d.MySQLDSN("UTC")
+		}
+		return dsn
+	}
 	if tz == "" {
 		tz = "Asia/Shanghai"
 	}
@@ -1602,6 +1633,65 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
 		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode, tz,
 	)
+}
+
+// MySQLConfig 构造 go-sql-driver 的连接配置。
+//
+// 时区处理：
+//   - ParseTime + Loc 保证 time.Time 值的读取解析与写入格式化使用同一时区；
+//   - 会话 time_zone 设为该时区当前的 UTC 偏移（如 '+08:00'），使数据库端
+//     NOW(3)/CURRENT_TIMESTAMP 与应用本地时间一致。
+//
+// 使用固定偏移而非 IANA 名称，避免服务器未加载时区表（mysql_tzinfo_to_sql）
+// 时所有连接失败；夏令时地区需在 DST 切换后重启应用以刷新偏移。
+func (d *DatabaseConfig) MySQLConfig(tz string) (*mysql.Config, error) {
+	if tz == "" {
+		tz = "Asia/Shanghai"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timezone %q for mysql dsn: %w", tz, err)
+	}
+	return &mysql.Config{
+		User:                 d.User,
+		Passwd:               d.Password,
+		Net:                  "tcp",
+		Addr:                 fmt.Sprintf("%s:%d", d.Host, d.Port),
+		DBName:               d.DBName,
+		AllowNativePasswords: true,
+		ParseTime:            true,
+		Loc:                  loc,
+		Collation:            "utf8mb4_0900_ai_ci",
+		Params: map[string]string{
+			"time_zone": "'" + mysqlSessionTimeZone(loc) + "'",
+		},
+		// 迁移执行器将整个 SQL 迁移文件作为单次 Exec 提交（与 lib/pq 行为对齐），
+		// 需要驱动允许单条 Exec 携带多条语句。
+		MultiStatements: true,
+	}, nil
+}
+
+// MySQLDSN 返回 MySQL 连接字符串（含时区会话配置）。
+func (d *DatabaseConfig) MySQLDSN(tz string) (string, error) {
+	cfg, err := d.MySQLConfig(tz)
+	if err != nil {
+		return "", err
+	}
+	return cfg.FormatDSN(), nil
+}
+
+// mysqlSessionTimeZone 计算时区当前的 UTC 偏移字符串（如 "+08:00"）。
+func mysqlSessionTimeZone(loc *time.Location) string {
+	_, offset := time.Now().In(loc).Zone()
+	if offset == 0 {
+		return "+00:00"
+	}
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	return fmt.Sprintf("%s%02d:%02d", sign, offset/3600, (offset%3600)/60)
 }
 
 // RedisConfig Redis 连接配置
@@ -2215,6 +2305,7 @@ func setDefaults() {
 	viper.SetDefault("dingtalk_connect.username_overwrite_policy", "if_empty")
 
 	// Database
+	viper.SetDefault("database.driver", "postgres")
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.user", "postgres")
@@ -3124,6 +3215,11 @@ func (c *Config) Validate() error {
 		c.Billing.InflightReservation.MaxOutputTokens < 0 || c.Billing.InflightReservation.MaxInputTokens < 0 ||
 		c.Billing.InflightReservation.MaxReservationUSD < 0 {
 		return fmt.Errorf("billing.inflight_reservation values must be non-negative")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Database.Driver)) {
+	case "", "postgres", "postgresql", "mysql":
+	default:
+		return fmt.Errorf("database.driver must be one of: postgres, mysql")
 	}
 	if c.Database.MaxOpenConns <= 0 {
 		return fmt.Errorf("database.max_open_conns must be positive")

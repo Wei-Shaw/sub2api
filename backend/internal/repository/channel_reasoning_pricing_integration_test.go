@@ -73,7 +73,8 @@ func TestChannelReasoningPricingCreateUpdateReplace(t *testing.T) {
 	assertStored(map[string]map[string]float64{"custom-reasoning-model": nil})
 	var stored string
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		`SELECT reasoning_effort_multipliers::text FROM channel_model_pricing WHERE id = $1`, pricing.ID).Scan(&stored))
+		`SELECT `+jsonTextExpr("reasoning_effort_multipliers")+` FROM channel_model_pricing WHERE id = `+ph(1),
+		pricing.ID).Scan(&stored))
 	require.JSONEq(t, `{}`, stored)
 
 	replacement := []service.ChannelModelPricing{
@@ -130,7 +131,8 @@ func TestAccountStatsReasoningPricingRoundTrip(t *testing.T) {
 	}
 	var stored string
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		`SELECT reasoning_effort_multipliers::text FROM channel_account_stats_model_pricing WHERE id = $1`, loaded.AccountStatsPricingRules[0].Pricing[0].ID).Scan(&stored))
+		`SELECT `+jsonTextExpr("reasoning_effort_multipliers")+` FROM channel_account_stats_model_pricing WHERE id = `+ph(1),
+		loaded.AccountStatsPricingRules[0].Pricing[0].ID).Scan(&stored))
 	require.JSONEq(t, `{}`, stored)
 }
 

@@ -131,7 +131,7 @@ func TestUsageLogRepositoryCreate_BatchPathConcurrent(t *testing.T) {
 	}
 
 	var count int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE api_key_id = $1", apiKey.ID).Scan(&count))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE api_key_id = "+ph(1), apiKey.ID).Scan(&count))
 	require.Equal(t, total, count)
 }
 
@@ -179,7 +179,7 @@ func TestUsageLogRepositoryCreate_BatchPathDuplicateRequestID(t *testing.T) {
 	require.Equal(t, log1.ID, log2.ID)
 
 	var count int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&count))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&count))
 	require.Equal(t, 1, count)
 }
 
@@ -239,7 +239,7 @@ func TestUsageLogRepositoryFlushCreateBatch_DeduplicatesSameKeyInMemory(t *testi
 	require.Equal(t, 1, insertedCount)
 
 	var count int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&count))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&count))
 	require.Equal(t, 1, count)
 }
 
@@ -283,7 +283,7 @@ func TestUsageLogRepositoryCreateBestEffort_BatchPathDuplicateRequestID(t *testi
 
 	require.Eventually(t, func() bool {
 		var count int
-		err := integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&count)
+		err := integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&count)
 		return err == nil && count == 1
 	}, 3*time.Second, 20*time.Millisecond)
 }
@@ -1037,7 +1037,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 			SELECT total_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 			       total_cost, actual_cost, total_duration_ms, active_users
 			FROM usage_dashboard_hourly
-			WHERE bucket_start = $1
+			WHERE bucket_start = `+ph(1)+`
 		`, []any{bucketStart}, &row.totalRequests, &row.inputTokens, &row.outputTokens,
 			&row.cacheCreationTokens, &row.cacheReadTokens, &row.totalCost, &row.actualCost,
 			&row.totalDurationMs, &row.activeUsers,
@@ -1079,11 +1079,15 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 		totalDurationMs     int64
 		activeUsers         int64
 	}
+	bucketDateExpr := ph(1) + "::date"
+	if IsMySQL() {
+		bucketDateExpr = "CAST(" + ph(1) + " AS DATE)"
+	}
 	err = scanSingleRow(s.ctx, s.tx, `
 		SELECT total_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 		       total_cost, actual_cost, total_duration_ms, active_users
 		FROM usage_dashboard_daily
-		WHERE bucket_date = $1::date
+		WHERE bucket_date = `+bucketDateExpr+`
 	`, []any{dayStart}, &daily.totalRequests, &daily.inputTokens, &daily.outputTokens,
 		&daily.cacheCreationTokens, &daily.cacheReadTokens, &daily.totalCost, &daily.actualCost,
 		&daily.totalDurationMs, &daily.activeUsers,

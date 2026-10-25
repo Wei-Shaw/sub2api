@@ -30,23 +30,45 @@ func (r *passkeyRepository) EnsureUserHandle(
 	if len(candidate) < 16 || len(candidate) > 64 {
 		return nil, fmt.Errorf("passkey user handle must contain 16-64 bytes")
 	}
-	if _, err := r.db.ExecContext(ctx, `
+	ensureSQL := `
 		INSERT INTO passkey_user_handles (user_id, user_handle)
 		VALUES ($1, $2)
 		ON CONFLICT (user_id) DO NOTHING
-	`, userID, candidate); err != nil {
-		return nil, fmt.Errorf("ensure passkey user handle: %w", err)
+	`
+	if IsMySQL() {
+		// PG 的 ON CONFLICT (user_id) DO NOTHING 只吞 user_id 主键冲突；
+		// user_handle 唯一冲突仍应报错（PG 报 23505）。MySQL 拆为裸 INSERT +
+		// 主键冲突静默（对齐 DO NOTHING），非主键冲突原样返回。
+		ensureSQL = `
+		INSERT INTO passkey_user_handles (user_id, user_handle)
+		VALUES (?, ?)
+	`
+	}
+	if _, err := r.db.ExecContext(ctx, ensureSQL, userID, candidate); err != nil {
+		if IsMySQL() && isMySQLUniqueViolation(err) && isMySQLPrimaryKeyDuplicate(err) {
+			// user_id 已存在：等同 DO NOTHING，继续读取既有 handle。
+		} else {
+			return nil, fmt.Errorf("ensure passkey user handle: %w", err)
+		}
 	}
 	return r.GetUserHandle(ctx, userID)
 }
 
 func (r *passkeyRepository) GetUserHandle(ctx context.Context, userID int64) ([]byte, error) {
-	var handle []byte
-	err := r.db.QueryRowContext(ctx, `
+	query := `
 		SELECT user_handle
 		FROM passkey_user_handles
 		WHERE user_id = $1
-	`, userID).Scan(&handle)
+	`
+	if IsMySQL() {
+		query = `
+		SELECT user_handle
+		FROM passkey_user_handles
+		WHERE user_id = ?
+		`
+	}
+	var handle []byte
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(&handle)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrPasskeyNotFound
 	}
@@ -60,13 +82,23 @@ func (r *passkeyRepository) GetByCredentialID(
 	ctx context.Context,
 	credentialID []byte,
 ) (*service.PasskeyCredentialRecord, error) {
-	row := r.db.QueryRowContext(ctx, `
+	credentialQuery := `
 		SELECT c.id, c.user_id, h.user_handle, c.name, c.credential_data,
 		       c.last_used_at, c.created_at, c.updated_at
 		FROM passkey_credentials c
 		JOIN passkey_user_handles h ON h.user_id = c.user_id
 		WHERE c.credential_id = $1
-	`, credentialID)
+	`
+	if IsMySQL() {
+		credentialQuery = `
+		SELECT c.id, c.user_id, h.user_handle, c.name, c.credential_data,
+		       c.last_used_at, c.created_at, c.updated_at
+		FROM passkey_credentials c
+		JOIN passkey_user_handles h ON h.user_id = c.user_id
+		WHERE c.credential_id = ?
+		`
+	}
+	row := r.db.QueryRowContext(ctx, credentialQuery, credentialID)
 	record, err := scanPasskeyCredential(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrPasskeyNotFound
@@ -81,14 +113,25 @@ func (r *passkeyRepository) ListByUserID(
 	ctx context.Context,
 	userID int64,
 ) ([]service.PasskeyCredentialRecord, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	listQuery := `
 		SELECT c.id, c.user_id, h.user_handle, c.name, c.credential_data,
 		       c.last_used_at, c.created_at, c.updated_at
 		FROM passkey_credentials c
 		JOIN passkey_user_handles h ON h.user_id = c.user_id
 		WHERE c.user_id = $1
 		ORDER BY c.created_at DESC, c.id DESC
-	`, userID)
+	`
+	if IsMySQL() {
+		listQuery = `
+		SELECT c.id, c.user_id, h.user_handle, c.name, c.credential_data,
+		       c.last_used_at, c.created_at, c.updated_at
+		FROM passkey_credentials c
+		JOIN passkey_user_handles h ON h.user_id = c.user_id
+		WHERE c.user_id = ?
+		ORDER BY c.created_at DESC, c.id DESC
+		`
+	}
+	rows, err := r.db.QueryContext(ctx, listQuery, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list passkey credentials: %w", err)
 	}
@@ -129,6 +172,9 @@ func (r *passkeyRepository) Create(
 		Name:       name,
 		Credential: record.Credential,
 	}
+	if IsMySQL() {
+		return r.createMySQL(ctx, record, created, name, credentialJSON)
+	}
 	err = r.db.QueryRowContext(ctx, `
 		INSERT INTO passkey_credentials
 		    (user_id, credential_id, name, credential_data)
@@ -141,6 +187,36 @@ func (r *passkeyRepository) Create(
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
 			return nil, service.ErrPasskeyExists
 		}
+		return nil, fmt.Errorf("create passkey credential: %w", err)
+	}
+	return created, nil
+}
+
+// createMySQL 是 Create 的 MySQL 实现：PG 版的 `$4::jsonb` → CAST(? AS JSON)、
+// `RETURNING id, name, created_at, updated_at` → LastInsertId（name 应用侧已知）+
+// 回查 created_at/updated_at（两列由数据库 CURRENT_TIMESTAMP(3) 生成）；
+// pq.Error 23505 判定 → isMySQLUniqueViolation（1062）。
+func (r *passkeyRepository) createMySQL(ctx context.Context, record *service.PasskeyCredentialRecord, created *service.PasskeyCredentialRecord, name string, credentialJSON []byte) (*service.PasskeyCredentialRecord, error) {
+	res, err := r.db.ExecContext(ctx, `
+		INSERT INTO passkey_credentials
+		    (user_id, credential_id, name, credential_data)
+		VALUES (?, ?, ?, CAST(? AS JSON))
+	`, record.UserID, record.Credential.ID, name, string(credentialJSON))
+	if err != nil {
+		if isMySQLUniqueViolation(err) {
+			return nil, service.ErrPasskeyExists
+		}
+		return nil, fmt.Errorf("create passkey credential: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("create passkey credential: %w", err)
+	}
+	created.ID = id
+	created.Name = name
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT created_at, updated_at FROM passkey_credentials WHERE id = ?
+	`, id).Scan(&created.CreatedAt, &created.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("create passkey credential: %w", err)
 	}
 	return created, nil
@@ -159,11 +235,19 @@ func (r *passkeyRepository) UpdateCredential(
 	if err != nil {
 		return fmt.Errorf("encode passkey credential: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `
+	updateQuery := `
 		UPDATE passkey_credentials
 		SET credential_data = $3::jsonb, last_used_at = $4, updated_at = NOW()
 		WHERE user_id = $1 AND credential_id = $2
-	`, userID, credential.ID, string(credentialJSON), usedAt.UTC())
+	`
+	if IsMySQL() {
+		updateQuery = `
+		UPDATE passkey_credentials
+		SET credential_data = CAST(? AS JSON), last_used_at = ?, updated_at = NOW(3)
+		WHERE user_id = ? AND credential_id = ?
+		`
+	}
+	result, err := r.db.ExecContext(ctx, updateQuery, userID, credential.ID, string(credentialJSON), usedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("update passkey credential: %w", err)
 	}
@@ -175,11 +259,19 @@ func (r *passkeyRepository) Rename(
 	userID, credentialID int64,
 	name string,
 ) error {
-	result, err := r.db.ExecContext(ctx, `
+	renameQuery := `
 		UPDATE passkey_credentials
 		SET name = $3, updated_at = NOW()
 		WHERE user_id = $1 AND id = $2
-	`, userID, credentialID, name)
+	`
+	if IsMySQL() {
+		renameQuery = `
+		UPDATE passkey_credentials
+		SET name = ?, updated_at = NOW(3)
+		WHERE user_id = ? AND id = ?
+		`
+	}
+	result, err := r.db.ExecContext(ctx, renameQuery, userID, credentialID, name)
 	if err != nil {
 		return fmt.Errorf("rename passkey credential: %w", err)
 	}
@@ -190,10 +282,17 @@ func (r *passkeyRepository) Delete(
 	ctx context.Context,
 	userID, credentialID int64,
 ) error {
-	result, err := r.db.ExecContext(ctx, `
+	deleteQuery := `
 		DELETE FROM passkey_credentials
 		WHERE user_id = $1 AND id = $2
-	`, userID, credentialID)
+	`
+	if IsMySQL() {
+		deleteQuery = `
+		DELETE FROM passkey_credentials
+		WHERE user_id = ? AND id = ?
+		`
+	}
+	result, err := r.db.ExecContext(ctx, deleteQuery, userID, credentialID)
 	if err != nil {
 		return fmt.Errorf("delete passkey credential: %w", err)
 	}

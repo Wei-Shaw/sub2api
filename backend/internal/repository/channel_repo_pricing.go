@@ -15,10 +15,13 @@ import (
 // --- 模型定价 ---
 
 func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
-		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`, channelID,
-	)
+	query := `SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
+		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`
+	if IsMySQL() {
+		query = `SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
+		 FROM channel_model_pricing WHERE channel_id = ? ORDER BY id`
+	}
+	rows, err := r.db.QueryContext(ctx, query, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("list model pricing: %w", err)
 	}
@@ -63,10 +66,15 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	if billingMode == "" {
 		billingMode = service.BillingModeToken
 	}
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE channel_model_pricing
+	updateQuery := `UPDATE channel_model_pricing
 		 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_write_1h_price = $6, cache_read_price = $7, fast_multiplier = $8, flex_multiplier = $9, reasoning_effort_multipliers = $10, image_input_price = $11, image_output_price = $12, per_request_price = $13, time_pricing = $14, platform = $15, updated_at = NOW()
-		 WHERE id = $16`,
+		 WHERE id = $16`
+	if IsMySQL() {
+		updateQuery = `UPDATE channel_model_pricing
+		 SET models = ?, billing_mode = ?, input_price = ?, output_price = ?, cache_write_price = ?, cache_write_1h_price = ?, cache_read_price = ?, fast_multiplier = ?, flex_multiplier = ?, reasoning_effort_multipliers = ?, image_input_price = ?, image_output_price = ?, per_request_price = ?, time_pricing = ?, platform = ?, updated_at = NOW(3)
+		 WHERE id = ?`
+	}
+	result, err := r.db.ExecContext(ctx, updateQuery,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheReadPrice,
 		pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice,
 		timePricingJSON, pricing.Platform, pricing.ID,
@@ -82,7 +90,11 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 }
 
 func (r *channelRepository) DeleteModelPricing(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE id = $1`, id)
+	query := `DELETE FROM channel_model_pricing WHERE id = $1`
+	if IsMySQL() {
+		query = `DELETE FROM channel_model_pricing WHERE id = ?`
+	}
+	_, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete model pricing: %w", err)
 	}
@@ -99,11 +111,18 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 
 // batchLoadModelPricing 批量加载多个渠道的模型定价（含区间）
 func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
-		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`,
-		pq.Array(channelIDs),
-	)
+	query := `SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
+		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`
+	args := []any{pq.Array(channelIDs)}
+	if IsMySQL() {
+		query = `SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing, created_at, updated_at
+		 FROM channel_model_pricing WHERE channel_id IN (` + Placeholders(len(channelIDs)) + `) ORDER BY channel_id, id`
+		args = make([]any, len(channelIDs))
+		for i, id := range channelIDs {
+			args[i] = id
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("batch load model pricing: %w", err)
 	}
@@ -138,15 +157,26 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 
 // batchLoadIntervals 批量加载多个定价条目的区间
 func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingInterval, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
-		        input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price,
-		        input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier,
-		        per_request_price, sort_order, created_at, updated_at
-		 FROM channel_pricing_intervals
-		 WHERE pricing_id = ANY($1) ORDER BY pricing_id, sort_order, id`,
-		pq.Array(pricingIDs),
-	)
+	query := `SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
+	        input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price,
+	        input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier,
+	        per_request_price, sort_order, created_at, updated_at
+	 FROM channel_pricing_intervals
+	 WHERE pricing_id = ANY($1) ORDER BY pricing_id, sort_order, id`
+	args := []any{pq.Array(pricingIDs)}
+	if IsMySQL() {
+		query = `SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
+	        input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price,
+	        input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier,
+	        per_request_price, sort_order, created_at, updated_at
+	 FROM channel_pricing_intervals
+	 WHERE pricing_id IN (` + Placeholders(len(pricingIDs)) + `) ORDER BY pricing_id, sort_order, id`
+		args = make([]any, len(pricingIDs))
+		for i, id := range pricingIDs {
+			args[i] = id
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("batch load intervals: %w", err)
 	}
@@ -222,6 +252,9 @@ type dbExec interface {
 }
 
 func setGroupIDsTx(ctx context.Context, exec dbExec, channelID int64, groupIDs []int64) error {
+	if IsMySQL() {
+		return setGroupIDsTxMySQL(ctx, exec, channelID, groupIDs)
+	}
 	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, channelID); err != nil {
 		return fmt.Errorf("delete old group associations: %w", err)
 	}
@@ -234,6 +267,31 @@ func setGroupIDsTx(ctx context.Context, exec dbExec, channelID int64, groupIDs [
 		channelID, pq.Array(groupIDs),
 	)
 	if err != nil {
+		return fmt.Errorf("insert group associations: %w", err)
+	}
+	return nil
+}
+
+// setGroupIDsTxMySQL 是 setGroupIDsTx 的 MySQL 实现：
+// `SELECT $1, unnest($2::bigint[])` 行展开 → 多行 VALUES 构造器（?,?）× N。
+func setGroupIDsTxMySQL(ctx context.Context, exec dbExec, channelID int64, groupIDs []int64) error {
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = ?`, channelID); err != nil {
+		return fmt.Errorf("delete old group associations: %w", err)
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString(`INSERT INTO channel_groups (channel_id, group_id) VALUES `)
+	args := make([]any, 0, len(groupIDs)*2)
+	for i, gid := range groupIDs {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("(?,?)")
+		args = append(args, channelID, gid)
+	}
+	if _, err := exec.ExecContext(ctx, sb.String(), args...); err != nil {
 		return fmt.Errorf("insert group associations: %w", err)
 	}
 	return nil
@@ -260,16 +318,22 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 	if platform == "" {
 		platform = "anthropic"
 	}
-	err = exec.QueryRowContext(ctx,
-		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id, created_at, updated_at`,
-		pricing.ChannelID, platform, modelsJSON, billingMode,
-		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheReadPrice,
-		pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice,
-		pricing.PerRequestPrice, timePricingJSON,
-	).Scan(&pricing.ID, &pricing.CreatedAt, &pricing.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("insert model pricing: %w", err)
+	if IsMySQL() {
+		if err := createModelPricingRowMySQL(ctx, exec, pricing, modelsJSON, reasoningEffortMultipliersJSON, timePricingJSON, billingMode, platform); err != nil {
+			return err
+		}
+	} else {
+		err = exec.QueryRowContext(ctx,
+			`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id, created_at, updated_at`,
+			pricing.ChannelID, platform, modelsJSON, billingMode,
+			pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheReadPrice,
+			pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice,
+			pricing.PerRequestPrice, timePricingJSON,
+		).Scan(&pricing.ID, &pricing.CreatedAt, &pricing.UpdatedAt)
+		if err != nil {
+			return fmt.Errorf("insert model pricing: %w", err)
+		}
 	}
 
 	for i := range pricing.Intervals {
@@ -330,6 +394,9 @@ func unmarshalChannelTimePricing(data []byte) (*service.ChannelTimePricing, erro
 }
 
 func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
+	if IsMySQL() {
+		return createIntervalExecMySQL(ctx, exec, iv)
+	}
 	return exec.QueryRowContext(ctx,
 		`INSERT INTO channel_pricing_intervals
 		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier, per_request_price, sort_order)
@@ -342,7 +409,11 @@ func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInt
 }
 
 func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pricingList []service.ChannelModelPricing) error {
-	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = $1`, channelID); err != nil {
+	deleteQuery := `DELETE FROM channel_model_pricing WHERE channel_id = $1`
+	if IsMySQL() {
+		deleteQuery = `DELETE FROM channel_model_pricing WHERE channel_id = ?`
+	}
+	if _, err := exec.ExecContext(ctx, deleteQuery, channelID); err != nil {
 		return fmt.Errorf("delete old model pricing: %w", err)
 	}
 	for i := range pricingList {
@@ -354,13 +425,71 @@ func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pr
 	return nil
 }
 
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。
+// ---------------------------------------------------------------------------
+
+// createModelPricingRowMySQL 是 createModelPricingExec 内 INSERT..RETURNING 的 MySQL 实现：
+// ExecContext + LastInsertId 取主键；created_at/updated_at 为数据库默认值
+// （CURRENT_TIMESTAMP(3)，应用侧未知），在同连接（事务内）回查补齐。
+func createModelPricingRowMySQL(ctx context.Context, exec dbExec, pricing *service.ChannelModelPricing, modelsJSON []byte, reasoningEffortMultipliersJSON string, timePricingJSON any, billingMode service.BillingMode, platform string) error {
+	res, err := exec.ExecContext(ctx,
+		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		pricing.ChannelID, platform, modelsJSON, billingMode,
+		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheWrite1hPrice, pricing.CacheReadPrice,
+		pricing.FastMultiplier, pricing.FlexMultiplier, reasoningEffortMultipliersJSON, pricing.ImageInputPrice, pricing.ImageOutputPrice,
+		pricing.PerRequestPrice, timePricingJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("insert model pricing: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	pricing.ID = id
+	if err := exec.QueryRowContext(ctx,
+		`SELECT created_at, updated_at FROM channel_model_pricing WHERE id = ?`, id,
+	).Scan(&pricing.CreatedAt, &pricing.UpdatedAt); err != nil {
+		return fmt.Errorf("insert model pricing: %w", err)
+	}
+	return nil
+}
+
+// createIntervalExecMySQL 是 createIntervalExec 的 MySQL 实现：
+// ExecContext + LastInsertId 取主键 + 同连接回查 created_at/updated_at（数据库默认值）。
+func createIntervalExecMySQL(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
+	res, err := exec.ExecContext(ctx,
+		`INSERT INTO channel_pricing_intervals
+		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier, per_request_price, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel,
+		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheWrite1hPrice, iv.CacheReadPrice,
+		iv.InputMultiplier, iv.OutputMultiplier, iv.CacheWriteMultiplier, iv.CacheReadMultiplier,
+		iv.PerRequestPrice, iv.SortOrder,
+	)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	iv.ID = id
+	return exec.QueryRowContext(ctx,
+		`SELECT created_at, updated_at FROM channel_pricing_intervals WHERE id = ?`, id,
+	).Scan(&iv.CreatedAt, &iv.UpdatedAt)
+}
+
 // isUniqueViolation 检查 pq 唯一约束违反错误
 func isUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) && pqErr != nil {
 		return pqErr.Code == "23505"
 	}
-	return false
+	// MySQL 分支：1062 = duplicate entry（唯一键冲突），对应 PG 23505。
+	return isMySQLUniqueViolation(err)
 }
 
 // escapeLike 转义 LIKE/ILIKE 模式中的特殊字符

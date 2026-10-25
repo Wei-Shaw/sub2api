@@ -19,6 +19,10 @@ import (
 )
 
 func TestAuthCacheInvalidationTrigger_ProfitControlColumns(t *testing.T) {
+	// 断言的是迁移 193 创建的 PG 触发器（groups 利润控制列变更入队）的行为：
+	// 默认 MySQL 测试库（无 SUPER 权限）在容错模式下不创建触发器，夹具 SQL
+	// （$n 占位符、name || '-cosmetic'）亦为 PG 专属，跳过。
+	skipOnMySQL(t)
 	ctx := context.Background()
 	suffix := time.Now().UnixNano()
 	group := mustCreateGroup(t, integrationEntClient, &service.Group{

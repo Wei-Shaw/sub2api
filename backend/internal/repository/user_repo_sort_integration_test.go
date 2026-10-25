@@ -19,7 +19,7 @@ func (s *UserRepoSuite) mustInsertUsageLog(userID int64, createdAt time.Time) {
 	_, err := integrationDB.ExecContext(
 		s.ctx,
 		`INSERT INTO usage_logs (user_id, api_key_id, account_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
-		 VALUES ($1, $2, $3, 'gpt-test', 1, 1, 0.01, 0.01, $4)`,
+		 VALUES (`+ph(1)+`, `+ph(2)+`, `+ph(3)+`, 'gpt-test', 1, 1, 0.01, 0.01, `+ph(4)+`)`,
 		userID,
 		apiKey.ID,
 		account.ID,
@@ -56,8 +56,9 @@ func (s *UserRepoSuite) TestList_DefaultSortByNewestFirst() {
 }
 
 func (s *UserRepoSuite) TestCreateAndRead_PreservesSignupSourceAndActivityTimestamps() {
-	lastLoginAt := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Microsecond)
-	lastActiveAt := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Microsecond)
+	// 截断到毫秒：MySQL 侧列为 DATETIME(3)，微秒会丢失导致 Equal 失败；PG 精度更高，不受影响。
+	lastLoginAt := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Millisecond)
+	lastActiveAt := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Millisecond)
 
 	created := s.mustCreateUser(&service.User{
 		Email:        "identity-meta@example.com",
@@ -77,8 +78,9 @@ func (s *UserRepoSuite) TestCreateAndRead_PreservesSignupSourceAndActivityTimest
 
 func (s *UserRepoSuite) TestUpdate_PersistsSignupSourceAndActivityTimestamps() {
 	created := s.mustCreateUser(&service.User{Email: "identity-update@example.com"})
-	lastLoginAt := time.Now().Add(-90 * time.Minute).UTC().Truncate(time.Microsecond)
-	lastActiveAt := time.Now().Add(-15 * time.Minute).UTC().Truncate(time.Microsecond)
+	// 截断到毫秒：同 TestCreateAndRead_PreservesSignupSourceAndActivityTimestamps。
+	lastLoginAt := time.Now().Add(-90 * time.Minute).UTC().Truncate(time.Millisecond)
+	lastActiveAt := time.Now().Add(-15 * time.Minute).UTC().Truncate(time.Millisecond)
 
 	created.SignupSource = "oidc"
 	created.LastLoginAt = &lastLoginAt

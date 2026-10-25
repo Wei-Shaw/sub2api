@@ -17,6 +17,24 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+// extraNumericExpr 返回夹具 SQL 里 extra JSON 数值键的取值表达式（双方言）：
+// PG `(extra->>'key')::numeric`；MySQL `CAST(... AS DECIMAL(20,10))`（对齐仓库层精度）。
+func extraNumericExpr(key string) string {
+	if IsMySQL() {
+		return "CAST(JSON_UNQUOTE(JSON_EXTRACT(extra, '$." + key + "')) AS DECIMAL(20,10))"
+	}
+	return "(extra->>'" + key + "')::numeric"
+}
+
+// extraHasKeyExpr 返回夹具 SQL 里 extra JSON 键存在性表达式（双方言）：
+// PG `extra ? 'key'`；MySQL `JSON_CONTAINS_PATH(extra, 'one', '$.key')`。
+func extraHasKeyExpr(key string) string {
+	if IsMySQL() {
+		return "JSON_CONTAINS_PATH(extra, 'one', '$." + key + "')"
+	}
+	return "extra ? '" + key + "'"
+}
+
 func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
@@ -62,23 +80,23 @@ func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	require.False(t, result2.Applied)
 
 	var balance float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = "+ph(1), user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 
 	var quotaUsed float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used FROM api_keys WHERE id = $1", apiKey.ID).Scan(&quotaUsed))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used FROM api_keys WHERE id = "+ph(1), apiKey.ID).Scan(&quotaUsed))
 	require.InDelta(t, 1.25, quotaUsed, 0.000001)
 
 	var usage5h float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT usage_5h FROM api_keys WHERE id = $1", apiKey.ID).Scan(&usage5h))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT usage_5h FROM api_keys WHERE id = "+ph(1), apiKey.ID).Scan(&usage5h))
 	require.InDelta(t, 1.25, usage5h, 0.000001)
 
 	var status string
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT status FROM api_keys WHERE id = $1", apiKey.ID).Scan(&status))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT status FROM api_keys WHERE id = "+ph(1), apiKey.ID).Scan(&status))
 	require.Equal(t, service.StatusAPIKeyQuotaExhausted, status)
 
 	var dedupCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&dedupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&dedupCount))
 	require.Equal(t, 1, dedupCount)
 }
 
@@ -126,7 +144,7 @@ func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.
 	require.False(t, result2.Applied)
 
 	var dailyUsage float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1", subscription.ID).Scan(&dailyUsage))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd FROM user_subscriptions WHERE id = "+ph(1), subscription.ID).Scan(&dailyUsage))
 	require.InDelta(t, 2.5, dailyUsage, 0.000001)
 }
 
@@ -186,7 +204,7 @@ func TestUsageBillingRepositoryApply_DeletedAPIKeyStillBillsBalance(t *testing.T
 		Type: service.AccountTypeAPIKey,
 	})
 
-	_, err := integrationDB.ExecContext(ctx, "UPDATE api_keys SET deleted_at = NOW() WHERE id = $1", apiKey.ID)
+	_, err := integrationDB.ExecContext(ctx, "UPDATE api_keys SET deleted_at = NOW() WHERE id = "+ph(1), apiKey.ID)
 	require.NoError(t, err)
 
 	requestID := uuid.NewString()
@@ -206,16 +224,16 @@ func TestUsageBillingRepositoryApply_DeletedAPIKeyStillBillsBalance(t *testing.T
 	require.False(t, result.APIKeyQuotaExhausted)
 
 	var balance float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = "+ph(1), user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 
 	var quotaUsed, usage5h float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used, usage_5h FROM api_keys WHERE id = $1", apiKey.ID).Scan(&quotaUsed, &usage5h))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT quota_used, usage_5h FROM api_keys WHERE id = "+ph(1), apiKey.ID).Scan(&quotaUsed, &usage5h))
 	require.InDelta(t, 0, quotaUsed, 0.000001)
 	require.InDelta(t, 0, usage5h, 0.000001)
 
 	var dedupCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&dedupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&dedupCount))
 	require.Equal(t, 1, dedupCount)
 }
 
@@ -240,7 +258,7 @@ func TestUsageBillingRepositoryApply_DeletedAccountStillBillsBalance(t *testing.
 		Type:     service.AccountTypeServiceAccount,
 	})
 
-	_, err := integrationDB.ExecContext(ctx, "UPDATE accounts SET deleted_at = NOW() WHERE id = $1", account.ID)
+	_, err := integrationDB.ExecContext(ctx, "UPDATE accounts SET deleted_at = NOW() WHERE id = "+ph(1), account.ID)
 	require.NoError(t, err)
 
 	requestID := uuid.NewString()
@@ -259,11 +277,11 @@ func TestUsageBillingRepositoryApply_DeletedAccountStillBillsBalance(t *testing.
 	require.Nil(t, result.QuotaState)
 
 	var balance float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = "+ph(1), user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 
 	var dedupCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&dedupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = "+ph(1)+" AND api_key_id = "+ph(2), requestID, apiKey.ID).Scan(&dedupCount))
 	require.Equal(t, 1, dedupCount)
 }
 
@@ -300,7 +318,10 @@ func TestUsageBillingRepositoryApply_UpdatesAccountQuota(t *testing.T) {
 	require.NoError(t, err)
 
 	var quotaUsed float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COALESCE((extra->>'quota_used')::numeric, 0) FROM accounts WHERE id = $1", account.ID).Scan(&quotaUsed))
+	require.NoError(t, integrationDB.QueryRowContext(ctx,
+		"SELECT COALESCE("+extraNumericExpr("quota_used")+", 0) FROM accounts WHERE id = "+ph(1),
+		account.ID,
+	).Scan(&quotaUsed))
 	require.InDelta(t, 3.5, quotaUsed, 0.000001)
 }
 
@@ -343,7 +364,7 @@ func TestUsageBillingRepositoryApply_UpdatesServiceAccountQuota(t *testing.T) {
 	var quotaUsed float64
 	var hasDailyUsed, hasWeeklyUsed bool
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		"SELECT COALESCE((extra->>'quota_used')::numeric, 0), extra ? 'quota_daily_used', extra ? 'quota_weekly_used' FROM accounts WHERE id = $1",
+		"SELECT COALESCE("+extraNumericExpr("quota_used")+", 0), "+extraHasKeyExpr("quota_daily_used")+", "+extraHasKeyExpr("quota_weekly_used")+" FROM accounts WHERE id = "+ph(1),
 		account.ID,
 	).Scan(&quotaUsed, &hasDailyUsed, &hasWeeklyUsed))
 	require.InDelta(t, 3.75, quotaUsed, 0.000001)
@@ -352,7 +373,7 @@ func TestUsageBillingRepositoryApply_UpdatesServiceAccountQuota(t *testing.T) {
 
 	var outboxCount int
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = "+ph(1)+" AND account_id = "+ph(2),
 		service.SchedulerOutboxEventAccountChanged, account.ID,
 	).Scan(&outboxCount))
 	require.Zero(t, outboxCount, "service_account under its limit must not enqueue scheduler outbox")
@@ -386,7 +407,7 @@ func TestUsageBillingRepositoryApply_EnqueuesSchedulerOutboxOnQuotaCrossing(t *t
 		t.Helper()
 		var count int
 		require.NoError(t, integrationDB.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+			"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = "+ph(1)+" AND account_id = "+ph(2),
 			service.SchedulerOutboxEventAccountChanged, accountID,
 		).Scan(&count))
 		return count
@@ -472,6 +493,12 @@ func TestUsageBillingRepositoryApply_EnqueuesSchedulerOutboxOnQuotaCrossing(t *t
 }
 
 func TestIncrementUsageBillingAccountQuota_StatementVariantsMatchFullStatement(t *testing.T) {
+	// 夹具深度 PG 专属：直接探测 PG 版语句变体（accountQuotaIncrementSQLs +
+	// execAccountQuotaIncrement），错误分支断言 *pq.Error 错误码等价性，并用
+	// `$n::jsonb` / `extra = $1::jsonb` 形态的夹具 SQL 比较 extra 文本。MySQL 侧
+	// 的等价语句组（accountQuotaIncrementSQLsMySQL）结构与错误语义不同，无法
+	// 机械改写，跳过（MySQL 的累加路径由本文件其余 Apply 测试覆盖）。
+	skipOnMySQL(t)
 	ctx := context.Background()
 	client := testEntClient(t)
 	now := time.Now().UTC()
@@ -591,7 +618,7 @@ func TestDashboardAggregationRepositoryCleanupUsageBillingDedup_BatchDeletesOldR
 
 	_, err := integrationDB.ExecContext(ctx, `
 		INSERT INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint, created_at)
-		VALUES ($1, 1, $2, $3), ($4, 1, $5, $6)
+		VALUES (`+ph(1)+`, 1, `+ph(2)+`, `+ph(3)+`), (`+ph(4)+`, 1, `+ph(5)+`, `+ph(6)+`)
 	`,
 		oldRequestID, strings.Repeat("a", 64), oldCreatedAt,
 		newRequestID, strings.Repeat("b", 64), newCreatedAt,
@@ -601,15 +628,15 @@ func TestDashboardAggregationRepositoryCleanupUsageBillingDedup_BatchDeletesOldR
 	require.NoError(t, repo.CleanupUsageBillingDedup(ctx, time.Now().UTC().AddDate(0, 0, -365)))
 
 	var oldCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1", oldRequestID).Scan(&oldCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = "+ph(1), oldRequestID).Scan(&oldCount))
 	require.Equal(t, 0, oldCount)
 
 	var newCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1", newRequestID).Scan(&newCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = "+ph(1), newRequestID).Scan(&newCount))
 	require.Equal(t, 1, newCount)
 
 	var archivedCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup_archive WHERE request_id = $1", oldRequestID).Scan(&archivedCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup_archive WHERE request_id = "+ph(1), oldRequestID).Scan(&archivedCount))
 	require.Equal(t, 1, archivedCount)
 }
 
@@ -644,8 +671,8 @@ func TestUsageBillingRepositoryApply_DeduplicatesAgainstArchivedKey(t *testing.T
 
 	_, err = integrationDB.ExecContext(ctx, `
 		UPDATE usage_billing_dedup
-		SET created_at = $1
-		WHERE request_id = $2 AND api_key_id = $3
+		SET created_at = `+ph(1)+`
+		WHERE request_id = `+ph(2)+` AND api_key_id = `+ph(3)+`
 	`, time.Now().UTC().AddDate(0, 0, -400), requestID, apiKey.ID)
 	require.NoError(t, err)
 	require.NoError(t, aggRepo.CleanupUsageBillingDedup(ctx, time.Now().UTC().AddDate(0, 0, -365)))
@@ -655,6 +682,6 @@ func TestUsageBillingRepositoryApply_DeduplicatesAgainstArchivedKey(t *testing.T
 	require.False(t, result2.Applied)
 
 	var balance float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = "+ph(1), user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 }

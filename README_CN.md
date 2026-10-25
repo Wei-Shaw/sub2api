@@ -197,7 +197,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 |------|------|
 | 后端 | Go 1.27.0, Gin, Ent |
 | 前端 | Vue 3.4+, Vite 5+, TailwindCSS |
-| 数据库 | PostgreSQL 15+ |
+| 数据库 | PostgreSQL 15+ 或 MySQL 8.0+（8.0.13 及以上，推荐 8.0.30+） |
 | 缓存/队列 | Redis 7+ |
 
 ---
@@ -247,7 +247,7 @@ fast_mode = true
 #### 前置条件
 
 - Linux 服务器（amd64 或 arm64）
-- PostgreSQL 15+（已安装并运行）
+- PostgreSQL 15+ 或 MySQL 8.0+（8.0.13 及以上，推荐 8.0.30+；已安装并运行）
 - Redis 7+（已安装并运行）
 - Root 权限
 
@@ -512,7 +512,7 @@ cd sub2api/deploy
 
 - Go 1.21+
 - Node.js 18+
-- PostgreSQL 15+
+- PostgreSQL 15+ 或 MySQL 8.0+（8.0.13 及以上，推荐 8.0.30+）
 - Redis 7+
 
 #### 编译步骤
@@ -575,6 +575,25 @@ default:
   api_key_prefix: "sk-"
   rate_multiplier: 1.0
 ```
+
+**使用 MySQL（可选）：** 二进制部署可通过 `database.driver: mysql` 使用 MySQL 8.0+ 替代 PostgreSQL（Docker Compose 部署仍使用 PostgreSQL）：
+
+```yaml
+database:
+  driver: mysql        # postgres（默认）| mysql
+  host: 127.0.0.1
+  port: 3306
+  user: sub2api
+  password: your-password
+  dbname: sub2api
+```
+
+MySQL 模式注意事项：
+
+- 需要 MySQL 8.0.13 及以上（推荐 8.0.30+）。
+- 在启用 binlog 的服务器上，需要 DBA 预先执行 `SET GLOBAL log_bin_trust_function_creators = 1`（或为应用账号授予 SUPER / SET_ANY_DEFINER 权限），否则触发器创建会失败。
+- 备份使用 mysqldump / mysql 客户端工具。
+- 仅支持全新安装，不提供 PostgreSQL → MySQL 数据迁移工具。
 
 `config.yaml` 还支持以下安全相关配置：
 

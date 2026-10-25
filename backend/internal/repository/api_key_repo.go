@@ -405,10 +405,19 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 }
 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
-	res, err := exec.ExecContext(ctx, `
+	query := `
 		UPDATE api_keys
 		SET key = $1, deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+		WHERE id = $2 AND deleted_at IS NULL`
+	args := []any{tombstoneKey, id}
+	if IsMySQL() {
+		// `key` 是 MySQL 保留字，必须反引号；NOW() → NOW(3)（DATETIME(3) 毫秒精度对齐）。
+		query = `
+		UPDATE api_keys
+		SET ` + "`key`" + ` = ?, deleted_at = NOW(3), updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL`
+	}
+	res, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -654,6 +663,18 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 
 	if sortBy == "group" {
 		// Sort before pagination, keeping ungrouped keys last in either direction.
+		if IsMySQL() {
+			// MySQL 无 NULLS LAST 语法。分组名是否为 NULL 由本地列 group_id 是否为
+			// NULL 决定（FK 硬删置 NULL，软删分组仍有名字），用表达式桶实现同等排序：
+			//   ORDER BY group_id IS NULL ASC（非空=0 在前，NULL=1 在后）, groups.name <DIR>, id <DIR>
+			tieOrder := dbent.Asc(apikey.FieldID)
+			groupOpts := []entsql.OrderTermOption{}
+			if sortOrder == pagination.SortOrderDesc {
+				groupOpts = append(groupOpts, entsql.OrderDesc())
+				tieOrder = dbent.Desc(apikey.FieldID)
+			}
+			return []func(*entsql.Selector){apiKeyGroupNullLastOrderMySQL, apikey.ByGroupField(group.FieldName, groupOpts...), tieOrder}
+		}
 		opts := []entsql.OrderTermOption{entsql.OrderNullsLast()}
 		tieOrder := dbent.Asc(apikey.FieldID)
 		if sortOrder == pagination.SortOrderDesc {
@@ -783,6 +804,9 @@ func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amo
 // IncrementQuotaUsedAndGetState atomically increments quota_used, conditionally marks the key
 // as quota_exhausted, and returns the latest quota state in one round trip.
 func (r *apiKeyRepository) IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*service.APIKeyQuotaUsageState, error) {
+	if IsMySQL() {
+		return r.incrementQuotaUsedAndGetStateMySQL(ctx, id, amount)
+	}
 	query := `
 		UPDATE api_keys
 		SET
@@ -824,6 +848,9 @@ func (r *apiKeyRepository) UpdateLastUsed(ctx context.Context, id int64, usedAt 
 // IncrementRateLimitUsage atomically increments all rate limit usage counters and initializes
 // window start times via COALESCE if not already set.
 func (r *apiKeyRepository) IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error {
+	if IsMySQL() {
+		return r.incrementRateLimitUsageMySQL(ctx, id, cost)
+	}
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE api_keys SET
 			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
@@ -840,6 +867,9 @@ func (r *apiKeyRepository) IncrementRateLimitUsage(ctx context.Context, id int64
 
 // ResetRateLimitWindows resets expired rate limit windows atomically.
 func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) error {
+	if IsMySQL() {
+		return r.resetRateLimitWindowsMySQL(ctx, id)
+	}
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE api_keys SET
 			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN 0 ELSE usage_5h END,
@@ -856,11 +886,17 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 
 // GetRateLimitData returns the current rate limit usage and window start times for an API key.
 func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *service.APIKeyRateLimitData, err error) {
-	rows, err := r.sql.QueryContext(ctx, `
+	query := `
 		SELECT quota_used, usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
 		FROM api_keys
-		WHERE id = $1 AND deleted_at IS NULL`,
-		id)
+		WHERE id = $1 AND deleted_at IS NULL`
+	if IsMySQL() {
+		query = `
+		SELECT quota_used, usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
+		FROM api_keys
+		WHERE id = ? AND deleted_at IS NULL`
+	}
+	rows, err := r.sql.QueryContext(ctx, query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1052,4 +1088,117 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。PG 分支行为与字节保持原样。
+// ---------------------------------------------------------------------------
+
+// incrementQuotaUsedAndGetStateMySQL 是 IncrementQuotaUsedAndGetState 的 MySQL 实现。
+// PG 版 UPDATE..RETURNING quota_used, quota, key, status → sqlAtomicScope 单事务内：
+// 条件 UPDATE（deleted_at IS NULL 不命中时 0 行）→ 同连接 SELECT 读更新后的状态。
+// `key` 是 MySQL 保留字，必须反引号。
+func (r *apiKeyRepository) incrementQuotaUsedAndGetStateMySQL(ctx context.Context, id int64, amount float64) (*service.APIKeyQuotaUsageState, error) {
+	scope, err := beginSQLAtomicScope(ctx, r.client, r.sql)
+	if err != nil {
+		return nil, err
+	}
+	defer scope.rollback()
+
+	res, err := scope.exec(ctx, `
+		UPDATE api_keys
+		SET
+			quota_used = quota_used + ?,
+			status = CASE
+				WHEN quota > 0 AND quota_used + ? >= quota THEN ?
+				ELSE status
+			END,
+			updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL`,
+		amount, amount, service.StatusAPIKeyQuotaExhausted, id)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		return nil, service.ErrAPIKeyNotFound
+	}
+
+	state := &service.APIKeyQuotaUsageState{}
+	rows, err := scope.query(ctx, `SELECT quota_used, quota, `+"`key`"+`, status FROM api_keys WHERE id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			_ = rows.Close()
+			return nil, rowsErr
+		}
+		_ = rows.Close()
+		// UPDATE 命中后行被并发硬删，按 not found 处理（与 PG 版 sql.ErrNoRows 分支一致）。
+		return nil, service.ErrAPIKeyNotFound
+	}
+	if err := rows.Scan(&state.QuotaUsed, &state.Quota, &state.Key, &state.Status); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := scope.commit(); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+// incrementRateLimitUsageMySQL 是 IncrementRateLimitUsage 的 MySQL 实现：
+// INTERVAL '5 hours' → INTERVAL 5 HOUR（数字无引号、单位单数）；
+// date_trunc('day', NOW()) → DATE_FORMAT(NOW(3), '%Y-%m-%d 00:00:00')；
+// NOW() → NOW(3)。$1 的每处引用独立绑定 ?（共 6 处 cost + 1 处 id）。
+func (r *apiKeyRepository) incrementRateLimitUsageMySQL(ctx context.Context, id int64, cost float64) error {
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE api_keys SET
+			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL 5 HOUR <= NOW(3) THEN ? ELSE usage_5h + ? END,
+			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL 24 HOUR <= NOW(3) THEN ? ELSE usage_1d + ? END,
+			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL 7 DAY <= NOW(3) THEN ? ELSE usage_7d + ? END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL 5 HOUR <= NOW(3) THEN NOW(3) ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL 24 HOUR <= NOW(3) THEN DATE_FORMAT(NOW(3), '%Y-%m-%d 00:00:00') ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL 7 DAY <= NOW(3) THEN DATE_FORMAT(NOW(3), '%Y-%m-%d 00:00:00') ELSE window_7d_start END,
+			updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL`,
+		cost, cost, cost, cost, cost, cost, id)
+	return err
+}
+
+// resetRateLimitWindowsMySQL 是 ResetRateLimitWindows 的 MySQL 实现
+// （区间/取整映射与 incrementRateLimitUsageMySQL 一致；SET 侧全为字面量，仅 WHERE 绑定 id）。
+func (r *apiKeyRepository) resetRateLimitWindowsMySQL(ctx context.Context, id int64) error {
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE api_keys SET
+			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL 5 HOUR <= NOW(3) THEN 0 ELSE usage_5h END,
+			window_5h_start = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL 5 HOUR <= NOW(3) THEN NOW(3) ELSE window_5h_start END,
+			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL 24 HOUR <= NOW(3) THEN 0 ELSE usage_1d END,
+			window_1d_start = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL 24 HOUR <= NOW(3) THEN DATE_FORMAT(NOW(3), '%Y-%m-%d 00:00:00') ELSE window_1d_start END,
+			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL 7 DAY <= NOW(3) THEN 0 ELSE usage_7d END,
+			window_7d_start = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL 7 DAY <= NOW(3) THEN DATE_FORMAT(NOW(3), '%Y-%m-%d 00:00:00') ELSE window_7d_start END,
+			updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL`,
+		id)
+	return err
+}
+
+// apiKeyGroupNullLastOrderMySQL 是 api_keys 列表按分组名排序时的 MySQL NULL 桶
+// 排序项：`api_keys`.group_id IS NULL（ASC 隐式：非 NULL=0 在前、NULL=1 在后），
+// 与 PostgreSQL 的 `groups.name ... NULLS LAST` 语义等价（分组名 NULL ⇔ group_id NULL）。
+func apiKeyGroupNullLastOrderMySQL(s *entsql.Selector) {
+	s.OrderExprFunc(func(b *entsql.Builder) {
+		b.WriteString(s.C(apikey.FieldGroupID))
+		b.WriteString(" IS NULL")
+	})
 }

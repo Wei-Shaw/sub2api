@@ -223,6 +223,10 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
 	}
 
+	if IsMySQL() {
+		return r.createSingleMySQL(ctx, sqlq, log, prepared)
+	}
+
 	query := `
 		INSERT INTO usage_logs (
 			user_id,
@@ -313,6 +317,112 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 	}
 	log.RateMultiplier = prepared.rateMultiplier
 	return true, nil
+}
+
+// usageLogInsertColumnList 是 usage_logs 插入列清单（与 usageLogInsertArgTypes 顺序一致）。
+// PG 与 MySQL 的插入语句共用该列清单，避免两份手写副本漂移。
+const usageLogInsertColumnList = `
+			user_id,
+			api_key_id,
+			account_id,
+			request_id,
+			model,
+			requested_model,
+			upstream_model,
+			upstream_response_model,
+			upstream_model_mismatch,
+			group_id,
+			subscription_id,
+			input_tokens,
+			output_tokens,
+			cache_creation_tokens,
+			cache_read_tokens,
+			cache_creation_5m_tokens,
+			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
+			image_input_tokens,
+			image_input_cost,
+			input_cost,
+			output_cost,
+			cache_creation_cost,
+			cache_read_cost,
+			total_cost,
+			actual_cost,
+			rate_multiplier,
+			account_rate_multiplier,
+			billing_type,
+			request_type,
+			stream,
+			openai_ws_mode,
+			duration_ms,
+			first_token_ms,
+			user_agent,
+			ip_address,
+			image_count,
+			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
+			service_tier,
+			reasoning_effort,
+			requested_reasoning_effort,
+			inbound_endpoint,
+			upstream_endpoint,
+			cache_ttl_overridden,
+			long_context_billing_applied,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
+			account_stats_cost,
+			upstream_request_id,
+			session_id,
+			native_compaction_v2,
+			created_at`
+
+// usageLogInsertTuplePlaceholder 是单行插入的 "(?,?,...,?)" 占位符元组
+// （列数 = len(usageLogInsertArgTypes) = 62）。
+var usageLogInsertTuplePlaceholder = "(" + Placeholders(len(usageLogInsertArgTypes)) + ")"
+
+// createSingleMySQL 是 createSingle 的 MySQL 实现。
+// PG 版通过 ON CONFLICT DO NOTHING RETURNING 判定是否新插入；MySQL 版改用
+// ON DUPLICATE KEY UPDATE id = id（幂等 no-op）+ RowsAffected 判定：
+//   - RowsAffected == 1：新插入，LastInsertId 取主键，created_at 直接回填应用侧时间；
+//   - RowsAffected == 0：命中唯一键 (request_id, api_key_id) 的既有行，回查补齐状态。
+func (r *usageLogRepository) createSingleMySQL(ctx context.Context, sqlq sqlExecutor, log *service.UsageLog, prepared usageLogInsertPrepared) (bool, error) {
+	query := "INSERT INTO usage_logs (" + usageLogInsertColumnList + ") VALUES " + usageLogInsertTuplePlaceholder + "\nON DUPLICATE KEY UPDATE id = id"
+
+	res, err := sqlq.ExecContext(ctx, query, prepared.args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected >= 1 {
+		id, err := res.LastInsertId()
+		if err != nil {
+			return false, err
+		}
+		log.ID = id
+		log.CreatedAt = prepared.createdAt
+		log.RateMultiplier = prepared.rateMultiplier
+		return true, nil
+	}
+	if prepared.requestID != "" {
+		selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = ? AND api_key_id = ?"
+		if err := scanSingleRow(ctx, sqlq, selectQuery, []any{prepared.requestID, log.APIKeyID}, &log.ID, &log.CreatedAt); err != nil {
+			return false, err
+		}
+	}
+	log.RateMultiplier = prepared.rateMultiplier
+	return false, nil
 }
 
 func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog) (bool, error) {
@@ -652,6 +762,11 @@ func (r *usageLogRepository) batchInsertUsageLogs(db *sql.DB, keys []string, pre
 	if len(keys) == 0 {
 		return map[string]bool{}, map[string]usageLogBatchState{}, false, nil
 	}
+	if IsMySQL() {
+		insertedMap, stateMap, err := r.batchInsertUsageLogsMySQL(db, keys, preparedByKey)
+		// MySQL 路径任何一步失败都可以安全回退到逐条插入（幂等 ODKU 会正确处理重复）。
+		return insertedMap, stateMap, true, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -944,7 +1059,128 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 	return query.String(), args
 }
 
+// batchInsertUsageLogsMySQL 是 batchInsertUsageLogs 的 MySQL 实现。
+// PG 版是单条可写 CTE（input VALUES + INSERT..ON CONFLICT..RETURNING + json_agg 汇总），
+// MySQL 无可写 CTE，拆为三步：
+//  1. 预查已存在的 (request_id, api_key_id)；
+//  2. 多行 INSERT ... ON DUPLICATE KEY UPDATE id = id（幂等，跨批/跨实例并发安全）；
+//  3. 回查全部 key 的 id/created_at，补齐状态；本批新出现的 key 记为 inserted。
+//
+// 任何一步失败时返回 err，由调用方安全回退到逐条插入（调用方对 MySQL 路径恒置 safeFallback）。
+func (r *usageLogRepository) batchInsertUsageLogsMySQL(db *sql.DB, keys []string, preparedByKey map[string]usageLogInsertPrepared) (map[string]bool, map[string]usageLogBatchState, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	preExisting, err := selectUsageLogBatchStatesMySQL(ctx, db, keys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pre-select existing usage logs: %w", err)
+	}
+
+	if err := execUsageLogBatchInsertMySQL(ctx, db, keys, preparedByKey); err != nil {
+		return nil, nil, err
+	}
+
+	states, err := selectUsageLogBatchStatesMySQL(ctx, db, keys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("post-select usage logs: %w", err)
+	}
+	if len(states) != len(keys) {
+		return nil, nil, fmt.Errorf("usage log batch state count mismatch: got=%d want=%d", len(states), len(keys))
+	}
+
+	insertedMap := make(map[string]bool, len(keys))
+	stateMap := make(map[string]usageLogBatchState, len(keys))
+	for _, key := range keys {
+		if _, existed := preExisting[key]; !existed {
+			insertedMap[key] = true
+		}
+		stateMap[key] = states[key]
+	}
+	return insertedMap, stateMap, nil
+}
+
+// selectUsageLogBatchStatesMySQL 按 (request_id, api_key_id) 对批量回查 usage_logs 状态。
+// 使用 OR-of-pairs 形式保证行值比较可以命中唯一索引范围扫描。
+func selectUsageLogBatchStatesMySQL(ctx context.Context, db *sql.DB, keys []string) (map[string]usageLogBatchState, error) {
+	if len(keys) == 0 {
+		return map[string]usageLogBatchState{}, nil
+	}
+	var cond strings.Builder
+	args := make([]any, 0, len(keys)*2)
+	for _, key := range keys {
+		requestID, apiKeyID, ok := splitUsageLogBatchKey(key)
+		if !ok {
+			continue
+		}
+		if cond.Len() > 0 {
+			cond.WriteString(" OR ")
+		}
+		cond.WriteString("(request_id = ? AND api_key_id = ?)")
+		args = append(args, requestID, apiKeyID)
+	}
+	if cond.Len() == 0 {
+		return map[string]usageLogBatchState{}, nil
+	}
+
+	query := "SELECT request_id, api_key_id, id, created_at FROM usage_logs WHERE " + cond.String()
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	states := make(map[string]usageLogBatchState, len(keys))
+	for rows.Next() {
+		var requestID string
+		var apiKeyID int64
+		state := usageLogBatchState{}
+		if err := rows.Scan(&requestID, &apiKeyID, &state.ID, &state.CreatedAt); err != nil {
+			return nil, err
+		}
+		states[usageLogBatchKey(requestID, apiKeyID)] = state
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return states, nil
+}
+
+// splitUsageLogBatchKey 还原 usageLogBatchKey 的两个字段。
+func splitUsageLogBatchKey(key string) (string, int64, bool) {
+	idx := strings.LastIndexByte(key, '\x1f')
+	if idx < 0 {
+		return "", 0, false
+	}
+	apiKeyID, err := strconv.ParseInt(key[idx+1:], 10, 64)
+	if err != nil {
+		return "", 0, false
+	}
+	return key[:idx], apiKeyID, true
+}
+
+// execUsageLogBatchInsertMySQL 执行多行幂等插入（ON DUPLICATE KEY UPDATE id = id）。
+func execUsageLogBatchInsertMySQL(ctx context.Context, db *sql.DB, keys []string, preparedByKey map[string]usageLogInsertPrepared) error {
+	var query strings.Builder
+	query.WriteString("INSERT INTO usage_logs (")
+	query.WriteString(usageLogInsertColumnList)
+	query.WriteString(") VALUES ")
+	args := make([]any, 0, len(keys)*len(usageLogInsertArgTypes))
+	for i, key := range keys {
+		if i > 0 {
+			query.WriteString(",")
+		}
+		query.WriteString(usageLogInsertTuplePlaceholder)
+		args = append(args, preparedByKey[key].args...)
+	}
+	query.WriteString(" ON DUPLICATE KEY UPDATE id = id")
+	_, err := db.ExecContext(ctx, query.String(), args...)
+	return err
+}
+
 func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (string, []any) {
+	if IsMySQL() {
+		return buildUsageLogBestEffortInsertQueryMySQL(preparedList)
+	}
 	var query strings.Builder
 	_, _ = query.WriteString(`
 		WITH input (
@@ -1171,7 +1407,31 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 	return query.String(), args
 }
 
+// buildUsageLogBestEffortInsertQueryMySQL 是 best-effort 批量插入的 MySQL 版本：
+// 多行 VALUES + ON DUPLICATE KEY UPDATE id = id，一次性幂等写入，无需返回状态。
+func buildUsageLogBestEffortInsertQueryMySQL(preparedList []usageLogInsertPrepared) (string, []any) {
+	var query strings.Builder
+	query.WriteString("INSERT INTO usage_logs (")
+	query.WriteString(usageLogInsertColumnList)
+	query.WriteString(") VALUES ")
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
+	for i, prepared := range preparedList {
+		if i > 0 {
+			query.WriteString(",")
+		}
+		query.WriteString(usageLogInsertTuplePlaceholder)
+		args = append(args, prepared.args...)
+	}
+	query.WriteString(" ON DUPLICATE KEY UPDATE id = id")
+	return query.String(), args
+}
+
 func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) error {
+	if IsMySQL() {
+		query := "INSERT INTO usage_logs (" + usageLogInsertColumnList + ") VALUES " + usageLogInsertTuplePlaceholder + "\nON DUPLICATE KEY UPDATE id = id"
+		_, err := sqlq.ExecContext(ctx, query, prepared.args...)
+		return err
+	}
 	_, err := sqlq.ExecContext(ctx, `
 		INSERT INTO usage_logs (
 			user_id,

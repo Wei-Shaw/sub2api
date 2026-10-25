@@ -17,6 +17,8 @@ import (
 )
 
 func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
+
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -57,6 +59,8 @@ func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t 
 }
 
 func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
+
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -87,6 +91,8 @@ func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
 }
 
 func TestProxyUpdateSkipsProbeInvalidationForNonIdentityChange(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
+
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

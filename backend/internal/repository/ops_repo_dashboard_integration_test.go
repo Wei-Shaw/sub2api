@@ -23,19 +23,28 @@ func TestOpsOutputTPSDistribution(t *testing.T) {
 	start := time.Date(2021, 1, 17, 0, 30, 0, 0, time.UTC)
 	end := start.Add(6 * time.Hour)
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM usage_logs WHERE user_id = $1", user.ID)
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM api_keys WHERE id = $1", key.ID)
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id = $1", account.ID)
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM ops_metrics_hourly WHERE bucket_start >= $1 AND bucket_start < $2", start.Truncate(time.Hour), end)
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id IN ($1, $2)", group.ID, otherGroup.ID)
-		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = $1", user.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM usage_logs WHERE user_id = "+ph(1), user.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM api_keys WHERE id = "+ph(1), key.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id = "+ph(1), account.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM ops_metrics_hourly WHERE bucket_start >= "+ph(1)+" AND bucket_start < "+ph(2), start.Truncate(time.Hour), end)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM "+groupsTableRef()+" WHERE id IN ("+ph(1)+", "+ph(2)+")", group.ID, otherGroup.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = "+ph(1), user.ID)
 	})
 	insert := func(at time.Time, groupID *int64, output int, duration *int, requestType service.RequestType, imageCount, imageTokens int, billingMode string) {
 		t.Helper()
+		args := []any{
+			user.ID, key.ID, account.ID, groupID,
+			fmt.Sprintf("output-tps-%d-%d", user.ID, time.Now().UnixNano()),
+			output, duration, requestType, imageCount, imageTokens, billingMode, at,
+		}
+		if IsMySQL() {
+			// PG 复用 $9（image_count）；MySQL 的 ? 不可复用，末尾 CASE 追加重复参数。
+			args = append(args, imageCount)
+		}
 		_, err := integrationDB.ExecContext(ctx, `INSERT INTO usage_logs
    (user_id, api_key_id, account_id, group_id, request_id, model, input_tokens, output_tokens, duration_ms, request_type, image_count, image_output_tokens, billing_mode, created_at, image_size)
-   VALUES ($1,$2,$3,$4,$5,'gpt-test',100000,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $9 > 0 THEN '1K' ELSE NULL END)`,
-			user.ID, key.ID, account.ID, groupID, fmt.Sprintf("output-tps-%d-%d", user.ID, time.Now().UnixNano()), output, duration, requestType, imageCount, imageTokens, billingMode, at)
+   VALUES (`+ph(1)+`,`+ph(2)+`,`+ph(3)+`,`+ph(4)+`,`+ph(5)+`,'gpt-test',100000,`+ph(6)+`,`+ph(7)+`,`+ph(8)+`,`+ph(9)+`,`+ph(10)+`,`+ph(11)+`,`+ph(12)+`,CASE WHEN `+ph(9)+` > 0 THEN '1K' ELSE NULL END)`,
+			args...)
 		require.NoError(t, err)
 	}
 	// Rates 1, 10, 100, 1000: unequal durations catch ratio-of-sums mistakes.
@@ -112,7 +121,15 @@ func TestOpsOutputTPSDistribution(t *testing.T) {
 
 func TestOpsOutputTPSQueryDeadline(t *testing.T) {
 	tx := testTx(t)
-	_, err := tx.ExecContext(context.Background(), "LOCK TABLE usage_logs IN ACCESS EXCLUSIVE MODE")
+	// PG 在事务内 LOCK TABLE ... IN ACCESS EXCLUSIVE MODE 持锁阻断并发查询；
+	// MySQL 用 LOCK TABLES ... WRITE（会隐式提交当前事务，锁保持到 UNLOCK），
+	// 结束时显式释放，避免锁随连接归还连接池。
+	lockSQL := "LOCK TABLE usage_logs IN ACCESS EXCLUSIVE MODE"
+	if IsMySQL() {
+		lockSQL = "LOCK TABLES usage_logs WRITE"
+		defer func() { _, _ = tx.ExecContext(context.Background(), "UNLOCK TABLES") }()
+	}
+	_, err := tx.ExecContext(context.Background(), lockSQL)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

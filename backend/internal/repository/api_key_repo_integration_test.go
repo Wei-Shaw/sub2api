@@ -575,9 +575,15 @@ func (s *APIKeyRepoSuite) TestDeleteWithAudit_TombstonesWithoutRetainingCredenti
 	_, err := s.repo.GetByID(s.ctx, key.ID)
 	s.Require().Error(err)
 
+	// key 是 MySQL 8 保留字，反引号仅 MySQL 分支（PG 不接受反引号）。
+	keyColumn := "key"
+	if IsMySQL() {
+		keyColumn = "`key`"
+	}
 	var tombstone string
 	var deletedAt time.Time
-	rows, err := s.repo.sql.QueryContext(s.ctx, `SELECT key, deleted_at FROM api_keys WHERE id = $1`, key.ID)
+	rows, err := s.repo.sql.QueryContext(s.ctx,
+		`SELECT `+keyColumn+`, deleted_at FROM api_keys WHERE id = `+ph(1), key.ID)
 	s.Require().NoError(err)
 	s.Require().True(rows.Next())
 	s.Require().NoError(rows.Scan(&tombstone, &deletedAt))
@@ -587,7 +593,7 @@ func (s *APIKeyRepoSuite) TestDeleteWithAudit_TombstonesWithoutRetainingCredenti
 
 	var auditCount int
 	auditRows, err := s.repo.sql.QueryContext(s.ctx,
-		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE api_key_id = $1`, key.ID)
+		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE api_key_id = `+ph(1), key.ID)
 	s.Require().NoError(err)
 	s.Require().True(auditRows.Next())
 	s.Require().NoError(auditRows.Scan(&auditCount))

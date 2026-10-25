@@ -170,6 +170,24 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 	if err != nil {
 		return 0, fmt.Errorf("apply template to monitors: %w", err)
 	}
+	// MySQL 的 UPDATE RowsAffected 统计「值发生变化」的行（PG 统计「匹配」的行）。
+	// 目标行全部字段与模板值相同、且 TimeMixin 写入的 updated_at 恰与原值同毫秒时，
+	// MySQL 返回 0 并提前退出，跳过后续 extra_headers 合并（PG 会继续）。此处用
+	// 相同谓词计数还原 matched 语义；PG 分支不受影响。
+	if IsMySQL() && affected == 0 {
+		matched, err := client.ChannelMonitor.Query().
+			Where(
+				channelmonitor.TemplateIDEQ(id),
+				channelmonitor.IDIn(monitorIDs...),
+				channelmonitor.ProviderEQ(channelmonitor.Provider(tpl.Provider)),
+				channelmonitor.APIModeEQ(defaultAPIModeRepo(tpl.APIMode)),
+			).
+			Count(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("count monitors for template apply: %w", err)
+		}
+		affected = matched
+	}
 	if affected == 0 {
 		return 0, nil
 	}
@@ -181,19 +199,24 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 	if err != nil {
 		return 0, fmt.Errorf("marshal template headers: %w", err)
 	}
-	result, err := client.ExecContext(ctx, `
-		UPDATE channel_monitors
-		SET extra_headers = $1::jsonb || CASE
-			WHEN COALESCE(extra_headers, '{}'::jsonb) ? ($2::text)
-			THEN jsonb_build_object($2::text, COALESCE(extra_headers, '{}'::jsonb) -> ($2::text))
-			ELSE '{}'::jsonb
-		END
-		WHERE template_id = $3
-		  AND id = ANY($4)
-		  AND provider = $5
-		  AND api_mode = $6
-	`, string(templateHeadersJSON), service.ChannelMonitorDuplicateOperationIDMetadataKey,
-		id, pq.Array(monitorIDs), string(tpl.Provider), defaultAPIModeRepo(tpl.APIMode))
+	var result sql.Result
+	if IsMySQL() {
+		result, err = execApplyTemplateHeadersMySQL(ctx, client, id, monitorIDs, tpl, templateHeadersJSON)
+	} else {
+		result, err = client.ExecContext(ctx, `
+			UPDATE channel_monitors
+			SET extra_headers = $1::jsonb || CASE
+				WHEN COALESCE(extra_headers, '{}'::jsonb) ? ($2::text)
+				THEN jsonb_build_object($2::text, COALESCE(extra_headers, '{}'::jsonb) -> ($2::text))
+				ELSE '{}'::jsonb
+			END
+			WHERE template_id = $3
+			  AND id = ANY($4)
+			  AND provider = $5
+			  AND api_mode = $6
+		`, string(templateHeadersJSON), service.ChannelMonitorDuplicateOperationIDMetadataKey,
+			id, pq.Array(monitorIDs), string(tpl.Provider), defaultAPIModeRepo(tpl.APIMode))
+	}
 	if err != nil {
 		return 0, fmt.Errorf("apply template headers to monitors: %w", err)
 	}
@@ -242,6 +265,51 @@ func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx con
 }
 
 // ---------- helpers ----------
+
+// execApplyTemplateHeadersMySQL 是 applyToMonitorsWithClient 内 extra_headers 合并
+// UPDATE 的 MySQL 实现，语义与 PG 版对齐：模板 headers 覆盖目标行，但保留行内既有的
+// 内部 operation ID 键（幂等恢复用，绝不下发上游）。映射（见 DIALECT_MYSQL_GUIDE.md）：
+//   - `$1::jsonb || CASE ...` → JSON_MERGE_PATCH(CAST(? AS JSON), CASE ...)：
+//     右侧仅含单个标量字符串键值（headers 为 map[string]string），与 PG `||` 浅合并等价；
+//   - `COALESCE(extra_headers,'{}') ? ($2::text)` → JSON_CONTAINS_PATH(..., 'one', path)；
+//   - `jsonb_build_object($2::text, extra_headers -> ($2::text))` →
+//     JSON_OBJECT(key, JSON_UNQUOTE(JSON_EXTRACT(...)))（值恒为字符串，反引号后语义一致）；
+//   - `'{}'::jsonb` → CAST('{}' AS JSON)；
+//   - `id = ANY($4)` → IN 展开。
+//
+// operation ID 键为服务层常量（仅字母/冒号/下划线），以带引号 JSON path 字面量嵌入
+// （`$."key"`，键名内无 `"` 与 `\`，无需转义）。
+// REVIEW: 额外写 updated_at = NOW(3)：go-sql-driver 默认 RowsAffected 返回 changed 而非
+// matched 行数；上方 ent 更新经 TimeMixin 必然改写 updated_at（affected=matched），本语句
+// 若仅写 extra_headers 且合并结果与原值相同会少计行数，触发 headersAffected != affected
+// 误报。再写一次 NOW(3)（与 ent 写入的 Go 时钟值不同）保证 changed=matched。PG 版不写。
+func execApplyTemplateHeadersMySQL(ctx context.Context, client *dbent.Client, id int64, monitorIDs []int64, tpl *dbent.ChannelMonitorRequestTemplate, templateHeadersJSON []byte) (sql.Result, error) {
+	opKey := service.ChannelMonitorDuplicateOperationIDMetadataKey
+	opPath := `'$."` + opKey + `"'`
+	query := fmt.Sprintf(`
+		UPDATE channel_monitors
+		SET extra_headers = JSON_MERGE_PATCH(
+		    CAST(? AS JSON),
+		    CASE
+		        WHEN JSON_CONTAINS_PATH(COALESCE(extra_headers, CAST('{}' AS JSON)), 'one', %[1]s)
+		        THEN JSON_OBJECT('%[2]s', JSON_UNQUOTE(JSON_EXTRACT(COALESCE(extra_headers, CAST('{}' AS JSON)), %[1]s)))
+		        ELSE CAST('{}' AS JSON)
+		    END
+		),
+		    updated_at = NOW(3)
+		WHERE template_id = ?
+		  AND id IN (%[3]s)
+		  AND provider = ?
+		  AND api_mode = ?
+	`, opPath, opKey, Placeholders(len(monitorIDs)))
+	args := make([]any, 0, len(monitorIDs)+4)
+	args = append(args, string(templateHeadersJSON), id)
+	for _, mid := range monitorIDs {
+		args = append(args, mid)
+	}
+	args = append(args, string(tpl.Provider), defaultAPIModeRepo(tpl.APIMode))
+	return client.ExecContext(ctx, query, args...)
+}
 
 func entToServiceTemplate(row *dbent.ChannelMonitorRequestTemplate) *service.ChannelMonitorRequestTemplate {
 	if row == nil {

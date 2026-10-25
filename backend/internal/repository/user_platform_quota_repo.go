@@ -99,6 +99,9 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 	if err := validateQuotaPlatforms(records); err != nil {
 		return err
 	}
+	if IsMySQL() {
+		return r.bulkInsertInitialMySQL(ctx, records)
+	}
 
 	client := clientFromContext(ctx, r.client)
 
@@ -354,6 +357,9 @@ func (r *userPlatformQuotaRepository) UpsertForUser(ctx context.Context, userID 
 // now 由调用方传入，与 updateLimitsRow / insertLimitsRow 共享同一个 Go time.Now()，
 // 保证事务内所有时间戳一致（避免 Postgres NOW() 与 Go time.Now() 的微小偏差）。
 func softDeleteMissingPlatforms(ctx context.Context, client *dbent.Client, userID int64, keepPlatforms []string, now time.Time) error {
+	if IsMySQL() {
+		return softDeleteMissingPlatformsMySQL(ctx, client, userID, keepPlatforms, now)
+	}
 	var (
 		query string
 		args  []any
@@ -386,9 +392,21 @@ func updateLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 	const query = `UPDATE user_platform_quotas
 		SET daily_limit_usd = $1, weekly_limit_usd = $2, monthly_limit_usd = $3, updated_at = $4
 		WHERE user_id = $5 AND platform = $6 AND deleted_at IS NULL`
-	res, err := client.ExecContext(ctx, query,
+	args := []any{
 		rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD, now,
-		userID, rec.Platform)
+		userID, rec.Platform,
+	}
+	if IsMySQL() {
+		const queryMySQL = `UPDATE user_platform_quotas
+			SET daily_limit_usd = ?, weekly_limit_usd = ?, monthly_limit_usd = ?, updated_at = ?
+			WHERE user_id = ? AND platform = ? AND deleted_at IS NULL`
+		res, err := client.ExecContext(ctx, queryMySQL, args...)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+	res, err := client.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -400,6 +418,9 @@ func updateLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 // 触发 unique constraint 违反（userplatformquota_user_id_platform_uq 部分唯一索引）。
 // affected=0 时说明另一个并发请求刚完成 INSERT，fallback 到 updateLimitsRow 覆写 limits 值。
 func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, rec UserPlatformQuotaRecord, now time.Time) error {
+	if IsMySQL() {
+		return insertLimitsRowMySQL(ctx, client, userID, rec, now)
+	}
 	const query = `INSERT INTO user_platform_quotas
 		(user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
 		 daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
@@ -409,6 +430,37 @@ func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 		userID, rec.Platform,
 		rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
 		now)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// 并发情形：另一请求已插入该行，fallback 到 UPDATE 覆写 limits 值（last-writer-wins）。
+		_, err = updateLimitsRow(ctx, client, userID, rec, now)
+		return err
+	}
+	return nil
+}
+
+// insertLimitsRowMySQL 是 insertLimitsRow 的 MySQL 实现。
+// PG 的 `ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO NOTHING`（部分唯一索引
+// 冲突目标）→ `ON DUPLICATE KEY UPDATE id = id`（no-op 惯用法）：MySQL 迁移 142 已建函数
+// 唯一索引 (user_id, platform, (IF(deleted_at IS NULL, 0, NULL)))，ODKU 自动命中该索引；
+// 软删行的函数键为 NULL 不进索引，与本批不冲突 → 正常插入新活跃行，与 PG 部分索引语义一致。
+// RowsAffected：1=新插入，0=命中活跃行唯一键（no-op），与 PG DO NOTHING 的 0/1 完全对齐。
+func insertLimitsRowMySQL(ctx context.Context, client *dbent.Client, userID int64, rec UserPlatformQuotaRecord, now time.Time) error {
+	const query = `INSERT INTO user_platform_quotas
+		(user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
+		 daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+		ON DUPLICATE KEY UPDATE id = id`
+	res, err := client.ExecContext(ctx, query,
+		userID, rec.Platform,
+		rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
+		now, now)
 	if err != nil {
 		return err
 	}
@@ -439,6 +491,9 @@ const batchRows = 6000
 func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
 	if len(snapshots) == 0 {
 		return nil
+	}
+	if IsMySQL() {
+		return r.batchSnapshotUsageMySQL(ctx, snapshots, now)
 	}
 
 	client := clientFromContext(ctx, r.client)
@@ -511,4 +566,141 @@ func configuredRecords(records []UserPlatformQuotaRecord) []UserPlatformQuotaRec
 		}
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。PG 分支行为与字节保持原样。
+// ---------------------------------------------------------------------------
+
+// bulkInsertInitialMySQL 每批最大行数：每行 7 个占位符（6 列值 + created_at/updated_at
+// 各一次 now），7 × 9000 = 63000 < 65535（MySQL 预编译占位符上限）。
+const bulkInsertInitialBatchRowsMySQL = 9000
+
+// bulkInsertInitialMySQL 是 BulkInsertInitial 的 MySQL 实现。
+// PG 的多行 `INSERT ... ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE
+// SET x = COALESCE(user_platform_quotas.x, EXCLUDED.x)` → 多行 VALUES +
+// `ON DUPLICATE KEY UPDATE x = COALESCE(x, VALUES(x))`：MySQL 迁移 142 已建函数唯一索引
+// (user_id, platform, (IF(deleted_at IS NULL, 0, NULL)))，ODKU 自动命中（软删行函数键为
+// NULL 不进索引，不参与冲突，与 PG 部分索引作用域一致）；ODKU 内裸列引用即既有行值，
+// VALUES(col) 即 PG 的 EXCLUDED.col，COALESCE 条件覆盖语义不变，不触碰 usage/window。
+// 分块执行（占位符 65535 上限）；PG 版单条语句原子，这里把全部块包进同一事务对齐。
+// REVIEW: VALUES() 在 ODKU 中自 8.0.20 起标记弃用（仍可用），行别名语法 v8 尚不支持。
+func (r *userPlatformQuotaRepository) bulkInsertInitialMySQL(ctx context.Context, records []UserPlatformQuotaRecord) error {
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		now := time.Now()
+		for start := 0; start < len(records); start += bulkInsertInitialBatchRowsMySQL {
+			end := start + bulkInsertInitialBatchRowsMySQL
+			if end > len(records) {
+				end = len(records)
+			}
+			batch := records[start:end]
+
+			var sb strings.Builder
+			_, _ = sb.WriteString("INSERT INTO user_platform_quotas (user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at) VALUES ")
+			args := make([]any, 0, len(batch)*7)
+			for i, rec := range batch {
+				if i > 0 {
+					_, _ = sb.WriteString(",")
+				}
+				_, _ = sb.WriteString("(?, ?, ?, ?, ?, 0, 0, 0, ?, ?)")
+				args = append(args,
+					rec.UserID, rec.Platform,
+					rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
+					now, now,
+				)
+			}
+			_, _ = sb.WriteString(` ON DUPLICATE KEY UPDATE
+				daily_limit_usd   = COALESCE(daily_limit_usd, VALUES(daily_limit_usd)),
+				weekly_limit_usd  = COALESCE(weekly_limit_usd, VALUES(weekly_limit_usd)),
+				monthly_limit_usd = COALESCE(monthly_limit_usd, VALUES(monthly_limit_usd)),
+				updated_at        = VALUES(updated_at)`)
+			if _, err := txClient.ExecContext(txCtx, sb.String(), args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// softDeleteMissingPlatformsMySQL 是 softDeleteMissingPlatforms 的 MySQL 实现（$n → ?，
+// 占位符按 SQL 文本顺序绑定：deleted_at/updated_at 的 now 在前，user_id 与平台列表在后）。
+func softDeleteMissingPlatformsMySQL(ctx context.Context, client *dbent.Client, userID int64, keepPlatforms []string, now time.Time) error {
+	var (
+		query string
+		args  []any
+	)
+	if len(keepPlatforms) == 0 {
+		query = `UPDATE user_platform_quotas SET deleted_at = ?, updated_at = ?
+			         WHERE user_id = ? AND deleted_at IS NULL`
+		args = []any{now, now, userID}
+	} else {
+		args = make([]any, 0, len(keepPlatforms)+3)
+		args = append(args, now, now, userID)
+		placeholders := make([]string, len(keepPlatforms))
+		for i, p := range keepPlatforms {
+			placeholders[i] = "?"
+			args = append(args, p)
+		}
+		query = fmt.Sprintf(`UPDATE user_platform_quotas SET deleted_at = ?, updated_at = ?
+			         WHERE user_id = ? AND deleted_at IS NULL AND platform NOT IN (%s)`,
+			strings.Join(placeholders, ","))
+	}
+	_, err := client.ExecContext(ctx, query, args...)
+	return err
+}
+
+// batchSnapshotUsageMySQL 是 BatchSnapshotUsage 的 MySQL 实现：
+// PG 的 `UPDATE ... SET ... FROM (VALUES ...) AS v(cols) WHERE ...` →
+// `UPDATE ... JOIN (VALUES ROW(...), ...) AS v ON ... SET ... WHERE ...`。
+//   - 表值构造器派生表的列名固定为 column_0..column_7（MySQL 不支持派生表列别名）；
+//   - 占位符按文本顺序绑定：每行 8 个参数在前，updated_at 的 now 在最后；
+//   - 分块沿用 batchRows=6000：8 × 6000 = 48000 < 65535（MySQL 占位符上限），与 PG 版
+//     同样非跨批单事务（调用方保证单次 batchSize ≤ batchRows，见 PG 版注释）。
+//
+// REVIEW: VALUES ROW 派生表需 MySQL 8.0.19+；参数类型由驱动按绑定值推断，
+// 与 user_id BIGINT / platform VARCHAR / DECIMAL / DATETIME(3) 比较时自动隐式转换。
+func (r *userPlatformQuotaRepository) batchSnapshotUsageMySQL(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
+	client := clientFromContext(ctx, r.client)
+
+	for start := 0; start < len(snapshots); start += batchRows {
+		end := start + batchRows
+		if end > len(snapshots) {
+			end = len(snapshots)
+		}
+		batch := snapshots[start:end]
+
+		var sb strings.Builder
+		_, _ = sb.WriteString(
+			"UPDATE user_platform_quotas q JOIN (VALUES ")
+		args := make([]any, 0, len(batch)*8+1)
+		for i, s := range batch {
+			if i > 0 {
+				_, _ = sb.WriteString(", ")
+			}
+			_, _ = sb.WriteString("ROW(?, ?, ?, ?, ?, ?, ?, ?)")
+			args = append(args,
+				s.UserID, s.Platform,
+				s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD,
+				s.DailyWindowStart, s.WeeklyWindowStart, s.MonthlyWindowStart,
+			)
+		}
+		args = append(args, now)
+		_, _ = sb.WriteString(
+			`) AS v` +
+				" ON q.user_id = v.column_0 AND q.platform = v.column_1" +
+				" SET" +
+				"  q.daily_usage_usd      = v.column_2," +
+				"  q.weekly_usage_usd     = v.column_3," +
+				"  q.monthly_usage_usd    = v.column_4," +
+				"  q.daily_window_start   = v.column_5," +
+				"  q.weekly_window_start  = v.column_6," +
+				"  q.monthly_window_start = v.column_7," +
+				"  q.updated_at           = ?" +
+				" WHERE q.deleted_at IS NULL")
+
+		if _, err := client.ExecContext(ctx, sb.String(), args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }

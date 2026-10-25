@@ -70,6 +70,9 @@ func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilte
 	if pageSize > 100 {
 		pageSize = 100
 	}
+	if r.isMySQLDB() {
+		return r.listEventsMySQL(ctx, filter, page, pageSize)
+	}
 	where, args := buildEventWhere(filter, 1)
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM prompt_audit_events e`+where, args...).Scan(&total); err != nil {
@@ -103,7 +106,11 @@ func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilte
 }
 
 func (r *PostgreSQLRepository) GetEvent(ctx context.Context, id int64) (*Event, error) {
-	event, err := scanEvent(r.db.QueryRowContext(ctx, `SELECT `+eventDetailColumns("e")+` FROM prompt_audit_events e WHERE e.id=$1`, id), true)
+	eventQuery := `SELECT ` + eventDetailColumns("e") + ` FROM prompt_audit_events e WHERE e.id=$1`
+	if r.isMySQLDB() {
+		eventQuery = `SELECT ` + eventDetailColumns("e") + ` FROM prompt_audit_events e WHERE e.id=?`
+	}
+	event, err := scanEvent(r.db.QueryRowContext(ctx, eventQuery, id), true)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrEventNotFound
 	}
@@ -122,6 +129,9 @@ func (r *PostgreSQLRepository) DeleteEventsByIDs(ctx context.Context, ids []int6
 	if len(ids) > 500 {
 		return nil, errors.New("prompt audit delete batch exceeds 500 events")
 	}
+	if r.isMySQLDB() {
+		return r.deleteEventsByIDsMySQL(ctx, ids)
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -135,7 +145,7 @@ func (r *PostgreSQLRepository) DeleteEventsByIDs(ctx context.Context, ids []int6
 	if err != nil {
 		return nil, err
 	}
-	deletedJobs, err := deleteOrphanJobs(ctx, tx, jobIDs)
+	deletedJobs, err := r.deleteOrphanJobs(ctx, tx, jobIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +165,9 @@ func (r *PostgreSQLRepository) PreviewDelete(ctx context.Context, filter EventFi
 	}
 	defer func() { _ = tx.Rollback() }()
 	where, args := buildEventWhere(filter, 1)
+	if r.isMySQLDB() {
+		where, args = buildEventWhereMySQL(filter)
+	}
 	var count, maxID int64
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(e.id),0) FROM prompt_audit_events e`+where, args...).Scan(&count, &maxID); err != nil {
 		return nil, err
@@ -175,6 +188,9 @@ func (r *PostgreSQLRepository) DeleteEventsByFilter(ctx context.Context, filter 
 	}
 	if batchSize < 1 || batchSize > 1000 {
 		batchSize = 200
+	}
+	if r.isMySQLDB() {
+		return r.deleteEventsByFilterMySQL(ctx, filter, snapshotMaxID, batchSize)
 	}
 	total := &DeleteResult{}
 	jobSet := map[int64]struct{}{}
@@ -203,7 +219,7 @@ func (r *PostgreSQLRepository) DeleteEventsByFilter(ctx context.Context, filter 
 			_ = tx.Rollback()
 			return nil, err
 		}
-		deletedJobs, err := deleteOrphanJobs(ctx, tx, jobIDs)
+		deletedJobs, err := r.deleteOrphanJobs(ctx, tx, jobIDs)
 		if err != nil {
 			_ = tx.Rollback()
 			return nil, err
@@ -372,16 +388,246 @@ func scanReturnedJobIDs(rows *sql.Rows) ([]int64, error) {
 	return result, rows.Err()
 }
 
-func deleteOrphanJobs(ctx context.Context, tx *sql.Tx, jobIDs []int64) (int64, error) {
+// deleteOrphanJobs 删除已无事件关联且不在处理中的 job。
+// MySQL 版：`DELETE FROM t alias` 需改写为多表删除语法 `DELETE j FROM ...`；
+// `id=ANY($1)` + pq.Array → IN 展开。
+func (r *PostgreSQLRepository) deleteOrphanJobs(ctx context.Context, tx *sql.Tx, jobIDs []int64) (int64, error) {
 	jobIDs = canonicalInt64s(jobIDs)
 	if len(jobIDs) == 0 {
 		return 0, nil
 	}
-	result, err := tx.ExecContext(ctx, `DELETE FROM prompt_audit_jobs j
+	query := `DELETE FROM prompt_audit_jobs j
 		WHERE j.id=ANY($1) AND j.status <> 'processing'
-		AND NOT EXISTS (SELECT 1 FROM prompt_audit_events e WHERE e.job_id=j.id)`, pq.Array(jobIDs))
+		AND NOT EXISTS (SELECT 1 FROM prompt_audit_events e WHERE e.job_id=j.id)`
+	args := []any{pq.Array(jobIDs)}
+	if r.isMySQLDB() {
+		query = `DELETE j FROM prompt_audit_jobs j
+			WHERE j.id IN (` + sqlPlaceholders(len(jobIDs)) + `) AND j.status <> 'processing'
+			AND NOT EXISTS (SELECT 1 FROM prompt_audit_events e WHERE e.job_id=j.id)`
+		args = int64Args(jobIDs)
+	}
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 internal/repository/DIALECT_MYSQL_GUIDE.md）。
+// ---------------------------------------------------------------------------
+
+// listEventsMySQL 是 ListEvents 的 MySQL 实现：WHERE 构造改用 ? 占位符与 LIKE
+// （utf8mb4_0900_ai_ci 排序规则天然大小写不敏感，对齐 PG 的 ILIKE），
+// LIMIT/OFFSET 占位符同理。
+func (r *PostgreSQLRepository) listEventsMySQL(ctx context.Context, filter EventFilter, page, pageSize int) (*EventPage, error) {
+	where, args := buildEventWhereMySQL(filter)
+	var total int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM prompt_audit_events e`+where, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+	queryArgs := append([]any(nil), args...)
+	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+eventColumns("e")+` FROM prompt_audit_events e`+where+
+		` ORDER BY e.created_at DESC, e.id DESC LIMIT ? OFFSET ?`, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]*Event, 0, pageSize)
+	for rows.Next() {
+		event, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	pages := 0
+	if total > 0 {
+		pages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+	return &EventPage{Items: items, Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
+}
+
+// deleteEventsByIDsMySQL 是 DeleteEventsByIDs 的 MySQL 实现。PG 版
+// `DELETE ... WHERE id=ANY($1) RETURNING job_id` 拆为同事务两步：
+// 先 SELECT ... FOR UPDATE 锁定目标行并取得 job_id 集合，再按已锁定 id 集合删除，
+// 返回先前读到的 job_id（对齐 RETURNING 语义）。
+func (r *PostgreSQLRepository) deleteEventsByIDsMySQL(ctx context.Context, ids []int64) (*DeleteResult, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, job_id FROM prompt_audit_events WHERE id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY id FOR UPDATE`,
+		int64Args(ids)...)
+	if err != nil {
+		return nil, err
+	}
+	lockedIDs := make([]int64, 0, len(ids))
+	jobIDs := make([]int64, 0, len(ids))
+	for rows.Next() {
+		var id, jobID int64
+		if err := rows.Scan(&id, &jobID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		lockedIDs = append(lockedIDs, id)
+		jobIDs = append(jobIDs, jobID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(lockedIDs) > 0 {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM prompt_audit_events WHERE id IN (`+sqlPlaceholders(len(lockedIDs))+`)`,
+			int64Args(lockedIDs)...); err != nil {
+			return nil, err
+		}
+	}
+	deletedJobs, err := r.deleteOrphanJobs(ctx, tx, jobIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &DeleteResult{DeletedEvents: int64(len(jobIDs)), DeletedJobs: deletedJobs, JobIDs: canonicalInt64s(jobIDs)}, nil
+}
+
+// deleteEventsByFilterMySQL 是 DeleteEventsByFilter 的 MySQL 实现。PG 版可写 CTE
+// （selected FOR UPDATE SKIP LOCKED + DELETE..USING..RETURNING job_id）拆为同事务
+// 「锁定读行（拿 job_id）→ 按已锁定 id 集合删除」两步；MySQL 要求 LIMIT 位于
+// FOR UPDATE 之前。
+// REVIEW: 行集合已由同事务 FOR UPDATE 锁定，按 id 集合删除与
+// `DELETE e FROM prompt_audit_events e JOIN (selected) s ON e.id=s.id`
+// （DIALECT_MYSQL_GUIDE 的 USING→JOIN 映射）作用于同一批已锁定行。
+func (r *PostgreSQLRepository) deleteEventsByFilterMySQL(ctx context.Context, filter EventFilter, snapshotMaxID int64, batchSize int) (*DeleteResult, error) {
+	total := &DeleteResult{}
+	jobSet := map[int64]struct{}{}
+	where, baseArgs := buildEventWhereMySQL(filter)
+	for {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		selectArgs := append(append([]any(nil), baseArgs...), snapshotMaxID, batchSize)
+		rows, err := tx.QueryContext(ctx, `
+			SELECT e.id, e.job_id FROM prompt_audit_events e`+where+
+			` AND e.id <= ? ORDER BY e.id LIMIT ? FOR UPDATE SKIP LOCKED`, selectArgs...)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		ids := make([]int64, 0, batchSize)
+		jobIDs := make([]int64, 0, batchSize)
+		for rows.Next() {
+			var id, jobID int64
+			if err := rows.Scan(&id, &jobID); err != nil {
+				_ = rows.Close()
+				_ = tx.Rollback()
+				return nil, err
+			}
+			ids = append(ids, id)
+			jobIDs = append(jobIDs, jobID)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if len(ids) > 0 {
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM prompt_audit_events WHERE id IN (`+sqlPlaceholders(len(ids))+`)`,
+				int64Args(ids)...); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
+		}
+		deletedJobs, err := r.deleteOrphanJobs(ctx, tx, jobIDs)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		total.DeletedEvents += int64(len(jobIDs))
+		total.DeletedJobs += deletedJobs
+		for _, id := range jobIDs {
+			jobSet[id] = struct{}{}
+		}
+		if len(jobIDs) < batchSize {
+			break
+		}
+	}
+	for id := range jobSet {
+		total.JobIDs = append(total.JobIDs, id)
+	}
+	total.JobIDs = canonicalInt64s(total.JobIDs)
+	return total, nil
+}
+
+// buildEventWhereMySQL 是 buildEventWhere 的 MySQL 版：$n → ?；ILIKE → LIKE
+// （utf8mb4_0900_ai_ci 天然大小写不敏感）。PG 版六个 ILIKE 共享同一个 $n 占位符，
+// MySQL 的 ? 按位置绑定，同一模式需重复提供六次参数。
+func buildEventWhereMySQL(filter EventFilter) (string, []any) {
+	filter = canonicalEventFilter(filter)
+	clauses := []string{" WHERE TRUE"}
+	args := make([]any, 0, 12)
+	add := func(clause string, value any) {
+		clauses = append(clauses, clause)
+		args = append(args, value)
+	}
+	if filter.Decision != "" {
+		add(" AND e.decision=?", filter.Decision)
+	}
+	if filter.RiskLevel != "" {
+		add(" AND e.risk_level=?", filter.RiskLevel)
+	}
+	if filter.Endpoint != "" {
+		add(" AND e.endpoint=?", filter.Endpoint)
+	}
+	if filter.GroupID != nil {
+		add(" AND e.group_id=?", *filter.GroupID)
+	}
+	if filter.UserID != nil {
+		add(" AND e.user_id=?", *filter.UserID)
+	}
+	if filter.APIKeyID != nil {
+		add(" AND e.api_key_id=?", *filter.APIKeyID)
+	}
+	if filter.RequestID != "" {
+		add(" AND e.request_id=?", filter.RequestID)
+	}
+	if filter.PromptHash != "" {
+		add(" AND e.prompt_hash=?", filter.PromptHash)
+	}
+	if filter.Keyword != "" {
+		pattern := "%" + TrimRunes(filter.Keyword, 128) + "%"
+		clauses = append(clauses, ` AND (e.request_id LIKE ? OR e.prompt_hash LIKE ? OR e.redacted_preview LIKE ?
+			OR e.username_snapshot LIKE ? OR e.user_email_snapshot LIKE ? OR e.api_key_name_snapshot LIKE ?)`)
+		for i := 0; i < 6; i++ {
+			args = append(args, pattern)
+		}
+	}
+	if filter.StartAt != nil {
+		add(" AND e.created_at >= ?", filter.StartAt.UTC())
+	}
+	if filter.EndAt != nil {
+		add(" AND e.created_at <= ?", filter.EndAt.UTC())
+	}
+	return strings.Join(clauses, ""), args
 }

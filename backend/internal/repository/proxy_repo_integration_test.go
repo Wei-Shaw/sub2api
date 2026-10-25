@@ -306,7 +306,13 @@ func (s *ProxyRepoSuite) mustCreateProxyWithTimes(name, status string, createdAt
 		Port:     8080,
 		Status:   status,
 	})
-	_, err := s.tx.ExecContext(s.ctx, "UPDATE proxies SET created_at = $1, updated_at = $1 WHERE id = $2", createdAt, p.ID)
+	// PG 版 $1/$3 复用 created_at、$2 为 id；MySQL 的 ? 按位置绑定，参数须按
+	// 文本出现顺序（created_at, updated_at, id）排列。
+	updateArgs := []any{createdAt, p.ID, createdAt}
+	if IsMySQL() {
+		updateArgs = []any{createdAt, createdAt, p.ID}
+	}
+	_, err := s.tx.ExecContext(s.ctx, prxITSQL("UPDATE proxies SET created_at = $1, updated_at = $3 WHERE id = $2"), updateArgs...)
 	s.Require().NoError(err, "update proxy timestamps")
 	return p
 }
@@ -319,7 +325,7 @@ func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
 	}
 	_, err := s.tx.ExecContext(
 		s.ctx,
-		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)",
+		prxITSQL("INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)"),
 		name,
 		service.PlatformAnthropic,
 		service.AccountTypeOAuth,

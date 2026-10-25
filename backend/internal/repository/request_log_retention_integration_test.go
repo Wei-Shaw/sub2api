@@ -11,6 +11,10 @@ import (
 )
 
 func TestRequestLogRetention_PartitionBoundaryKeepsRecentRows(t *testing.T) {
+	// 夹具是 PG 专属的分区临时表（CREATE TEMP TABLE ... PARTITION OF）+ ctid
+	// 行定位；MySQL 的 usage_logs 是普通表、无 ctid，无对等夹具，跳过
+	//（见 DIALECT_MYSQL_GUIDE「usage_logs 在 MySQL 是普通表（无分区）」）。
+	skipOnMySQL(t)
 	ctx := context.Background()
 	tx := testTx(t)
 	// Temporary tables shadow the real schema and disappear on rollback.

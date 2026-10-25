@@ -93,9 +93,16 @@ func TestChannelMonitorV2WhereUsesConfiguredScopeAndEmptyFilterMeansAllConfigure
 		GroupIDs:  []int64{3, 4},
 	}
 	where, args := channelMonitorV2Where(filter, cfg, "m")
-	require.Contains(t, where, "m.platform = ANY($3)")
-	require.Contains(t, where, "m.group_id = ANY($4)")
-	require.Len(t, args, 4)
+	if IsMySQL() {
+		// MySQL 版：= ANY($n) + pq.Array → IN (?,?,...) 展开（参数逐项平铺）。
+		require.Contains(t, where, "m.platform IN (?)")
+		require.Contains(t, where, "m.group_id IN (?,?)")
+		require.Len(t, args, 5) // start, end, platform, group, group
+	} else {
+		require.Contains(t, where, "m.platform = ANY($3)")
+		require.Contains(t, where, "m.group_id = ANY($4)")
+		require.Len(t, args, 4)
+	}
 }
 
 func TestChannelMonitorV2WhereRejectsGroupFilterOutsideConfiguredScope(t *testing.T) {
@@ -122,8 +129,14 @@ func TestChannelMonitorV2WhereRestrictsOrdinaryViewerToAllowedConfiguredGroups(t
 		GroupIDs:  []int64{3, 4, 9},
 	}
 	where, args := channelMonitorV2Where(filter, cfg, "m")
-	require.Contains(t, where, "m.group_id = ANY($4)")
-	require.Equal(t, pq.Array([]int64{4}), args[3])
+	if IsMySQL() {
+		// MySQL 版：group_id IN (?)，参数为展开后的单个 int64。
+		require.Contains(t, where, "m.group_id IN (?)")
+		require.Equal(t, int64(4), args[3])
+	} else {
+		require.Contains(t, where, "m.group_id = ANY($4)")
+		require.Equal(t, pq.Array([]int64{4}), args[3])
+	}
 }
 
 func TestChannelMonitorV2WhereRejectsOrdinaryViewerWithNoAllowedGroups(t *testing.T) {
@@ -160,8 +173,13 @@ func TestChannelMonitorV2AdminScopeRemainsGlobal(t *testing.T) {
 		GroupIDs:  []int64{3, 9},
 	}
 	where, args := channelMonitorV2Where(filter, cfg, "m")
-	require.Contains(t, where, "m.group_id = ANY($4)")
-	require.Equal(t, pq.Array([]int64{9}), args[3])
+	if IsMySQL() {
+		require.Contains(t, where, "m.group_id IN (?)")
+		require.Equal(t, int64(9), args[3])
+	} else {
+		require.Contains(t, where, "m.group_id = ANY($4)")
+		require.Equal(t, pq.Array([]int64{9}), args[3])
+	}
 }
 
 func TestChannelMonitorV2MatrixDoesNotSeedGroupsForEmptyViewerScope(t *testing.T) {
@@ -472,9 +490,16 @@ func TestChannelMonitorV2CatalogFilterClearsMultiSelectDimensions(t *testing.T) 
 	_, metricArgs := channelMonitorV2Where(filter, cfg, "m")
 
 	// Catalog WHERE still applies config scope (enabled platforms + group allow-list).
-	require.Contains(t, catalogWhere, "m.platform = ANY")
-	require.Contains(t, catalogWhere, "m.group_id = ANY")
-	require.Len(t, catalogArgs, 4) // start, end, platforms, groups
+	if IsMySQL() {
+		// MySQL 版：ANY($n)+pq.Array → IN 展开，参数逐项平铺（2 平台 + 2 分组 = 6 个）。
+		require.Contains(t, catalogWhere, "m.platform IN (?,?)")
+		require.Contains(t, catalogWhere, "m.group_id IN (?,?)")
+		require.Len(t, catalogArgs, 6) // start, end, platform, platform, group, group
+	} else {
+		require.Contains(t, catalogWhere, "m.platform = ANY")
+		require.Contains(t, catalogWhere, "m.group_id = ANY")
+		require.Len(t, catalogArgs, 4) // start, end, platforms, groups
+	}
 	require.Len(t, metricArgs, 4)
 
 	// Metrics WHERE is narrower once multi-select platforms/groups are applied.

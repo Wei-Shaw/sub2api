@@ -469,7 +469,7 @@ func (r *userSubscriptionRepository) translateConditionalWindowReset(ctx context
 // 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
 // 此处仅负责记录实际消费，确保消费数据的完整性。
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
-	const updateSQL = `
+	updateSQL := `
 		UPDATE user_subscriptions us
 		SET
 			daily_usage_usd = us.daily_usage_usd + $1,
@@ -482,9 +482,25 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			AND us.group_id = g.id
 			AND g.deleted_at IS NULL
 	`
+	if IsMySQL() {
+		// PG 的 UPDATE..FROM → MySQL 的 UPDATE..JOIN（见 DIALECT_MYSQL_GUIDE.md）；
+		// `groups` 是 MySQL 8 保留字须反引号；$n→?、NOW()→NOW(3)。
+		updateSQL = `
+		UPDATE user_subscriptions us
+		JOIN ` + "`groups`" + ` g ON us.group_id = g.id
+		SET
+			us.daily_usage_usd = us.daily_usage_usd + ?,
+			us.weekly_usage_usd = us.weekly_usage_usd + ?,
+			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.updated_at = NOW(3)
+		WHERE us.id = ?
+			AND us.deleted_at IS NULL
+			AND g.deleted_at IS NULL
+	`
+	}
 
 	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(ctx, updateSQL, costUSD, id)
+	result, err := client.ExecContext(ctx, updateSQL, costUSD, costUSD, costUSD, id)
 	if err != nil {
 		return err
 	}

@@ -33,6 +33,7 @@ func TestNewUsageCleanupRepository(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryCreateTask(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -67,6 +68,7 @@ func TestUsageCleanupRepositoryCreateTaskNil(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryCreateTaskQueryError(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -201,6 +203,7 @@ func TestUsageCleanupRepositoryListTasksInvalidFilters(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryClaimNextPendingTaskNone(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -218,6 +221,7 @@ func TestUsageCleanupRepositoryClaimNextPendingTaskNone(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryClaimNextPendingTask(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -259,6 +263,7 @@ func TestUsageCleanupRepositoryClaimNextPendingTask(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryClaimNextPendingTaskError(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -272,6 +277,7 @@ func TestUsageCleanupRepositoryClaimNextPendingTaskError(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryClaimNextPendingTaskInvalidFilters(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -367,6 +373,7 @@ func TestUsageCleanupRepositoryUpdateTaskProgress(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryCancelTask(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -381,6 +388,7 @@ func TestUsageCleanupRepositoryCancelTask(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryCancelTaskNoRows(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -403,6 +411,7 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchMissingRange(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	setUsageCleanupRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
@@ -436,6 +445,7 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryDeleteUsageLogsBatchAtomicallyInvalidatesGroupRollups(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	setUsageCleanupRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
@@ -466,6 +476,7 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchAtomicallyInvalidatesGroupRol
 }
 
 func TestUsageCleanupRepositoryDeleteUsageLogsBatchRollsBackWhenInvalidationFails(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	setUsageCleanupRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
@@ -492,6 +503,7 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchRollsBackWhenInvalidationFail
 }
 
 func TestUsageCleanupRepositoryDeleteUsageLogsBatchQueryError(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/单语句 UPDATE..RETURNING），MySQL 分支语句结构不同
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 

@@ -22,6 +22,9 @@ func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *se
 	if record == nil {
 		return false, nil
 	}
+	if IsMySQL() {
+		return r.createProcessingMySQL(ctx, record)
+	}
 	query := `
 		INSERT INTO idempotency_records (
 			scope, idempotency_key_hash, request_fingerprint, status, locked_until, expires_at
@@ -50,6 +53,49 @@ func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *se
 	return true, nil
 }
 
+// createProcessingMySQL 是 CreateProcessing 的 MySQL 实现。
+// PG 版 ON CONFLICT (scope, idempotency_key_hash) DO NOTHING RETURNING id, created_at,
+// updated_at 拆为 ODKU no-op（幂等判定：RowsAffected 1=新插入、0=冲突）+ LastInsertId +
+// 回查 created_at/updated_at（两列由数据库生成，应用侧不可知，对齐 PG 的 RETURNING）。
+func (r *idempotencyRepository) createProcessingMySQL(ctx context.Context, record *service.IdempotencyRecord) (bool, error) {
+	query := `
+		INSERT INTO idempotency_records (
+			scope, idempotency_key_hash, request_fingerprint, status, locked_until, expires_at
+		) VALUES (?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE idempotency_records.id = idempotency_records.id
+	`
+	res, err := r.sql.ExecContext(ctx, query,
+		record.Scope,
+		record.IdempotencyKeyHash,
+		record.RequestFingerprint,
+		record.Status,
+		record.LockedUntil,
+		record.ExpiresAt,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return false, err
+	}
+	record.ID = id
+	// created_at/updated_at 为数据库默认值（CURRENT_TIMESTAMP(3)），插入后回查补齐。
+	if err := scanSingleRow(ctx, r.sql,
+		"SELECT created_at, updated_at FROM idempotency_records WHERE id = ?",
+		[]any{id}, &record.CreatedAt, &record.UpdatedAt); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope, keyHash string) (*service.IdempotencyRecord, error) {
 	query := `
 		SELECT
@@ -58,6 +104,15 @@ func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope,
 		FROM idempotency_records
 		WHERE scope = $1 AND idempotency_key_hash = $2
 	`
+	if IsMySQL() {
+		query = `
+		SELECT
+			id, scope, idempotency_key_hash, request_fingerprint, status, response_status,
+			response_body, error_reason, locked_until, expires_at, created_at, updated_at
+		FROM idempotency_records
+		WHERE scope = ? AND idempotency_key_hash = ?
+		`
+	}
 	record := &service.IdempotencyRecord{}
 	var responseStatus sql.NullInt64
 	var responseBody sql.NullString
@@ -119,14 +174,40 @@ func (r *idempotencyRepository) TryReclaim(
 			AND status = $5
 			AND (locked_until IS NULL OR locked_until <= $6)
 	`
-	res, err := r.sql.ExecContext(ctx, query,
+	if IsMySQL() {
+		query = `
+		UPDATE idempotency_records
+		SET status = ?,
+			locked_until = ?,
+			error_reason = NULL,
+			updated_at = NOW(3),
+			expires_at = ?
+		WHERE id = ?
+			AND status = ?
+			AND (locked_until IS NULL OR locked_until <= ?)
+		`
+	}
+	// PG 占位符 $n 显式编号，参数按语义排列；MySQL ? 按出现顺序绑定，
+	// SET 子句在 WHERE 前，需按 (status, locked_until, expires_at, id, from_status, now) 重排。
+	args := []any{
 		id,
 		service.IdempotencyStatusProcessing,
 		newLockedUntil,
 		newExpiresAt,
 		fromStatus,
 		now,
-	)
+	}
+	if IsMySQL() {
+		args = []any{
+			service.IdempotencyStatusProcessing,
+			newLockedUntil,
+			newExpiresAt,
+			id,
+			fromStatus,
+			now,
+		}
+	}
+	res, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
 		return false, err
 	}
@@ -153,14 +234,38 @@ func (r *idempotencyRepository) ExtendProcessingLock(
 			AND status = $4
 			AND request_fingerprint = $5
 	`
-	res, err := r.sql.ExecContext(
-		ctx,
-		query,
+	if IsMySQL() {
+		query = `
+		UPDATE idempotency_records
+		SET locked_until = ?,
+			expires_at = ?,
+			updated_at = NOW(3)
+		WHERE id = ?
+			AND status = ?
+			AND request_fingerprint = ?
+		`
+	}
+	// MySQL ? 按出现顺序绑定：SET 在 WHERE 前，重排为 (locked_until, expires_at, id, status, request_fingerprint)。
+	args := []any{
 		id,
 		newLockedUntil,
 		newExpiresAt,
 		service.IdempotencyStatusProcessing,
 		requestFingerprint,
+	}
+	if IsMySQL() {
+		args = []any{
+			newLockedUntil,
+			newExpiresAt,
+			id,
+			service.IdempotencyStatusProcessing,
+			requestFingerprint,
+		}
+	}
+	res, err := r.sql.ExecContext(
+		ctx,
+		query,
+		args...,
 	)
 	if err != nil {
 		return false, err
@@ -184,13 +289,37 @@ func (r *idempotencyRepository) MarkSucceeded(ctx context.Context, id int64, res
 			updated_at = NOW()
 		WHERE id = $1
 	`
-	_, err := r.sql.ExecContext(ctx, query,
+	if IsMySQL() {
+		query = `
+		UPDATE idempotency_records
+		SET status = ?,
+			response_status = ?,
+			response_body = ?,
+			error_reason = NULL,
+			locked_until = NULL,
+			expires_at = ?,
+			updated_at = NOW(3)
+		WHERE id = ?
+		`
+	}
+	// MySQL ? 按出现顺序绑定：SET 在 WHERE 前，重排为 (status, response_status, response_body, expires_at, id)。
+	args := []any{
 		id,
 		service.IdempotencyStatusSucceeded,
 		responseStatus,
 		responseBody,
 		expiresAt,
-	)
+	}
+	if IsMySQL() {
+		args = []any{
+			service.IdempotencyStatusSucceeded,
+			responseStatus,
+			responseBody,
+			expiresAt,
+			id,
+		}
+	}
+	_, err := r.sql.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -204,19 +333,44 @@ func (r *idempotencyRepository) MarkFailedRetryable(ctx context.Context, id int6
 			updated_at = NOW()
 		WHERE id = $1
 	`
-	_, err := r.sql.ExecContext(ctx, query,
+	if IsMySQL() {
+		query = `
+		UPDATE idempotency_records
+		SET status = ?,
+			error_reason = ?,
+			locked_until = ?,
+			expires_at = ?,
+			updated_at = NOW(3)
+		WHERE id = ?
+		`
+	}
+	// MySQL ? 按出现顺序绑定：SET 在 WHERE 前，重排为 (status, error_reason, locked_until, expires_at, id)。
+	args := []any{
 		id,
 		service.IdempotencyStatusFailedRetryable,
 		errorReason,
 		lockedUntil,
 		expiresAt,
-	)
+	}
+	if IsMySQL() {
+		args = []any{
+			service.IdempotencyStatusFailedRetryable,
+			errorReason,
+			lockedUntil,
+			expiresAt,
+			id,
+		}
+	}
+	_, err := r.sql.ExecContext(ctx, query, args...)
 	return err
 }
 
 func (r *idempotencyRepository) DeleteExpired(ctx context.Context, now time.Time, limit int) (int64, error) {
 	if limit <= 0 {
 		limit = 500
+	}
+	if IsMySQL() {
+		return r.deleteExpiredMySQL(ctx, now, limit)
 	}
 	query := `
 		WITH victims AS (
@@ -230,6 +384,26 @@ func (r *idempotencyRepository) DeleteExpired(ctx context.Context, now time.Time
 		WHERE id IN (SELECT id FROM victims)
 	`
 	res, err := r.sql.ExecContext(ctx, query, now, limit)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// deleteExpiredMySQL 是 DeleteExpired 的 MySQL 实现：可写/带 LIMIT 的 CTE DELETE 拆为
+// 「派生表选 victim + JOIN 删除」。MySQL 不支持 IN 子查询内直接 LIMIT，也不允许在
+// 同一张表的 DELETE 子查询里直接引用目标表，经派生表物化后 JOIN 删除即可。
+func (r *idempotencyRepository) deleteExpiredMySQL(ctx context.Context, now time.Time, limit int) (int64, error) {
+	res, err := r.sql.ExecContext(ctx, `
+		DELETE r FROM idempotency_records r
+		JOIN (
+			SELECT id
+			FROM idempotency_records
+			WHERE expires_at <= ?
+			ORDER BY expires_at ASC
+			LIMIT ?
+		) victims ON victims.id = r.id
+	`, now, limit)
 	if err != nil {
 		return 0, err
 	}

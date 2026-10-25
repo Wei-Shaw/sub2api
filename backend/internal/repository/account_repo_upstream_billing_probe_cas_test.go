@@ -16,6 +16,7 @@ import (
 )
 
 func TestUpdateUpstreamBillingProbeSnapshotRequiresSameIdentityAndSnapshot(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	tests := []struct {
 		name     string
 		affected int64
@@ -90,6 +91,7 @@ func TestUpdateUpstreamBillingProbeSnapshotRequiresSameIdentityAndSnapshot(t *te
 }
 
 func TestUpdateUpstreamBillingProbeSnapshotCommitsSnapshotAndOutboxAtomically(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -167,6 +169,7 @@ func TestUpdateUpstreamBillingProbeSnapshotRejectsChangedProxyIdentity(t *testin
 }
 
 func TestUpdateUpstreamBillingProbeSnapshotRollsBackWhenOutboxFails(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

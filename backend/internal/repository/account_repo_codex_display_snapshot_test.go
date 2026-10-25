@@ -15,6 +15,7 @@ import (
 )
 
 func TestUpdateExtraCodexDisplaySnapshotsAvoidSchedulerOutbox(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	for _, key := range []string{"codex_credits_snapshot", "codex_referral_snapshot"} {
 		for _, tc := range []struct {
 			name             string

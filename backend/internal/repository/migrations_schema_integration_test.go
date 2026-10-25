@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"entgo.io/ent/dialect"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +23,12 @@ func TestMigrationsRunner_ConcurrentInstancesSerializeOnSessionLock(t *testing.T
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			errorsByInstance[index] = ApplyMigrations(ctx, integrationDB)
+			// MySQL 方言走 GET_LOCK 序列化与 mysql/ 镜像迁移文件。
+			if IsMySQL() {
+				errorsByInstance[index] = ApplyMigrationsWithDialect(ctx, integrationDB, dialect.MySQL)
+			} else {
+				errorsByInstance[index] = ApplyMigrations(ctx, integrationDB)
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -35,7 +41,15 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	tx := testTx(t)
 
 	// Re-apply migrations to verify idempotency (no errors, no duplicate rows).
-	require.NoError(t, ApplyMigrations(context.Background(), integrationDB))
+	if IsMySQL() {
+		require.NoError(t, ApplyMigrationsWithDialect(context.Background(), integrationDB, dialect.MySQL))
+		// 幂等重放已在上方验证；后续断言依赖 PG 专属 catalog（pg_indexes /
+		// pg_get_indexdef / to_regclass）与 PG 类型名（character varying /
+		// timestamptz / jsonb / inet），MySQL 方言跳过。
+		skipOnMySQL(t)
+	} else {
+		require.NoError(t, ApplyMigrations(context.Background(), integrationDB))
+	}
 
 	// schema_migrations should have at least the current migration set.
 	var applied int
@@ -185,6 +199,9 @@ WHERE ns.nspname = 'public'
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {
+	// 断言全部依赖 PG 专属 catalog（pg_constraint 外键动作、pg_get_indexdef
+	// 部分唯一索引定义）与 PG 类型名/默认值文本，MySQL 方言跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 
 	requireColumn(t, tx, "auth_identity_migration_reports", "report_type", "character varying", 80, false)

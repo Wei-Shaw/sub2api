@@ -11,6 +11,12 @@ import (
 )
 
 func TestMigration175EnforcesOpenAILongContextBillingWriteInvariant(t *testing.T) {
+	// 断言的是 PG 版迁移的库内触发器语义（BEFORE 触发器改写 NEW.extra、
+	// AFTER 触发器联动影子账号入队 scheduler_outbox）。MySQL 翻译版按
+	// DIALECT_MYSQL_GUIDE 有意弱化（触发器 1442 限制：影子继承/联动入队退化为
+	// 应用层 + 一次性回填），且默认 MySQL 测试库（无 SUPER 权限）不创建触发器，
+	// 语义与夹具（jsonb_set/RETURNING/|| 合并）均不可移植，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 	migrationSQL, err := dbmigrations.FS.ReadFile("175_default_openai_long_context_billing.sql")

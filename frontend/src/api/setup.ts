@@ -19,6 +19,8 @@ export interface SetupStatus {
 }
 
 export interface DatabaseConfig {
+  /** Database driver: "postgres" (default) or "mysql" */
+  driver?: string
   host: string
   port: number
   user: string

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -60,6 +61,13 @@ INSERT INTO ops_error_logs (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
 )`
 
+// pgPlaceholderRegex 匹配 PG 风格 $n 占位符，仅用于从 PG 语句常量派生 MySQL 版本。
+var pgPlaceholderRegex = regexp.MustCompile(`\$\d+`)
+
+// insertOpsErrorLogSQLMySQL 是 insertOpsErrorLogSQL 的 MySQL 版（$n→?），
+// 由 PG 常量派生以保证列清单不漂移；两者均与 opsInsertErrorLogArgs 的参数顺序对应。
+var insertOpsErrorLogSQLMySQL = pgPlaceholderRegex.ReplaceAllString(insertOpsErrorLogSQL, "?")
+
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
 	return &opsRepository{db: db}
 }
@@ -70,6 +78,18 @@ func (r *opsRepository) InsertErrorLog(ctx context.Context, input *service.OpsIn
 	}
 	if input == nil {
 		return 0, fmt.Errorf("nil input")
+	}
+	if IsMySQL() {
+		// 规范 RETURNING 改写第 1 类：INSERT..RETURNING id → ExecContext + LastInsertId。
+		res, err := r.db.ExecContext(ctx, insertOpsErrorLogSQLMySQL, opsInsertErrorLogArgs(input)...)
+		if err != nil {
+			return 0, err
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		return id, nil
 	}
 
 	var id int64
@@ -102,7 +122,11 @@ func (r *opsRepository) BatchInsertErrorLogs(ctx context.Context, inputs []*serv
 		}
 	}()
 
-	stmt, err := tx.PrepareContext(ctx, insertOpsErrorLogSQL)
+	stmtSQL := insertOpsErrorLogSQL
+	if IsMySQL() {
+		stmtSQL = insertOpsErrorLogSQLMySQL
+	}
+	stmt, err := tx.PrepareContext(ctx, stmtSQL)
 	if err != nil {
 		return 0, err
 	}
@@ -219,6 +243,10 @@ func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *service.OpsEr
 	}
 	if pageSize > 500 {
 		pageSize = 500
+	}
+
+	if IsMySQL() {
+		return r.listErrorLogsMySQL(ctx, filter, page, pageSize)
 	}
 
 	where, args := buildOpsErrorLogsWhere(filter)
@@ -400,6 +428,9 @@ func (r *opsRepository) GetErrorLogByID(ctx context.Context, id int64) (*service
 	}
 	if id <= 0 {
 		return nil, fmt.Errorf("invalid id")
+	}
+	if IsMySQL() {
+		return r.getErrorLogByIDMySQL(ctx, id)
 	}
 
 	q := `
@@ -622,6 +653,24 @@ WHERE id = $1`
 		at = sql.NullTime{Time: now, Valid: true}
 	}
 
+	if IsMySQL() {
+		_, err := r.db.ExecContext(
+			ctx,
+			`
+UPDATE ops_error_logs
+SET
+  resolved = ?,
+  resolved_at = ?,
+  resolved_by_user_id = ?
+WHERE id = ?`,
+			resolved,
+			at,
+			nullInt64(resolvedByUserID),
+			errorID,
+		)
+		return err
+	}
+
 	_, err := r.db.ExecContext(
 		ctx,
 		q,
@@ -639,6 +688,11 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 	}
 	if len(inputs) == 0 {
 		return 0, nil
+	}
+	if IsMySQL() {
+		// PG 版使用 pq.CopyIn（COPY 协议），MySQL 无对应协议，
+		// 改为同事务内逐行执行预编译 INSERT（相同的跳过规则与行内容）。
+		return r.batchInsertSystemLogsMySQL(ctx, inputs)
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -746,6 +800,10 @@ func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsS
 		pageSize = 200
 	}
 
+	if IsMySQL() {
+		return r.listSystemLogsMySQL(ctx, filter, page, pageSize)
+	}
+
 	where, args, _ := buildOpsSystemLogsWhere(filter)
 	countSQL := "SELECT COUNT(*) FROM ops_system_logs l " + where
 	var total int
@@ -848,6 +906,20 @@ func (r *opsRepository) DeleteSystemLogs(ctx context.Context, filter *service.Op
 		filter = &service.OpsSystemLogCleanupFilter{}
 	}
 
+	if IsMySQL() {
+		where, args, hasConstraint := buildOpsSystemLogsCleanupWhereMySQL(filter)
+		if !hasConstraint {
+			return 0, fmt.Errorf("cleanup requires at least one filter condition")
+		}
+
+		query := "DELETE FROM ops_system_logs l " + where
+		res, err := r.db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+
 	where, args, hasConstraint := buildOpsSystemLogsCleanupWhere(filter)
 	if !hasConstraint {
 		return 0, fmt.Errorf("cleanup requires at least one filter condition")
@@ -871,6 +943,17 @@ func (r *opsRepository) InsertSystemLogCleanupAudit(ctx context.Context, input *
 	createdAt := input.CreatedAt
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
+	}
+	if IsMySQL() {
+		_, err := r.db.ExecContext(ctx, `
+INSERT INTO ops_system_log_cleanup_audits (
+  created_at,
+  operator_id,
+  conditions,
+  deleted_rows
+) VALUES (?, ?, ?, ?)
+`, createdAt.UTC(), input.OperatorID, input.Conditions, input.DeletedRows)
+		return err
 	}
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO ops_system_log_cleanup_audits (
@@ -1231,4 +1314,825 @@ func opsNullInt16(v *int16) any {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(*v), Valid: true}
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。
+// ---------------------------------------------------------------------------
+
+// listErrorLogsMySQL 是 ListErrorLogs 的 MySQL 实现，与 PG 版逐行对应，差异点：
+//   - buildOpsErrorLogsWhereMySQL（$n→?、ANY→IN、ILIKE→LIKE，见下）；
+//   - LIMIT/OFFSET 用 ? 占位符；
+//   - PG `host(e.client_ip)`（INET → 去掩码文本）→ 直接取 e.client_ip：
+//     MySQL 列为 VARCHAR(45)，写入路径（InsertErrorLog）只存纯 IP 文本，
+//     不带掩码，行为对齐。
+//   - `groups` 为 MySQL 8 保留字加反引号。
+func (r *opsRepository) listErrorLogsMySQL(ctx context.Context, filter *service.OpsErrorLogFilter, page, pageSize int) (*service.OpsErrorLogList, error) {
+	where, args := buildOpsErrorLogsWhereMySQL(filter)
+	countSQL := "SELECT COUNT(*) FROM ops_error_logs e " + where
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	offset := (page - 1) * pageSize
+	argsWithLimit := append(args, pageSize, offset)
+	selectSQL := `
+SELECT
+  e.id,
+  e.created_at,
+  e.error_phase,
+  e.error_type,
+  COALESCE(e.error_owner, ''),
+  COALESCE(e.error_source, ''),
+  e.severity,
+  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(e.platform, ''),
+  COALESCE(e.model, ''),
+  COALESCE(e.resolved, false),
+  e.resolved_at,
+  e.resolved_by_user_id,
+  COALESCE(u2.email, ''),
+  COALESCE(e.client_request_id, ''),
+  COALESCE(e.request_id, ''),
+  COALESCE(e.error_message, ''),
+  e.user_id,
+  COALESCE(u.email, ''),
+  e.api_key_id,
+  e.account_id,
+  COALESCE(a.name, ''),
+  e.group_id,
+  COALESCE(g.name, ''),
+  CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip END,
+  COALESCE(e.request_path, ''),
+  e.stream,
+  COALESCE(e.inbound_endpoint, ''),
+  COALESCE(e.upstream_endpoint, ''),
+  COALESCE(e.requested_model, ''),
+  COALESCE(e.upstream_model, ''),
+  COALESCE(e.user_agent, ''),
+  e.request_type,
+  COALESCE(ak.name, ''),
+  ak.deleted_at
+FROM ops_error_logs e
+LEFT JOIN accounts a ON e.account_id = a.id
+LEFT JOIN ` + "`groups`" + ` g ON e.group_id = g.id
+LEFT JOIN users u ON e.user_id = u.id
+LEFT JOIN users u2 ON e.resolved_by_user_id = u2.id
+LEFT JOIN api_keys ak ON ak.id = e.api_key_id
+` + where + `
+ORDER BY ` + opsErrorLogsOrderBy(filter) + `
+LIMIT ? OFFSET ?`
+
+	rows, err := r.db.QueryContext(ctx, selectSQL, argsWithLimit...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]*service.OpsErrorLog, 0, pageSize)
+	for rows.Next() {
+		var item service.OpsErrorLog
+		var statusCode sql.NullInt64
+		var clientIP sql.NullString
+		var userID sql.NullInt64
+		var apiKeyID sql.NullInt64
+		var accountID sql.NullInt64
+		var accountName string
+		var groupID sql.NullInt64
+		var groupName string
+		var userEmail string
+		var resolvedAt sql.NullTime
+		var resolvedBy sql.NullInt64
+		var resolvedByName string
+		var requestType sql.NullInt64
+		var apiKeyName string
+		var apiKeyDeletedAt sql.NullTime
+		if err := rows.Scan(
+			&item.ID,
+			&item.CreatedAt,
+			&item.Phase,
+			&item.Type,
+			&item.Owner,
+			&item.Source,
+			&item.Severity,
+			&statusCode,
+			&item.Platform,
+			&item.Model,
+			&item.Resolved,
+			&resolvedAt,
+			&resolvedBy,
+			&resolvedByName,
+			&item.ClientRequestID,
+			&item.RequestID,
+			&item.Message,
+			&userID,
+			&userEmail,
+			&apiKeyID,
+			&accountID,
+			&accountName,
+			&groupID,
+			&groupName,
+			&clientIP,
+			&item.RequestPath,
+			&item.Stream,
+			&item.InboundEndpoint,
+			&item.UpstreamEndpoint,
+			&item.RequestedModel,
+			&item.UpstreamModel,
+			&item.UserAgent,
+			&requestType,
+			&apiKeyName,
+			&apiKeyDeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		if resolvedAt.Valid {
+			t := resolvedAt.Time
+			item.ResolvedAt = &t
+		}
+		if resolvedBy.Valid {
+			v := resolvedBy.Int64
+			item.ResolvedByUserID = &v
+		}
+		item.ResolvedByUserName = resolvedByName
+		item.StatusCode = int(statusCode.Int64)
+		if clientIP.Valid {
+			s := clientIP.String
+			item.ClientIP = &s
+		}
+		if userID.Valid {
+			v := userID.Int64
+			item.UserID = &v
+		}
+		item.UserEmail = userEmail
+		if apiKeyID.Valid {
+			v := apiKeyID.Int64
+			item.APIKeyID = &v
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			item.AccountID = &v
+		}
+		item.AccountName = accountName
+		if groupID.Valid {
+			v := groupID.Int64
+			item.GroupID = &v
+		}
+		item.GroupName = groupName
+		if requestType.Valid {
+			v := int16(requestType.Int64)
+			item.RequestType = &v
+		}
+		item.APIKeyName = apiKeyName
+		item.APIKeyDeleted = apiKeyDeletedAt.Valid
+		out = append(out, &item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &service.OpsErrorLogList{
+		Errors:   out,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// getErrorLogByIDMySQL 是 GetErrorLogByID 的 MySQL 实现，与 PG 版逐行对应，差异点：
+//   - COALESCE(e.upstream_errors::text, ”) → COALESCE(CAST(e.upstream_errors AS CHAR), ”)
+//     （JSON 列转文本）；
+//   - host(e.client_ip) → e.client_ip（同 listErrorLogsMySQL 说明）；
+//   - $1→?；`groups` 反引号。
+func (r *opsRepository) getErrorLogByIDMySQL(ctx context.Context, id int64) (*service.OpsErrorLogDetail, error) {
+	q := `
+SELECT
+  e.id,
+  e.created_at,
+  e.error_phase,
+  e.error_type,
+  COALESCE(e.error_owner, ''),
+  COALESCE(e.error_source, ''),
+  e.severity,
+  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(e.platform, ''),
+  COALESCE(e.model, ''),
+  COALESCE(e.resolved, false),
+  e.resolved_at,
+  e.resolved_by_user_id,
+  COALESCE(e.client_request_id, ''),
+  COALESCE(e.request_id, ''),
+  COALESCE(e.error_message, ''),
+  COALESCE(e.error_body, ''),
+  e.upstream_status_code,
+  COALESCE(e.upstream_error_message, ''),
+  COALESCE(e.upstream_error_detail, ''),
+  COALESCE(CAST(e.upstream_errors AS CHAR), ''),
+  e.is_business_limited,
+  e.user_id,
+  COALESCE(u.email, ''),
+  e.api_key_id,
+  e.account_id,
+  COALESCE(a.name, ''),
+  e.group_id,
+  COALESCE(g.name, ''),
+  CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip END,
+  COALESCE(e.request_path, ''),
+  e.stream,
+  COALESCE(e.inbound_endpoint, ''),
+  COALESCE(e.upstream_endpoint, ''),
+  COALESCE(e.requested_model, ''),
+  COALESCE(e.upstream_model, ''),
+  e.request_type,
+  COALESCE(e.user_agent, ''),
+  e.auth_latency_ms,
+  e.routing_latency_ms,
+  e.upstream_latency_ms,
+  e.response_latency_ms,
+  e.time_to_first_token_ms,
+  COALESCE(e.api_key_prefix, ''),
+  COALESCE(ak.name, ''),
+  ak.deleted_at
+FROM ops_error_logs e
+LEFT JOIN users u ON e.user_id = u.id
+LEFT JOIN accounts a ON e.account_id = a.id
+LEFT JOIN ` + "`groups`" + ` g ON e.group_id = g.id
+LEFT JOIN api_keys ak ON ak.id = e.api_key_id
+WHERE e.id = ?
+LIMIT 1`
+
+	var out service.OpsErrorLogDetail
+	var statusCode sql.NullInt64
+	var upstreamStatusCode sql.NullInt64
+	var resolvedAt sql.NullTime
+	var resolvedBy sql.NullInt64
+	var clientIP sql.NullString
+	var userID sql.NullInt64
+	var apiKeyID sql.NullInt64
+	var accountID sql.NullInt64
+	var groupID sql.NullInt64
+	var authLatency sql.NullInt64
+	var routingLatency sql.NullInt64
+	var upstreamLatency sql.NullInt64
+	var responseLatency sql.NullInt64
+	var ttft sql.NullInt64
+	var requestType sql.NullInt64
+	var detailAPIKeyName string
+	var detailAPIKeyDeletedAt sql.NullTime
+
+	err := r.db.QueryRowContext(ctx, q, id).Scan(
+		&out.ID,
+		&out.CreatedAt,
+		&out.Phase,
+		&out.Type,
+		&out.Owner,
+		&out.Source,
+		&out.Severity,
+		&statusCode,
+		&out.Platform,
+		&out.Model,
+		&out.Resolved,
+		&resolvedAt,
+		&resolvedBy,
+		&out.ClientRequestID,
+		&out.RequestID,
+		&out.Message,
+		&out.ErrorBody,
+		&upstreamStatusCode,
+		&out.UpstreamErrorMessage,
+		&out.UpstreamErrorDetail,
+		&out.UpstreamErrors,
+		&out.IsBusinessLimited,
+		&userID,
+		&out.UserEmail,
+		&apiKeyID,
+		&accountID,
+		&out.AccountName,
+		&groupID,
+		&out.GroupName,
+		&clientIP,
+		&out.RequestPath,
+		&out.Stream,
+		&out.InboundEndpoint,
+		&out.UpstreamEndpoint,
+		&out.RequestedModel,
+		&out.UpstreamModel,
+		&requestType,
+		&out.UserAgent,
+		&authLatency,
+		&routingLatency,
+		&upstreamLatency,
+		&responseLatency,
+		&ttft,
+		&out.APIKeyPrefix,
+		&detailAPIKeyName,
+		&detailAPIKeyDeletedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	out.StatusCode = int(statusCode.Int64)
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		out.ResolvedAt = &t
+	}
+	if resolvedBy.Valid {
+		v := resolvedBy.Int64
+		out.ResolvedByUserID = &v
+	}
+	if clientIP.Valid {
+		s := clientIP.String
+		out.ClientIP = &s
+	}
+	if upstreamStatusCode.Valid {
+		v := int(upstreamStatusCode.Int64)
+		out.UpstreamStatusCode = &v
+	}
+	if userID.Valid {
+		v := userID.Int64
+		out.UserID = &v
+	}
+	if apiKeyID.Valid {
+		v := apiKeyID.Int64
+		out.APIKeyID = &v
+	}
+	if accountID.Valid {
+		v := accountID.Int64
+		out.AccountID = &v
+	}
+	if groupID.Valid {
+		v := groupID.Int64
+		out.GroupID = &v
+	}
+	if authLatency.Valid {
+		v := authLatency.Int64
+		out.AuthLatencyMs = &v
+	}
+	if routingLatency.Valid {
+		v := routingLatency.Int64
+		out.RoutingLatencyMs = &v
+	}
+	if upstreamLatency.Valid {
+		v := upstreamLatency.Int64
+		out.UpstreamLatencyMs = &v
+	}
+	if responseLatency.Valid {
+		v := responseLatency.Int64
+		out.ResponseLatencyMs = &v
+	}
+	if ttft.Valid {
+		v := ttft.Int64
+		out.TimeToFirstTokenMs = &v
+	}
+	if requestType.Valid {
+		v := int16(requestType.Int64)
+		out.RequestType = &v
+	}
+	out.APIKeyName = detailAPIKeyName
+	out.APIKeyDeleted = detailAPIKeyDeletedAt.Valid
+
+	// Normalize upstream_errors to empty string when stored as JSON null.
+	out.UpstreamErrors = strings.TrimSpace(out.UpstreamErrors)
+	if out.UpstreamErrors == "null" {
+		out.UpstreamErrors = ""
+	}
+
+	return &out, nil
+}
+
+// batchInsertSystemLogsMySQL 是 BatchInsertSystemLogs 的 MySQL 实现：
+// PG 版 pq.CopyIn（COPY 协议）改为同事务内预编译逐行 INSERT，
+// 跳过规则（空 level/message、默认 component/extra）与行内容与 PG 版完全一致。
+func (r *opsRepository) batchInsertSystemLogsMySQL(ctx context.Context, inputs []*service.OpsInsertSystemLogInput) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.PrepareContext(ctx, `
+INSERT INTO ops_system_logs (
+  created_at,
+  host,
+  level,
+  component,
+  message,
+  request_id,
+  client_request_id,
+  user_id,
+  api_key_id,
+  account_id,
+  platform,
+  model,
+  extra
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = stmt.Close()
+	}()
+
+	var inserted int64
+	for _, input := range inputs {
+		if input == nil {
+			continue
+		}
+		createdAt := input.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = time.Now().UTC()
+		}
+		component := strings.TrimSpace(input.Component)
+		level := strings.ToLower(strings.TrimSpace(input.Level))
+		message := strings.TrimSpace(input.Message)
+		if level == "" || message == "" {
+			continue
+		}
+		if component == "" {
+			component = "app"
+		}
+		extra := strings.TrimSpace(input.ExtraJSON)
+		if extra == "" {
+			extra = "{}"
+		}
+		if _, err = stmt.ExecContext(
+			ctx,
+			createdAt.UTC(),
+			opsNullString(input.Host),
+			level,
+			component,
+			message,
+			opsNullString(input.RequestID),
+			opsNullString(input.ClientRequestID),
+			opsNullInt64(input.UserID),
+			opsNullInt64(input.APIKeyID),
+			opsNullInt64(input.AccountID),
+			opsNullString(input.Platform),
+			opsNullString(input.Model),
+			extra,
+		); err != nil {
+			return inserted, err
+		}
+		inserted++
+	}
+
+	if err = tx.Commit(); err != nil {
+		return inserted, err
+	}
+	return inserted, nil
+}
+
+// listSystemLogsMySQL 是 ListSystemLogs 的 MySQL 实现，与 PG 版逐行对应，差异点：
+//   - buildOpsSystemLogsWhereMySQL（$n→?、ILIKE→LIKE、extra::text→CAST(extra AS CHAR)）；
+//   - SELECT 里 COALESCE(l.extra::text, '{}') → COALESCE(CAST(l.extra AS CHAR), '{}')；
+//   - LIMIT/OFFSET 用 ? 占位符。
+func (r *opsRepository) listSystemLogsMySQL(ctx context.Context, filter *service.OpsSystemLogFilter, page, pageSize int) (*service.OpsSystemLogList, error) {
+	where, args, _ := buildOpsSystemLogsWhereMySQL(filter)
+	countSQL := "SELECT COUNT(*) FROM ops_system_logs l " + where
+	var total int
+	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	offset := (page - 1) * pageSize
+	argsWithLimit := append(args, pageSize, offset)
+	query := `
+SELECT
+  l.id,
+  l.created_at,
+  COALESCE(l.host, ''),
+  l.level,
+  COALESCE(l.component, ''),
+  COALESCE(l.message, ''),
+  COALESCE(l.request_id, ''),
+  COALESCE(l.client_request_id, ''),
+  l.user_id,
+  l.api_key_id,
+  l.account_id,
+  COALESCE(l.platform, ''),
+  COALESCE(l.model, ''),
+  COALESCE(CAST(l.extra AS CHAR), '{}')
+FROM ops_system_logs l
+` + where + `
+ORDER BY l.created_at DESC, l.id DESC
+LIMIT ? OFFSET ?`
+
+	rows, err := r.db.QueryContext(ctx, query, argsWithLimit...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	logs := make([]*service.OpsSystemLog, 0, pageSize)
+	for rows.Next() {
+		item := &service.OpsSystemLog{}
+		var userID sql.NullInt64
+		var apiKeyID sql.NullInt64
+		var accountID sql.NullInt64
+		var extraRaw string
+		if err := rows.Scan(
+			&item.ID,
+			&item.CreatedAt,
+			&item.Host,
+			&item.Level,
+			&item.Component,
+			&item.Message,
+			&item.RequestID,
+			&item.ClientRequestID,
+			&userID,
+			&apiKeyID,
+			&accountID,
+			&item.Platform,
+			&item.Model,
+			&extraRaw,
+		); err != nil {
+			return nil, err
+		}
+		if userID.Valid {
+			v := userID.Int64
+			item.UserID = &v
+		}
+		if apiKeyID.Valid {
+			v := apiKeyID.Int64
+			item.APIKeyID = &v
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			item.AccountID = &v
+		}
+		extraRaw = strings.TrimSpace(extraRaw)
+		if extraRaw != "" && extraRaw != "null" && extraRaw != "{}" {
+			extra := make(map[string]any)
+			if err := json.Unmarshal([]byte(extraRaw), &extra); err == nil {
+				item.Extra = extra
+			}
+		}
+		logs = append(logs, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &service.OpsSystemLogList{
+		Logs:     logs,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// buildOpsErrorLogsWhereMySQL 是 buildOpsErrorLogsWhere 的 MySQL 版，语义逐条对应：
+//   - $n→?;
+//   - `= ANY(pq.Array(...))` → IN (?,?,...)（规范：占位符用 Placeholders 展开）；
+//   - ILIKE → LIKE（utf8mb4_0900_ai_ci 天然大小写不敏感；LIKE 默认转义符同为反斜杠，
+//     escapeLikePattern 转义结果两侧通用）；
+//   - 其余条件（含 false/true 布尔字面量、LOWER/COALESCE）两侧通用。
+func buildOpsErrorLogsWhereMySQL(filter *service.OpsErrorLogFilter) (string, []any) {
+	clauses := make([]string, 0, 12)
+	args := make([]any, 0, 12)
+	clauses = append(clauses, "1=1")
+
+	phaseFilter := ""
+	if filter != nil {
+		phaseFilter = strings.TrimSpace(strings.ToLower(filter.Phase))
+	}
+	if !opsFilterIncludesRecoveredProviderRows(filter, phaseFilter) {
+		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
+	}
+
+	if filter.StartTime != nil && !filter.StartTime.IsZero() {
+		args = append(args, filter.StartTime.UTC())
+		clauses = append(clauses, "e.created_at >= ?")
+	}
+	if filter.EndTime != nil && !filter.EndTime.IsZero() {
+		args = append(args, filter.EndTime.UTC())
+		clauses = append(clauses, "e.created_at < ?")
+	}
+	if p := strings.TrimSpace(filter.Platform); p != "" {
+		args = append(args, p)
+		clauses = append(clauses, "e.platform = ?")
+	}
+	if filter.GroupID != nil && *filter.GroupID > 0 {
+		args = append(args, *filter.GroupID)
+		clauses = append(clauses, "e.group_id = ?")
+	}
+	if filter.AccountID != nil && *filter.AccountID > 0 {
+		args = append(args, *filter.AccountID)
+		clauses = append(clauses, "e.account_id = ?")
+	}
+	if phase := phaseFilter; phase != "" {
+		args = append(args, phase)
+		clauses = append(clauses, "e.error_phase = ?")
+	}
+	if filter != nil {
+		if owner := strings.TrimSpace(strings.ToLower(filter.Owner)); owner != "" {
+			args = append(args, owner)
+			clauses = append(clauses, "LOWER(COALESCE(e.error_owner,'')) = ?")
+		}
+		if source := strings.TrimSpace(strings.ToLower(filter.Source)); source != "" {
+			args = append(args, source)
+			clauses = append(clauses, "LOWER(COALESCE(e.error_source,'')) = ?")
+		}
+	}
+	if filter.Resolved != nil {
+		args = append(args, *filter.Resolved)
+		clauses = append(clauses, "COALESCE(e.resolved,false) = ?")
+	}
+
+	// View filter: errors vs excluded vs all.
+	switch strings.ToLower(strings.TrimSpace(filter.View)) {
+	case "", "errors":
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
+	case "excluded":
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = true")
+	case "all":
+		// no-op
+	default:
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
+	}
+	if len(filter.StatusCodes) > 0 {
+		cond := "COALESCE(e.upstream_status_code, e.status_code, 0) IN (" + Placeholders(len(filter.StatusCodes)) + ")"
+		clauses = append(clauses, cond)
+		for _, sc := range filter.StatusCodes {
+			args = append(args, sc)
+		}
+	} else if filter.StatusCodesOther {
+		// "Other" means: status codes not in the common list.
+		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529}
+		cond := "NOT (COALESCE(e.upstream_status_code, e.status_code, 0) IN (" + Placeholders(len(known)) + "))"
+		clauses = append(clauses, cond)
+		for _, sc := range known {
+			args = append(args, sc)
+		}
+	}
+	// Exact correlation keys (preferred for request↔upstream linkage).
+	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
+		args = append(args, rid)
+		clauses = append(clauses, "COALESCE(e.request_id,'') = ?")
+	}
+	if crid := strings.TrimSpace(filter.ClientRequestID); crid != "" {
+		args = append(args, crid)
+		clauses = append(clauses, "COALESCE(e.client_request_id,'') = ?")
+	}
+
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		like := "%" + q + "%"
+		// 同一参数复用于 3 个占位符（PG 版用 $n 重复引用），MySQL 需按占位符个数重复追加。
+		args = append(args, like, like, like)
+		clauses = append(clauses, "(e.request_id LIKE ? OR e.client_request_id LIKE ? OR e.error_message LIKE ?)")
+	}
+
+	if userQuery := strings.TrimSpace(filter.UserQuery); userQuery != "" {
+		like := "%" + userQuery + "%"
+		args = append(args, like)
+		clauses = append(clauses, "EXISTS (SELECT 1 FROM users u WHERE u.id = e.user_id AND u.email LIKE ?)")
+	}
+
+	if filter.UserID != nil && *filter.UserID > 0 {
+		args = append(args, *filter.UserID)
+		clauses = append(clauses, "e.user_id = ?")
+	}
+	if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
+		args = append(args, *filter.APIKeyID)
+		clauses = append(clauses, "e.api_key_id = ?")
+	}
+	if m := strings.TrimSpace(filter.Model); m != "" {
+		if filter.ModelFuzzy {
+			args = append(args, "%"+escapeLikePattern(m)+"%")
+			clauses = append(clauses, "COALESCE(e.requested_model, e.model, '') LIKE ?")
+		} else {
+			args = append(args, m)
+			clauses = append(clauses, "COALESCE(e.requested_model, e.model, '') = ?")
+		}
+	}
+	if filter.ExcludeCountTokens {
+		clauses = append(clauses, "COALESCE(e.is_count_tokens, false) = false")
+	}
+	if len(filter.ErrorPhasesAny) > 0 {
+		clauses = append(clauses, "e.error_phase IN ("+Placeholders(len(filter.ErrorPhasesAny))+")")
+		for _, p := range filter.ErrorPhasesAny {
+			args = append(args, p)
+		}
+	}
+	if len(filter.ErrorTypesAny) > 0 {
+		clauses = append(clauses, "e.error_type IN ("+Placeholders(len(filter.ErrorTypesAny))+")")
+		for _, t := range filter.ErrorTypesAny {
+			args = append(args, t)
+		}
+	}
+
+	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// buildOpsSystemLogsWhereMySQL 是 buildOpsSystemLogsWhere 的 MySQL 版（$n→?）：
+// ILIKE → LIKE；COALESCE(l.extra::text,”) ILIKE → COALESCE(CAST(l.extra AS CHAR),”) LIKE
+// （JSON 列转文本后模糊匹配，与 PG jsonb::text 的 best-effort 行为对齐）。
+func buildOpsSystemLogsWhereMySQL(filter *service.OpsSystemLogFilter) (string, []any, bool) {
+	clauses := make([]string, 0, 10)
+	args := make([]any, 0, 10)
+	clauses = append(clauses, "1=1")
+	hasConstraint := false
+
+	if filter != nil && filter.StartTime != nil && !filter.StartTime.IsZero() {
+		args = append(args, filter.StartTime.UTC())
+		clauses = append(clauses, "l.created_at >= ?")
+		hasConstraint = true
+	}
+	if filter != nil && filter.EndTime != nil && !filter.EndTime.IsZero() {
+		args = append(args, filter.EndTime.UTC())
+		clauses = append(clauses, "l.created_at < ?")
+		hasConstraint = true
+	}
+	if filter != nil {
+		if v := strings.TrimSpace(filter.Host); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "l.host = ?")
+			hasConstraint = true
+		}
+		if v := strings.ToLower(strings.TrimSpace(filter.Level)); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "LOWER(COALESCE(l.level,'')) = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.Component); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.component,'') = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.RequestID); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.request_id,'') = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.ClientRequestID); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.client_request_id,'') = ?")
+			hasConstraint = true
+		}
+		if filter.UserID != nil && *filter.UserID > 0 {
+			args = append(args, *filter.UserID)
+			clauses = append(clauses, "l.user_id = ?")
+			hasConstraint = true
+		}
+		if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
+			args = append(args, *filter.APIKeyID)
+			clauses = append(clauses, "l.api_key_id = ?")
+			hasConstraint = true
+		}
+		if filter.AccountID != nil && *filter.AccountID > 0 {
+			args = append(args, *filter.AccountID)
+			clauses = append(clauses, "l.account_id = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.Platform); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.platform,'') = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.Model); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.model,'') = ?")
+			hasConstraint = true
+		}
+		if v := strings.TrimSpace(filter.Query); v != "" {
+			like := "%" + v + "%"
+			// 同一参数复用于 4 个占位符（PG 版用 $n 重复引用），MySQL 需按占位符个数重复追加。
+			args = append(args, like, like, like, like)
+			clauses = append(clauses, "(l.message LIKE ? OR COALESCE(l.request_id,'') LIKE ? OR COALESCE(l.client_request_id,'') LIKE ? OR COALESCE(CAST(l.extra AS CHAR),'') LIKE ?)")
+			hasConstraint = true
+		}
+	}
+
+	return "WHERE " + strings.Join(clauses, " AND "), args, hasConstraint
+}
+
+// buildOpsSystemLogsCleanupWhereMySQL 是 buildOpsSystemLogsCleanupWhere 的 MySQL 版，
+// 与 PG 版同样复用列表过滤构造器。
+func buildOpsSystemLogsCleanupWhereMySQL(filter *service.OpsSystemLogCleanupFilter) (string, []any, bool) {
+	if filter == nil {
+		filter = &service.OpsSystemLogCleanupFilter{}
+	}
+	listFilter := &service.OpsSystemLogFilter{
+		StartTime:       filter.StartTime,
+		EndTime:         filter.EndTime,
+		Host:            filter.Host,
+		Level:           filter.Level,
+		Component:       filter.Component,
+		RequestID:       filter.RequestID,
+		ClientRequestID: filter.ClientRequestID,
+		UserID:          filter.UserID,
+		APIKeyID:        filter.APIKeyID,
+		AccountID:       filter.AccountID,
+		Platform:        filter.Platform,
+		Model:           filter.Model,
+		Query:           filter.Query,
+	}
+	return buildOpsSystemLogsWhereMySQL(listFilter)
 }

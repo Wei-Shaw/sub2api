@@ -20,6 +20,9 @@ func NewChannelMonitorV2Repository(db *sql.DB) service.ChannelMonitorV2Repositor
 }
 
 func (r *channelMonitorV2Repository) GetConfig(ctx context.Context) (*service.ChannelMonitorV2Config, error) {
+	if IsMySQL() {
+		return r.getConfigMySQL(ctx)
+	}
 	var cfg service.ChannelMonitorV2Config
 	var platforms, thresholds []byte
 	err := r.db.QueryRowContext(ctx, `
@@ -50,6 +53,53 @@ func (r *channelMonitorV2Repository) GetConfig(ctx context.Context) (*service.Ch
 	return &cfg, nil
 }
 
+// getConfigMySQL 是 GetConfig 的 MySQL 实现。group_ids / ignored_error_categories 列
+// 已由数组改为 JSON（migrations/mysql/194、196）：Scan 到 []byte 后用 encoding/json
+// 反序列化，对应 PG 版的 pq.Array 扫描；platforms / health_thresholds 本就是 JSON 列。
+func (r *channelMonitorV2Repository) getConfigMySQL(ctx context.Context) (*service.ChannelMonitorV2Config, error) {
+	var cfg service.ChannelMonitorV2Config
+	var platforms, groupIDs, ignoredCategories, thresholds []byte
+	err := r.db.QueryRowContext(ctx, `
+		SELECT version, enabled, refresh_interval_seconds, platforms, group_ids,
+		       COALESCE(ignored_error_categories, CAST('[]' AS JSON)),
+		       COALESCE(health_thresholds, CAST('{}' AS JSON)),
+		       updated_at, updated_by
+		FROM channel_monitor_v2_config WHERE id = 1`).Scan(
+		&cfg.Version, &cfg.Enabled, &cfg.RefreshIntervalSeconds, &platforms,
+		&groupIDs, &ignoredCategories,
+		&thresholds,
+		&cfg.UpdatedAt, &cfg.UpdatedBy,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get channel monitor v2 config: %w", err)
+	}
+	if err := json.Unmarshal(platforms, &cfg.Platforms); err != nil {
+		return nil, fmt.Errorf("decode channel monitor v2 platforms: %w", err)
+	}
+	if len(groupIDs) > 0 {
+		if err := json.Unmarshal(groupIDs, &cfg.GroupIDs); err != nil {
+			return nil, fmt.Errorf("decode channel monitor v2 group ids: %w", err)
+		}
+	}
+	if cfg.GroupIDs == nil {
+		cfg.GroupIDs = []int64{}
+	}
+	if len(ignoredCategories) > 0 {
+		if err := json.Unmarshal(ignoredCategories, &cfg.IgnoredErrorCategories); err != nil {
+			return nil, fmt.Errorf("decode channel monitor v2 ignored error categories: %w", err)
+		}
+	}
+	if cfg.IgnoredErrorCategories == nil {
+		cfg.IgnoredErrorCategories = []string{}
+	}
+	cfg.HealthThresholds = service.DefaultChannelMonitorV2HealthThresholds()
+	if len(thresholds) > 0 {
+		_ = json.Unmarshal(thresholds, &cfg.HealthThresholds)
+	}
+	cfg.HealthThresholds = service.NormalizeChannelMonitorV2HealthThresholds(cfg.HealthThresholds)
+	return &cfg, nil
+}
+
 func (r *channelMonitorV2Repository) UpdateConfig(ctx context.Context, cfg service.ChannelMonitorV2Config, expectedVersion int) (*service.ChannelMonitorV2Config, error) {
 	platforms, err := json.Marshal(cfg.Platforms)
 	if err != nil {
@@ -62,6 +112,9 @@ func (r *channelMonitorV2Repository) UpdateConfig(ctx context.Context, cfg servi
 	thresholds, err := json.Marshal(cfg.HealthThresholds)
 	if err != nil {
 		return nil, err
+	}
+	if IsMySQL() {
+		return r.updateConfigMySQL(ctx, cfg, expectedVersion, platforms, thresholds)
 	}
 	var updated service.ChannelMonitorV2Config
 	var raw, rawThresholds []byte
@@ -89,6 +142,86 @@ func (r *channelMonitorV2Repository) UpdateConfig(ctx context.Context, cfg servi
 	}
 	if err := json.Unmarshal(raw, &updated.Platforms); err != nil {
 		return nil, err
+	}
+	if updated.IgnoredErrorCategories == nil {
+		updated.IgnoredErrorCategories = []string{}
+	}
+	updated.HealthThresholds = service.DefaultChannelMonitorV2HealthThresholds()
+	_ = json.Unmarshal(rawThresholds, &updated.HealthThresholds)
+	updated.HealthThresholds = service.NormalizeChannelMonitorV2HealthThresholds(updated.HealthThresholds)
+	return &updated, nil
+}
+
+// updateConfigMySQL 是 UpdateConfig 的 MySQL 实现。UPDATE ... RETURNING 无 MySQL 对应，
+// 按规范拆为同事务「UPDATE → RowsAffected 判乐观锁 → 回查读取更新后的行」；
+// version = version + 1 保证命中行必然变化，RowsAffected==0 即 WHERE version 不匹配。
+// group_ids / ignored_error_categories 写入侧 json.Marshal 成 JSON 字符串参数，
+// 回查读取侧 Scan 到 []byte 后反序列化（列已改 JSON，见 migrations/mysql/194、196）。
+func (r *channelMonitorV2Repository) updateConfigMySQL(ctx context.Context, cfg service.ChannelMonitorV2Config, expectedVersion int, platforms, thresholds []byte) (*service.ChannelMonitorV2Config, error) {
+	groupIDs, err := json.Marshal(cfg.GroupIDs)
+	if err != nil {
+		return nil, err
+	}
+	ignoredCategories, err := json.Marshal(cfg.IgnoredErrorCategories)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // commit 之后调用是无害的 no-op
+
+	res, err := tx.ExecContext(ctx, `
+		UPDATE channel_monitor_v2_config
+		SET version = version + 1, enabled = ?, refresh_interval_seconds = ?,
+		    platforms = ?, group_ids = ?, ignored_error_categories = ?,
+		    health_thresholds = ?, updated_by = ?, updated_at = NOW(3)
+		WHERE id = 1 AND version = ?`,
+		cfg.Enabled, cfg.RefreshIntervalSeconds, platforms, string(groupIDs),
+		string(ignoredCategories), thresholds, cfg.UpdatedBy, expectedVersion,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update channel monitor v2 config: %w", err)
+	}
+	if affected, err := res.RowsAffected(); err == nil && affected == 0 {
+		return nil, service.ErrChannelMonitorV2ConfigConflict
+	}
+
+	var updated service.ChannelMonitorV2Config
+	var raw, rawGroupIDs, rawIgnored, rawThresholds []byte
+	if err := tx.QueryRowContext(ctx, `
+		SELECT version, enabled, refresh_interval_seconds, platforms, group_ids,
+		       COALESCE(ignored_error_categories, CAST('[]' AS JSON)),
+		       COALESCE(health_thresholds, CAST('{}' AS JSON)),
+		       updated_at, updated_by
+		FROM channel_monitor_v2_config WHERE id = 1`).Scan(
+		&updated.Version, &updated.Enabled, &updated.RefreshIntervalSeconds, &raw,
+		&rawGroupIDs, &rawIgnored,
+		&rawThresholds,
+		&updated.UpdatedAt, &updated.UpdatedBy,
+	); err != nil {
+		return nil, fmt.Errorf("update channel monitor v2 config: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &updated.Platforms); err != nil {
+		return nil, err
+	}
+	if len(rawGroupIDs) > 0 {
+		if err := json.Unmarshal(rawGroupIDs, &updated.GroupIDs); err != nil {
+			return nil, err
+		}
+	}
+	if updated.GroupIDs == nil {
+		updated.GroupIDs = []int64{}
+	}
+	if len(rawIgnored) > 0 {
+		if err := json.Unmarshal(rawIgnored, &updated.IgnoredErrorCategories); err != nil {
+			return nil, err
+		}
 	}
 	if updated.IgnoredErrorCategories == nil {
 		updated.IgnoredErrorCategories = []string{}
@@ -132,11 +265,7 @@ func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter s
 	// group allow-list, display-model collapse) still applies.
 	catalogFilter := channelMonitorV2CatalogFilter(channelMonitorV2CommonCoverageFilter(filter, *coverage))
 	where, args, _ := channelMonitorV2WhereWithRollup(catalogFilter, cfg, "m")
-	query := `SELECT m.platform, COALESCE(g.name, ''), lower(COALESCE(NULLIF(TRIM(g.platform), ''), 'unknown')), m.group_id, m.model,
-	                 SUM(m.success_requests + m.error_requests)
-	          FROM ` + channelMonitorV2MetricsTable(catalogFilter) + ` m
-	          LEFT JOIN groups g ON g.id = NULLIF(m.group_id, 0) ` + where + `
-	          GROUP BY m.platform, g.name, g.platform, m.group_id, m.model`
+	query := channelMonitorV2DimensionsQuery(catalogFilter, where)
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -215,6 +344,21 @@ func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter s
 	sort.Slice(result.Models, func(i, j int) bool { return result.Models[i].RequestCount > result.Models[j].RequestCount })
 	sort.Slice(result.Groups, func(i, j int) bool { return result.Groups[i].RequestCount > result.Groups[j].RequestCount })
 	return result, rows.Err()
+}
+
+// channelMonitorV2DimensionsQuery 构造 GetDimensions 的目录维度聚合查询。
+// 动态拼接按方言成对维护：`groups` 为 MySQL 8 保留字，MySQL 分支加反引号
+// （PG 分支产出的 SQL 与原实现逐字节一致）。
+func channelMonitorV2DimensionsQuery(catalogFilter service.ChannelMonitorV2Filter, where string) string {
+	groupsRef := "groups"
+	if IsMySQL() {
+		groupsRef = "`groups`"
+	}
+	return `SELECT m.platform, COALESCE(g.name, ''), lower(COALESCE(NULLIF(TRIM(g.platform), ''), 'unknown')), m.group_id, m.model,
+                 SUM(m.success_requests + m.error_requests)
+          FROM ` + channelMonitorV2MetricsTable(catalogFilter) + ` m
+          LEFT JOIN ` + groupsRef + ` g ON g.id = NULLIF(m.group_id, 0) ` + where + `
+          GROUP BY m.platform, g.name, g.platform, m.group_id, m.model`
 }
 
 func (r *channelMonitorV2Repository) GetSnapshot(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, admin bool) (*service.ChannelMonitorV2Snapshot, error) {
@@ -643,7 +787,12 @@ type channelMonitorV2GroupInfo struct {
 }
 
 func (r *channelMonitorV2Repository) listActiveGroupIDs(ctx context.Context) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM groups WHERE deleted_at IS NULL AND status = 'active' ORDER BY id`)
+	query := `SELECT id FROM groups WHERE deleted_at IS NULL AND status = 'active' ORDER BY id`
+	if IsMySQL() {
+		// `groups` 是 MySQL 8 保留字，需反引号
+		query = "SELECT id FROM `groups` WHERE deleted_at IS NULL AND status = 'active' ORDER BY id"
+	}
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +813,30 @@ func (r *channelMonitorV2Repository) loadChannelMonitorV2GroupInfo(ctx context.C
 	if len(groupIDs) == 0 {
 		return out, nil
 	}
+	if IsMySQL() {
+		return r.loadChannelMonitorV2GroupInfoMySQL(ctx, groupIDs)
+	}
 	rows, err := r.db.QueryContext(ctx, `SELECT id, COALESCE(name, ''), lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown')) FROM groups WHERE id = ANY($1) AND deleted_at IS NULL AND status = 'active'`, pq.Array(groupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var name, platform string
+		if err := rows.Scan(&id, &name, &platform); err != nil {
+			return nil, err
+		}
+		out[id] = channelMonitorV2GroupInfo{name: name, platform: platform}
+	}
+	return out, rows.Err()
+}
+
+// loadChannelMonitorV2GroupInfoMySQL 是 loadChannelMonitorV2GroupInfo 的 MySQL 实现：
+// `id = ANY($1)` + pq.Array → IN (?,?,...) 展开；`groups` 是 MySQL 8 保留字加反引号。
+func (r *channelMonitorV2Repository) loadChannelMonitorV2GroupInfoMySQL(ctx context.Context, groupIDs []int64) (map[int64]channelMonitorV2GroupInfo, error) {
+	out := map[int64]channelMonitorV2GroupInfo{}
+	rows, err := r.db.QueryContext(ctx, "SELECT id, COALESCE(name, ''), lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown')) FROM `groups` WHERE id IN ("+Placeholders(len(groupIDs))+") AND deleted_at IS NULL AND status = 'active'", int64Args(groupIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -744,6 +916,9 @@ func (r *channelMonitorV2Repository) GetErrors(ctx context.Context, filter servi
 }
 
 func (r *channelMonitorV2Repository) loadErrorDetails(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) (map[string][]service.ChannelMonitorV2ErrorDetail, error) {
+	if IsMySQL() {
+		return r.loadErrorDetailsMySQL(ctx, filter, cfg)
+	}
 	conditions := []string{
 		"current_error.created_at >= $1",
 		"current_error.created_at < $2",
@@ -789,6 +964,114 @@ func (r *channelMonitorV2Repository) loadErrorDetails(ctx context.Context, filte
 		FROM ops_error_logs current_error
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		GROUP BY 1,2,3,4,5,6,7,8,9
+		ORDER BY count DESC
+		LIMIT 400`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]service.ChannelMonitorV2ErrorDetail{}
+	for rows.Next() {
+		var platform, model, errorType, owner, source, message string
+		var groupID int64
+		var statusCode, upstreamStatusCode int
+		var count int64
+		if err := rows.Scan(&platform, &groupID, &model, &errorType, &owner, &source, &statusCode, &upstreamStatusCode, &message, &count); err != nil {
+			return nil, err
+		}
+		if !channelMonitorV2ModelSelected(filter, cfg, platform, model) {
+			continue
+		}
+		category := service.ClassifyChannelMonitorV2Error(service.ChannelMonitorV2ErrorInput{
+			ErrorType:          errorType,
+			ErrorOwner:         owner,
+			ErrorSource:        source,
+			StatusCode:         statusCode,
+			UpstreamStatusCode: upstreamStatusCode,
+			Message:            message,
+		})
+		if len(out[category]) >= 5 {
+			continue
+		}
+		out[category] = append(out[category], service.ChannelMonitorV2ErrorDetail{
+			Platform:           platform,
+			Model:              channelMonitorV2DisplayModel(cfg, platform, model),
+			ErrorType:          errorType,
+			StatusCode:         statusCode,
+			UpstreamStatusCode: upstreamStatusCode,
+			Message:            sanitizeChannelMonitorV2ErrorDetail(message),
+			Count:              count,
+		})
+	}
+	return out, rows.Err()
+}
+
+// loadErrorDetailsMySQL 是 loadErrorDetails 的 MySQL 实现：
+//   - `= ANY($n)` + pq.Array → IN (?,?,...) 展开；$n → ?；
+//   - 行构造器比较 (newer.created_at, newer.id) > (current_error.created_at, current_error.id)
+//     → 保守展开为等价的字典序比较（created_at 优先，同值再比 id）；
+//   - GROUP BY 1..9 → 显式表达式（MySQL 分支避免位置引用）。
+//     其余扫描/归类逻辑与 PG 版逐行一致。
+func (r *channelMonitorV2Repository) loadErrorDetailsMySQL(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) (map[string][]service.ChannelMonitorV2ErrorDetail, error) {
+	conditions := []string{
+		"current_error.created_at >= ?",
+		"current_error.created_at < ?",
+		"NOT current_error.is_count_tokens",
+		"(COALESCE(current_error.status_code, 0) >= 400 OR current_error.error_type = 'cyber_policy')",
+		`(NULLIF(current_error.request_id, '') IS NULL OR NOT EXISTS (
+				SELECT 1 FROM ops_error_logs newer
+				WHERE newer.request_id = current_error.request_id
+				  AND NOT newer.is_count_tokens
+				  AND (COALESCE(newer.status_code, 0) >= 400 OR newer.error_type = 'cyber_policy')
+				  AND (newer.created_at > current_error.created_at
+				       OR (newer.created_at = current_error.created_at AND newer.id > current_error.id))
+		))`,
+	}
+	args := []any{filter.Start, filter.End}
+	platforms := channelMonitorV2EnabledPlatforms(cfg)
+	if len(filter.Platforms) > 0 {
+		platforms = intersectStrings(platforms, filter.Platforms)
+	}
+	if len(platforms) > 0 {
+		for _, platform := range platforms {
+			args = append(args, platform)
+		}
+		conditions = append(conditions, fmt.Sprintf("lower(COALESCE(NULLIF(TRIM(current_error.platform), ''), 'unknown')) IN (%s)", Placeholders(len(platforms))))
+	} else {
+		conditions = append(conditions, "FALSE")
+	}
+	groups, groupScopeEmpty := channelMonitorV2ScopedGroupIDs(filter, cfg)
+	if groupScopeEmpty {
+		conditions = append(conditions, "FALSE")
+	} else if len(groups) > 0 {
+		for _, groupID := range groups {
+			args = append(args, groupID)
+		}
+		conditions = append(conditions, fmt.Sprintf("COALESCE(current_error.group_id, 0) IN (%s)", Placeholders(len(groups))))
+	}
+	query := `SELECT
+			lower(COALESCE(NULLIF(TRIM(current_error.platform), ''), 'unknown')) AS platform,
+			COALESCE(current_error.group_id, 0) AS group_id,
+			COALESCE(NULLIF(TRIM(current_error.requested_model), ''), NULLIF(TRIM(current_error.model), ''), 'unknown') AS model,
+			COALESCE(current_error.error_type, '') AS error_type,
+			COALESCE(current_error.error_owner, '') AS error_owner,
+			COALESCE(current_error.error_source, '') AS error_source,
+			COALESCE(current_error.status_code, 0) AS status_code,
+			COALESCE(current_error.upstream_status_code, 0) AS upstream_status_code,
+			LEFT(COALESCE(NULLIF(current_error.upstream_error_message, ''), NULLIF(current_error.error_message, ''), NULLIF(current_error.upstream_error_detail, ''), NULLIF(current_error.error_body, ''), current_error.error_type, ''), 600) AS message,
+			COUNT(*) AS count
+		FROM ops_error_logs current_error
+		WHERE ` + strings.Join(conditions, " AND ") + `
+		GROUP BY lower(COALESCE(NULLIF(TRIM(current_error.platform), ''), 'unknown')),
+			COALESCE(current_error.group_id, 0),
+			COALESCE(NULLIF(TRIM(current_error.requested_model), ''), NULLIF(TRIM(current_error.model), ''), 'unknown'),
+			COALESCE(current_error.error_type, ''),
+			COALESCE(current_error.error_owner, ''),
+			COALESCE(current_error.error_source, ''),
+			COALESCE(current_error.status_code, 0),
+			COALESCE(current_error.upstream_status_code, 0),
+			LEFT(COALESCE(NULLIF(current_error.upstream_error_message, ''), NULLIF(current_error.error_message, ''), NULLIF(current_error.upstream_error_detail, ''), NULLIF(current_error.error_body, ''), current_error.error_type, ''), 600)
 		ORDER BY count DESC
 		LIMIT 400`
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -939,6 +1222,9 @@ func (r *channelMonitorV2Repository) GetUsers(ctx context.Context, filter servic
 }
 
 func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, byBucket bool) ([]channelMonitorV2Fact, error) {
+	if IsMySQL() {
+		return r.loadFactsMySQL(ctx, filter, cfg, byBucket)
+	}
 	where, args, bucketSeconds := channelMonitorV2WhereWithRollup(filter, cfg, "m")
 	bucketExpr := "MIN(m.bucket_start)"
 	group := "m.platform,m.group_id,g.name,m.model"
@@ -972,19 +1258,62 @@ func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter servi
 	return facts, rows.Err()
 }
 
+// loadFactsMySQL 是 loadFacts 的 MySQL 实现：
+//   - date_bin($1::interval, m.bucket_start, epoch) → channelMonitorV2DateBinMySQLExpr
+//     （桶秒数内联进表达式，无需占位符移位）；
+//   - `groups` 是 MySQL 8 保留字加反引号。扫描/聚合列与 PG 版逐字一致。
+func (r *channelMonitorV2Repository) loadFactsMySQL(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, byBucket bool) ([]channelMonitorV2Fact, error) {
+	where, args, bucketSeconds := channelMonitorV2WhereWithRollup(filter, cfg, "m")
+	bucketExpr := "MIN(m.bucket_start)"
+	group := "m.platform,m.group_id,g.name,m.model"
+	if byBucket {
+		if bucketSeconds > 0 {
+			bucketExpr = "m.bucket_start"
+			group = bucketExpr + "," + group
+		} else {
+			bucketExpr = channelMonitorV2DateBinMySQLExpr("m.bucket_start", int(filter.Bucket.Seconds()))
+			group = bucketExpr + "," + group
+		}
+	}
+	query := `SELECT ` + bucketExpr + `,m.platform,m.group_id,COALESCE(g.name,''),m.model,SUM(m.success_requests),SUM(m.error_requests),SUM(m.upstream_affected_requests),SUM(m.upstream_attempt_count),SUM(m.input_tokens),SUM(m.output_tokens),SUM(m.cache_creation_tokens),SUM(m.cache_read_tokens),SUM(m.ttft_sum_ms),SUM(m.ttft_count),SUM(m.duration_sum_ms),SUM(m.duration_count) FROM ` + channelMonitorV2MetricsTable(filter) + ` m LEFT JOIN ` + "`groups`" + ` g ON g.id=NULLIF(m.group_id,0) ` + where + ` GROUP BY ` + group
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	facts := []channelMonitorV2Fact{}
+	for rows.Next() {
+		var bucket time.Time
+		var f channelMonitorV2Fact
+		if err := rows.Scan(&bucket, &f.Platform, &f.GroupID, &f.GroupName, &f.Model, &f.Success, &f.Errors, &f.UpstreamAffected, &f.UpstreamAttempts, &f.Input, &f.Output, &f.CacheCreation, &f.CacheRead, &f.TTFTSum, &f.TTFTCount, &f.DurationSum, &f.DurationCount); err != nil {
+			return nil, err
+		}
+		f.BucketStart = bucket.UTC().Format(time.RFC3339Nano)
+		facts = append(facts, f)
+	}
+	return facts, rows.Err()
+}
+
 func (r *channelMonitorV2Repository) loadHistograms(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, userID int64, byBucket bool) ([]channelMonitorV2Histogram, error) {
 	where, args, bucketSeconds := channelMonitorV2WhereWithRollup(filter, cfg, "h")
 	if userID < 0 {
 		where += " AND h.user_id > 0"
 	} else {
 		args = append(args, userID)
-		where += fmt.Sprintf(" AND h.user_id = $%d", len(args))
+		if IsMySQL() {
+			where += " AND h.user_id = ?"
+		} else {
+			where += fmt.Sprintf(" AND h.user_id = $%d", len(args))
+		}
 	}
 	bucketExpr := "MIN(h.bucket_start)"
 	group := "h.platform,h.group_id,h.model,h.user_id,h.metric,h.upper_bound_ms"
 	if byBucket {
 		if bucketSeconds > 0 {
 			bucketExpr = "h.bucket_start"
+			group = bucketExpr + "," + group
+		} else if IsMySQL() {
+			bucketExpr = channelMonitorV2DateBinMySQLExpr("h.bucket_start", int(filter.Bucket.Seconds()))
 			group = bucketExpr + "," + group
 		} else {
 			oldArgs := args
@@ -1154,12 +1483,19 @@ func channelMonitorV2WhereWithRollup(filter service.ChannelMonitorV2Filter, cfg 
 	bucketSeconds := channelMonitorV2FixedBucketSeconds(filter)
 	if bucketSeconds > 0 {
 		args = append(args, bucketSeconds)
-		where += fmt.Sprintf(" AND %s.bucket_seconds = $%d", alias, len(args))
+		if IsMySQL() {
+			where += fmt.Sprintf(" AND %s.bucket_seconds = ?", alias)
+		} else {
+			where += fmt.Sprintf(" AND %s.bucket_seconds = $%d", alias, len(args))
+		}
 	}
 	return where, args, bucketSeconds
 }
 
 func channelMonitorV2Where(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, alias string) (string, []any) {
+	if IsMySQL() {
+		return channelMonitorV2WhereMySQL(filter, cfg, alias)
+	}
 	conditions := []string{alias + ".bucket_start >= $1", alias + ".bucket_start < $2"}
 	args := []any{filter.Start, filter.End}
 	platforms := channelMonitorV2EnabledPlatforms(cfg)
@@ -1178,6 +1514,35 @@ func channelMonitorV2Where(filter service.ChannelMonitorV2Filter, cfg service.Ch
 	} else if len(groups) > 0 {
 		args = append(args, pq.Array(groups))
 		conditions = append(conditions, fmt.Sprintf("%s.group_id = ANY($%d)", alias, len(args)))
+	}
+	return "WHERE " + strings.Join(conditions, " AND "), args
+}
+
+// channelMonitorV2WhereMySQL 是 channelMonitorV2Where 的 MySQL 版：
+// `= ANY($n)` + pq.Array → IN (?,?,...) 展开（参数顺序与 PG 版逐项一致）。
+func channelMonitorV2WhereMySQL(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, alias string) (string, []any) {
+	conditions := []string{alias + ".bucket_start >= ?", alias + ".bucket_start < ?"}
+	args := []any{filter.Start, filter.End}
+	platforms := channelMonitorV2EnabledPlatforms(cfg)
+	if len(filter.Platforms) > 0 {
+		platforms = intersectStrings(platforms, filter.Platforms)
+	}
+	if len(platforms) > 0 {
+		for _, platform := range platforms {
+			args = append(args, platform)
+		}
+		conditions = append(conditions, fmt.Sprintf("%s.platform IN (%s)", alias, Placeholders(len(platforms))))
+	} else {
+		conditions = append(conditions, "FALSE")
+	}
+	groups, groupScopeEmpty := channelMonitorV2ScopedGroupIDs(filter, cfg)
+	if groupScopeEmpty {
+		conditions = append(conditions, "FALSE")
+	} else if len(groups) > 0 {
+		for _, groupID := range groups {
+			args = append(args, groupID)
+		}
+		conditions = append(conditions, fmt.Sprintf("%s.group_id IN (%s)", alias, Placeholders(len(groups))))
 	}
 	return "WHERE " + strings.Join(conditions, " AND "), args
 }
@@ -1442,21 +1807,40 @@ func (r *channelMonitorV2Repository) loadIgnoredErrorCounts(
 	bucketExpr := "e.bucket_start"
 	groupBy := "e.bucket_start, e.platform, e.model"
 	if filter.Bucket > 0 && bucketSeconds == 0 {
-		args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
-		where = shiftSQLPlaceholders(where, 1)
-		bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
+		if IsMySQL() {
+			bucketExpr = channelMonitorV2DateBinMySQLExpr("e.bucket_start", int(filter.Bucket.Seconds()))
+		} else {
+			args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
+			where = shiftSQLPlaceholders(where, 1)
+			bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
+		}
 		groupBy = bucketExpr + ", e.platform, e.model"
 	}
-	args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
-	catIdx := len(args) - 1
-	taxIdx := len(args)
-	query := fmt.Sprintf(
-		`SELECT %s, e.platform, e.model, SUM(e.error_requests)
-		 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
-		 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
-		 GROUP BY %s`,
-		bucketExpr, where, catIdx, taxIdx, groupBy,
-	)
+	var query string
+	if IsMySQL() {
+		// `= ANY($n)` + pq.Array → IN (?,?,...) 展开（列已按平台归一，参数逐个展开）。
+		for _, category := range cfg.IgnoredErrorCategories {
+			args = append(args, category)
+		}
+		query = fmt.Sprintf(
+			`SELECT %s, e.platform, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category IN (%s) AND e.taxonomy_version = ?
+			 GROUP BY %s`,
+			bucketExpr, where, Placeholders(len(cfg.IgnoredErrorCategories)), groupBy,
+		)
+	} else {
+		args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
+		catIdx := len(args) - 1
+		taxIdx := len(args)
+		query = fmt.Sprintf(
+			`SELECT %s, e.platform, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
+			 GROUP BY %s`,
+			bucketExpr, where, catIdx, taxIdx, groupBy,
+		)
+	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return byBucket, 0, err
@@ -1490,16 +1874,30 @@ func (r *channelMonitorV2Repository) loadIgnoredErrorCountsByPlatformModel(
 		return byPM, 0, nil
 	}
 	where, args, _ := channelMonitorV2WhereWithRollup(filter, cfg, "e")
-	args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
-	catIdx := len(args) - 1
-	taxIdx := len(args)
-	query := fmt.Sprintf(
-		`SELECT e.platform, e.model, SUM(e.error_requests)
-		 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
-		 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
-		 GROUP BY e.platform, e.model`,
-		where, catIdx, taxIdx,
-	)
+	var query string
+	if IsMySQL() {
+		for _, category := range cfg.IgnoredErrorCategories {
+			args = append(args, category)
+		}
+		query = fmt.Sprintf(
+			`SELECT e.platform, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category IN (%s) AND e.taxonomy_version = ?
+			 GROUP BY e.platform, e.model`,
+			where, Placeholders(len(cfg.IgnoredErrorCategories)),
+		)
+	} else {
+		args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
+		catIdx := len(args) - 1
+		taxIdx := len(args)
+		query = fmt.Sprintf(
+			`SELECT e.platform, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
+			 GROUP BY e.platform, e.model`,
+			where, catIdx, taxIdx,
+		)
+	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return byPM, 0, err
@@ -1538,21 +1936,39 @@ func (r *channelMonitorV2Repository) loadIgnoredErrorCountsByMatrixKey(
 	bucketExpr := "e.bucket_start"
 	groupSQL := "e.bucket_start, e.platform, e.group_id, e.model"
 	if filter.Bucket > 0 && bucketSeconds == 0 {
-		args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
-		where = shiftSQLPlaceholders(where, 1)
-		bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
+		if IsMySQL() {
+			bucketExpr = channelMonitorV2DateBinMySQLExpr("e.bucket_start", int(filter.Bucket.Seconds()))
+		} else {
+			args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
+			where = shiftSQLPlaceholders(where, 1)
+			bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
+		}
 		groupSQL = bucketExpr + ", e.platform, e.group_id, e.model"
 	}
-	args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
-	catIdx := len(args) - 1
-	taxIdx := len(args)
-	query := fmt.Sprintf(
-		`SELECT %s, e.platform, e.group_id, e.model, SUM(e.error_requests)
-		 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
-		 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
-		 GROUP BY %s`,
-		bucketExpr, where, catIdx, taxIdx, groupSQL,
-	)
+	var query string
+	if IsMySQL() {
+		for _, category := range cfg.IgnoredErrorCategories {
+			args = append(args, category)
+		}
+		query = fmt.Sprintf(
+			`SELECT %s, e.platform, e.group_id, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category IN (%s) AND e.taxonomy_version = ?
+			 GROUP BY %s`,
+			bucketExpr, where, Placeholders(len(cfg.IgnoredErrorCategories)), groupSQL,
+		)
+	} else {
+		args = append(args, pq.Array(cfg.IgnoredErrorCategories), service.ChannelMonitorV2TaxonomyVersion)
+		catIdx := len(args) - 1
+		taxIdx := len(args)
+		query = fmt.Sprintf(
+			`SELECT %s, e.platform, e.group_id, e.model, SUM(e.error_requests)
+			 FROM `+channelMonitorV2ErrorMetricsTable(filter)+` e %s
+			 AND e.error_category = ANY($%d) AND e.taxonomy_version = $%d
+			 GROUP BY %s`,
+			bucketExpr, where, catIdx, taxIdx, groupSQL,
+		)
+	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return byDimBucket, byDim, err

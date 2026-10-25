@@ -407,6 +407,11 @@ func TestGroupUsageSummaryUsesConfiguredDSTBoundaries(t *testing.T) {
 func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, partitioned bool) string {
 	t.Helper()
 
+	// 夹具深度 PG 专属：独立 schema + search_path、PARTITION OF 分区表、
+	// 222/223 迁移里的 plpgsql 触发器/函数、TIMESTAMPTZ 字面量与 SET LOCAL 时区。
+	// MySQL 无对应机制（usage_logs 为普通表，失效走仓库层），本文件全部用例跳过。
+	skipOnMySQL(t)
+
 	schema := fmt.Sprintf("group_usage_rollup_trigger_%d", time.Now().UnixNano())
 	quotedSchema := pq.QuoteIdentifier(schema)
 	_, err := integrationDB.ExecContext(ctx, "CREATE SCHEMA "+quotedSchema)

@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +16,25 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
+)
+
+// affITSQL 保留 PG 运行下的 $n 占位符、::double precision 转型与 INTERVAL 'N hours'
+// 字面量；MySQL 方言运行（SUB2API_TEST_DB=mysql）时把 $n 改写为 ?，去掉
+// ::double precision（DECIMAL 结果列由 database/sql 自动转 float64，见
+// DIALECT_MYSQL_GUIDE.md），并把 INTERVAL 'N hours' 改写为 INTERVAL N HOUR
+// （数字无引号、单位单数）。PG 分支返回原文，字节不变。
+func affITSQL(query string) string {
+	if !IsMySQL() {
+		return query
+	}
+	query = affPGPlaceholderRegexp.ReplaceAllString(query, "?")
+	query = strings.ReplaceAll(query, "::double precision", "")
+	return affPGIntervalRegexp.ReplaceAllString(query, "INTERVAL $1 HOUR")
+}
+
+var (
+	affPGPlaceholderRegexp = regexp.MustCompile(`\$\d+`)
+	affPGIntervalRegexp    = regexp.MustCompile(`INTERVAL '(\d+) hours?'`)
 )
 
 func querySingleFloat(t *testing.T, ctx context.Context, client *dbent.Client, query string, args ...any) float64 {
@@ -60,9 +81,9 @@ func TestAffiliateRepository_TransferQuotaToBalance_UsesClaimedQuotaBeforeClear(
 	})
 
 	affCode := fmt.Sprintf("AFF%09d", time.Now().UnixNano()%1_000_000_000)
-	_, err := client.ExecContext(txCtx, `
+	_, err := client.ExecContext(txCtx, affITSQL(`
 INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_history_quota, created_at, updated_at)
-VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
+VALUES ($1, $2, $3, $4, NOW(), NOW())`), u.ID, affCode, 12.34, 12.34)
 	require.NoError(t, err)
 
 	transferred, balance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
@@ -71,18 +92,18 @@ VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 	require.InDelta(t, 17.84, balance, 1e-9)
 
 	affQuota := querySingleFloat(t, txCtx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID)
 	require.InDelta(t, 0.0, affQuota, 1e-9)
 
 	persistedBalance := querySingleFloat(t, txCtx, client,
-		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
+		affITSQL("SELECT balance::double precision FROM users WHERE id = $1"), u.ID)
 	require.InDelta(t, 17.84, persistedBalance, 1e-9)
 
 	ledgerCount := querySingleInt(t, txCtx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'transfer'", u.ID)
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'transfer'"), u.ID)
 	require.Equal(t, 1, ledgerCount)
 
-	rows, err := client.QueryContext(txCtx, `
+	rows, err := client.QueryContext(txCtx, affITSQL(`
 SELECT amount::double precision,
        balance_after::double precision,
        aff_quota_after::double precision,
@@ -90,7 +111,7 @@ SELECT amount::double precision,
        aff_history_quota_after::double precision
 FROM user_affiliate_ledger
 WHERE user_id = $1 AND action = 'transfer'
-LIMIT 1`, u.ID)
+LIMIT 1`), u.ID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
 	require.True(t, rows.Next(), "expected transfer ledger")
@@ -154,7 +175,7 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 
 	// Visible inside the outer tx.
 	innerQuota := querySingleFloat(t, txCtx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", inviter.ID)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), inviter.ID)
 	require.InDelta(t, 3.5, innerQuota, 1e-9)
 
 	// Roll back the outer tx; if AccrueQuota had opened its own inner tx and
@@ -162,7 +183,7 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 	require.NoError(t, outerTx.Rollback())
 
 	rows, err := integrationEntClient.QueryContext(ctx,
-		"SELECT COUNT(*) FROM user_affiliates WHERE user_id IN ($1, $2)",
+		affITSQL("SELECT COUNT(*) FROM user_affiliates WHERE user_id IN ($1, $2)"),
 		inviter.ID, invitee.ID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
@@ -191,9 +212,9 @@ func TestAffiliateRepository_TransferQuotaToBalance_EmptyQuota(t *testing.T) {
 	})
 
 	affCode := fmt.Sprintf("AFF%09d", time.Now().UnixNano()%1_000_000_000)
-	_, err := client.ExecContext(txCtx, `
+	_, err := client.ExecContext(txCtx, affITSQL(`
 INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_history_quota, created_at, updated_at)
-VALUES ($1, $2, 0, 0, NOW(), NOW())`, u.ID, affCode)
+VALUES ($1, $2, 0, 0, NOW(), NOW())`), u.ID, affCode)
 	require.NoError(t, err)
 
 	transferred, balance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
@@ -202,7 +223,7 @@ VALUES ($1, $2, 0, 0, NOW(), NOW())`, u.ID, affCode)
 	require.InDelta(t, 0.0, balance, 1e-9)
 
 	persistedBalance := querySingleFloat(t, txCtx, client,
-		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
+		affITSQL("SELECT balance::double precision FROM users WHERE id = $1"), u.ID)
 	require.InDelta(t, 3.21, persistedBalance, 1e-9)
 }
 
@@ -436,9 +457,9 @@ func mustCreateAffiliateWithdrawUser(t *testing.T, client *dbent.Client, label s
 func mustSeedAffiliateQuota(t *testing.T, ctx context.Context, client *dbent.Client, userID int64, quota, frozen, history float64) {
 	t.Helper()
 	affCode := fmt.Sprintf("AFW%d-%06d", userID, time.Now().UnixNano()%1_000_000)
-	_, err := client.ExecContext(ctx, `
+	_, err := client.ExecContext(ctx, affITSQL(`
 INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_frozen_quota, aff_history_quota, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`, userID, affCode, quota, frozen, history)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`), userID, affCode, quota, frozen, history)
 	require.NoError(t, err)
 }
 
@@ -450,7 +471,7 @@ func mustCreateCommittedAffiliateWithdrawUser(t *testing.T, label string, quota,
 	client := testEntClient(t)
 	u := mustCreateAffiliateWithdrawUser(t, client, label)
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM users WHERE id = $1", u.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), affITSQL("DELETE FROM users WHERE id = $1"), u.ID)
 	})
 	mustSeedAffiliateQuota(t, context.Background(), client, u.ID, quota, frozen, history)
 	return u
@@ -484,11 +505,11 @@ func TestAffiliateRepository_WithdrawQuota_DeductsAndRecordsLedger(t *testing.T)
 	require.InDelta(t, 30.0, result.HistoryQuotaAfter, 1e-9)
 
 	require.InDelta(t, 7.5, querySingleFloat(t, txCtx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.InDelta(t, 30.0, querySingleFloat(t, txCtx, client,
-		"SELECT aff_history_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_history_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.InDelta(t, 5.5, querySingleFloat(t, txCtx, client,
-		"SELECT balance::double precision FROM users WHERE id = $1", u.ID), 1e-9)
+		affITSQL("SELECT balance::double precision FROM users WHERE id = $1"), u.ID), 1e-9)
 
 	records, total, err := repo.ListAffiliateTransferRecords(txCtx, service.AffiliateRecordFilter{
 		Search:   u.Email,
@@ -509,7 +530,7 @@ func TestAffiliateRepository_WithdrawQuota_DeductsAndRecordsLedger(t *testing.T)
 	require.InDelta(t, 7.5, *record.AvailableQuotaAfter, 1e-9)
 	require.InDelta(t, 30.0, *record.HistoryQuotaAfter, 1e-9)
 
-	rows, err := client.QueryContext(txCtx, "SELECT operation_id FROM user_affiliate_ledger WHERE id = $1", result.LedgerID)
+	rows, err := client.QueryContext(txCtx, affITSQL("SELECT operation_id FROM user_affiliate_ledger WHERE id = $1"), result.LedgerID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
 	require.True(t, rows.Next())
@@ -529,9 +550,9 @@ func TestAffiliateRepository_WithdrawQuota_ThawsMaturedQuotaFirst(t *testing.T) 
 
 	u := mustCreateAffiliateWithdrawUser(t, client, "thaw")
 	mustSeedAffiliateQuota(t, txCtx, client, u.ID, 0, 10, 10)
-	_, err := client.ExecContext(txCtx, `
+	_, err := client.ExecContext(txCtx, affITSQL(`
 INSERT INTO user_affiliate_ledger (user_id, action, amount, frozen_until, created_at, updated_at)
-VALUES ($1, 'accrue', 10, NOW() - INTERVAL '1 hour', NOW(), NOW())`, u.ID)
+VALUES ($1, 'accrue', 10, NOW() - INTERVAL '1 hour', NOW(), NOW())`), u.ID)
 	require.NoError(t, err)
 
 	result, err := repo.WithdrawQuota(txCtx, u.ID, 10, newAffiliateWithdrawOperationID("thaw"))
@@ -539,7 +560,7 @@ VALUES ($1, 'accrue', 10, NOW() - INTERVAL '1 hour', NOW(), NOW())`, u.ID)
 	require.InDelta(t, 0.0, result.AvailableQuotaAfter, 1e-9)
 	require.InDelta(t, 0.0, result.FrozenQuotaAfter, 1e-9)
 	require.Equal(t, 1, querySingleInt(t, txCtx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 }
 
 // TestAffiliateRepository_WithdrawQuota_InsufficientLeavesQuotaUntouched 验证未到期的
@@ -552,9 +573,9 @@ func TestAffiliateRepository_WithdrawQuota_InsufficientLeavesQuotaUntouched(t *t
 	repo := NewAffiliateRepository(client, integrationDB)
 
 	u := mustCreateCommittedAffiliateWithdrawUser(t, "insufficient", 5, 10, 15)
-	_, err := integrationDB.ExecContext(ctx, `
+	_, err := integrationDB.ExecContext(ctx, affITSQL(`
 INSERT INTO user_affiliate_ledger (user_id, action, amount, frozen_until, created_at, updated_at)
-VALUES ($1, 'accrue', 10, NOW() + INTERVAL '1 hour', NOW(), NOW())`, u.ID)
+VALUES ($1, 'accrue', 10, NOW() + INTERVAL '1 hour', NOW(), NOW())`), u.ID)
 	require.NoError(t, err)
 	operationID := newAffiliateWithdrawOperationID("insufficient")
 
@@ -562,11 +583,11 @@ VALUES ($1, 'accrue', 10, NOW() + INTERVAL '1 hour', NOW(), NOW())`, u.ID)
 	require.ErrorIs(t, err, service.ErrAffiliateQuotaInsufficient)
 
 	require.InDelta(t, 5.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.InDelta(t, 10.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_frozen_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_frozen_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.Equal(t, 0, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 
 	result, err := repo.WithdrawQuota(ctx, u.ID, 5, operationID)
 	require.NoError(t, err)
@@ -575,12 +596,12 @@ VALUES ($1, 'accrue', 10, NOW() + INTERVAL '1 hour', NOW(), NOW())`, u.ID)
 
 	noProfile := mustCreateAffiliateWithdrawUser(t, client, "no-profile")
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM users WHERE id = $1", noProfile.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), affITSQL("DELETE FROM users WHERE id = $1"), noProfile.ID)
 	})
 	_, err = repo.WithdrawQuota(ctx, noProfile.ID, 1, newAffiliateWithdrawOperationID("no-profile"))
 	require.ErrorIs(t, err, service.ErrAffiliateQuotaInsufficient)
 	require.Equal(t, 0, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1", noProfile.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1"), noProfile.ID))
 }
 
 // TestAffiliateRepository_WithdrawQuota_RetryAfterCommitReplaysFirstResult 复现
@@ -610,18 +631,18 @@ func TestAffiliateRepository_WithdrawQuota_RetryAfterCommitReplaysFirstResult(t 
 	require.InDelta(t, 100.0, retry.HistoryQuotaAfter, 1e-9)
 
 	require.InDelta(t, 90.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.Equal(t, 1, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 
 	second, err := repo.WithdrawQuota(ctx, u.ID, 10, newAffiliateWithdrawOperationID("retry-second"))
 	require.NoError(t, err)
 	require.False(t, second.Replayed)
 	require.NotEqual(t, first.LedgerID, second.LedgerID)
 	require.InDelta(t, 80.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.Equal(t, 2, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 }
 
 // TestAffiliateRepository_WithdrawQuota_SameOperationWaitsForInFlightRegistration
@@ -687,9 +708,9 @@ func TestAffiliateRepository_WithdrawQuota_SameOperationWaitsForInFlightRegistra
 			require.InDelta(t, 90.0, got.result.AvailableQuotaAfter, 1e-9)
 
 			require.InDelta(t, 90.0, querySingleFloat(t, ctx, client,
-				"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+				affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 			require.Equal(t, 1, querySingleInt(t, ctx, client,
-				"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+				affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 		})
 	}
 }
@@ -731,9 +752,9 @@ func TestAffiliateRepository_WithdrawQuota_ConcurrentSameOperationDeductsOnce(t 
 	}
 	require.Equal(t, 1, executed)
 	require.InDelta(t, 90.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.Equal(t, 1, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'"), u.ID))
 }
 
 // TestAffiliateRepository_WithdrawQuota_RejectsOperationReuseWithDifferentRequest 验证
@@ -757,11 +778,11 @@ func TestAffiliateRepository_WithdrawQuota_RejectsOperationReuseWithDifferentReq
 	require.ErrorIs(t, err, service.ErrIdempotencyKeyConflict)
 
 	require.InDelta(t, 90.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), u.ID), 1e-9)
 	require.InDelta(t, 100.0, querySingleFloat(t, ctx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", other.ID), 1e-9)
+		affITSQL("SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1"), other.ID), 1e-9)
 	require.Equal(t, 1, querySingleInt(t, ctx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id IN ($1, $2) AND action = 'withdraw'", u.ID, other.ID))
+		affITSQL("SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id IN ($1, $2) AND action = 'withdraw'"), u.ID, other.ID))
 }
 
 // TestAffiliateRepository_ListAffiliateRebateRecords_IncludesNonOrderAccruals 验证兑换码

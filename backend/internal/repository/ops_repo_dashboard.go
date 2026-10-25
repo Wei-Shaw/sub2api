@@ -61,6 +61,9 @@ func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *servic
 }
 
 func (r *opsRepository) queryOutputTPS(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsOutputTPS, error) {
+	if IsMySQL() {
+		return r.queryOutputTPSMySQL(ctx, filter)
+	}
 	join, where, args, _ := buildUsageWhere(filter, filter.StartTime.UTC(), filter.EndTime.UTC(), 1)
 	query := `
 SELECT
@@ -84,6 +87,47 @@ FROM (
 	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&stats.P5, &stats.P10, &stats.P50, &stats.Avg, &stats.SampleCount); err != nil {
 		// lib/pq reports query cancellation without wrapping the context error.
 		// Preserve deadline vs caller cancellation for the overview's timeout policy.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, err
+	}
+	return &stats, nil
+}
+
+// queryOutputTPSMySQL 是 queryOutputTPS 的 MySQL 实现：
+// percentile_cont（有序集聚合，NULL 自动排除）→ 窗口列线性插值（opsPercentileContMySQLExpr）；
+// AVG/COUNT 两侧通用；占位符 $n→?。空结果集与 PG 一致返回 NULL 百分位（Scan 得到 nil 指针）。
+func (r *opsRepository) queryOutputTPSMySQL(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsOutputTPS, error) {
+	join, where, args, _ := buildUsageWhereMySQL(filter, filter.StartTime.UTC(), filter.EndTime.UTC(), 1)
+	pct := func(p string) string {
+		return opsPercentileContMySQLExpr("output_tps", "t_rn", "t_n", "output_tps IS NOT NULL", p)
+	}
+	query := `
+SELECT
+ ` + pct("0.05") + `,
+ ` + pct("0.10") + `,
+ ` + pct("0.50") + `,
+ AVG(output_tps),
+ COUNT(*)
+FROM (
+ SELECT output_tps,
+  ROW_NUMBER() OVER (PARTITION BY (output_tps IS NOT NULL) ORDER BY output_tps) AS t_rn,
+  COUNT(output_tps) OVER () AS t_n
+ FROM (
+  SELECT ul.output_tokens * 1000.0 / NULLIF(ul.duration_ms, 0) AS output_tps
+  FROM usage_logs ul
+  ` + join + `
+  ` + where + `
+  AND ul.output_tokens > 0 AND ul.duration_ms > 0
+  AND ul.image_count = 0 AND ul.image_output_tokens = 0
+  AND COALESCE(ul.billing_mode, '') <> 'image'
+  ` + fmt.Sprintf("AND ul.request_type IN (%d, %d, %d, %d)",
+		service.RequestTypeSync, service.RequestTypeStream, service.RequestTypeWSV2, service.RequestTypeCyberBlocked) + `
+ ) rates
+) w`
+	var stats service.OpsOutputTPS
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&stats.P5, &stats.P10, &stats.P50, &stats.Avg, &stats.SampleCount); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
@@ -426,6 +470,9 @@ func (r *opsRepository) listHourlyMetricsRows(ctx context.Context, filter *servi
 	if start.IsZero() || end.IsZero() || !start.Before(end) {
 		return []opsHourlyMetricsRow{}, nil
 	}
+	if IsMySQL() {
+		return r.listHourlyMetricsRowsMySQL(ctx, filter, start, end)
+	}
 
 	where := "bucket_start >= $1 AND bucket_start < $2"
 	args := []any{start.UTC(), end.UTC()}
@@ -452,6 +499,110 @@ func (r *opsRepository) listHourlyMetricsRows(ctx context.Context, filter *servi
 		where += fmt.Sprintf(" AND platform = $%d AND group_id IS NULL", idx)
 		args = append(args, platform)
 		// idx++ removed - not used after this
+	default:
+		where += " AND platform IS NULL AND group_id IS NULL"
+	}
+
+	q := `
+SELECT
+  bucket_start,
+  success_count,
+  error_count_total,
+  business_limited_count,
+  error_count_sla,
+  upstream_error_count_excl_429_529,
+  upstream_429_count,
+  upstream_529_count,
+  token_consumed,
+  duration_p50_ms,
+  duration_p90_ms,
+  duration_p95_ms,
+  duration_p99_ms,
+  duration_avg_ms,
+  duration_max_ms,
+  ttft_p50_ms,
+  ttft_p90_ms,
+  ttft_p95_ms,
+  ttft_p99_ms,
+  ttft_avg_ms,
+  ttft_max_ms,
+  ttft_sample_count
+FROM ops_metrics_hourly
+WHERE ` + where + `
+ORDER BY bucket_start ASC`
+
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]opsHourlyMetricsRow, 0, 64)
+	for rows.Next() {
+		var row opsHourlyMetricsRow
+		if err := rows.Scan(
+			&row.bucketStart,
+			&row.successCount,
+			&row.errorCountTotal,
+			&row.businessLimitedCount,
+			&row.errorCountSLA,
+			&row.upstreamErrorCountExcl429529,
+			&row.upstream429Count,
+			&row.upstream529Count,
+			&row.tokenConsumed,
+			&row.durationP50,
+			&row.durationP90,
+			&row.durationP95,
+			&row.durationP99,
+			&row.durationAvg,
+			&row.durationMax,
+			&row.ttftP50,
+			&row.ttftP90,
+			&row.ttftP95,
+			&row.ttftP99,
+			&row.ttftAvg,
+			&row.ttftMax,
+			&row.ttftSampleCount,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// listHourlyMetricsRowsMySQL 是 listHourlyMetricsRows 的 MySQL 实现（$n→?，其余逐字对应）。
+// bucket_start 过滤参数为 UTC 绝对时刻，驱动按 DSN Loc 格式化后与会话墙钟存储值比较，
+// 与 PG timestamptz 的绝对时刻语义一致（见 ops_repo_preagg.go 时区约定）。
+func (r *opsRepository) listHourlyMetricsRowsMySQL(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) ([]opsHourlyMetricsRow, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+
+	where := "bucket_start >= ? AND bucket_start < ?"
+	args := []any{start.UTC(), end.UTC()}
+
+	platform := ""
+	groupID := (*int64)(nil)
+	if filter != nil {
+		platform = strings.TrimSpace(strings.ToLower(filter.Platform))
+		groupID = filter.GroupID
+	}
+
+	switch {
+	case groupID != nil && *groupID > 0:
+		where += " AND group_id = ?"
+		args = append(args, *groupID)
+		if platform != "" {
+			where += " AND platform = ?"
+			args = append(args, platform)
+		}
+	case platform != "":
+		where += " AND platform = ? AND group_id IS NULL"
+		args = append(args, platform)
 	default:
 		where += " AND platform IS NULL AND group_id IS NULL"
 	}
@@ -722,6 +873,9 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 }
 
 func (r *opsRepository) rawOpsDataExists(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (bool, error) {
+	if IsMySQL() {
+		return r.rawOpsDataExistsMySQL(ctx, filter, start, end)
+	}
 	{
 		join, where, args, _ := buildUsageWhere(filter, start, end, 1)
 		q := `SELECT EXISTS(SELECT 1 FROM usage_logs ul ` + join + ` ` + where + ` LIMIT 1)`
@@ -736,6 +890,31 @@ func (r *opsRepository) rawOpsDataExists(ctx context.Context, filter *service.Op
 
 	{
 		where, args, _ := buildErrorWhere(filter, start, end, 1)
+		q := `SELECT EXISTS(SELECT 1 FROM ops_error_logs ` + where + ` LIMIT 1)`
+		var exists bool
+		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&exists); err != nil {
+			return false, err
+		}
+		return exists, nil
+	}
+}
+
+// rawOpsDataExistsMySQL 是 rawOpsDataExists 的 MySQL 实现（$n→?，EXISTS 子查询两侧通用）。
+func (r *opsRepository) rawOpsDataExistsMySQL(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (bool, error) {
+	{
+		join, where, args, _ := buildUsageWhereMySQL(filter, start, end, 1)
+		q := `SELECT EXISTS(SELECT 1 FROM usage_logs ul ` + join + ` ` + where + ` LIMIT 1)`
+		var exists bool
+		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&exists); err != nil {
+			return false, err
+		}
+		if exists {
+			return true, nil
+		}
+	}
+
+	{
+		where, args, _ := buildErrorWhereMySQL(filter, start, end, 1)
 		q := `SELECT EXISTS(SELECT 1 FROM ops_error_logs ` + where + ` LIMIT 1)`
 		var exists bool
 		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&exists); err != nil {
@@ -834,7 +1013,12 @@ func maxTime(a, b time.Time) time.Time {
 }
 
 func (r *opsRepository) queryUsageCounts(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (successCount int64, tokenConsumed int64, err error) {
-	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
+	// MySQL 走 buildUsageWhereMySQL（$n→?、`groups` 反引号）；PG 保持原 buildUsageWhere。
+	usageWhereBuilder := buildUsageWhere
+	if IsMySQL() {
+		usageWhereBuilder = buildUsageWhereMySQL
+	}
+	join, where, args, _ := usageWhereBuilder(filter, start, end, 1)
 
 	q := `
 SELECT
@@ -855,6 +1039,9 @@ FROM usage_logs ul
 }
 
 func (r *opsRepository) queryUsageLatency(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (duration service.OpsPercentiles, ttft service.OpsPercentiles, ttftSampleCount int64, err error) {
+	if IsMySQL() {
+		return r.queryUsageLatencyMySQL(ctx, filter, start, end)
+	}
 	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
 	q := `
 SELECT
@@ -912,6 +1099,79 @@ FROM usage_logs ul
 	return duration, ttft, tCount, nil
 }
 
+// queryUsageLatencyMySQL 是 queryUsageLatency 的 MySQL 实现：
+// percentile_cont ... FILTER → 窗口列线性插值（opsPercentileContMySQLExpr）；
+// AVG FILTER → AVG（NULL 自动忽略，全 NULL 时同样返回 NULL）；COUNT(col) 语义一致；$n→?。
+func (r *opsRepository) queryUsageLatencyMySQL(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (duration service.OpsPercentiles, ttft service.OpsPercentiles, ttftSampleCount int64, err error) {
+	join, where, args, _ := buildUsageWhereMySQL(filter, start, end, 1)
+	pct := func(col, rn, cnt, p string) string {
+		return opsPercentileContMySQLExpr(col, rn, cnt, col+" IS NOT NULL", p)
+	}
+	q := `
+SELECT
+  ` + pct("duration_ms", "d_rn", "d_n", "0.50") + ` AS duration_p50,
+  ` + pct("duration_ms", "d_rn", "d_n", "0.90") + ` AS duration_p90,
+  ` + pct("duration_ms", "d_rn", "d_n", "0.95") + ` AS duration_p95,
+  ` + pct("duration_ms", "d_rn", "d_n", "0.99") + ` AS duration_p99,
+  AVG(duration_ms) AS duration_avg,
+  MAX(duration_ms) AS duration_max,
+  ` + pct("first_token_ms", "t_rn", "t_n", "0.50") + ` AS ttft_p50,
+  ` + pct("first_token_ms", "t_rn", "t_n", "0.90") + ` AS ttft_p90,
+  ` + pct("first_token_ms", "t_rn", "t_n", "0.95") + ` AS ttft_p95,
+  ` + pct("first_token_ms", "t_rn", "t_n", "0.99") + ` AS ttft_p99,
+  AVG(first_token_ms) AS ttft_avg,
+  MAX(first_token_ms) AS ttft_max,
+  COUNT(first_token_ms) AS ttft_sample_count
+FROM (
+  SELECT
+    duration_ms,
+    first_token_ms,
+    ROW_NUMBER() OVER (PARTITION BY (duration_ms IS NOT NULL) ORDER BY duration_ms) AS d_rn,
+    COUNT(duration_ms) OVER () AS d_n,
+    ROW_NUMBER() OVER (PARTITION BY (first_token_ms IS NOT NULL) ORDER BY first_token_ms) AS t_rn,
+    COUNT(first_token_ms) OVER () AS t_n
+  FROM usage_logs ul
+` + join + `
+` + where + `
+) w`
+
+	var dP50, dP90, dP95, dP99 sql.NullFloat64
+	var dAvg sql.NullFloat64
+	var dMax sql.NullInt64
+	var tP50, tP90, tP95, tP99 sql.NullFloat64
+	var tAvg sql.NullFloat64
+	var tMax sql.NullInt64
+	var tCount int64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(
+		&dP50, &dP90, &dP95, &dP99, &dAvg, &dMax,
+		&tP50, &tP90, &tP95, &tP99, &tAvg, &tMax, &tCount,
+	); err != nil {
+		return service.OpsPercentiles{}, service.OpsPercentiles{}, 0, err
+	}
+
+	duration.P50 = floatToIntPtr(dP50)
+	duration.P90 = floatToIntPtr(dP90)
+	duration.P95 = floatToIntPtr(dP95)
+	duration.P99 = floatToIntPtr(dP99)
+	duration.Avg = floatToIntPtr(dAvg)
+	if dMax.Valid {
+		v := int(dMax.Int64)
+		duration.Max = &v
+	}
+
+	ttft.P50 = floatToIntPtr(tP50)
+	ttft.P90 = floatToIntPtr(tP90)
+	ttft.P95 = floatToIntPtr(tP95)
+	ttft.P99 = floatToIntPtr(tP99)
+	ttft.Avg = floatToIntPtr(tAvg)
+	if tMax.Valid {
+		v := int(tMax.Int64)
+		ttft.Max = &v
+	}
+
+	return duration, ttft, tCount, nil
+}
+
 func (r *opsRepository) queryErrorCounts(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (
 	errorTotal int64,
 	businessLimited int64,
@@ -921,6 +1181,9 @@ func (r *opsRepository) queryErrorCounts(ctx context.Context, filter *service.Op
 	upstream529 int64,
 	err error,
 ) {
+	if IsMySQL() {
+		return r.queryErrorCountsMySQL(ctx, filter, start, end)
+	}
 	where, args, _ := buildErrorWhere(filter, start, end, 1)
 
 	q := `
@@ -931,6 +1194,44 @@ SELECT
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
+FROM ops_error_logs
+` + where
+
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(
+		&errorTotal,
+		&businessLimited,
+		&errorCountSLA,
+		&upstreamExcl429529,
+		&upstream429,
+		&upstream529,
+	); err != nil {
+		return 0, 0, 0, 0, 0, 0, err
+	}
+	return errorTotal, businessLimited, errorCountSLA, upstreamExcl429529, upstream429, upstream529, nil
+}
+
+// queryErrorCountsMySQL 是 queryErrorCounts 的 MySQL 实现：
+// COUNT(*) FILTER (WHERE cond) → COALESCE(SUM(CASE WHEN cond THEN 1 ELSE 0 END), 0)；
+// （空表 SUM 为 NULL，故保留 COALESCE 对齐 PG COUNT 的 0）；$n→?。
+func (r *opsRepository) queryErrorCountsMySQL(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (
+	errorTotal int64,
+	businessLimited int64,
+	errorCountSLA int64,
+	upstreamExcl429529 int64,
+	upstream429 int64,
+	upstream529 int64,
+	err error,
+) {
+	where, args, _ := buildErrorWhereMySQL(filter, start, end, 1)
+
+	q := `
+SELECT
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 THEN 1 ELSE 0 END), 0) AS error_total,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND NOT is_business_limited THEN 1 ELSE 0 END), 0) AS error_sla,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529) THEN 1 ELSE 0 END), 0) AS upstream_excl,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
 FROM ops_error_logs
 ` + where
 
@@ -965,6 +1266,9 @@ func (r *opsRepository) queryCurrentRates(ctx context.Context, filter *service.O
 }
 
 func (r *opsRepository) queryPeakRates(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (qpsPeak float64, tpsPeak float64, err error) {
+	if IsMySQL() {
+		return r.queryPeakRatesMySQL(ctx, filter, start, end)
+	}
 	usageJoin, usageWhere, usageArgs, next := buildUsageWhere(filter, start, end, 1)
 	errorWhere, errorArgs, _ := buildErrorWhere(filter, start, end, next)
 
@@ -997,6 +1301,63 @@ SELECT
   COALESCE(MAX(total_req), 0) AS max_req_per_min,
   COALESCE(MAX(total_tokens), 0) AS max_tokens_per_min
 FROM combined`
+
+	args := append(usageArgs, errorArgs...)
+
+	var maxReqPerMinute, maxTokensPerMinute sql.NullInt64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&maxReqPerMinute, &maxTokensPerMinute); err != nil {
+		return 0, 0, err
+	}
+	if maxReqPerMinute.Valid && maxReqPerMinute.Int64 > 0 {
+		qpsPeak = roundTo1DP(float64(maxReqPerMinute.Int64) / 60.0)
+	}
+	if maxTokensPerMinute.Valid && maxTokensPerMinute.Int64 > 0 {
+		tpsPeak = roundTo1DP(float64(maxTokensPerMinute.Int64) / 60.0)
+	}
+	return qpsPeak, tpsPeak, nil
+}
+
+// queryPeakRatesMySQL 是 queryPeakRates 的 MySQL 实现：
+// date_trunc('minute', ts) → CAST(DATE_FORMAT(ts, '%Y-%m-%d %H:%i:00') AS DATETIME)（墙钟即桶）；
+// FULL OUTER JOIN → LEFT JOIN + 反连接（WHERE u.bucket IS NULL）UNION ALL，
+// 与 PG 的合并语义一致（usage-only 桶 error=0、error-only 桶 tokens=0）；$n→?。
+func (r *opsRepository) queryPeakRatesMySQL(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (qpsPeak float64, tpsPeak float64, err error) {
+	usageJoin, usageWhere, usageArgs, next := buildUsageWhereMySQL(filter, start, end, 1)
+	errorWhere, errorArgs, _ := buildErrorWhereMySQL(filter, start, end, next)
+
+	q := `
+WITH usage_buckets AS (
+  SELECT
+    CAST(DATE_FORMAT(ul.created_at, '%Y-%m-%d %H:%i:00') AS DATETIME) AS bucket,
+    COUNT(*) AS req_cnt,
+    COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_cnt
+  FROM usage_logs ul
+  ` + usageJoin + `
+  ` + usageWhere + `
+  GROUP BY bucket
+),
+error_buckets AS (
+  SELECT CAST(DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:00') AS DATETIME) AS bucket, COUNT(*) AS err_cnt
+  FROM ops_error_logs
+  ` + errorWhere + `
+    AND COALESCE(status_code, 0) >= 400
+  GROUP BY bucket
+)
+SELECT
+  COALESCE(MAX(total_req), 0) AS max_req_per_min,
+  COALESCE(MAX(total_tokens), 0) AS max_tokens_per_min
+FROM (
+  SELECT COALESCE(u.bucket, e.bucket) AS bucket,
+         COALESCE(u.req_cnt, 0) + COALESCE(e.err_cnt, 0) AS total_req,
+         COALESCE(u.token_cnt, 0) AS total_tokens
+  FROM usage_buckets u
+  LEFT JOIN error_buckets e ON u.bucket = e.bucket
+  UNION ALL
+  SELECT e.bucket, COALESCE(e.err_cnt, 0) AS total_req, 0 AS total_tokens
+  FROM error_buckets e
+  LEFT JOIN usage_buckets u ON u.bucket = e.bucket
+  WHERE u.bucket IS NULL
+) combined`
 
 	args := append(usageArgs, errorArgs...)
 
@@ -1083,6 +1444,83 @@ func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 	if platform != "" {
 		args = append(args, platform)
 		clauses = append(clauses, fmt.Sprintf("platform = $%d", idx))
+		idx++
+	}
+
+	where = "WHERE " + strings.Join(clauses, " AND ")
+	return where, args, idx
+}
+
+// buildUsageWhereMySQL 是 buildUsageWhere 的 MySQL 版（$n→?），
+// 条件列表与参数顺序逐条对应；platform 过滤表达式两侧通用。
+func buildUsageWhereMySQL(filter *service.OpsDashboardFilter, start, end time.Time, startIndex int) (join string, where string, args []any, nextIndex int) {
+	platform := ""
+	groupID := (*int64)(nil)
+	if filter != nil {
+		platform = strings.TrimSpace(strings.ToLower(filter.Platform))
+		groupID = filter.GroupID
+	}
+
+	idx := startIndex
+	clauses := make([]string, 0, 4)
+	args = make([]any, 0, 4)
+
+	args = append(args, start)
+	clauses = append(clauses, "ul.created_at >= ?")
+	idx++
+	args = append(args, end)
+	clauses = append(clauses, "ul.created_at < ?")
+	idx++
+
+	if groupID != nil && *groupID > 0 {
+		args = append(args, *groupID)
+		clauses = append(clauses, "ul.group_id = ?")
+		idx++
+	}
+	if platform != "" {
+		// Prefer group.platform when available; fall back to account.platform so we don't
+		// drop rows where group_id is NULL.
+		// `groups` 是 MySQL 8 保留字，JOIN 目标须反引号（PG 版保持原文）。
+		join = "LEFT JOIN `groups` g ON g.id = ul.group_id LEFT JOIN accounts a ON a.id = ul.account_id"
+		args = append(args, platform)
+		clauses = append(clauses, "COALESCE(NULLIF(g.platform,''), a.platform) = ?")
+		idx++
+	}
+
+	where = "WHERE " + strings.Join(clauses, " AND ")
+	return join, where, args, idx
+}
+
+// buildErrorWhereMySQL 是 buildErrorWhere 的 MySQL 版（$n→?）。
+func buildErrorWhereMySQL(filter *service.OpsDashboardFilter, start, end time.Time, startIndex int) (where string, args []any, nextIndex int) {
+	platform := ""
+	groupID := (*int64)(nil)
+	if filter != nil {
+		platform = strings.TrimSpace(strings.ToLower(filter.Platform))
+		groupID = filter.GroupID
+	}
+
+	idx := startIndex
+	clauses := make([]string, 0, 5)
+	args = make([]any, 0, 5)
+
+	args = append(args, start)
+	clauses = append(clauses, "created_at >= ?")
+	idx++
+	args = append(args, end)
+	clauses = append(clauses, "created_at < ?")
+	idx++
+
+	clauses = append(clauses, "is_count_tokens = FALSE")
+
+	if groupID != nil && *groupID > 0 {
+		args = append(args, *groupID)
+		clauses = append(clauses, "group_id = ?")
+		idx++
+	}
+	if platform != "" {
+		args = append(args, platform)
+		clauses = append(clauses, "platform = ?")
 		idx++
 	}
 

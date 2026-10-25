@@ -39,6 +39,7 @@ func TestAccountRepository_ResetQuotaUsedAndClearRateLimitCooldown_NoRowsAffecte
 }
 
 func TestAccountRepository_GrokCredentialConditionalMutationsAreEligibleAndAtomicallyPropagated(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	proxyID := int64(77)
 	snapshot := service.GrokCredentialMutationSnapshot{
 		CredentialsJSON: `{"access_token":"access","refresh_token":"refresh","_token_version":123}`,
@@ -99,6 +100,7 @@ func TestAccountRepository_GrokCredentialConditionalMutationsAreEligibleAndAtomi
 }
 
 func TestAccountRepository_GrokCredentialCommitCarriesOutboxAcrossCallerCancellation(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	snapshot := service.GrokCredentialMutationSnapshot{CredentialsJSON: `{"access_token":"access","refresh_token":"refresh"}`}
 	tests := []struct {
 		name   string
@@ -136,6 +138,7 @@ func TestAccountRepository_GrokCredentialCommitCarriesOutboxAcrossCallerCancella
 }
 
 func TestAccountRepository_SetGrokOAuthErrorIfCredentialsUnchanged_RequiresActiveExactCredentialMatch(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 
@@ -164,6 +167,7 @@ func TestAccountRepository_SetGrokOAuthErrorIfCredentialsUnchanged_RequiresActiv
 }
 
 func TestAccountRepository_SetGrokOAuthErrorIfCredentialsUnchanged_AppliedWritesOutbox(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 
@@ -184,6 +188,7 @@ func TestAccountRepository_SetGrokOAuthErrorIfCredentialsUnchanged_AppliedWrites
 }
 
 func TestAccountRepository_SetGrokOAuthRefreshErrorIfCredentialsUnchanged_UsesAttemptCredentialsAndProxy(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 	proxyID := int64(17)
@@ -210,6 +215,7 @@ func TestAccountRepository_SetGrokOAuthRefreshErrorIfCredentialsUnchanged_UsesAt
 }
 
 func TestAccountRepository_SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged_UsesAttemptCredentialsAndProxy(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 	proxyID := int64(19)
@@ -236,6 +242,7 @@ func TestAccountRepository_SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnch
 }
 
 func TestAccountRepository_UpdateGrokOAuthCredentialsIfUnchanged_UsesExactAttemptStateAndAtomicOutbox(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
 	proxyID := int64(29)
@@ -262,6 +269,7 @@ func TestAccountRepository_UpdateGrokOAuthCredentialsIfUnchanged_UsesExactAttemp
 }
 
 func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T) {
+	skipOnMySQL(t) // sqlmock 断言 PG 语句形状（RETURNING/::jsonb/FOR NO KEY UPDATE 等），MySQL 分支语句形状不同
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()

@@ -43,6 +43,8 @@ func TestOpsRepositoryGetOpenAITokenStats_PlatformScope(t *testing.T) {
 
 			// Match the complete filtering clause in both queries so an implicit
 			// model restriction cannot silently narrow the selected platform scope.
+			// MySQL 分支的语句仅把 $n 占位换成 ?（buildUsageWhereMySQL），
+			// 经 sqlmockPatternForDialect 双言化后两侧共用同一期望。
 			where := "WHERE ul.created_at >= $1 AND ul.created_at < $2"
 			args := []driver.Value{start, end}
 			if tt.groupID != nil {
@@ -58,7 +60,7 @@ func TestOpsRepositoryGetOpenAITokenStats_PlatformScope(t *testing.T) {
 				args = append(args, tt.platform)
 			}
 			queryPrefix := regexp.QuoteMeta(where) + `\s+GROUP BY ul.model\s+\)`
-			mock.ExpectQuery(queryPrefix + `\s+SELECT COUNT\(\*\) FROM stats`).
+			mock.ExpectQuery(sqlmockPatternForDialect(queryPrefix + `\s+SELECT COUNT\(\*\) FROM stats`)).
 				WithArgs(args...).
 				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(len(tt.models)))
 
@@ -69,7 +71,7 @@ func TestOpsRepositoryGetOpenAITokenStats_PlatformScope(t *testing.T) {
 			for _, model := range tt.models {
 				rows.AddRow(model, int64(2), 10.0, 100.0, int64(20), int64(1000), int64(2))
 			}
-			mock.ExpectQuery(queryPrefix + `\s+SELECT model,`).
+			mock.ExpectQuery(sqlmockPatternForDialect(queryPrefix + `\s+SELECT model,`)).
 				WithArgs(append(args, 20)...).
 				WillReturnRows(rows)
 
@@ -121,7 +123,7 @@ func TestOpsRepositoryGetOpenAITokenStats_PaginationMode(t *testing.T) {
 		AddRow("gpt-4o-mini", int64(20), 21.56, 120.34, int64(3000), int64(850), int64(18)).
 		AddRow("gpt-4.1", int64(20), 10.2, 240.0, int64(2500), int64(900), int64(20))
 
-	mock.ExpectQuery(`ORDER BY request_count DESC, model ASC\s+LIMIT \$5 OFFSET \$6`).
+	mock.ExpectQuery(sqlmockPatternForDialect(`ORDER BY request_count DESC, model ASC\s+LIMIT \$5 OFFSET \$6`)).
 		WithArgs(start, end, groupID, "openai", 10, 10).
 		WillReturnRows(rows)
 
@@ -173,7 +175,7 @@ func TestOpsRepositoryGetOpenAITokenStats_TopNMode(t *testing.T) {
 	}).
 		AddRow("gpt-4o", int64(5), nil, nil, int64(0), int64(0), int64(0))
 
-	mock.ExpectQuery(`ORDER BY request_count DESC, model ASC\s+LIMIT \$3`).
+	mock.ExpectQuery(sqlmockPatternForDialect(`ORDER BY request_count DESC, model ASC\s+LIMIT \$3`)).
 		WithArgs(start, end, 5).
 		WillReturnRows(rows)
 
@@ -209,7 +211,7 @@ func TestOpsRepositoryGetOpenAITokenStats_EmptyResult(t *testing.T) {
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
 
-	mock.ExpectQuery(`ORDER BY request_count DESC, model ASC\s+LIMIT \$3 OFFSET \$4`).
+	mock.ExpectQuery(sqlmockPatternForDialect(`ORDER BY request_count DESC, model ASC\s+LIMIT \$3 OFFSET \$4`)).
 		WithArgs(start, end, 20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model",

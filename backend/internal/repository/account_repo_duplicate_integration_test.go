@@ -35,20 +35,20 @@ func TestCreateWithAccountGroupsPersistsPausedCopyAtomically(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateWithAccountGroups(ctx, success, []service.AccountGroup{{GroupID: group.ID, Priority: 37}}))
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE account_id = $1", success.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE account_id = $1", success.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", success.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id = $1", group.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM scheduler_outbox WHERE account_id = $1"), success.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM account_groups WHERE account_id = $1"), success.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM accounts WHERE id = $1"), success.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM groups WHERE id = $1"), group.ID)
 	})
 
 	var schedulable bool
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT schedulable FROM accounts WHERE id = $1", success.ID).Scan(&schedulable))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT schedulable FROM accounts WHERE id = $1"), success.ID).Scan(&schedulable))
 	require.False(t, schedulable)
 	var priority int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT priority FROM account_groups WHERE account_id = $1 AND group_id = $2", success.ID, group.ID).Scan(&priority))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT priority FROM account_groups WHERE account_id = $1 AND group_id = $2"), success.ID, group.ID).Scan(&priority))
 	require.Equal(t, 37, priority)
 	var outboxCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1", success.ID).Scan(&outboxCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1"), success.ID).Scan(&outboxCount))
 	require.Equal(t, 1, outboxCount)
 
 	failure := &service.Account{
@@ -64,9 +64,9 @@ func TestCreateWithAccountGroupsPersistsPausedCopyAtomically(t *testing.T) {
 	require.Error(t, err)
 
 	var accountCount, groupCount, failedOutboxCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM accounts WHERE name = $1", failure.Name).Scan(&accountCount))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE account_id = $1", failure.ID).Scan(&groupCount))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1", failure.ID).Scan(&failedOutboxCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT COUNT(*) FROM accounts WHERE name = $1"), failure.Name).Scan(&accountCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT COUNT(*) FROM account_groups WHERE account_id = $1"), failure.ID).Scan(&groupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, acctITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1"), failure.ID).Scan(&failedOutboxCount))
 	require.Zero(t, accountCount)
 	require.Zero(t, groupCount)
 	require.Zero(t, failedOutboxCount)

@@ -14,6 +14,11 @@ import (
 )
 
 func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
+	// 夹具用 plpgsql 函数 + 触发器强制 scheduler_outbox 插入失败；MySQL 测试库
+	// 无 SUPER 权限（binlog 开启）无法 CREATE TRIGGER（Error 1419，迁移 runner
+	// 同样在 test-tolerant 模式下剥掉触发器 DDL），故 MySQL 方言跳过。
+	skipOnMySQL(t)
+
 	ctx := context.Background()
 	client := testEntClient(t)
 	repo := newGroupRepositoryWithSQL(client, integrationDB)

@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -49,12 +51,32 @@ const (
 `
 )
 
+// opencodeGoUsageEligibleSQLMySQL 是 opencodeGoUsageEligibleSQL 的 MySQL 版，语义逐条
+// 对应（见 DIALECT_MYSQL_GUIDE.md）：btrim(x) ~ 正则 → mysqlOpenCodeBaseURLMatchesSQL
+// （REGEXP_LIKE(TRIM(x), 正则, 'c')，正则反斜杠已按 MySQL 字面量规则翻倍）；
+// credentials ->> 'key' → mysqlJSONTextOf（缺失路径/JSON null 归一为 SQL NULL）；
+// jsonb_typeof(credentials -> 'api_key') = 'string' → JSON_TYPE(...) = 'STRING'（大写）。
+// btrim 只去空格的既知差异与 PG 版保持一致（account_mode 等凭证字段不出现空白）。
+var opencodeGoUsageEligibleSQLMySQL = `
+	(
+		(platform = 'opencode_go'
+			AND COALESCE(TRIM(` + mysqlJSONTextOf("credentials", "account_mode") + `) <> 'zen', TRUE))
+		OR (platform IN (` + opencodeGoUsageMountPlatformsSQL + `)
+			AND ` + mysqlOpenCodeBaseURLMatchesSQL(mysqlJSONTextOf("credentials", "base_url")) + `)
+	)
+	AND type = 'apikey'
+	AND JSON_TYPE(JSON_EXTRACT(credentials, '$.api_key')) = 'STRING'
+`
+
 // ListOpenCodeGoUsageGroupAccounts resolves every sibling for all supplied
 // identities with one ID query and one batch hydration. API keys are query
 // parameters only; no derived shared key is persisted.
 func (r *accountRepository) ListOpenCodeGoUsageGroupAccounts(ctx context.Context, accounts []*service.Account) ([]service.Account, error) {
 	if r == nil || r.sql == nil {
 		return nil, service.ErrOpenCodeGoUsageUnavailable
+	}
+	if IsMySQL() {
+		return r.listOpenCodeGoUsageGroupAccountsMySQL(ctx, accounts)
 	}
 	keys := make([]string, 0, len(accounts))
 	seen := make(map[string]struct{}, len(accounts))
@@ -247,20 +269,28 @@ func (r *accountRepository) updateOpenCodeGoUsageGroup(
 		for index := range members {
 			memberIDs[index] = members[index].id
 		}
-		mergeExpr := "COALESCE(extra, '{}'::jsonb)"
-		for _, key := range deleteKeys {
-			mergeExpr += " - " + pq.QuoteLiteral(key)
+		var query string
+		var args []any
+		if IsMySQL() {
+			query, args = openCodeGoUsageGroupUpdateSQLMySQL(deleteKeys, memberIDs, string(encoded), apiKey)
+		} else {
+			mergeExpr := "COALESCE(extra, '{}'::jsonb)"
+			for _, key := range deleteKeys {
+				mergeExpr += " - " + pq.QuoteLiteral(key)
+			}
+			mergeExpr += " || $1::jsonb"
+			query = `
+				UPDATE accounts
+				SET extra = ` + mergeExpr + `,
+					updated_at = NOW()
+				WHERE deleted_at IS NULL
+					AND ` + opencodeGoUsageEligibleSQL + `
+					AND credentials ->> 'api_key' = $2
+					AND id = ANY($3)
+			`
+			args = []any{string(encoded), apiKey, pq.Array(memberIDs)}
 		}
-		mergeExpr += " || $1::jsonb"
-		result, err := client.ExecContext(txCtx, `
-			UPDATE accounts
-			SET extra = `+mergeExpr+`,
-				updated_at = NOW()
-			WHERE deleted_at IS NULL
-				AND `+opencodeGoUsageEligibleSQL+`
-				AND credentials ->> 'api_key' = $2
-				AND id = ANY($3)
-		`, string(encoded), apiKey, pq.Array(memberIDs))
+		result, err := client.ExecContext(txCtx, query, args...)
 		if err != nil {
 			return err
 		}
@@ -305,23 +335,46 @@ func lockOpenCodeGoUsageGroup(
 	if account.ProxyID != nil {
 		proxyID = *account.ProxyID
 	}
-	rows, err := client.QueryContext(ctx, `
-		SELECT
-			id,
-			id = $2
-				AND platform = $3
-				AND type = $4
-				AND credentials = $5::jsonb
-				AND proxy_id IS NOT DISTINCT FROM $6,
-			COALESCE((extra -> 'opencode_go_usage_auto_refresh')::text, 'null'),
-			COALESCE((extra -> 'opencode_go_usage_snapshot')::text, 'null')
-		FROM accounts
-		WHERE deleted_at IS NULL
-			AND `+opencodeGoUsageEligibleSQL+`
-			AND credentials ->> 'api_key' = $1
-		ORDER BY id
-		FOR NO KEY UPDATE
-	`, apiKey, account.ID, account.Platform, account.Type, string(credentials), proxyID)
+	// anchorMatches 布尔列：MySQL 用 <=> 对齐 PG 的 IS NOT DISTINCT FROM；
+	// (extra -> 'key')::text → CAST(JSON_EXTRACT(...) AS CHAR)。FOR NO KEY UPDATE → FOR UPDATE。
+	var rows *sql.Rows
+	if IsMySQL() {
+		rows, err = client.QueryContext(ctx, `
+			SELECT
+				id,
+				id = ?
+					AND platform = ?
+					AND type = ?
+					AND credentials = CAST(? AS JSON)
+					AND (proxy_id <=> ?),
+				COALESCE(CAST(JSON_EXTRACT(extra, '$.opencode_go_usage_auto_refresh') AS CHAR), 'null'),
+				COALESCE(CAST(JSON_EXTRACT(extra, '$.opencode_go_usage_snapshot') AS CHAR), 'null')
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND `+opencodeGoUsageEligibleSQLMySQL+`
+				AND `+mysqlJSONTextOf("credentials", "api_key")+` = ?
+			ORDER BY id
+			FOR UPDATE
+		`, account.ID, account.Platform, account.Type, string(credentials), proxyID, apiKey)
+	} else {
+		rows, err = client.QueryContext(ctx, `
+			SELECT
+				id,
+				id = $2
+					AND platform = $3
+					AND type = $4
+					AND credentials = $5::jsonb
+					AND proxy_id IS NOT DISTINCT FROM $6,
+				COALESCE((extra -> 'opencode_go_usage_auto_refresh')::text, 'null'),
+				COALESCE((extra -> 'opencode_go_usage_snapshot')::text, 'null')
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND `+opencodeGoUsageEligibleSQL+`
+				AND credentials ->> 'api_key' = $1
+			ORDER BY id
+			FOR NO KEY UPDATE
+		`, apiKey, account.ID, account.Platform, account.Type, string(credentials), proxyID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -367,11 +420,16 @@ func (r *accountRepository) ListDueOpenCodeGoUsageAccounts(
 	if r == nil || r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 	}
+	// debounce/maxWait 的兜底默认值置于方言分流之前，保证 MySQL 早退分支与
+	// PG 分支拿到同样的兜底语义（服务层已归一为正值，此处仅为防御性兜底）。
 	if debounce <= 0 {
 		debounce = time.Minute
 	}
 	if maxWait <= 0 {
 		maxWait = 15 * time.Minute
+	}
+	if IsMySQL() {
+		return r.listDueOpenCodeGoUsageAccountsMySQL(ctx, now, debounce, maxWait, limit)
 	}
 	debounceSeconds := debounce.Seconds()
 	maxWaitSeconds := maxWait.Seconds()
@@ -466,6 +524,267 @@ func (r *accountRepository) ListDueOpenCodeGoUsageAccounts(
 		ORDER BY due_class, due_at NULLS FIRST, id
 		LIMIT $4
 	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit, minFetchIntervalSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	type dueRow struct {
+		id            int64
+		groupLastUsed *time.Time
+	}
+	rowsOut := make([]dueRow, 0, limit)
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var row dueRow
+		if err := rows.Scan(&row.id, &row.groupLastUsed); err != nil {
+			return nil, err
+		}
+		rowsOut = append(rowsOut, row)
+		ids = append(ids, row.id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*service.Account, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			byID[account.ID] = account
+		}
+	}
+	result := make([]service.Account, 0, len(rowsOut))
+	for _, row := range rowsOut {
+		account := byID[row.id]
+		if account == nil {
+			continue
+		}
+		// Stamp group MAX(last_used_at) for service due evaluation.
+		if row.groupLastUsed != nil {
+			ts := row.groupLastUsed.UTC()
+			account.LastUsedAt = &ts
+		} else {
+			account.LastUsedAt = nil
+		}
+		result = append(result, *account)
+	}
+	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// MySQL 方言实现（见 DIALECT_MYSQL_GUIDE.md）。语义与各 PG 版本逐条对应：
+// `->>`/#>> → mysqlJSONTextOf / JSON_UNQUOTE(JSON_EXTRACT(...))；`= ANY($1)` → IN 展开；
+// `@>` → JSON_CONTAINS；`FOR NO KEY UPDATE` → `FOR UPDATE`；NOW() → NOW(3)。
+// ---------------------------------------------------------------------------
+
+// openCodeGoUsageGroupUpdateSQLMySQL 构造 opencode go 组内成员 extra 合并的 MySQL UPDATE，
+// 对应 PG 的 `(COALESCE(extra,'{}'::jsonb) - key1 - key2 ...) || $1::jsonb`：
+// JSON_MERGE_PATCH(JSON_REMOVE(COALESCE(extra, CAST('{}' AS JSON)), ?, ...), CAST(? AS JSON))。
+// 删除路径以绑定参数传入（对齐 mysqlJSONSetMergeSQL 的 "$.key" 路径参数风格，避免拼接转义）；
+// patch 键先被 JSON_REMOVE 移除、与 base 无交集，JSON_MERGE_PATCH 的递归对象合并不会触发，
+// 与 base 无交集，JSON_MERGE_PATCH 的递归对象合并不会触发，
+// 与 PG `||` 的整键替换语义等价。deleteKeys 为空时跳过 JSON_REMOVE（MySQL 的 JSON_REMOVE
+// 至少需要一个 path 参数）。返回语句与按序参数（删除路径 → payload → apiKey → memberIDs）。
+// REVIEW: payload 值若为 JSON null（理论上仅当 account.Extra 中 managed key 本身为 null
+// 时经 openCodeGoUsageManagedPayload 复制产生），JSON_MERGE_PATCH 会删除该键，而 PG `||`
+// 会将其置为 JSON null；两种状态在下游判定（due 列表的 snapshot IS NULL / = 'null'、
+// CAS 的 canonicalJSON('null')）行为一致，故接受该表示差异。
+func openCodeGoUsageGroupUpdateSQLMySQL(deleteKeys []string, memberIDs []int64, payloadJSON, apiKey string) (string, []any) {
+	base := "COALESCE(extra, CAST('{}' AS JSON))"
+	args := make([]any, 0, len(deleteKeys)+2+len(memberIDs))
+	if len(deleteKeys) > 0 {
+		placeholders := make([]string, 0, len(deleteKeys))
+		for _, key := range deleteKeys {
+			placeholders = append(placeholders, "?")
+			args = append(args, "$."+mysqlJSONPathMember(key))
+		}
+		base = "JSON_REMOVE(" + base + ", " + strings.Join(placeholders, ", ") + ")"
+	}
+	query := `
+		UPDATE accounts
+		SET extra = JSON_MERGE_PATCH(` + base + `, CAST(? AS JSON)),
+			updated_at = NOW(3)
+		WHERE deleted_at IS NULL
+			AND ` + opencodeGoUsageEligibleSQLMySQL + `
+			AND ` + mysqlJSONTextOf("credentials", "api_key") + ` = ?
+			AND id IN (` + Placeholders(len(memberIDs)) + `)
+	`
+	args = append(args, payloadJSON, apiKey)
+	for _, id := range memberIDs {
+		args = append(args, id)
+	}
+	return query, args
+}
+
+// listOpenCodeGoUsageGroupAccountsMySQL 是 ListOpenCodeGoUsageGroupAccounts 的
+// MySQL 实现：`credentials ->> 'api_key' = ANY($1)` → IN 展开；组员水合与
+// PG 版共用 GetByIDs。
+func (r *accountRepository) listOpenCodeGoUsageGroupAccountsMySQL(ctx context.Context, accounts []*service.Account) ([]service.Account, error) {
+	keys := make([]string, 0, len(accounts))
+	seen := make(map[string]struct{}, len(accounts))
+	for _, account := range accounts {
+		if !service.IsOpenCodeGoUsageAccount(account) || account.Credentials == nil {
+			continue
+		}
+		apiKey, ok := account.Credentials["api_key"].(string)
+		if !ok || apiKey == "" {
+			continue
+		}
+		if _, duplicate := seen[apiKey]; duplicate {
+			continue
+		}
+		seen[apiKey] = struct{}{}
+		keys = append(keys, apiKey)
+	}
+	if len(keys) == 0 {
+		return []service.Account{}, nil
+	}
+	args := make([]any, 0, len(keys))
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id
+		FROM accounts
+		WHERE deleted_at IS NULL
+			AND `+opencodeGoUsageEligibleSQLMySQL+`
+			AND `+mysqlJSONTextOf("credentials", "api_key")+` IN (`+Placeholders(len(keys))+`)
+		ORDER BY id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := make([]int64, 0, len(keys))
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	hydrated, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]service.Account, 0, len(hydrated))
+	for _, account := range hydrated {
+		if account != nil {
+			result = append(result, *account)
+		}
+	}
+	return result, nil
+}
+
+// listDueOpenCodeGoUsageAccountsMySQL 是 ListDueOpenCodeGoUsageAccounts 的 MySQL 实现。
+// 语义对应与 listDueOllamaCloudUsageAccountsMySQL 相同（只读 CTE 去 MATERIALIZED 提示、
+// @> → JSON_CONTAINS、make_interval → INTERVAL ? MICROSECOND、'-infinity' →
+// '1970-01-01 00:00:00'、去 NULLS FIRST 依赖 MySQL ASC 的 NULL 排最前）。
+// 参数按 SQL 文本顺序：debounce、maxWait、minFetchInterval、debounce、maxWait、now、limit。
+func (r *accountRepository) listDueOpenCodeGoUsageAccountsMySQL(
+	ctx context.Context,
+	now time.Time,
+	debounce, maxWait time.Duration,
+	limit int,
+) ([]service.Account, error) {
+	debounceMicros := debounce.Microseconds()
+	maxWaitMicros := maxWait.Microseconds()
+	minFetchIntervalMicros := service.OpenCodeGoUsageMinFetchInterval.Microseconds()
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH eligible AS (
+			SELECT id,
+				`+mysqlJSONTextOf("credentials", "api_key")+` AS api_key,
+				last_used_at,
+				JSON_EXTRACT(extra, '$.opencode_go_usage_snapshot') AS snapshot
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND status = 'active'
+				AND `+opencodeGoUsageEligibleSQLMySQL+`
+				AND JSON_CONTAINS(extra, CAST('{"opencode_go_usage_auto_refresh": true}' AS JSON))
+		), group_activity AS (
+			SELECT `+mysqlJSONTextOf("credentials", "api_key")+` AS api_key,
+				MAX(last_used_at) AS group_last_used_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND `+opencodeGoUsageEligibleSQLMySQL+`
+				AND JSON_TYPE(JSON_EXTRACT(credentials, '$.api_key')) = 'STRING'
+			GROUP BY `+mysqlJSONTextOf("credentials", "api_key")+`
+		), joined AS (
+			SELECT e.id, e.api_key, e.snapshot, g.group_last_used_at,
+				`+mysqlJSONTextOf("e.snapshot", "status")+` AS status,
+				`+mysqlJSONTextOf("e.snapshot", "fetched_at")+` AS fetched_at,
+				`+mysqlJSONTextOf("e.snapshot", "last_attempt_at")+` AS last_attempt_at,
+				`+mysqlJSONTextOf("e.snapshot", "next_refresh_at")+` AS next_refresh_at
+			FROM eligible e
+			JOIN group_activity g ON g.api_key = e.api_key
+		), parsed AS (
+			SELECT id, api_key, snapshot, group_last_used_at, status,
+				`+ollamaCloudUsageParseRFC3339SQLMySQL("fetched_at")+` AS parsed_fetched_at,
+				`+ollamaCloudUsageParseRFC3339SQLMySQL("last_attempt_at")+` AS parsed_last_attempt_at,
+				`+ollamaCloudUsageParseRFC3339SQLMySQL("next_refresh_at")+` AS parsed_next_refresh_at
+			FROM joined
+		), timed AS (
+			SELECT *,
+				CASE
+					WHEN status = 'ok'
+						AND parsed_fetched_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_fetched_at
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + INTERVAL ? MICROSECOND,
+							parsed_fetched_at + INTERVAL ? MICROSECOND
+						),
+						parsed_fetched_at + INTERVAL ? MICROSECOND
+					)
+					WHEN status IN ('failed', 'unauthorized')
+						AND parsed_last_attempt_at IS NOT NULL
+						AND group_last_used_at IS NOT NULL
+						AND group_last_used_at > parsed_last_attempt_at
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + INTERVAL ? MICROSECOND,
+							parsed_last_attempt_at + INTERVAL ? MICROSECOND
+						),
+						COALESCE(parsed_next_refresh_at, CAST('1970-01-01 00:00:00' AS DATETIME(6)))
+					)
+					ELSE NULL
+				END AS activity_due_at
+			FROM parsed
+		), candidates AS (
+			SELECT *,
+				CASE
+					WHEN snapshot IS NULL OR JSON_TYPE(snapshot) = 'NULL' OR status IS NULL
+						OR status NOT IN ('ok', 'failed', 'unauthorized') THEN 0
+					WHEN status = 'ok' AND parsed_fetched_at IS NULL THEN 0
+					WHEN status IN ('failed', 'unauthorized') AND parsed_last_attempt_at IS NULL THEN 0
+					WHEN activity_due_at IS NOT NULL AND ? >= activity_due_at THEN 1
+					ELSE NULL
+				END AS due_class,
+				activity_due_at AS due_at
+			FROM timed
+		), ranked AS (
+			SELECT id, api_key, group_last_used_at, due_class, due_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY api_key
+					ORDER BY due_class,
+						due_at,
+						id
+				) AS group_rank
+			FROM candidates
+			WHERE due_class IS NOT NULL
+		)
+		SELECT id, group_last_used_at
+		FROM ranked
+		WHERE group_rank = 1
+		ORDER BY due_class, due_at, id
+		LIMIT ?
+	`, debounceMicros, maxWaitMicros, minFetchIntervalMicros, debounceMicros, maxWaitMicros, now, limit)
 	if err != nil {
 		return nil, err
 	}

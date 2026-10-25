@@ -65,7 +65,9 @@ func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*service.Au
 	if len(logs) == 0 {
 		return 0, nil
 	}
-
+	if IsMySQL() {
+		return r.batchInsertMySQL(ctx, logs)
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -109,6 +111,60 @@ func (r *auditLogRepository) BatchInsert(ctx context.Context, logs []*service.Au
 	return inserted, nil
 }
 
+// batchInsertMySQL 是 BatchInsert 的 MySQL 实现：pq.CopyIn 是 PG COPY 协议专用，
+// MySQL 改为事务内分块多行 INSERT（每块 500 行 × 16 列 = 8000 个占位符，
+// 远低于 MySQL 预处理语句 65535 的占位符上限）。
+// extra 列为 JSON（migrations/mysql/180）：extraJSON 是合法 JSON 文本（"{}" 或
+// json.Marshal 结果），字符串参数会被 MySQL 隐式校验并转换为 JSON。
+func (r *auditLogRepository) batchInsertMySQL(ctx context.Context, logs []*service.AuditLog) (int64, error) {
+	const columns = 16
+	const chunkSize = 500
+	rowPlaceholder := "(" + strings.Repeat("?,", columns-1) + "?)"
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var inserted int64
+	values := make([]any, 0, chunkSize*columns)
+	pending := 0
+	flush := func() error {
+		if pending == 0 {
+			return nil
+		}
+		query := "INSERT INTO audit_logs (" + auditLogInsertColumns + ") VALUES " +
+			strings.Repeat(rowPlaceholder+",", pending-1) + rowPlaceholder
+		if _, err := tx.ExecContext(ctx, query, values...); err != nil {
+			return err
+		}
+		values = values[:0]
+		pending = 0
+		return nil
+	}
+	for _, log := range logs {
+		if log == nil {
+			continue
+		}
+		values = append(values, auditLogInsertValues(log)...)
+		pending++
+		inserted++
+		if pending >= chunkSize {
+			if err := flush(); err != nil {
+				return inserted, err
+			}
+		}
+	}
+	if err := flush(); err != nil {
+		return inserted, err
+	}
+	if err := tx.Commit(); err != nil {
+		return inserted, err
+	}
+	return inserted, nil
+}
+
 func (r *auditLogRepository) Insert(ctx context.Context, log *service.AuditLog) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil audit log repository")
@@ -118,6 +174,10 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *service.AuditLog) 
 	}
 	query := `INSERT INTO audit_logs (` + auditLogInsertColumns + `)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
+	if IsMySQL() {
+		query = `INSERT INTO audit_logs (` + auditLogInsertColumns + `)
+VALUES (` + Placeholders(16) + `)`
+	}
 	_, err := r.db.ExecContext(ctx, query, auditLogInsertValues(log)...)
 	return err
 }
@@ -175,6 +235,61 @@ func buildAuditLogsWhere(filter *service.AuditLogFilter) (string, []any) {
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
+// buildAuditLogsWhereMySQL 是 buildAuditLogsWhere 的 MySQL 版本：
+// $n → ?（同参数多次引用时重复绑定）；ILIKE → LIKE（utf8mb4_0900_ai_ci 大小写不敏感）。
+func buildAuditLogsWhereMySQL(filter *service.AuditLogFilter) (string, []any) {
+	clauses := make([]string, 0, 10)
+	args := make([]any, 0, 10)
+	clauses = append(clauses, "1=1")
+
+	if filter.StartTime != nil {
+		args = append(args, filter.StartTime.UTC())
+		clauses = append(clauses, "l.created_at >= ?")
+	}
+	if filter.EndTime != nil {
+		args = append(args, filter.EndTime.UTC())
+		clauses = append(clauses, "l.created_at <= ?")
+	}
+	if filter.ActorUserID != nil {
+		args = append(args, *filter.ActorUserID)
+		clauses = append(clauses, "l.actor_user_id = ?")
+	}
+	if v := strings.TrimSpace(filter.ActorEmail); v != "" {
+		args = append(args, "%"+escapeLikePattern(v)+"%")
+		clauses = append(clauses, "l.actor_email LIKE ?")
+	}
+	if v := strings.TrimSpace(filter.AuthMethod); v != "" {
+		args = append(args, v)
+		clauses = append(clauses, "l.auth_method = ?")
+	}
+	if v := strings.TrimSpace(filter.Action); v != "" {
+		args = append(args, "%"+escapeLikePattern(v)+"%")
+		clauses = append(clauses, "l.action LIKE ?")
+	}
+	if v := strings.TrimSpace(filter.Method); v != "" {
+		args = append(args, strings.ToUpper(v))
+		clauses = append(clauses, "l.method = ?")
+	}
+	if v := strings.TrimSpace(filter.ClientIP); v != "" {
+		args = append(args, v)
+		clauses = append(clauses, "l.client_ip = ?")
+	}
+	if filter.Success != nil {
+		if *filter.Success {
+			clauses = append(clauses, "l.status_code < 400")
+		} else {
+			clauses = append(clauses, "l.status_code >= 400")
+		}
+	}
+	if v := strings.TrimSpace(filter.Query); v != "" {
+		pattern := "%" + escapeLikePattern(v) + "%"
+		args = append(args, pattern, pattern, pattern)
+		clauses = append(clauses, "(l.path LIKE ? OR l.action LIKE ? OR l.actor_email LIKE ?)")
+	}
+
+	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
 const auditLogSelectColumns = `
   l.id,
   l.created_at,
@@ -193,6 +308,28 @@ const auditLogSelectColumns = `
   l.status_code,
   l.latency_ms,
   COALESCE(l.extra::text, '{}')`
+
+// auditLogSelectColumnsMySQL 是 auditLogSelectColumns 的 MySQL 版本：
+// `COALESCE(l.extra::text, '{}')` → `COALESCE(l.extra, '{}')`（JSON 列直接以
+// JSON 文本返回，Scan 到 string 的行为与 PG ::text 一致）。
+const auditLogSelectColumnsMySQL = `
+  l.id,
+  l.created_at,
+  l.actor_user_id,
+  COALESCE(l.actor_email, ''),
+  COALESCE(l.actor_role, ''),
+  COALESCE(l.auth_method, ''),
+  COALESCE(l.credential_masked, ''),
+  COALESCE(l.action, ''),
+  COALESCE(l.method, ''),
+  COALESCE(l.path, ''),
+  COALESCE(l.request_id, ''),
+  COALESCE(l.client_ip, ''),
+  COALESCE(l.user_agent, ''),
+  COALESCE(l.request_body, ''),
+  l.status_code,
+  l.latency_ms,
+  COALESCE(l.extra, '{}')`
 
 func scanAuditLogRow(scan func(dest ...any) error) (*service.AuditLog, error) {
 	item := &service.AuditLog{}
@@ -254,6 +391,13 @@ func (r *auditLogRepository) List(ctx context.Context, filter *service.AuditLogF
 	}
 
 	where, args := buildAuditLogsWhere(filter)
+	selectColumns := auditLogSelectColumns
+	limitClause := `LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
+	if IsMySQL() {
+		where, args = buildAuditLogsWhereMySQL(filter)
+		selectColumns = auditLogSelectColumnsMySQL
+		limitClause = `LIMIT ? OFFSET ?`
+	}
 	countSQL := "SELECT COUNT(*) FROM audit_logs l " + where
 	var total int
 	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -262,9 +406,9 @@ func (r *auditLogRepository) List(ctx context.Context, filter *service.AuditLogF
 
 	offset := (page - 1) * pageSize
 	argsWithLimit := append(args, pageSize, offset)
-	query := "SELECT" + auditLogSelectColumns + "\nFROM audit_logs l\n" + where + `
+	query := "SELECT" + selectColumns + "\nFROM audit_logs l\n" + where + `
 ORDER BY l.created_at DESC, l.id DESC
-LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
+` + limitClause
 
 	rows, err := r.db.QueryContext(ctx, query, argsWithLimit...)
 	if err != nil {
@@ -299,6 +443,9 @@ func (r *auditLogRepository) GetByID(ctx context.Context, id int64) (*service.Au
 		return nil, fmt.Errorf("nil audit log repository")
 	}
 	query := "SELECT" + auditLogSelectColumns + "\nFROM audit_logs l WHERE l.id = $1"
+	if IsMySQL() {
+		query = "SELECT" + auditLogSelectColumnsMySQL + "\nFROM audit_logs l WHERE l.id = ?"
+	}
 	row := r.db.QueryRowContext(ctx, query, id)
 	item, err := scanAuditLogRow(row.Scan)
 	if err != nil {
@@ -336,11 +483,23 @@ func (r *auditLogRepository) DeleteBefore(ctx context.Context, cutoff time.Time,
 	if batchSize <= 0 {
 		batchSize = 5000
 	}
-	res, err := r.db.ExecContext(ctx, `
+	var res sql.Result
+	var err error
+	if IsMySQL() {
+		// PG 版 CTE DELETE（带 ORDER BY/LIMIT 的 victim 选择）→ MySQL 派生表 JOIN 删除
+		//（MySQL 不支持 IN 子查询内直接 LIMIT）。
+		res, err = r.db.ExecContext(ctx, `
+DELETE a FROM audit_logs a
+JOIN (
+  SELECT id FROM audit_logs WHERE created_at < ? ORDER BY id LIMIT ?
+) batch ON batch.id = a.id`, cutoff.UTC(), batchSize)
+	} else {
+		res, err = r.db.ExecContext(ctx, `
 WITH batch AS (
   SELECT id FROM audit_logs WHERE created_at < $1 ORDER BY id LIMIT $2
 )
 DELETE FROM audit_logs WHERE id IN (SELECT id FROM batch)`, cutoff.UTC(), batchSize)
+	}
 	if err != nil {
 		return 0, err
 	}

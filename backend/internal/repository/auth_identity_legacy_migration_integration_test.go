@@ -14,6 +14,11 @@ import (
 )
 
 func TestAuthIdentityLegacyExternalBackfillMigration(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -159,6 +164,11 @@ WHERE report_type = 'wechat_openid_only_requires_remediation'
 }
 
 func TestAuthIdentityLegacyExternalBackfillMigration_IsSafeWhenLegacyTableMissing(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -184,6 +194,11 @@ FROM auth_identity_migration_reports
 }
 
 func TestAuthIdentityLegacyExternalMigrations_ChainHandlesMalformedAndNonObjectMetadata(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -354,6 +369,11 @@ WHERE id IN (
 }
 
 func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngradesInvalidJSON(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -552,6 +572,11 @@ WHERE report_type = 'wechat_openid_only_requires_remediation'
 }
 
 func TestAuthIdentityLegacyExternalSafetyMigration_IsSafeWhenLegacyTableMissing(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -577,6 +602,11 @@ FROM auth_identity_migration_reports
 }
 
 func TestAuthIdentityLegacyExternalBackfillMigration_SkipsAmbiguousCanonicalSubjects(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -699,6 +729,11 @@ WHERE provider_type = 'wechat'
 }
 
 func TestAuthIdentityLegacyExternalMigrations_ReportAmbiguousCanonicalSubjectsWithoutWinnerAttribution(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 
@@ -829,6 +864,11 @@ WHERE report_type = 'legacy_external_identity_conflict'
 }
 
 func TestAuthIdentityMigrationReportTypeWideningPreflightKeeps109And116SafeBefore121(t *testing.T) {
+	// 夹具深度 PG 专属：直接执行 migrations/115、116 的 PG 版迁移脚本、
+	// BIGSERIAL/TIMESTAMPTZ 的遗留表 DDL、多表 TRUNCATE .. RESTART IDENTITY CASCADE
+	// 与 INSERT .. RETURNING 形态的种子数据；MySQL 侧等价迁移由
+	// migrations/mysql/115、116 承载，此夹具无法机械改写，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 

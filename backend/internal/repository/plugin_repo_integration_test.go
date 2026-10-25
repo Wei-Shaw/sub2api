@@ -18,7 +18,7 @@ func TestPluginRepositoryLifecycleIsAtomicAndOptimistic(t *testing.T) {
 	repo := &pluginRepository{db: integrationDB}
 	pluginKey := "local.test.repository-" + strings.ToLower(time.Now().Format("150405.000000000"))
 	defer func() {
-		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM sub2api_plugin_installations WHERE plugin_key = $1`, pluginKey)
+		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM sub2api_plugin_installations WHERE plugin_key = `+ph(1), pluginKey)
 	}()
 
 	manifest := service.PluginManifest{SchemaVersion: 1, ID: pluginKey, Name: "测试插件", Version: "1.0.0"}

@@ -13,17 +13,19 @@ import (
 
 func TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus(t *testing.T) {
 	ctx := context.Background()
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE ops_error_logs RESTART IDENTITY CASCADE")
+	truncateOpsErrorLogsSQL := "TRUNCATE ops_error_logs RESTART IDENTITY CASCADE"
+	if IsMySQL() {
+		truncateOpsErrorLogsSQL = "TRUNCATE TABLE ops_error_logs"
+	}
+	_, _ = integrationDB.ExecContext(ctx, truncateOpsErrorLogsSQL)
 	repo := NewOpsRepository(integrationDB).(*opsRepository)
 
-	var plainID int64
-	err := integrationDB.QueryRowContext(ctx, `
+	plainID, err := insertReturningID(ctx, integrationDB, `
 		INSERT INTO ops_error_logs (
 			error_phase, error_type, severity, status_code, created_at
 		) VALUES (
 			'upstream', 'upstream_error', 'error', 500, NOW()
-		) RETURNING id`,
-	).Scan(&plainID)
+		)`)
 	require.NoError(t, err)
 
 	plain, err := repo.GetErrorLogByID(ctx, plainID)

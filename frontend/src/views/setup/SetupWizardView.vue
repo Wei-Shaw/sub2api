@@ -70,6 +70,33 @@
             </p>
           </div>
 
+          <div>
+            <span class="input-label">{{ t('setup.database.driver') }}</span>
+            <div class="mt-2 flex flex-wrap gap-5 text-sm text-gray-700 dark:text-dark-200">
+              <label class="flex cursor-pointer items-center gap-2">
+                <input
+                  v-model="formData.database.driver"
+                  type="radio"
+                  name="database-driver"
+                  value="postgres"
+                />
+                {{ t('setup.database.driverPostgres') }}
+              </label>
+              <label class="flex cursor-pointer items-center gap-2">
+                <input
+                  v-model="formData.database.driver"
+                  type="radio"
+                  name="database-driver"
+                  value="mysql"
+                />
+                {{ t('setup.database.driverMysql') }}
+              </label>
+            </div>
+            <p v-if="isMysql" class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">
+              {{ t('setup.database.mysqlNote') }}
+            </p>
+          </div>
+
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label class="input-label">{{ t('setup.database.host') }}</label>
@@ -86,7 +113,7 @@
                 v-model.number="formData.database.port"
                 type="number"
                 class="input"
-                placeholder="5432"
+                :placeholder="portPlaceholder"
               />
             </div>
           </div>
@@ -110,7 +137,7 @@
                 v-model="formData.database.user"
                 type="text"
                 class="input"
-                placeholder="postgres"
+                :placeholder="userPlaceholder"
               />
             </div>
             <div>
@@ -134,7 +161,7 @@
                 placeholder="sub2api"
               />
             </div>
-            <div>
+            <div v-if="!isMysql">
               <label class="input-label">{{ t('setup.database.sslMode') }}</label>
               <Select
                 v-model="formData.database.sslmode"
@@ -365,7 +392,8 @@
                 {{ t('setup.ready.database') }}
               </h3>
               <p class="text-gray-900 dark:text-white">
-                {{ formData.database.user }}@{{ formData.database.host }}:{{
+                {{ isMysql ? t('setup.database.driverMysql') : t('setup.database.driverPostgres') }}
+                · {{ formData.database.user }}@{{ formData.database.host }}:{{
                   formData.database.port
                 }}/{{ formData.database.dbname }}
               </p>
@@ -499,7 +527,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest } from '@/api/setup'
 import { buildGatewayUrl } from '@/api/client'
@@ -541,6 +569,7 @@ const getCurrentPort = (): number => {
 
 const formData = reactive<InstallRequest>({
   database: {
+    driver: 'postgres',
     host: 'localhost',
     port: 5432,
     user: 'postgres',
@@ -566,6 +595,45 @@ const formData = reactive<InstallRequest>({
     mode: 'release'
   }
 })
+
+// Database driver helpers: defaults differ between PostgreSQL and MySQL
+type DbDriver = 'postgres' | 'mysql'
+
+const dbDriverDefaults: Record<DbDriver, { port: number; user: string; sslmode: string }> = {
+  postgres: { port: 5432, user: 'postgres', sslmode: 'disable' },
+  mysql: { port: 3306, user: 'root', sslmode: '' }
+}
+
+const isMysql = computed(() => formData.database.driver === 'mysql')
+
+const activeDbDefaults = computed(() => dbDriverDefaults[isMysql.value ? 'mysql' : 'postgres'])
+const portPlaceholder = computed(() => String(activeDbDefaults.value.port))
+const userPlaceholder = computed(() => activeDbDefaults.value.user)
+
+// When switching drivers, swap driver-specific defaults (port / username),
+// clear fields that do not apply (sslmode is PostgreSQL-only) and reset the
+// connection test state so the user re-tests against the new driver.
+watch(
+  () => formData.database.driver,
+  (driver, previous) => {
+    if (driver === previous) return
+
+    const next = dbDriverDefaults[driver === 'mysql' ? 'mysql' : 'postgres']
+    const prev = dbDriverDefaults[previous === 'mysql' ? 'mysql' : 'postgres']
+
+    // Only swap values the user has not customized away from the other driver's default
+    if (!formData.database.port || formData.database.port === prev.port) {
+      formData.database.port = next.port
+    }
+    if (!formData.database.user || formData.database.user === prev.user) {
+      formData.database.user = next.user
+    }
+    // sslmode only applies to PostgreSQL; clear it for MySQL
+    formData.database.sslmode = next.sslmode
+
+    dbConnected.value = false
+  }
+)
 
 const canProceed = computed(() => {
   switch (currentStep.value) {

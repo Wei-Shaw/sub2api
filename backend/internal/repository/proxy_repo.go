@@ -198,12 +198,22 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 }
 
 func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID int64) (proxyProbeIdentity, error) {
-	rows, err := client.QueryContext(ctx, `
+	query := `
 		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
 		FROM proxies
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
-	`, proxyID)
+	`
+	if IsMySQL() {
+		// FOR NO KEY UPDATE → FOR UPDATE：MySQL 无更弱行锁变体，互斥语义不变。
+		query = `
+		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+		FROM proxies
+		WHERE id = ? AND deleted_at IS NULL
+		FOR UPDATE
+	`
+	}
+	rows, err := client.QueryContext(ctx, query, proxyID)
 	if err != nil {
 		return proxyProbeIdentity{}, err
 	}
@@ -222,6 +232,9 @@ func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID i
 }
 
 func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+	if IsMySQL() {
+		return invalidateProxyProbeSnapshotsMySQL(ctx, exec, proxyID)
+	}
 	rows, err := exec.QueryContext(ctx, `
 		UPDATE accounts
 		SET extra = COALESCE(extra, '{}'::jsonb)
@@ -258,6 +271,74 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 		accountIDs = append(accountIDs, accountID)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return accountIDs, nil
+}
+
+// invalidateProxyProbeSnapshotsWhereMySQL 是 PG 版 UPDATE 的 WHERE 条件的 MySQL 形式：
+// `extra ? 'k'` → JSON_CONTAINS_PATH；`extra -> 'k' <> 'null'::jsonb` →
+// JSON_TYPE(JSON_EXTRACT(...)) <> 'NULL'（键存在且值非 JSON null，与 PG 语义一致）。
+func invalidateProxyProbeSnapshotsWhereMySQL() string {
+	return `proxy_id = ?
+			AND type = 'apikey'
+			AND (
+				(JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.upstream_billing_probe')) <> 'NULL')
+				OR (platform IN (` + ollamaCloudUsagePlatformsSQL + `)
+					AND JSON_CONTAINS_PATH(extra, 'one', '$.ollama_cloud_usage_snapshot')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot')) <> 'NULL')
+				OR ((platform = 'opencode_go' OR platform IN (` + opencodeGoUsageMountPlatformsSQL + `))
+					AND JSON_CONTAINS_PATH(extra, 'one', '$.opencode_go_usage_snapshot')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.opencode_go_usage_snapshot')) <> 'NULL')
+			)
+			AND deleted_at IS NULL`
+}
+
+// invalidateProxyProbeSnapshotsMySQL 是 invalidateProxyProbeSnapshots 的 MySQL 实现。
+// PG 版 UPDATE..RETURNING id 拆为同事务（sqlAtomicScope）两步：
+//  1. SELECT id ... FOR UPDATE：以相同条件锁定并固定受影响行集合；
+//  2. UPDATE ... 以相同条件执行（行已锁定，行集合一致），JSON 键删除链
+//     `COALESCE(extra,'{}') - k1 - k2 - k3` → JSON_REMOVE(COALESCE(extra, CAST('{}' AS JSON)), '$.k1', ...)。
+func invalidateProxyProbeSnapshotsMySQL(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+	scope, err := beginSQLAtomicScope(ctx, nil, exec)
+	if err != nil {
+		return nil, err
+	}
+	defer scope.rollback()
+
+	whereSQL := invalidateProxyProbeSnapshotsWhereMySQL()
+	rows, err := scope.query(ctx, "SELECT id FROM accounts WHERE "+whereSQL+" FOR UPDATE", proxyID)
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if _, err := scope.exec(ctx, `
+		UPDATE accounts
+		SET extra = JSON_REMOVE(COALESCE(extra, CAST('{}' AS JSON)),
+				'$.upstream_billing_probe',
+				'$.ollama_cloud_usage_snapshot',
+				'$.opencode_go_usage_snapshot'),
+			updated_at = NOW(3)
+		WHERE `+whereSQL, proxyID); err != nil {
+		return nil, err
+	}
+	if err := scope.commit(); err != nil {
 		return nil, err
 	}
 	return accountIDs, nil
@@ -434,6 +515,28 @@ func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 		field = proxy.FieldID
 	}
 
+	if sortBy == "expiry" && IsMySQL() {
+		// MySQL 8 的默认 NULL 排序与 PG 相反(ASC→NULL 在前、DESC→NULL 在后)，
+		// 用 (expires_at IS NULL) 前置分桶对齐 PG 语义：升序 NULL 垫底、降序 NULL 置顶。
+		// 同型先例见 account_repo.go 的 upstream_billing_rate 排序分支。
+		if sortOrder == pagination.SortOrderAsc {
+			return []func(*entsql.Selector){
+				func(s *entsql.Selector) {
+					s.OrderExpr(entsql.Expr("(" + s.C(proxy.FieldExpiresAt) + " IS NULL) ASC"))
+				},
+				dbent.Asc(field),
+				dbent.Asc(proxy.FieldID),
+			}
+		}
+		return []func(*entsql.Selector){
+			func(s *entsql.Selector) {
+				s.OrderExpr(entsql.Expr("(" + s.C(proxy.FieldExpiresAt) + " IS NULL) DESC"))
+			},
+			dbent.Desc(field),
+			dbent.Desc(proxy.FieldID),
+		}
+	}
+
 	if sortOrder == pagination.SortOrderAsc {
 		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(proxy.FieldID)}
 	}
@@ -477,19 +580,32 @@ func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string,
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", []any{proxyID}, &count); err != nil {
+	query := "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL"
+	if IsMySQL() {
+		query = "SELECT COUNT(*) FROM accounts WHERE proxy_id = ? AND deleted_at IS NULL"
+	}
+	if err := scanSingleRow(ctx, r.sql, query, []any{proxyID}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
 func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
-	rows, err := r.sql.QueryContext(ctx, `
+	query := `
 		SELECT id, name, platform, type, notes
 		FROM accounts
 		WHERE proxy_id = $1 AND deleted_at IS NULL
 		ORDER BY id DESC
-	`, proxyID)
+	`
+	if IsMySQL() {
+		query = `
+		SELECT id, name, platform, type, notes
+		FROM accounts
+		WHERE proxy_id = ? AND deleted_at IS NULL
+		ORDER BY id DESC
+	`
+	}
+	rows, err := r.sql.QueryContext(ctx, query, proxyID)
 	if err != nil {
 		return nil, err
 	}
@@ -732,13 +848,23 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	// The UPDATE locks the row and rechecks its predicates after concurrent writes.
 	// If an administrator renewed, disabled or reconfigured the proxy after the
 	// snapshot, leave its accounts untouched and reconsider it on the next sweep.
-	result, err := exec.ExecContext(ctx, `
+	markExpiredSQL := `
 		UPDATE proxies SET status=$1, updated_at=NOW()
 		WHERE id=$2 AND deleted_at IS NULL AND status=$3
 		  AND expires_at <= $4 AND expires_at = $5
-		  AND fallback_mode=$6 AND backup_proxy_id IS NOT DISTINCT FROM $7`,
+		  AND fallback_mode=$6 AND backup_proxy_id IS NOT DISTINCT FROM $7`
+	markExpiredArgs := []any{
 		service.StatusExpired, proxyID, service.StatusActive, now, snapshot.ExpiresAt,
-		snapshot.FallbackMode, snapshot.BackupProxyID)
+		snapshot.FallbackMode, snapshot.BackupProxyID}
+	if IsMySQL() {
+		// IS NOT DISTINCT FROM → (<=>)；NOW() → NOW(3)。
+		markExpiredSQL = `
+		UPDATE proxies SET status = ?, updated_at = NOW(3)
+		WHERE id = ? AND deleted_at IS NULL AND status = ?
+		  AND expires_at <= ? AND expires_at = ?
+		  AND fallback_mode = ? AND (backup_proxy_id <=> ?)`
+	}
+	result, err := exec.ExecContext(ctx, markExpiredSQL, markExpiredArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -758,6 +884,11 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 			return nil, err
 		}
 		return nil, nil
+	}
+	if IsMySQL() {
+		// PG 版 UPDATE..RETURNING id 拆为同事务「SELECT id FOR UPDATE → UPDATE」，
+		// 返回先取到的行集合（改投目标行与快照清理 CASE 均在下述 UPDATE 内完成）。
+		return sweepProxyFallbackAccountsMySQL(ctx, exec, proxyID, target)
 	}
 	var rows *sql.Rows
 	// Match the current proxy even after an earlier fallback. Keep the first
@@ -809,20 +940,99 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	return accountIDs, nil
 }
 
+// sweepProxyFallbackAccountsMySQL 是 sweepOneExpiredProxyOnExec 中改投账号的
+// UPDATE..RETURNING id 的 MySQL 拆解：先 SELECT id ... FOR UPDATE 固定受影响行集合，
+// 再以相同条件 UPDATE（proxy_id 改投 + 快照键清理 CASE：
+// `extra ? 'k'` → JSON_CONTAINS_PATH、`extra - 'k'` → JSON_REMOVE）。
+func sweepProxyFallbackAccountsMySQL(ctx context.Context, exec sqlExecutor, proxyID int64, target *int64) ([]int64, error) {
+	scope, err := beginSQLAtomicScope(ctx, nil, exec)
+	if err != nil {
+		return nil, err
+	}
+	defer scope.rollback()
+
+	rows, err := scope.query(ctx,
+		"SELECT id FROM accounts WHERE proxy_id = ? AND deleted_at IS NULL FOR UPDATE", proxyID)
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	var updateSQL string
+	var args []any
+	if target == nil {
+		updateSQL = `
+			UPDATE accounts SET proxy_id = NULL, proxy_fallback_origin_id = COALESCE(proxy_fallback_origin_id, ?),
+				extra = CASE
+					WHEN type = 'apikey' AND JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
+					THEN JSON_REMOVE(extra, '$.upstream_billing_probe')
+					ELSE extra
+				END,
+				updated_at = NOW(3)
+			WHERE proxy_id = ? AND deleted_at IS NULL`
+		args = []any{proxyID, proxyID}
+	} else {
+		updateSQL = `
+			UPDATE accounts SET proxy_id = ?, proxy_fallback_origin_id = COALESCE(proxy_fallback_origin_id, ?),
+				extra = CASE
+					WHEN type = 'apikey' AND JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
+					THEN JSON_REMOVE(extra, '$.upstream_billing_probe')
+					ELSE extra
+				END,
+				updated_at = NOW(3)
+			WHERE proxy_id = ? AND deleted_at IS NULL`
+		args = []any{*target, proxyID, proxyID}
+	}
+	if _, err := scope.exec(ctx, updateSQL, args...); err != nil {
+		return nil, err
+	}
+	if err := scope.commit(); err != nil {
+		return nil, err
+	}
+	return accountIDs, nil
+}
+
 // CountExpired 返回已过期（status=expired）的代理数量。
 func (r *proxyRepository) CountExpired(ctx context.Context) (int64, error) {
 	var c int64
-	err := scanSingleRow(ctx, r.sql, `SELECT COUNT(*) FROM proxies WHERE status=$1 AND deleted_at IS NULL`, []any{service.StatusExpired}, &c)
+	query := `SELECT COUNT(*) FROM proxies WHERE status=$1 AND deleted_at IS NULL`
+	if IsMySQL() {
+		query = `SELECT COUNT(*) FROM proxies WHERE status = ? AND deleted_at IS NULL`
+	}
+	err := scanSingleRow(ctx, r.sql, query, []any{service.StatusExpired}, &c)
 	return c, err
 }
 
 // CountExpiringSoon 返回即将到期（在 expiry_warn_days 天内）的活跃代理数量。
 func (r *proxyRepository) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
 	var c int64
-	err := scanSingleRow(ctx, r.sql, `
+	query := `
 		SELECT COUNT(*) FROM proxies
 		WHERE deleted_at IS NULL AND status=$1 AND expires_at IS NOT NULL
-		  AND expires_at > $2 AND expires_at <= $2 + (expiry_warn_days || ' days')::interval`,
-		[]any{service.StatusActive, now}, &c)
+		  AND expires_at > $2 AND expires_at <= $2 + (expiry_warn_days || ' days')::interval`
+	if IsMySQL() {
+		// (expiry_warn_days || ' days')::interval → INTERVAL expiry_warn_days DAY
+		// （expiry_warn_days 为 INT 列，天数粒度与 PG 拼串的 'N days' 一致）。
+		query = `
+		SELECT COUNT(*) FROM proxies
+		WHERE deleted_at IS NULL AND status = ? AND expires_at IS NOT NULL
+		  AND expires_at > ? AND expires_at <= ? + INTERVAL expiry_warn_days DAY`
+	}
+	err := scanSingleRow(ctx, r.sql, query, []any{service.StatusActive, now}, &c)
 	return c, err
 }

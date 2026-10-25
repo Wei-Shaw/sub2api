@@ -324,7 +324,7 @@ func TestConcurrentOllamaCloudUsageSaveAndDeleteSerializeGroupState(t *testing.T
 	first := create(service.PlatformOpenAI)
 	second := create(service.PlatformAnthropic)
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id IN ($1, $2)", first.ID, second.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), acctITSQL("DELETE FROM accounts WHERE id IN ($1, $2)"), first.ID, second.ID)
 	})
 	anchor, err := repo.GetByID(ctx, first.ID)
 	require.NoError(t, err)

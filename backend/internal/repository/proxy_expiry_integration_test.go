@@ -5,12 +5,30 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
+)
+
+// prxITSQL 保留 PG 运行下的 $n 占位符与 ::jsonb 转型；MySQL 方言运行
+// （SUB2API_TEST_DB=mysql）时把 $n 改写为 ?，并去掉 ::jsonb 转型后缀
+// （MySQL JSON 列可直接接受 JSON 文本字面量）。PG 分支返回原文，字节不变。
+func prxITSQL(query string) string {
+	if !IsMySQL() {
+		return query
+	}
+	query = prxPGPlaceholderRegexp.ReplaceAllString(query, "?")
+	// MySQL JSON 列直接接受 JSON 文本字面量，但需保留字符串引号（原实现误删引号）。
+	return prxJSONBCastRegexp.ReplaceAllString(query, "'$1'")
+}
+
+var (
+	prxPGPlaceholderRegexp = regexp.MustCompile(`\$\d+`)
+	prxJSONBCastRegexp     = regexp.MustCompile(`'([^']*)'::jsonb`)
 )
 
 type ProxyExpirySuite struct {
@@ -36,18 +54,17 @@ func (s *ProxyExpirySuite) mkProxy(name, mode string, expiresAt *time.Time, back
 }
 
 func (s *ProxyExpirySuite) mkAccountWithProxy(proxyID int64) int64 {
-	var id int64
-	err := scanSingleRow(s.ctx, s.tx, `
+	id, err := grpInsertReturningID(s.ctx, s.tx, `
 		INSERT INTO accounts (name, platform, type, credentials, extra, status, proxy_id, created_at, updated_at)
 		VALUES ($1,'claude','api','{}','{}','active',$2,NOW(),NOW()) RETURNING id`,
-		[]any{"acc-" + time.Now().Format("150405.000000"), proxyID}, &id)
+		"acc-"+time.Now().Format("150405.000000"), proxyID)
 	s.Require().NoError(err)
 	return id
 }
 
 func (s *ProxyExpirySuite) accountProxyID(id int64) *int64 {
 	var pid *int64
-	err := scanSingleRow(s.ctx, s.tx, `SELECT proxy_id FROM accounts WHERE id=$1`, []any{id}, &pid)
+	err := scanSingleRow(s.ctx, s.tx, prxITSQL(`SELECT proxy_id FROM accounts WHERE id=$1`), []any{id}, &pid)
 	s.Require().NoError(err)
 	return pid
 }
@@ -65,7 +82,7 @@ func (s *ProxyExpirySuite) TestSweep_DirectMode() {
 	s.Require().Equal(service.StatusExpired, got.Status)
 	s.Require().Nil(s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, prxITSQL(`SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`), []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().NotNil(origin)
 	s.Require().Equal(pid, *origin)
@@ -83,12 +100,12 @@ func (s *ProxyExpirySuite) TestSweep_EnqueuesChangedAccountIDsWithoutFullRebuild
 	s.Require().EqualValues(2, changed)
 
 	var payloadRaw []byte
-	err = scanSingleRow(s.ctx, s.tx, `
+	err = scanSingleRow(s.ctx, s.tx, prxITSQL(`
 		SELECT payload
 		FROM scheduler_outbox
 		WHERE event_type=$1
 		ORDER BY id DESC
-		LIMIT 1`, []any{service.SchedulerOutboxEventAccountBulkChanged}, &payloadRaw)
+		LIMIT 1`), []any{service.SchedulerOutboxEventAccountBulkChanged}, &payloadRaw)
 	s.Require().NoError(err)
 
 	var payload struct {
@@ -98,10 +115,10 @@ func (s *ProxyExpirySuite) TestSweep_EnqueuesChangedAccountIDsWithoutFullRebuild
 	s.Require().Equal([]int64{firstAccountID, secondAccountID}, payload.AccountIDs)
 
 	var fullRebuildCount int
-	err = scanSingleRow(s.ctx, s.tx, `
+	err = scanSingleRow(s.ctx, s.tx, prxITSQL(`
 		SELECT COUNT(*)
 		FROM scheduler_outbox
-		WHERE event_type=$1`, []any{service.SchedulerOutboxEventFullRebuild}, &fullRebuildCount)
+		WHERE event_type=$1`), []any{service.SchedulerOutboxEventFullRebuild}, &fullRebuildCount)
 	s.Require().NoError(err)
 	s.Require().Zero(fullRebuildCount)
 }
@@ -117,7 +134,7 @@ func (s *ProxyExpirySuite) TestSweep_ProxyMode_Healthy() {
 	s.Require().NoError(err)
 	s.Require().Equal(backup, *s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, prxITSQL(`SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`), []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().NotNil(origin)
 	s.Require().Equal(pid, *origin)
@@ -134,7 +151,7 @@ func (s *ProxyExpirySuite) TestSweep_NoneMode_KeepsAccount() {
 	s.Require().Equal(service.StatusExpired, got.Status)
 	s.Require().Equal(pid, *s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, prxITSQL(`SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`), []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().Nil(origin)
 }

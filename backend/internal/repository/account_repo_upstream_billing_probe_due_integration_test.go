@@ -13,6 +13,7 @@ import (
 )
 
 func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testing.T) {
+	skipOnMySQL(t) // 夹具使用 PG 专属 DDL/DML（extra - 'k'、$n::jsonb、INSERT..RETURNING）
 	ctx := context.Background()
 	tx := testEntTx(t)
 	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
@@ -79,6 +80,7 @@ func rfc3339WithFraction(t time.Time, fraction string) string {
 // fail-open "due", so the cycle always returned the lowest account IDs and
 // higher IDs were never probed.
 func TestListDueUpstreamBillingProbeAccountsParsesNanosecondTimestamps(t *testing.T) {
+	skipOnMySQL(t) // 夹具使用 PG 专属 DDL/DML（extra - 'k'、$n::jsonb、INSERT..RETURNING）
 	ctx := context.Background()
 	tx := testEntTx(t)
 	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
@@ -118,6 +120,7 @@ func TestListDueUpstreamBillingProbeAccountsParsesNanosecondTimestamps(t *testin
 // parsed due time so accounts beyond the first <limit> IDs still get their
 // turn; before the fix the same lowest IDs monopolized every cycle.
 func TestListDueUpstreamBillingProbeAccountsSelectsEarliestDueAcrossIDs(t *testing.T) {
+	skipOnMySQL(t) // 夹具使用 PG 专属 DDL/DML（extra - 'k'、$n::jsonb、INSERT..RETURNING）
 	ctx := context.Background()
 	tx := testEntTx(t)
 	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
@@ -157,6 +160,7 @@ func TestListDueUpstreamBillingProbeAccountsSelectsEarliestDueAcrossIDs(t *testi
 // 探测资格放宽回归：任何 API-key 平台的启用账号都进入定时探测候选并按
 // 到期时间排序；OAuth 与未启用账号仍被排除。
 func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testing.T) {
+	skipOnMySQL(t) // 夹具使用 PG 专属 DDL/DML（extra - 'k'、$n::jsonb、INSERT..RETURNING）
 	ctx := context.Background()
 	tx := testEntTx(t)
 	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)

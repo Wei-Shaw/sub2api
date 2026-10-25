@@ -401,10 +401,16 @@ func TestProxyIdentityUpdateInvalidatesProbeAndRejectsInFlightSnapshot(t *testin
 			}, nil)
 			require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
 
+			outboxPayloadText := "COALESCE(MAX(payload::text), '')"
+			outboxEventTypeCond := "event_type = $1"
+			if IsMySQL() {
+				outboxPayloadText = "COALESCE(MAX(CAST(payload AS CHAR)), '')"
+				outboxEventTypeCond = "event_type = ?"
+			}
 			rows, err := tx.QueryContext(ctx, `
-				SELECT COUNT(*), COALESCE(MAX(payload::text), '')
+				SELECT COUNT(*), `+outboxPayloadText+`
 				FROM scheduler_outbox
-				WHERE event_type = $1
+				WHERE `+outboxEventTypeCond+`
 			`, service.SchedulerOutboxEventAccountBulkChanged)
 			require.NoError(t, err)
 			require.True(t, rows.Next())
@@ -532,7 +538,7 @@ func latestBulkAccountOutboxPayload(t *testing.T, ctx context.Context, tx sqlQue
 	require.NoError(t, scanSingleRow(ctx, tx, `
 		SELECT payload
 		FROM scheduler_outbox
-		WHERE event_type = $1
+		WHERE event_type = `+ph(1)+`
 		ORDER BY id DESC
 		LIMIT 1
 	`, []any{service.SchedulerOutboxEventAccountBulkChanged}, &payloadJSON))

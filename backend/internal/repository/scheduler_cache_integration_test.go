@@ -154,11 +154,19 @@ func TestSchedulerCacheGroupLifecycleLeaseOwnerAndTTLIntegration(t *testing.T) {
 	require.LessOrEqual(t, pttl, ttl)
 
 	var second service.SchedulerGroupLifecycleLease
-	require.Eventually(t, func() bool {
+	acquireAfterExpiry := func() bool {
 		var acquireErr error
 		second, acquired, acquireErr = cache.TryAcquireGroupLifecycleLease(ctx, groupID, time.Minute)
 		return acquireErr == nil && acquired
-	}, 5*time.Second, 20*time.Millisecond)
+	}
+	if integrationMiniRedis != nil {
+		// miniredis 的 TTL 不随墙钟推进（只能 FastForward），先快进超过租约 TTL
+		// 模拟自然过期，再断言可重新获取。
+		integrationMiniRedis.FastForward(ttl + 100*time.Millisecond)
+		require.True(t, acquireAfterExpiry())
+	} else {
+		require.Eventually(t, acquireAfterExpiry, 5*time.Second, 20*time.Millisecond)
+	}
 	require.NotEqual(t, first.OwnerToken, second.OwnerToken)
 
 	require.ErrorIs(t, cache.ReleaseGroupLifecycleLease(ctx, first), service.ErrSchedulerGroupLifecycleLeaseLost)

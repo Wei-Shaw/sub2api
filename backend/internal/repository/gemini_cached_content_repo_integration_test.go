@@ -15,7 +15,13 @@ func TestGeminiCachedContentRepository_Lifecycle(t *testing.T) {
 	ctx := context.Background()
 	tx := testTx(t)
 	repo := &geminiCachedContentRepository{sql: tx}
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	// PG timestamptz 精度为微秒；MySQL 列为 DATETIME(3)（毫秒），按方言对齐
+	// 截断精度，避免写读回显比较因存储精度损失失败。
+	nowPrecision := time.Microsecond
+	if IsMySQL() {
+		nowPrecision = time.Millisecond
+	}
+	now := time.Now().UTC().Truncate(nowPrecision)
 	suffix := time.Now().Format("150405.000000")
 	apiKeyID := int64(910001)
 
@@ -90,7 +96,11 @@ func TestGeminiCachedContentRepository_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, stale, first.ID)
 
-	_, err = tx.ExecContext(ctx, `UPDATE gemini_cached_contents SET mutation_lease_until = NOW() - INTERVAL '1 second' WHERE id = $1`, first.ID)
+	staleLeaseSQL := `UPDATE gemini_cached_contents SET mutation_lease_until = NOW() - INTERVAL '1 second' WHERE id = $1`
+	if IsMySQL() {
+		staleLeaseSQL = `UPDATE gemini_cached_contents SET mutation_lease_until = NOW(3) - INTERVAL 1 SECOND WHERE id = ?`
+	}
+	_, err = tx.ExecContext(ctx, staleLeaseSQL, first.ID)
 	require.NoError(t, err)
 	stale, err = repo.ListStaleMutations(ctx, 10)
 	require.NoError(t, err)

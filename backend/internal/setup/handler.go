@@ -126,6 +126,7 @@ func validateSSLMode(mode string) bool {
 
 // TestDatabaseRequest represents database test request
 type TestDatabaseRequest struct {
+	Driver   string `json:"driver"`
 	Host     string `json:"host" binding:"required"`
 	Port     int    `json:"port" binding:"required"`
 	User     string `json:"user" binding:"required"`
@@ -163,12 +164,14 @@ func testDatabase(c *gin.Context) {
 	if req.SSLMode == "" {
 		req.SSLMode = "disable"
 	}
-	if !validateSSLMode(req.SSLMode) {
+	// sslmode 为 PostgreSQL 专属参数；MySQL 向导不使用该字段。
+	if !strings.EqualFold(strings.TrimSpace(req.Driver), "mysql") && !validateSSLMode(req.SSLMode) {
 		response.Error(c, http.StatusBadRequest, "Invalid SSL mode")
 		return
 	}
 
 	cfg := &DatabaseConfig{
+		Driver:   req.Driver,
 		Host:     req.Host,
 		Port:     req.Port,
 		User:     req.User,

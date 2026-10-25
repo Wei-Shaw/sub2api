@@ -196,7 +196,11 @@ export default {
     description: '配置您的 Sub2API 实例',
     database: {
       title: '数据库配置',
-      description: '连接到您的 PostgreSQL 数据库',
+      description: '连接到您的数据库',
+      driver: '数据库类型',
+      driverPostgres: 'PostgreSQL',
+      driverMysql: 'MySQL',
+      mysqlNote: 'MySQL 不使用 SSL 模式，相关选项已隐藏。',
       host: '主机',
       port: '端口',
       username: '用户名',

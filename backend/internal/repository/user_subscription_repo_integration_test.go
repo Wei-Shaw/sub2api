@@ -786,7 +786,7 @@ func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_Ba
 	s.Require().NotNil(after.WeeklyWindowStart, "expected WeeklyWindowStart activated")
 	s.Require().NotNil(after.MonthlyWindowStart, "expected MonthlyWindowStart activated")
 
-	resetAt := time.Now().Truncate(time.Microsecond) // truncate to microsecond for DB precision
+	resetAt := time.Now().Truncate(dbTimePrecision()) // truncate to the dialect's stored precision (PG µs / MySQL DATETIME(3) ms)
 	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, active.ID, after.DailyWindowStart, resetAt), "ResetDailyUsage")
 	afterReset, err := s.repo.GetByID(s.ctx, active.ID)
 	s.Require().NoError(err, "GetByID after reset")

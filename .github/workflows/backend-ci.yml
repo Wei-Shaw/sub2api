@@ -43,6 +43,42 @@ jobs:
         working-directory: backend
         run: make test-integration
 
+  test-mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: sub2api_test
+          MYSQL_USER: sub2api
+          MYSQL_PASSWORD: sub2api
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.27.3'
+      - name: Integration tests (MySQL, strict triggers)
+        working-directory: backend
+        env:
+          SUB2API_TEST_DB: mysql
+          SUB2API_TEST_MYSQL_DSN: root:root@tcp(127.0.0.1:3306)/sub2api_test?parseTime=true
+          SUB2API_TEST_MYSQL_STRICT_TRIGGERS: "true"
+        run: go test -tags=integration -timeout=25m ./internal/repository/
+
   frontend:
     runs-on: ubuntu-latest
     steps:

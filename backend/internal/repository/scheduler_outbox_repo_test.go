@@ -17,13 +17,22 @@ func TestSchedulerOutboxRepositoryFirstCreatedAtAfter(t *testing.T) {
 
 	repo := &schedulerOutboxRepository{db: db}
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
-	const expectedSQL = `
+	expectedSQL := `
 		SELECT created_at
 		FROM scheduler_outbox
 		WHERE id > $1
 		ORDER BY id ASC
 		LIMIT 1
 	`
+	if IsMySQL() {
+		expectedSQL = `
+		SELECT created_at
+		FROM scheduler_outbox
+		WHERE id > ?
+		ORDER BY id ASC
+		LIMIT 1
+	`
+	}
 	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
 		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"created_at"}).AddRow(createdAt))
@@ -42,13 +51,22 @@ func TestSchedulerOutboxRepositoryFirstCreatedAtAfterReturnsNotFound(t *testing.
 	defer func() { _ = db.Close() }()
 
 	repo := &schedulerOutboxRepository{db: db}
-	const expectedSQL = `
+	expectedSQL := `
 		SELECT created_at
 		FROM scheduler_outbox
 		WHERE id > $1
 		ORDER BY id ASC
 		LIMIT 1
 	`
+	if IsMySQL() {
+		expectedSQL = `
+		SELECT created_at
+		FROM scheduler_outbox
+		WHERE id > ?
+		ORDER BY id ASC
+		LIMIT 1
+	`
+	}
 	mock.ExpectQuery(regexp.QuoteMeta(expectedSQL)).
 		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"created_at"}))
@@ -67,7 +85,9 @@ func TestSchedulerOutboxRepositoryDeleteConsumedUpToUsesBoundedCTE(t *testing.T)
 	defer func() { _ = db.Close() }()
 
 	repo := &schedulerOutboxRepository{db: db}
-	const expectedSQL = `
+	// PG 版为 doomed CTE + DELETE..USING；MySQL 版为单表 DELETE + ORDER BY/LIMIT
+	//（deleteConsumedUpToMySQL），语义等价：同条件、按 id 升序限量删除。
+	expectedSQL := `
 		WITH doomed AS (
 			SELECT id
 			FROM scheduler_outbox
@@ -80,6 +100,15 @@ func TestSchedulerOutboxRepositoryDeleteConsumedUpToUsesBoundedCTE(t *testing.T)
 		USING doomed d
 		WHERE o.id = d.id
 	`
+	if IsMySQL() {
+		expectedSQL = `
+		DELETE FROM scheduler_outbox
+		WHERE id <= ?
+			AND created_at < NOW(3) - INTERVAL 10 SECOND
+		ORDER BY id ASC
+		LIMIT ?
+	`
+	}
 	mock.ExpectExec(regexp.QuoteMeta(expectedSQL)).
 		WithArgs(int64(42), 5000).
 		WillReturnResult(sqlmock.NewResult(0, 17))
@@ -111,10 +140,20 @@ func TestSchedulerOutboxRepositoryTryAcquireCleanupLock(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	repo := &schedulerOutboxRepository{db: db}
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock(hashtext('scheduler_outbox_cleanup'))")).
-		WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(true))
-	mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_unlock(hashtext('scheduler_outbox_cleanup'))")).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	if IsMySQL() {
+		// MySQL 版：GET_LOCK/RELEASE_LOCK 命名锁（1=成功，0=被占用）。
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT GET_LOCK(?, 0)")).
+			WithArgs(schedulerOutboxCleanupLockNameMySQL).
+			WillReturnRows(sqlmock.NewRows([]string{"GET_LOCK(?, 0)"}).AddRow(int64(1)))
+		mock.ExpectExec(regexp.QuoteMeta("SELECT RELEASE_LOCK(?)")).
+			WithArgs(schedulerOutboxCleanupLockNameMySQL).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	} else {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock(hashtext('scheduler_outbox_cleanup'))")).
+			WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(true))
+		mock.ExpectExec(regexp.QuoteMeta("SELECT pg_advisory_unlock(hashtext('scheduler_outbox_cleanup'))")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	}
 
 	lease, acquired, err := repo.TryAcquireCleanupLock(context.Background())
 	require.NoError(t, err)
@@ -132,8 +171,14 @@ func TestSchedulerOutboxRepositoryTryAcquireCleanupLockUnavailable(t *testing.T)
 	defer func() { _ = db.Close() }()
 
 	repo := &schedulerOutboxRepository{db: db}
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock(hashtext('scheduler_outbox_cleanup'))")).
-		WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(false))
+	if IsMySQL() {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT GET_LOCK(?, 0)")).
+			WithArgs(schedulerOutboxCleanupLockNameMySQL).
+			WillReturnRows(sqlmock.NewRows([]string{"GET_LOCK(?, 0)"}).AddRow(int64(0)))
+	} else {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock(hashtext('scheduler_outbox_cleanup'))")).
+			WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(false))
+	}
 
 	lease, acquired, err := repo.TryAcquireCleanupLock(context.Background())
 	require.NoError(t, err)

@@ -8,12 +8,23 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	dbmigrations "github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
 func platformConstraintExists(t *testing.T, ctx context.Context, client *dbent.Client, table, constraint string) bool {
 	t.Helper()
+	if IsMySQL() {
+		// MySQL 命名 CHECK 约束记录在 information_schema.table_constraints。
+		rows, err := client.QueryContext(ctx, `
+SELECT 1
+FROM information_schema.table_constraints
+WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ?`, table, constraint)
+		require.NoError(t, err)
+		defer func() { _ = rows.Close() }()
+		exists := rows.Next()
+		require.NoError(t, rows.Err())
+		return exists
+	}
 	rows, err := client.QueryContext(ctx, `
 SELECT 1
 FROM pg_constraint c
@@ -35,26 +46,49 @@ func TestMigration242DropsPlatformCheckConstraints(t *testing.T) {
 	client := tx.Client()
 
 	// 还原迁移 241_add_typesafe_platform 之后、242 之前的约束状态。
-	for _, stmt := range []string{
-		`ALTER TABLE user_platform_quotas DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check`,
-		`ALTER TABLE user_platform_quotas ADD CONSTRAINT user_platform_quotas_platform_check
+	if IsMySQL() {
+		// MySQL 无 DROP CONSTRAINT IF EXISTS：按 information_schema 存在性先删
+		// （防御上次运行失败残留），再加同名约束，等价 PG 夹具语义。
+		for _, spec := range []struct{ table, constraint, expr string }{
+			{"user_platform_quotas", "user_platform_quotas_platform_check",
+				"platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe')"},
+			{"composite_model_routes", "composite_model_routes_target_platform_check",
+				"target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe')"},
+		} {
+			if platformConstraintExists(t, ctx, client, spec.table, spec.constraint) {
+				_, err := client.ExecContext(ctx, "ALTER TABLE "+spec.table+" DROP CHECK "+spec.constraint)
+				require.NoError(t, err)
+			}
+			_, err := client.ExecContext(ctx, "ALTER TABLE "+spec.table+" ADD CONSTRAINT "+spec.constraint+" CHECK ("+spec.expr+")")
+			require.NoError(t, err)
+		}
+	} else {
+		for _, stmt := range []string{
+			`ALTER TABLE user_platform_quotas DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check`,
+			`ALTER TABLE user_platform_quotas ADD CONSTRAINT user_platform_quotas_platform_check
 			CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
 			                    'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe'))`,
-		`ALTER TABLE composite_model_routes DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check`,
-		`ALTER TABLE composite_model_routes ADD CONSTRAINT composite_model_routes_target_platform_check
+			`ALTER TABLE composite_model_routes DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check`,
+			`ALTER TABLE composite_model_routes ADD CONSTRAINT composite_model_routes_target_platform_check
 			CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
 			                           'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe'))`,
-	} {
-		_, err := client.ExecContext(ctx, stmt)
-		require.NoError(t, err)
+		} {
+			_, err := client.ExecContext(ctx, stmt)
+			require.NoError(t, err)
+		}
 	}
 	require.True(t, platformConstraintExists(t, ctx, client, "user_platform_quotas", "user_platform_quotas_platform_check"))
 	require.True(t, platformConstraintExists(t, ctx, client, "composite_model_routes", "composite_model_routes_target_platform_check"))
 
-	migrationSQL, err := dbmigrations.FS.ReadFile("242_drop_platform_check_constraints.sql")
-	require.NoError(t, err)
-	for range 2 {
-		_, err = client.ExecContext(ctx, string(migrationSQL))
+	migrationSQL := readMigrationSQLForDialect(t, "242_drop_platform_check_constraints.sql")
+	// PG 文件用 DROP CONSTRAINT IF EXISTS 可整份重放；MySQL 翻译版 DROP CHECK
+	// 无 IF EXISTS（执行器保证单次执行），仅应用一次。
+	replays := 1
+	if !IsMySQL() {
+		replays = 2
+	}
+	for range replays {
+		_, err := client.ExecContext(ctx, migrationSQL)
 		require.NoError(t, err)
 	}
 	require.False(t, platformConstraintExists(t, ctx, client, "user_platform_quotas", "user_platform_quotas_platform_check"))
@@ -65,14 +99,29 @@ func TestMigration242DropsPlatformCheckConstraints(t *testing.T) {
 
 	// 数据库层不再限制平台取值：模拟未来新登记的平台。
 	userID := mustCreateUserForQuota(t, client)
-	_, err = client.ExecContext(ctx, `
-INSERT INTO user_platform_quotas (user_id, platform, daily_limit_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
-VALUES ($1, 'future_platform', 1, 0, 0, 0, NOW(), NOW())`, userID)
-	require.NoError(t, err)
 	group := mustCreateGroup(t, client, &service.Group{Name: "platform-list-composite", Platform: service.PlatformComposite})
+	if IsMySQL() {
+		// MySQL 下前置 ALTER（DDL）已隐式提交并终止事务，后续夹具行随语句自动
+		// 提交、不再随 testEntTx 回滚，需显式清理。
+		t.Cleanup(func() {
+			cleanupCtx := context.Background()
+			_, err := integrationDB.ExecContext(cleanupCtx, "DELETE FROM composite_model_routes WHERE group_id = "+ph(1), group.ID)
+			require.NoError(t, err)
+			_, err = integrationDB.ExecContext(cleanupCtx, "DELETE FROM user_platform_quotas WHERE user_id = "+ph(1), userID)
+			require.NoError(t, err)
+			_, err = integrationDB.ExecContext(cleanupCtx, deleteByIDSQL("groups"), group.ID)
+			require.NoError(t, err)
+			_, err = integrationDB.ExecContext(cleanupCtx, deleteByIDSQL("users"), userID)
+			require.NoError(t, err)
+		})
+	}
+	_, err := client.ExecContext(ctx, `
+INSERT INTO user_platform_quotas (user_id, platform, daily_limit_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
+VALUES (`+ph(1)+`, 'future_platform', 1, 0, 0, 0, NOW(), NOW())`, userID)
+	require.NoError(t, err)
 	_, err = client.ExecContext(ctx, `
 INSERT INTO composite_model_routes (group_id, public_model, target_platform)
-VALUES ($1, 'future-model', 'future_platform')`, group.ID)
+VALUES (`+ph(1)+`, 'future-model', 'future_platform')`, group.ID)
 	require.NoError(t, err)
 }
 

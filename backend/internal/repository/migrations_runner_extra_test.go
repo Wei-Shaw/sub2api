@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"entgo.io/ent/dialect"
 	"errors"
 	"io/fs"
 	"strings"
@@ -122,7 +123,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 			WithArgs("schema_migrations").
 			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 
-		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{})
+		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{}, dialect.Postgres)
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -150,7 +151,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 			"001_init.sql": &fstest.MapFile{Data: []byte("CREATE TABLE t1(id int);")},
 			"002_next.sql": &fstest.MapFile{Data: []byte("CREATE TABLE t2(id int);")},
 		}
-		err = ensureAtlasBaselineAligned(context.Background(), db, fsys)
+		err = ensureAtlasBaselineAligned(context.Background(), db, fsys, dialect.Postgres)
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -164,7 +165,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 			WithArgs("schema_migrations").
 			WillReturnError(errors.New("exists failed"))
 
-		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{})
+		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{}, dialect.Postgres)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "check schema_migrations")
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -184,7 +185,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM atlas_schema_revisions").
 			WillReturnError(errors.New("count failed"))
 
-		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{})
+		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{}, dialect.Postgres)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "count atlas_schema_revisions")
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -204,7 +205,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS atlas_schema_revisions").
 			WillReturnError(errors.New("create failed"))
 
-		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{})
+		err = ensureAtlasBaselineAligned(context.Background(), db, fstest.MapFS{}, dialect.Postgres)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "create atlas_schema_revisions")
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -230,7 +231,7 @@ func TestEnsureAtlasBaselineAligned(t *testing.T) {
 		fsys := fstest.MapFS{
 			"001_init.sql": &fstest.MapFile{Data: []byte("CREATE TABLE t(id int);")},
 		}
-		err = ensureAtlasBaselineAligned(context.Background(), db, fsys)
+		err = ensureAtlasBaselineAligned(context.Background(), db, fsys, dialect.Postgres)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "insert atlas baseline")
 		require.NoError(t, mock.ExpectationsWereMet())

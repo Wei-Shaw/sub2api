@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	mysql "github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -88,12 +89,35 @@ type SetupConfig struct {
 }
 
 type DatabaseConfig struct {
+	Driver   string `json:"driver" yaml:"driver"`
 	Host     string `json:"host" yaml:"host"`
 	Port     int    `json:"port" yaml:"port"`
 	User     string `json:"user" yaml:"user"`
 	Password string `json:"password" yaml:"password"`
 	DBName   string `json:"dbname" yaml:"dbname"`
 	SSLMode  string `json:"sslmode" yaml:"sslmode"`
+}
+
+// DriverName 返回规范化后的数据库驱动类型："postgres"（默认）或 "mysql"。
+func (c *DatabaseConfig) DriverName() string {
+	if strings.EqualFold(strings.TrimSpace(c.Driver), "mysql") {
+		return "mysql"
+	}
+	return "postgres"
+}
+
+// toConfigDatabaseConfig 转换为 config 包的 DatabaseConfig（复用 MySQL DSN 构造逻辑），
+// dbName 覆盖目标库名（MySQL 引导连接时传空串）。
+func (c *DatabaseConfig) toConfigDatabaseConfig(dbName string) *config.DatabaseConfig {
+	return &config.DatabaseConfig{
+		Driver:   c.DriverName(),
+		Host:     c.Host,
+		Port:     c.Port,
+		User:     c.User,
+		Password: c.Password,
+		DBName:   dbName,
+		SSLMode:  c.SSLMode,
+	}
 }
 
 type RedisConfig struct {
@@ -188,9 +212,15 @@ func buildPostgresDSN(cfg *DatabaseConfig, dbName string) string {
 	)
 }
 
+// isDatabaseNotFoundError 判断错误是否为目标数据库不存在。
+// PostgreSQL: 3D000 (invalid_catalog_name)；MySQL: 1049 (ER_BAD_DB_ERROR)。
 func isDatabaseNotFoundError(err error) bool {
 	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code == "3D000"
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "3D000"
+	}
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1049
 }
 
 func openAndPingPostgresDatabase(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
@@ -210,14 +240,107 @@ func openAndPingPostgresDatabase(cfg *DatabaseConfig, dbName string) (*sql.DB, e
 	return db, nil
 }
 
+// openAndPingMySQLDatabase 打开并测试 MySQL 连接。
+// dbName 为空时连接服务器但不选择数据库（用于建库引导）。
+func openAndPingMySQLDatabase(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
+	mysqlCfg, err := cfg.toConfigDatabaseConfig(dbName).MySQLConfig("UTC")
+	if err != nil {
+		return nil, err
+	}
+	if dbName == "" {
+		mysqlCfg.DBName = ""
+	}
+	db, err := sql.Open("mysql", mysqlCfg.FormatDSN())
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), databasePingTimeout)
+	err = db.PingContext(ctx)
+	cancel()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// openAndPingDatabase 按配置的驱动打开并测试数据库连接。
+func openAndPingDatabase(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
+	if cfg.DriverName() == "mysql" {
+		return openAndPingMySQLDatabase(cfg, dbName)
+	}
+	return openAndPingPostgresDatabase(cfg, dbName)
+}
+
 type postgresDatabaseOpener func(*DatabaseConfig, string) (*sql.DB, error)
 
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	return testDatabaseConnection(cfg, openAndPingPostgresDatabase)
+	return testDatabaseConnection(cfg, openAndPingDatabase)
 }
 
 func testDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOpener) error {
+	if cfg.DriverName() == "mysql" {
+		return testMySQLDatabaseConnection(cfg, openDatabase)
+	}
+	return testPostgresDatabaseConnection(cfg, openDatabase)
+}
+
+// testMySQLDatabaseConnection 测试 MySQL 连接；目标库不存在时直接建库。
+func testMySQLDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOpener) error {
+	targetDB, err := openDatabase(cfg, cfg.DBName)
+	if err == nil {
+		if closeErr := targetDB.Close(); closeErr != nil {
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", closeErr)
+		}
+		return nil
+	}
+	if !isDatabaseNotFoundError(err) {
+		return fmt.Errorf("ping target database failed: %w", err)
+	}
+
+	// 连接服务器（不选择数据库）并创建目标库。
+	serverDB, err := openDatabase(cfg, "")
+	if err != nil {
+		return fmt.Errorf("target database '%s' does not exist; failed to connect to mysql server: %w", cfg.DBName, err)
+	}
+	defer func() {
+		if err := serverDB.Close(); err != nil {
+			logger.LegacyPrintf("setup", "failed to close mysql server connection: %v", err)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), databasePingTimeout)
+	defer cancel()
+
+	// 注意：数据库名不能参数化，依赖前置输入校验保障安全（validateDBName 仅允许 [a-zA-Z][a-zA-Z0-9_]*）。
+	_, err = serverDB.ExecContext(ctx, fmt.Sprintf(
+		"CREATE DATABASE IF NOT EXISTS %s CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci", cfg.DBName,
+	))
+	if err != nil {
+		return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
+	}
+	logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
+
+	// 重新连接目标库验证。
+	targetDB, err = openDatabase(cfg, cfg.DBName)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
+	}
+	defer func() {
+		if err := targetDB.Close(); err != nil {
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+// testPostgresDatabaseConnection 测试 PostgreSQL 连接；目标库不存在时经
+// bootstrap 库（postgres）创建。
+func testPostgresDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOpener) error {
 	// Prefer the configured database so existing installations remain
 	// independent of any server-specific maintenance database.
 	targetDB, err := openDatabase(cfg, cfg.DBName)
@@ -366,26 +489,32 @@ func createInstallLock() error {
 }
 
 func initializeDatabase(cfg *SetupConfig) error {
-	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
-		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", dsn)
+	db, err := openSetupDatabase(&cfg.Database)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close database connection: %v", err)
 		}
 	}()
 
 	migrationCtx, cancel := context.WithTimeout(context.Background(), cfg.migrationTimeout())
 	defer cancel()
-	return repository.ApplyMigrations(migrationCtx, db)
+	return repository.ApplyMigrationsWithDialect(migrationCtx, db, cfg.Database.DriverName())
+}
+
+// openSetupDatabase 按驱动类型打开指向目标库的连接。
+func openSetupDatabase(cfg *DatabaseConfig) (*sql.DB, error) {
+	if cfg.DriverName() == "mysql" {
+		mysqlCfg, err := cfg.toConfigDatabaseConfig(cfg.DBName).MySQLConfig("UTC")
+		if err != nil {
+			return nil, err
+		}
+		return sql.Open("mysql", mysqlCfg.FormatDSN())
+	}
+	return sql.Open("postgres", buildPostgresDSN(cfg, cfg.DBName))
 }
 
 func (cfg *SetupConfig) migrationTimeout() time.Duration {
@@ -396,20 +525,14 @@ func (cfg *SetupConfig) migrationTimeout() time.Duration {
 }
 
 func createAdminUser(cfg *SetupConfig) (bool, string, error) {
-	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
-		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", dsn)
+	db, err := openSetupDatabase(&cfg.Database)
 	if err != nil {
 		return false, "", err
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close database connection: %v", err)
 		}
 	}()
 
@@ -421,12 +544,20 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 }
 
 func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool, string, error) {
+	// PostgreSQL 使用 $n 占位符，MySQL 使用 ?。
+	ph := func(n int) string {
+		if cfg.Database.DriverName() == "mysql" {
+			return "?"
+		}
+		return fmt.Sprintf("$%d", n)
+	}
+
 	var totalUsers int64
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
 		return false, "", err
 	}
 	var adminUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = "+ph(1), service.RoleAdmin).Scan(&adminUsers); err != nil {
 		return false, "", err
 	}
 	decision := decideAdminBootstrap(totalUsers, adminUsers)
@@ -463,7 +594,7 @@ func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool
 	_, err = db.ExecContext(
 		ctx,
 		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		 VALUES (`+ph(1)+`, `+ph(2)+`, `+ph(3)+`, `+ph(4)+`, `+ph(5)+`, `+ph(6)+`, `+ph(7)+`, `+ph(8)+`)`,
 		admin.Email,
 		admin.PasswordHash,
 		admin.Role,
@@ -627,6 +758,7 @@ func AutoSetupFromEnv() error {
 	// Build config from environment variables
 	cfg := &SetupConfig{
 		Database: DatabaseConfig{
+			Driver:   getEnvOrDefault("DATABASE_DRIVER", ""),
 			Host:     getEnvOrDefault("DATABASE_HOST", "localhost"),
 			Port:     getEnvIntOrDefault("DATABASE_PORT", 5432),
 			User:     getEnvOrDefault("DATABASE_USER", "postgres"),

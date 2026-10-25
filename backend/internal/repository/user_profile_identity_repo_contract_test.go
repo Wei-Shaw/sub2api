@@ -32,6 +32,30 @@ func (s *UserProfileIdentityRepoSuite) SetupTest() {
 	s.client = testEntClient(s.T())
 	s.repo = newUserRepositoryWithSQL(s.client, integrationDB)
 
+	if IsMySQL() {
+		// MySQL 不支持多表 TRUNCATE，也不能直接 TRUNCATE 被 FK 引用的表；
+		// 在单连接上关闭外键检查后逐表清空（TRUNCATE TABLE 自身会重置
+		// AUTO_INCREMENT，与 PG 的 RESTART IDENTITY 语义一致）。
+		conn, err := integrationDB.Conn(s.ctx)
+		s.Require().NoError(err)
+		defer func() { _ = conn.Close() }()
+		_, err = conn.ExecContext(s.ctx, "SET FOREIGN_KEY_CHECKS=0")
+		s.Require().NoError(err)
+		defer func() { _, _ = conn.ExecContext(context.Background(), "SET FOREIGN_KEY_CHECKS=1") }()
+		for _, table := range []string{
+			"identity_adoption_decisions",
+			"auth_identity_channels",
+			"auth_identities",
+			"pending_auth_sessions",
+			"user_provider_default_grants",
+			"user_avatars",
+		} {
+			_, err = conn.ExecContext(s.ctx, truncateTableSQL(table))
+			s.Require().NoError(err)
+		}
+		return
+	}
+
 	_, err := integrationDB.ExecContext(s.ctx, `
 TRUNCATE TABLE
 	identity_adoption_decisions,
@@ -340,7 +364,7 @@ func (s *UserProfileIdentityRepoSuite) TestWithUserProfileIdentityTx_RollsBackId
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT COUNT(*)
 FROM user_provider_default_grants
-WHERE user_id = $1 AND provider_type = $2 AND grant_reason = $3`,
+WHERE user_id = `+ph(1)+` AND provider_type = `+ph(2)+` AND grant_reason = `+ph(3),
 		user.ID,
 		"oidc",
 		string(ProviderGrantReasonFirstBind),
@@ -379,7 +403,7 @@ func (s *UserProfileIdentityRepoSuite) TestRecordProviderGrant_IsIdempotentPerRe
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT COUNT(*)
 FROM user_provider_default_grants
-WHERE user_id = $1 AND provider_type = $2`,
+WHERE user_id = `+ph(1)+` AND provider_type = `+ph(2),
 		user.ID,
 		"wechat",
 	).Scan(&count))
@@ -545,7 +569,7 @@ func (s *UserProfileIdentityRepoSuite) TestUpdateUserLastLoginAndActiveAt_UsesDe
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT last_login_at, last_active_at
 FROM users
-WHERE id = $1`,
+WHERE id = `+ph(1),
 		user.ID,
 	).Scan(&storedLoginAt, &storedActiveAt))
 	s.Require().True(storedLoginAt.Valid)

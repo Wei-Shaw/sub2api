@@ -23,6 +23,9 @@ const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, 
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
+	if IsMySQL() {
+		query = "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = ?"
+	}
 	rows, err := r.sql.QueryContext(ctx, query, id)
 	if err != nil {
 		return nil, err
@@ -52,43 +55,71 @@ func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *servic
 }
 
 func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	return r.listUsageLogsWithPagination(ctx, "WHERE user_id = $1", []any{userID}, params)
+	whereClause := "WHERE user_id = $1"
+	if IsMySQL() {
+		whereClause = "WHERE user_id = ?"
+	}
+	return r.listUsageLogsWithPagination(ctx, whereClause, []any{userID}, params)
 }
 
 func (r *usageLogRepository) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	return r.listUsageLogsWithPagination(ctx, "WHERE api_key_id = $1", []any{apiKeyID}, params)
+	whereClause := "WHERE api_key_id = $1"
+	if IsMySQL() {
+		whereClause = "WHERE api_key_id = ?"
+	}
+	return r.listUsageLogsWithPagination(ctx, whereClause, []any{apiKeyID}, params)
 }
 
 func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	return r.listUsageLogsWithPagination(ctx, "WHERE account_id = $1", []any{accountID}, params)
+	whereClause := "WHERE account_id = $1"
+	if IsMySQL() {
+		whereClause = "WHERE account_id = ?"
+	}
+	return r.listUsageLogsWithPagination(ctx, whereClause, []any{accountID}, params)
 }
 
 func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
+	if IsMySQL() {
+		query = "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE user_id = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT 10000"
+	}
 	logs, err := r.queryUsageLogs(ctx, query, userID, startTime, endTime)
 	return logs, nil, err
 }
 
 func (r *usageLogRepository) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
+	if IsMySQL() {
+		query = "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT 10000"
+	}
 	logs, err := r.queryUsageLogs(ctx, query, apiKeyID, startTime, endTime)
 	return logs, nil, err
 }
 
 func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
+	if IsMySQL() {
+		query = "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE account_id = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT 10000"
+	}
 	logs, err := r.queryUsageLogs(ctx, query, accountID, startTime, endTime)
 	return logs, nil, err
 }
 
 func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	query := fmt.Sprintf("SELECT %s FROM usage_logs WHERE %s = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000", usageLogSelectColumns, rawUsageLogModelColumn)
+	if IsMySQL() {
+		query = fmt.Sprintf("SELECT %s FROM usage_logs WHERE %s = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT 10000", usageLogSelectColumns, rawUsageLogModelColumn)
+	}
 	logs, err := r.queryUsageLogs(ctx, query, modelName, startTime, endTime)
 	return logs, nil, err
 }
 
 func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.sql.ExecContext(ctx, "DELETE FROM usage_logs WHERE id = $1", id)
+	query := "DELETE FROM usage_logs WHERE id = $1"
+	if IsMySQL() {
+		query = "DELETE FROM usage_logs WHERE id = ?"
+	}
+	_, err := r.sql.ExecContext(ctx, query, id)
 	return err
 }
 
@@ -97,6 +128,9 @@ type UsageLogFilters = usagestats.UsageLogFilters
 
 // ListWithFilters lists usage logs with optional filters (for admin)
 func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	if IsMySQL() {
+		return r.listWithFiltersMySQL(ctx, params, filters)
+	}
 	conditions := make([]string, 0, 9)
 	args := make([]any, 0, 9)
 
@@ -186,7 +220,12 @@ func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, wh
 	limitPos := len(args) + 1
 	offsetPos := len(args) + 2
 	listArgs := append(append([]any{}, args...), params.Limit(), params.Offset())
-	query := fmt.Sprintf("SELECT %s FROM usage_logs %s ORDER BY %s LIMIT $%d OFFSET $%d", usageLogSelectColumns, whereClause, usageLogOrderBy(params), limitPos, offsetPos)
+	// LIMIT/OFFSET 片段按方言生成：PG 沿用 $n 编号（与原语句逐字节一致），MySQL 用 ?。
+	limitOffsetClause := fmt.Sprintf("LIMIT $%d OFFSET $%d", limitPos, offsetPos)
+	if IsMySQL() {
+		limitOffsetClause = "LIMIT ? OFFSET ?"
+	}
+	query := fmt.Sprintf("SELECT %s FROM usage_logs %s ORDER BY %s %s", usageLogSelectColumns, whereClause, usageLogOrderBy(params), limitOffsetClause)
 	logs, err := r.queryUsageLogs(ctx, query, listArgs...)
 	if err != nil {
 		return nil, nil, err
@@ -201,7 +240,12 @@ func (r *usageLogRepository) listUsageLogsWithFastPagination(ctx context.Context
 	limitPos := len(args) + 1
 	offsetPos := len(args) + 2
 	listArgs := append(append([]any{}, args...), limit+1, offset)
-	query := fmt.Sprintf("SELECT %s FROM usage_logs %s ORDER BY %s LIMIT $%d OFFSET $%d", usageLogSelectColumns, whereClause, usageLogOrderBy(params), limitPos, offsetPos)
+	// LIMIT/OFFSET 片段按方言生成：PG 沿用 $n 编号（与原语句逐字节一致），MySQL 用 ?。
+	limitOffsetClause := fmt.Sprintf("LIMIT $%d OFFSET $%d", limitPos, offsetPos)
+	if IsMySQL() {
+		limitOffsetClause = "LIMIT ? OFFSET ?"
+	}
+	query := fmt.Sprintf("SELECT %s FROM usage_logs %s ORDER BY %s %s", usageLogSelectColumns, whereClause, usageLogOrderBy(params), limitOffsetClause)
 
 	logs, err := r.queryUsageLogs(ctx, query, listArgs...)
 	if err != nil {
@@ -783,4 +827,72 @@ func setToSlice(set map[int64]struct{}) []int64 {
 		out = append(out, id)
 	}
 	return out
+}
+
+// listWithFiltersMySQL 是 ListWithFilters 的 MySQL 实现：动态条件与 PG 版
+// 成对维护（? 占位符），复用 usage_log_repo_stats.go 已有的 *MySQL 条件构造器，
+// 条件顺序、语义与 PG 版逐条对应。
+func (r *usageLogRepository) listWithFiltersMySQL(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	conditions := make([]string, 0, 9)
+	args := make([]any, 0, 9)
+
+	if filters.UserID > 0 {
+		conditions = append(conditions, "user_id = ?")
+		args = append(args, filters.UserID)
+	}
+	if filters.APIKeyID > 0 {
+		conditions = append(conditions, "api_key_id = ?")
+		args = append(args, filters.APIKeyID)
+	}
+	if filters.AccountID > 0 {
+		conditions = append(conditions, "account_id = ?")
+		args = append(args, filters.AccountID)
+	}
+	if filters.GroupID > 0 {
+		conditions = append(conditions, "group_id = ?")
+		args = append(args, filters.GroupID)
+	}
+	if requestID := strings.TrimSpace(filters.RequestID); requestID != "" {
+		conditions = append(conditions, "request_id = ?")
+		args = append(args, requestID)
+	}
+	conditions, args = appendUsageLogModelWhereConditionMySQL(conditions, args, filters.Model, filters.ModelFilterSource)
+	conditions, args = appendRequestTypeOrStreamWhereConditionMySQL(conditions, args, filters.RequestType, filters.Stream)
+	conditions, args = appendNativeCompactionV2WhereConditionMySQL(conditions, args, filters.NativeCompactionV2)
+	if filters.BillingType != nil {
+		conditions = append(conditions, "billing_type = ?")
+		args = append(args, int16(*filters.BillingType))
+	}
+	conditions, args = appendUsageLogBillingModeWhereConditionMySQL(conditions, args, filters.BillingMode)
+	if filters.UpstreamModelMismatch != nil {
+		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
+	}
+	if filters.StartTime != nil {
+		conditions = append(conditions, "created_at >= ?")
+		args = append(args, *filters.StartTime)
+	}
+	if filters.EndTime != nil {
+		conditions = append(conditions, "created_at < ?")
+		args = append(args, *filters.EndTime)
+	}
+
+	whereClause := buildWhere(conditions)
+	var (
+		logs []service.UsageLog
+		page *pagination.PaginationResult
+		err  error
+	)
+	if shouldUseFastUsageLogTotal(filters) {
+		logs, page, err = r.listUsageLogsWithFastPagination(ctx, whereClause, args, params)
+	} else {
+		logs, page, err = r.listUsageLogsWithPagination(ctx, whereClause, args, params)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := r.hydrateUsageLogAssociations(ctx, logs); err != nil {
+		return nil, nil, err
+	}
+	return logs, page, nil
 }

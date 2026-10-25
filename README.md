@@ -195,7 +195,7 @@ Community projects that extend or integrate with Sub2API:
 |-----------|------------|
 | Backend | Go 1.27.0, Gin, Ent |
 | Frontend | Vue 3.4+, Vite 5+, TailwindCSS |
-| Database | PostgreSQL 15+ |
+| Database | PostgreSQL 15+ or MySQL 8.0+ (8.0.13 and later, 8.0.30+ recommended) |
 | Cache/Queue | Redis 7+ |
 
 ---
@@ -221,7 +221,7 @@ One-click installation script that downloads pre-built binaries from GitHub Rele
 #### Prerequisites
 
 - Linux server (amd64 or arm64)
-- PostgreSQL 15+ (installed and running)
+- PostgreSQL 15+ or MySQL 8.0+ (8.0.13 and later, 8.0.30+ recommended), installed and running
 - Redis 7+ (installed and running)
 - Root privileges
 
@@ -474,7 +474,7 @@ Build and run from source code for development or customization.
 
 - Go 1.21+
 - Node.js 18+
-- PostgreSQL 15+
+- PostgreSQL 15+ or MySQL 8.0+ (8.0.13 and later, 8.0.30+ recommended)
 - Redis 7+
 
 #### Build Steps
@@ -538,6 +538,25 @@ default:
   api_key_prefix: "sk-"
   rate_multiplier: 1.0
 ```
+
+**Using MySQL (optional):** Binary deployments can use MySQL 8.0+ instead of PostgreSQL by setting `database.driver: mysql` (the Docker Compose stack still ships PostgreSQL):
+
+```yaml
+database:
+  driver: mysql        # postgres (default) | mysql
+  host: 127.0.0.1
+  port: 3306
+  user: sub2api
+  password: your-password
+  dbname: sub2api
+```
+
+Notes for MySQL mode:
+
+- Requires MySQL 8.0.13 or later (8.0.30+ recommended).
+- On servers with binary logging (binlog) enabled, a DBA must run `SET GLOBAL log_bin_trust_function_creators = 1` beforehand (or grant the application account SUPER / SET_ANY_DEFINER privileges); otherwise trigger creation fails.
+- Backups use the `mysqldump` / `mysql` client tools.
+- Fresh installations only; no PostgreSQL → MySQL data migration tool is provided.
 
 Additional security-related options are available in `config.yaml`:
 

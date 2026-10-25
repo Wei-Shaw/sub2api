@@ -819,6 +819,22 @@ func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, clien
 		"baseAmount": baseAmount,
 		"status":     "reserved",
 	})
+	if entClientIsMySQL(client) {
+		// MySQL 版查询无 RETURNING，改用 ExecContext + RowsAffected 判定：
+		// 1=新插入（认领成功），0=唯一键冲突或 NOT EXISTS 拦截（已被认领），
+		// 对齐 PG 版「RETURNING 出行 = 认领成功」的语义
+		//（DIALECT_MYSQL_GUIDE「RETURNING 改写」第 6/7 类）。
+		query, args := buildAffiliateRebateAuditClaimQuery(client, oid, string(detail))
+		res, err := client.ExecContext(ctx, query, args...)
+		if err != nil {
+			return false, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		return affected == 1, nil
+	}
 	query, args := buildAffiliateRebateAuditClaimQuery(client, oid, string(detail))
 	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -840,7 +856,8 @@ func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, clien
 
 func buildAffiliateRebateAuditClaimQuery(client *dbent.Client, orderID, detail string) (string, []any) {
 	nowExpr := paymentAuditCurrentTimestampExpr(client)
-	if paymentAuditDialect(client) == dialect.Postgres {
+	switch paymentAuditDialect(client) {
+	case dialect.Postgres:
 		return fmt.Sprintf(`
 INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
 SELECT $1::text, 'AFFILIATE_REBATE_APPLIED', $2::text, 'system', %s
@@ -852,8 +869,25 @@ WHERE NOT EXISTS (
 )
 ON CONFLICT (order_id, action) DO NOTHING
 RETURNING id`, nowExpr), []any{orderID, detail}
-	}
-	return fmt.Sprintf(`
+	case dialect.MySQL:
+		// MySQL 分支（DIALECT_MYSQL_GUIDE「RETURNING 改写」第 6/7 类）：
+		// `ON CONFLICT (order_id, action) DO NOTHING RETURNING id` →
+		// `ON DUPLICATE KEY UPDATE id = payment_audit_logs.id`（no-op 惯用法；INSERT...SELECT
+		// 语句里 ODKU 裸 `id` 会触发 1052 歧义，须用目标表限定列）。无 RETURNING，
+		// 由调用方以 RowsAffected 判定插入是否发生（1=新插入，0=冲突/未插入）。
+		return fmt.Sprintf(`
+INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+SELECT ?, 'AFFILIATE_REBATE_APPLIED', ?, 'system', %s
+WHERE NOT EXISTS (
+	SELECT 1
+	FROM payment_audit_logs
+	WHERE order_id = ?
+	  AND action IN ('AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')
+)
+ON DUPLICATE KEY UPDATE id = payment_audit_logs.id`, nowExpr), []any{orderID, detail, orderID}
+	default:
+		// sqlite（单元测试夹具）：支持 ON CONFLICT DO NOTHING 与 RETURNING，沿用通用形态。
+		return fmt.Sprintf(`
 INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
 SELECT ?, 'AFFILIATE_REBATE_APPLIED', ?, 'system', %s
 WHERE NOT EXISTS (
@@ -864,13 +898,20 @@ WHERE NOT EXISTS (
 )
 ON CONFLICT (order_id, action) DO NOTHING
 RETURNING id`, nowExpr), []any{orderID, detail, orderID}
+	}
 }
 
 func paymentAuditCurrentTimestampExpr(client *dbent.Client) string {
-	if paymentAuditDialect(client) == dialect.Postgres {
+	switch paymentAuditDialect(client) {
+	case dialect.Postgres:
 		return "NOW()"
+	case dialect.MySQL:
+		// MySQL：payment_audit_logs.created_at 为 DATETIME(3)，用 NOW(3) 对齐毫秒精度
+		//（DIALECT_MYSQL_GUIDE「日期/时间」）。
+		return "NOW(3)"
+	default:
+		return "CURRENT_TIMESTAMP"
 	}
-	return "CURRENT_TIMESTAMP"
 }
 
 func paymentAuditDialect(client *dbent.Client) string {

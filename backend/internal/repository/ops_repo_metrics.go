@@ -26,7 +26,7 @@ func (r *opsRepository) InsertSystemMetrics(ctx context.Context, input *service.
 		createdAt = time.Now().UTC()
 	}
 
-	q := `
+	q := sqlDialectExpr(`
 INSERT INTO ops_system_metrics (
   created_at,
   window_minutes,
@@ -90,7 +90,71 @@ INSERT INTO ops_system_metrics (
   $34,$35,
   $36,$37,$38,
   $39,$40
-)`
+)`, `
+INSERT INTO ops_system_metrics (
+  created_at,
+  window_minutes,
+  platform,
+  group_id,
+
+  success_count,
+  error_count_total,
+  business_limited_count,
+  error_count_sla,
+
+  upstream_error_count_excl_429_529,
+  upstream_429_count,
+  upstream_529_count,
+
+  token_consumed,
+  account_switch_count,
+  qps,
+  tps,
+
+  duration_p50_ms,
+  duration_p90_ms,
+  duration_p95_ms,
+  duration_p99_ms,
+  duration_avg_ms,
+  duration_max_ms,
+
+  ttft_p50_ms,
+  ttft_p90_ms,
+  ttft_p95_ms,
+  ttft_p99_ms,
+  ttft_avg_ms,
+  ttft_max_ms,
+
+  cpu_usage_percent,
+  memory_used_mb,
+  memory_total_mb,
+  memory_usage_percent,
+
+  db_ok,
+  redis_ok,
+
+  redis_conn_total,
+  redis_conn_idle,
+
+  db_conn_active,
+  db_conn_idle,
+  db_conn_waiting,
+
+  goroutine_count,
+  concurrency_queue_depth
+) VALUES (
+  ?,?,?,?,
+  ?,?,?,?,
+  ?,?,?,
+  ?,?,?,?,
+  ?,?,?,?,?,?,
+  ?,?,?,?,?,?,
+  ?,?,?,?,
+  ?,?,
+  ?,?,
+  ?,?,?,
+  ?,?
+)`)
 
 	_, err := r.db.ExecContext(
 		ctx,
@@ -157,7 +221,7 @@ func (r *opsRepository) GetLatestSystemMetrics(ctx context.Context, windowMinute
 		windowMinutes = 1
 	}
 
-	q := `
+	q := sqlDialectExpr(`
 SELECT
   id,
   created_at,
@@ -186,7 +250,36 @@ WHERE window_minutes = $1
   AND platform IS NULL
   AND group_id IS NULL
 ORDER BY created_at DESC
-LIMIT 1`
+LIMIT 1`, `
+SELECT
+  id,
+  created_at,
+  window_minutes,
+
+  cpu_usage_percent,
+  memory_used_mb,
+  memory_total_mb,
+  memory_usage_percent,
+
+  db_ok,
+  redis_ok,
+
+  redis_conn_total,
+  redis_conn_idle,
+
+  db_conn_active,
+  db_conn_idle,
+  db_conn_waiting,
+
+  goroutine_count,
+  concurrency_queue_depth,
+  account_switch_count
+FROM ops_system_metrics
+WHERE window_minutes = ?
+  AND platform IS NULL
+  AND group_id IS NULL
+ORDER BY created_at DESC
+LIMIT 1`)
 
 	var out service.OpsSystemMetricsSnapshot
 	var cpu sql.NullFloat64
@@ -297,7 +390,7 @@ func (r *opsRepository) UpsertJobHeartbeat(ctx context.Context, input *service.O
 		return fmt.Errorf("job_name required")
 	}
 
-	q := `
+	q := sqlDialectExpr(`
 INSERT INTO ops_job_heartbeats (
   job_name,
   last_run_at,
@@ -326,7 +419,36 @@ ON CONFLICT (job_name) DO UPDATE SET
     WHEN EXCLUDED.last_success_at IS NOT NULL THEN COALESCE(EXCLUDED.last_result, ops_job_heartbeats.last_result)
     ELSE ops_job_heartbeats.last_result
   END,
-  updated_at = NOW()`
+  updated_at = NOW()`, `
+INSERT INTO ops_job_heartbeats (
+  job_name,
+  last_run_at,
+  last_success_at,
+  last_error_at,
+  last_error,
+  last_duration_ms,
+  last_result,
+  updated_at
+) VALUES (
+  ?,?,?,?,?,?,?,NOW(3)
+)
+ON CONFLICT (job_name) DO UPDATE SET
+  last_run_at = COALESCE(EXCLUDED.last_run_at, ops_job_heartbeats.last_run_at),
+  last_success_at = COALESCE(EXCLUDED.last_success_at, ops_job_heartbeats.last_success_at),
+  last_error_at = CASE
+    WHEN EXCLUDED.last_success_at IS NOT NULL THEN NULL
+    ELSE COALESCE(EXCLUDED.last_error_at, ops_job_heartbeats.last_error_at)
+  END,
+  last_error = CASE
+    WHEN EXCLUDED.last_success_at IS NOT NULL THEN NULL
+    ELSE COALESCE(EXCLUDED.last_error, ops_job_heartbeats.last_error)
+  END,
+  last_duration_ms = COALESCE(EXCLUDED.last_duration_ms, ops_job_heartbeats.last_duration_ms),
+  last_result = CASE
+    WHEN EXCLUDED.last_success_at IS NOT NULL THEN COALESCE(EXCLUDED.last_result, ops_job_heartbeats.last_result)
+    ELSE ops_job_heartbeats.last_result
+  END,
+  updated_at = NOW(3)`)
 
 	_, err := r.db.ExecContext(
 		ctx,
@@ -456,4 +578,14 @@ func opsNullTime(v *time.Time) any {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: *v, Valid: true}
+}
+
+// sqlDialectExpr 按进程方言返回两个原生 SQL 片段之一（pgSQL / mysqlSQL）。
+// 用于 ops_repo_metrics 的语句：占位符均为顺序单次使用（$n → ? 直接替换），
+// NOW() → NOW(3) 对齐 DATETIME(3) 毫秒精度，参数顺序不变。
+func sqlDialectExpr(pgSQL, mysqlSQL string) string {
+	if IsMySQL() {
+		return mysqlSQL
+	}
+	return pgSQL
 }

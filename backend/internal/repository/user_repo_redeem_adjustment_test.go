@@ -24,9 +24,18 @@ func newRedeemAdjustmentRepoMock(t *testing.T) (*userRepository, sqlmock.Sqlmock
 	return newUserRepositoryWithSQL(client, db), mock
 }
 
+// redeemAdjustmentSQLRegex 返回 ApplyRedeem*Adjustment 的期望 SQL 正则：
+// 进程级 IsMySQL() 为真时仓库发 MySQL 方言语句（? / NOW(3)），否则发 PG 语句。
+func redeemAdjustmentSQLRegex(column string) string {
+	if IsMySQL() {
+		return `UPDATE users SET ` + column + ` = GREATEST\(` + column + ` \+ \?, 0\), updated_at = NOW\(3\) WHERE id = \? AND deleted_at IS NULL`
+	}
+	return `UPDATE users SET ` + column + ` = GREATEST\(` + column + ` \+ \$1, 0\), updated_at = NOW\(\) WHERE id = \$2 AND deleted_at IS NULL`
+}
+
 func TestApplyRedeemBalanceAdjustment_UsesAtomicFloor(t *testing.T) {
 	repo, mock := newRedeemAdjustmentRepoMock(t)
-	mock.ExpectExec(`UPDATE users SET balance = GREATEST\(balance \+ \$1, 0\), updated_at = NOW\(\) WHERE id = \$2 AND deleted_at IS NULL`).
+	mock.ExpectExec(redeemAdjustmentSQLRegex("balance")).
 		WithArgs(-7.0, int64(42)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -36,7 +45,7 @@ func TestApplyRedeemBalanceAdjustment_UsesAtomicFloor(t *testing.T) {
 
 func TestApplyRedeemConcurrencyAdjustment_UsesAtomicFloor(t *testing.T) {
 	repo, mock := newRedeemAdjustmentRepoMock(t)
-	mock.ExpectExec(`UPDATE users SET concurrency = GREATEST\(concurrency \+ \$1, 0\), updated_at = NOW\(\) WHERE id = \$2 AND deleted_at IS NULL`).
+	mock.ExpectExec(redeemAdjustmentSQLRegex("concurrency")).
 		WithArgs(-7, int64(42)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -46,7 +55,7 @@ func TestApplyRedeemConcurrencyAdjustment_UsesAtomicFloor(t *testing.T) {
 
 func TestApplyRedeemAdjustment_MissingUser(t *testing.T) {
 	repo, mock := newRedeemAdjustmentRepoMock(t)
-	mock.ExpectExec(`UPDATE users SET balance = GREATEST\(balance \+ \$1, 0\), updated_at = NOW\(\) WHERE id = \$2 AND deleted_at IS NULL`).
+	mock.ExpectExec(redeemAdjustmentSQLRegex("balance")).
 		WithArgs(-1.0, int64(404)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 

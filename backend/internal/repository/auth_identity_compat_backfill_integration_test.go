@@ -13,6 +13,10 @@ import (
 )
 
 func TestAuthIdentityCompatBackfillMigration_AllowsLongReportTypes(t *testing.T) {
+	// 测试依赖 PG 的事务性 DDL：在可回滚事务里 DROP 真实 auth_identity 系列表
+	// 后重放 108/108a/109。MySQL 的 DROP TABLE 隐式提交，会把共享测试库的
+	// 表永久删掉（schema_migrations 已记账，无法自动重建），无法移植，跳过。
+	skipOnMySQL(t)
 	tx := testTx(t)
 	ctx := context.Background()
 

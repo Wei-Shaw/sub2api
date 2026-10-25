@@ -196,7 +196,7 @@ Sub2API を拡張・統合するコミュニティプロジェクト:
 |-----------|------------|
 | バックエンド | Go 1.27.0, Gin, Ent |
 | フロントエンド | Vue 3.4+, Vite 5+, TailwindCSS |
-| データベース | PostgreSQL 15+ |
+| データベース | PostgreSQL 15+ または MySQL 8.0+（8.0.13 以上、8.0.30+ 推奨） |
 | キャッシュ/キュー | Redis 7+ |
 
 ---
@@ -222,7 +222,7 @@ GitHub Releases からビルド済みバイナリをダウンロードするワ�
 #### 前提条件
 
 - Linux サーバー（amd64 または arm64）
-- PostgreSQL 15+（インストール済みかつ稼働中）
+- PostgreSQL 15+ または MySQL 8.0+（8.0.13 以上、8.0.30+ 推奨）がインストール済みかつ稼働中であること
 - Redis 7+（インストール済みかつ稼働中）
 - root 権限
 
@@ -475,7 +475,7 @@ cd sub2api/deploy
 
 - Go 1.21+
 - Node.js 18+
-- PostgreSQL 15+
+- PostgreSQL 15+ または MySQL 8.0+（8.0.13 以上、8.0.30+ 推奨）
 - Redis 7+
 
 #### ビルド手順
@@ -538,6 +538,25 @@ default:
   api_key_prefix: "sk-"
   rate_multiplier: 1.0
 ```
+
+**MySQL の使用（オプション）:** バイナリデプロイでは `database.driver: mysql` を設定することで、PostgreSQL の代わりに MySQL 8.0+ を使用できます（Docker Compose 構成は引き続き PostgreSQL 同梱です）:
+
+```yaml
+database:
+  driver: mysql        # postgres（デフォルト）| mysql
+  host: 127.0.0.1
+  port: 3306
+  user: sub2api
+  password: your-password
+  dbname: sub2api
+```
+
+MySQL モードの注意事項:
+
+- MySQL 8.0.13 以降が必要です（8.0.30+ 推奨）。
+- バイナリログ（binlog）が有効なサーバーでは、事前に DBA が `SET GLOBAL log_bin_trust_function_creators = 1` を実行する（またはアプリケーションアカウントに SUPER / SET_ANY_DEFINER 権限を付与する）必要があります。実行しない場合、トリガーの作成に失敗します。
+- バックアップには mysqldump / mysql クライアントツールを使用します。
+- 新規インストールのみ対応しており、PostgreSQL → MySQL のデータ移行ツールは提供されません。
 
 `config.yaml` では追加のセキュリティ関連オプションも利用できます:
 

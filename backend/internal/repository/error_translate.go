@@ -72,7 +72,8 @@ func translatePersistenceError(err error, notFound, conflict *infraerrors.Applic
 //
 // 支持多种检测方式：
 //  1. PostgreSQL 特定错误码 23505（唯一约束冲突）
-//  2. 错误消息中包含的通用关键词
+//  2. MySQL 特定错误码 1062（ER_DUP_ENTRY）
+//  3. 错误消息中包含的通用关键词
 //
 // 这种多层次的检测确保了对不同数据库驱动和 ORM 的兼容性。
 func isUniqueConstraintViolation(err error) bool {
@@ -86,6 +87,11 @@ func isUniqueConstraintViolation(err error) bool {
 	var pgErr *pq.Error
 	if errors.As(err, &pgErr) {
 		return pgErr.Code == "23505"
+	}
+
+	// MySQL 错误码 1062 对应 duplicate entry（唯一/主键冲突）。
+	if isMySQLUniqueViolation(err) {
+		return true
 	}
 
 	// 回退到错误消息检测（兼容其他场景）。

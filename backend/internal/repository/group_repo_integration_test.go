@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,73 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+// grpITSQL 保留 PG 运行下的 $n 占位符与裸 groups 表名；MySQL 方言运行
+// （SUB2API_TEST_DB=mysql）时把测试内嵌 SQL 的 $n 改写为 ?（database/sql
+// 驱动不做占位符翻译），并把 MySQL 8 保留字表名 groups 加反引号
+// （account_groups/user_allowed_groups 等含下划线的表名不受影响）。
+// PG 分支返回原文，字节不变。
+func grpITSQL(query string) string {
+	if !IsMySQL() {
+		return query
+	}
+	query = grpPGPlaceholderRegexp.ReplaceAllString(query, "?")
+	return grpGroupsNameRegexp.ReplaceAllString(query, "`groups`")
+}
+
+var (
+	grpPGPlaceholderRegexp = regexp.MustCompile(`\$\d+`)
+	grpGroupsNameRegexp    = regexp.MustCompile(`\bgroups\b`)
+)
+
+// grpJSONAsTextCol 返回 JSON 列的文本化表达式（双方言）：
+// PG `col::text`；MySQL `CAST(col AS CHAR)`。
+func grpJSONAsTextCol(col string) string {
+	if IsMySQL() {
+		return "CAST(" + col + " AS CHAR)"
+	}
+	return col + "::text"
+}
+
+// grpIntervalHours 返回 NOW() 偏移 n 小时的表达式（双方言）：
+// PG `NOW() + INTERVAL '1 hours'`；MySQL `NOW() + INTERVAL 1 HOUR`（数字无引号、单位单数）。
+func grpIntervalHours(n int) string {
+	if n < 0 {
+		if IsMySQL() {
+			return fmt.Sprintf("NOW() - INTERVAL %d HOUR", -n)
+		}
+		return fmt.Sprintf("NOW() - INTERVAL '%d hours'", -n)
+	}
+	if IsMySQL() {
+		return fmt.Sprintf("NOW() + INTERVAL %d HOUR", n)
+	}
+	return fmt.Sprintf("NOW() + INTERVAL '%d hours'", n)
+}
+
+// grpTestStmt 同时具备 QueryContext/ExecContext 的执行器（*dbent.Tx 与 *sql.DB 均满足）。
+type grpTestStmt interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// grpInsertReturningID 执行单行 INSERT 并取回新生成的自增 id（双方言）：
+// PG 走 INSERT..RETURNING id（与原夹具语义一致）；MySQL 剥掉 RETURNING 子句后
+// 走 Exec + LastInsertId。query 参数须以 " RETURNING id" 结尾。
+func grpInsertReturningID(ctx context.Context, exec grpTestStmt, query string, args ...any) (int64, error) {
+	if !IsMySQL() {
+		var id int64
+		if err := scanSingleRow(ctx, exec, query, args, &id); err != nil {
+			return 0, err
+		}
+		return id, nil
+	}
+	stripped := strings.TrimSuffix(query, " RETURNING id")
+	res, err := exec.ExecContext(ctx, grpITSQL(stripped), args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
 
 type GroupRepoSuite struct {
 	suite.Suite
@@ -58,7 +126,7 @@ func TestModerationConfigWriteRejectsGroupDeletedAfterValidation(t *testing.T) {
 	settings := &settingRepository{client: client}
 	group := &service.Group{Name: "moderation-concurrent-delete", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
 	require.NoError(t, repo.Create(ctx, group))
-	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id=$1", group.ID) })
+	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, grpITSQL("DELETE FROM groups WHERE id=$1"), group.ID) })
 	key := service.SettingKeyContentModerationConfig
 	previous, previousErr := settings.GetValue(ctx, key)
 	t.Cleanup(func() {
@@ -76,7 +144,7 @@ func TestModerationConfigWriteRejectsGroupDeletedAfterValidation(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
 	var id int64
-	require.NoError(t, tx.QueryRowContext(ctx, "SELECT id FROM groups WHERE id=$1 FOR UPDATE", group.ID).Scan(&id))
+	require.NoError(t, tx.QueryRowContext(ctx, grpITSQL("SELECT id FROM groups WHERE id=$1 FOR UPDATE"), group.ID).Scan(&id))
 	finished := make(chan error, 1)
 	go func() {
 		finished <- settings.SetContentModerationConfig(ctx, `{"all_groups":false,"group_ids":[`+fmt.Sprint(group.ID)+`]}`, []int64{group.ID})
@@ -86,7 +154,7 @@ func TestModerationConfigWriteRejectsGroupDeletedAfterValidation(t *testing.T) {
 		t.Fatalf("config write passed a locked group before deletion: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE groups SET deleted_at=NOW() WHERE id=$1", group.ID)
+	_, err = tx.ExecContext(ctx, grpITSQL("UPDATE groups SET deleted_at=NOW() WHERE id=$1"), group.ID)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
 	select {
@@ -133,18 +201,19 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	s.Require().NoError(s.repo.Create(s.ctx, source))
 
 	insertAccount := func(name, accountType string, deleted bool) int64 {
-		var id int64
 		deletedAt := any(nil)
 		if deleted {
-			deletedAt = "2026-07-16T00:00:00Z"
+			// time.Time 而非 RFC3339 字符串：MySQL DATETIME(3) 无法解析 'T'/'Z' 字面量
+			//（Error 1292），time.Time 由驱动双方言格式化。
+			deletedAt = time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 		}
-		s.Require().NoError(scanSingleRow(
+		id, err := grpInsertReturningID(
 			s.ctx,
 			s.tx,
 			"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, $4) RETURNING id",
-			[]any{name, service.PlatformOpenAI, accountType, deletedAt},
-			&id,
-		))
+			name, service.PlatformOpenAI, accountType, deletedAt,
+		)
+		s.Require().NoError(err)
 		return id
 	}
 	oauthID := insertAccount("duplicate-oauth", service.AccountTypeOAuth, false)
@@ -156,7 +225,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	}{{oauthID, 37}, {apiKeyID, 8}, {deletedID, 3}} {
 		_, err := s.tx.ExecContext(
 			s.ctx,
-			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 			binding.accountID,
 			source.ID,
 			binding.priority,
@@ -178,7 +247,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 
 	rows, err := s.tx.QueryContext(
 		s.ctx,
-		"SELECT account_id, priority FROM account_groups WHERE group_id = $1 ORDER BY account_id",
+		grpITSQL("SELECT account_id, priority FROM account_groups WHERE group_id = $1 ORDER BY account_id"),
 		duplicate.ID,
 	)
 	s.Require().NoError(err)
@@ -199,7 +268,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	s.Require().NoError(scanSingleRow(
 		s.ctx,
 		s.tx,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = $1",
+		grpITSQL("SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = $1"),
 		[]any{duplicate.ID},
 		&outboxCount,
 	))
@@ -279,7 +348,7 @@ func (s *GroupRepoSuite) TestI18n_RoundTrip() {
 	got.I18n = nil
 	s.Require().NoError(s.repo.Update(s.ctx, got))
 	var stored string
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{group.ID}, &stored))
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, grpITSQL("SELECT "+grpJSONAsTextCol("i18n")+" FROM groups WHERE id = $1"), []any{group.ID}, &stored))
 	s.Require().Equal("{}", stored)
 
 	plain := &service.Group{
@@ -290,7 +359,7 @@ func (s *GroupRepoSuite) TestI18n_RoundTrip() {
 		SubscriptionType: service.SubscriptionTypeStandard,
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, plain))
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{plain.ID}, &stored))
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, grpITSQL("SELECT "+grpJSONAsTextCol("i18n")+" FROM groups WHERE id = $1"), []any{plain.ID}, &stored))
 	s.Require().Equal("{}", stored)
 }
 
@@ -343,11 +412,11 @@ func (s *GroupRepoSuite) TestDelete() {
 func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyRejectsGroupWithNonDeletedAccount() {
 	group := &service.Group{Name: "guarded-non-empty", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
 	s.Require().NoError(s.repo.Create(s.ctx, group))
-	var accountID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+	accountID, err := grpInsertReturningID(s.ctx, s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"guarded-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+		"guarded-account", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())"), accountID, group.ID)
 	s.Require().NoError(err)
 
 	config, marshalErr := json.Marshal(map[string]any{"group_ids": []int64{group.ID}, "all_groups": false})
@@ -361,7 +430,7 @@ func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyRejectsGroupWithNonDeletedAccou
 	_, err = s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err)
 	var bindings int
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{group.ID}, &bindings))
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, grpITSQL("SELECT COUNT(*) FROM account_groups WHERE group_id = $1"), []any{group.ID}, &bindings))
 	s.Require().Equal(1, bindings)
 }
 
@@ -448,11 +517,11 @@ func (s *GroupRepoSuite) TestDeleteCascadePreservesMalformedModerationConfig() {
 func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyIgnoresBindingsToSoftDeletedAccounts() {
 	group := &service.Group{Name: "guarded-soft-deleted-account", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
 	s.Require().NoError(s.repo.Create(s.ctx, group))
-	var accountID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+	accountID, err := grpInsertReturningID(s.ctx, s.tx,
 		"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, NOW()) RETURNING id",
-		[]any{"guarded-deleted-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+		"guarded-deleted-account", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())"), accountID, group.ID)
 	s.Require().NoError(err)
 
 	_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
@@ -462,6 +531,9 @@ func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyIgnoresBindingsToSoftDeletedAcc
 }
 
 func TestBindAccountsToGroupWaitingBehindGuardedDeleteCannotCommit(t *testing.T) {
+	// 夹具深度 PG 专属：依赖 pg_stat_activity 探测绑定事务在行锁上等待
+	//（wait_event_type='Lock'），MySQL 无等价目录视图，跳过。
+	skipOnMySQL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -509,7 +581,7 @@ func TestBindAccountsToGroupWaitingBehindGuardedDeleteCannotCommit(t *testing.T)
 
 	require.ErrorIs(t, <-bindDone, service.ErrGroupNotFound)
 	var bindings int
-	require.NoError(t, scanSingleRow(ctx, integrationDB, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{groupID}, &bindings))
+	require.NoError(t, scanSingleRow(ctx, integrationDB, grpITSQL("SELECT COUNT(*) FROM account_groups WHERE group_id = $1"), []any{groupID}, &bindings))
 	require.Zero(t, bindings)
 }
 
@@ -828,17 +900,16 @@ func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
 	s.Require().NoError(s.repo.Create(s.ctx, g1))
 	s.Require().NoError(s.repo.Create(s.ctx, g2))
 
-	var accountID int64
-	s.Require().NoError(scanSingleRow(
+	accountID, err := grpInsertReturningID(
 		s.ctx,
 		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"acc1", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&accountID,
-	))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g1.ID, 1)
+		"acc1", service.PlatformAnthropic, service.AccountTypeOAuth,
+	)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g2.ID, 1)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), accountID, g1.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), accountID, g2.ID, 1)
 	s.Require().NoError(err)
 
 	isExclusive := true
@@ -978,26 +1049,24 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
-	var a1 int64
-	s.Require().NoError(scanSingleRow(
+	a1, err := grpInsertReturningID(
 		s.ctx,
 		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"a1", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&a1,
-	))
-	var a2 int64
-	s.Require().NoError(scanSingleRow(
-		s.ctx,
-		s.tx,
-		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"a2", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&a2,
-	))
-
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, group.ID, 1)
+		"a1", service.PlatformAnthropic, service.AccountTypeOAuth,
+	)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, group.ID, 2)
+	a2, err := grpInsertReturningID(
+		s.ctx,
+		s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		"a2", service.PlatformAnthropic, service.AccountTypeOAuth,
+	)
+	s.Require().NoError(err)
+
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), a1, group.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), a2, group.ID, 2)
 	s.Require().NoError(err)
 
 	count, _, err := s.repo.GetAccountCount(s.ctx, group.ID)
@@ -1036,18 +1105,17 @@ func (s *GroupRepoSuite) TestListWithFilters_ActiveAccountCount_LessThanTotal() 
 	s.Require().NoError(s.repo.Create(s.ctx, g))
 
 	insertAccount := func(name, status string, schedulable bool) int64 {
-		var id int64
-		s.Require().NoError(scanSingleRow(
+		id, err := grpInsertReturningID(
 			s.ctx, s.tx,
 			"INSERT INTO accounts (name, platform, type, status, schedulable) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuth, status, schedulable},
-			&id,
-		))
+			name, service.PlatformAnthropic, service.AccountTypeOAuth, status, schedulable,
+		)
+		s.Require().NoError(err)
 		return id
 	}
 	link := func(accountID int64, priority int) {
 		_, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 			accountID, g.ID, priority)
 		s.Require().NoError(err)
 	}
@@ -1098,54 +1166,49 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, g))
 
-	var normalID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+	normalID, err := grpInsertReturningID(s.ctx, s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&normalID))
+		"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
 
-	var rateLimitedID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
-		[]any{"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&rateLimitedID))
+	rateLimitedID, err := grpInsertReturningID(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES ($1, $2, $3, "+grpIntervalHours(1)+") RETURNING id",
+		"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
 
-	var overloadedID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, overload_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
-		[]any{"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&overloadedID))
+	overloadedID, err := grpInsertReturningID(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, overload_until) VALUES ($1, $2, $3, "+grpIntervalHours(1)+") RETURNING id",
+		"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
 
-	var tempUnschedulableID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
-		[]any{"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&tempUnschedulableID))
+	tempUnschedulableID, err := grpInsertReturningID(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES ($1, $2, $3, "+grpIntervalHours(1)+") RETURNING id",
+		"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
 
-	var expiredID int64
-	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
-		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour', TRUE) RETURNING id",
-		[]any{"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&expiredID))
+	expiredID, err := grpInsertReturningID(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES ($1, $2, $3, "+grpIntervalHours(-1)+", TRUE) RETURNING id",
+		"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth)
+	s.Require().NoError(err)
 
-	_, err := s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+	_, err = s.tx.ExecContext(s.ctx,
+		grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 		normalID, g.ID, 1)
 	s.Require().NoError(err)
 	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 		rateLimitedID, g.ID, 2)
 	s.Require().NoError(err)
 	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 		overloadedID, g.ID, 3)
 	s.Require().NoError(err)
 	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 		tempUnschedulableID, g.ID, 4)
 	s.Require().NoError(err)
 	_, err = s.tx.ExecContext(s.ctx,
-		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"),
 		expiredID, g.ID, 5)
 	s.Require().NoError(err)
 
@@ -1191,15 +1254,14 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 		SubscriptionType: service.SubscriptionTypeStandard,
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, g))
-	var accountID int64
-	s.Require().NoError(scanSingleRow(
+	accountID, err := grpInsertReturningID(
 		s.ctx,
 		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&accountID,
-	))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g.ID, 1)
+		"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth,
+	)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), accountID, g.ID, 1)
 	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)
@@ -1223,24 +1285,23 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
 	s.Require().NoError(s.repo.Create(s.ctx, g))
 
 	insertAccount := func(name string) int64 {
-		var id int64
-		s.Require().NoError(scanSingleRow(
+		id, err := grpInsertReturningID(
 			s.ctx,
 			s.tx,
 			"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuth},
-			&id,
-		))
+			name, service.PlatformAnthropic, service.AccountTypeOAuth,
+		)
+		s.Require().NoError(err)
 		return id
 	}
 	a1 := insertAccount("a1")
 	a2 := insertAccount("a2")
 	a3 := insertAccount("a3")
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, g.ID, 1)
+	_, err := s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), a1, g.ID, 1)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, g.ID, 2)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), a2, g.ID, 2)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a3, g.ID, 3)
+	_, err = s.tx.ExecContext(s.ctx, grpITSQL("INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())"), a3, g.ID, 3)
 	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)

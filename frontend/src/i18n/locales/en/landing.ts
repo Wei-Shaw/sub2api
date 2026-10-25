@@ -196,7 +196,11 @@ export default {
     description: 'Configure your Sub2API instance',
     database: {
       title: 'Database Configuration',
-      description: 'Connect to your PostgreSQL database',
+      description: 'Connect to your database',
+      driver: 'Database Type',
+      driverPostgres: 'PostgreSQL',
+      driverMysql: 'MySQL',
+      mysqlNote: 'MySQL does not use SSL mode, so the SSL mode option is hidden.',
       host: 'Host',
       port: 'Port',
       username: 'Username',

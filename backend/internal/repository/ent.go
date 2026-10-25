@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 )
 
@@ -77,18 +79,18 @@ func waitForDatabaseInitializationRetry(ctx context.Context, delay time.Duration
 
 func isTransientDatabaseInitializationError(err error) bool {
 	var pqErr *pq.Error
-	if !errors.As(err, &pqErr) {
-		return false
+	if errors.As(err, &pqErr) {
+		code := string(pqErr.Code)
+		return code == "57P03" || strings.HasPrefix(code, "08")
 	}
-	code := string(pqErr.Code)
-	return code == "57P03" || strings.HasPrefix(code, "08")
+	return isMySQLTransientError(err)
 }
 
 // InitEnt 初始化 Ent ORM 客户端并返回客户端实例和底层的 *sql.DB。
 //
 // 该函数执行以下操作：
 //  1. 初始化全局时区设置，确保时间处理一致性
-//  2. 建立 PostgreSQL 数据库连接
+//  2. 按配置的 driver（postgres / mysql）建立数据库连接
 //  3. 自动执行数据库迁移，确保 schema 与代码同步
 //  4. 创建并返回 Ent 客户端实例
 //
@@ -108,24 +110,36 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 		return nil, nil, err
 	}
 
-	// 构建包含时区信息的数据库连接字符串 (DSN)。
-	// 时区信息会传递给 PostgreSQL，确保数据库层面的时间处理正确。
-	dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
+	// 按配置选择 SQL 方言并登记到进程级状态，
+	// 供手写原生 SQL 的仓库层运行时分支使用。
+	dialectName := cfg.Database.DriverName()
+	SetDialect(dialectName)
 
-	// 使用 Ent 的 SQL 驱动打开 PostgreSQL 连接。
-	// dialect.Postgres 指定使用 PostgreSQL 方言进行 SQL 生成。
+	// 建立数据库连接。
 	var drv *entsql.Driver
-	if cfg.Server.EnableServerTiming {
-		connector, err := pq.NewConnector(dsn)
+	if dialectName == dialect.MySQL {
+		var err error
+		drv, err = openEntMySQL(cfg)
 		if err != nil {
 			return nil, nil, err
 		}
-		drv = entsql.OpenDB(dialect.Postgres, sql.OpenDB(newServerTimingConnector(connector)))
 	} else {
-		var err error
-		drv, err = entsql.Open(dialect.Postgres, dsn)
-		if err != nil {
-			return nil, nil, err
+		// 构建包含时区信息的数据库连接字符串 (DSN)。
+		// 时区信息会传递给 PostgreSQL，确保数据库层面的时间处理正确。
+		dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
+
+		if cfg.Server.EnableServerTiming {
+			connector, err := pq.NewConnector(dsn)
+			if err != nil {
+				return nil, nil, err
+			}
+			drv = entsql.OpenDB(dialect.Postgres, sql.OpenDB(newServerTimingConnector(connector)))
+		} else {
+			var err error
+			drv, err = entsql.Open(dialect.Postgres, dsn)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	applyDBPoolSettings(drv.DB(), cfg)
@@ -136,7 +150,7 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	if err := initializeDatabaseWithRetry(migrationCtx, func(ctx context.Context) error {
-		return applyMigrationsFS(ctx, drv.DB(), migrations.FS)
+		return applyMigrationsFSWithDialect(ctx, drv.DB(), migrationsForDialect(dialectName), dialectName)
 	}); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
@@ -165,6 +179,34 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}
 
 	return client, drv.DB(), nil
+}
+
+// openEntMySQL 建立 MySQL 连接的 entsql 驱动。
+// go-sql-driver 在 init 时注册 "mysql" 驱动名，entsql.Open(dialect.MySQL, dsn)
+// 直接可用；这里单独成函数以便支持 server-timing 连接器包装。
+func openEntMySQL(cfg *config.Config) (*entsql.Driver, error) {
+	mysqlCfg, err := cfg.Database.MySQLConfig(cfg.Timezone)
+	if err != nil {
+		return nil, err
+	}
+	dsn := mysqlCfg.FormatDSN()
+	if cfg.Server.EnableServerTiming {
+		connector, err := mysql.NewConnector(mysqlCfg)
+		if err != nil {
+			return nil, err
+		}
+		return entsql.OpenDB(dialect.MySQL, sql.OpenDB(newServerTimingConnector(connector))), nil
+	}
+	return entsql.Open(dialect.MySQL, dsn)
+}
+
+// migrationsForDialect 按方言返回迁移文件集：
+// PostgreSQL 使用根目录迁移，MySQL 使用 mysql/ 子目录的镜像翻译版本。
+func migrationsForDialect(dialectName string) fs.FS {
+	if dialectName == dialect.MySQL {
+		return migrations.MySQLFS
+	}
+	return migrations.FS
 }
 
 // ensureSimpleModeStartup keeps admin concurrency setup independent of group seeding.

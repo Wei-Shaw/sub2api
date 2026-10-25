@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -23,10 +24,13 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	redisclient "github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+
+	"github.com/alicebob/miniredis/v2"
 )
 
 const (
@@ -39,6 +43,11 @@ var (
 	integrationEntClient *dbent.Client
 	integrationRedis     *redisclient.Client
 
+	// integrationMiniRedis 非 nil 表示 integrationRedis 是 miniredis 实例
+	// （Docker 不可用时的退化路径）。miniredis 的 TTL 不随墙钟推进，只能通过
+	// FastForward 前进，依赖键自然过期的测试需要据此做时间快进。
+	integrationMiniRedis *miniredis.Miniredis
+
 	redisNamespaceSeq uint64
 )
 
@@ -48,6 +57,13 @@ func TestMain(m *testing.M) {
 	if err := timezone.Init("UTC"); err != nil {
 		log.Printf("failed to init timezone: %v", err)
 		os.Exit(1)
+	}
+
+	// SUB2API_TEST_DB=mysql 时使用外部 MySQL 测试库（SUB2API_TEST_MYSQL_DSN），
+	// 用于 MySQL 方言的仓库层集成验证；默认 postgres 走 testcontainers。
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SUB2API_TEST_DB")), "mysql") {
+		code := runMySQLHarness(ctx, m)
+		os.Exit(code)
 	}
 
 	if !dockerIsAvailable(ctx) {
@@ -105,23 +121,9 @@ func TestMain(m *testing.M) {
 	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
 	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
 
-	redisHost, err := redisContainer.Host(ctx)
+	integrationRedis, err = newRedisClientFromContainer(ctx, redisContainer)
 	if err != nil {
-		log.Printf("failed to get redis host: %v", err)
-		os.Exit(1)
-	}
-	redisPort, err := redisContainer.MappedPort(ctx, "6379/tcp")
-	if err != nil {
-		log.Printf("failed to get redis port: %v", err)
-		os.Exit(1)
-	}
-
-	integrationRedis = redisclient.NewClient(&redisclient.Options{
-		Addr: fmt.Sprintf("%s:%d", redisHost, redisPort.Int()),
-		DB:   0,
-	})
-	if err := integrationRedis.Ping(ctx).Err(); err != nil {
-		log.Printf("failed to ping redis: %v", err)
+		log.Printf("failed to connect redis container: %v", err)
 		os.Exit(1)
 	}
 
@@ -134,10 +136,164 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// dialRedisReachable 探测指定 Redis 地址是否可连（空地址返回 false）。
+func dialRedisReachable(ctx context.Context, addr string) bool {
+	if addr == "" {
+		return false
+	}
+	d := net.Dialer{Timeout: 500 * time.Millisecond}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// newRedisClientFromContainer 通过 redis 容器的 ConnectionString 构造客户端。
+// （Host+MappedPort 组合依赖 testcontainers 核心库的 Port 类型细节，
+// 不同版本方法集不同；ConnectionString 是模块层稳定 API。）
+func newRedisClientFromContainer(ctx context.Context, c *tcredis.RedisContainer) (*redisclient.Client, error) {
+	connStr, err := c.ConnectionString(ctx)
+	if err != nil {
+		return nil, err
+	}
+	addr := strings.TrimPrefix(strings.TrimPrefix(connStr, "redis://"), "rediss://")
+	client := redisclient.NewClient(&redisclient.Options{Addr: addr, DB: 0})
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
 func dockerIsAvailable(ctx context.Context) bool {
 	cmd := exec.CommandContext(ctx, "docker", "info")
 	cmd.Env = os.Environ()
 	return cmd.Run() == nil
+}
+
+// runMySQLHarness 在外部 MySQL 测试库上运行整个集成测试套件。
+//
+// 环境变量：
+//   - SUB2API_TEST_MYSQL_DSN（必填）：例如 debuguser:pass@tcp(localhost:3306)/sub2api_test?parseTime=true
+//
+// 行为：清空目标库全部对象 → 应用全部 MySQL 方言迁移 → 设置进程方言 → 构造 ent client。
+// Redis：优先 Docker 容器；Docker 不可用时退化为 miniredis（进程内实现，
+// 满足仓库层测试对 Redis 客户端的需求，个别依赖真实 Redis 行为的测试若失败属预期）。
+// 注意：会销毁目标库数据，仅限专用测试库使用。
+func runMySQLHarness(ctx context.Context, m *testing.M) int {
+	dsn := strings.TrimSpace(os.Getenv("SUB2API_TEST_MYSQL_DSN"))
+	if dsn == "" {
+		log.Printf("SUB2API_TEST_DB=mysql requires SUB2API_TEST_MYSQL_DSN")
+		os.Exit(1)
+	}
+
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		log.Printf("invalid SUB2API_TEST_MYSQL_DSN: %v", err)
+		os.Exit(1)
+	}
+	if cfg.DBName == "" {
+		log.Printf("SUB2API_TEST_MYSQL_DSN must include a database name")
+		os.Exit(1)
+	}
+	cfg.MultiStatements = true
+	cfg.ParseTime = true
+	if cfg.Collation == "" || cfg.Collation == "utf8mb4_general_ci" {
+		cfg.Collation = "utf8mb4_0900_ai_ci"
+	}
+	// 测试统一 UTC（与 postgres 路径 TimeZone=UTC 对齐）。
+	cfg.Loc = time.UTC
+	cfg.Params = map[string]string{"time_zone": "'+00:00'"}
+
+	integrationDB, err = sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		log.Printf("failed to open mysql: %v", err)
+		os.Exit(1)
+	}
+	if err := pingWithTimeout(ctx, integrationDB, 10*time.Second); err != nil {
+		log.Printf("failed to ping mysql: %v", err)
+		os.Exit(1)
+	}
+
+	if err := resetMySQLSchema(ctx, integrationDB); err != nil {
+		log.Printf("failed to reset mysql schema: %v", err)
+		os.Exit(1)
+	}
+	if _, err := integrationDB.ExecContext(ctx, schemaMigrationsTableDDLMySQL); err != nil {
+		log.Printf("failed to create schema_migrations: %v", err)
+		os.Exit(1)
+	}
+	// 测试库可能无 SUPER 权限（binlog 开启时 CREATE TRIGGER 报 1419），
+	// 容错跳过触发器 DDL 以完成 schema 引导；触发器行为在该环境不验证。
+	// 必须在应用迁移之前设置。
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SUB2API_TEST_MYSQL_STRICT_TRIGGERS")), "true") {
+		mysqlTriggerFailureTolerant = false
+	} else {
+		mysqlTriggerFailureTolerant = true
+	}
+	if err := applyMigrationsFSWithDialect(ctx, integrationDB, migrationsForDialect(dialect.MySQL), dialect.MySQL); err != nil {
+		log.Printf("failed to apply mysql migrations: %v", err)
+		os.Exit(1)
+	}
+
+	SetDialect(dialect.MySQL)
+	drv := entsql.OpenDB(dialect.MySQL, integrationDB)
+	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
+
+	var miniRedis *miniredis.Miniredis
+	// Redis 来源优先级：Docker 容器 > 显式环境变量 > 本机 6379 > miniredis 兜底。
+	// （miniredis 的 TTL 不随墙钟推进、个别命令行为与真机有差，真 Redis 优先。）
+	switch {
+	case dockerIsAvailable(ctx):
+		redisContainer, err := tcredis.Run(ctx, redisImageTag)
+		if err != nil {
+			log.Printf("failed to start redis container: %v", err)
+			os.Exit(1)
+		}
+		defer func() { _ = redisContainer.Terminate(ctx) }()
+		integrationRedis, err = newRedisClientFromContainer(ctx, redisContainer)
+		if err != nil {
+			log.Printf("failed to connect redis container: %v", err)
+			os.Exit(1)
+		}
+	case dialRedisReachable(ctx, strings.TrimSpace(os.Getenv("SUB2API_TEST_REDIS_ADDR"))):
+		integrationRedis = redisclient.NewClient(&redisclient.Options{
+			Addr: strings.TrimSpace(os.Getenv("SUB2API_TEST_REDIS_ADDR")),
+			DB:   0,
+		})
+	case dialRedisReachable(ctx, "127.0.0.1:6379"):
+		log.Printf("using local redis at 127.0.0.1:6379 for integration tests")
+		integrationRedis = redisclient.NewClient(&redisclient.Options{
+			Addr: "127.0.0.1:6379",
+			DB:   0,
+		})
+	default:
+		log.Printf("docker/redis unavailable; using miniredis for integration tests")
+		mini, miniErr := miniredis.Run()
+		if miniErr != nil {
+			log.Printf("failed to start miniredis: %v", miniErr)
+			os.Exit(1)
+		}
+		miniRedis = mini
+		integrationMiniRedis = mini
+		integrationRedis = redisclient.NewClient(&redisclient.Options{
+			Addr: miniRedis.Addr(),
+			DB:   0,
+		})
+	}
+	if err := integrationRedis.Ping(ctx).Err(); err != nil {
+		log.Printf("failed to ping redis: %v", err)
+		os.Exit(1)
+	}
+
+	code := m.Run()
+
+	_ = integrationEntClient.Close()
+	_ = integrationRedis.Close()
+	_ = integrationDB.Close()
+	return code
 }
 
 // selectDockerImage resolves the container image for the harness.

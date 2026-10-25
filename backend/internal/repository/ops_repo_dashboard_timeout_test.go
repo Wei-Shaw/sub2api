@@ -39,6 +39,7 @@ func TestOpsOutputTPSOverviewFailurePolicy(t *testing.T) {
 		{"database errors propagate", errors.New("database unavailable"), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			skipOnMySQL(t) // sqlmock 断言 PG 语句形状（percentile_cont），MySQL 分支语句形状不同
 			db, mock := newSQLMock(t)
 			repo := &opsRepository{db: db}
 			// The six existing raw overview queries run before the output-rate query.

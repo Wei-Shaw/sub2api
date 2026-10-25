@@ -264,17 +264,31 @@ func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actor
 	if req.ExpectedConfigVersion < 1 {
 		return PublicConfig{}, infraerrors.BadRequest("prompt_audit_expected_config_version_required", "必须提供有效的配置版本")
 	}
+	// MySQL：GET_LOCK 为连接级命名锁，在独立连接上持有至本次读改写结束
+	//（对应 PG 版事务级 pg_advisory_xact_lock，见下）；PG 下为 no-op。
+	releaseConfigLock, err := m.acquireConfigLock(ctx)
+	if err != nil {
+		return PublicConfig{}, err
+	}
+	defer releaseConfigLock()
 	tx, err := m.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return PublicConfig{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, promptAuditConfigLockKey); err != nil {
-		return PublicConfig{}, err
+	if !auditDBIsMySQL(m.db) {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, promptAuditConfigLockKey); err != nil {
+			return PublicConfig{}, err
+		}
+	}
+	// `key` 是 MySQL 保留字，须反引号（见 DIALECT_MYSQL_GUIDE.md）。
+	selectSettingQuery := `SELECT value FROM settings WHERE key=$1 FOR UPDATE`
+	if auditDBIsMySQL(m.db) {
+		selectSettingQuery = "SELECT value FROM settings WHERE `key`=? FOR UPDATE"
 	}
 	current := DefaultStorageConfig()
 	var raw string
-	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=$1 FOR UPDATE`, SettingKeyPromptAuditConfig).Scan(&raw)
+	err = tx.QueryRowContext(ctx, selectSettingQuery, SettingKeyPromptAuditConfig).Scan(&raw)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return PublicConfig{}, err
 	}
@@ -299,9 +313,14 @@ func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actor
 	if err != nil {
 		return PublicConfig{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	upsertSettingQuery := `
 		INSERT INTO settings (key,value,updated_at) VALUES ($1,$2,NOW())
-		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at`,
+		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at`
+	if auditDBIsMySQL(m.db) {
+		// `key` 反引号；ON CONFLICT..DO UPDATE → ODKU + VALUES()（NOW()→NOW(3)）。
+		upsertSettingQuery = "INSERT INTO settings (`key`,value,updated_at) VALUES (?,?,NOW(3))\n\t\tON DUPLICATE KEY UPDATE value=VALUES(value), updated_at=VALUES(updated_at)"
+	}
+	if _, err := tx.ExecContext(ctx, upsertSettingQuery,
 		SettingKeyPromptAuditConfig, string(rawNext)); err != nil {
 		return PublicConfig{}, err
 	}
@@ -338,6 +357,26 @@ func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actor
 		}
 	}
 	return PublicFromStorage(next, active.RiskControlEnabled, active.InvalidTokenEndpointIDs()), nil
+}
+
+// acquireConfigLock 获取配置更新的跨实例互斥锁：MySQL 用 GET_LOCK（连接级命名锁，
+// 独立连接持有至 Save 返回，对应 PG 的 pg_advisory_xact_lock 事务级咨询锁；
+// timeout -1 = 无限等待，与 PG 的阻塞语义一致，等待时长仍受 ctx 取消约束）。
+// PG 下返回 no-op（锁在事务内获取）。
+func (m *ConfigManager) acquireConfigLock(ctx context.Context) (func(), error) {
+	noop := func() {}
+	if m == nil || m.db == nil || !auditDBIsMySQL(m.db) {
+		return noop, nil
+	}
+	release, acquired, err := acquireMySQLNamedLock(ctx, m.db, promptAuditConfigLockNameMySQL, -1)
+	if err != nil {
+		return nil, err
+	}
+	if !acquired {
+		// GET_LOCK(name, -1) 正常只会成功或报错；未获锁视为异常。
+		return nil, errors.New("prompt audit config lock unavailable")
+	}
+	return release, nil
 }
 
 func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfigRequest, actorID int64) (storageConfig, error) {
