@@ -22159,8 +22159,9 @@ type GroupMutation struct {
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
 	allow_live                              *bool
-	force_openai_fast                       *bool
+	forced_service_tier                     *string
 	free_openai_fast                        *bool
+	free_openai_ultrafast                   *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
@@ -24985,40 +24986,40 @@ func (m *GroupMutation) ResetAllowLive() {
 	m.allow_live = nil
 }
 
-// SetForceOpenaiFast sets the "force_openai_fast" field.
-func (m *GroupMutation) SetForceOpenaiFast(b bool) {
-	m.force_openai_fast = &b
+// SetForcedServiceTier sets the "forced_service_tier" field.
+func (m *GroupMutation) SetForcedServiceTier(s string) {
+	m.forced_service_tier = &s
 }
 
-// ForceOpenaiFast returns the value of the "force_openai_fast" field in the mutation.
-func (m *GroupMutation) ForceOpenaiFast() (r bool, exists bool) {
-	v := m.force_openai_fast
+// ForcedServiceTier returns the value of the "forced_service_tier" field in the mutation.
+func (m *GroupMutation) ForcedServiceTier() (r string, exists bool) {
+	v := m.forced_service_tier
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldForceOpenaiFast returns the old "force_openai_fast" field's value of the Group entity.
+// OldForcedServiceTier returns the old "forced_service_tier" field's value of the Group entity.
 // If the Group object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldForceOpenaiFast(ctx context.Context) (v bool, err error) {
+func (m *GroupMutation) OldForcedServiceTier(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldForceOpenaiFast is only allowed on UpdateOne operations")
+		return v, errors.New("OldForcedServiceTier is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldForceOpenaiFast requires an ID field in the mutation")
+		return v, errors.New("OldForcedServiceTier requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldForceOpenaiFast: %w", err)
+		return v, fmt.Errorf("querying old value for OldForcedServiceTier: %w", err)
 	}
-	return oldValue.ForceOpenaiFast, nil
+	return oldValue.ForcedServiceTier, nil
 }
 
-// ResetForceOpenaiFast resets all changes to the "force_openai_fast" field.
-func (m *GroupMutation) ResetForceOpenaiFast() {
-	m.force_openai_fast = nil
+// ResetForcedServiceTier resets all changes to the "forced_service_tier" field.
+func (m *GroupMutation) ResetForcedServiceTier() {
+	m.forced_service_tier = nil
 }
 
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
@@ -25055,6 +25056,42 @@ func (m *GroupMutation) OldFreeOpenaiFast(ctx context.Context) (v bool, err erro
 // ResetFreeOpenaiFast resets all changes to the "free_openai_fast" field.
 func (m *GroupMutation) ResetFreeOpenaiFast() {
 	m.free_openai_fast = nil
+}
+
+// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
+func (m *GroupMutation) SetFreeOpenaiUltrafast(b bool) {
+	m.free_openai_ultrafast = &b
+}
+
+// FreeOpenaiUltrafast returns the value of the "free_openai_ultrafast" field in the mutation.
+func (m *GroupMutation) FreeOpenaiUltrafast() (r bool, exists bool) {
+	v := m.free_openai_ultrafast
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFreeOpenaiUltrafast returns the old "free_openai_ultrafast" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFreeOpenaiUltrafast(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFreeOpenaiUltrafast is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFreeOpenaiUltrafast requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFreeOpenaiUltrafast: %w", err)
+	}
+	return oldValue.FreeOpenaiUltrafast, nil
+}
+
+// ResetFreeOpenaiUltrafast resets all changes to the "free_openai_ultrafast" field.
+func (m *GroupMutation) ResetFreeOpenaiUltrafast() {
+	m.free_openai_ultrafast = nil
 }
 
 // SetRequireOauthOnly sets the "require_oauth_only" field.
@@ -25958,7 +25995,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 67)
+	fields := make([]string, 0, 68)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26115,11 +26152,14 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_live != nil {
 		fields = append(fields, group.FieldAllowLive)
 	}
-	if m.force_openai_fast != nil {
-		fields = append(fields, group.FieldForceOpenaiFast)
+	if m.forced_service_tier != nil {
+		fields = append(fields, group.FieldForcedServiceTier)
 	}
 	if m.free_openai_fast != nil {
 		fields = append(fields, group.FieldFreeOpenaiFast)
+	}
+	if m.free_openai_ultrafast != nil {
+		fields = append(fields, group.FieldFreeOpenaiUltrafast)
 	}
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
@@ -26272,10 +26312,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowMessagesDispatch()
 	case group.FieldAllowLive:
 		return m.AllowLive()
-	case group.FieldForceOpenaiFast:
-		return m.ForceOpenaiFast()
+	case group.FieldForcedServiceTier:
+		return m.ForcedServiceTier()
 	case group.FieldFreeOpenaiFast:
 		return m.FreeOpenaiFast()
+	case group.FieldFreeOpenaiUltrafast:
+		return m.FreeOpenaiUltrafast()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
 	case group.FieldRequirePrivacySet:
@@ -26415,10 +26457,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowMessagesDispatch(ctx)
 	case group.FieldAllowLive:
 		return m.OldAllowLive(ctx)
-	case group.FieldForceOpenaiFast:
-		return m.OldForceOpenaiFast(ctx)
+	case group.FieldForcedServiceTier:
+		return m.OldForcedServiceTier(ctx)
 	case group.FieldFreeOpenaiFast:
 		return m.OldFreeOpenaiFast(ctx)
+	case group.FieldFreeOpenaiUltrafast:
+		return m.OldFreeOpenaiUltrafast(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
 	case group.FieldRequirePrivacySet:
@@ -26818,12 +26862,12 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAllowLive(v)
 		return nil
-	case group.FieldForceOpenaiFast:
-		v, ok := value.(bool)
+	case group.FieldForcedServiceTier:
+		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetForceOpenaiFast(v)
+		m.SetForcedServiceTier(v)
 		return nil
 	case group.FieldFreeOpenaiFast:
 		v, ok := value.(bool)
@@ -26831,6 +26875,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFreeOpenaiFast(v)
+		return nil
+	case group.FieldFreeOpenaiUltrafast:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFreeOpenaiUltrafast(v)
 		return nil
 	case group.FieldRequireOauthOnly:
 		v, ok := value.(bool)
@@ -27590,11 +27641,14 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldAllowLive:
 		m.ResetAllowLive()
 		return nil
-	case group.FieldForceOpenaiFast:
-		m.ResetForceOpenaiFast()
+	case group.FieldForcedServiceTier:
+		m.ResetForcedServiceTier()
 		return nil
 	case group.FieldFreeOpenaiFast:
 		m.ResetFreeOpenaiFast()
+		return nil
+	case group.FieldFreeOpenaiUltrafast:
+		m.ResetFreeOpenaiUltrafast()
 		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()

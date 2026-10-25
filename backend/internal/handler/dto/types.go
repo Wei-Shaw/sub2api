@@ -170,10 +170,14 @@ type Group struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
-	// ForceOpenAIFast 是管理端请求策略，用户侧分组 DTO 无需暴露。
+	// ForcedServiceTier 是管理端请求策略，用户侧分组 DTO 无需暴露。
+	ForcedServiceTier string `json:"forced_service_tier"`
+	// ForceOpenAIFast 是已弃用的只读兼容字段，等价于 ForcedServiceTier=="priority"。
 	ForceOpenAIFast bool `json:"force_openai_fast"`
 	// FreeOpenAIFast 是管理端计费策略，用户侧分组 DTO 无需暴露。
 	FreeOpenAIFast bool `json:"free_openai_fast"`
+	// FreeOpenAIUltrafast 是管理端计费策略，用户侧分组 DTO 无需暴露。
+	FreeOpenAIUltrafast bool `json:"free_openai_ultrafast"`
 
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
 	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出

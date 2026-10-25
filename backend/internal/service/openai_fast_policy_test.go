@@ -339,11 +339,46 @@ func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T
 	}
 }
 
+func TestApplyOpenAIFastPolicyToBody_ForcedTierModes(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	for _, tt := range []struct {
+		name     string
+		forced   string
+		model    string
+		body     string
+		want     string
+		wantGone bool
+	}{
+		{name: "standard overrides ultrafast", forced: OpenAIFastTierDefault, model: "gpt-6.1-sol", body: `{"service_tier":"ultrafast"}`, want: OpenAIFastTierDefault},
+		{name: "fast overrides standard", forced: OpenAIFastTierPriority, model: "gpt-6-astra", body: `{"service_tier":"default"}`, want: OpenAIFastTierPriority},
+		{name: "ultrafast on astra", forced: OpenAIFastTierUltrafast, model: "gpt-6-astra", body: `{"service_tier":"priority"}`, want: OpenAIFastTierUltrafast},
+		{name: "ultrafast on gpt-6.1-sol", forced: OpenAIFastTierUltrafast, model: "gpt-6.1-sol", body: `{}`, want: OpenAIFastTierUltrafast},
+		{name: "ultrafast on gpt-5.6-sol", forced: OpenAIFastTierUltrafast, model: "gpt-5.6-sol", body: `{}`, want: OpenAIFastTierUltrafast},
+		{name: "ultrafast unsupported model passes client tier", forced: OpenAIFastTierUltrafast, model: "gpt-6-luna", body: `{"service_tier":"flex"}`, want: OpenAIFastTierFlex},
+		{name: "ultrafast unsupported model keeps missing", forced: OpenAIFastTierUltrafast, model: "gpt-5.4", body: `{}`, wantGone: true},
+		{name: "follow keeps client tier", forced: "", model: "gpt-6-astra", body: `{"service_tier":"flex"}`, want: OpenAIFastTierFlex},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+				ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: tt.forced,
+			})
+			updated, err := svc.applyOpenAIFastPolicyToBody(ctx, account, tt.model, []byte(tt.body))
+			require.NoError(t, err)
+			if tt.wantGone {
+				require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+				return
+			}
+			require.Equal(t, tt.want, gjson.GetBytes(updated, "service_tier").String())
+		})
+	}
+}
+
 func TestApplyOpenAIFastPolicyToBody_GroupForceInjectsAndOverridesTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	for _, body := range [][]byte{
@@ -362,7 +397,7 @@ func TestApplyOpenAIFastPolicyToBody_GroupForceStillHonorsGlobalPolicy(t *testin
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	updated, err := svc.applyOpenAIFastPolicyToBody(ctx, account, "gpt-5.6-sol", []byte(`{"model":"gpt-5.6-sol"}`))
@@ -376,7 +411,7 @@ func TestApplyOpenAIFastPolicyToBody_GroupForceRequiresHydratedGroup(t *testing.
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	body := []byte(`{"model":"gpt-5.6-sol"}`)
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	updated, err := svc.applyOpenAIFastPolicyToBody(ctx, account, "gpt-5.6-sol", body)
@@ -388,7 +423,7 @@ func TestApplyOpenAIFastPolicyToBody_GroupForceOnlyTargetsOpenAIAccounts(t *test
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	body := []byte(`{"model":"grok-4.1"}`)
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformComposite, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformComposite, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	updated, err := svc.applyOpenAIFastPolicyToBody(
@@ -405,7 +440,7 @@ func TestApplyOpenAIFastPolicyToBody_GroupForceRequiresSupportedGroupPlatform(t 
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	body := []byte(`{"model":"gpt-5.6-sol"}`)
 	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
-		ID: 7, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true,
+		ID: 7, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true, ForcedServiceTier: OpenAIFastTierPriority,
 	})
 
 	updated, err := svc.applyOpenAIFastPolicyToBody(

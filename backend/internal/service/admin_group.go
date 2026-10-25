@@ -366,11 +366,30 @@ func groupSupportsOpenAIFast(platform string) bool {
 }
 
 func sanitizeGroupOpenAIFast(group *Group) {
-	if group == nil || !groupSupportsOpenAIFast(group.Platform) {
-		if group != nil {
-			group.ForceOpenAIFast = false
-			group.FreeOpenAIFast = false
-		}
+	if group == nil {
+		return
+	}
+	if !groupSupportsOpenAIFast(group.Platform) {
+		group.ForcedServiceTier = ""
+		group.FreeOpenAIFast = false
+		group.FreeOpenAIUltrafast = false
+		return
+	}
+	group.ForcedServiceTier = normalizeGroupForcedServiceTierValue(group.ForcedServiceTier)
+}
+
+// normalizeGroupForcedServiceTierValue maps the accepted override spellings to
+// the canonical service_tier values. Unknown values fall back to follow-request.
+func normalizeGroupForcedServiceTierValue(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case OpenAIFastTierDefault:
+		return OpenAIFastTierDefault
+	case OpenAIFastTierPriority, "fast":
+		return OpenAIFastTierPriority
+	case OpenAIFastTierUltrafast:
+		return OpenAIFastTierUltrafast
+	default:
+		return ""
 	}
 }
 
@@ -622,8 +641,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		AllowLive:                       input.AllowLive,
-		ForceOpenAIFast:                 input.ForceOpenAIFast,
+		ForcedServiceTier:               input.ForcedServiceTier,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
+		FreeOpenAIUltrafast:             input.FreeOpenAIUltrafast,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -1007,11 +1027,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowLive != nil {
 		group.AllowLive = *input.AllowLive
 	}
-	if input.ForceOpenAIFast != nil {
-		group.ForceOpenAIFast = *input.ForceOpenAIFast
+	if input.ForcedServiceTier != nil {
+		group.ForcedServiceTier = *input.ForcedServiceTier
 	}
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
+	}
+	if input.FreeOpenAIUltrafast != nil {
+		group.FreeOpenAIUltrafast = *input.FreeOpenAIUltrafast
 	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
@@ -1066,7 +1089,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
 	// 固定账号 manifest 配置：按最终平台归一化（切出 openai 平台时静默归零，
-	// 与 ForceOpenAIFast 同一收口）；校验仅在本次显式携带配置时进行，
+	// 与 ForcedServiceTier 同一收口）；校验仅在本次显式携带配置时进行，
 	// 避免脏 ID 阻塞无关字段更新。
 	group.CodexModelsManifestConfig = normalizeCodexModelsManifestConfig(group.Platform, group.CodexModelsManifestConfig)
 	if input.CodexModelsManifestConfig != nil {

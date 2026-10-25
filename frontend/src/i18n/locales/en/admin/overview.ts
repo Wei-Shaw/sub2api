@@ -1269,11 +1269,17 @@ export default {
         enableAnyway: 'Enable anyway'
       },
       openaiFast: {
-        title: 'OpenAI Fast mode',
-        force: 'Force Fast (priority)',
-        hint: 'Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.',
+        title: 'OpenAI service tier',
+        tier: 'Handling',
+        tierFollow: 'Follow request',
+        tierStandard: 'Force Standard',
+        tierFast: 'Force Fast',
+        tierUltrafast: 'Force Ultra Fast',
+        hint: 'Follow request forwards the client service_tier unchanged. A forced tier overrides the request; the global Fast/Flex policy can still filter or block it. Forced Ultra Fast applies only to gpt-6-astra, gpt-6.1-sol and gpt-5.6-sol; other models pass through with the request value. New requests update immediately after saving; existing WebSocket sessions must reconnect.',
         free: 'Free Fast',
-        freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
+        freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.',
+        freeUltrafast: 'Free Ultra Fast',
+        freeUltrafastHint: 'Ultra Fast requests in this group still use the ultrafast tier, but customers are charged the Standard price.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
