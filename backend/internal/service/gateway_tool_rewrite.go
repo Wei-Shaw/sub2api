@@ -178,7 +178,8 @@ type toolNameSpan struct {
 //
 //   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
 //   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
-//   - 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
+//   - 改写消息中的 tool_use、tool_reference 与工具增删指令的结构化名称
+//   - 内联重定义复用已有映射，不因后续新增工具改变缓存前缀
 //   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
 //
 // 响应侧 bytes.Replace 会连带还原假名 → 真名。
@@ -224,8 +225,27 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 			content := msg.Get("content")
 			if content.IsArray() {
 				content.ForEach(func(_, block gjson.Result) bool {
-					if block.Get("type").String() == "tool_use" {
+					switch block.Get("type").String() {
+					case "tool_use":
 						addName(block.Get("name"))
+					case "tool_reference":
+						addName(block.Get("tool_name"))
+					case "tool_addition", "tool_removal":
+						tool := block.Get("tool")
+						if tool.Get("type").String() == "tool_reference" {
+							addName(tool.Get("name"))
+						} else if block.Get("type").String() == "tool_addition" && tool.Get("type").String() == "tool_definition" && shouldMimicToolName(tool.Get("definition.type").String()) {
+							addName(tool.Get("definition.name"))
+						}
+					case "tool_result":
+						if nested := block.Get("content"); nested.IsArray() {
+							nested.ForEach(func(_, ref gjson.Result) bool {
+								if ref.Get("type").String() == "tool_reference" {
+									addName(ref.Get("tool_name"))
+								}
+								return true
+							})
+						}
 					}
 					return true
 				})
