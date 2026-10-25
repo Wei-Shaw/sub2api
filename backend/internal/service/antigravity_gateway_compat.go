@@ -13,6 +13,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type antigravityCompatProtocol uint8
@@ -75,7 +77,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
-	claudeRequest, err := apicompat.ResponsesToAnthropicRequest(responsesRequest)
+	claudeRequest, err := convertAntigravityCompatResponsesToAnthropic(responsesRequest)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
@@ -118,7 +120,7 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
-	claudeRequest, err := apicompat.ResponsesToAnthropicRequest(&request)
+	claudeRequest, err := convertAntigravityCompatResponsesToAnthropic(&request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
@@ -149,6 +151,48 @@ func (s *AntigravityGatewayService) validateAntigravityCompatAccount(c *gin.Cont
 		"invalid_request_error",
 		"native OAuth account required for antigravity compatibility mode",
 	)
+}
+
+func convertAntigravityCompatResponsesToAnthropic(request *apicompat.ResponsesRequest) (*apicompat.AnthropicRequest, error) {
+	request.Instructions = antigravity.NeutralizeSystemIdentity(request.Instructions)
+	neutralizeText := func(path string, text gjson.Result) error {
+		if text.Type != gjson.String {
+			return nil
+		}
+		neutral := antigravity.NeutralizeSystemIdentity(text.String())
+		if neutral == text.String() {
+			return nil
+		}
+		var err error
+		request.Input, err = sjson.SetBytes(request.Input, path, neutral)
+		return err
+	}
+	for itemIndex, item := range gjson.ParseBytes(request.Input).Array() {
+		role := item.Get("role").String()
+		if role != "system" && role != "developer" {
+			continue
+		}
+		content := item.Get("content")
+		path := fmt.Sprintf("%d.content", itemIndex)
+		if content.Type == gjson.String {
+			if err := neutralizeText(path, content); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if !content.IsArray() {
+			continue
+		}
+		for partIndex, part := range content.Array() {
+			switch part.Get("type").String() {
+			case "text", "input_text", "output_text":
+				if err := neutralizeText(fmt.Sprintf("%s.%d.text", path, partIndex), part.Get("text")); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	return apicompat.ResponsesToAnthropicRequest(request)
 }
 
 func preserveChatCompletionTokenLimit(request *apicompat.ChatCompletionsRequest, claudeRequest *apicompat.AnthropicRequest) {
