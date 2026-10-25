@@ -477,6 +477,9 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	// Setup Token账号：根据session_window推算（没有profile scope，无法调用usage API）
 	if account.Type == AccountTypeSetupToken {
 		usage := s.estimateSetupTokenUsage(account)
+		// 7d 窗口无法主动查询，回填被动采样（响应头），与 passive 链路保持一致
+		usage.SevenDay = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_utilization", "passive_usage_7d_reset")
+		usage.SevenDayFable = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset")
 		// 添加窗口统计
 		s.addWindowStats(ctx, account, usage)
 		return usage, nil
