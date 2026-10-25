@@ -543,9 +543,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &chatReq)
 	if err != nil {
-		if errors.Is(err, apicompat.ErrUnsupportedInputAudio) {
-			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		}
+		writeChatInputAudioValidationError(c, err)
 		return nil, fmt.Errorf("convert grok chat completions to responses: %w", err)
 	}
 	responsesReq.Model = upstreamModel

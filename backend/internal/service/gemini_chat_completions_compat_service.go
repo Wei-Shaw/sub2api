@@ -56,6 +56,9 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 		configuredMinOutputTokens(s.cfg),
 	)
 	if err != nil {
+		if writeChatInputAudioValidationError(c, err) {
+			return nil, err
+		}
 		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
 

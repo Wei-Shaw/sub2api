@@ -46,9 +46,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {
-		if errors.Is(err, apicompat.ErrUnsupportedInputAudio) {
-			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		}
+		writeChatInputAudioValidationError(c, err)
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 

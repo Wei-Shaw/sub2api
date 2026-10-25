@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +12,91 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestChatInputAudioCommittedWriterBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, route := range []string{"openai", "grok", "anthropic", "native-anthropic", "gemini", "antigravity", "antigravity-claude"} {
+		for _, committed := range []bool{false, true} {
+			for _, payload := range []string{`{"data":"YXVkaW8=","format":"wav"}`, `{"data":"bad base64","format":"wav"}`} {
+				if payload == `{"data":"YXVkaW8=","format":"wav"}` && (route == "gemini" || route == "antigravity") {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/committed=%t/%s", route, committed, payload), func(t *testing.T) {
+					model := "gemini-3.1-pro-high"
+					if route == "antigravity-claude" {
+						model = "claude-sonnet-4-5"
+					}
+					if route == "grok" {
+						model = "grok-4.5"
+					}
+					body := []byte(fmt.Sprintf(`{"model":%q,"stream":%t,"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":%s}]}]}`, model, committed, payload))
+					if route == "grok" {
+						body = []byte(strings.Replace(string(body), `"type":"input_audio"`, `"type":"input_audio","type":"text","text":"hidden"`, 1))
+					}
+					ginContext, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+					ginContext.Set("api_key", &APIKey{ID: 7101})
+					if committed {
+						ginContext.Header("Content-Type", "text/event-stream")
+						_, err := ginContext.Writer.WriteString(":\n\n")
+						require.NoError(t, err)
+						ginContext.Writer.Flush()
+						require.True(t, ginContext.Writer.Written())
+					}
+					upstream := &geminiCompatHTTPUpstreamStub{}
+					var err error
+					switch route {
+					case "openai", "grok", "native-anthropic":
+						svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+						account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+						if route == "grok" {
+							account.Platform = PlatformGrok
+						}
+						if route == "native-anthropic" {
+							_, err = svc.forwardChatCompletionsViaNativeAnthropic(context.Background(), ginContext, account, body, "")
+						} else {
+							_, err = svc.ForwardAsChatCompletions(context.Background(), ginContext, account, body, "audio-boundary-session", "")
+						}
+					case "anthropic":
+						_, err = (&GatewayService{httpUpstream: upstream}).ForwardAsChatCompletions(context.Background(), ginContext, &Account{}, body, nil)
+					case "gemini":
+						_, err = (&GeminiMessagesCompatService{httpUpstream: upstream}).ForwardAsChatCompletions(context.Background(), ginContext, &Account{}, body)
+					default:
+						queued := &queuedHTTPUpstreamStub{}
+						_, err = newAntigravityCompatService(config.GatewayConfig{}, queued).ForwardAsChatCompletions(context.Background(), ginContext, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+						require.Empty(t, queued.requestBodies)
+					}
+					require.Error(t, err)
+					require.Zero(t, upstream.calls)
+					response := recorder.Body.String()
+					if committed {
+						require.Equal(t, http.StatusOK, recorder.Code)
+						require.Equal(t, "text/event-stream", recorder.Result().Header.Get("Content-Type"))
+						response = strings.TrimPrefix(response, ":\n\n")
+						require.True(t, strings.HasSuffix(response, "\n\n"), response)
+						for _, line := range strings.Split(strings.TrimSpace(response), "\n") {
+							if strings.HasPrefix(line, "event:") {
+								continue
+							}
+							require.True(t, strings.HasPrefix(line, "data: "), line)
+						}
+						response = strings.TrimSpace(strings.TrimPrefix(response, "data: "))
+					} else {
+						require.Equal(t, http.StatusBadRequest, recorder.Code)
+					}
+					require.True(t, json.Valid([]byte(response)), response)
+					require.Equal(t, "invalid_request_error", gjson.Get(response, "error.type").String())
+					var validationErr *apicompat.InputAudioValidationError
+					require.ErrorAs(t, err, &validationErr)
+				})
+			}
+		}
+	}
+}
 
 func TestChatInputAudioFullConversionChain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -191,20 +273,25 @@ func TestAntigravityChatInputAudioImageGenerationGate(t *testing.T) {
 
 func TestChatInputAudioRawPassthroughUnchanged(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"audio-model","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"pcm16"}}]}]}`)
-	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_audio","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`)),
-	}}
-	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
-	account := rawChatCompletionsTestAccount()
-	account.Extra = map[string]any{"openai_responses_supported": false}
-	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(upstream.lastBody, "messages").Raw)
+	for _, platform := range []string{PlatformOpenAI, PlatformGrok} {
+		t.Run(platform, func(t *testing.T) {
+			body := []byte(`{"model":"audio-model","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"pcm16"}}]}]}`)
+			ginContext, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_audio","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := rawChatCompletionsTestAccount()
+			account.Platform = platform
+			account.Extra = map[string]any{"openai_responses_supported": false}
+			_, err := svc.ForwardAsChatCompletions(context.Background(), ginContext, account, body, "", "")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(upstream.lastBody, "messages").Raw)
+		})
+	}
 }
 
 func TestChatAudioFileDataURIKeepsDocumentBehavior(t *testing.T) {

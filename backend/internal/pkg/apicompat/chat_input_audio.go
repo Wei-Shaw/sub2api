@@ -3,8 +3,25 @@ package apicompat
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
+
+type InputAudioValidationError struct {
+	cause error
+}
+
+func (validationErr *InputAudioValidationError) Error() string {
+	return validationErr.cause.Error()
+}
+
+func (validationErr *InputAudioValidationError) Unwrap() error {
+	return validationErr.cause
+}
+
+func newInputAudioValidationError(format string, args ...any) error {
+	return &InputAudioValidationError{cause: fmt.Errorf(format, args...)}
+}
 
 type chatJSONField struct {
 	name  string

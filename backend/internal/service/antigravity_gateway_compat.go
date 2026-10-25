@@ -76,6 +76,9 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		configuredMinOutputTokens(settingServiceConfig(s.settingService)),
 	)
 	if err != nil {
+		if writeChatInputAudioValidationError(c, err) {
+			return nil, err
+		}
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
 	claudeRequest, err := apicompat.ResponsesToAnthropicRequest(responsesRequest)
@@ -85,6 +88,9 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	mappedModel := s.getAntigravityCompatMappedModel(account, request.Model, (*antigravity.ThinkingConfig)(claudeRequest.Thinking))
 	if !strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
 		if _, err := apicompat.ChatCompletionsToResponses(&request); err != nil {
+			if writeChatInputAudioValidationError(c, err) {
+				return nil, err
+			}
 			return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		}
 	}

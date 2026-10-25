@@ -42,9 +42,9 @@ func ChatCompletionsToResponsesForGeminiWithMinOutputTokens(req *ChatCompletions
 func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, minOutputTokens int) (*ResponsesRequest, error) {
 	if req.ambiguousInputAudio {
 		if !allowAudio {
-			return nil, fmt.Errorf("duplicate input_audio message or content fields: %w", ErrUnsupportedInputAudio)
+			return nil, newInputAudioValidationError("duplicate input_audio message or content fields: %w", ErrUnsupportedInputAudio)
 		}
-		return nil, fmt.Errorf("invalid input_audio: duplicate message or content fields")
+		return nil, newInputAudioValidationError("invalid input_audio: duplicate message or content fields")
 	}
 	converted := *req
 	converted.Messages = append([]ChatMessage(nil), req.Messages...)
@@ -59,17 +59,17 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 			continue
 		}
 		if !allowAudio || message.Role != "user" {
-			return nil, ErrUnsupportedInputAudio
+			return nil, newInputAudioValidationError("%w", ErrUnsupportedInputAudio)
 		}
 		if ambiguous {
-			return nil, fmt.Errorf("invalid input_audio: duplicate content fields")
+			return nil, newInputAudioValidationError("invalid input_audio: duplicate content fields")
 		}
 		if err := validateChatAudioParts(rawParts); err != nil {
-			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+			return nil, newInputAudioValidationError("invalid input_audio message content: %w", err)
 		}
 		var parts []ChatContentPart
 		if err := json.Unmarshal(message.Content, &parts); err != nil {
-			return nil, fmt.Errorf("invalid input_audio message content: %w", err)
+			return nil, newInputAudioValidationError("invalid input_audio message content: %w", err)
 		}
 		changed := false
 		audioParts := make(map[int]string)
@@ -84,18 +84,18 @@ func chatCompletionsToResponses(req *ChatCompletionsRequest, allowAudio bool, mi
 				Format string `json:"format"`
 			}
 			if err := json.Unmarshal(part.InputAudio, &audio); err != nil {
-				return nil, fmt.Errorf("invalid input_audio: expected data and format strings")
+				return nil, newInputAudioValidationError("invalid input_audio: expected data and format strings")
 			}
 			mimeType := map[string]string{
 				"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
 				"flac": "audio/flac", "aac": "audio/aac", "mp4": "audio/mp4", "m4a": "audio/mp4",
 			}[audio.Format]
 			if mimeType == "" {
-				return nil, fmt.Errorf("unsupported input_audio format %q", audio.Format)
+				return nil, newInputAudioValidationError("unsupported input_audio format %q", audio.Format)
 			}
 			decoded, err := base64.StdEncoding.Strict().DecodeString(audio.Data)
 			if err != nil || len(decoded) == 0 {
-				return nil, fmt.Errorf("invalid input_audio data: expected non-empty base64")
+				return nil, newInputAudioValidationError("invalid input_audio data: expected non-empty base64")
 			}
 			parts[partIndex] = ChatContentPart{
 				Type: "file", PromptCacheBreakpoint: part.PromptCacheBreakpoint,
