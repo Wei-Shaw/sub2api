@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -566,7 +568,7 @@ func (s *SettingService) GetIdentityPatchPrompt(ctx context.Context) string {
 	return value
 }
 
-// GenerateAdminAPIKey 生成新的管理员 API Key
+// GenerateAdminAPIKey 轮换已存在的旧版管理员 API Key，不允许新建。
 func (s *SettingService) GenerateAdminAPIKey(ctx context.Context) (string, error) {
 	// 生成 32 字节随机数 = 64 位十六进制字符
 	bytes := make([]byte, 32)
@@ -576,9 +578,19 @@ func (s *SettingService) GenerateAdminAPIKey(ctx context.Context) (string, error
 
 	key := AdminAPIKeyPrefix + hex.EncodeToString(bytes)
 
-	// 存储到 settings 表
-	if err := s.settingRepo.Set(ctx, SettingKeyAdminAPIKey, key); err != nil {
+	// 旧版密钥只能轮换已有记录。使用条件 UPDATE，避免删除与轮换并发时被 upsert 重新创建。
+	repo, ok := s.settingRepo.(interface {
+		ReplaceExistingAdminAPIKey(context.Context, string) (bool, error)
+	})
+	if !ok {
+		return "", infraerrors.InternalServer("ADMIN_API_KEY_REPOSITORY_UNSUPPORTED", "旧版管理员密钥存储不支持原子轮换")
+	}
+	exists, err := repo.ReplaceExistingAdminAPIKey(ctx, key)
+	if err != nil {
 		return "", fmt.Errorf("save admin api key: %w", err)
+	}
+	if !exists {
+		return "", infraerrors.Forbidden("ADMIN_API_KEY_NOT_FOUND", "旧版密钥已停止新建，请创建权限管理密钥")
 	}
 
 	return key, nil
