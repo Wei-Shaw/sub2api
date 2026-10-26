@@ -836,6 +836,20 @@ func (_c *GroupCreate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _c
 }
 
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (_c *GroupCreate) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupCreate {
+	_c.mutation.SetCapabilityAllowlist(v)
+	return _c
+}
+
+// SetNillableCapabilityAllowlist sets the "capability_allowlist" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCapabilityAllowlist(v *domain.GroupCapabilityAllowlist) *GroupCreate {
+	if v != nil {
+		_c.SetCapabilityAllowlist(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1211,6 +1225,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCodexModelsManifestConfig
 		_c.mutation.SetCodexModelsManifestConfig(v)
 	}
+	if _, ok := _c.mutation.CapabilityAllowlist(); !ok {
+		v := group.DefaultCapabilityAllowlist
+		_c.mutation.SetCapabilityAllowlist(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1420,6 +1438,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
 		return &ValidationError{Name: "codex_models_manifest_config", err: errors.New(`ent: missing required field "Group.codex_models_manifest_config"`)}
+	}
+	if _, ok := _c.mutation.CapabilityAllowlist(); !ok {
+		return &ValidationError{Name: "capability_allowlist", err: errors.New(`ent: missing required field "Group.capability_allowlist"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1722,6 +1743,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
 		_node.CodexModelsManifestConfig = value
+	}
+	if value, ok := _c.mutation.CapabilityAllowlist(); ok {
+		_spec.SetField(group.FieldCapabilityAllowlist, field.TypeJSON, value)
+		_node.CapabilityAllowlist = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2882,6 +2907,18 @@ func (u *GroupUpsert) SetCodexModelsManifestConfig(v domain.GroupCodexModelsMani
 // UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateCodexModelsManifestConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldCodexModelsManifestConfig)
+	return u
+}
+
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (u *GroupUpsert) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupUpsert {
+	u.Set(group.FieldCapabilityAllowlist, v)
+	return u
+}
+
+// UpdateCapabilityAllowlist sets the "capability_allowlist" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCapabilityAllowlist() *GroupUpsert {
+	u.SetExcluded(group.FieldCapabilityAllowlist)
 	return u
 }
 
@@ -4173,6 +4210,20 @@ func (u *GroupUpsertOne) SetCodexModelsManifestConfig(v domain.GroupCodexModelsM
 func (u *GroupUpsertOne) UpdateCodexModelsManifestConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (u *GroupUpsertOne) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCapabilityAllowlist(v)
+	})
+}
+
+// UpdateCapabilityAllowlist sets the "capability_allowlist" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCapabilityAllowlist() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCapabilityAllowlist()
 	})
 }
 
@@ -5647,6 +5698,20 @@ func (u *GroupUpsertBulk) SetCodexModelsManifestConfig(v domain.GroupCodexModels
 func (u *GroupUpsertBulk) UpdateCodexModelsManifestConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (u *GroupUpsertBulk) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCapabilityAllowlist(v)
+	})
+}
+
+// UpdateCapabilityAllowlist sets the "capability_allowlist" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCapabilityAllowlist() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCapabilityAllowlist()
 	})
 }
 

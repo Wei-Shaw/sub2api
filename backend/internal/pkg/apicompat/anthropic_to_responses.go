@@ -33,10 +33,11 @@ func AnthropicToResponsesWithMinOutputTokens(req *AnthropicRequest, minOutputTok
 	}
 
 	out := &ResponsesRequest{
-		Model:   req.Model,
-		Input:   inputJSON,
-		Stream:  req.Stream,
-		Include: []string{"reasoning.encrypted_content"},
+		Model:          req.Model,
+		Input:          inputJSON,
+		Stream:         req.Stream,
+		Include:        []string{"reasoning.encrypted_content"},
+		AccessPrograms: req.AccessPrograms,
 	}
 
 	// Reasoning models (gpt-5.x) served via the Responses API do not accept

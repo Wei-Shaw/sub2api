@@ -96,6 +96,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	// Codex 能力需求：Chat Completions 已接受 Responses 形态请求体并原样转发 access_programs，
+	// 与 Responses 入口同样准入与过滤。
+	requestedRequirement, routingRequirement := service.ParseOpenAIAccountRequirement(body, apiKey.Group)
+	if blocked := apiKey.Group.CapabilityAllows(requestedRequirement); blocked != "" {
+		h.rejectOpenAICapabilityNotAllowed(c, blocked, streamStarted)
+		return
+	}
 	if service.IsGPTImageGenerationModel(reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "This model is not supported on the Chat Completions endpoint")
 		return
@@ -191,6 +198,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			false,
 			false,
 			true,
+			routingRequirement,
 			requestPlatform,
 		)
 		if err != nil {
@@ -203,6 +211,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				if capErr, ok := openAICapabilityUnavailable(err); ok {
+					h.rejectOpenAICapabilityUnavailable(c, capErr, streamStarted)
+					return
+				}
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {

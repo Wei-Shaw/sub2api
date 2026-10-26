@@ -693,6 +693,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
+		s.observeCodexCapabilityRejection(account, payload)
 		// cyber_policy 致命不可重试：不 failover，以 Chat Completions 错误格式回写（F4），
 		// 标记供 handler 事后写风控/邮件/tokens=0 用量行。
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
@@ -934,6 +935,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
+			s.observeCodexCapabilityRejection(account, payloadBytes)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 				// cyber_policy 致命且不可重试：不 failover。下发标准 error chunk +
 				// [DONE]，让程序化客户端可感知并停止重试（F4）；标记供 handler 事后

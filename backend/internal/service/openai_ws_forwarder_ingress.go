@@ -1040,6 +1040,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 			}
 			if eventType == "error" || eventType == "response.failed" {
+				s.observeCodexCapabilityRejection(account, upstreamMessage)
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
 			}
 			if eventType == "error" {

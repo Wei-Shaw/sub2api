@@ -134,6 +134,7 @@ func ProvideTokenRefreshService(
 	proxyRepo ProxyRepository,
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
+	codexCapabilityProbe *CodexCapabilityProbe,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
@@ -143,6 +144,7 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
+	svc.SetCodexCapabilityProber(codexCapabilityProbe)
 	svc.Start()
 	return svc
 }
@@ -264,6 +266,7 @@ func ProvideAccountTestService(
 	openAIGatewayService *OpenAIGatewayService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
+	codexCapabilityProbe *CodexCapabilityProbe,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -279,6 +282,7 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
+	service.SetCodexCapabilityProber(codexCapabilityProbe)
 	return service
 }
 
@@ -402,6 +406,14 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
 	svc.Start()
 	return svc
+}
+
+// ProvideCodexCapabilityProbe 返回网关持有的 Codex 能力探测器，并启动部署后一次性补齐：
+// 部署后若等 token 刷新周期，期间所有 Daybreak / Ultrafast 请求都会报无可用账号。
+func ProvideCodexCapabilityProbe(gateway *OpenAIGatewayService) *CodexCapabilityProbe {
+	probe := gateway.CodexCapabilityProbe()
+	probe.Start()
+	return probe
 }
 
 // ProvideOpenAICodexVersionSyncService creates and starts OpenAICodexVersionSyncService.
@@ -887,6 +899,8 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
+	ProvideCodexCapabilityProbe,
+	wire.Bind(new(CodexCapabilityProber), new(*CodexCapabilityProbe)),
 	NewOAuthService,
 	ProvideClaudeResetCreditService,
 	ProvideOpenAIOAuthService,

@@ -609,6 +609,8 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 		"service_tier",
 		"text",
 		"previous_response_id",
+		// Codex 访问项目（Daybreak）：选号已据此路由，重建请求体时必须保留。
+		"access_programs",
 	} {
 		value := gjson.GetBytes(body, field)
 		if !value.Exists() {

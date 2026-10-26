@@ -138,6 +138,8 @@ const (
 	FieldModelAllowlist = "model_allowlist"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
 	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
+	// FieldCapabilityAllowlist holds the string denoting the capability_allowlist field in the database.
+	FieldCapabilityAllowlist = "capability_allowlist"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -288,6 +290,7 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
+	FieldCapabilityAllowlist,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
@@ -426,6 +429,8 @@ var (
 	DefaultModelAllowlist domain.GroupModelAllowlist
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
 	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
+	// DefaultCapabilityAllowlist holds the default value on creation for the "capability_allowlist" field.
+	DefaultCapabilityAllowlist domain.GroupCapabilityAllowlist
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.

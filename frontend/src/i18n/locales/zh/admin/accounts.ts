@@ -218,6 +218,19 @@ export default {
         batchCompleted: '已完成 {count} 个账号的倍率探测',
         batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
       },
+      codexCapabilities: {
+        title: 'Codex 能力',
+        unprobed: '能力未检测',
+        unprobedHint: '尚未从上游模型目录探测到该账号的 Daybreak / Service Tier 能力；可通过账号测试或「同步上游模型」触发。',
+        none: '无 Daybreak / Fast 能力',
+        syncedAt: '同步时间',
+        badges: {
+          daybreak_blue: 'Daybreak Blue',
+          daybreak_red: 'Daybreak Red',
+          priority: 'Fast',
+          ultrafast: 'Ultrafast'
+        }
+      },
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',

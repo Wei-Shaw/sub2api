@@ -1121,6 +1121,20 @@ func (_u *GroupUpdate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _u
 }
 
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (_u *GroupUpdate) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupUpdate {
+	_u.mutation.SetCapabilityAllowlist(v)
+	return _u
+}
+
+// SetNillableCapabilityAllowlist sets the "capability_allowlist" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCapabilityAllowlist(v *domain.GroupCapabilityAllowlist) *GroupUpdate {
+	if v != nil {
+		_u.SetCapabilityAllowlist(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1907,6 +1921,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CapabilityAllowlist(); ok {
+		_spec.SetField(group.FieldCapabilityAllowlist, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3341,6 +3358,20 @@ func (_u *GroupUpdateOne) SetNillableCodexModelsManifestConfig(v *domain.GroupCo
 	return _u
 }
 
+// SetCapabilityAllowlist sets the "capability_allowlist" field.
+func (_u *GroupUpdateOne) SetCapabilityAllowlist(v domain.GroupCapabilityAllowlist) *GroupUpdateOne {
+	_u.mutation.SetCapabilityAllowlist(v)
+	return _u
+}
+
+// SetNillableCapabilityAllowlist sets the "capability_allowlist" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCapabilityAllowlist(v *domain.GroupCapabilityAllowlist) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCapabilityAllowlist(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -4157,6 +4188,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CapabilityAllowlist(); ok {
+		_spec.SetField(group.FieldCapabilityAllowlist, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
