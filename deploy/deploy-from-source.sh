@@ -34,6 +34,12 @@
 #   sudo bash deploy/deploy-from-source.sh --pull
 # =============================================================================
 
+# Re-exec under bash when started via `sh script.sh` (dash on Ubuntu lacks
+# pipefail, arrays, [[ ]] and BASH_SOURCE used below)
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -267,7 +273,8 @@ build_and_start() {
     print_success "镜像构建完成"
 
     print_info "启动服务..."
-    compose up -d --remove-orphans
+    # --force-recreate: avoid reusing stale containers (old image / broken network state)
+    compose up -d --remove-orphans --force-recreate
 }
 
 wait_healthy() {
