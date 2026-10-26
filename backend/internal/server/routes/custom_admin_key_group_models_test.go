@@ -169,7 +169,7 @@ func (r *scopedRouteAllowlistRepository) ScopedAdminUpdateGroupModels(ctx contex
 func TestScopedAdminRegisteredGroupModelsUseUpstreamAllowlistSemantics(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &scopedRouteAllowlistRepository{}
-	api := service.NewAdminService(nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	api := service.NewAdminService(nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	settings := service.NewSettingService(nil, nil)
 	settings.SetScopedAdminKeyRepository(&scopedRouteKeys{})
 	key, _, err := settings.CreateScopedAdminKey(context.Background(), service.ScopedAdminKeyInput{Name: "白名单验证", Enabled: true, Policy: adminaccess.Policy{Rules: []adminaccess.Rule{{Permissions: []string{"groups.models.read", "groups.models.write"}, GroupIDs: []int64{2}, Platforms: []string{service.PlatformOpenAI}}}}}, 9)
