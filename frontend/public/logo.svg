@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1f4f"/>
+      <stop offset="1" stop-color="#0a3a8f"/>
+    </linearGradient>
+    <linearGradient id="fg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5ee1ff"/>
+      <stop offset="1" stop-color="#2f80ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8fe9ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#8fe9ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- bridge arch (also reads as the letter A) -->
+  <path d="M104 344 C 150 190, 206 128, 256 128 C 306 128, 362 190, 408 344"
+        fill="none" stroke="url(#fg)" stroke-width="34" stroke-linecap="round"/>
+  <!-- deck -->
+  <rect x="76" y="326" width="360" height="36" rx="18" fill="url(#fg)"/>
+  <!-- suspension cables -->
+  <g stroke="#5ee1ff" stroke-width="14" stroke-linecap="round" opacity="0.9">
+    <line x1="176" y1="214" x2="176" y2="330"/>
+    <line x1="256" y1="150" x2="256" y2="330"/>
+    <line x1="336" y1="214" x2="336" y2="330"/>
+  </g>
+  <!-- AI node at the apex -->
+  <circle cx="256" cy="128" r="46" fill="url(#glow)"/>
+  <circle cx="256" cy="128" r="22" fill="#ffffff"/>
+  <circle cx="256" cy="128" r="11" fill="#2f80ff"/>
+  <!-- signal dots under the deck -->
+  <g fill="#5ee1ff">
+    <circle cx="176" cy="404" r="10"/>
+    <circle cx="256" cy="404" r="10"/>
+    <circle cx="336" cy="404" r="10"/>
+  </g>
+</svg>

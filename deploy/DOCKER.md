@@ -1,6 +1,6 @@
-# Sub2API Docker Image
+# AiBridge Docker Image
 
-Sub2API is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
+AiBridge is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
 
 ## Quick Start
 

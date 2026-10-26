@@ -195,7 +195,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/sub2api
-          short-description: "Sub2API - AI API Gateway Platform"
+          short-description: "AiBridge - AI API Gateway Platform"
           readme-filepath: ./deploy/DOCKER.md
 
       # Send Telegram notification
@@ -232,7 +232,7 @@ jobs:
           fi
 
           # 构建消息内容
-          MESSAGE="🚀 *Sub2API 新版本发布！*"$'\n'$'\n'
+          MESSAGE="🚀 *AiBridge 新版本发布！*"$'\n'$'\n'
           MESSAGE+="📦 版本号: \`${VERSION}\`"$'\n'$'\n'
 
           # 添加更新内容
@@ -257,7 +257,7 @@ jobs:
             MESSAGE+="• [Docker Hub](https://hub.docker.com/r/${DOCKER_IMAGE})"$'\n'
           fi
           MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/sub2api)"$'\n'$'\n'
-          MESSAGE+="#Sub2API #Release #${TAG_NAME//./_}"
+          MESSAGE+="#AiBridge #Release #${TAG_NAME//./_}"
 
           # 发送消息
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \

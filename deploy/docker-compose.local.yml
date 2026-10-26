@@ -1,5 +1,5 @@
 # =============================================================================
-# Sub2API Docker Compose - Local Directory Version
+# AiBridge Docker Compose - Local Directory Version
 # =============================================================================
 # This configuration uses local directories for data storage instead of named
 # volumes, making it easy to migrate the entire deployment by simply copying

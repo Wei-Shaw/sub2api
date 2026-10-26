@@ -1,5 +1,5 @@
 # =============================================================================
-# Sub2API Nginx Reverse Proxy
+# AiBridge Nginx Reverse Proxy
 # =============================================================================
 # Rendered into /etc/nginx/conf.d/ by the official nginx image entrypoint. The
 # DOMAIN placeholder is substituted from the environment; every other $variable

@@ -1,6 +1,6 @@
 # Pinia Stores Documentation
 
-This directory contains all Pinia stores for the Sub2API frontend application.
+This directory contains all Pinia stores for the AiBridge frontend application.
 
 ## Stores Overview
 

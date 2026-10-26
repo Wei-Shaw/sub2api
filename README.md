@@ -1,4 +1,4 @@
-# Sub2API
+# AiBridge
 
 <div align="center">
 
@@ -26,7 +26,7 @@ Please read the following carefully before using this project:
 
 ## Overview
 
-Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
+AiBridge is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
 
 ## Features
 
@@ -63,7 +63,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 <tr>
 <td width="180"><a href="https://code.silkapi.com/register?aff=SUB2API"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
-<td>Thanks to SilkAPI for sponsoring this project! <a href="https://code.silkapi.com/register?aff=SUB2API">SilkAPI</a> is a relay service built on Sub2API, specializing in providing high-speed and stable Codex API relay.</td>
+<td>Thanks to SilkAPI for sponsoring this project! <a href="https://code.silkapi.com/register?aff=SUB2API">SilkAPI</a> is a relay service built on AiBridge, specializing in providing high-speed and stable Codex API relay.</td>
 </tr>
 
 <tr>
@@ -117,7 +117,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 <tr>
 <td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="veilx" width="150"></a></td>
-<td>Thanks to RoxyBrowser for sponsoring this project! <a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> RoxyBrowser is the perfect partner for Sub2API: it features a built-in native Roxy AI Agent and high-quality native residential IPs, supports batch automation via simple commands, and significantly boosts security and efficiency for multi-account management! Click <a href="https://roxybrowser.com/invite/bgGKG7">this link</a> to sign up and receive a free residential IP package plus a 10% lifetime discount.
+<td>Thanks to RoxyBrowser for sponsoring this project! <a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> RoxyBrowser is the perfect partner for AiBridge: it features a built-in native Roxy AI Agent and high-quality native residential IPs, supports batch automation via simple commands, and significantly boosts security and efficiency for multi-account management! Click <a href="https://roxybrowser.com/invite/bgGKG7">this link</a> to sign up and receive a free residential IP package plus a 10% lifetime discount.
 </td>
 </tr>
 
@@ -125,11 +125,11 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 ## Ecosystem
 
-Community projects that extend or integrate with Sub2API:
+Community projects that extend or integrate with AiBridge:
 
 | Project | Description | Features |
 |---------|-------------|----------|
-| ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~Self-service payment system~~ | **Now Built-in** — Payment is now integrated into Sub2API, no separate deployment needed. See [Payment Configuration Guide](docs/PAYMENT.md) |
+| ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~Self-service payment system~~ | **Now Built-in** — Payment is now integrated into AiBridge, no separate deployment needed. See [Payment Configuration Guide](docs/PAYMENT.md) |
 | [sub2api-mobile](https://github.com/ckken/sub2api-mobile) | Mobile admin console | Cross-platform app (iOS/Android/Web) for user management, account management, monitoring dashboard, and multi-backend switching; built with Expo + React Native |
 
 ## Tech Stack
@@ -145,7 +145,7 @@ Community projects that extend or integrate with Sub2API:
 
 ## Nginx Reverse Proxy Note
 
-When using Nginx as a reverse proxy for Sub2API (or CRS) with Codex CLI, add the following to the `http` block in your Nginx configuration:
+When using Nginx as a reverse proxy for AiBridge (or CRS) with Codex CLI, add the following to the `http` block in your Nginx configuration:
 
 ```nginx
 underscores_in_headers on;
@@ -561,7 +561,7 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 ## Antigravity Support
 
-Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
+AiBridge supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
 
 ### Dedicated Endpoints
 

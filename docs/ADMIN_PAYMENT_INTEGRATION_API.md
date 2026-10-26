@@ -7,7 +7,7 @@
 ## 中文
 
 ### 目标
-本文档用于对接外部支付系统（如 `sub2apipay`）与 Sub2API 的 Admin API，覆盖：
+本文档用于对接外部支付系统（如 `sub2apipay`）与 AiBridge 的 Admin API，覆盖：
 - 支付成功后充值
 - 用户查询
 - 人工余额修正
@@ -100,7 +100,7 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ```
 
 ### 4) 购买页 / 自定义页面 URL Query 透传（iframe / 新窗口一致）
-当 Sub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
+当 AiBridge 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
 - `user_id`
 - `token`
 - `theme`（`light` / `dark`）
@@ -127,7 +127,7 @@ https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=
 ## English
 
 ### Purpose
-This document describes the minimal Sub2API Admin API surface for external payment integrations (for example, `sub2apipay`), including:
+This document describes the minimal AiBridge Admin API surface for external payment integrations (for example, `sub2apipay`), including:
 - Recharge after payment success
 - User lookup
 - Manual balance correction
@@ -220,7 +220,7 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ```
 
 ### 4) Purchase / Custom Page URL query forwarding (iframe and new tab)
-When Sub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
+When AiBridge opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
 - `user_id`
 - `token`
 - `theme` (`light` / `dark`)

@@ -1,5 +1,5 @@
 [Unit]
-Description=Sub2API Data Management Daemon
+Description=AiBridge Data Management Daemon
 After=network.target
 Wants=network.target
 
