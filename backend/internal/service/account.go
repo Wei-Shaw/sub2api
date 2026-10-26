@@ -108,9 +108,17 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityRemoteCompactionV2 表示上游能处理 Responses
+	// 请求体中的 compaction_trigger，而不只是提供普通 /responses。
+	OpenAIEndpointCapabilityRemoteCompactionV2 OpenAIEndpointCapability = "remote_compaction_v2"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+
+// OpenAICompactSummaryEnabledExtraKey explicitly allows policy-free summary
+// compaction on an account whose native upstream cannot consume remote
+// compaction v2. It remains disabled unless the extra field is true.
+const OpenAICompactSummaryEnabledExtraKey = "compact_summary_enabled"
 
 // GrokMediaEligibleExtraKey is an optional per-account override stored in
 // accounts.extra. true forces media routing on, false disables it, and an
@@ -1019,7 +1027,7 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 // GetOpenAICompactMode returns the compact routing mode for an OpenAI account.
 // Missing or invalid values fall back to "auto".
 func (a *Account) GetOpenAICompactMode() string {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+	if a == nil || !a.IsOpenAICompatible() || a.Extra == nil {
 		return OpenAICompactModeAuto
 	}
 	mode, _ := a.Extra["openai_compact_mode"].(string)
@@ -1029,7 +1037,7 @@ func (a *Account) GetOpenAICompactMode() string {
 // OpenAICompactSupportKnown reports whether compact capability is known for this
 // account and, when known, whether it is supported.
 func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
-	if a == nil || !a.IsOpenAI() {
+	if a == nil || !a.IsOpenAICompatible() {
 		return false, false
 	}
 
@@ -1054,7 +1062,7 @@ func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
 // requests. Unknown capability remains allowed to avoid breaking older accounts
 // before an explicit probe has been run.
 func (a *Account) AllowsOpenAICompact() bool {
-	if a == nil || !a.IsOpenAI() {
+	if a == nil || !a.IsOpenAICompatible() {
 		return false
 	}
 	supported, known := a.OpenAICompactSupportKnown()
@@ -1062,6 +1070,23 @@ func (a *Account) AllowsOpenAICompact() bool {
 		return true
 	}
 	return supported
+}
+
+// OpenAICompactSummaryEnabled reports the explicit server-side summary consent
+// for this account. Missing, null, or malformed values mean disabled.
+func (a *Account) OpenAICompactSummaryEnabled() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	enabled, _ := a.Extra[OpenAICompactSummaryEnabledExtraKey].(bool)
+	return enabled
+}
+
+// SupportsOpenAICompactionRequest reports whether the account can satisfy a
+// compaction request either natively or through the explicitly enabled summary
+// execution path.
+func (a *Account) SupportsOpenAICompactionRequest() bool {
+	return a != nil && (a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityRemoteCompactionV2) || a.OpenAICompactSummaryEnabled())
 }
 
 // GetCompactModelMapping returns compact-only model remapping configuration.
@@ -1927,6 +1952,20 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	if !a.IsOpenAICompatible() {
 		return false
+	}
+	if capability == OpenAIEndpointCapabilityRemoteCompactionV2 {
+		if a.GetOpenAICompactMode() == OpenAICompactModeForceOff {
+			return false
+		}
+		if a.remoteCompactionV2Capability() == ProviderCapabilityUnsupported {
+			return false
+		}
+		// Grok has its own Responses forwarding path. Model-routed providers
+		// need the mapped model and catalog, checked by the scheduler and Forward.
+		if !a.IsGrok() && !a.routesByModel() && resolveUpstreamProtocol(a, APIProtocolResponses, "", nil) != APIProtocolResponses {
+			return false
+		}
+		return a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions)
 	}
 	if a.IsGrok() {
 		switch capability {

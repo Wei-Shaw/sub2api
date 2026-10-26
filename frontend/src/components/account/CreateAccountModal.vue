@@ -3542,23 +3542,21 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact 能力配置 -->
+      <!-- OpenAI / provider Compact 能力配置 -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="showCompactConfiguration"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.compactModeDesc') }}
-            </p>
-          </div>
-          <div class="w-44">
-            <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
-          </div>
-        </div>
-        <div>
+        <CompactCapabilitySettings
+          id-prefix="create"
+          v-model:mode="openAICompactMode"
+          v-model:summary-enabled="openAICompactSummaryEnabled"
+          :platform="form.platform"
+          :account-mode="currentOpenCodeOrCNMode()"
+          :show-provider-declaration="form.platform !== 'openai'"
+          :show-probe-history="false"
+        />
+        <div v-if="form.platform === 'openai'" data-testid="create-compact-model-mapping">
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
           <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
@@ -4161,6 +4159,7 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import CompactCapabilitySettings from '@/components/account/CompactCapabilitySettings.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
@@ -4196,7 +4195,7 @@ import {
   type OpenCodeAccountMode,
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
-import { listPlatforms } from '@/constants/platformCatalog'
+import { getProviderProfile, listPlatforms } from '@/constants/platformCatalog'
 import {
   formatDateTimeLocalInput,
   getBrowserTimeZone,
@@ -4706,6 +4705,7 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAICompactSummaryEnabled = ref(false)
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
@@ -4790,11 +4790,9 @@ const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('create-temp-unsched-rule')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
-const openAICompactModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
-  { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
-  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
-])
+const showCompactConfiguration = computed(() => {
+  return form.platform === 'openai' || !!getProviderProfile(form.platform)
+})
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
@@ -5672,6 +5670,7 @@ const resetForm = () => {
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
+  openAICompactSummaryEnabled.value = false
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5736,11 +5735,23 @@ const handleClose = () => {
 }
 
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (showCompactConfiguration.value) {
+    if (openAICompactMode.value === 'auto') {
+      delete extra.openai_compact_mode
+    } else {
+      extra.openai_compact_mode = openAICompactMode.value
+    }
+    if (openAICompactSummaryEnabled.value) {
+      extra.compact_summary_enabled = true
+    } else {
+      delete extra.compact_summary_enabled
+    }
+  }
   if (form.platform !== 'openai') {
-    return base
+    return Object.keys(extra).length > 0 ? extra : undefined
   }
 
-  const extra: Record<string, unknown> = { ...(base || {}) }
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -5787,12 +5798,6 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_fingerprint_mode
   }
-  if (openAICompactMode.value !== 'auto') {
-    extra.openai_compact_mode = openAICompactMode.value
-  } else {
-    delete extra.openai_compact_mode
-  }
-
   if (
     accountCategory.value === 'apikey' &&
     openAITextGenerationCapabilityEnabled.value &&

@@ -3883,8 +3883,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 			Concurrency: 1,
 			Priority:    0,
 			GroupIDs:    []int64{groupID},
-			Credentials: map[string]any{"plan_type": "team"},
-			Extra:       map[string]any{"openai_compact_supported": true},
+			Credentials: map[string]any{"plan_type": "team", "chatgpt_account_id": "fixture-account"},
 		},
 		{
 			// 常规账号：明确不支持 compact，无法服务本次请求。
@@ -3896,9 +3895,11 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 			Concurrency: 1,
 			Priority:    9,
 			GroupIDs:    []int64{groupID},
-			Extra:       map[string]any{"openai_compact_supported": false},
+			Credentials: map[string]any{"api_key": "fixture-value"},
 		},
 	}
+	recordOpenAICompactionTargetEvidence(t, &OpenAIGatewayService{}, &accounts[0], "gpt-5.1", openAICompactionKindLegacy, OpenAICompactionProbeVerdictSupported)
+	recordOpenAICompactionTargetEvidence(t, &OpenAIGatewayService{}, &accounts[1], "gpt-5.1", openAICompactionKindLegacy, OpenAICompactionProbeVerdictUnsupported)
 	concurrencyCache := schedulerTestConcurrencyCache{
 		acquireResults: map[int64]bool{38011: false, 38012: true},
 	}

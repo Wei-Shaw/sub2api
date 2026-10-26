@@ -1147,9 +1147,10 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 			wantRelayReject: true,
 		},
 		{
-			name:      "duplicate type",
-			payload:   `{"type":"response.create","type":"response.create","model":"gpt-5.1"}`,
-			threshold: 1,
+			name:            "duplicate type",
+			payload:         `{"type":"response.create","type":"response.create","model":"gpt-5.1"}`,
+			threshold:       1,
+			wantRelayReject: true,
 		},
 		{
 			name:      "duplicate previous response id",

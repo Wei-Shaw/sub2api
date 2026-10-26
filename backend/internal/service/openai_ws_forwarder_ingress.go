@@ -92,6 +92,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	if err := ValidateOpenAIWSFrameTypeShape(firstClientMessage); err != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
+	}
+	restoredFirstMessage, _, restoreErr := s.RestoreOpenAICompactionSummaryInput(ctx, c, firstClientMessage)
+	if restoreErr != nil {
+		return NewOpenAIWSClientCloseError(
+			coderws.StatusPolicyViolation,
+			"invalid Sub2API compaction summary payload",
+			restoreErr,
+		)
+	}
+	firstClientMessage = restoredFirstMessage
 
 	// 预取一次 OpenAI Fast Policy settings，绑定到 ctx，让该 WS session
 	// 内所有帧的 evaluateOpenAIFastPolicy 调用复用同一份快照，避免每帧
@@ -236,7 +248,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if !gjson.ValidBytes(trimmed) {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 		}
-
+		if err := ValidateOpenAIWSFrameTypeShape(trimmed); err != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
+		}
+		restored, _, restoreErr := s.RestoreOpenAICompactionSummaryInput(ctx, c, trimmed)
+		if restoreErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
+				coderws.StatusPolicyViolation,
+				"invalid Sub2API compaction summary payload",
+				restoreErr,
+			)
+		}
+		trimmed = restored
 		values := gjson.GetManyBytes(trimmed, "type", "model", "prompt_cache_key", "previous_response_id")
 		eventType := strings.TrimSpace(values[0].String())
 		normalized := trimmed

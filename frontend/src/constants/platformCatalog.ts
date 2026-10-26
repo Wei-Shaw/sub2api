@@ -26,6 +26,7 @@ export interface ProviderModeInfo {
   /** 以上游协议为键的官方默认基址；缺少某协议即该模式不提供该原生端点。 */
   base_urls: Partial<Record<string, string>>
   protocol_rules?: ProviderProtocolRule[]
+  remote_compaction_v2?: 'supported' | 'unsupported'
 }
 
 export interface ProviderProfileInfo {

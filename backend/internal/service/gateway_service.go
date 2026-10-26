@@ -666,8 +666,9 @@ type ForwardResult struct {
 type GatewayFailureStage string
 
 const (
-	GatewayFailureStageInference   GatewayFailureStage = "inference"
-	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
+	GatewayFailureStageInference         GatewayFailureStage = "inference"
+	GatewayFailureStageAccountAuth       GatewayFailureStage = "account_auth"
+	GatewayFailureStageRequestCapability GatewayFailureStage = "request_capability"
 )
 
 // GatewayFailureScope identifies whether selecting another account can help.
@@ -715,6 +716,9 @@ type UpstreamFailoverError struct {
 }
 
 func (e *UpstreamFailoverError) Error() string {
+	if e != nil && e.Stage == GatewayFailureStageRequestCapability {
+		return fmt.Sprintf("request capability failure: %s (failover)", e.Reason)
+	}
 	if e != nil && e.Stage == GatewayFailureStageAccountAuth {
 		return fmt.Sprintf("credential failure: %s (failover)", e.Reason)
 	}
@@ -729,11 +733,11 @@ func (e *UpstreamFailoverError) IsCredentialFailure() bool {
 	return e != nil && e.Stage == GatewayFailureStageAccountAuth
 }
 
-// ShouldReportAccountScheduleFailure prevents provider- and request-scoped
-// credential failures from being misattributed to the selected account. Legacy
-// and inference failures retain their existing scheduler-health behavior.
+// ShouldReportAccountScheduleFailure excludes local capability mismatches and
+// provider/request-scoped credential failures from account health scoring.
+// Legacy and inference failures retain their existing behavior.
 func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil {
+	if e == nil || e.Stage == GatewayFailureStageRequestCapability {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount

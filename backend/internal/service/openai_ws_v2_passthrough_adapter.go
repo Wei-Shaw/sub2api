@@ -980,6 +980,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
+			if !gjson.ValidBytes(payload) {
+				return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", nil)
+			}
+			if err := ValidateOpenAIWSFrameTypeShape(payload); err != nil {
+				return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
+			}
+			restored, _, restoreErr := s.RestoreOpenAICompactionSummaryInput(ctx, c, payload)
+			if restoreErr != nil {
+				return payload, nil, NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					"invalid Sub2API compaction summary payload",
+					restoreErr,
+				)
+			}
+			payload = restored
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}

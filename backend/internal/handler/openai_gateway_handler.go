@@ -295,10 +295,13 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 }
 
 // openAIResponsesRequiredCapabilityForRequest returns the endpoint capability
-// required by an image or Responses request. needsResponses includes both the
-// legacy /responses/compact endpoint and native remote compaction v2.
-func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponses bool, platform string) service.OpenAIEndpointCapability {
-	if needsResponses && platform == service.PlatformOpenAI {
+// required by the wire format. Native v2 is distinct from ordinary Responses
+// and from the legacy /responses/compact model mapping and scheduler tiers.
+func openAIResponsesRequiredCapabilityForRequest(imageIntent, legacyCompact, nativeV2 bool, platform string) service.OpenAIEndpointCapability {
+	if nativeV2 {
+		return service.OpenAIEndpointCapabilityRemoteCompactionV2
+	}
+	if legacyCompact && platform == service.PlatformOpenAI {
 		return service.OpenAIEndpointCapabilityResponses
 	}
 	return openAIResponsesRequiredCapability(imageIntent, platform)
@@ -435,6 +438,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
 	}
+	if !gjson.ValidBytes(body) {
+		logRequestBodyParseFailure(reqLog, body, nil)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	restoredBody, _, restoreErr := h.gatewayService.RestoreOpenAICompactionSummaryInput(c.Request.Context(), c, body)
+	if restoreErr != nil {
+		writeOpenAICompactionSummaryPayloadError(c, restoreErr)
+		return
+	}
+	body = restoredBody
 
 	setOpsRequestContext(c, "", false)
 	sessionHashBody := body
@@ -448,19 +463,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 原生 v2 压缩出站前补注 x-codex-beta-features: remote_compaction_v2，
 		// 与真实 Codex 线型一致（网关链剥头后本级负责恢复，#5586）。
 		service.MarkOpenAINativeCompactionV2(c)
+		service.MarkOpenAICompactClientStream(c)
 	}
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
 	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
 	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
 	defer stopCompactKeepalive()
-
-	// 校验请求体 JSON 合法性
-	if !gjson.ValidBytes(body) {
-		logRequestBodyParseFailure(reqLog, body, nil)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return
-	}
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -617,7 +626,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
-	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	inflightEstimate := tokenInflightEstimate(reqModel, body)
+	if legacyCompact || nativeV2 {
+		inflightEstimate = tokenInflightEstimateForCompactionSummary(reqModel, body)
+	}
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if err != nil {
 		reqLog.Info("openai.inflight_reservation_rejected", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -637,7 +650,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	c.Request = c.Request.WithContext(service.WithOpenAIGuardianParentAffinity(
 		c.Request.Context(), c, sessionHashBody, reqModel,
 	))
-	requireCompact := legacyCompact
+	requireCompact := legacyCompact && requestPlatform == service.PlatformOpenAI
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -654,8 +667,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
 	// 复用前置权限与并发阶段在未修改 body 上确认的显式生图意图，避免大 tools 请求重复扫描。
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
-	needsResponses := nativeV2 || legacyCompact
-	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
+	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, legacyCompact, nativeV2, requestPlatform)
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
@@ -704,6 +716,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 				cls = classifySelectionFailureError(err, cls)
+				if nativeV2 && !cls.ModelNotFound && errors.Is(err, service.ErrNoAvailableAccounts) {
+					cls.Message = "No available accounts meet native remote compaction v2 requirements; check account availability, Compact capability and upstream Responses protocol"
+				}
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -789,6 +804,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		if passthroughFailoverState.nativeCompactionCrossAccountBlocked {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			h.handleStreamingAwareError(c, http.StatusBadRequest, "compaction_history_unavailable",
+				"Native compaction state cannot be replayed on a different account; resume on the original account", streamStarted)
+			return
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -869,6 +892,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			if failoverClientGone(c) {
 				reqLog.Info("openai.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				submitResponsesUsage(result)
+				return
+			}
+			if result != nil && (errors.Is(err, service.ErrOpenAICompactionSummaryGeneration) || errors.Is(err, service.ErrOpenAICompactionSummaryKey)) {
+				reqLog.Warn("openai.compaction_summary_finalize_failed",
 					zap.Int64("account_id", account.ID),
 					zap.Error(err),
 				)
@@ -1067,6 +1098,22 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 		body = normalizedCompactBody
 	}
 	return body, true
+}
+
+func writeOpenAICompactionSummaryPayloadError(c *gin.Context, err error) {
+	status := http.StatusBadRequest
+	code := "invalid_compaction_payload"
+	message := "The Sub2API compaction summary payload is invalid"
+	if errors.Is(err, service.ErrOpenAICompactionSummaryKey) {
+		status = http.StatusServiceUnavailable
+		code = "compaction_summary_unavailable"
+		message = "The Sub2API compaction summary key is unavailable"
+	}
+	c.JSON(status, gin.H{"error": gin.H{
+		"type":    "invalid_request_error",
+		"code":    code,
+		"message": message,
+	}})
 }
 
 func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {
@@ -2677,7 +2724,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 余额模式在途预留（会话级）：按首帧估算一次，会话期间续期；每轮计费任务接管引用，
 	// 会话结束且所有轮次扣减落地后释放。
-	inflightCtx, inflightDone, inflightErr := reserveInflightBalanceCtx(ctx, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, firstMessage))
+	inflightEstimate := tokenInflightEstimate(reqModel, firstMessage)
+	if service.HasCompactionTriggerInInput(firstMessage) {
+		inflightEstimate = tokenInflightEstimateForCompactionSummary(reqModel, firstMessage)
+	}
+	inflightCtx, inflightDone, inflightErr := reserveInflightBalanceCtx(ctx, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if inflightErr != nil {
 		reqLog.Info("openai.websocket_inflight_reservation_rejected", zap.Error(inflightErr))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
@@ -3534,6 +3585,11 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
+		return
+	}
+	if failoverErr.Reason == service.OpenAINativeCompactionUnsupportedReason {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", "compact_not_supported", failoverErr.ClientMessage, streamStarted, false)
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)

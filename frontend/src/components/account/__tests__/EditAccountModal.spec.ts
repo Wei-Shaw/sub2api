@@ -874,7 +874,8 @@ describe('EditAccountModal', () => {
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {
-      openai_compact_mode: 'force_on'
+      openai_compact_mode: 'force_on',
+      compact_summary_enabled: true
     }
     account.credentials = {
       ...account.credentials,
@@ -889,13 +890,75 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
+    expect(wrapper.find('[data-testid="compact-capability-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-compact-model-mapping"]').exists()).toBe(true)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_compact_mode).toBe('force_on')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.compact_summary_enabled).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping).toEqual({
       'gpt-5.4': 'gpt-5.4-openai-compact'
     })
+  })
+
+  it('persists provider compact consent while preserving unrelated extra and target history', async () => {
+    const account = buildAccount()
+    account.platform = 'deepseek'
+    account.name = 'DeepSeek Adaptive'
+    account.credentials = {
+      api_key: 'sk-redacted',
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.deepseek.com',
+      api_base_urls: {
+        chat_completions: 'https://api.deepseek.com',
+        anthropic: 'https://api.deepseek.com/anthropic',
+        responses: 'https://api.deepseek.com'
+      }
+    }
+    account.extra = {
+      custom_flag: 'keep-me',
+      compact_summary_enabled: true,
+      openai_compact_probe_targets: {
+        'native-v2|deepseek-v4-flash|responses|hash': {
+          version: 1,
+          target: {
+            kind: 'native_v2',
+            requested_model: 'deepseek-v4-flash',
+            model: 'deepseek-v4-flash',
+            protocol: 'responses',
+            endpoint: 'https://api.deepseek.com/responses',
+            endpoint_hash: 'hash',
+            logical_account_id: 1,
+            credential_account_id: 1,
+            credential_source: 'account',
+            auth_mode: 'apikey',
+            config_fingerprint: 'fingerprint',
+            fingerprint_version: 1
+          },
+          verdict: 'unsupported',
+          last_checked_at: '2026-10-18T10:00:00Z',
+          error_class: 'endpoint_unsupported'
+        }
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="compact-capability-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-compact-model-mapping"]').exists()).toBe(false)
+    ;(wrapper.vm as any).openAICompactMode = 'force_off'
+    ;(wrapper.vm as any).openAICompactSummaryEnabled = false
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra?.openai_compact_mode).toBe('force_off')
+    expect(extra).not.toHaveProperty('compact_summary_enabled')
+    expect(extra?.custom_flag).toBe('keep-me')
+    expect(extra?.openai_compact_probe_targets).toEqual(account.extra.openai_compact_probe_targets)
   })
 
   it('loads and submits the per-account OpenAI long-context billing toggle', async () => {

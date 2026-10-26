@@ -2815,15 +2815,38 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 }
 
 func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service.Account) {
-	// Handle OpenAI accounts
-	if account.IsOpenAI() {
+	// Handle OpenAI and multi-protocol provider accounts. Provider discovery
+	// reuses the cached OpenAI-format catalog and projects account mapping aliases.
+	if account.IsOpenAI() || account.IsMultiProtocolAPIKey() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
 		// retain the legacy local catalog below so the test dialog remains usable.
 		if h.accountTestService != nil {
-			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
+			if models, err := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); err == nil {
 				response.Success(c, models)
 				return
 			}
+		}
+		if account.IsMultiProtocolAPIKey() {
+			mapping := account.GetModelMapping()
+			if len(mapping) > 0 {
+				if configured := providerModelChoices(mapping); len(configured) > 0 {
+					response.Success(c, configured)
+					return
+				}
+			} else if snapshot := account.GetUpstreamModelMetadataSnapshot(); snapshot != nil && len(snapshot.Models) > 0 {
+				names := make([]string, 0, len(snapshot.Models))
+				for modelID := range snapshot.Models {
+					names = append(names, modelID)
+				}
+				if cached := providerModelChoicesFromIDs(names); len(cached) > 0 {
+					response.Success(c, cached)
+					return
+				}
+			}
+			response.ErrorFrom(c, infraerrors.New(
+				http.StatusBadGateway, "PROVIDER_MODELS_UNAVAILABLE", "Provider model discovery failed",
+			))
+			return
 		}
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
 		if account.IsOpenAIPassthroughEnabled() {
@@ -3006,6 +3029,37 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 	}
 
 	response.Success(c, models)
+}
+
+func providerModelChoices(mapping map[string]string) []openai.Model {
+	ids := make([]string, 0, len(mapping))
+	for modelID := range mapping {
+		ids = append(ids, modelID)
+	}
+	return providerModelChoicesFromIDs(ids)
+}
+
+func providerModelChoicesFromIDs(ids []string) []openai.Model {
+	sort.Strings(ids)
+	models := make([]openai.Model, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || strings.Contains(id, "*") {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		models = append(models, openai.Model{
+			ID:          id,
+			Object:      "model",
+			Type:        "model",
+			DisplayName: id,
+		})
+	}
+	return models
 }
 
 // antigravityAccountTestModels uses the stored mapping rather than GetModelMapping,

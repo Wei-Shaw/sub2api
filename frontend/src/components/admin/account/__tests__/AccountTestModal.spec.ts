@@ -219,5 +219,86 @@ describe('AccountTestModal', () => {
       prompt: '',
       mode: 'compact'
     })
+    expect(wrapper.emitted('finished')).toHaveLength(1)
+  })
+
+  it.each([
+    ['Chat Completions', 'chat_completions'],
+    ['Anthropic Messages', 'anthropic']
+  ])('shows the native v2 incompatibility reason for fixed %s', async (_label, apiProtocol) => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'deepseek-v4-flash', display_name: 'DeepSeek V4 Flash' }
+    ])
+    const wrapper = mountModal({
+      id: 43,
+      name: 'DeepSeek Fixed Chat',
+      platform: 'deepseek',
+      type: 'apikey',
+      status: 'active',
+      credentials: { api_protocol: apiProtocol }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="compact-probe-mode-hint"]').text()).toContain(
+      'admin.accounts.openai.compactProbeFixedIncompatible'
+    )
+  })
+
+  it('allows adaptive provider probes to use backend protocol resolution', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'deepseek-v4-flash', display_name: 'DeepSeek V4 Flash' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse(['data: {"type":"test_complete","success":true}\n'])
+    ) as any
+    const wrapper = mountModal({
+      id: 44,
+      name: 'DeepSeek Adaptive',
+      platform: 'deepseek',
+      type: 'apikey',
+      status: 'active',
+      credentials: { api_protocol: 'adaptive' }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'deepseek-v4-flash'
+    ;(wrapper.vm as any).testMode = 'compact'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="compact-probe-mode-hint"]').text()).toContain(
+      'admin.accounts.openai.compactProbeAdaptiveHint'
+    )
+  })
+
+  it('emits one finished event for a terminal SSE error', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.4', display_name: 'GPT-5.4' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-5.4"}\n',
+        'data: {"type":"error","error":"upstream failed"}\n'
+      ])
+    ) as any
+    const wrapper = mountModal({
+      id: 45,
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(wrapper.emitted('finished')).toHaveLength(1)
   })
 })

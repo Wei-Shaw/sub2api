@@ -733,14 +733,57 @@ export default {
         codexImageToolBadgeDisabled: 'No hosted injection',
         codexImageToolBadgeBlock: 'Client image tools stripped',
         compactMode: 'Compact mode',
+        compactNativePolicy: 'Native remote compaction policy',
         compactModeDesc:
-          'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
+          'The policy is evaluated per request target after the real model, protocol, and endpoint are resolved. Auto uses target evidence and provider declarations; Force On permits an attempt; Force Off disables native compaction attempts.',
         compactModeAuto: 'Auto',
         compactModeForceOn: 'Force On',
         compactModeForceOff: 'Force Off',
+        compactModeForceOnHint:
+          'Force On permits an attempt on a compatible target. It is not a successful probe or proof of support.',
+        compactModeForceOffHint:
+          'Native compaction attempts are disabled. Server-side summary consent remains independent below.',
+        compactApply: 'Apply',
+        compactSummaryEnabled: 'Server-side summary fallback',
+        compactSummaryEnabledDesc:
+          'When the selected target cannot use native remote compaction, the gateway may summarize the visible history and return a signed compaction item. This stays available when Force Off disables native attempts. Disabled unless explicitly enabled.',
+        compactSummaryAllow: 'Allow this account to issue signed summary compaction state',
+        compactProviderDeclaration: 'Official default endpoint declaration',
+        compactProviderSupported: 'Supported',
+        compactProviderUnsupported: 'Unsupported',
+        compactProviderUnknown: 'Unknown',
+        compactProviderDeclarationHint:
+          'This only describes the provider official default endpoint for the selected mode. It does not validate a custom endpoint; use target history below for this account.',
+        compactLegacyEvidence: 'Historical account-level probe',
+        compactLegacyEvidenceHint:
+          'This older result was not scoped to a model or endpoint. It is historical evidence only and may be invalid after configuration changes.',
+        compactTargetHistory: 'Target-scoped probe history',
+        compactTargetHistoryHint:
+          'Records are isolated by compaction kind, final model, protocol, endpoint, and credential source.',
+        compactTargetHistoryEmpty: 'No target-scoped probe history has been recorded for this account.',
+        compactTargetHistoryWarning:
+          'History is not a current-validity claim. Changing the model mapping, protocol, endpoint, credential source, or headers can invalidate older evidence.',
+        compactTargetRecords: '{count} recent records',
+        compactTargetKind: 'Kind',
+        compactTargetModel: 'Final model',
+        compactTargetRequestedModel: 'Requested',
+        compactTargetProtocol: 'Protocol',
+        compactTargetEndpoint: 'Endpoint',
+        compactTargetVerdict: 'Result',
+        compactTargetCheckedAt: 'Checked',
+        compactTargetVerifiedAt: 'Last verified',
+        compactTargetError: 'Error class',
+        compactKindNativeV2: 'Native v2',
+        compactKindLegacy: 'Legacy compact',
+        compactVerdictSupported: 'Supported',
+        compactVerdictUnsupported: 'Unsupported',
+        compactVerdictUnknown: 'Unknown',
+        compactPolicyAuto: 'Native auto',
+        compactPolicyForceOn: 'Native attempts allowed',
+        compactPolicyForceOff: 'Native off',
         compactModelMapping: 'Compact-only model mapping',
         compactModelMappingDesc:
-          'Only applies to /responses/compact. Use this when the upstream compact endpoint requires a special compact model.',
+          'Applies to the compact-only model selection used by the first legacy /responses/compact request. Some existing v2 invalid-encrypted retry paths also use this mapping. Server-side summaries follow the normal generation model.',
         compactSupported: 'Compact supported',
         compactUnsupported: 'Compact unsupported',
         compactAuto: 'Compact Auto',
@@ -748,7 +791,13 @@ export default {
         compactLastChecked: 'Last compact probe',
         testMode: 'Test mode',
         testModeDefault: 'Default request',
-        testModeCompact: 'Compact probe',
+        testModeCompact: 'Native compaction v2 probe',
+        compactProbeHint:
+          'The probe resolves the selected model through the real target chain. The compact-only mapping applies to the first legacy /responses/compact selection and some existing v2 invalid-encrypted retries; server-side summaries follow the normal generation model.',
+        compactProbeAdaptiveHint:
+          'The backend resolves this adaptive account selected model to its real protocol and endpoint before probing.',
+        compactProbeFixedIncompatible:
+          'This account is pinned to {protocol}. Native remote compaction v2 requires the Responses protocol, so the probe is disabled; use the default request test instead.',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {

@@ -270,16 +270,29 @@
                   {{ getAntigravityTierLabel(row) }}
                 </span>
               </div>
-              <div
-                v-if="getOpenAICompactMeta(row)"
-                :class="[
-                  'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
-                  getOpenAICompactMeta(row)?.className
-                ]"
-                :title="getOpenAICompactTitle(row)"
-              >
-                <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
-                <span>{{ getOpenAICompactMeta(row)?.label }}</span>
+              <div v-if="getCompactPolicyMeta(row) || getCompactSummaryMeta(row)" class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div
+                  v-if="getCompactPolicyMeta(row)"
+                  :class="[
+                    'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
+                    getCompactPolicyMeta(row)?.className
+                  ]"
+                  :title="getCompactPolicyTitle(row)"
+                >
+                  <span :class="['h-1.5 w-1.5 rounded-full', getCompactPolicyMeta(row)?.dotClass]" />
+                  <span>{{ getCompactPolicyMeta(row)?.label }}</span>
+                </div>
+                <div
+                  v-if="getCompactSummaryMeta(row)"
+                  :class="[
+                    'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
+                    getCompactSummaryMeta(row)?.className
+                  ]"
+                  :title="t('admin.accounts.openai.compactSummaryEnabledDesc')"
+                >
+                  <span :class="['h-1.5 w-1.5 rounded-full', getCompactSummaryMeta(row)?.dotClass]" />
+                  <span>{{ getCompactSummaryMeta(row)?.label }}</span>
+                </div>
               </div>
             </div>
           </template>
@@ -457,7 +470,7 @@
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
-    <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" @finished="handleTestFinished" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
@@ -538,6 +551,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
+import { getProviderProfile } from '@/constants/platformCatalog'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -1763,51 +1777,57 @@ function accountHomepageUrl(row: Account): string {
   return baseUrl ? new URL(baseUrl).origin : ''
 }
 
-type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
-
-function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
-  if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
-  const extra = row.extra as Record<string, unknown> | undefined
-  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
-  if (mode === 'force_on') return 'active'
-  if (mode === 'force_off') return 'blocked'
-  if (typeof extra?.openai_compact_supported === 'boolean') {
-    return extra.openai_compact_supported ? 'active' : 'blocked'
-  }
-  return 'auto'
+function isCompactSettingsEligible(row: any): boolean {
+  const profile = getProviderProfile(row.platform)
+  if (profile) return true
+  return row.platform === 'openai' && (row.type === 'oauth' || row.type === 'apikey' || row.type === 'setup-token')
 }
 
-function getOpenAICompactMeta(row: any): { label: string; className: string; dotClass: string } | null {
-  const state = getOpenAICompactState(row)
-  if (!state) return null
-  switch (state) {
-    case 'active':
+function getCompactPolicyMeta(row: any): { label: string; className: string; dotClass: string } | null {
+  if (!isCompactSettingsEligible(row)) return null
+  const extra = row.extra as Record<string, unknown> | undefined
+  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
+  switch (mode) {
+    case 'force_on':
       return {
-        label: t('admin.accounts.openai.compactSupported'),
-        className: 'text-emerald-600 dark:text-emerald-300',
-        dotClass: 'bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.14)]'
+        label: t('admin.accounts.openai.compactPolicyForceOn'),
+        className: 'text-sky-700 dark:text-sky-300',
+        dotClass: 'bg-sky-500 shadow-[0_0_0_2px_rgba(14,165,233,0.14)]'
       }
-    case 'blocked':
+    case 'force_off':
       return {
-        label: t('admin.accounts.openai.compactUnsupported'),
+        label: t('admin.accounts.openai.compactPolicyForceOff'),
         className: 'text-rose-600 dark:text-rose-300',
         dotClass: 'bg-rose-500 shadow-[0_0_0_2px_rgba(244,63,94,0.14)]'
       }
-    case 'auto':
+    default:
       return {
-        label: t('admin.accounts.openai.compactAuto'),
+        label: t('admin.accounts.openai.compactPolicyAuto'),
         className: 'text-slate-500 dark:text-slate-400',
         dotClass: 'bg-slate-300 dark:bg-slate-500'
       }
   }
 }
 
-function getOpenAICompactTitle(row: any): string {
+function getCompactSummaryMeta(row: any): { label: string; className: string; dotClass: string } | null {
+  if (!isCompactSettingsEligible(row)) return null
   const extra = row.extra as Record<string, unknown> | undefined
+  if (extra?.compact_summary_enabled !== true) return null
+  return {
+    label: t('admin.accounts.openai.compactSummaryEnabled'),
+    className: 'text-amber-700 dark:text-amber-300',
+    dotClass: 'bg-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.14)]'
+  }
+}
+
+function getCompactPolicyTitle(row: any): string {
+  const policy = t('admin.accounts.openai.compactModeDesc')
+  const extra = row.extra as Record<string, unknown> | undefined
+  if (typeof extra?.openai_compact_supported !== 'boolean') return policy
   const checkedAt = typeof extra?.openai_compact_checked_at === 'string' ? extra.openai_compact_checked_at : ''
-  const label = getOpenAICompactMeta(row)?.label || ''
-  if (!checkedAt) return label
-  return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
+  const historical = t('admin.accounts.openai.compactLegacyEvidenceHint')
+  if (!checkedAt) return `${policy} | ${historical}`
+  return `${policy} | ${historical} ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
 function getAntigravityTierClass(row: any): string {
@@ -2350,6 +2370,14 @@ const handleExportData = async () => {
 }
 const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
+const handleTestFinished = async () => {
+  const accountID = testingAcc.value?.id
+  if (accountID != null) {
+    const refreshed = await loadAccountDetails({ id: accountID })
+    if (refreshed && testingAcc.value?.id === accountID) testingAcc.value = refreshed
+  }
+  await reload()
+}
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
 const handleTest = async (a: AccountListItem) => {

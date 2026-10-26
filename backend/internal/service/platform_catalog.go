@@ -36,9 +36,10 @@ type ProviderProfileInfo struct {
 
 // ProviderModeInfo 是某接入模式的默认端点；BaseURLs 缺少某协议即该模式不提供该原生端点。
 type ProviderModeInfo struct {
-	Mode          string            `json:"mode"`
-	BaseURLs      map[string]string `json:"base_urls"`
-	ProtocolRules []ProtocolRule    `json:"protocol_rules,omitempty"`
+	Mode               string                   `json:"mode"`
+	BaseURLs           map[string]string        `json:"base_urls"`
+	ProtocolRules      []ProtocolRule           `json:"protocol_rules,omitempty"`
+	RemoteCompactionV2 ProviderCapabilityStatus `json:"remote_compaction_v2,omitempty"`
 }
 
 // BuildPlatformCatalog 按展示顺序返回全部具体平台（不含 composite）。
@@ -89,9 +90,10 @@ func providerProfileInfo(profile *ProviderProfile) *ProviderProfileInfo {
 			baseURLs[protocol] = baseURL
 		}
 		info.Modes = append(info.Modes, ProviderModeInfo{
-			Mode:          mode,
-			BaseURLs:      baseURLs,
-			ProtocolRules: cloneProtocolRules(endpoints.ProtocolRules),
+			Mode:               mode,
+			BaseURLs:           baseURLs,
+			ProtocolRules:      cloneProtocolRules(endpoints.ProtocolRules),
+			RemoteCompactionV2: endpoints.RemoteCompactionV2,
 		})
 	}
 	return info

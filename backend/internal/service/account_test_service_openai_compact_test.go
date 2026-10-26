@@ -2,9 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -14,6 +18,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+type compactProbeErrorAccountRepo struct {
+	snapshotUpdateAccountRepo
+	setErrorMsg string
+}
+
+func (r *compactProbeErrorAccountRepo) SetError(_ context.Context, _ int64, errorMsg string) error {
+	r.setErrorMsg = errorMsg
+	return nil
+}
 
 // compactProbeSSESuccessBody 是原生 v2 压缩成功的最小 SSE 形态：
 // output_item.done 携带 compaction item + response.completed。
@@ -77,8 +91,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.Equal(t, "compaction_trigger", inputItems[len(inputItems)-1].Get("type").String())
 
 	updates := <-updateCalls
-	require.Equal(t, true, updates["openai_compact_supported"])
-	require.Equal(t, http.StatusOK, updates["openai_compact_last_status"])
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictSupported, http.StatusOK)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }
 
@@ -121,8 +134,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsu
 	require.Error(t, err)
 
 	updates := <-updateCalls
-	require.Equal(t, false, updates["openai_compact_supported"])
-	require.Equal(t, http.StatusNotFound, updates["openai_compact_last_status"])
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictUnsupported, http.StatusNotFound)
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
 }
 
@@ -174,7 +186,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String(),
 		"原生 v2 探测不应用 compact_model_mapping")
 	updates := <-updateCalls
-	require.Equal(t, true, updates["openai_compact_supported"])
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictSupported, http.StatusOK)
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBaseURLUsesResponsesPath(t *testing.T) {
@@ -216,6 +228,52 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 	require.NoError(t, err)
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
 	<-updateCalls
+}
+
+func TestAccountTestService_OpenAICompactAdaptiveUsesResponsesBaseURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          5,
+		Name:        "deepseek-adaptive",
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "sk-deepseek",
+			"account_mode": AccountModePayG,
+			"api_protocol": APIProtocolAdaptive,
+			"api_base_urls": map[string]any{
+				APIProtocolResponses: "https://responses.example.test/v1",
+			},
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(compactProbeSSESuccessBody)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/5/test", bytes.NewReader(nil))
+
+	err := svc.TestAccountConnection(c, account.ID, "deepseek-chat", "", AccountTestModeCompact)
+	require.NoError(t, err)
+	require.Equal(t, "https://responses.example.test/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "deepseek-chat", gjson.GetBytes(upstream.lastBody, "model").String())
+	updates := <-updateCalls
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictSupported, http.StatusOK)
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMarksUnsupported(t *testing.T) {
@@ -261,8 +319,24 @@ func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMar
 	require.Error(t, err)
 
 	updates := <-updateCalls
-	require.Equal(t, false, updates["openai_compact_supported"])
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictUnsupported, http.StatusOK)
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
+}
+
+func requireSingleOpenAICompactionProbeUpdate(t *testing.T, updates map[string]any, verdict string, status int) OpenAICompactionProbeRecord {
+	t.Helper()
+	require.NotContains(t, updates, "openai_compact_supported", "new probe must not double-write the legacy account boolean")
+	require.NotContains(t, updates, "openai_compact_checked_at")
+	records := decodeOpenAICompactionProbeRecords(updates)
+	require.Len(t, records, 1)
+	for _, record := range records {
+		require.Equal(t, verdict, record.Verdict)
+		require.Equal(t, status, record.LastStatus)
+		require.NotEmpty(t, record.Target.EndpointHash)
+		return record
+	}
+	t.Fatal("compaction probe record not found")
+	return OpenAICompactionProbeRecord{}
 }
 
 // 探测与真实转发走同一 /responses 端点，出站身份必须与真实 Codex 同构：
@@ -327,4 +401,109 @@ func TestCompactProbeSessionID_IsUUIDShaped(t *testing.T) {
 	}
 	require.Equal(t, compactProbeSessionID(7), compactProbeSessionID(7), "同账号应稳定复用同一会话")
 	require.NotEqual(t, compactProbeSessionID(7), compactProbeSessionID(8))
+}
+
+func TestAccountTestService_OpenAICompactProbeUsesFullOutboundURLWithoutPersistingSecrets(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID: 8, Name: "url-secret", Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-probe", "account_mode": AccountModePayG, "api_protocol": APIProtocolResponses,
+			"base_url": "https://url-user:fixture-secret@relay.example.test/v1?api_key=fixture-secret",
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(compactProbeSSESuccessBody)),
+	}}
+	cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false, AllowInsecureHTTP: true}}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: cfg}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/8/test", nil)
+
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "deepseek-chat", "", AccountTestModeCompact))
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "url-user", upstream.lastReq.URL.User.Username())
+	password, hasPassword := upstream.lastReq.URL.User.Password()
+	require.True(t, hasPassword)
+	require.Equal(t, "fixture-secret", password)
+	require.Equal(t, "fixture-secret", upstream.lastReq.URL.Query().Get("api_key"))
+
+	updates := <-updateCalls
+	serialized, err := json.Marshal(updates)
+	require.NoError(t, err)
+	require.NotContains(t, string(serialized), "fixture-secret")
+	requireSingleOpenAICompactionProbeUpdate(t, updates, OpenAICompactionProbeVerdictSupported, http.StatusOK)
+
+	configured, err := url.Parse(account.GetCredential("base_url"))
+	require.NoError(t, err)
+	userInfo := configured.User.String()
+	queryValue := configured.Query().Get("api_key")
+	require.NotEmpty(t, userInfo)
+	require.NotEmpty(t, queryValue)
+
+	t.Run("transport error", func(t *testing.T) {
+		errorRepo := &compactProbeErrorAccountRepo{snapshotUpdateAccountRepo: snapshotUpdateAccountRepo{
+			stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+			updateExtraCalls:      make(chan map[string]any, 1),
+		}}
+		errorUpstream := &httpUpstreamRecorder{err: fmt.Errorf(`Post "%s": fixture-upstream-echo`, account.GetCredential("base_url"))}
+		errorSvc := &AccountTestService{accountRepo: errorRepo, httpUpstream: errorUpstream, cfg: cfg}
+		errorRec := httptest.NewRecorder()
+		errorContext, _ := gin.CreateTestContext(errorRec)
+		errorContext.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/8/test", nil)
+
+		require.Error(t, errorSvc.testOpenAICompactConnection(errorContext, &account, "deepseek-chat"))
+		require.NotContains(t, errorRec.Body.String(), userInfo)
+		require.NotContains(t, errorRec.Body.String(), queryValue)
+		require.NotContains(t, errorRec.Body.String(), "fixture-upstream-echo")
+		require.Contains(t, errorRec.Body.String(), "compact probe transport failed")
+		errorUpdates := <-errorRepo.updateExtraCalls
+		errorSerialized, marshalErr := json.Marshal(errorUpdates)
+		require.NoError(t, marshalErr)
+		require.NotContains(t, string(errorSerialized), userInfo)
+		require.NotContains(t, string(errorSerialized), queryValue)
+		require.NotContains(t, string(errorSerialized), "fixture-upstream-echo")
+	})
+
+	t.Run("401 response", func(t *testing.T) {
+		errorRepo := &compactProbeErrorAccountRepo{snapshotUpdateAccountRepo: snapshotUpdateAccountRepo{
+			stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+			updateExtraCalls:      make(chan map[string]any, 1),
+		}}
+		errorUpstream := &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+				`{"error":{"code":"invalid_api_key","message":"fixture-upstream-echo %s %s"}}`,
+				account.GetCredential("base_url"), userInfo,
+			))),
+		}}
+		errorSvc := &AccountTestService{accountRepo: errorRepo, httpUpstream: errorUpstream, cfg: cfg}
+		errorRec := httptest.NewRecorder()
+		errorContext, _ := gin.CreateTestContext(errorRec)
+		errorContext.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/8/test", nil)
+
+		require.Error(t, errorSvc.testOpenAICompactConnection(errorContext, &account, "deepseek-chat"))
+		require.Len(t, errorUpstream.requests, 1)
+		require.Equal(t, "upstream authentication failed", errorRepo.setErrorMsg)
+		require.NotContains(t, errorRec.Body.String(), userInfo)
+		require.NotContains(t, errorRec.Body.String(), queryValue)
+		require.NotContains(t, errorRec.Body.String(), "fixture-upstream-echo")
+		require.Contains(t, errorRec.Body.String(), "upstream authentication failed")
+		errorUpdates := <-errorRepo.updateExtraCalls
+		errorSerialized, marshalErr := json.Marshal(errorUpdates)
+		require.NoError(t, marshalErr)
+		require.NotContains(t, string(errorSerialized), userInfo)
+		require.NotContains(t, string(errorSerialized), queryValue)
+		require.NotContains(t, string(errorSerialized), "fixture-upstream-echo")
+	})
 }

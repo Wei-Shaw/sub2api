@@ -228,6 +228,9 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	if geminiImageGenerationDenied(c, nil, request.originalModel, mappedModel) {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", ImageGenerationPermissionMessage())
 	}
+	if err := validateOpenAICompactionSummaryContextForExecution(c, account, request.originalBody, mappedModel); err != nil {
+		return nil, err
+	}
 
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
@@ -400,7 +403,23 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 	}
 	streamResult, err := s.consumeAntigravityCompatSuccess(c, call, resp)
 	if err != nil {
-		return nil, err
+		if streamResult == nil {
+			return nil, err
+		}
+		usage := ClaudeUsage{}
+		if streamResult.usage != nil {
+			usage = *streamResult.usage
+		}
+		return &ForwardResult{
+			RequestID:       requestID,
+			UpstreamHeaders: resp.Header,
+			Usage:           usage,
+			Model:           call.request.originalModel,
+			UpstreamModel:   call.billingModel,
+			Stream:          call.request.clientStream,
+			Duration:        time.Since(call.request.startTime),
+			FirstTokenMs:    streamResult.firstTokenMs,
+		}, err
 	}
 	if streamResult.usage == nil {
 		streamResult.usage = &ClaudeUsage{}
@@ -594,7 +613,22 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
-	c.JSON(http.StatusOK, apicompat.AnthropicToResponsesResponse(&anthropicResponse))
+	if err := validateOpenAICompactionSummaryAnthropicTerminal(c, &anthropicResponse); err != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return result, err
+	}
+	responsesBody, err := json.Marshal(apicompat.AnthropicToResponsesResponse(&anthropicResponse))
+	if err != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to encode upstream response")
+	}
+	responsesBody, err = finalizeOpenAICompactionSummaryBody(c, responsesBody)
+	if err != nil {
+		writeOpenAICompactionSummaryFinalizationError(c, err)
+		return result, err
+	}
+	if !writeOpenAICompactSSEBridge(c, http.StatusOK, responsesBody) {
+		c.Data(http.StatusOK, "application/json; charset=utf-8", responsesBody)
+	}
 	return result, nil
 }
 

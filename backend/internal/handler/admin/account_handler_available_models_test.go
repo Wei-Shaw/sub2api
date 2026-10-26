@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -42,9 +43,11 @@ type syncUpstreamHTTPUpstream struct {
 	resp      *http.Response
 	responses []*http.Response
 	err       error
+	requests  []*http.Request
 }
 
 func (u *syncUpstreamHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.requests = append(u.requests, req)
 	if u.err != nil {
 		return nil, u.err
 	}
@@ -77,6 +80,240 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 	router.POST("/api/v1/admin/accounts/:id/models/sync-upstream", handler.SyncUpstreamModels)
 	router.POST("/api/v1/admin/accounts/models/sync-upstream-preview", handler.SyncUpstreamModelsPreview)
 	return router
+}
+
+func setupAvailableModelsDiscoveryRouter(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	accountTestSvc := service.NewAccountTestService(nil, nil, nil, nil, nil, upstream, cfg, nil)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	accountTestSvc.SetOpenAIGatewayService(gatewaySvc)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
+	return router
+}
+
+func jsonUpstreamResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func availableModelIDs(t *testing.T, rec *httptest.ResponseRecorder) []string {
+	t.Helper()
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	ids := make([]string, 0, len(resp.Data))
+	for _, model := range resp.Data {
+		ids = append(ids, model.ID)
+	}
+	return ids
+}
+
+func TestAccountHandlerGetAvailableModels_DeepSeekCustomUsesUpstreamCatalog(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: jsonUpstreamResponse(http.StatusOK,
+		`{"object":"list","data":[{"id":"deepseek-v4-flash","object":"model"},{"id":"deepseek-reasoner","object":"model"}]}`)}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 61, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+				"api_base_urls": map[string]any{
+					service.APIProtocolChatCompletions: "https://relay.example.test/v1",
+				},
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/61/models", nil),
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.ElementsMatch(t, []string{"deepseek-v4-flash", "deepseek-reasoner"}, availableModelIDs(t, rec))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://relay.example.test/v1/models", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer fixture-provider-key", upstream.requests[0].Header.Get("Authorization"))
+}
+
+func TestAccountHandlerGetAvailableModels_DeepSeekOfficialUsesProviderDefault(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: jsonUpstreamResponse(http.StatusOK,
+		`{"object":"list","data":[{"id":"deepseek-v4-flash","object":"model"}]}`)}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 62, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/62/models", nil),
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"deepseek-v4-flash"}, availableModelIDs(t, rec))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.deepseek.com/v1/models", upstream.requests[0].URL.String())
+}
+
+func TestAccountHandlerGetAvailableModels_ModelRoutedProviderProjectsMapping(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: jsonUpstreamResponse(http.StatusOK,
+		`{"object":"list","data":[{"id":"deepseek-v4-flash","object":"model"},{"id":"other-model","object":"model"}]}`)}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 63, Platform: service.PlatformOpenCodeGo, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": "go", "api_protocol": service.APIProtocolAdaptive,
+				"model_mapping": map[string]any{"public-deepseek": "deepseek-v4-flash"},
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/63/models", nil),
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"public-deepseek"}, availableModelIDs(t, rec))
+}
+
+func TestAccountHandlerGetAvailableModels_ModelCatalogProviderUsesCatalogWithoutMapping(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: jsonUpstreamResponse(http.StatusOK,
+		`{"object":"list","data":[{"id":"deepseek/deepseek-v4-flash","object":"model","supported_endpoints":["/chat/completions","/responses"]},{"id":"claude-sonnet-4-6","object":"model","supported_endpoints":["/messages"]}]}`)}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 64, Platform: service.PlatformCommandCode, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/64/models", nil),
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.ElementsMatch(t, []string{"deepseek/deepseek-v4-flash", "claude-sonnet-4-6"}, availableModelIDs(t, rec))
+}
+
+func TestAccountHandlerGetAvailableModels_ProviderCatalogFailureDoesNotFallbackToClaude(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{err: errors.New(
+		"provider discovery failed for https://user:fixture-secret@upstream.example.test/v1?api_key=fixture-secret",
+	)}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 65, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+				"base_url":     "https://relay.example.test/v1",
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/65/models", nil),
+	)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.NotContains(t, rec.Body.String(), "claude-")
+	require.Contains(t, rec.Body.String(), "Provider model discovery failed")
+	require.NotContains(t, rec.Body.String(), "fixture-secret")
+	require.NotContains(t, rec.Body.String(), "upstream.example.test")
+}
+
+func TestAccountHandlerGetAvailableModels_ProviderCatalogFailureUsesAccountSnapshot(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{err: errors.New("provider discovery failed")}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 66, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+				"base_url":     "https://relay.example.test/v1",
+			},
+			Extra: map[string]any{
+				service.UpstreamModelMetadataExtraKey: map[string]any{
+					"source": "upstream", "synced_at": "2026-10-18T00:00:00Z",
+					"models": map[string]any{
+						"deepseek-v4-flash": map[string]any{"id": "deepseek-v4-flash"},
+					},
+				},
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/66/models", nil),
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"deepseek-v4-flash"}, availableModelIDs(t, rec))
+}
+
+func TestAccountHandlerGetAvailableModels_WildcardMappingDoesNotUseUnfilteredSnapshot(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{err: errors.New("provider discovery failed")}
+	adminSvc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 67, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "fixture-provider-key", "account_mode": service.AccountModePayG,
+				"api_protocol": service.APIProtocolAdaptive,
+				"base_url":     "https://relay.example.test/v1",
+				"model_mapping": map[string]any{
+					"deepseek-*": "deepseek-v4-flash",
+				},
+			},
+			Extra: map[string]any{
+				service.UpstreamModelMetadataExtraKey: map[string]any{
+					"source": "upstream", "synced_at": "2026-10-18T00:00:00Z",
+					"models": map[string]any{
+						"deepseek-v4-flash":  map[string]any{"id": "deepseek-v4-flash"},
+						"unauthorized-model": map[string]any{"id": "unauthorized-model"},
+					},
+				},
+			},
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	setupAvailableModelsDiscoveryRouter(adminSvc, upstream).ServeHTTP(
+		rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/67/models", nil),
+	)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "Provider model discovery failed")
+	require.NotContains(t, rec.Body.String(), "deepseek-v4-flash")
+	require.NotContains(t, rec.Body.String(), "unauthorized-model")
 }
 
 func TestAccountHandlerGetAvailableModels_GrokUsesXAIModels(t *testing.T) {

@@ -1155,6 +1155,14 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 }
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
+	schedulerExtra := filterSchedulerExtra(account.Extra)
+	digest := service.OpenAICompactionCredentialFingerprint(&account)
+	if digest != "" || schedulerExtra[service.OpenAICompactionProbeTargetsExtraKey] != nil {
+		if schedulerExtra == nil {
+			schedulerExtra = make(map[string]any)
+		}
+		schedulerExtra[service.OpenAICompactionCredentialFingerprintExtraKey] = digest
+	}
 	return service.Account{
 		ID:                      account.ID,
 		Name:                    account.Name,
@@ -1178,11 +1186,12 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		SessionWindowEnd:        account.SessionWindowEnd,
 		SessionWindowStatus:     account.SessionWindowStatus,
 		ParentAccountID:         account.ParentAccountID,
+		ProxyID:                 account.ProxyID,
 		QuotaDimension:          account.QuotaDimension,
 		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
 		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
 		Credentials:             filterSchedulerCredentials(account.Credentials),
-		Extra:                   filterSchedulerExtra(account.Extra),
+		Extra:                   schedulerExtra,
 	}
 }
 
@@ -1248,7 +1257,8 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	}
 	// Candidate-list admission evaluates the account override before hydrating
 	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold",
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_mode", "account_scheduling_threshold",
+		"api_protocol", "api_base_urls", "protocol_rules", "openai_base_url",
 		// Gemini 显式缓存的候选过滤（GeminiExplicitCacheExclusions）读本投影判定账号是否支持显式缓存：
 		// 官方地址、Vertex 认证方式与上游网关的显式缓存声明。缺这几个键时只能按类型粗筛，
 		// 不支持的账号要逐个选中后才被剔除。
@@ -1310,6 +1320,14 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
+		// Compaction selection reads these fields from the candidate projection.
+		// omitting them makes summary-enabled accounts fail capability filtering
+		// before the DB recheck can observe the real account.
+		service.OpenAICompactSummaryEnabledExtraKey,
+		"openai_compact_mode",
+		"openai_compact_supported",
+		service.OpenAICompactionProbeTargetsExtraKey,
+		service.OpenAICompactionCredentialFingerprintExtraKey,
 		// 透传开关必须进投影：候选过滤(ListSchedulableAccounts)读的是本投影，
 		// 而 Account.IsModelSupported 靠 extra 上的这两个键短路 model_mapping 白名单。
 		// 裁掉它们，透传账号在选号阶段会退回按(常为过期的)白名单判定并被误判为

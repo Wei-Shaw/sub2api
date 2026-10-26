@@ -63,6 +63,43 @@ func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
 	return buildOpenAIResponsesURL(base)
 }
 
+// openAIResponsesTargetURL resolves the final ordinary Responses endpoint for
+// this account. Forward, passthrough, and capability probes share this function
+// so endpoint selection cannot drift between them.
+func (s *OpenAIGatewayService) openAIResponsesTargetURL(account *Account) (string, error) {
+	if account == nil {
+		return "", fmt.Errorf("account is unavailable")
+	}
+	var targetURL string
+	switch account.Type {
+	case AccountTypeOAuth:
+		targetURL = chatgptCodexURL
+	case AccountTypeSetupToken:
+		if account.IsOpenAIOAuthLike() {
+			targetURL = chatgptCodexURL
+		} else {
+			targetURL = openaiPlatformAPIURL
+		}
+	case AccountTypeAPIKey:
+		baseURL := account.GetOpenAIBaseURL()
+		if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
+			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+		}
+		if baseURL == "" {
+			targetURL = openaiPlatformAPIURL
+		} else {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return "", err
+			}
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+		}
+	default:
+		targetURL = openaiPlatformAPIURL
+	}
+	return targetURL, nil
+}
+
 func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
 	if account == nil {
 		return false
@@ -433,9 +470,6 @@ func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep
 	itemType, _ := inputItem["type"].(string)
 	switch strings.TrimSpace(itemType) {
 	case "compaction", "compaction_summary":
-		if _, encrypted := inputItem["encrypted_content"]; encrypted {
-			return nil, true, false
-		}
 		return item, false, true
 	case "reasoning":
 	default:
@@ -571,6 +605,29 @@ func isOpenAIEncryptedReasoningInputItem(item any) bool {
 	}
 	_, has := inputItem["encrypted_content"]
 	return has
+}
+
+func HasOpenAIEncryptedCompactionInput(body []byte) bool {
+	input := gjson.GetBytes(body, "input")
+	check := func(item gjson.Result) bool {
+		if !item.IsObject() || !isOpenAICompactionType(item.Get("type").String()) {
+			return false
+		}
+		encrypted := item.Get("encrypted_content")
+		return encrypted.Type == gjson.String && strings.TrimSpace(encrypted.String()) != ""
+	}
+	if input.IsArray() {
+		found := false
+		input.ForEach(func(_, item gjson.Result) bool {
+			if check(item) {
+				found = true
+				return false
+			}
+			return true
+		})
+		return found
+	}
+	return input.IsObject() && check(input)
 }
 
 // IsOpenAIResponsesCompactPath reports whether the request targets the legacy
@@ -725,6 +782,122 @@ func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, 
 		return body, false, fmt.Errorf("serialize normalized OpenAI reasoning content replay: %w", err)
 	}
 	return normalized, true, nil
+}
+
+// normalizeOpenAIResponsesAgentMessageReplay converts Codex multi-agent messages
+// that carry plaintext payloads in an encrypted_content content part into ordinary
+// user messages before replaying history to an OpenAI Responses upstream. Custom
+// providers intentionally use that part as a plaintext envelope; OpenAI treats it
+// as opaque provider-owned ciphertext and rejects it during hydration.
+func normalizeOpenAIResponsesAgentMessageReplay(body []byte) ([]byte, bool, error) {
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() {
+		return body, false, nil
+	}
+	needsNormalization := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if strings.TrimSpace(item.Get("type").String()) != "agent_message" || !item.Get("content").IsArray() {
+			return true
+		}
+		item.Get("content").ForEach(func(_, part gjson.Result) bool {
+			if strings.TrimSpace(part.Get("type").String()) == "encrypted_content" &&
+				openAIAgentMessageEncryptedPartIsPlaintext(part.Get("encrypted_content").String()) {
+				needsNormalization = true
+				return false
+			}
+			return true
+		})
+		return !needsNormalization
+	})
+	if !needsNormalization {
+		return body, false, nil
+	}
+
+	var decoded map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &decoded); err != nil {
+		return body, false, fmt.Errorf("decode OpenAI agent message replay: %w", err)
+	}
+	items, ok := decoded["input"].([]any)
+	if !ok {
+		return body, false, nil
+	}
+	normalized := make([]any, 0, len(items))
+	changed := false
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "agent_message" {
+			normalized = append(normalized, rawItem)
+			continue
+		}
+		text, converted := openAIAgentMessageReplayText(item["content"])
+		if !converted {
+			normalized = append(normalized, rawItem)
+			continue
+		}
+		normalized = append(normalized, map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{map[string]any{
+				"type": "input_text",
+				"text": text,
+			}},
+		})
+		changed = true
+	}
+	if !changed {
+		return body, false, nil
+	}
+	decoded["input"] = normalized
+	out, err := marshalOpenAIUpstreamJSON(decoded)
+	if err != nil {
+		return body, false, fmt.Errorf("serialize OpenAI agent message replay: %w", err)
+	}
+	return out, true, nil
+}
+
+func openAIAgentMessageReplayText(content any) (string, bool) {
+	parts, ok := content.([]any)
+	if !ok {
+		return "", false
+	}
+	var text strings.Builder
+	converted := false
+	for _, rawPart := range parts {
+		part, ok := rawPart.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(firstNonEmptyString(part["type"])) {
+		case "input_text", "text", "output_text":
+			if value, ok := part["text"].(string); ok {
+				_, _ = text.WriteString(value)
+			}
+		case "encrypted_content":
+			if value, ok := part["encrypted_content"].(string); ok && openAIAgentMessageEncryptedPartIsPlaintext(value) {
+				_, _ = text.WriteString(value)
+				converted = true
+			}
+		}
+	}
+	if !converted {
+		return "", false
+	}
+	return text.String(), true
+}
+
+func openAIAgentMessageEncryptedPartIsPlaintext(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || !utf8.ValidString(value) || strings.HasPrefix(value, "gAAAA") {
+		return false
+	}
+	if len(value) == 38 && strings.HasSuffix(value, "-0") {
+		return false
+	}
+	// Long unbroken base64/hex-like values are opaque provider material.
+	if len(value) >= 64 && !strings.ContainsAny(value, "\t\r\n") {
+		return false
+	}
+	return true
 }
 
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {

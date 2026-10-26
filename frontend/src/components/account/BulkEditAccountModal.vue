@@ -1164,44 +1164,30 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact mode -->
-      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <div class="flex-1 pr-4">
-            <label
-              id="bulk-edit-openai-compact-mode-label"
-              class="input-label mb-0"
-              for="bulk-edit-openai-compact-mode-enabled"
-            >
-              {{ t('admin.accounts.openai.compactMode') }}
-            </label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.compactModeDesc') }}
-            </p>
-          </div>
-          <input
-            v-model="enableOpenAICompactMode"
-            id="bulk-edit-openai-compact-mode-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-openai-compact-mode"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-openai-compact-mode"
-          :class="!enableOpenAICompactMode && 'pointer-events-none opacity-50'"
-        >
-          <Select
-            v-model="openAICompactMode"
-            data-testid="bulk-edit-openai-compact-mode-select"
-            :options="openAICompactModeOptions"
-            aria-labelledby="bulk-edit-openai-compact-mode-label"
-          />
-        </div>
+      <!-- Native compaction policy and server-side summary consent -->
+      <div v-if="allCompactionSettingsCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <CompactCapabilitySettings
+          id-prefix="bulk-edit"
+          v-model:mode="openAICompactMode"
+          v-model:summary-enabled="openAICompactSummaryEnabled"
+          v-model:mode-applied="enableOpenAICompactMode"
+          v-model:summary-applied="enableOpenAICompactSummary"
+          :platform="targetSelectedPlatforms[0]"
+          :mode-disabled="!enableOpenAICompactMode"
+          :summary-disabled="!enableOpenAICompactSummary"
+          :show-mode-apply="true"
+          :show-summary-apply="true"
+          :show-provider-declaration="targetSelectedPlatforms[0] !== 'openai'"
+          :show-probe-history="false"
+          mode-test-id="bulk-edit-openai-compact-mode-select"
+          mode-apply-id="bulk-edit-openai-compact-mode-enabled"
+          summary-apply-id="bulk-edit-compact-summary-apply"
+          summary-input-id="bulk-edit-compact-summary-value-checkbox"
+        />
       </div>
 
       <!-- OpenAI Compact model mapping -->
-      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="allOpenAIPassthroughCapable" data-testid="bulk-compact-model-mapping" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div class="flex-1 pr-4">
             <label
@@ -1499,6 +1485,8 @@ import {
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import { getProviderProfile } from '@/constants/platformCatalog'
+import CompactCapabilitySettings from '@/components/account/CompactCapabilitySettings.vue'
 import {
   buildHeaderOverridesObject,
   isHeaderOverrideCapable,
@@ -1561,6 +1549,13 @@ const allOpenAIPassthroughCapable = computed(() => {
     targetSelectedPlatforms.value[0] === 'openai' &&
     targetSelectedTypes.value.length > 0 &&
     targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token' || t === 'apikey')
+  )
+})
+
+const allCompactionSettingsCapable = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    (targetSelectedPlatforms.value[0] === 'openai' || !!getProviderProfile(targetSelectedPlatforms.value[0]))
   )
 })
 
@@ -1669,6 +1664,7 @@ const enableUpstreamBillingAutoProbe = ref(false)
 const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
+const enableOpenAICompactSummary = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
 
@@ -1717,6 +1713,7 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAICompactSummaryEnabled = ref(false)
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
@@ -1760,11 +1757,6 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
   { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
-])
-const openAICompactModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
-  { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
-  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
@@ -2116,6 +2108,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_compact_mode = openAICompactMode.value
   }
 
+  if (enableOpenAICompactSummary.value) {
+    const extra = ensureExtra()
+    extra.compact_summary_enabled = openAICompactSummaryEnabled.value
+  }
+
   if (enableOpenAICompactModelMapping.value) {
     credentials.compact_model_mapping = buildOpenAICompactModelMapping() ?? {}
     credentialsChanged = true
@@ -2226,6 +2223,7 @@ const handleSubmit = async () => {
     enableCodexCLIOnlyAppServer.value ||
     enableCodexFingerprintMode.value ||
     enableOpenAICompactMode.value ||
+    enableOpenAICompactSummary.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
     userMsgQueueMode.value !== null
@@ -2378,6 +2376,7 @@ watch(
       enableCodexFingerprintMode.value = false
       codexFingerprintMode.value = 'off'
       enableOpenAICompactMode.value = false
+      enableOpenAICompactSummary.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
 
@@ -2409,6 +2408,7 @@ watch(
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'
+      openAICompactSummaryEnabled.value = false
       openAICompactModelMappings.value = []
       rpmLimitEnabled.value = false
       bulkBaseRpm.value = null

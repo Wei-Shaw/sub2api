@@ -66,6 +66,7 @@ const DataTableStub = defineComponent({
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
+        <slot name="cell-platform_type" :row="row" />
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
@@ -85,6 +86,7 @@ const EditAccountModalStub = defineComponent({
 
 const AccountTestModalStub = defineComponent({
   props: { show: Boolean, account: { type: Object, default: null } },
+  emits: ['close', 'finished'],
   template: '<div data-test="test-account">{{ show ? account?.name : "" }}</div>'
 })
 
@@ -197,6 +199,33 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('shows native policy and summary consent as separate non-support badges', async () => {
+    listAccounts.mockResolvedValue({
+      items: [{
+        ...listRow,
+        extra: {
+          openai_compact_mode: 'force_on',
+          compact_summary_enabled: true,
+          openai_compact_supported: false,
+          openai_compact_checked_at: '2026-10-01T10:00:00Z'
+        }
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const row = wrapper.get('[data-account-name="compact row"]')
+    expect(row.text()).toContain('admin.accounts.openai.compactPolicyForceOn')
+    expect(row.text()).toContain('admin.accounts.openai.compactSummaryEnabled')
+    expect(row.text()).not.toContain('admin.accounts.openai.compactSupported')
+    expect(row.get('[title*="compactLegacyEvidenceHint"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('keeps the action menu open during internal scrolling but closes it on table scrolling', async () => {
     const wrapper = mountView(false)
     await flushPromises()
@@ -258,6 +287,85 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
     expect(getById).toHaveBeenCalledTimes(3)
     expect(wrapper.get('[data-test="stats-account"]').text()).toBe('compact row')
+    wrapper.unmount()
+  })
+
+  it('refreshes account detail and list after a terminal account test', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.findComponent(AccountActionMenu).vm.$emit('test', listRow)
+    await flushPromises()
+    expect(getById).toHaveBeenCalledTimes(1)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+
+    getById.mockResolvedValue({
+      ...fullAccount,
+      extra: {
+        detail_only: true,
+        openai_compact_probe_targets: { refreshed: true }
+      }
+    })
+    wrapper.findComponent(AccountTestModalStub).vm.$emit('finished')
+    await flushPromises()
+
+    expect(getById).toHaveBeenCalledTimes(2)
+    expect(getById).toHaveBeenLastCalledWith(42)
+    expect(listAccounts).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent(AccountTestModalStub).props('account')).toMatchObject({
+      extra: {
+        openai_compact_probe_targets: { refreshed: true }
+      }
+    })
+    wrapper.unmount()
+  })
+
+  it('does not let a stale test refresh replace a newer test account', async () => {
+    const secondRow = {
+      ...listRow,
+      id: 43,
+      name: 'compact row B',
+      extra: {}
+    }
+    const secondAccount = {
+      ...fullAccount,
+      id: 43,
+      name: 'compact row B',
+      extra: {}
+    }
+    let resolveStaleRefresh!: (value: typeof fullAccount) => void
+    const staleRefresh = new Promise<typeof fullAccount>((resolve) => {
+      resolveStaleRefresh = resolve
+    })
+    let firstAccountCalls = 0
+    getById.mockReset().mockImplementation((id: number) => {
+      if (id === 43) return Promise.resolve(secondAccount)
+      firstAccountCalls += 1
+      return firstAccountCalls === 1 ? Promise.resolve(fullAccount) : staleRefresh
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    const menu = wrapper.findComponent(AccountActionMenu)
+    menu.vm.$emit('test', listRow)
+    await flushPromises()
+
+    wrapper.findComponent(AccountTestModalStub).vm.$emit('finished')
+    await flushPromises()
+    expect(getById).toHaveBeenCalledTimes(2)
+
+    menu.vm.$emit('test', secondRow)
+    await flushPromises()
+    expect(wrapper.get('[data-test="test-account"]').text()).toBe('compact row B')
+
+    resolveStaleRefresh({ ...fullAccount, name: 'stale compact row' })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="test-account"]').text()).toBe('compact row B')
+    expect(wrapper.findComponent(AccountTestModalStub).props('account')).toMatchObject({
+      id: 43,
+      name: 'compact row B'
+    })
     wrapper.unmount()
   })
 

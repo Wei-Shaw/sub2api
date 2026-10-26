@@ -190,6 +190,58 @@ func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(
 	require.Equal(t, "value", updated.Extra["custom"])
 }
 
+func TestUpdateAccountPreservesServiceOwnedCompactionProbeTargets(t *testing.T) {
+	accountID := int64(111)
+	evidence := map[string]any{
+		"native_v2|model|responses|hash": map[string]any{"verdict": "supported"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+			Credentials: map[string]any{"api_key": "sk-test"},
+			Extra:       map[string]any{OpenAICompactionProbeTargetsExtraKey: evidence},
+		},
+	}}
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Extra: map[string]any{
+			"custom": "value",
+			OpenAICompactionProbeTargetsExtraKey: map[string]any{
+				"stale": map[string]any{"verdict": "supported"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, evidence, updated.Extra[OpenAICompactionProbeTargetsExtraKey])
+	require.Equal(t, "value", updated.Extra["custom"])
+}
+
+func TestManagedAdminExtraUpdatesDropCompactionProbeTargets(t *testing.T) {
+	accountID := int64(154)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+	require.NoError(t, svc.UpdateAccountExtra(context.Background(), accountID, map[string]any{
+		"custom":                             "value",
+		OpenAICompactionProbeTargetsExtraKey: map[string]any{"stale": map[string]any{"verdict": "supported"}},
+	}))
+	require.Equal(t, "value", repo.accounts[accountID].Extra["custom"])
+	require.NotContains(t, repo.accounts[accountID].Extra, OpenAICompactionProbeTargetsExtraKey)
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Extra: map[string]any{
+			"custom":                             "bulk",
+			OpenAICompactionProbeTargetsExtraKey: map[string]any{"stale": map[string]any{"verdict": "supported"}},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Len(t, repo.bulkUpdates, 1)
+	require.Equal(t, "bulk", repo.bulkUpdates[0].Extra["custom"])
+	require.NotContains(t, repo.bulkUpdates[0].Extra, OpenAICompactionProbeTargetsExtraKey)
+}
+
 func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T) {
 	accountID := int64(112)
 	billing := &xai.BillingSummary{

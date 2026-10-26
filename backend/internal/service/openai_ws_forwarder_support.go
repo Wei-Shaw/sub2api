@@ -556,6 +556,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
+	compactionKind := openAICompactionKindForScheduling(requireCompact, requiredCapability)
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
 	// survive an HTTP fallback. Official API-key Responses HTTP requests are
 	// different: previous_response_id is supported by the provider and scoped to
@@ -574,7 +575,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return 0, nil, "", nil
 	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+	if compactionKind == "" && !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		return 0, nil, "", nil
 	}
 	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
@@ -613,7 +614,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		if requestedModel != "" && !supportsOpenAIRequestModel(latest, requestedModel, requireCompact) {
 			return 0, nil, "", nil
 		}
-		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
+		if compactionKind == "" && !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
 			return 0, nil, "", nil
 		}
 		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
@@ -629,7 +630,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		}
 		account = latest
 	}
-	if requireCompact && openAICompactSupportTier(account) == 0 {
+	if compactionKind != "" && s.openAICompactSelectedSupportTier(ctx, account, requestedModel, compactionKind) == openAICompactionTierUnsupported {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}

@@ -2496,31 +2496,21 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="showCompactConfiguration"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.compactModeDesc') }}
-            </p>
-          </div>
-          <div class="w-44">
-            <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
-          </div>
-        </div>
-        <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-          <span class="font-medium">{{ t(openAICompactStatusKey) }}</span>
-          <span
-            v-if="account?.extra?.openai_compact_checked_at"
-            class="ml-2 text-gray-500 dark:text-gray-400"
-          >
-            {{ t('admin.accounts.openai.compactLastChecked') }}:
-            {{ formatDateTime(new Date(String(account.extra.openai_compact_checked_at))) }}
-          </span>
-        </div>
-        <div>
+        <CompactCapabilitySettings
+          id-prefix="edit"
+          v-model:mode="openAICompactMode"
+          v-model:summary-enabled="openAICompactSummaryEnabled"
+          :extra="(account?.extra as Record<string, unknown> | undefined)"
+          :platform="account?.platform"
+          :account-mode="typeof account?.credentials?.account_mode === 'string' ? account.credentials.account_mode : undefined"
+          :show-provider-declaration="account?.platform !== 'openai'"
+          :show-legacy-evidence="account?.platform === 'openai'"
+          show-probe-history
+        />
+        <div v-if="account?.platform === 'openai'" data-testid="edit-compact-model-mapping">
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
           <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
@@ -3269,6 +3259,8 @@ import {
   normalizeExplicitCacheUpstreamMaxTTL
 } from '@/utils/geminiExplicitCache'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
+import { getProviderProfile } from '@/constants/platformCatalog'
+import CompactCapabilitySettings from '@/components/account/CompactCapabilitySettings.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
@@ -3309,7 +3301,6 @@ import {
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
 import {
-  formatDateTime,
   formatDateTimeLocalInput,
   getBrowserTimeZone,
   parseDateTimeLocalInput
@@ -3851,6 +3842,10 @@ const openAILongContextBillingEnabled = ref(false)
 // 存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAICompactSummaryEnabled = ref(false)
+const showCompactConfiguration = computed(() => {
+  return props.account?.platform === 'openai' || !!getProviderProfile(props.account?.platform)
+})
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
@@ -3983,11 +3978,6 @@ const codexImageToolBadgeClass = computed(() => {
       return 'bg-slate-100 text-slate-600 dark:bg-dark-600 dark:text-slate-300'
   }
 })
-const openAICompactModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
-  { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
-  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
-])
 // OpenAI 订阅档位手动覆盖选项(清空 + Plus/Pro/Free;别名/自定义值友好显示且保留 canonical)
 const planTypeOptions = computed(() =>
   buildPlanTypeOptions(editPlanType.value, t('admin.accounts.openai.planTypeClear'))
@@ -4102,20 +4092,6 @@ const openAIResponsesStatusKey = computed(() => {
   }
   return 'admin.accounts.openai.responsesStatusAutoUnknown'
 })
-const openAICompactStatusKey = computed(() => {
-  const extra = props.account?.extra as Record<string, unknown> | undefined
-  if (!props.account || props.account.platform !== 'openai') return ''
-  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
-  if (mode === 'force_on') return 'admin.accounts.openai.compactSupported'
-  if (mode === 'force_off') return 'admin.accounts.openai.compactUnsupported'
-  if (typeof extra?.openai_compact_supported === 'boolean') {
-    return extra.openai_compact_supported
-      ? 'admin.accounts.openai.compactSupported'
-      : 'admin.accounts.openai.compactUnsupported'
-  }
-  return 'admin.accounts.openai.compactAuto'
-})
-
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
 const tempUnschedScopeOptions = computed<Array<{ value: TempUnschedulableScope; label: string; description: string }>>(() => [
@@ -4349,6 +4325,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
+  openAICompactSummaryEnabled.value = false
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
@@ -4361,6 +4338,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+  openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
+  openAICompactSummaryEnabled.value = extra?.compact_summary_enabled === true
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openaiFlattenNamespacesEnabled.value =
@@ -4371,7 +4350,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editPlanType.value = newAccount.type === 'oauth'
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
-    openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
@@ -5863,7 +5841,6 @@ const handleSubmit = async () => {
         delete newExtra.custom_base_url_enabled
         delete newExtra.custom_base_url
       }
-
       updatePayload.extra = newExtra
     }
 
@@ -5919,11 +5896,6 @@ const handleSubmit = async () => {
         delete newExtra.openai_long_context_billing_enabled
       } else {
         newExtra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
-      }
-      if (openAICompactMode.value === 'auto') {
-        delete newExtra.openai_compact_mode
-      } else {
-        newExtra.openai_compact_mode = openAICompactMode.value
       }
 		if (props.account.type === 'apikey') {
         if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {
@@ -6086,6 +6058,25 @@ const handleSubmit = async () => {
         newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
       } else {
         delete newExtra.upstream_request_id_header
+      }
+      updatePayload.extra = newExtra
+    }
+
+    // Compact settings apply to every account/provider-profile form branch. Keep
+    // unrelated extra fields intact; the backend protects service-owned probe
+    // evidence from stale admin snapshots.
+    if (showCompactConfiguration.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (openAICompactMode.value === 'auto') {
+        delete newExtra.openai_compact_mode
+      } else {
+        newExtra.openai_compact_mode = openAICompactMode.value
+      }
+      if (openAICompactSummaryEnabled.value) {
+        newExtra.compact_summary_enabled = true
+      } else {
+        delete newExtra.compact_summary_enabled
       }
       updatePayload.extra = newExtra
     }

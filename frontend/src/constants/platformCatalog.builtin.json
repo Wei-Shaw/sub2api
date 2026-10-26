@@ -108,7 +108,8 @@
               "anthropic": "https://api.deepseek.com/anthropic",
               "chat_completions": "https://api.deepseek.com",
               "responses": "https://api.deepseek.com"
-            }
+            },
+            "remote_compaction_v2": "unsupported"
           }
         ]
       }

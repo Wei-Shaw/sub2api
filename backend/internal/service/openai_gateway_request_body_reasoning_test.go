@@ -99,15 +99,15 @@ func TestTrimOpenAIEncryptedReasoningItems_NoReasoningItems(t *testing.T) {
 	assert.False(t, changed)
 }
 
-func TestTrimOpenAIEncryptedReasoningItems_Compaction(t *testing.T) {
+func TestTrimOpenAIEncryptedReasoningItems_PreservesNativeCompaction(t *testing.T) {
 	tests := []struct {
 		name      string
 		itemType  string
 		encrypted bool
 		changed   bool
 	}{
-		{name: "compaction", itemType: "compaction", encrypted: true, changed: true},
-		{name: "compaction summary", itemType: "compaction_summary", encrypted: true, changed: true},
+		{name: "compaction", itemType: "compaction", encrypted: true, changed: false},
+		{name: "compaction summary", itemType: "compaction_summary", encrypted: true, changed: false},
 		{name: "unencrypted compaction", itemType: "compaction", encrypted: false, changed: false},
 	}
 
@@ -129,11 +129,6 @@ func TestTrimOpenAIEncryptedReasoningItems_Compaction(t *testing.T) {
 			require.NotEmpty(t, input)
 			first, ok := input[0].(map[string]any)
 			require.True(t, ok)
-			if tt.changed {
-				require.Len(t, input, 1)
-				assert.Equal(t, "message", first["type"])
-				return
-			}
 			require.Len(t, input, 2)
 			assert.Equal(t, tt.itemType, first["type"])
 		})

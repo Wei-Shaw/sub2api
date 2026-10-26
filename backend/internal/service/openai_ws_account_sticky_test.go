@@ -391,6 +391,61 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CapabilityMismat
 	require.Equal(t, account.ID, boundAccountID)
 }
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CompactionUsesTargetEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		verdict string
+		want    bool
+	}{
+		{name: "old false but exact supported", verdict: OpenAICompactionProbeVerdictSupported, want: true},
+		{name: "exact unsupported", verdict: OpenAICompactionProbeVerdictUnsupported, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			groupID := int64(26)
+			account := newOpenAICompactionDecisionAccount()
+			account.ID = 32
+			account.Platform = PlatformOpenAI
+			account.Extra = map[string]any{
+				"openai_compact_supported":                      false,
+				"openai_responses_supported":                    true,
+				"openai_apikey_responses_websockets_v2_enabled": true,
+			}
+			svc := &OpenAIGatewayService{}
+			recordOpenAICompactionTargetEvidence(t, svc, account, "native-model", openAICompactionKindV2, tc.verdict)
+
+			cache := &stubGatewayCache{}
+			store := NewOpenAIWSStateStore(cache)
+			svc.accountRepo = stubOpenAIAccountRepo{accounts: []Account{*account}}
+			svc.cache = cache
+			svc.cfg = newOpenAIWSV2TestConfig()
+			svc.concurrencyService = NewConcurrencyService(stubConcurrencyCache{})
+			svc.openaiWSStateStore = store
+			require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_compaction", account.ID, time.Hour))
+
+			selection, err := svc.selectAccountByPreviousResponseIDForCapability(
+				ctx,
+				&groupID,
+				"resp_prev_compaction",
+				"native-model",
+				nil,
+				OpenAIEndpointCapabilityRemoteCompactionV2,
+				false,
+			)
+			require.NoError(t, err)
+			if tc.want {
+				require.NotNil(t, selection)
+				require.Equal(t, account.ID, selection.Account.ID)
+				boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_compaction")
+				require.NoError(t, getErr)
+				require.Equal(t, account.ID, boundAccountID)
+			} else {
+				require.Nil(t, selection)
+			}
+		})
+	}
+}
+
 func newOpenAIWSV2TestConfig() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true

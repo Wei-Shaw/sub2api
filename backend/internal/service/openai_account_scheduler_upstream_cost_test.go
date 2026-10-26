@@ -260,8 +260,13 @@ func TestAdvancedCostSchedulerKeepsCompactSupportedOverflowAheadOfUnknown(t *tes
 	preferred := upstreamCostTestAccount(11, UpstreamBillingProbeStatusOK, 0.01, now.Add(-time.Minute), 30*time.Minute)
 	overflow := upstreamCostTestAccount(12, UpstreamBillingProbeStatusOK, 0.1, now.Add(-time.Minute), 30*time.Minute)
 	unknown := upstreamCostTestAccount(13, UpstreamBillingProbeStatusOK, 0.001, now.Add(-time.Minute), 30*time.Minute)
-	preferred.Extra["openai_compact_supported"] = true
-	overflow.Extra["openai_compact_supported"] = true
+	for _, account := range []*Account{preferred, overflow} {
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any)
+		}
+		account.Credentials["api_key"] = "fixture-value"
+		recordOpenAICompactionTargetEvidence(t, &OpenAIGatewayService{}, account, "gpt-test", openAICompactionKindLegacy, OpenAICompactionProbeVerdictSupported)
+	}
 	for _, account := range []*Account{preferred, overflow, unknown} {
 		account.Status = StatusActive
 		account.Schedulable = true

@@ -155,6 +155,12 @@ func TestForwardResponses_PassthroughFlagWithUnsupportedResponsesUsesAccountMapp
 			}
 
 			result, err := svc.Forward(context.Background(), c, account, body)
+			if strings.HasSuffix(path, "/compact") {
+				require.ErrorContains(t, err, "native_compaction_unsupported")
+				require.Nil(t, result)
+				require.Nil(t, upstream.lastReq, "legacy compact must not reach upstream without summary consent")
+				return
+			}
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())

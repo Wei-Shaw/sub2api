@@ -32,6 +32,7 @@ func TestBuildPlatformCatalogMirrorsPlatformListAndProfiles(t *testing.T) {
 		for _, mode := range entry.MultiProtocol.Modes {
 			endpoints := profile.Modes[mode.Mode]
 			require.Equal(t, endpoints.BaseURLs, mode.BaseURLs, "%s/%s", entry.ID, mode.Mode)
+			require.Equal(t, endpoints.RemoteCompactionV2, mode.RemoteCompactionV2, "%s/%s", entry.ID, mode.Mode)
 			require.Equal(t, len(endpoints.ProtocolRules), len(mode.ProtocolRules), "%s/%s", entry.ID, mode.Mode)
 			for j, rule := range endpoints.ProtocolRules {
 				require.Equal(t, rule, mode.ProtocolRules[j])

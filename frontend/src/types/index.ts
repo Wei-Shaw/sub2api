@@ -1540,10 +1540,46 @@ export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seed
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
   openai_compact_supported?: boolean
+  compact_summary_enabled?: boolean
   openai_compact_checked_at?: string
   openai_compact_last_status?: number
   openai_compact_last_error?: string
+  openai_compact_probe_targets?: OpenAICompactProbeTargets
 }
+
+export type OpenAICompactProbeKind = 'native_v2' | 'legacy_compact'
+export type OpenAICompactProbeVerdict = 'supported' | 'unsupported' | 'unknown'
+
+export interface OpenAICompactProbeTarget {
+  kind: OpenAICompactProbeKind
+  requested_model?: string
+  model: string
+  protocol: string
+  endpoint: string
+  endpoint_hash: string
+  logical_account_id: number
+  credential_account_id: number
+  credential_source: string
+  auth_mode: string
+  config_fingerprint: string
+  fingerprint_version: number
+}
+
+export interface OpenAICompactProbeRecord {
+  version: number
+  target: OpenAICompactProbeTarget
+  verdict: OpenAICompactProbeVerdict
+  last_checked_at: string
+  verified_at?: string
+  last_status?: number
+  error_class?: string
+  error?: string
+}
+
+/** Persisted evidence is keyed by the backend target ID. */
+export type OpenAICompactProbeTargets =
+  | Record<string, OpenAICompactProbeRecord>
+  | OpenAICompactProbeRecord[]
 
 export interface OpenAIResponsesState {
   openai_responses_mode?: OpenAIResponsesMode

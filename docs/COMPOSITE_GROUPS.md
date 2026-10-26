@@ -139,6 +139,11 @@ create synthetic model metadata, pricing, or upstream capability records by
 themselves. Keep channel pricing/model mapping configured for the concrete
 provider platforms that the routes target.
 
+Native remote compaction v2 is checked within the resolved provider's account
+pool. It does not select a different provider or use legacy compact model
+mapping. See [Remote Compaction](REMOTE_COMPACTION.md) for capability and protocol
+boundaries.
+
 This PR intentionally does not implement:
 
 - AUTO smart-routing among multiple providers for the same abstract task.

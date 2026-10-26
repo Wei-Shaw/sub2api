@@ -12,9 +12,10 @@ import (
 
 // invalid_encrypted_content 失效密文 lineage。
 //
-// 上游判定某轮请求中的加密 reasoning/compaction 项不可解后，同一失效密文会随
-// 客户端维护的会话历史在后续每一轮重新出现，重复触发"整包被拒→剥离→重试/
-// 重连"。这里按会话记录已被上游拒绝过的 encrypted_content 摘要
+// 上游判定某轮请求中的加密 reasoning 项不可解后，同一失效密文会随客户端
+// 维护的会话历史在后续每一轮重新出现，重复触发"整包被拒→剥离→重试/重连"。
+// Native compaction 不是可重放的 reasoning，不能被这条 lineage 删除。
+// 这里按会话记录已被上游拒绝过的 encrypted_content 摘要
 // （OpenAIWSStateStore，带 TTL 与容量自保护）；后续请求进场时仅剥离摘要命中
 // 的项，新生成的密文摘要不同，不会被误删。
 
@@ -29,16 +30,10 @@ func openAIEncryptedContentDigest(encrypted string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// openAIEncryptedLineageItemType 限定 lineage 覆盖的项类型，与剥离端
-// sanitizeEncryptedReasoningInputItem 能处理的类型对称；其他类型即使携带
-// encrypted_content 也不收摘要，避免记入永远剥不掉的摘要后每轮空转解码。
+// openAIEncryptedLineageItemType 限定 lineage 覆盖的可重放 reasoning 类型。
+// Native compaction 拥有独立的历史归属语义，不能进入 reasoning 自愈路径。
 func openAIEncryptedLineageItemType(itemType string) bool {
-	switch strings.TrimSpace(itemType) {
-	case "reasoning", "compaction", "compaction_summary":
-		return true
-	default:
-		return false
-	}
+	return strings.TrimSpace(itemType) == "reasoning"
 }
 
 // collectOpenAIEncryptedContentDigestsRaw 收集 input 中 lineage 覆盖类型所携
@@ -75,9 +70,8 @@ func collectOpenAIEncryptedContentDigestsRaw(payload []byte) []string {
 }
 
 // stripOpenAIInvalidEncryptedContentItems 剥离 input 中摘要命中 invalid 的密文
-// 项，剥离语义与 trimOpenAIEncryptedReasoningItems 对齐：reasoning 仅剥
-// encrypted_content（连带 content:null 清理与空骨架删除），compaction/
-// compaction_summary 整项删除。返回被改写的项数。
+// 项，剥离语义与 trimOpenAIEncryptedReasoningItems 对齐：仅处理 reasoning，
+// compaction 保持原样。返回被改写的项数。
 func stripOpenAIInvalidEncryptedContentItems(reqBody map[string]any, invalid map[string]struct{}) int {
 	if len(reqBody) == 0 || len(invalid) == 0 {
 		return 0

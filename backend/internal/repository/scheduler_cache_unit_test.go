@@ -1163,6 +1163,116 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughForModelGate(t *tes
 	}
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsCompactionSelectionFields(t *testing.T) {
+	account := service.Account{
+		ID:       384,
+		Platform: service.PlatformDeepseek,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":         "sk-projection-secret",
+			"account_mode":    service.AccountModePayG,
+			"api_protocol":    service.APIProtocolAdaptive,
+			"api_base_urls":   map[string]any{service.APIProtocolResponses: "https://responses.example.test"},
+			"openai_base_url": "https://openai-base.example.test",
+			"protocol_rules": []any{map[string]any{
+				"pattern": "native-model", "protocol": service.APIProtocolResponses,
+			}},
+		},
+		Extra: map[string]any{
+			service.OpenAICompactSummaryEnabledExtraKey: true,
+			"openai_compact_mode":                       service.OpenAICompactModeForceOff,
+			"openai_compact_supported":                  false,
+			"compact_probe_target_evidence":             map[string]any{"unbounded": true},
+			"unrelated_extra":                           "drop-me",
+		},
+	}
+	target := service.OpenAICompactionProbeTarget{
+		Kind: service.OpenAICompactionKindV2, Model: "native-model", Protocol: service.APIProtocolResponses,
+		Endpoint: "https://responses.example.test/v1/responses", EndpointHash: "endpoint-hash",
+		LogicalAccountID: account.ID, CredentialAccountID: account.ID, CredentialSource: "direct", AuthMode: service.AccountTypeAPIKey,
+		FingerprintVersion: 1,
+	}
+	target.CredentialFingerprint = service.OpenAICompactionCredentialFingerprint(&account)
+	target.ConfigFingerprint = service.OpenAICompactionProbeTargetFingerprint(&account, &account, target)
+	updates, err := service.BuildOpenAICompactionProbeExtraUpdates(account.Extra, target, service.OpenAICompactionProbeObservation{
+		Verdict: service.OpenAICompactionProbeVerdictSupported, CheckedAt: time.Now(), Status: 200,
+	})
+	require.NoError(t, err)
+	account.Extra[service.OpenAICompactionProbeTargetsExtraKey] = updates[service.OpenAICompactionProbeTargetsExtraKey]
+	meta := buildSchedulerMetadataAccount(account)
+	payload, err := json.Marshal(meta)
+	require.NoError(t, err)
+	var restored service.Account
+	require.NoError(t, json.Unmarshal(payload, &restored))
+
+	require.Equal(t, true, restored.Extra[service.OpenAICompactSummaryEnabledExtraKey])
+	require.Equal(t, service.OpenAICompactModeForceOff, restored.Extra["openai_compact_mode"])
+	require.Equal(t, false, restored.Extra["openai_compact_supported"])
+	require.True(t, restored.SupportsOpenAICompactionRequest(), "summary consent must survive the scheduler cache round trip")
+	require.Equal(t, service.APIProtocolAdaptive, restored.Credentials["api_protocol"])
+	require.Equal(t, service.AccountModePayG, restored.Credentials["account_mode"])
+	require.Equal(t, "https://openai-base.example.test", restored.Credentials["openai_base_url"])
+	baseURLs := restored.Credentials["api_base_urls"].(map[string]any)
+	require.Equal(t, "https://responses.example.test", baseURLs[service.APIProtocolResponses])
+	rules := restored.Credentials["protocol_rules"].([]any)
+	require.Equal(t, "native-model", rules[0].(map[string]any)["pattern"])
+	targetRecords := restored.Extra[service.OpenAICompactionProbeTargetsExtraKey].(map[string]any)
+	record := targetRecords[target.ID()].(map[string]any)
+	recordTarget := record["target"].(map[string]any)
+	require.Equal(t, target.ConfigFingerprint, recordTarget["config_fingerprint"])
+	require.NotEmpty(t, restored.Extra[service.OpenAICompactionCredentialFingerprintExtraKey])
+	require.Equal(t, target.ConfigFingerprint, service.OpenAICompactionProbeTargetFingerprintFromProjection(&restored, target))
+	probePayload, _ := json.Marshal(targetRecords)
+	require.NotContains(t, string(probePayload), "sk-projection-secret", "credential fingerprint must not copy the raw API key into target evidence")
+	require.NotContains(t, restored.Extra, "compact_probe_target_evidence", "target-bound evidence must use an explicit bounded projection")
+	require.NotContains(t, restored.Extra, "unrelated_extra")
+}
+
+func TestBuildSchedulerMetadataAccount_PreservesCompactionDigestForFilteredCredentialIdentity(t *testing.T) {
+	tests := []service.Account{
+		{
+			ID: 5011, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Credentials: map[string]any{"chatgpt_account_id": "oauth-identity", "account_mode": service.AccountModePayG},
+		},
+		{
+			ID: 5012, Platform: service.PlatformOpenAI, Type: service.AccountTypeSetupToken,
+			Credentials: map[string]any{"access_token": "setup-token-value", "account_mode": service.AccountModePayG},
+		},
+		{
+			ID: 5013, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"api_key": "api-key-value", "account_mode": service.AccountModePayG,
+				"header_override_enabled": true, "header_overrides": map[string]any{"x-route": "identity"},
+			},
+		},
+		{
+			ID: 5014, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"auth_mode": service.OpenAIAuthModeAgentIdentity, "agent_runtime_id": "runtime-id",
+				"agent_private_key": "private-key-value", "task_id": "task-id", "account_mode": service.AccountModePayG,
+			},
+		},
+	}
+	for _, account := range tests {
+		t.Run(strconv.FormatInt(account.ID, 10), func(t *testing.T) {
+			digest := service.OpenAICompactionCredentialFingerprint(&account)
+			require.NotEmpty(t, digest)
+			target := service.OpenAICompactionProbeTarget{
+				Kind: service.OpenAICompactionKindV2, Model: "gpt-5.4", Protocol: service.APIProtocolResponses,
+				EndpointHash: "endpoint-hash", LogicalAccountID: account.ID, CredentialAccountID: account.ID,
+				CredentialSource: "direct", CredentialFingerprint: digest, AuthMode: account.Type, FingerprintVersion: 1,
+			}
+			fullFingerprint := service.OpenAICompactionProbeTargetFingerprint(&account, &account, target)
+			require.NotEmpty(t, fullFingerprint)
+
+			projected := buildSchedulerMetadataAccount(account)
+			require.Equal(t, digest, projected.Extra[service.OpenAICompactionCredentialFingerprintExtraKey])
+			require.Equal(t, fullFingerprint, service.OpenAICompactionProbeTargetFingerprintFromProjection(&projected, target))
+			require.Equal(t, service.AccountModePayG, projected.Credentials["account_mode"])
+		})
+	}
+}
+
 // 调度投影必须保留账号的 RPM 配置。
 //
 // 候选过滤走 ListSchedulableAccounts，读的是 buildSchedulerMetadataAccount 产出的精简投影；
