@@ -82,6 +82,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	openAIAsync *handler.OpenAIAsyncHandler,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -135,6 +136,9 @@ func provideCleanup(
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		// Batch executions depend on the router, scheduler and billing workers.
+		// Drain them before any of those dependencies begin shutting down.
+		openAIAsync.Stop()
 
 		type cleanupStep struct {
 			name string
