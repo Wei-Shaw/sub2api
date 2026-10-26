@@ -410,7 +410,9 @@ func writeGatewayCompactResponse(
 		header.Set("Connection", "keep-alive")
 		header.Set("X-Accel-Buffering", "no")
 		c.Writer.WriteHeader(http.StatusOK)
-		_, _ = c.Writer.Write(payload)
+		if _, err := c.Writer.Write(payload); err != nil {
+			return err
+		}
 		c.Writer.Flush()
 		return nil
 	}

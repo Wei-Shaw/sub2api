@@ -746,6 +746,15 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 // collectClaudeStreamResponse 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
 func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) ([]byte, *antigravityStreamResult, error) {
+	return s.collectClaudeStreamResponseWithOptions(c, resp, startTime, originalModel, antigravityStreamCollectionOptions{})
+}
+
+type antigravityStreamCollectionOptions struct {
+	keepaliveInterval time.Duration
+	requireComplete   bool
+}
+
+func (s *AntigravityGatewayService) collectClaudeStreamResponseWithOptions(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, options antigravityStreamCollectionOptions) ([]byte, *antigravityStreamResult, error) {
 	if upstreamResponseModelObserverFromContext(c) == nil {
 		beginUpstreamResponseModelObservation(c)
 	}
@@ -762,6 +771,8 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	var lastWithParts map[string]any
 	var collectedParts []map[string]any // 收集所有 parts（包括 text、thinking、functionCall、inlineData 等）
 	var meaningfulResponse bool
+	var finishReason string
+	var usageMetadata map[string]any
 
 	type scanEvent struct {
 		line string
@@ -811,9 +822,25 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	if intervalTicker != nil {
 		intervalCh = intervalTicker.C
 	}
+	var keepaliveCh <-chan time.Time
+	var requestDone <-chan struct{}
+	if options.requireComplete {
+		requestDone = c.Request.Context().Done()
+	}
+	if options.keepaliveInterval > 0 {
+		keepaliveTicker := time.NewTicker(options.keepaliveInterval)
+		defer keepaliveTicker.Stop()
+		keepaliveCh = keepaliveTicker.C
+	}
 
 	for {
 		select {
+		case <-requestDone:
+			return nil, nil, c.Request.Context().Err()
+		case <-keepaliveCh:
+			if err := writeAntigravityCompatKeepalive(c); err != nil {
+				return nil, nil, err
+			}
 		case ev, ok := <-events:
 			if !ok {
 				// 流结束，转换并返回响应
@@ -846,11 +873,17 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(inner)
 
 			var parsed map[string]any
-			if err := json.Unmarshal(inner, &parsed); err != nil {
+			if err := json.Unmarshal(inner, &parsed); err != nil || parsed == nil {
 				continue
 			}
 
 			last = parsed
+			if metadata, ok := parsed["usageMetadata"].(map[string]any); ok {
+				usageMetadata = metadata
+			}
+			if reason := strings.TrimSpace(extractGeminiFinishReason(parsed)); reason != "" {
+				finishReason = reason
+			}
 
 			// 保留最后一个有 parts 的响应，并收集所有 parts
 			parts := extractGeminiParts(parsed)
@@ -888,9 +921,22 @@ returnResponse:
 			RetryableOnSameAccount: true,
 		}
 	}
+	// A checkpoint replaces conversation history. Never seal an unfinished or
+	// token-truncated summary merely because the upstream connection reached EOF.
+	if options.requireComplete && finishReason != "STOP" {
+		return nil, nil, fmt.Errorf("incomplete compact summary: finish reason %q", finishReason)
+	}
 
 	// 选择最后一个有效响应
 	finalResponse := pickGeminiCollectResult(last, lastWithParts)
+	if options.requireComplete {
+		// Compact collects all content separately. Use the final envelope so a
+		// terminal frame without parts still contributes its billing metadata.
+		finalResponse = last
+		if usageMetadata != nil {
+			finalResponse["usageMetadata"] = usageMetadata
+		}
+	}
 
 	// 将收集的所有 parts 合并到最终响应中
 	if len(collectedParts) > 0 {
