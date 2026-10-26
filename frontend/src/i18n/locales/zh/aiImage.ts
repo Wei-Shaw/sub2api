@@ -128,6 +128,14 @@ export default {
       step1: '第 1 步：放同行的爆款参考图，然后拆解',
       // 爆款复刻也要能换视觉模型：默认的 gemini-3.5-flash 偶尔调不通。
       visionModelHint: '默认模型识别不了时，换一个再试（和「套图」共用这一处设置）。',
+      // 2026-10-26：把对方品牌换成我们的（不填就留白，不乱编）
+      brandName: '本店品牌名（选填）',
+      brandNamePlaceholder: '例：UPCLOUD（填了会替换掉对方的品牌位置）',
+      brandNameHint: '对方的品牌/店名/logo 会被清除；填了这里就换成我们的，不填就留白。',
+      // 从商品图上读到的品牌/水印（自动预填，可改）
+      detectedBrand: '商品图上的标识',
+      useDetectedBrand: '用它',
+      detectedBrandWarn: '如果这是供应商的水印或别人的 logo，请改成你自己的品牌，或者清空。',
       step2: '第 2 步：放你自己的商品图',
       // 拆解时两张图是一起送的：参考图给版式，这张图给「文案该写成什么」。
       productHint:
@@ -225,6 +233,9 @@ export default {
       toggle: '展开 / 收起',
       product: '产品名称',
       productPlaceholder: '例：316 不锈钢保温杯',
+      // 商品实际尺寸（选填）：填了才能把模特与商品的比例画对（2026-10-26）
+      productSize: '商品实际尺寸（选填）',
+      productSizePlaceholder: '例：高 120 厘米（填了才能把模特比例画对）',
       sp1: '卖点 1',
       sp2: '卖点 2',
       sp3: '卖点 3',

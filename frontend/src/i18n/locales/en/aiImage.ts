@@ -132,6 +132,14 @@ export default {
       step1: 'Step 1: add the competitor bestseller images, then dissect them',
       // Bestseller clone also needs a vision-model picker: the default gemini-3.5-flash sometimes fails.
       visionModelHint: 'If the default model cannot read the images, switch to another one (shared with "Image set").',
+      // Replace the competitor brand with ours (leave blank to keep it empty, never invent)
+      brandName: 'Our brand (optional)',
+      brandNamePlaceholder: 'e.g. UPCLOUD (replaces the competitor brand slot)',
+      brandNameHint: 'Competitor brand/shop/logo is stripped; if set here it is replaced by ours, otherwise left blank.',
+      // Brand / watermark read off our own product photo (prefilled, editable)
+      detectedBrand: 'Mark on the product photo',
+      useDetectedBrand: 'Use it',
+      detectedBrandWarn: 'If this is a supplier watermark or someone else\'s logo, change it to your own brand or clear it.',
       step2: 'Step 2: add a photo of your own product',
       // Both images go to the vision model together: the reference fixes the layout,
       // this photo fixes what the copy should say and which product gets drawn.
@@ -281,6 +289,9 @@ export default {
       toggle: 'Expand / collapse',
       product: 'Product name',
       productPlaceholder: 'e.g. 316 stainless steel thermos',
+      // Optional real product size — needed to get the model-to-product scale right (2026-10-26)
+      productSize: 'Actual size (optional)',
+      productSizePlaceholder: 'e.g. 120 cm tall (fill this in to get the model scale right)',
       sp1: 'Selling point 1',
       sp2: 'Selling point 2',
       sp3: 'Selling point 3',

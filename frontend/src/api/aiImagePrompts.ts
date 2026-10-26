@@ -278,6 +278,15 @@ export interface OzonScriptContext {
   mainColorName?: string
   /** 形如 #C8B6E2。传了就按它算深/中/浅三个派生色。 */
   mainColorHex?: string
+  /**
+   * 商品实际尺寸，用户在界面上填的，例如「高 120 厘米」「60×40×30 厘米」。
+   *
+   * 【2026-10-26 主人反馈】「人工制作的仿生植物，物品有 120cm，模特的比例就不对了」——
+   * 出图里那棵 120 厘米的仿真植物被画成桌上小盆栽，跟真人对不上。
+   * 模型没法从照片里知道这东西多高，所以必须由人告诉它。
+   * 有了这个数字，第 3 张（模特）和第 7 张（尺寸图）就能按真实尺寸画。
+   */
+  productSize?: string
 }
 
 /** 商品主色的派生色板（只给第 1 张主图用）。 */
@@ -366,6 +375,62 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
  * 商品是灰/白/黑时（饱和度过低）**没有色相可用**，这时退化成中性灰阶，
  * 并明确要求从商品上挑一个点缀色当唯一彩色——否则模型会自己编一个颜色上去。
  */
+/**
+ * 从用户填的尺寸里抠出「厘米数」（取第一个数字）。
+ *
+ * 主人在界面上填的可能是各种写法：「高 120 厘米」「120cm」「1.2 m」「60×40×30 厘米」。
+ * 这里只取第一个数字当「主尺寸」用（通常就是高度），并统一换算成厘米：
+ *   - 带 m / 米 且没有 cm → 按米算（1.2 m = 120 cm）
+ *   - 带 mm / 毫米        → 除以 10
+ *   - 其余按厘米
+ *
+ * 解析不出来就返回 null，提示词退回「按参考图比例推算」的老说法，不会报错。
+ */
+export function parseSizeCm(text?: string): number | null {
+  const raw = (text || '').trim().toLowerCase()
+  if (!raw) return null
+  const match = raw.match(/(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const value = Number.parseFloat(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+
+  const isMm = /mm|毫米/.test(raw)
+  const hasCm = /cm|厘米|公分/.test(raw)
+  const isMetre = !hasCm && !isMm && /(^|[^a-z])(m|米)([^a-z]|$)/.test(raw)
+
+  if (isMm) return value / 10
+  if (isMetre) return value * 100
+  return value
+}
+
+/**
+ * 把「商品相对人体的大小」说成人话，给第 3 张（模特）用。
+ *
+ * 参照成年女性身高 165 cm：商品高度 ÷ 165 得到它相当于人体的哪个位置。
+ * 这一步必须由**我们**算好写死，不能让模型自己估——它估不准就会把 120 cm 的
+ * 仿真植物画成桌上的小盆栽（主人 2026-10-26 报的就是这个）。
+ */
+export function describeHumanScale(cm: number): { zh: string; en: string } {
+  const ratio = cm / 165
+  const pct = Math.round(ratio * 100)
+  if (ratio >= 0.65) {
+    return {
+      zh: `商品高约 ${cm} 厘米，相当于成年女性身高的 ${pct}%，也就是到她**胸口以上、接近下巴**的高度——这是一件大件，绝不能被画成捧在手里的小盆栽。`,
+      en: `The product is about ${cm} cm tall — roughly ${pct}% of an adult woman's height, i.e. reaching **above her chest, close to her chin**. This is a large item and must never be drawn as a small potted plant held in the palm.`,
+    }
+  }
+  if (ratio >= 0.35) {
+    return {
+      zh: `商品高约 ${cm} 厘米，相当于成年女性身高的 ${pct}%，大约到她**腰到胸口**之间。`,
+      en: `The product is about ${cm} cm tall — roughly ${pct}% of an adult woman's height, reaching somewhere **between her waist and chest**.`,
+    }
+  }
+  return {
+    zh: `商品高约 ${cm} 厘米，相当于成年女性身高的 ${pct}%，是**可以单手拿住的中小件**。`,
+    en: `The product is about ${cm} cm tall — roughly ${pct}% of an adult woman's height, a **small-to-medium item she can hold in one hand**.`,
+  }
+}
+
 export function buildProductPalette(name?: string, hex?: string): ProductPalette | null {
   const normalized = normalizeHex(hex)
   if (!normalized) return null
@@ -496,6 +561,34 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
   const paletteGroundEn = palette
     ? `Ground (follow strictly): a **vertical gradient** from ${palette.ink} at the top to ${palette.tint} at the bottom; stay inside that one hue family and use no other background colour. `
     : 'Ground: a vertical gradient from the product’s own dominant hue (dark at the top, pale at the bottom); never a background colour unrelated to the product. '
+
+  /**
+   * 商品实际尺寸（用户在界面填的）。
+   *
+   * 【2026-10-26 主人】「人工制作的仿生植物，物品有 120cm，模特的比例就不对了」——
+   * 模型从照片里看不出这东西多高，所以必须由人给数字，我们再算成「相当于人体哪个位置」。
+   */
+  const sizeRaw = (ctx.productSize || '').trim()
+  const sizeCm = parseSizeCm(sizeRaw)
+  const humanScale = sizeCm ? describeHumanScale(sizeCm) : null
+
+  /** 第 3 张（模特）里那段尺寸锚定，没填尺寸就是空串。 */
+  const sizeAnchorZh = humanScale
+    ? `**商品实际尺寸：${sizeRaw}。**${humanScale.zh}` +
+      '**人物与商品的大小关系必须按这个来画；宁可让商品占满画面甚至超出画面，也不许为了构图好看把它缩小。**'
+    : ''
+  const sizeAnchorEn = humanScale
+    ? `**Actual product size: ${sizeRaw}.** ${humanScale.en} ` +
+      '**The person-to-product scale must follow this; it is better for the product to fill or even exceed the frame than to shrink it for the sake of composition.** '
+    : ''
+
+  /** 第 7 张（尺寸图）里的尺寸锚定，没填尺寸就是空串。 */
+  const sizeChartZh = humanScale
+    ? `**这件商品的实际尺寸是 ${sizeRaw}**，下面每一个尺寸标注都要和它一致，不要自己另估一个数。`
+    : ''
+  const sizeChartEn = humanScale
+    ? `**The actual size of this product is ${sizeRaw}**; every dimension label below must agree with it — never estimate your own number. `
+    : ''
   /**
    * ⚠️ `ctx.pain` 和 `ctx.diff` **故意不再拼进任何一张卡片**。
    *
@@ -623,6 +716,15 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '三个都禁止：① 完全不相干的品类（比如卖垃圾桶却画桌布、卖收纳箱却画别的家居）——绝对不行；' +
         '② 和右边一模一样、看不出差别的同一件商品——也不行，那就没有对比意义；' +
         '③ 把右边那件商品画成另一个完全不同的款式（形状、颜色、功能都变了）——也不行。' +
+        '**左边和右边必须在至少三处肉眼可辨的不同上**（这是本张唯一的评分标准，达不到就重画）：' +
+        '① 颜色：左边更暗、更灰、更土，右边的颜色鲜亮饱和；' +
+        '② 造型：左边更简单、更老式、更笨重，右边更利落、线条更干净；' +
+        '③ 材质：左边塑料感/廉价布料/没有纹理，右边有真实纹理和光泽；' +
+        '④ 体量：左边更小、更单薄、叶片/部件更稀疏，右边更饱满；' +
+        '⑤ 配件：左边的盆/底座/附件更廉价，右边更讲究。' +
+        '**自查**：把画面缩到看不清文字的尺寸时，仍然要能一眼分出左右不是同一个东西；' +
+        '如果两边看起来只是「同一个东西换了背景和光线」，这张就不合格。' +
+        '**明令禁止偷懒画法：不许把右边那张图原样复制到左边只改背景**。' +
         '镜头：平视，左右各占 40% 画面，中间一条细分隔线，两侧商品在画面里的大小一致。' +
         '背景：左侧是杂乱的室内/户外一角（偏暗、偏冷、有杂物），右侧是同一位置但收拾干净、明亮通透——' +
         '左右必须是同一类空间，只是状态不同，不要换成两个完全不同的场景。' +
@@ -642,6 +744,15 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Three things are forbidden: (1) an unrelated category (selling a bin but drawing a tablecloth, selling a storage box but drawing something else) — never; ' +
         '(2) an item identical to the right side with no visible difference — also no, that defeats the comparison; ' +
         '(3) turning the right-hand product into a completely different model (shape, colour and function all changed) — also no. ' +
+        '**The left and right must differ in at least three visually obvious ways** (this is the only pass/fail test for this card): ' +
+        '(1) Colour: the left is darker, greyer and duller; the right is vivid and saturated. ' +
+        '(2) Shape: the left is plainer, more dated and clunkier; the right is cleaner and more refined. ' +
+        '(3) Material: the left looks like cheap plastic or thin fabric with no texture; the right has real texture and sheen. ' +
+        '(4) Mass: the left is smaller, thinner, with sparser leaves or parts; the right is fuller. ' +
+        '(5) Fittings: the left pot, base or accessories are cheaper; the right ones are nicer. ' +
+        '**Self-check**: shrink the image until the text is unreadable — you must still be able to tell at a glance that the two sides are not the same object. ' +
+        'If the two sides only read as "the same thing with a different background and lighting", the card fails. ' +
+        '**Never take the lazy shortcut of copying the right-hand image to the left and only changing the background.** ' +
         'Camera: eye level, each side taking 40% of the frame, a thin divider between them, both items at the same visual scale. ' +
         'Background: the left side is a cluttered indoor/outdoor corner (dim, cool, with odds and ends); the right side is the same kind of spot tidied up, bright and airy — ' +
         'both sides must be the same kind of space in a different state, never two unrelated scenes. ' +
@@ -674,6 +785,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '动作必须是**正在使用这件商品**——拿在手里用、正在开合、正在取用、正在操作都行，' +
         '身体朝向和视线都指向商品，让人一眼看出「她正在用它」，而不是站着摆拍。' +
         '半身或大半身构图都可以（露到腰或胸以上即可，不要求全身）；人物占画面 35-45%，商品占 35-45%。' +
+        sizeAnchorZh +
         '**商品必须是画面里最清晰、最亮的部分**，人物可以稍微柔一点；两者不要互相遮挡，' +
         '模特的手要真的接触或操作到商品，不能悬空摆姿势。' +
         /**
@@ -706,6 +818,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'and her action must be **actually using the product** — holding it in use, opening it, taking from it, operating it — ' +
         'with her body and gaze directed at the product so it reads instantly as "she is using it", not posing. ' +
         'A half or three-quarter figure is enough (waist-up or chest-up; no full body required); the person takes 35-45% of the frame and the product 35-45%. ' +
+        sizeAnchorEn +
         '**The product must be the sharpest, brightest element**; the person may be slightly softer. They must not block each other, ' +
         'and the model hands must genuinely touch or operate the product — never floating in a pose. ' +
         '**Hand scale must follow the product’s real size (this matters a lot)**: ' +
@@ -840,6 +953,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         '光线：均匀柔光，投影很淡，不要压住标注线。' +
         '表现：商品实拍 + 半透明线稿轮廓叠加，标出关键尺寸。' +
         '标题：俄语「Размеры, см」，放在画面上方，字号大。' +
+        sizeChartZh +
         '**每个尺寸都必须写出具体数值，格式是「俄语名称：阿拉伯数字 + см」**，' +
         '例如 «Высота: 12 см»、«Ширина: 8.5 см»、«Глубина: 4 см»。' +
         '数值用阿拉伯数字（12、8.5 这种），单位只写 см。' +
@@ -858,6 +972,7 @@ export function buildOzonScript(ctx: OzonScriptContext): OzonScriptCard[] {
         'Lighting: even soft light with a faint shadow that never fights the annotation lines. ' +
         'Presentation: the real photo with a semi-transparent line-art outline overlaid, marking key dimensions. ' +
         'Heading: Russian "Размеры, см" across the top, in large type. ' +
+        sizeChartEn +
         '**Every dimension must carry an explicit value, formatted as "Russian label: Arabic numeral + см"**, ' +
         'for example «Высота: 12 см», «Ширина: 8.5 см», «Глубина: 4 см». ' +
         'Use Arabic numerals (12, 8.5) and the unit см only. ' +

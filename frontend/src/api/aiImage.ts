@@ -69,6 +69,19 @@ export interface AIImageRequest {
   n?: number
   /** 参考图；有值时走 /v1/images/edits */
   referenceImage?: File | null
+  /**
+   * 多张参考图（**按数组顺序发给模型**）。
+   *
+   * 【2026-10-26 主人定方案 A】爆款复刻要把「竞品图 + 本产品图」一起送给模型，
+   * 否则模型只看到文字版式描述、看不到那张照片，只能重画（必然走形）。
+   *
+   * 后端本来就能收多张：`openai_images.go` 里对 `image` 和 `image[i]` 都做
+   * `req.Uploads = append(...)`，唯一校验只是「至少一张」。所以这里放开即可，
+   * **不需要改后端**。
+   *
+   * 顺序约定（爆款复刻用）：第 1 张 = 竞品版式参考图，第 2 张 = 本产品图。
+   */
+  referenceImages?: File[]
 }
 
 export class AIImageError extends Error {
@@ -82,6 +95,22 @@ export class AIImageError extends Error {
     this.code = code
     this.status = status
   }
+}
+
+/**
+ * 收集这次请求要发的全部参考图（按顺序）。
+ *
+ * `referenceImage` 是老的「单张」写法，`referenceImages` 是新的「多张」写法，
+ * 两个都可能被调用方填。这里合并成一份，并且**去掉空值**，
+ * 免得把 undefined 当文件塞进 FormData（那会直接抛错）。
+ */
+export function collectReferenceImages(request: Pick<AIImageRequest, 'referenceImage' | 'referenceImages'>): File[] {
+  const list: File[] = []
+  if (request.referenceImage) list.push(request.referenceImage)
+  for (const item of request.referenceImages || []) {
+    if (item) list.push(item)
+  }
+  return list
 }
 
 function authHeaders(apiKey: string, extra?: HeadersInit): HeadersInit {
@@ -152,7 +181,10 @@ async function generateFromImage(
   form.append('n', String(request.n ?? 1))
   form.append('size', request.size || AI_IMAGE_DEFAULT_SIZE)
   form.append('response_format', responseFormat)
-  form.append('image', request.referenceImage as File, (request.referenceImage as File).name || 'image.png')
+  // 多张参考图逐张 append，**字段名都用 image**：后端对重复的 image 和 image[i] 都认。
+  for (const file of collectReferenceImages(request)) {
+    form.append('image', file, file.name || 'image.png')
+  }
 
   const response = await fetch(buildGatewayUrl('/v1/images/edits'), {
     method: 'POST',
@@ -271,7 +303,8 @@ function asyncTaskError(task: AIImageAsyncTask): AIImageError {
 
 /** 提交异步生图任务，返回任务号。 */
 async function submitAsyncImage(request: AIImageRequest): Promise<AIImageAsyncSubmit> {
-  const isEdit = Boolean(request.referenceImage)
+  const referenceFiles = collectReferenceImages(request)
+  const isEdit = referenceFiles.length > 0
   const path = isEdit ? '/v1/images/edits/async' : '/v1/images/generations/async'
 
   // 异步通道下 response_format 不影响最终结果：无论上游给的是 base64 还是网址，
@@ -285,8 +318,9 @@ async function submitAsyncImage(request: AIImageRequest): Promise<AIImageAsyncSu
     form.append('n', String(request.n ?? 1))
     form.append('size', request.size || AI_IMAGE_DEFAULT_SIZE)
     form.append('response_format', 'b64_json')
-    const file = request.referenceImage as File
-    form.append('image', file, file.name || 'image.png')
+    for (const file of referenceFiles) {
+      form.append('image', file, file.name || 'image.png')
+    }
     response = await fetch(buildGatewayUrl(path), {
       method: 'POST',
       headers: authHeaders(request.apiKey),

@@ -313,6 +313,45 @@
           <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.visionModelHint') }}</span>
         </div>
 
+        <!-- 本店品牌名（选填）。
+             决定「对方品牌位置换成什么」。不填就留白，不会乱编。
+             2026-10-26 主人要求「消除产品的特有信息是必须的」，而且换成我们自己的。 -->
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <label class="text-gray-500 dark:text-gray-400">{{ t('aiImage.hot.brandName') }}</label>
+          <input
+            v-model="hotBrandName"
+            class="input w-56 text-sm"
+            :placeholder="t('aiImage.hot.brandNamePlaceholder')"
+            data-testid="hot-brand-name"
+          />
+          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.brandNameHint') }}</span>
+        </div>
+
+        <!-- 从商品图上读到的品牌/水印。
+             2026-10-26 主人问「不能识别我放入的产品上的品牌吗」——
+             能，拆解时顺手读了。但商品图上常常是**供应商水印**，
+             所以这里明着摆出来，让人一眼看见、一键改掉。 -->
+        <div
+          v-if="detectedBrand"
+          class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+          data-testid="hot-detected-brand"
+        >
+          <span>{{ t('aiImage.hot.detectedBrand') }}：</span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+            {{ detectedBrand }}
+          </span>
+          <button
+            v-if="hotBrandName.trim() !== detectedBrand.trim()"
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-testid="hot-use-detected-brand"
+            @click="hotBrandName = detectedBrand"
+          >
+            {{ t('aiImage.hot.useDetectedBrand') }}
+          </button>
+          <span class="text-amber-600 dark:text-amber-400">{{ t('aiImage.hot.detectedBrandWarn') }}</span>
+        </div>
+
         <!-- 第 1 步：放同行的爆款参考图并拆解。
              一张参考图 = 一张脚本 = 一张出图，所以这里放几张就出几张。 -->
         <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step1') }}</p>
@@ -714,6 +753,18 @@
           <div class="flex flex-col gap-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.product') }}</label>
             <input v-model="scriptForm.product" class="input text-sm" :placeholder="t('aiImage.script.productPlaceholder')" />
+          </div>
+          <!-- 商品实际尺寸（选填）。
+               2026-10-26 主人反馈：120cm 的仿真植物被画成桌上小盆栽，模特比例完全不对。
+               模型从照片里看不出东西多高，必须由人给数字，我们才能换算成「相当于人体哪个位置」。 -->
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.productSize') }}</label>
+            <input
+              v-model="scriptForm.productSize"
+              class="input text-sm"
+              :placeholder="t('aiImage.script.productSizePlaceholder')"
+              data-testid="script-product-size"
+            />
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.sp1') }}</label>
@@ -1371,6 +1422,8 @@ const productLock = ref(true)
  */
 const scriptForm = ref({
   product: '',
+  // 商品实际尺寸（选填）：填了才能把模特和商品的比例画对
+  productSize: '',
   sp1: '',
   sp2: '',
   sp3: '',
@@ -1388,6 +1441,24 @@ const scriptForm = ref({
  * 文本按主色算深/中/浅三个具体色值，比「取商品同色调」这种话管用得多。
  */
 const mainColor = ref<{ name: string; hex: string }>({ name: '', hex: '' })
+
+/**
+ * 本店品牌名（爆款复刻专用）。
+ *
+ * 【2026-10-26 主人】「消除产品的特有信息是必须的」，而且要把对方的品牌换成我们的。
+ * 之前只有一个「别抄对方品牌」的禁令，我们自己叫什么没地方写 ——
+ * 结果对方 logo 的位置只能留白或被模型乱编。
+ */
+const hotBrandName = ref('')
+
+/**
+ * 视觉模型从「我们的商品图」上读到的品牌/水印/字样（原样）。
+ *
+ * 【2026-10-26 主人问「不能识别我放入的产品上的品牌吗」】能，同一次请求里就读了。
+ * 但商品图上经常是**供应商的水印**，所以这里只做「预填 + 明确显示」，
+ * 界面上看得见、改得掉，绝不偷偷用。
+ */
+const detectedBrand = ref('')
 const scriptCards = ref<OzonScriptCard[]>([])
 /**
  * 这一批脚本的**原始模板快照**（按 key 索引）。
@@ -1425,6 +1496,29 @@ const records = ref<AIImageRecord[]>([])
 // 记录 id → 该次生成用的参考图。只存在内存里（File 无法序列化）。
 // 用来保证「重试」用的是同一组输入，而不是当前碰巧选中的参考图。
 const referenceByRecord = new Map<string, File>()
+
+/**
+ * 每条记录额外要带上的参考图（**排在商品图前面**）。
+ *
+ * 爆款复刻专用：一张卡对应一张竞品参考图，生成时必须把那张竞品图一起送给模型，
+ * 否则模型只看到文字版式描述、看不到那张照片，只能重画 —— 版式必走形。
+ */
+const extraRefsByRecord = new Map<string, File[]>()
+
+/**
+ * 竞品参考图的本地文件，按「参考图序号」存。
+ *
+ * 只存**本地文件**：参考图如果是网址，前端拿不到 File，就退回「只发商品图 + 文字版式」，
+ * 效果差一些但不会报错。
+ */
+const hotRefFileByIndex = new Map<number, File>()
+
+/** 从脚本卡片的 key（hot_01_ref3）里取回它对应的参考图序号。 */
+function competitorFileForCard(card: OzonScriptCard): File | null {
+  const matched = /_ref(\d+)$/.exec(card.key || '')
+  if (!matched) return null
+  return hotRefFileByIndex.get(Number(matched[1])) ?? null
+}
 
 /**
  * 提交顺序发号器。批量生成时并发提交，createdAt 可能撞在同一毫秒。
@@ -1910,7 +2004,12 @@ function buildEffectivePrompt(record: AIImageRecord, reference: File | null): st
   return composed
 }
 
-async function runGeneration(record: AIImageRecord, reference: File | null, imageCount?: number) {
+async function runGeneration(
+  record: AIImageRecord,
+  reference: File | null,
+  imageCount?: number,
+  extraImages?: File[],
+) {
   record.status = 'generating'
   record.error = ''
   record.images = []
@@ -1923,7 +2022,12 @@ async function runGeneration(record: AIImageRecord, reference: File | null, imag
       model: record.model,
       size: record.size,
       n: imageCount ?? normalizedCount(),
-      referenceImage: reference,
+      // 有「额外参考图」时按顺序一起发：爆款复刻是 [竞品图, 本产品图]，
+      // 顺序和提示词里的约定一致（第 1 张=版式参考，第 2 张=我们的商品）。
+      // 只有本产品图时仍走老的 referenceImage 单图路径。
+      referenceImage: extraImages?.length ? null : reference,
+      referenceImages:
+        extraImages?.length ? [...extraImages, ...(reference ? [reference] : [])] : undefined,
     })
     const images = (response.data || []).map(toDisplayUrl).filter(Boolean)
     if (images.length === 0) {
@@ -2137,6 +2241,7 @@ async function runHotAnalyze() {
   hotError.value = ''
   hotNotice.value = ''
   hotLayouts.value = []
+  hotRefFileByIndex.clear()
   hotProgress.value = { done: 0, total: hotRefs.value.length }
 
   const layouts: HotLayout[] = []
@@ -2147,8 +2252,14 @@ async function runHotAnalyze() {
       try {
         const raw = await analyzeHotStyleRequest(ref, productImage)
         const layout = parseHotLayout(raw, i + 1)
-        if (layout) layouts.push(layout)
-        else lastError = lastError || 'layout_not_parsed'
+        if (layout) {
+          layouts.push(layout)
+          // 把这张参考图的本地文件按序号存下来：生成时要和商品图一起发过去。
+          // 用网址当参考图时拿不到 File，就不存，生成时退回「单图 + 文字版式」。
+          if (ref.file) hotRefFileByIndex.set(i + 1, ref.file)
+        } else {
+          lastError = lastError || 'layout_not_parsed'
+        }
       } catch (error) {
         // 单张失败不中断整批：其余几张照样能出脚本，用户能先拿到能做的那几张。
         lastError = error instanceof Error ? error.message : String(error)
@@ -2174,7 +2285,12 @@ async function runHotAnalyze() {
     }
 
     hotLayouts.value = layouts
-    setScriptCards(buildHotLayoutCards(layouts))
+    // 顺手读出来的品牌：取第一条非空的，输入框还是空的就预填进去。
+    detectedBrand.value = layouts.map((item) => (item.ourBrand || '').trim()).find(Boolean) || ''
+    if (!hotBrandName.value.trim() && detectedBrand.value) {
+      hotBrandName.value = detectedBrand.value
+    }
+    setScriptCards(buildHotLayoutCards(layouts, hotBrandName.value))
     scriptSource.value = 'hot'
     hotNotice.value = t('aiImage.hot.scriptBuilt', { count: layouts.length })
   } finally {
@@ -2238,8 +2354,13 @@ async function retryRecord(record: AIImageRecord) {
   if (generating.value || !apiKey.value) return
   generating.value = true
   try {
-    // 用这张记录原本的参考图重试，保证输入一致。
-    await runGeneration(record, referenceByRecord.get(record.id) ?? null)
+    // 用这张记录原本的参考图（含竞品图）重试，保证输入一致。
+    await runGeneration(
+      record,
+      referenceByRecord.get(record.id) ?? null,
+      undefined,
+      extraRefsByRecord.get(record.id),
+    )
   } finally {
     generating.value = false
   }
@@ -2315,6 +2436,11 @@ async function runBatch(cards: OzonScriptCard[]) {
       edited: card.edited,
     })
     if (reference) referenceByRecord.set(record.id, reference)
+    // 爆款复刻：把这张卡对应的竞品参考图也挂上，生成时一起发。
+    if (batchSource === 'hot') {
+      const competitor = competitorFileForCard(card)
+      if (competitor) extraRefsByRecord.set(record.id, [competitor])
+    }
     return record
   })
   // ⚠️ **不要倒序**。以前这里是 `[...queue.slice().reverse(), ...records]`，
@@ -2340,7 +2466,7 @@ async function runBatch(cards: OzonScriptCard[]) {
       if (!record) return
       // 批量里每张固定出 1 张图：脚本本身就是 8 个不同画面，
       // 每张再要 4 张只会成倍花钱，不是这里的意图。
-      await runGeneration(record, reference, 1)
+      await runGeneration(record, reference, 1, extraRefsByRecord.get(record.id))
       batchProgress.value = {
         ...batchProgress.value,
         done: batchProgress.value.done + 1,
@@ -2389,6 +2515,8 @@ function buildScript() {
       // 识别到的主色只喂给第 1 张主图用（别的卡不吃这个参数）。
       mainColorName: mainColor.value.name || undefined,
       mainColorHex: mainColor.value.hex || undefined,
+      // 实际尺寸：只给第 3 张（模特比例）和第 7 张（尺寸图数字）用
+      productSize: scriptForm.value.productSize.trim() || undefined,
     }),
   )
   // 商品一致性锁定不在这里拼：它取决于「这次到底带没带参考图」，
@@ -2545,7 +2673,7 @@ async function aiExtract() {
 }
 
 function clearScript() {
-  scriptForm.value = { product: '', sp1: '', sp2: '', sp3: '', sp1Ru: '', sp2Ru: '', sp3Ru: '', pain: '', diff: '' }
+  scriptForm.value = { product: '', productSize: '', sp1: '', sp2: '', sp3: '', sp1Ru: '', sp2Ru: '', sp3Ru: '', pain: '', diff: '' }
   mainColor.value = { name: '', hex: '' }
   setScriptCards([])
   scriptNotice.value = ''
