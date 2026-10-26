@@ -31,7 +31,9 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_ServableModels(t *testing.T) {
 		"gpt-image-1",       // 图像生成模型
 		"claude-sonnet-4-6", // /v1/messages 调度默认映射兜底
 		"claude-3-opus-20240229",
-		"gpt-4o",          // 保守 fail-open：非黑名单模型保持允许
+		"gpt-4o", // 保守 fail-open：非黑名单模型保持允许
+		"k3.1",
+		"k3.1-pro-preview",
 		"my-custom-alias", // 自定义别名可能由渠道级映射在转发前改写，保持允许
 	}
 	for _, model := range servable {
@@ -52,6 +54,10 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_RejectsForeignModels(t *testin
 		"k3",          // Kimi Code bare ID（无厂商前缀，需精确拒绝）
 		"k3-256k",     // Kimi Code bare ID
 		"provider/k3", // vendor/model 取 last segment 后仍为 k3
+		"k3.1-pro",
+		"k3.1-pro-highspeed",
+		"provider/K3.1-PRO",
+		"provider/k3.1-pro-highspeed",
 		"moonshot-v1-128k",
 		"gemini-3.0-pro",
 		"grok-4",
@@ -69,14 +75,18 @@ func TestIsModelSupported_OpenAIOAuthExplicitMappingUnchanged(t *testing.T) {
 	account := newOpenAIOAuthAccountForModelTest()
 	account.Credentials = map[string]any{
 		"model_mapping": map[string]any{
-			"deepseek-v4": "gpt-5.4",
-			"k3":          "gpt-5.4", // 显式映射优先：bare k3 仍可被账号声明支持
+			"deepseek-v4":        "gpt-5.4",
+			"k3.1-pro":           "gpt-5.4",
+			"k3.1-pro-highspeed": "gpt-5.4",
+			"k3":                 "gpt-5.4", // 显式映射优先：bare k3 仍可被账号声明支持
 		},
 	}
 
 	// 显式映射沿用原有语义：命中映射即支持，未命中即不支持。
 	require.True(t, account.IsModelSupported("deepseek-v4"))
 	require.True(t, account.IsModelSupported("k3"))
+	require.True(t, account.IsModelSupported("k3.1-pro"))
+	require.True(t, account.IsModelSupported("k3.1-pro-highspeed"))
 	require.False(t, account.IsModelSupported("glm-4.7"))
 }
 

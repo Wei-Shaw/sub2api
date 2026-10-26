@@ -452,6 +452,18 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		InputModalities:                   []string{"text"},
 	}
 
+	// K3.1 Pro requires thinking; the generic "none" default is rejected upstream.
+	// Source: https://www.kimi.com/code/docs/kimi-code/models.html
+	if isKimiK31Model(modelID) {
+		defaultReasoningLevel := "high"
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
+			{Effort: "low", Description: configuredCodexReasoningLevelDescription("low")},
+			{Effort: "high", Description: configuredCodexReasoningLevelDescription("high")},
+			{Effort: "max", Description: configuredCodexReasoningLevelDescription("max")},
+		}
+	}
+
 	if isDeepSeekCodexModel(modelID) {
 		defaultReasoningLevel := "high"
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
