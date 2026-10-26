@@ -36,6 +36,13 @@
       "litellm_provider": "xai"
     },
     {
+      "id": "cursor",
+      "display_name": "Cursor",
+      "gateway": "cursor",
+      "cn_provider": false,
+      "litellm_provider": ""
+    },
+    {
       "id": "kimi",
       "display_name": "Kimi",
       "gateway": "openai",
