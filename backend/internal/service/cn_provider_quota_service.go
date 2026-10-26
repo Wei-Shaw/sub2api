@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -377,16 +378,23 @@ func zhipuQuotaHost(baseURL string) string {
 	}
 }
 
-// parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。
-//
-//   - limits[].detail.{limit,remaining,resetTime} → 5h 窗口（取首个 detail）
-//   - usage.{limit,remaining,resetTime} → 周窗口
-//
-// utilization = (limit-remaining)/limit*100。
+// parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。新格式以 usages 下的
+// limit_5h / limit_7d / limit_month_total 为准，旧 limits[].detail + usage 保持兼容。
+// 新旧字段可能同时出现，优先新格式，避免重复窗口或旧快照覆盖新配额。
 func parseKimiUsageTiers(body []byte) []CNQuotaTier {
-	var tiers []CNQuotaTier
+	usageWindows := gjson.GetBytes(body, "usages")
+	fiveHour := kimiUsageRatioTier(usageWindows.Get("limit_5h"), "5h")
+	weekly := kimiUsageRatioTier(usageWindows.Get("limit_7d"), "weekly")
+	monthly := kimiUsageRatioTier(usageWindows.Get("limit_month_total"), "monthly")
+	codeMonthly := kimiUsageRatioTier(usageWindows.Get("limit_month_code"), "monthly")
+	if codeMonthly != nil && (monthly == nil || codeMonthly.UsedPercent > monthly.UsedPercent) {
+		monthly = codeMonthly
+	}
 
-	if limits := gjson.GetBytes(body, "limits"); limits.IsArray() {
+	var tiers []CNQuotaTier
+	if fiveHour != nil {
+		tiers = append(tiers, *fiveHour)
+	} else if limits := gjson.GetBytes(body, "limits"); limits.IsArray() {
 		limits.ForEach(func(_, item gjson.Result) bool {
 			detail := item.Get("detail")
 			if !detail.Exists() {
@@ -407,11 +415,13 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 				UsedPercent: util,
 				ResetAt:     cnNormalizeResetTime(detail.Get("resetTime").Value()),
 			})
-			return false // 取首个 detail 作为 5h 窗口
+			return false
 		})
 	}
 
-	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
+	if weekly != nil {
+		tiers = append(tiers, *weekly)
+	} else if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
 		limit, _ := cnParseF64(usage.Get("limit").Value())
 		remaining, _ := cnParseF64(usage.Get("remaining").Value())
 		used := limit - remaining
@@ -428,8 +438,29 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 			ResetAt:     cnNormalizeResetTime(usage.Get("resetTime").Value()),
 		})
 	}
-
+	if monthly != nil {
+		tiers = append(tiers, *monthly)
+	}
 	return tiers
+}
+
+func kimiUsageRatioTier(window gjson.Result, name string) *CNQuotaTier {
+	if !window.IsObject() {
+		return nil
+	}
+	ratio := window.Get("used_ratio")
+	if !ratio.Exists() || ratio.Type == gjson.Null {
+		return nil
+	}
+	used, ok := cnParseF64(ratio.Value())
+	if !ok || math.IsNaN(used) || math.IsInf(used, 0) || used < 0 {
+		return nil
+	}
+	return &CNQuotaTier{
+		Window:      name,
+		UsedPercent: used * 100,
+		ResetAt:     cnNormalizeResetTime(window.Get("reset_time").Value()),
+	}
 }
 
 // parseMiniMaxUsageTiers 解析 MiniMax Token Plan / Coding Plan remains 响应。

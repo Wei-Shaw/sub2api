@@ -75,27 +75,81 @@ func TestCnnormalizeResetTime(t *testing.T) {
 	require.Equal(t, "", cnNormalizeResetTime(""))
 }
 
-// TestParseKimiUsageTiers 验证 Kimi For Coding /usages 解析：
-//   - 首个 limits[].detail → 5h 桶，utilization=(limit-remaining)/limit*100
-//   - usage → weekly 桶
-//   - 仅取首个 detail（多个 detail 时不应重复产出 5h）
+// TestParseKimiUsageTiers verifies both the current `usages` schema and legacy compatibility.
 func TestParseKimiUsageTiers(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{
-		"limits": [
-			{"name": "5h", "detail": {"limit": 1000, "remaining": 600, "resetTime": "2026-08-14T15:00:00Z"}},
-			{"name": "ignored-second-detail", "detail": {"limit": 999, "remaining": 0, "resetTime": "2026-08-14T20:00:00Z"}}
-		],
-		"usage": {"limit": 10000, "remaining": 4000, "resetTime": "2026-08-18T00:00:00Z"}
+		"usages": {
+			"limit_5h": {"used_ratio": 0.1234, "reset_time": "2026-08-14T15:00:00Z"},
+			"limit_7d": {"used_ratio": 0.42, "reset_time": "2026-08-18T00:00:00Z"},
+			"limit_month_total": {"used_ratio": 0.6, "reset_time": "2026-09-01T00:00:00Z"},
+			"limit_month_code": {"used_ratio": 0.7, "reset_time": "2026-09-10T00:00:00Z"}
+		}
 	}`)
 	tiers := parseKimiUsageTiers(body)
-	require.Len(t, tiers, 2)
+	require.Len(t, tiers, 3)
 	require.Equal(t, "5h", tiers[0].Window)
-	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9) // (1000-600)/1000*100
+	require.InDelta(t, 12.34, tiers[0].UsedPercent, 1e-9)
 	require.Equal(t, "2026-08-14T15:00:00Z", tiers[0].ResetAt)
 	require.Equal(t, "weekly", tiers[1].Window)
-	require.InDelta(t, 60.0, tiers[1].UsedPercent, 1e-9) // (10000-4000)/10000*100
+	require.InDelta(t, 42.0, tiers[1].UsedPercent, 1e-9)
 	require.Equal(t, "2026-08-18T00:00:00Z", tiers[1].ResetAt)
+	require.Equal(t, "monthly", tiers[2].Window)
+	require.InDelta(t, 70.0, tiers[2].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-10T00:00:00Z", tiers[2].ResetAt)
+
+	// New windows take precedence independently; weekly and monthly remain distinct.
+	combined := parseKimiUsageTiers([]byte(`{
+		"usages": {
+			"limit_5h": {"used_ratio": 0.2},
+			"limit_7d": {"used_ratio": 0.75, "reset_time": "2026-08-18T00:00:00Z"},
+			"limit_month_total": {"used_ratio": 0.5, "reset_time": "2026-09-01T00:00:00Z"}
+		},
+		"limits": [{"detail":{"limit":100,"remaining":1}}],
+		"usage": {"limit":100,"remaining":1}
+	}`))
+	require.Len(t, combined, 3)
+	require.Equal(t, "monthly", combined[2].Window)
+	require.InDelta(t, 75.0, combined[1].UsedPercent, 1e-9)
+	require.InDelta(t, 50.0, combined[2].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-01T00:00:00Z", combined[2].ResetAt)
+
+	mixed := parseKimiUsageTiers([]byte(`{
+		"usages":{"limit_month_total":{"used_ratio":1.1}},
+		"limits":[{"detail":{"limit":100,"remaining":75}}],
+		"usage":{"limit":100,"remaining":60}
+	}`))
+	require.Len(t, mixed, 3)
+	require.InDelta(t, 25.0, mixed[0].UsedPercent, 1e-9)
+	require.InDelta(t, 40.0, mixed[1].UsedPercent, 1e-9)
+	require.InDelta(t, 110.0, mixed[2].UsedPercent, 1e-9)
+
+	codeOnly := parseKimiUsageTiers([]byte(`{"usages":{"limit_month_code":{"used_ratio":0.25,"reset_time":"2026-09-15T00:00:00Z"}}}`))
+	require.Equal(t, []CNQuotaTier{{Window: "monthly", UsedPercent: 25, ResetAt: "2026-09-15T00:00:00Z"}}, codeOnly)
+
+	legacy := parseKimiUsageTiers([]byte(`{
+		"limits": [
+			{"name":"5h","detail":{"limit":1000,"remaining":600,"resetTime":"2026-08-14T15:00:00Z"}},
+			{"name":"ignored-second-detail","detail":{"limit":999,"remaining":0,"resetTime":"2026-08-14T20:00:00Z"}}
+		],
+		"usage": {"limit":10000,"remaining":4000,"resetTime":"2026-08-18T00:00:00Z"}
+	}`))
+	require.Len(t, legacy, 2)
+	require.Equal(t, "5h", legacy[0].Window)
+	require.InDelta(t, 40.0, legacy[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-08-14T15:00:00Z", legacy[0].ResetAt)
+	require.Equal(t, "weekly", legacy[1].Window)
+	require.InDelta(t, 60.0, legacy[1].UsedPercent, 1e-9)
+}
+
+func TestParseKimiUsageTiersRejectsInvalidRatios(t *testing.T) {
+	t.Parallel()
+	tiers := parseKimiUsageTiers([]byte(`{"usages":{
+		"limit_5h":{"used_ratio":null},
+		"limit_7d":{"used_ratio":"not-a-number"},
+		"limit_month_total":{"used_ratio":-0.2}
+	}}`))
+	require.Empty(t, tiers)
 }
 
 // TestParseKimiUsageTiers_LimitZero 不应除零：limit=0 → utilization=0。
@@ -222,12 +276,15 @@ func TestCNQuotaExtraUpdates(t *testing.T) {
 	tiers := []CNQuotaTier{
 		{Window: "5h", UsedPercent: 40, ResetAt: "2026-08-14T15:00:00Z"},
 		{Window: "weekly", UsedPercent: 60, ResetAt: "2026-08-18T00:00:00Z"},
+		{Window: "monthly", UsedPercent: 75, ResetAt: "2026-08-18T00:00:00Z"},
 	}
 	updates := cnQuotaExtraUpdates(PlatformKimi, tiers, now)
 	require.Equal(t, 40.0, updates["kimi_5h_used_percent"])
 	require.Equal(t, "2026-08-14T15:00:00Z", updates["kimi_5h_reset_at"])
 	require.Equal(t, 60.0, updates["kimi_weekly_used_percent"])
 	require.Equal(t, "2026-08-18T00:00:00Z", updates["kimi_weekly_reset_at"])
+	require.Equal(t, 75.0, updates["kimi_monthly_used_percent"])
+	require.Equal(t, "2026-08-18T00:00:00Z", updates["kimi_monthly_reset_at"])
 	require.Equal(t, now.Format(time.RFC3339), updates["kimi_usage_updated_at"])
 }
 
@@ -406,27 +463,29 @@ func TestCNBalanceURL(t *testing.T) {
 	require.Equal(t, "https://api.deepseek.com/user/balance", cnBalanceURL(deepseek))
 }
 
-// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly 候选。
+// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly / Kimi monthly 候选。
 func TestCNProviderThresholdCandidates(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformKimi,
 		Extra: map[string]any{
-			"kimi_5h_used_percent":     90.0,
-			"kimi_5h_reset_at":         "2026-08-14T15:00:00Z",
-			"kimi_weekly_used_percent": 50.0,
-			"kimi_weekly_reset_at":     "2026-08-18T00:00:00Z",
+			"kimi_5h_used_percent":      90.0,
+			"kimi_5h_reset_at":          "2026-08-14T15:00:00Z",
+			"kimi_weekly_used_percent":  50.0,
+			"kimi_weekly_reset_at":      "2026-08-18T00:00:00Z",
+			"kimi_monthly_used_percent": 75.0,
+			"kimi_monthly_reset_at":     "2026-09-01T00:00:00Z",
 		},
 	}
 	cands := cnProviderThresholdCandidates(account, PlatformKimi)
-	// 仅返回非 nil 候选（两窗口均存在 → 2 条）。
+	// Used-percent window candidates include Kimi's monthly bucket.
 	var present []*accountSchedulingThresholdCandidate
 	for _, c := range cands {
 		if c != nil {
 			present = append(present, c)
 		}
 	}
-	require.Len(t, present, 2)
+	require.Len(t, present, 3)
 
 	// 缺少 used 键的窗口不产生候选。
 	partial := &Account{
@@ -529,6 +588,8 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	futureWeekly := now.Add(3 * 24 * time.Hour)
 	pastWeekly := now.Add(-24 * time.Hour)
 
+	monthlyReset := now.Add(30 * 24 * time.Hour)
+
 	// 5h 在未来、weekly 已过期 → 返回 5h。
 	account := &Account{
 		Platform:    PlatformKimi,
@@ -542,18 +603,32 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	require.NotNil(t, got)
 	require.True(t, future5h.Equal(*got))
 
-	// 两窗口均在未来 → 取较早者（429 多由 5h 窗口触发，避免冷却到 weekly 重置）。
+	// 同时检查周窗与月窗保持各自的 reset。
 	both := &Account{
 		Platform:    PlatformKimi,
 		Credentials: map[string]any{"account_mode": AccountModeCoding},
 		Extra: map[string]any{
-			"kimi_5h_reset_at":     future5h.Format(time.RFC3339),
-			"kimi_weekly_reset_at": futureWeekly.Format(time.RFC3339),
+			"kimi_5h_reset_at":      future5h.Format(time.RFC3339),
+			"kimi_weekly_reset_at":  futureWeekly.Format(time.RFC3339),
+			"kimi_monthly_reset_at": monthlyReset.Format(time.RFC3339),
 		},
 	}
 	gotBoth := cnProviderQuotaSnapshotReset(both, now)
 	require.NotNil(t, gotBoth)
 	require.True(t, future5h.Equal(*gotBoth))
+
+	// Once the 5h reset passes, a still-future monthly reset remains a cooldown candidate.
+	monthlyOnly := &Account{
+		Platform:    PlatformKimi,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":      future5h.Format(time.RFC3339),
+			"kimi_monthly_reset_at": monthlyReset.Format(time.RFC3339),
+		},
+	}
+	gotMonthly := cnProviderQuotaSnapshotReset(monthlyOnly, future5h.Add(time.Second))
+	require.NotNil(t, gotMonthly)
+	require.True(t, monthlyReset.Equal(*gotMonthly))
 
 	// 两窗口均过期 → nil。
 	expired := &Account{

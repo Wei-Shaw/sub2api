@@ -84,6 +84,43 @@ describe('CNProviderQuotaCell', () => {
     expect(bars[1].props('resetsAt')).toBe('2026-08-22T00:00:00+08:00')
   })
 
+  it('preserves a stale Kimi monthly snapshot while refreshing it with fresh probe data', async () => {
+    const kimiAccount = {
+      ...account,
+      platform: 'kimi',
+      extra: {
+        kimi_5h_used_percent: 40,
+        kimi_weekly_used_percent: 50,
+        kimi_monthly_used_percent: 99,
+        kimi_monthly_reset_at: '2026-09-01T00:00:00+08:00',
+        kimi_usage_updated_at: new Date().toISOString()
+      }
+    } as Account
+    queryQuota.mockResolvedValue({
+      success: true,
+      tiers: [
+        { window: '5h', used_percent: 12 },
+        { window: 'weekly', used_percent: 40 },
+        { window: 'monthly', used_percent: 60, reset_at: '2026-09-15T00:00:00+08:00' }
+      ]
+    })
+
+    const wrapper = mount(CNProviderQuotaCell, { props: { account: kimiAccount } })
+    await flushPromises()
+    const root = wrapper.get('[data-test="cn-provider-quota"]')
+    const monthlyBar = () => wrapper.findAllComponents(UsageProgressBar).find(
+      (bar) => bar.props('label') === 'admin.accounts.cnProviders.windowMonthly'
+    )
+    expect(monthlyBar()?.props('utilization')).toBe(99)
+
+    await root.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(queryQuota).toHaveBeenCalledWith(kimiAccount.id)
+    expect(monthlyBar()?.props('utilization')).toBe(60)
+    expect(monthlyBar()?.props('resetsAt')).toBe('2026-09-15T00:00:00+08:00')
+  })
+
   it('labels the refresh control with an explicit action verb, not a data caption', async () => {
     const wrapper = mount(CNProviderQuotaCell, { props: { account } })
     await flushPromises()
