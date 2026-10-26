@@ -213,3 +213,17 @@ func TestCNNewAPITokenUsageURL(t *testing.T) {
 	account.Credentials["base_url"] = "https://www.sheapi.top/v1"
 	require.Equal(t, "https://www.sheapi.top/api/usage/token/", cnNewAPITokenUsageURL(account))
 }
+
+func TestIsSheAPIAccount(t *testing.T) {
+	she := newDeepSeekBalanceProbeAccount()
+	she.Credentials["base_url"] = "https://www.sheapi.top"
+	require.True(t, IsSheAPIAccount(she))
+
+	sheV1 := newDeepSeekBalanceProbeAccount()
+	sheV1.Credentials["base_url"] = "https://www.sheapi.top/v1"
+	require.True(t, IsSheAPIAccount(sheV1))
+
+	official := newDeepSeekBalanceProbeAccount()
+	official.Credentials["base_url"] = "https://api.deepseek.com"
+	require.False(t, IsSheAPIAccount(official))
+}

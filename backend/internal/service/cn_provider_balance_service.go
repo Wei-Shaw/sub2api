@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -178,7 +179,8 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 	entries, available, parseErr := parseCNProviderBalanceBody(provider, bodyBytes)
 	// DeepSeek 官方 /user/balance；中转站（NewAPI/OneAPI 等）通常没有该接口，
 	// 会回 HTML/404。回退到 NewAPI 的 sk- 可读余额：GET /api/usage/token/。
-	if provider == PlatformDeepseek && (parseErr != "" || len(entries) == 0) {
+	// sheapi 的 remaining 常为负值/不可信，探测会误触发余额不足停调，跳过回退。
+	if provider == PlatformDeepseek && (parseErr != "" || len(entries) == 0) && !IsSheAPIAccount(account) {
 		if fbEntries, fbAvailable, fbStatus, fbOK := s.tryNewAPITokenUsageBalance(ctx, account, proxyURL, apiKey); fbOK {
 			entries = fbEntries
 			available = fbAvailable
@@ -359,6 +361,35 @@ func cnNewAPITokenUsageURL(account *Account) string {
 		return ""
 	}
 	return buildNewAPISiteAPIURL(base, "/api/usage/token/")
+}
+
+// IsSheAPIAccount 识别 base_url 指向 sheapi 中转站的账号。
+// sheapi 的 /api/usage/token remaining 不可靠（常出现负余额），不能用于自动停调。
+func IsSheAPIAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	baseURL, _ := account.Credentials["base_url"].(string)
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = account.GetOpenAIFormatBaseURL()
+	}
+	return isSheAPIBaseURL(baseURL)
+}
+
+func isSheAPIBaseURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return strings.Contains(strings.ToLower(raw), "sheapi")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return strings.Contains(strings.ToLower(raw), "sheapi")
+	}
+	return host == "sheapi.top" || host == "www.sheapi.top" || strings.HasSuffix(host, ".sheapi.top")
 }
 
 // cnBalanceExtraUpdates 构造 provider 维度的余额快照更新。
