@@ -26,10 +26,19 @@ type persistingTokenSource struct {
 	tokenPath string
 }
 
-func newOAuthHTTPClient(ctx context.Context, source *persistingTokenSource) *http.Client {
-	client := oauth2.NewClient(ctx, nil)
-	client.Transport = &oauth2.Transport{Source: source, Base: client.Transport}
-	return client
+func newOAuthHTTPClient(_ context.Context, source *persistingTokenSource) *http.Client {
+	// IMPORTANT: Do NOT use oauth2.NewClient(ctx, nil) here. With a nil
+	// TokenSource and no custom client in the context, it returns the shared
+	// http.DefaultClient. Replacing its Transport with an OAuth transport
+	// causes token-refresh requests (which use ContextClient → DefaultClient)
+	// to recurse through that same transport and deadlock on the
+	// reuseTokenSource mutex inside golang.org/x/oauth2.
+	return &http.Client{
+		Transport: &oauth2.Transport{
+			Source: source,
+			Base:   http.DefaultTransport,
+		},
+	}
 }
 
 func newPersistingTokenSource(ctx context.Context, config *oauth2.Config, token *oauth2.Token, tokenPath string) (*persistingTokenSource, error) {
