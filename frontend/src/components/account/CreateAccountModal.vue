@@ -228,6 +228,13 @@
             <PlatformIcon platform="minimax" size="sm" />
             MiniMax
           </button>
+          <button type="button" data-testid="platform-button-qwen" @click="selectGenericMultiProtocolPlatform('qwen')" :class="[
+            'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+            form.platform === 'qwen' ? 'bg-white text-violet-700 shadow-sm dark:bg-dark-600 dark:text-violet-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+          ]">
+            <PlatformIcon platform="qwen" size="sm" />
+            Qwen / Bailian
+          </button>
         </div>
 
         <!-- 多模型聚合平台：OpenCode 与平台清单中登记的其他多协议供应商 -->
@@ -595,6 +602,8 @@
           </button>
         </div>
       </div>
+
+      <p v-if="form.platform === 'qwen'" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.qwenModes.hint') }}</p>
 
       <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
       <div v-if="isCNPlatform && !isOpenCodeGoPlatform">
@@ -4424,7 +4433,7 @@ const isGenericMultiProtocolPlatform = computed(
   () => isMultiProtocolPlatform.value && !isCNPlatform.value && !isOpenCodeGoPlatform.value
 )
 const extraMultiProtocolPlatforms = computed(() =>
-  listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go')
+  listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go' && spec.id !== 'qwen')
 )
 const genericAccountModes = computed(() => providerAccountModes(form.platform))
 // 按模型分流的供应商（OpenCode 等）：adaptive 账号携带 protocol_rules。

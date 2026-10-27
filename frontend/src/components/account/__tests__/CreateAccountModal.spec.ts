@@ -655,11 +655,32 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('creates a Qwen Token Plan account with editable protocol endpoints', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-qwen"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('qwen')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'qwen',
+      type: 'apikey',
+      credentials: {
+        account_mode: 'token_cn',
+        api_protocol: 'adaptive',
+        api_base_urls: {
+          chat_completions: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+          anthropic: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic'
+        }
+      }
+    })
+  })
+
   it('groups the aggregators on their own row below the CN providers', () => {
     const wrapper = mountModal()
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
-    expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
+    expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'Qwen / Bailian'])
     expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
   })
 

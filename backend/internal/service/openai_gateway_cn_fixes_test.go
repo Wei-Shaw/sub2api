@@ -61,6 +61,11 @@ func TestFilterCNProviderBillingModelCandidates(t *testing.T) {
 
 	require.Nil(t, svc.filterCNProviderBillingModelCandidates(context.Background(), nil, apiKey, nil))
 
+	qwenAccount := &Account{ID: 4, Platform: PlatformQwen}
+	qwenFiltered := svc.filterCNProviderBillingModelCandidates(context.Background(), qwenAccount, apiKey,
+		[]string{"claude-sonnet-4-5", "qwen3.6-plus"})
+	require.Equal(t, []string{"qwen3.6-plus"}, qwenFiltered)
+
 	openCodeAccount := &Account{ID: 3, Platform: PlatformOpenCodeGo}
 	openCodeFiltered := svc.filterCNProviderBillingModelCandidates(context.Background(), openCodeAccount, apiKey,
 		[]string{"claude-sonnet-4-5", "muse-spark-1.3-contributor-free"})

@@ -88,6 +88,20 @@ func (p *ProviderProfile) SupportsProtocol(mode, protocol string) bool {
 // 上游协议分流方式、Responses 路径约定与 IsMultiProtocolAPIKeyProvider 归属。
 // 默认端点需与前端 credentialsBuilder.ts 的预设保持一致。
 var providerProfiles = map[string]*ProviderProfile{
+	PlatformQwen: {
+		Platform:         PlatformQwen,
+		DefaultMode:      "token_cn",
+		Routing:          ProviderRoutingByInbound,
+		DefaultTestModel: "qwen3.6-plus",
+		Modes: map[string]ProviderEndpoints{
+			"token_cn":  {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", APIProtocolAnthropic: "https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic"}},
+			"token_sg":  {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", APIProtocolAnthropic: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic"}},
+			"coding_cn": {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://coding.dashscope.aliyuncs.com/v1", APIProtocolAnthropic: "https://coding.dashscope.aliyuncs.com/apps/anthropic"}},
+			"coding_sg": {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://coding-intl.dashscope.aliyuncs.com/v1", APIProtocolAnthropic: "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"}},
+			"payg_cn":   {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://dashscope.aliyuncs.com/compatible-mode/v1", APIProtocolAnthropic: "https://dashscope.aliyuncs.com/apps/anthropic"}},
+			"payg_sg":   {BaseURLs: map[string]string{APIProtocolChatCompletions: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", APIProtocolAnthropic: "https://dashscope-intl.aliyuncs.com/apps/anthropic"}},
+		},
+	},
 	PlatformKimi: {
 		Platform:    PlatformKimi,
 		DefaultMode: AccountModePayG,
