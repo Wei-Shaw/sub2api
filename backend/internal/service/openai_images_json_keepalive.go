@@ -32,8 +32,15 @@ type openAIImagesJSONKeepalive struct {
 
 // StartOpenAIImagesJSONKeepalive starts whitespace heartbeats for a
 // non-streaming Images request. A non-positive interval disables the feature.
+// Codex's native Images client relies on the HTTP status to distinguish errors
+// from ImageResponse JSON. Keep its status uncommitted until the result exists;
+// otherwise a late error becomes HTTP 200 and is misreported as missing image
+// fields (for example, "created") instead of the upstream error.
 func StartOpenAIImagesJSONKeepalive(c *gin.Context, interval time.Duration) func() {
 	if c == nil || c.Writer == nil || interval <= 0 {
+		return func() {}
+	}
+	if c.GetHeader("X-Codex-Image-Turn-Id") != "" {
 		return func() {}
 	}
 	originalWriter := c.Writer
