@@ -385,6 +385,10 @@
               <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
             </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.cache_read_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.cacheHitRate') }}</span>
+              <span class="font-medium text-sky-400">{{ formatCacheHitRate(tokenTooltipData) }}</span>
+            </div>
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.totalTokens') }}</span>
@@ -736,6 +740,16 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+// Cache hit rate formatting
+const formatCacheHitRate = (data: AdminUsageLog | null): string => {
+  if (!data) return '0%'
+  const read = data.cache_read_tokens || 0
+  const promptTokens = (data.input_tokens || 0) + read + (data.cache_creation_tokens || 0)
+  if (promptTokens <= 0) return '0%'
+  const rate = (read / promptTokens) * 100
+  return Number.isInteger(rate) ? `${rate}%` : `${rate.toFixed(2)}%`
 }
 
 // Cost tooltip functions
