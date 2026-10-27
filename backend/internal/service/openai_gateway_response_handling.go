@@ -551,6 +551,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					})
 				}
 				outputStarted := openAIStreamClientOutputStarted(c, clientOutputStarted)
+				if !outputStarted && !responsesSemanticOutputSeen && !eventStartsClientOutput && !clientDisconnected && !cyberHit && ctx.Err() == nil {
+					if allowed, _ := ctx.Value(openAIEncryptedContentRecoveryContextKey{}).(bool); allowed &&
+						isOpenAIInvalidEncryptedContentSSE(dataBytes, eventType) {
+						streamEarlyErr = &openAIEncryptedContentRecoverySignal{payload: append([]byte(nil), dataBytes...), eventType: eventType}
+						return
+					}
+				}
 				if !outputStarted && !cyberHit {
 					if compactErr := newOpenAICompactFallbackSignal(c, dataBytes, failedMessage); compactErr != nil {
 						sawFailedEvent = true
