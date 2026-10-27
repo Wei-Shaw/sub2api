@@ -586,10 +586,14 @@ func ProvideOpsCleanupService(
 	return svc
 }
 
-func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
+func ProvideOTLPLogSink() (*OTLPLogSink, error) {
+	return NewOTLPLogSinkFromEnv(context.Background())
+}
+
+func ProvideOpsSystemLogSink(opsRepo OpsRepository, otlpLogSink *OTLPLogSink) *OpsSystemLogSink {
 	sink := NewOpsSystemLogSink(opsRepo)
 	sink.Start()
-	logger.SetSink(sink)
+	logger.SetSink(logger.NewMultiSink(sink, otlpLogSink))
 	return sink
 }
 
@@ -921,6 +925,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
+	ProvideOTLPLogSink,
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,
 	ProvideOpsIngressRejectAggregator,
