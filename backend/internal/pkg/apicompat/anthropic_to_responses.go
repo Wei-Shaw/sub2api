@@ -302,6 +302,11 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
 			continue
 		}
+		// CC Switch carries a JSON reasoning item in this versioned envelope,
+		// not provider ciphertext. Ignore the foreign state when resuming directly.
+		if strings.HasPrefix(sig, "ccswitch-openai-reasoning-v1:") {
+			continue
+		}
 		items = append(items, ResponsesInputItem{
 			Type:             "reasoning",
 			EncryptedContent: sig,
