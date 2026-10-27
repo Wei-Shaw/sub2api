@@ -53,6 +53,7 @@ type ChannelMonitor struct {
 	// 关联已有账号复用账号侧用量服务，Endpoint/APIKey 可为空（quota 模式）。
 	CheckMode string // probe（默认）/ quota / quota_probe；空串按 probe 处理
 	AccountID *int64 // 关联账号 ID；账号删除后被 DB 置空（监控保留并报「账号未关联」）
+	GroupID   *int64 // 关联分组 ID（组级聚合）；分组删除后被 DB 置空；与 AccountID 互斥
 
 	// 请求自定义快照（来自模板拷贝 or 用户手填，运行时直接读取）
 	TemplateID       *int64            // 仅用于 UI 分组 + 一键应用，运行时不用
@@ -99,9 +100,10 @@ type ChannelMonitorCreateParams struct {
 	BodyOverrideMode string
 	BodyOverride     map[string]any
 
-	// 配额模式：CheckMode 空串默认 probe；quota/quota_probe 必须关联账号。
+	// 配额模式：CheckMode 空串默认 probe；quota/quota_probe 必须关联账号或分组（二选一）。
 	CheckMode string
 	AccountID *int64
+	GroupID   *int64
 }
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
@@ -126,10 +128,11 @@ type ChannelMonitorUpdateParams struct {
 	BodyOverrideMode *string
 	BodyOverride     *map[string]any
 
-	// 配额模式：CheckMode nil = 不更新；AccountID nil = 不更新，
-	// 指向 0 = 清空关联（退回 probe 模式时由 CheckMode 分支兜底）。
+	// 配额模式：CheckMode nil = 不更新；AccountID/GroupID nil = 不更新，
+	// 指向 0 = 清空该关联（退回 probe 模式时由 CheckMode 分支兜底）。
 	CheckMode *string
 	AccountID *int64
+	GroupID   *int64
 }
 
 // CheckResult 单个模型一次检测的结果。
@@ -155,6 +158,7 @@ type UserMonitorView struct {
 	PrimaryLatencyMs     *int
 	PrimaryPingLatencyMs *int    // 主模型最近一次 ping 延迟
 	Availability7d       float64 // 0-100
+	CheckMode            string  // 检测模式（用户端展示 quota 监控的口径）
 	ExtraModels          []ExtraModelStatus
 	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
 	// LatestQuota 主模型最近一次配额快照；channel_monitor_show_quota=false
