@@ -140,6 +140,10 @@ export default {
       detectedBrand: 'Mark on the product photo',
       useDetectedBrand: 'Use it',
       detectedBrandWarn: 'If this is a supplier watermark or someone else\'s logo, change it to your own brand or clear it.',
+      // Optional real size — matters when the product photo has no printed measurements
+      productSize: 'Actual size (optional)',
+      productSizePlaceholder: 'e.g. 62 cm tall / 40x30x50 cm',
+      productSizeHint: 'If set, the reference size number is replaced by this; otherwise the label on the product photo is used.',
       step2: 'Step 2: add a photo of your own product',
       // Both images go to the vision model together: the reference fixes the layout,
       // this photo fixes what the copy should say and which product gets drawn.

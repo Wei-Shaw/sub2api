@@ -136,6 +136,10 @@ export default {
       detectedBrand: '商品图上的标识',
       useDetectedBrand: '用它',
       detectedBrandWarn: '如果这是供应商的水印或别人的 logo，请改成你自己的品牌，或者清空。',
+      // 商品实际尺寸（选填）：图上没印数字时，靠这个把尺寸写对
+      productSize: '商品实际尺寸（选填）',
+      productSizePlaceholder: '例：高 62 厘米 / 40×30×50 厘米',
+      productSizeHint: '填了就把参考图上的尺寸数字改成这个；不填则按商品图上的标注。',
       step2: '第 2 步：放你自己的商品图',
       // 拆解时两张图是一起送的：参考图给版式，这张图给「文案该写成什么」。
       productHint:

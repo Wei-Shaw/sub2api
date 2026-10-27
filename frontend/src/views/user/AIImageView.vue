@@ -352,6 +352,20 @@
           <span class="text-amber-600 dark:text-amber-400">{{ t('aiImage.hot.detectedBrandWarn') }}</span>
         </div>
 
+        <!-- 商品实际尺寸（选填）。
+             2026-10-27 检查「观赏/使用/放置」三类时补：
+             猫爬架 620mm、垃圾桶 40cm 这类商品图上没印数字，模型会自己编尺寸。 -->
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <label class="text-gray-500 dark:text-gray-400">{{ t('aiImage.hot.productSize') }}</label>
+          <input
+            v-model="hotProductSize"
+            class="input w-48 text-sm"
+            :placeholder="t('aiImage.hot.productSizePlaceholder')"
+            data-testid="hot-product-size"
+          />
+          <span class="text-gray-400 dark:text-gray-500">{{ t('aiImage.hot.productSizeHint') }}</span>
+        </div>
+
         <!-- 第 1 步：放同行的爆款参考图并拆解。
              一张参考图 = 一张脚本 = 一张出图，所以这里放几张就出几张。 -->
         <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('aiImage.hot.step1') }}</p>
@@ -1459,6 +1473,16 @@ const hotBrandName = ref('')
  * 界面上看得见、改得掉，绝不偷偷用。
  */
 const detectedBrand = ref('')
+
+/**
+ * 爆款复刻的商品实际尺寸（选填，2026-10-27 补）。
+ *
+ * 检查「观赏 / 使用 / 放置」三类时发现的洞：爆款复刻没有尺寸输入，
+ * 卡片上的尺寸数字只能靠模型从商品图上读。
+ * 棕榈树那组能对上是因为图上恰好印着「高：90cm」；
+ * 猫爬架（620mm）、垃圾桶（40cm）这种图上没印数字的，模型就会自己编。
+ */
+const hotProductSize = ref('')
 const scriptCards = ref<OzonScriptCard[]>([])
 /**
  * 这一批脚本的**原始模板快照**（按 key 索引）。
@@ -2290,7 +2314,7 @@ async function runHotAnalyze() {
     if (!hotBrandName.value.trim() && detectedBrand.value) {
       hotBrandName.value = detectedBrand.value
     }
-    setScriptCards(buildHotLayoutCards(layouts, hotBrandName.value))
+    setScriptCards(buildHotLayoutCards(layouts, hotBrandName.value, hotProductSize.value))
     scriptSource.value = 'hot'
     hotNotice.value = t('aiImage.hot.scriptBuilt', { count: layouts.length })
   } finally {
