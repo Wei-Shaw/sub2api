@@ -121,7 +121,6 @@ func (r *kimiQuotaTestRepo) UpdateExtra(ctx context.Context, id int64, updates m
 type kimiQuotaTestUpstream struct {
 	recordingHTTPUpstream
 	request *http.Request
-	body    string
 }
 
 func (u *kimiQuotaTestUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -129,7 +128,7 @@ func (u *kimiQuotaTestUpstream) Do(req *http.Request, proxyURL string, accountID
 	u.request = req
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(u.body)),
+		Body:       io.NopCloser(strings.NewReader(`{"usages":{"limit_5h":{"used_ratio":0.25},"limit_7d":{"used_ratio":0.2},"limit_month_total":{"used_ratio":0.6,"reset_time":"2026-09-01T00:00:00Z"}}}`)),
 	}, nil
 }
 
@@ -145,7 +144,7 @@ func TestCNProviderQuotaService_KimiOfficialHosts(t *testing.T) {
 						"base_url":     "https://" + host + path,
 					},
 				}}}
-				upstream := &kimiQuotaTestUpstream{body: `{"usages":{"limit_5h":{"used_ratio":0.25},"limit_7d":{"used_ratio":0.2},"limit_month_total":{"used_ratio":0.6,"reset_time":"2026-09-01T00:00:00Z"}}}`}
+				upstream := &kimiQuotaTestUpstream{}
 				svc := NewCNProviderQuotaService(repo, nil, upstream, cnProbeAllowlistConfig(host))
 				result, err := svc.QueryUsage(context.Background(), 1)
 				require.NoError(t, err)

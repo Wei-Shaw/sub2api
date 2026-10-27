@@ -75,8 +75,30 @@ func TestCnnormalizeResetTime(t *testing.T) {
 	require.Equal(t, "", cnNormalizeResetTime(""))
 }
 
-// TestParseKimiUsageTiers verifies both the current `usages` schema and legacy compatibility.
+// TestParseKimiUsageTiers 验证 Kimi For Coding /usages 解析：
+//   - 首个 limits[].detail → 5h 桶，utilization=(limit-remaining)/limit*100
+//   - usage → weekly 桶
+//   - 仅取首个 detail（多个 detail 时不应重复产出 5h）
 func TestParseKimiUsageTiers(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"limits": [
+			{"name": "5h", "detail": {"limit": 1000, "remaining": 600, "resetTime": "2026-08-14T15:00:00Z"}},
+			{"name": "ignored-second-detail", "detail": {"limit": 999, "remaining": 0, "resetTime": "2026-08-14T20:00:00Z"}}
+		],
+		"usage": {"limit": 10000, "remaining": 4000, "resetTime": "2026-08-18T00:00:00Z"}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9) // (1000-600)/1000*100
+	require.Equal(t, "2026-08-14T15:00:00Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 60.0, tiers[1].UsedPercent, 1e-9) // (10000-4000)/10000*100
+	require.Equal(t, "2026-08-18T00:00:00Z", tiers[1].ResetAt)
+}
+
+func TestParseKimiUsageTiers_CurrentFormat(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{
 		"usages": {
@@ -126,20 +148,6 @@ func TestParseKimiUsageTiers(t *testing.T) {
 
 	codeOnly := parseKimiUsageTiers([]byte(`{"usages":{"limit_month_code":{"used_ratio":0.25,"reset_time":"2026-09-15T00:00:00Z"}}}`))
 	require.Equal(t, []CNQuotaTier{{Window: "monthly", UsedPercent: 25, ResetAt: "2026-09-15T00:00:00Z"}}, codeOnly)
-
-	legacy := parseKimiUsageTiers([]byte(`{
-		"limits": [
-			{"name":"5h","detail":{"limit":1000,"remaining":600,"resetTime":"2026-08-14T15:00:00Z"}},
-			{"name":"ignored-second-detail","detail":{"limit":999,"remaining":0,"resetTime":"2026-08-14T20:00:00Z"}}
-		],
-		"usage": {"limit":10000,"remaining":4000,"resetTime":"2026-08-18T00:00:00Z"}
-	}`))
-	require.Len(t, legacy, 2)
-	require.Equal(t, "5h", legacy[0].Window)
-	require.InDelta(t, 40.0, legacy[0].UsedPercent, 1e-9)
-	require.Equal(t, "2026-08-14T15:00:00Z", legacy[0].ResetAt)
-	require.Equal(t, "weekly", legacy[1].Window)
-	require.InDelta(t, 60.0, legacy[1].UsedPercent, 1e-9)
 }
 
 func TestParseKimiUsageTiersRejectsInvalidRatios(t *testing.T) {

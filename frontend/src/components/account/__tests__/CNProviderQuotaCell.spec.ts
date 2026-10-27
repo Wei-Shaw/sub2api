@@ -84,7 +84,7 @@ describe('CNProviderQuotaCell', () => {
     expect(bars[1].props('resetsAt')).toBe('2026-08-22T00:00:00+08:00')
   })
 
-  it('preserves a stale Kimi monthly snapshot while refreshing it with fresh probe data', async () => {
+  it('renders the Kimi monthly snapshot and updates it after querying quota', async () => {
     const kimiAccount = {
       ...account,
       platform: 'kimi',

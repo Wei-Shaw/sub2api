@@ -378,9 +378,15 @@ func zhipuQuotaHost(baseURL string) string {
 	}
 }
 
-// parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。新格式以 usages 下的
-// limit_5h / limit_7d / limit_month_total 为准，旧 limits[].detail + usage 保持兼容。
-// 新旧字段可能同时出现，优先新格式，避免重复窗口或旧快照覆盖新配额。
+// parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。
+//
+//   - usages.limit_5h / limit_7d 的 used_ratio → 5h / 周窗口
+//   - usages.limit_month_total / limit_month_code → 月窗口，取已用比例较高者及其重置时间
+//   - limits[].detail.{limit,remaining,resetTime} → 5h 窗口（取首个 detail）
+//   - usage.{limit,remaining,resetTime} → 周窗口
+//
+// 新字段逐窗口优先：used_ratio*100；缺失或无效时兼容旧格式。
+// utilization = (limit-remaining)/limit*100。
 func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 	usageWindows := gjson.GetBytes(body, "usages")
 	fiveHour := kimiUsageRatioTier(usageWindows.Get("limit_5h"), "5h")
@@ -415,7 +421,7 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 				UsedPercent: util,
 				ResetAt:     cnNormalizeResetTime(detail.Get("resetTime").Value()),
 			})
-			return false
+			return false // 取首个 detail 作为 5h 窗口
 		})
 	}
 
