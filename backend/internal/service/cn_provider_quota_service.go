@@ -358,7 +358,11 @@ func kimiQuotaURL(baseURL string) string {
 // minimaxQuotaURL 根据推理域名选择 Token Plan / Coding Plan 额度主机。
 // 官方 FAQ 写 www.minimax.io / www.minimaxi.com，实际以 Bearer Key 打 api.*。
 // 国际站 api.minimax.io；国内站 api.minimaxi.com（含 api.minimax.com 与自定义回落）。
+// 国内站新域名 api.minimax.cn 按官方 FAQ 走 www.minimax.cn 的 Token Plan 端点。
 func minimaxQuotaURL(baseURL string) string {
+	if strings.Contains(strings.ToLower(baseURL), "minimax.cn") {
+		return "https://www.minimax.cn/v1/token_plan/remains"
+	}
 	if strings.Contains(strings.ToLower(baseURL), "minimax.io") {
 		return "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
 	}
