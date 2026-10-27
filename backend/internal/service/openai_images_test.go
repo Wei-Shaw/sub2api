@@ -1973,6 +1973,7 @@ func TestBuildOpenAIImagesResponsesRequest_ForcesImageToolChoice(t *testing.T) {
 	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
 	require.NoError(t, err)
 	require.NotNil(t, body)
+	require.Equal(t, "gpt-5.6-luna", gjson.GetBytes(body, "model").String())
 	require.Equal(t, "image_generation", gjson.GetBytes(body, "tool_choice.type").String())
 	require.Equal(t, "image_generation", gjson.GetBytes(body, "tools.0.type").String())
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(body, "tools.0.model").String())
