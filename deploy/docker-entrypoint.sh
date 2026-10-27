@@ -13,6 +13,12 @@ if [ "$(id -u)" = "0" ]; then
     exec su-exec sub2api "$0" "$@"
 fi
 
+# Railway exposes the listen port via PORT. Keep the legacy SERVER_PORT path
+# working so the Go app, setup flow, and health checks all agree.
+if [ -z "${SERVER_PORT:-}" ] && [ -n "${PORT:-}" ]; then
+    export SERVER_PORT="$PORT"
+fi
+
 # Compatibility: if the first arg looks like a flag (e.g. --help),
 # prepend the default binary so it behaves the same as the old
 # ENTRYPOINT ["/app/sub2api"] style.
