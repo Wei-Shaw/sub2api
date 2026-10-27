@@ -33,6 +33,8 @@ const (
 	FieldUsername = "username"
 	// FieldPassword holds the string denoting the password field in the database.
 	FieldPassword = "password"
+	// FieldConsoleURL holds the string denoting the console_url field in the database.
+	FieldConsoleURL = "console_url"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
@@ -80,6 +82,7 @@ var Columns = []string{
 	FieldPort,
 	FieldUsername,
 	FieldPassword,
+	FieldConsoleURL,
 	FieldStatus,
 	FieldExpiresAt,
 	FieldFallbackMode,
@@ -121,6 +124,8 @@ var (
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
 	PasswordValidator func(string) error
+	// ConsoleURLValidator is a validator for the "console_url" field. It is called by the builders before save.
+	ConsoleURLValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -184,6 +189,11 @@ func ByUsername(opts ...sql.OrderTermOption) OrderOption {
 // ByPassword orders the results by the password field.
 func ByPassword(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPassword, opts...).ToFunc()
+}
+
+// ByConsoleURL orders the results by the console_url field.
+func ByConsoleURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConsoleURL, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.
