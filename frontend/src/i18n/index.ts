@@ -84,6 +84,22 @@ export async function setLocale(locale: string): Promise<void> {
     ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
   ]
   document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
+
+  if (authStore.isAuthenticated) {
+    try {
+      const { updateNotificationEmailLocale } = await import('@/api/user')
+      await updateNotificationEmailLocale(locale)
+      if (authStore.user?.id) {
+        const { markNotificationEmailLocaleInitialized } = await import(
+          './notificationEmailLocale'
+        )
+        markNotificationEmailLocaleInitialized(authStore.user.id)
+      }
+    } catch {
+      // Keep the local language switch effective, but make persistence failures visible.
+      appStore.showError(String(i18n.global.t('common.error')))
+    }
+  }
 }
 
 export function getLocale(): LocaleCode {

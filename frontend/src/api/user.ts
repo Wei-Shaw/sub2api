@@ -44,6 +44,16 @@ export async function updateProfile(profile: {
   return data
 }
 
+/** Persist the current user's notification email locale. */
+export async function updateNotificationEmailLocale(locale: 'en' | 'zh'): Promise<void> {
+  await apiClient.put('/user/notification-email-locale', { locale })
+}
+
+/** Initialize the current user's notification email locale without overwriting it. */
+export async function initializeNotificationEmailLocale(locale: 'en' | 'zh'): Promise<void> {
+  await apiClient.put('/user/notification-email-locale/initialize', { locale })
+}
+
 /**
  * Change current user password
  * @param passwords - Old and new password
@@ -197,6 +207,8 @@ export async function getMyPlatformQuotas(): Promise<PlatformQuotasResponse> {
 export const userAPI = {
   getProfile,
   updateProfile,
+  updateNotificationEmailLocale,
+  initializeNotificationEmailLocale,
   changePassword,
   sendNotifyEmailCode,
   verifyNotifyEmail,
