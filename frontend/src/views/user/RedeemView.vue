@@ -513,9 +513,22 @@ const handleRedeem = async () => {
     // Show success toast
     appStore.showSuccess(t('redeem.codeRedeemSuccess'))
   } catch (error: any) {
-    errorMessage.value = error.response?.data?.detail || t('redeem.failedToRedeem')
+    let detailMsg = ''
+    if (
+      error?.reason === 'REDEEM_BATCH_ALREADY_USED' ||
+      error?.response?.data?.reason === 'REDEEM_BATCH_ALREADY_USED'
+    ) {
+      detailMsg = t('redeem.batchAlreadyRedeemed')
+    } else {
+      detailMsg =
+        error?.message ||
+        error?.response?.data?.message ||
+        error?.response?.data?.detail ||
+        t('redeem.failedToRedeem')
+    }
+    errorMessage.value = detailMsg
 
-    appStore.showError(t('redeem.redeemFailed'))
+    appStore.showError(detailMsg)
   } finally {
     submitting.value = false
   }

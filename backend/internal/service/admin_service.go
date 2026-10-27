@@ -559,12 +559,13 @@ type UpdateProxyInput struct {
 }
 
 type GenerateRedeemCodesInput struct {
-	Count        int
-	Type         string
-	Value        float64
-	GroupID      *int64 // 订阅类型专用：关联的分组ID
-	ValidityDays int    // 订阅类型专用：有效天数
-	ExpiresAt    *time.Time
+	Count              int
+	Type               string
+	Value              float64
+	GroupID            *int64 // 订阅类型专用：关联的分组ID
+	ValidityDays       int    // 订阅类型专用：有效天数
+	ExpiresAt          *time.Time
+	OnlyOncePerAccount bool // 单账号限兑一次
 }
 
 type ProxyBatchDeleteResult struct {

@@ -34,6 +34,8 @@ func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemC
 		SetNillableUsedBy(code.UsedBy).
 		SetNillableUsedAt(code.UsedAt).
 		SetNillableGroupID(code.GroupID).
+		SetNillableBatchID(code.BatchID).
+		SetOnlyOncePerAccount(code.OnlyOncePerAccount).
 		Save(ctx)
 	if err == nil {
 		code.ID = created.ID
@@ -60,7 +62,9 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 			SetNillableExpiresAt(c.ExpiresAt).
 			SetNillableUsedBy(c.UsedBy).
 			SetNillableUsedAt(c.UsedAt).
-			SetNillableGroupID(c.GroupID)
+			SetNillableGroupID(c.GroupID).
+			SetNillableBatchID(c.BatchID).
+			SetOnlyOncePerAccount(c.OnlyOncePerAccount)
 		builders = append(builders, b)
 	}
 
@@ -136,6 +140,7 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 		q = q.Where(
 			redeemcode.Or(
 				redeemcode.CodeContainsFold(search),
+				redeemcode.BatchIDContainsFold(search),
 				redeemcode.HasUserWith(user.EmailContainsFold(search)),
 			),
 		)
@@ -331,12 +336,26 @@ func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error 
 		SetUsedAt(now).
 		Save(ctx)
 	if err != nil {
+		if dbent.IsConstraintError(err) {
+			return service.ErrBatchAlreadyRedeemed
+		}
 		return err
 	}
 	if affected == 0 {
 		return service.ErrRedeemCodeUsed
 	}
 	return nil
+}
+
+func (r *redeemCodeRepository) HasUserRedeemedBatch(ctx context.Context, batchID string, userID int64) (bool, error) {
+	client := clientFromContext(ctx, r.client)
+	return client.RedeemCode.Query().
+		Where(
+			redeemcode.BatchIDEQ(batchID),
+			redeemcode.UsedByEQ(userID),
+			redeemcode.StatusEQ(service.StatusUsed),
+		).
+		Exist(ctx)
 }
 
 func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, limit int) ([]service.RedeemCode, error) {
@@ -413,18 +432,20 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		return nil
 	}
 	out := &service.RedeemCode{
-		ID:           m.ID,
-		Code:         m.Code,
-		Type:         m.Type,
-		Value:        m.Value,
-		Status:       m.Status,
-		UsedBy:       m.UsedBy,
-		UsedAt:       m.UsedAt,
-		Notes:        derefString(m.Notes),
-		CreatedAt:    m.CreatedAt,
-		ExpiresAt:    m.ExpiresAt,
-		GroupID:      m.GroupID,
-		ValidityDays: m.ValidityDays,
+		ID:                 m.ID,
+		Code:               m.Code,
+		Type:               m.Type,
+		Value:              m.Value,
+		Status:             m.Status,
+		UsedBy:             m.UsedBy,
+		UsedAt:             m.UsedAt,
+		Notes:              derefString(m.Notes),
+		CreatedAt:          m.CreatedAt,
+		ExpiresAt:          m.ExpiresAt,
+		GroupID:            m.GroupID,
+		ValidityDays:       m.ValidityDays,
+		BatchID:            m.BatchID,
+		OnlyOncePerAccount: m.OnlyOncePerAccount,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

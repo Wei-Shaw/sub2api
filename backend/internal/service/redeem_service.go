@@ -22,6 +22,7 @@ var (
 	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
 	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrBatchAlreadyRedeemed = infraerrors.Conflict("REDEEM_BATCH_ALREADY_USED", "该活动每个账号限兑一次，您已兑换过该活动的兑换码")
 )
 
 const (
@@ -63,6 +64,7 @@ type RedeemCodeRepository interface {
 	BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	Use(ctx context.Context, id, userID int64) error
+	HasUserRedeemedBatch(ctx context.Context, batchID string, userID int64) (bool, error)
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
@@ -461,6 +463,17 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
+	// 检查批次规则：若该批次开启“单账号限兑一次”，则同一账号终身只能兑换该批次内的任意 1 张码
+	if redeemCode.BatchID != nil && *redeemCode.BatchID != "" && redeemCode.OnlyOncePerAccount {
+		hasUsed, err := s.redeemRepo.HasUserRedeemedBatch(ctx, *redeemCode.BatchID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("check batch redemption limit: %w", err)
+		}
+		if hasUsed {
+			return nil, ErrBatchAlreadyRedeemed
+		}
+	}
+
 	// 获取用户信息
 	_, err = s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -478,8 +491,11 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	txCtx := dbent.NewTxContext(ctx, tx)
 
 	// 【关键】先标记兑换码为已使用，确保并发安全
-	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
+	// 利用数据库乐观锁（WHERE status = 'unused'）及条件唯一索引保证原子性与防重
 	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID); err != nil {
+		if errors.Is(err, ErrBatchAlreadyRedeemed) {
+			return nil, ErrBatchAlreadyRedeemed
+		}
 		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			return nil, ErrRedeemCodeUsed
 		}
