@@ -16,6 +16,12 @@ type Model struct {
 	OwnedBy     string `json:"owned_by"`
 	Type        string `json:"type"`
 	DisplayName string `json:"display_name"`
+	// Unlisted marks a model that the account mapping configures but the upstream
+	// catalog does not advertise. The gateway routes by mapping and never consults
+	// the catalog, so such a model can still serve; the flag only tells the admin
+	// picker why the catalog never mentioned it. It is omitted everywhere else,
+	// which keeps the public /v1/models payload byte-identical.
+	Unlisted bool `json:"unlisted,omitempty"`
 }
 
 // DefaultModels OpenAI models list
