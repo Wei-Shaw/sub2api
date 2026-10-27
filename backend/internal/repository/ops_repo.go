@@ -885,6 +885,21 @@ INSERT INTO ops_system_log_cleanup_audits (
 
 var likePatternReplacer = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
+// opsClientVisibleErrorPredicate is the shared request-error boundary. A
+// cyber_policy failure may be emitted after an SSE response has committed HTTP
+// 200, but it is still a client-visible failed request. Recovered provider
+// attempts with other 2xx statuses deliberately stay outside this predicate.
+func opsClientVisibleErrorPredicate(statusColumn, errorTypeColumn string) string {
+	return "(COALESCE(" + statusColumn + ", 0) >= 400 OR " + errorTypeColumn + " = 'cyber_policy')"
+}
+
+// opsSuccessfulUsagePredicate keeps billable cyber rows available for token
+// accounting while excluding them from successful-request and latency metrics.
+// A cyber request is represented once as a client-visible ops_error_logs row.
+func opsSuccessfulUsagePredicate(requestTypeColumn string) string {
+	return fmt.Sprintf("COALESCE(%s, 0) <> %d", requestTypeColumn, service.RequestTypeCyberBlocked)
+}
+
 // escapeLikePattern 转义 LIKE/ILIKE 通配符（\ % _），避免用户输入被当作通配符。
 // Postgres 默认以反斜杠为转义符，无需额外 ESCAPE 子句。
 func escapeLikePattern(s string) string {
