@@ -2533,8 +2533,27 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	if scheduler == nil {
 		return healthTripped
 	}
+	if !success && len(observedErr) > 0 && isUpstreamModelUnavailableFailure(account, observedErr[0]) {
+		return healthTripped
+	}
 	scheduler.ReportResult(accountID, success, firstTokenMs)
 	return healthTripped
+}
+
+// isUpstreamModelUnavailableFailure reports whether a failed attempt ended on a
+// model refusal that HandleUpstreamModelNotFound cools down per (account,
+// model). Failover already moves the request to another account and the
+// cooldown keeps the pair out of later selections; the refusal says nothing
+// about the account's health for other models, so it must not count against
+// the account's error rate. An idle account that only ever sees other callers'
+// refused models would otherwise sink below every serving account for good.
+func isUpstreamModelUnavailableFailure(account *Account, err error) bool {
+	var failoverErr *UpstreamFailoverError
+	if !errors.As(err, &failoverErr) {
+		return false
+	}
+	_, _, ok := upstreamModelUnavailableCooldown(account, failoverErr.StatusCode, failoverErr.ResponseBody)
+	return ok
 }
 
 // ObserveOpenAIAccountHealthFailure records failures that cannot reach the
