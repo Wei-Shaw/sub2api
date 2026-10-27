@@ -223,6 +223,7 @@ const yiModels = [
 
 // Moonshot/Kimi
 const moonshotModels = [
+  'k3.1-pro', 'k3.1-pro-highspeed',
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
   'kimi-latest',
   'kimi-for-coding',
