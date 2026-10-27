@@ -52,6 +52,7 @@ describe('ccswitchImport utils', () => {
     expect(params.get('configFormat')).toBe('json')
     expect(payload.config).toContain(`base_url = "${endpoint}"`)
     expect(payload.config).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(payload.config.split('[model_providers.')[0]).toContain('web_search = "live"')
     expect(payload.config).toContain('requires_openai_auth = false')
     expect(payload.config).toContain('experimental_bearer_token = "sk-test"')
     expect(payload.config).toContain('"x-openai-actor-authorization" = "local-image-extension"')

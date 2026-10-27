@@ -168,7 +168,7 @@ export default {
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         authModeTitle: 'Codex 认证模式',
-        authModeDescription: '默认 API Key 模式支持 Codex 原生生图；旧版客户端可选择兼容模式。',
+        authModeDescription: '配置默认启用实时联网搜索；API Key 模式支持 Codex 原生生图，旧版客户端可选择兼容模式。',
         authModeLegacy: '兼容模式',
         authModeApiKey: 'API Key 模式（推荐）',
         authModeApiKeyRestartNotice: '此配置包含 API 密钥，请勿共享或提交到仓库。保存后新建会话验证；若配置未加载，再重启 Codex。生图仍需分组权限、可用余额和上游支持。',

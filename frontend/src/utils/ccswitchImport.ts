@@ -117,6 +117,7 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     // It deliberately leaves global [features] settings to the user.
     const codexConfig = `model_provider = "sub2api"
 model = ${JSON.stringify(config.model)}
+web_search = "live"
 
 [model_providers.sub2api]
 name = "Sub2API"

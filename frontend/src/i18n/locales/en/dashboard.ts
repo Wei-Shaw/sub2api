@@ -168,7 +168,7 @@ export default {
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         authModeTitle: 'Codex authentication mode',
-        authModeDescription: 'API Key mode supports native Codex image generation by default. Choose compatibility mode for older clients.',
+        authModeDescription: 'The configuration enables live web search. API Key mode supports native Codex image generation by default. Choose compatibility mode for older clients.',
         authModeLegacy: 'Compatibility mode',
         authModeApiKey: 'API Key Mode (recommended)',
         authModeApiKeyRestartNotice: 'This configuration contains your API key; do not share it or commit it. Save it and test in a new conversation; restart Codex if it has not loaded. Image generation still requires group permission, available balance, and upstream support.',
