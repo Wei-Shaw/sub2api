@@ -3,7 +3,7 @@
  * Base client with interceptors for authentication, token refresh, and error handling
  */
 
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse, type AxiosRequestConfig } from 'axios'
 import type { ApiResponse } from '@/types'
 import { getLocale } from '@/i18n'
 import {
@@ -15,6 +15,15 @@ import {
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
 export { buildApiUrl, buildGatewayUrl } from './url'
+
+export interface AuthRequestConfig extends AxiosRequestConfig {
+  preserveAuthOnError?: boolean
+}
+type SessionRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean
+  _authTokenAtDispatch?: string | null
+  preserveAuthOnError?: boolean
+}
 
 // ==================== Axios Instance Configuration ====================
 
@@ -42,6 +51,7 @@ apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
+    ;(config as SessionRequestConfig)._authTokenAtDispatch = token
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -107,7 +117,7 @@ apiClient.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const originalRequest = error.config as SessionRequestConfig
 
     // Handle common errors
     if (error.response) {
@@ -116,6 +126,16 @@ apiClient.interceptors.response.use(
 
       // Validate `data` shape to avoid HTML error pages breaking our error handling.
       const apiData = (typeof data === 'object' && data !== null ? data : {}) as Record<string, any>
+
+      // Check before refreshing, clearing storage, or redirecting on a late 401.
+      if (status === 401 && originalRequest && '_authTokenAtDispatch' in originalRequest &&
+          originalRequest._authTokenAtDispatch !== localStorage.getItem('auth_token')) {
+        return Promise.reject({ status, code: 'AUTH_SESSION_CHANGED', message: 'Authentication session changed.' })
+      }
+      // Guarded OAuth publication owns its error cleanup in the store.
+      if (status === 401 && originalRequest?.preserveAuthOnError) {
+        return Promise.reject({ status, code: apiData.code, message: apiData.message || error.message })
+      }
 
       // Ops monitoring disabled: treat as feature-flagged 404, and proactively redirect away
       // from ops pages to avoid broken UI states.
