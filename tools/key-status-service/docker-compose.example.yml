@@ -1,0 +1,16 @@
+services:
+  key-status-api:
+    build: .
+    container_name: sub2api-key-status-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "0.0.0.0:18081:18081"
+    networks:
+      - sub2api-network
+
+networks:
+  sub2api-network:
+    external: true
+    name: sub2api-deploy_sub2api-network
