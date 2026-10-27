@@ -29,7 +29,7 @@ import (
 func newAsyncIntegration(t *testing.T) (*OpenAIAsyncHandler, *gin.Engine, *sql.DB) {
 	t.Helper()
 	db := asyncdb.Open(t)
-	cfg := &config.Config{OpenAIAsync: config.OpenAIAsyncConfig{Enabled: true, MaxFileBytes: 1 << 20, UserStorageBytes: 10 << 20, MaxActiveBatches: 5, MaxBatchRequests: 100, MaxLineBytes: 1 << 20, FileTTLSeconds: 3600, MaxOutputBytes: 1 << 20, MaxResponseBytes: 1 << 20, WorkerConcurrency: 1, RequestTimeoutSeconds: 10}}
+	cfg := &config.Config{OpenAIAsync: config.OpenAIAsyncConfig{Enabled: true, MaxFileBytes: 1 << 20, UserStorageBytes: 10 << 20, UserTemporaryStorageBytes: 5 << 20, MaxActiveBatches: 5, MaxBatchRequests: 100, MaxLineBytes: 1 << 20, FileTTLSeconds: 3600, MaxOutputBytes: 1 << 20, MaxResponseBytes: 1 << 20, WorkerConcurrency: 1, RequestTimeoutSeconds: 10}}
 	cfg.Gateway.MaxBodySize = 4 << 20
 	h := NewOpenAIAsyncHandler(db, cfg, nil)
 	r := gin.New()

@@ -2,7 +2,8 @@
 
 These optional APIs provide user-scoped PostgreSQL file storage and durable
 batch execution through the existing Sub2API gateway. They require migration
-`249_openai_files_batches.sql` and `250_openai_batch_request_json.sql` and are disabled by default.
+`249_openai_files_batches.sql`, `250_openai_batch_request_json.sql`, and
+`251_openai_batch_storage_reservations.sql` and are disabled by default.
 
 ## Enable
 
@@ -10,6 +11,7 @@ batch execution through the existing Sub2API gateway. They require migration
 openai_async:
   enabled: true
   max_file_bytes: 33554432          # 32 MiB per upload
+  user_temporary_storage_bytes: 805306368 # 768 MiB, included in user_storage_bytes
   user_storage_bytes: 1073741824   # 1 GiB, shared by this user's keys
   file_ttl_seconds: 2592000        # 30 days
   max_batch_requests: 1000
@@ -27,8 +29,23 @@ apply; allow space for multipart framing above the largest intended upload.
 Increasing the per-file limit increases buffering and database storage costs.
 `max_output_bytes` must reserve at least 4096 bytes per allowed batch request
 (`max_batch_requests * 4096`), including worst-case escaped failure identifiers.
-The configured storage quota counts expired files until bounded cleanup removes
-them. Cleanup runs while workers are enabled. Keep database backups and retention
+The user storage quota includes uploaded/result files, temporary canonical request
+bodies and custom IDs, and the full `max_output_bytes` reservation for each queued
+or executing batch. Results written during execution consume that reservation,
+not additional quota. Admission reserves capacity transactionally before any
+upstream call; concurrent uploads and admissions on other replicas cannot spend
+it. Quota failure rejects submission with HTTP 429 before inference is billed.
+
+`user_temporary_storage_bytes` separately caps temporary inputs plus output
+reservations per user, within `user_storage_bytes`. It must cover at least one
+`max_output_bytes` reservation, and a real batch also needs room for its inputs.
+The default is 768 MiB within a 1 GiB total quota. If you configure a smaller
+total user quota, lower the temporary quota and output reservation accordingly. Five full 32 MiB inputs with
+128 MiB output reservations may hit the storage cap before `max_active_batches`.
+Canonical JSON escaping can make request copies larger than the uploaded JSONL;
+admission measures those actual copies. Deleting an input file frees only that
+file's space, not the batch's independent temporary copy or output reservation.
+Expired files count until bounded cleanup removes them. Cleanup runs while workers are enabled. Keep database backups and retention
 policies appropriate for user-supplied content.
 
 No separate filesystem volume, Redis queue, or new upstream credential is
@@ -126,7 +143,18 @@ its upstream result and billing may already have committed. Pending items resume
 This favors avoiding duplicate submissions over silently claiming exactly-once
 delivery. A client should inspect interruption/timeout errors before resubmitting.
 Output files and final state commit together; temporary item records are then
-deleted. Output exceeding local limits produces an explicit error or failed job.
+deleted. An oversized individual response produces an explicit item error. If output
+export cannot fit after an administrator lowers a quota or output limit, the job
+remains `finalizing` with a `storage_limit_exceeded` error: all stored successful
+and failed results remain intact. It still counts toward active-batch and storage
+limits. Export retries after the database lease expires (normally about one
+minute), including after a restart. It never executes completed requests again.
+Free file storage, restore the quota, or raise the output limit as appropriate;
+there is no need to resubmit the batch. The error clears on successful export.
+Cancellation also preserves completed results and their original error records.
+Retention of blocked results continues until export succeeds; they are not silently
+expired or dropped by file cleanup. Operators should monitor and resolve blocked
+jobs rather than allow them to accumulate.
 
 ## Validation
 
@@ -147,3 +175,38 @@ limits. No JSONB indexing is required for these opaque request bodies.
 
 Official contracts: [Files](https://developers.openai.com/api/reference/resources/files),
 [Batches](https://developers.openai.com/api/reference/resources/batches).
+
+## Capacity and recovery operations
+
+Quotas count logical payload bytes, not PostgreSQL indexes, row headers, WAL,
+TOAST overhead, backups, or process memory. Budget additional database disk and
+memory: uploads and JSONL validation buffer input, and each finalizing worker can
+buffer up to `max_output_bytes` while producing result files. Worker concurrency
+is per replica, so multiply that memory allowance by concurrent workers and
+replicas. Commit briefly holds both temporary results and their output-file copy;
+logical reservations are released in the same transaction as file creation.
+
+For each user, inspect the two sources of logical usage (including expired files
+awaiting cleanup):
+
+```sql
+SELECT user_id, SUM(octet_length(content)) AS file_bytes
+FROM openai_files GROUP BY user_id;
+SELECT user_id, SUM(input_bytes) AS request_copy_bytes,
+       SUM(GREATEST(reserved_output_bytes, result_bytes)) AS output_capacity_bytes
+FROM openai_batches GROUP BY user_id;
+SELECT id, user_id, payload->'errors' AS errors, lease_until
+FROM openai_batches WHERE status = 'finalizing';
+```
+
+Use the authenticated Files API to remove unneeded files or change the configured
+quota and restart the relevant replicas. Do not delete temporary item rows to
+recover space: these can be the only copy of already billed inference results.
+Migration 251 accounts for legacy temporary inputs and results; old queued jobs
+reserve remaining output capacity before any further execution. If capacity is
+unavailable, they wait without replaying previous running items.
+
+The integration suite includes 32 concurrent admissions through independent store
+instances, quota saturation by uploads, reservation release on completion, and
+quota-reduction/restart recovery with an executor-call count of zero. Run with
+`go test -race -tags=integration ./internal/openaiasync` for concurrency checking.

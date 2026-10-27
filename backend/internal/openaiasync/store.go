@@ -13,22 +13,43 @@ import (
 type Store struct {
 	db        *sql.DB
 	quota     int64
+	tempQuota int64
+	maxOutput int64
 	maxActive int
 }
 
-func NewStore(db *sql.DB, quota int64, maxActive int) *Store {
-	return &Store{db: db, quota: quota, maxActive: maxActive}
+func NewStore(db *sql.DB, quota, tempQuota, maxOutput int64, maxActive int) *Store {
+	return &Store{db: db, quota: quota, tempQuota: tempQuota, maxOutput: maxOutput, maxActive: maxActive}
 }
 
 func (s *Store) storageLock(ctx context.Context, tx *sql.Tx, userID int64, size int64) error {
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('openai_files:' || $1::text, 0))`, userID); err != nil {
 		return err
 	}
-	var used int64
+	var used, temporary int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(input_bytes + GREATEST(reserved_output_bytes,result_bytes)),0) FROM openai_batches WHERE user_id=$1`, userID).Scan(&temporary); err != nil {
+		return err
+	}
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(octet_length(content)),0) FROM openai_files WHERE user_id=$1`, userID).Scan(&used); err != nil {
 		return err
 	}
-	if size > s.quota-used {
+	if size > s.quota-used-temporary {
+		return ErrQuota
+	}
+	return nil
+}
+
+// reserveStorage serializes file uploads and batch admission across replicas.
+// Completed results occupy the reserved output budget, not additional quota.
+func (s *Store) reserveStorage(ctx context.Context, tx *sql.Tx, userID, size int64) error {
+	if err := s.storageLock(ctx, tx, userID, size); err != nil {
+		return err
+	}
+	var used int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(input_bytes + GREATEST(reserved_output_bytes,result_bytes)),0) FROM openai_batches WHERE user_id=$1`, userID).Scan(&used); err != nil {
+		return err
+	}
+	if size > s.tempQuota-used {
 		return ErrQuota
 	}
 	return nil
@@ -141,17 +162,26 @@ func (s *Store) CreateBatch(ctx context.Context, j *Job, items []Item) error {
 		return err
 	}
 	var active int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM openai_batches WHERE user_id=$1 AND status IN ('validating','in_progress','cancelling')`, j.UserID).Scan(&active); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM openai_batches WHERE user_id=$1 AND status IN ('validating','in_progress','cancelling','finalizing')`, j.UserID).Scan(&active); err != nil {
 		return err
 	}
 	if active >= s.maxActive {
 		return ErrQuota
 	}
+
+	j.InputBytes = 0
+	for _, item := range items {
+		j.InputBytes += int64(len(item.Body) + len(item.CustomID))
+	}
+	j.OutputBudget = s.maxOutput
+	if err = s.reserveStorage(ctx, tx, j.UserID, j.InputBytes+j.OutputBudget); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(j.Batch)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO openai_batches(id,user_id,api_key_id,group_id,remote_ip,status,payload,created_at,output_ttl_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, j.ID, j.UserID, j.APIKeyID, j.GroupID, j.RemoteIP, j.Status, payload, j.CreatedAt, int64(j.OutputTTL/time.Second))
+	_, err = tx.ExecContext(ctx, `INSERT INTO openai_batches(id,user_id,api_key_id,group_id,remote_ip,status,payload,created_at,output_ttl_seconds,input_bytes,reserved_output_bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, j.ID, j.UserID, j.APIKeyID, j.GroupID, j.RemoteIP, j.Status, payload, j.CreatedAt, int64(j.OutputTTL/time.Second), j.InputBytes, j.OutputBudget)
 	if err != nil {
 		return err
 	}
@@ -224,7 +254,7 @@ func lockJob(ctx context.Context, tx *sql.Tx, id string) (*Job, error) {
 	var lease sql.NullString
 	var ttl int64
 	j := &Job{}
-	err := tx.QueryRowContext(ctx, `SELECT payload,user_id,api_key_id,group_id,remote_ip,lease_token,output_ttl_seconds FROM openai_batches WHERE id=$1 FOR UPDATE`, id).Scan(&raw, &j.UserID, &j.APIKeyID, &j.GroupID, &j.RemoteIP, &lease, &ttl)
+	err := tx.QueryRowContext(ctx, `SELECT payload,user_id,api_key_id,group_id,remote_ip,lease_token,output_ttl_seconds,input_bytes,reserved_output_bytes FROM openai_batches WHERE id=$1 FOR UPDATE`, id).Scan(&raw, &j.UserID, &j.APIKeyID, &j.GroupID, &j.RemoteIP, &lease, &ttl, &j.InputBytes, &j.OutputBudget)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -279,7 +309,7 @@ func (s *Store) Claim(ctx context.Context) (*Job, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var id string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM openai_batches WHERE status IN ('validating','in_progress','cancelling') AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM openai_batches WHERE status IN ('validating','in_progress','cancelling','finalizing') AND (lease_until IS NULL OR lease_until<NOW()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -289,6 +319,27 @@ func (s *Store) Claim(ctx context.Context) (*Job, error) {
 	j, err := lockJob(ctx, tx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	if j.OutputBudget == 0 {
+		var results int64
+		if err = tx.QueryRowContext(ctx, `SELECT result_bytes FROM openai_batches WHERE id=$1`, id).Scan(&results); err != nil {
+			return nil, err
+		}
+		budget := max(s.maxOutput, results)
+		if err = s.reserveStorage(ctx, tx, j.UserID, budget-results); errors.Is(err, ErrQuota) {
+			// Preserve old work and try again after space is available; never infer again.
+			if _, err = tx.ExecContext(ctx, `UPDATE openai_batches SET lease_until=NOW()+INTERVAL '60 seconds',lease_token=$2 WHERE id=$1`, id, NewID("lease_")); err != nil {
+				return nil, err
+			}
+			return nil, tx.Commit()
+		} else if err != nil {
+			return nil, err
+		}
+		j.OutputBudget = budget
+		if _, err = tx.ExecContext(ctx, `UPDATE openai_batches SET reserved_output_bytes=$2 WHERE id=$1`, id, budget); err != nil {
+			return nil, err
+		}
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT ordinal,custom_id FROM openai_batch_items WHERE batch_id=$1 AND state='running'`, id)
 	if err != nil {
@@ -381,7 +432,7 @@ func (s *Store) Next(ctx context.Context, j *Job) (*Item, error) {
 		return nil, err
 	}
 	j.Batch = current.Batch
-	if j.Status == "cancelling" || time.Now().Unix() >= j.ExpiresAt {
+	if j.Status == "cancelling" || j.Status == "finalizing" || time.Now().Unix() >= j.ExpiresAt {
 		return nil, tx.Commit()
 	}
 	i := &Item{}
@@ -408,6 +459,9 @@ func (s *Store) SaveResult(ctx context.Context, j *Job, i *Item, result Result, 
 	current, err := fencedJob(ctx, tx, j)
 	if err != nil {
 		return err
+	}
+	if current.OutputBudget > 0 {
+		maxOutputBytes = min(maxOutputBytes, current.OutputBudget)
 	}
 	var used int64
 	if err = tx.QueryRowContext(ctx, `SELECT result_bytes FROM openai_batches WHERE id=$1`, j.ID).Scan(&used); err != nil {
@@ -455,8 +509,8 @@ func (s *Store) SaveResult(ctx context.Context, j *Job, i *Item, result Result, 
 }
 
 // Finish creates both result files and commits their ids with the terminal
-// state in the same transaction. Clients never see a completed job without its
-// committed output. Quota failure leaves a failed job with an explicit error.
+// state in the same transaction. Quota pressure retains all item results for
+// a later export attempt; completed inference is never replayed or discarded.
 func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -468,7 +522,7 @@ func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error 
 		return err
 	}
 	j.Batch = current.Batch
-	if j.Status != "cancelling" && time.Now().Unix() >= j.ExpiresAt {
+	if j.CancellingAt == nil && time.Now().Unix() >= j.ExpiresAt {
 		r, updateErr := tx.ExecContext(ctx, `UPDATE openai_batch_items SET state='completed',succeeded=FALSE,result=json_build_object('id','batch_req_' || batch_id || '_' || ordinal::text,'custom_id',custom_id,'response',NULL,'error',json_build_object('code','batch_expired','message','The batch completion window expired before this request could be executed')) WHERE batch_id=$1 AND state='pending'`, j.ID)
 		if updateErr != nil {
 			return updateErr
@@ -511,19 +565,28 @@ func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error 
 		return err
 	}
 	now := time.Now().Unix()
-	j.FinalizingAt = &now
+	if j.FinalizingAt == nil {
+		j.FinalizingAt = &now
+	}
 	if tooLarge {
 		err = ErrQuota
 	} else {
-		err = s.storageLock(ctx, tx, j.UserID, total)
+		err = s.storageLock(ctx, tx, j.UserID, total-j.InputBytes-j.OutputBudget)
 	}
 	if err != nil && !errors.Is(err, ErrQuota) {
 		return err
 	}
 	if errors.Is(err, ErrQuota) {
-		j.Status = "failed"
-		j.FailedAt = &now
-		j.Errors = map[string]any{"object": "list", "data": []ItemError{{Code: "storage_limit_exceeded", Message: "Batch output exceeded the local storage limit"}}}
+		j.Status = "finalizing"
+		j.Errors = map[string]any{"object": "list", "data": []ItemError{{Code: "storage_limit_exceeded", Message: "Results are preserved. Free storage or raise the output/storage limits; export will retry without executing requests again."}}}
+		if err = saveJob(ctx, tx, j); err != nil {
+			return err
+		}
+		// Keep the lease until expiry to bound retries to once per minute.
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		return ErrQuota
 	} else {
 		for _, out := range []struct {
 			body []byte
@@ -539,7 +602,7 @@ func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error 
 			}
 		}
 		switch {
-		case j.Status == "cancelling":
+		case j.CancellingAt != nil:
 			j.Status = "cancelled"
 			j.CancelledAt = &now
 		case now >= j.ExpiresAt:
@@ -550,6 +613,7 @@ func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error 
 			j.CompletedAt = &now
 		}
 	}
+	j.Errors = nil
 	if err = saveJob(ctx, tx, j); err != nil {
 		return err
 	}
@@ -557,7 +621,7 @@ func (s *Store) Finish(ctx context.Context, j *Job, maxOutputBytes int64) error 
 	if _, err = tx.ExecContext(ctx, `DELETE FROM openai_batch_items WHERE batch_id=$1`, j.ID); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE openai_batches SET lease_token=NULL,lease_until=NULL WHERE id=$1`, j.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE openai_batches SET lease_token=NULL,lease_until=NULL,input_bytes=0,reserved_output_bytes=0,result_bytes=0 WHERE id=$1`, j.ID); err != nil {
 		return err
 	}
 	return tx.Commit()

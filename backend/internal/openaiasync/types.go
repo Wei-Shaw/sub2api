@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrNotFound  = errors.New("resource not found")
-	ErrQuota     = errors.New("local file storage or active batch quota exceeded")
+	ErrQuota     = errors.New("local storage, temporary batch storage, or active batch quota exceeded")
 	ErrLeaseLost = errors.New("batch execution lease lost")
 )
 
@@ -60,12 +60,14 @@ type Batch struct {
 
 type Job struct {
 	Batch
-	UserID    int64
-	APIKeyID  int64
-	GroupID   int64
-	RemoteIP  string
-	Lease     string
-	OutputTTL time.Duration
+	UserID       int64
+	APIKeyID     int64
+	GroupID      int64
+	RemoteIP     string
+	Lease        string
+	OutputTTL    time.Duration
+	InputBytes   int64
+	OutputBudget int64
 }
 
 type Item struct {

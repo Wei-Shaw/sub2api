@@ -38,7 +38,7 @@ type OpenAIAsyncHandler struct {
 }
 
 func NewOpenAIAsyncHandler(db *sql.DB, cfg *config.Config, keys *service.APIKeyService) *OpenAIAsyncHandler {
-	return &OpenAIAsyncHandler{store: openaiasync.NewStore(db, cfg.OpenAIAsync.UserStorageBytes, cfg.OpenAIAsync.MaxActiveBatches), config: cfg.OpenAIAsync, keys: keys, trustForwardedIP: cfg.TrustForwardedIPForAPIKeyACL()}
+	return &OpenAIAsyncHandler{store: openaiasync.NewStore(db, cfg.OpenAIAsync.UserStorageBytes, cfg.OpenAIAsync.UserTemporaryStorageBytes, cfg.OpenAIAsync.MaxOutputBytes, cfg.OpenAIAsync.MaxActiveBatches), config: cfg.OpenAIAsync, keys: keys, trustForwardedIP: cfg.TrustForwardedIPForAPIKeyACL()}
 }
 
 func (h *OpenAIAsyncHandler) Start(router http.Handler) {

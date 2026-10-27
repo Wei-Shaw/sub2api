@@ -70,7 +70,7 @@ func Open(t *testing.T) *sql.DB {
 	})
 	_, err = db.Exec(`CREATE TABLE users(id BIGINT PRIMARY KEY);CREATE TABLE api_keys(id BIGINT PRIMARY KEY);CREATE TABLE groups(id BIGINT PRIMARY KEY);INSERT INTO users VALUES(1),(2);INSERT INTO api_keys VALUES(1);INSERT INTO groups VALUES(1)`)
 	require.NoError(t, err)
-	for _, name := range []string{"249_openai_files_batches.sql", "250_openai_batch_request_json.sql"} {
+	for _, name := range []string{"249_openai_files_batches.sql", "250_openai_batch_request_json.sql", "251_openai_batch_storage_reservations.sql"} {
 		migration, readErr := migrations.FS.ReadFile(name)
 		require.NoError(t, readErr)
 		for attempt := 0; attempt < 2; attempt++ {

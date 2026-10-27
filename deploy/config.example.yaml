@@ -1320,6 +1320,7 @@ image_storage:
 openai_async:
   enabled: false
   max_file_bytes: 33554432
+  user_temporary_storage_bytes: 805306368 # 768 MiB, included in user_storage_bytes
   user_storage_bytes: 1073741824
   file_ttl_seconds: 2592000
   max_batch_requests: 1000

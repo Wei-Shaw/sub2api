@@ -18,7 +18,7 @@ func TestOpenAIAsyncConfigBounds(t *testing.T) {
 	require.False(t, cfg.Async.Enabled)
 	cfg.Async.Enabled = true
 	require.NoError(t, cfg.Async.Validate())
-	for _, change := range []func(*OpenAIAsyncConfig){func(c *OpenAIAsyncConfig) { c.MaxBatchRequests = 50001 }, func(c *OpenAIAsyncConfig) { c.MaxOutputBytes = 1 }, func(c *OpenAIAsyncConfig) { c.MaxOutputBytes = int64(c.MaxBatchRequests) * 1024 }, func(c *OpenAIAsyncConfig) { c.MaxFileBytes = 513 << 20 }, func(c *OpenAIAsyncConfig) { c.WorkerConcurrency = 0 }} {
+	for _, change := range []func(*OpenAIAsyncConfig){func(c *OpenAIAsyncConfig) { c.MaxBatchRequests = 50001 }, func(c *OpenAIAsyncConfig) { c.MaxOutputBytes = 1 }, func(c *OpenAIAsyncConfig) { c.MaxOutputBytes = int64(c.MaxBatchRequests) * 1024 }, func(c *OpenAIAsyncConfig) { c.MaxFileBytes = 513 << 20 }, func(c *OpenAIAsyncConfig) { c.WorkerConcurrency = 0 }, func(c *OpenAIAsyncConfig) { c.UserTemporaryStorageBytes = c.MaxOutputBytes - 1 }, func(c *OpenAIAsyncConfig) { c.UserTemporaryStorageBytes = c.UserStorageBytes + 1 }} {
 		bad := cfg.Async
 		change(&bad)
 		require.Error(t, bad.Validate())
