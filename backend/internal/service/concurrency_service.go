@@ -25,6 +25,7 @@ type ConcurrencyCache interface {
 	// 键格式: concurrency:account:{accountID}（有序集合，成员为 requestID）
 	AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error
+	RefreshAccountSlot(ctx context.Context, accountID int64, requestID string) (bool, error)
 	GetAccountConcurrency(ctx context.Context, accountID int64) (int, error)
 	GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error)
 
@@ -32,6 +33,11 @@ type ConcurrencyCache interface {
 	IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
 	DecrementAccountWaitCount(ctx context.Context, accountID int64) error
 	GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error)
+
+	// 账号续聊等待队列（账号级，与普通等待分开计数）
+	IncrementAccountContinuationWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
+	DecrementAccountContinuationWaitCount(ctx context.Context, accountID int64) error
+	GetAccountContinuationWaitingCount(ctx context.Context, accountID int64) (int, error)
 
 	// 用户槽位管理
 	// 键格式: concurrency:user:{userID}（有序集合，成员为 requestID）
@@ -310,6 +316,9 @@ func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
 type AcquireResult struct {
 	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
+	// ReuseFunc 准入下一轮并续租；返回 false 表示不可复用。
+	// 仅已持有真实账号槽时非 nil；不限并发的账号（maxConcurrency <= 0）没有真实槽位。
+	ReuseFunc func(ctx context.Context) (bool, error)
 }
 
 type AccountWithConcurrency struct {
@@ -325,8 +334,11 @@ type UserWithConcurrency struct {
 type AccountLoadInfo struct {
 	AccountID          int64
 	CurrentConcurrency int
-	WaitingCount       int
-	LoadRate           int // 0-100+ (percent)
+	// WaitingCount 是普通等待与续聊等待之和，负载率与运维面板沿用它。
+	WaitingCount int
+	// ContinuationWaiting 只数续聊等待者，供调度器判断让出。
+	ContinuationWaiting int
+	LoadRate            int // 0-100+ (percent)
 }
 
 type UserLoadInfo struct {
@@ -355,7 +367,10 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	if err != nil {
 		return nil, err
 	}
+	return s.accountSlotResult(accountID, requestID, acquired), nil
+}
 
+func (s *ConcurrencyService) accountSlotResult(accountID int64, requestID string, acquired bool) *AcquireResult {
 	if acquired {
 		return &AcquireResult{
 			Acquired: true,
@@ -366,13 +381,16 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
 				}
 			},
-		}, nil
+			ReuseFunc: func(ctx context.Context) (bool, error) {
+				return s.cache.RefreshAccountSlot(ctx, accountID, requestID)
+			},
+		}
 	}
 
 	return &AcquireResult{
 		Acquired:    false,
 		ReleaseFunc: nil,
-	}, nil
+	}
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.
@@ -557,6 +575,36 @@ func (s *ConcurrencyService) GetAccountWaitingCount(ctx context.Context, account
 		return 0, nil
 	}
 	return s.cache.GetAccountWaitingCount(ctx, accountID)
+}
+
+func (s *ConcurrencyService) IncrementAccountContinuationWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+	if s.cache == nil {
+		return true, nil
+	}
+	result, err := s.cache.IncrementAccountContinuationWaitCount(ctx, accountID, maxWait)
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: increment continuation wait count failed for account %d: %v", accountID, err)
+		return true, nil
+	}
+	return result, nil
+}
+
+func (s *ConcurrencyService) DecrementAccountContinuationWaitCount(ctx context.Context, accountID int64) {
+	if s.cache == nil {
+		return
+	}
+	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.cache.DecrementAccountContinuationWaitCount(bgCtx, accountID); err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: decrement continuation wait count failed for account %d: %v", accountID, err)
+	}
+}
+
+func (s *ConcurrencyService) GetAccountContinuationWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if s.cache == nil {
+		return 0, nil
+	}
+	return s.cache.GetAccountContinuationWaitingCount(ctx, accountID)
 }
 
 // CalculateMaxWait calculates the maximum wait queue size for a user

@@ -151,6 +151,15 @@ func (s *OpenAIGatewayService) getStickySessionAccountID(ctx context.Context, gr
 	return accountID, err
 }
 
+// LookupStickySessionAccountID 只读会话绑定，供 handler 判定首次准入是否越过了活绑定；未绑定或读失败返回 0。
+func (s *OpenAIGatewayService) LookupStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) int64 {
+	accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
+	if err != nil || accountID <= 0 {
+		return 0
+	}
+	return accountID
+}
+
 func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if s == nil || s.cache == nil || accountID <= 0 {
 		return nil
@@ -176,6 +185,15 @@ func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, gr
 	}
 	openAIStickyLegacyDualWriteTotal.Add(1)
 	return nil
+}
+
+// RefreshStickySessionTTL 供 WS 后续轮刷新会话绑定：长连接每轮不经过调度器，不刷新则连续活跃
+// 超过 TTL 的连接断线重连会被当成新会话。
+func (s *OpenAIGatewayService) RefreshStickySessionTTL(ctx context.Context, groupID *int64, sessionHash string) error {
+	if strings.TrimSpace(sessionHash) == "" {
+		return nil
+	}
+	return s.refreshStickySessionTTL(ctx, groupID, sessionHash, s.openAIWSSessionStickyTTL())
 }
 
 func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, groupID *int64, sessionHash string, ttl time.Duration) error {

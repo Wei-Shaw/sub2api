@@ -18,7 +18,10 @@ import (
 )
 
 const (
-	openAIWSConnMaxAge          = 60 * time.Minute
+	// 上游对单条 Responses WS 连接有 60 分钟硬上限（到期即回 websocket_connection_limit_reached
+	// 并关连接，连接空闲也照样计时），提前 10 分钟轮换：到龄的空闲连接不再借出，
+	// 会话持有的连接由 ingress 在轮次边界主动换连。
+	openAIWSConnMaxAge          = 50 * time.Minute
 	openAIWSConnHealthCheckIdle = 90 * time.Second
 	// 仅对没有常驻读循环的连接实现生效：这类连接空闲时无人应答上游 ping，须在
 	// 上游保活窗口到期前回收。coder/websocket 连接由池常驻读循环应答 ping，不受此阈值约束。
@@ -157,6 +160,14 @@ func (l *openAIWSConnLease) AgeBefore() time.Duration {
 		return 0
 	}
 	return l.ageBefore
+}
+
+// Age 返回该连接自建立起到 now 的时长。
+func (l *openAIWSConnLease) Age(now time.Time) time.Duration {
+	if l == nil || l.conn == nil {
+		return 0
+	}
+	return l.conn.age(now)
 }
 
 func (l *openAIWSConnLease) UpstreamPingCount() int64 {
@@ -1160,6 +1171,7 @@ retryAcquire:
 		evicted = p.cleanupAccountLocked(ap, now, effectiveMaxConns)
 		ap.lastCleanupAt = now
 	}
+	evicted = append(evicted, p.evictExpiredIdleConnsLocked(ap, now)...)
 	pickStartedAt := time.Now()
 	allowReuse := !req.ForceNewConn
 	preferredConnID := stringsTrim(req.PreferredConnID)
@@ -1460,9 +1472,22 @@ acquireAtCapacity:
 	connPick := time.Since(pickStartedAt)
 	p.recordConnPickDuration(connPick)
 	if target == nil {
+		changedCh := ap.changeChannelLocked()
 		ap.mu.Unlock()
 		closeOpenAIWSConns(evicted)
-		return nil, errOpenAIWSConnClosed
+		waitStart := time.Now()
+		if !queueWait.queued {
+			queueWait.queued = true
+			p.metrics.acquireQueueWaitTotal.Add(1)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-changedCh:
+			queueWait.total += time.Since(waitStart)
+			queueWait.rewoken = true
+			goto retryAcquire
+		}
 	}
 	if int(target.waiters.Load()) >= p.queueLimitPerConn() {
 		ap.mu.Unlock()
@@ -1644,8 +1669,6 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 	if ap == nil {
 		return nil
 	}
-	maxAge := p.maxConnAge()
-
 	evicted := make([]*openAIWSConn, 0)
 	for id, conn := range ap.conns {
 		if conn == nil {
@@ -1677,7 +1700,7 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 			p.metrics.scaleDownTotal.Add(1)
 			continue
 		}
-		if maxAge > 0 && !conn.isLeased() && conn.age(now) > maxAge {
+		if !conn.isLeased() && p.isConnExpired(conn, now) {
 			delete(ap.conns, id)
 			if len(ap.pinnedConns) > 0 {
 				delete(ap.pinnedConns, id)
@@ -1744,8 +1767,9 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 		return nil
 	}
 	preferredConnID = stringsTrim(preferredConnID)
+	now := time.Now()
 	if preferredConnID != "" {
-		if conn, ok := ap.conns[preferredConnID]; ok && conn.matchesHandshakeCompatibility(compatibility) {
+		if conn, ok := ap.conns[preferredConnID]; ok && conn.matchesHandshakeCompatibility(compatibility) && !p.isConnExpired(conn, now) {
 			return conn
 		}
 	}
@@ -1753,7 +1777,7 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 	var bestWaiters int32
 	var bestLastUsed time.Time
 	for _, conn := range ap.conns {
-		if conn == nil || !conn.matchesHandshakeCompatibility(compatibility) {
+		if conn == nil || !conn.matchesHandshakeCompatibility(compatibility) || p.isConnExpired(conn, now) {
 			continue
 		}
 		waiters := conn.waiters.Load()
@@ -2261,6 +2285,28 @@ func (p *openAIWSConnPool) maxIdlePerAccount() int {
 
 func (p *openAIWSConnPool) maxConnAge() time.Duration {
 	return openAIWSConnMaxAge
+}
+
+func (p *openAIWSConnPool) isConnExpired(conn *openAIWSConn, now time.Time) bool {
+	maxAge := p.maxConnAge()
+	return conn != nil && maxAge > 0 && conn.age(now) >= maxAge
+}
+
+// evictExpiredIdleConnsLocked 在每次借出前剔除到龄的空闲连接，不受 cleanup 节流间隔约束；
+// 租出中与被会话钉住的连接不在此处理，由持有方在轮次边界换连。
+func (p *openAIWSConnPool) evictExpiredIdleConnsLocked(ap *openAIWSAccountPool, now time.Time) []*openAIWSConn {
+	if ap == nil || len(ap.conns) == 0 {
+		return nil
+	}
+	var evicted []*openAIWSConn
+	for id, conn := range ap.conns {
+		if conn == nil || conn.isLeased() || p.isConnPinnedLocked(ap, id) || !p.isConnExpired(conn, now) {
+			continue
+		}
+		delete(ap.conns, id)
+		evicted = append(evicted, conn)
+	}
+	return evicted
 }
 
 func (p *openAIWSConnPool) queueLimitPerConn() int {
