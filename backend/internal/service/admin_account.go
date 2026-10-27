@@ -408,6 +408,42 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 	return normalized, nil
 }
 
+const openAIOAuthResponsesWebsocketsV2ModeKey = "openai_oauth_responses_websockets_v2_mode"
+const openAIOAuthResponsesWebsocketsV2EnabledKey = "openai_oauth_responses_websockets_v2_enabled"
+
+// normalizeOpenAIOAuthResponsesWebsocketsV2Default applies the configured
+// account default only at creation time. An explicit mode or legacy enable
+// flag remains authoritative, so imports and duplicates cannot silently
+// change an operator's choice.
+func normalizeOpenAIOAuthResponsesWebsocketsV2Default(configuredMode, platform, accountType string, extra map[string]any) map[string]any {
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
+		return extra
+	}
+	if extra == nil {
+		extra = make(map[string]any)
+	}
+	if _, exists := extra[openAIOAuthResponsesWebsocketsV2ModeKey]; exists {
+		return extra
+	}
+	if _, exists := extra[openAIOAuthResponsesWebsocketsV2EnabledKey]; exists {
+		return extra
+	}
+	if _, exists := extra["responses_websockets_v2_enabled"]; exists {
+		return extra
+	}
+	if _, exists := extra["openai_ws_enabled"]; exists {
+		return extra
+	}
+
+	mode := OpenAIWSIngressModeOff
+	if configured := strings.TrimSpace(configuredMode); configured != "" {
+		mode = normalizeOpenAIWSIngressDefaultMode(configured)
+	}
+	extra[openAIOAuthResponsesWebsocketsV2ModeKey] = mode
+	extra[openAIOAuthResponsesWebsocketsV2EnabledKey] = mode != OpenAIWSIngressModeOff
+	return extra
+}
+
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
@@ -483,6 +519,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	configuredMode := ""
+	if s != nil && s.cfg != nil {
+		configuredMode = s.cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault
+	}
+	accountExtra = normalizeOpenAIOAuthResponsesWebsocketsV2Default(configuredMode, input.Platform, input.Type, accountExtra)
 	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
