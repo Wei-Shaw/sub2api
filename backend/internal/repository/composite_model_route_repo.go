@@ -47,6 +47,7 @@ func (r *compositeModelRouteRepository) Create(ctx context.Context, route *servi
 		SetMatchType(route.MatchType).
 		SetTargetPlatform(route.TargetPlatform).
 		SetUpstreamModel(route.UpstreamModel).
+		SetFallbackTargets(append([]service.CompositeFallbackTarget{}, route.FallbackTargets...)).
 		SetEndpoint(route.Endpoint).
 		SetPriority(route.Priority).
 		SetEnabled(route.Enabled).
@@ -68,6 +69,7 @@ func (r *compositeModelRouteRepository) Update(ctx context.Context, route *servi
 		SetMatchType(route.MatchType).
 		SetTargetPlatform(route.TargetPlatform).
 		SetUpstreamModel(route.UpstreamModel).
+		SetFallbackTargets(append([]service.CompositeFallbackTarget{}, route.FallbackTargets...)).
 		SetEndpoint(route.Endpoint).
 		SetPriority(route.Priority).
 		SetEnabled(route.Enabled).
@@ -97,17 +99,18 @@ func compositeModelRouteEntityToService(row *dbent.CompositeModelRoute) *service
 		return nil
 	}
 	return &service.CompositeModelRoute{
-		ID:             row.ID,
-		GroupID:        row.GroupID,
-		PublicModel:    row.PublicModel,
-		MatchType:      row.MatchType,
-		TargetPlatform: row.TargetPlatform,
-		UpstreamModel:  row.UpstreamModel,
-		Endpoint:       row.Endpoint,
-		Priority:       row.Priority,
-		Enabled:        row.Enabled,
-		Notes:          derefString(row.Notes),
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		ID:              row.ID,
+		GroupID:         row.GroupID,
+		PublicModel:     row.PublicModel,
+		MatchType:       row.MatchType,
+		TargetPlatform:  row.TargetPlatform,
+		UpstreamModel:   row.UpstreamModel,
+		FallbackTargets: append([]service.CompositeFallbackTarget{}, row.FallbackTargets...),
+		Endpoint:        row.Endpoint,
+		Priority:        row.Priority,
+		Enabled:         row.Enabled,
+		Notes:           derefString(row.Notes),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
 	}
 }

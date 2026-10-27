@@ -510,6 +510,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	originalModel = compositeFallbackResponseModel(ctx, originalModel)
 	// 9. Handle normal response
 	// Upstream is always streaming; choose response format based on client preference.
 	var result *OpenAIForwardResult

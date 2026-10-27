@@ -440,6 +440,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
+	if err := ValidateCompositeFallbackAccount(ctx, account, requestedModel); err != nil {
+		return "composite_fallback_model_restricted"
+	}
 	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return "model_not_supported"
 	}

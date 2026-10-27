@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -31,6 +32,8 @@ const (
 	FieldTargetPlatform = "target_platform"
 	// FieldUpstreamModel holds the string denoting the upstream_model field in the database.
 	FieldUpstreamModel = "upstream_model"
+	// FieldFallbackTargets holds the string denoting the fallback_targets field in the database.
+	FieldFallbackTargets = "fallback_targets"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
 	FieldEndpoint = "endpoint"
 	// FieldPriority holds the string denoting the priority field in the database.
@@ -63,6 +66,7 @@ var Columns = []string{
 	FieldMatchType,
 	FieldTargetPlatform,
 	FieldUpstreamModel,
+	FieldFallbackTargets,
 	FieldEndpoint,
 	FieldPriority,
 	FieldEnabled,
@@ -107,6 +111,8 @@ var (
 	DefaultUpstreamModel string
 	// UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
 	UpstreamModelValidator func(string) error
+	// DefaultFallbackTargets holds the default value on creation for the "fallback_targets" field.
+	DefaultFallbackTargets []domain.CompositeFallbackTarget
 	// DefaultEndpoint holds the default value on creation for the "endpoint" field.
 	DefaultEndpoint string
 	// EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.

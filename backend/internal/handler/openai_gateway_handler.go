@@ -256,6 +256,9 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
+	if decision, ok := service.CompositeFallbackDecisionFromContext(parent); ok {
+		base = service.WithCompositeRouteDecision(base, decision)
+	}
 	return base
 }
 
@@ -663,6 +666,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(pricingCtx)
+	fallback := newCompositeHTTPFallback(c, body, imageIntent || needsResponses)
 
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
@@ -670,6 +674,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// account attempt so a canceled request never starts a failover replay.
 		if !openAIRequestAllowsFailoverReplay(c) {
 			return
+		}
+		if model, mapping, targetBody, active, targetErr := h.prepareCompositeHTTPTarget(c, apiKey, subscription, body); active {
+			if targetErr != nil {
+				status, code, message, _ := billingErrorDetails(targetErr)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
+			forwardModel, channelMapping, forwardBody = model, mapping, targetBody
+			requestPlatform = openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+			requiredCapability = openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
+			c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(c.Request.Context(), model, legacyCompact))
 		}
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
@@ -696,6 +711,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if switchCount < maxAccountSwitches && fallback.advance(c, err, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			if len(failedAccountIDs) == 0 {
 				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -718,6 +737,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if switchCount < maxAccountSwitches && fallback.advance(c, service.ErrNoAvailableAccounts, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -909,6 +932,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
+						if switchCount < maxAccountSwitches && fallback.advance(c, nil, failoverErr) {
+							failedAccountIDs[account.ID] = struct{}{}
+							switchCount++
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -936,6 +964,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
+					if switchCount < maxAccountSwitches && switchCount >= maxAccountSwitches-1 && fallback.advance(c, nil, failoverErr) {
+						switchCount++
+						continue
+					}
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -1296,10 +1328,21 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
+	fallback := newCompositeHTTPFallback(c, body, false)
 
 	for {
 		if failoverClientGone(c) {
 			return
+		}
+		if model, mapping, targetBody, active, targetErr := h.prepareCompositeHTTPTarget(c, apiKey, subscription, body); active {
+			if targetErr != nil {
+				status, code, message, _ := billingErrorDetails(targetErr)
+				h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
+			routingModel, effectiveMappedModel, channelMappingMsg = model, model, mapping
+			mappedBodyForMessages = newOpenAIModelMappedBodyCache(targetBody, h.gatewayService.ReplaceModelInBody)
+			requestPlatform = openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 		}
 		currentRoutingModel := routingModel
 		if effectiveMappedModel != "" {
@@ -1329,6 +1372,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if switchCount < maxAccountSwitches && fallback.advance(c, err, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
 					cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
@@ -1348,6 +1395,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if switchCount < maxAccountSwitches && fallback.advance(c, service.ErrNoAvailableAccounts, lastFailoverErr) {
+				switchCount++
+				continue
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -1504,6 +1555,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
+					if switchCount < maxAccountSwitches && switchCount >= maxAccountSwitches-1 && fallback.advance(c, nil, failoverErr) {
+						switchCount++
+						continue
+					}
 					if switchCount >= maxAccountSwitches {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
