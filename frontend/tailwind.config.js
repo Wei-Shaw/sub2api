@@ -7,17 +7,17 @@ export default {
       colors: {
         // 主色调 - Teal/Cyan 青色系
         primary: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-          950: '#042f2e'
+          50: 'rgb(var(--primary-50) / <alpha-value>)',
+          100: 'rgb(var(--primary-100) / <alpha-value>)',
+          200: 'rgb(var(--primary-200) / <alpha-value>)',
+          300: 'rgb(var(--primary-300) / <alpha-value>)',
+          400: 'rgb(var(--primary-400) / <alpha-value>)',
+          500: 'rgb(var(--primary-500) / <alpha-value>)',
+          600: 'rgb(var(--primary-600) / <alpha-value>)',
+          700: 'rgb(var(--primary-700) / <alpha-value>)',
+          800: 'rgb(var(--primary-800) / <alpha-value>)',
+          900: 'rgb(var(--primary-900) / <alpha-value>)',
+          950: 'rgb(var(--primary-950) / <alpha-value>)'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -75,7 +75,7 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+        'gradient-primary': 'linear-gradient(135deg, rgb(var(--primary-500)) 0%, rgb(var(--primary-600)) 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         'gradient-glass':
           'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',

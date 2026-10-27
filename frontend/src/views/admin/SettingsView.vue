@@ -6411,6 +6411,24 @@
                 </div>
               </div>
 
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label for="site-theme" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.site.appearanceTheme") }}</label>
+                  <select id="site-theme" v-model="form.site_theme" class="input">
+                    <option value="teal">{{ t("admin.settings.site.themeTeal") }}</option>
+                    <option value="blue">{{ t("admin.settings.site.themeBlue") }}</option>
+                    <option value="violet">{{ t("admin.settings.site.themeViolet") }}</option>
+                    <option value="rose">{{ t("admin.settings.site.themeRose") }}</option>
+                    <option value="green">{{ t("admin.settings.site.themeGreen") }}</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label for="custom-css" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.site.customCss") }}</label>
+                <textarea id="custom-css" v-model="form.custom_css" class="input font-mono text-sm" rows="8" maxlength="65536" spellcheck="false"></textarea>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.customCssHint") }}</p>
+              </div>
+
               <!-- API Base URL -->
               <div>
                 <label
@@ -9767,6 +9785,8 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
+  site_theme: "teal",
+  custom_css: "",
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -11474,6 +11494,8 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      site_theme: form.site_theme,
+      custom_css: form.custom_css,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
