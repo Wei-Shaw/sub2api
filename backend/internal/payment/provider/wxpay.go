@@ -3,13 +3,20 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -46,6 +53,11 @@ const (
 	wxpayModeJSAPI  = "jsapi"
 )
 
+const (
+	wxpayCredentialModeAPIv3 = "apiv3"
+	wxpayCredentialModeAPIv2 = "apiv2"
+)
+
 // WeChat Pay trade states.
 const (
 	wxpayTradeStateSuccess  = "SUCCESS"
@@ -69,6 +81,26 @@ var (
 	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
 		return svc.PrepayWithRequestPayment(ctx, req)
 	}
+	wxpayAPIv2Post = func(ctx context.Context, endpoint string, payload string) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("wechat api v2 http status %d", resp.StatusCode)
+		}
+		return data, nil
+	}
 )
 
 type Wxpay struct {
@@ -82,11 +114,7 @@ type Wxpay struct {
 const wxpayAPIv3KeyLength = 32
 
 func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
-	// All fields are required. Platform-certificate mode is intentionally unsupported —
-	// WeChat has been migrating all merchants to the pubkey verifier since 2024-10,
-	// and newly-provisioned merchants cannot download platform certificates at all.
-	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "certSerial", "publicKey", "publicKeyId"}
-	for _, k := range required {
+	for _, k := range []string{"appId", "mchId", "apiV3Key"} {
 		if config[k] == "" {
 			return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
 				WithMetadata(map[string]string{"key": k})
@@ -100,6 +128,15 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 				"actual":   strconv.Itoa(len(config["apiV3Key"])),
 			})
 	}
+	if wxpayCredentialMode(config) == wxpayCredentialModeAPIv2 {
+		return &Wxpay{instanceID: instanceID, config: config}, nil
+	}
+	for _, k := range []string{"privateKey", "certSerial", "publicKey", "publicKeyId"} {
+		if config[k] == "" {
+			return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
+				WithMetadata(map[string]string{"key": k})
+		}
+	}
 	// Parse PEMs eagerly so malformed keys surface at save time, not at order creation.
 	if _, err := utils.LoadPrivateKey(formatPEM(config["privateKey"], "PRIVATE KEY")); err != nil {
 		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY", "invalid_key").
@@ -110,6 +147,22 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 			WithMetadata(map[string]string{"key": "publicKey"})
 	}
 	return &Wxpay{instanceID: instanceID, config: config}, nil
+}
+
+func wxpayCredentialMode(config map[string]string) string {
+	for _, key := range []string{"privateKey", "certSerial", "publicKey", "publicKeyId"} {
+		if strings.TrimSpace(config[key]) == "" {
+			return wxpayCredentialModeAPIv2
+		}
+	}
+	return wxpayCredentialModeAPIv3
+}
+
+func (w *Wxpay) credentialMode() string {
+	if w.coreClient != nil || w.notifyHandler != nil {
+		return wxpayCredentialModeAPIv3
+	}
+	return wxpayCredentialMode(w.config)
 }
 
 func (w *Wxpay) Name() string        { return "Wxpay" }
@@ -169,6 +222,9 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 }
 
 func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	if w.credentialMode() == wxpayCredentialModeAPIv2 {
+		return w.createAPIv2Payment(ctx, req)
+	}
 	client, err := w.ensureClient()
 	if err != nil {
 		return nil, err
@@ -199,6 +255,98 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 		return w.prepayNative(ctx, client, req, notifyURL, totalFen)
 	default:
 		return nil, fmt.Errorf("wxpay create payment: unsupported mode %q", mode)
+	}
+}
+
+func (w *Wxpay) createAPIv2Payment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	notifyURL := req.NotifyURL
+	if notifyURL == "" {
+		notifyURL = w.config["notifyUrl"]
+	}
+	if notifyURL == "" {
+		return nil, fmt.Errorf("wxpay notifyUrl is required")
+	}
+	totalFen, err := payment.YuanToFen(req.Amount)
+	if err != nil {
+		return nil, fmt.Errorf("wxpay create payment: %w", err)
+	}
+	tradeType := "NATIVE"
+	if strings.TrimSpace(req.OpenID) != "" {
+		tradeType = "JSAPI"
+	} else if req.IsMobile {
+		if strings.TrimSpace(req.ClientIP) == "" {
+			return nil, fmt.Errorf("wxpay H5 payment requires client IP")
+		}
+		tradeType = "MWEB"
+	}
+	fields := map[string]string{
+		"appid":            w.config["appId"],
+		"mch_id":           w.config["mchId"],
+		"nonce_str":        wxpayAPIv2Nonce(req.OrderID),
+		"body":             req.Subject,
+		"out_trade_no":     req.OrderID,
+		"total_fee":        strconv.FormatInt(totalFen, 10),
+		"spbill_create_ip": strings.TrimSpace(req.ClientIP),
+		"notify_url":       notifyURL,
+		"trade_type":       tradeType,
+	}
+	if fields["body"] == "" {
+		fields["body"] = "Sub2API"
+	}
+	if fields["spbill_create_ip"] == "" {
+		fields["spbill_create_ip"] = "127.0.0.1"
+	}
+	if tradeType == "JSAPI" {
+		fields["openid"] = strings.TrimSpace(req.OpenID)
+		fields["appid"] = ResolveWxpayJSAPIAppID(w.config)
+	}
+	reqXML := wxpayAPIv2BuildSignedXML(fields, w.config["apiV3Key"])
+	respXML, err := wxpayAPIv2Post(ctx, "https://api.mch.weixin.qq.com/pay/unifiedorder", reqXML)
+	if err != nil {
+		return nil, fmt.Errorf("wxpay api v2 unifiedorder: %w", err)
+	}
+	resp, err := parseWxpayAPIv2UnifiedOrder(respXML)
+	if err != nil {
+		return nil, err
+	}
+	switch tradeType {
+	case "NATIVE":
+		return &payment.CreatePaymentResponse{TradeNo: req.OrderID, QRCode: resp.CodeURL}, nil
+	case "MWEB":
+		h5URL, err := appendWxpayRedirectURL(resp.MWebURL, req)
+		if err != nil {
+			return nil, err
+		}
+		return &payment.CreatePaymentResponse{TradeNo: req.OrderID, PayURL: h5URL}, nil
+	case "JSAPI":
+		return &payment.CreatePaymentResponse{
+			TradeNo:    req.OrderID,
+			ResultType: payment.CreatePaymentResultJSAPIReady,
+			JSAPI:      buildWxpayAPIv2JSAPIPayload(fields["appid"], resp.PrepayID, w.config["apiV3Key"]),
+		}, nil
+	default:
+		return nil, fmt.Errorf("wxpay api v2 unsupported trade type %q", tradeType)
+	}
+}
+
+func buildWxpayAPIv2JSAPIPayload(appID, prepayID, apiKey string) *payment.WechatJSAPIPayload {
+	packageValue := "prepay_id=" + strings.TrimSpace(prepayID)
+	nonce := wxpayAPIv2Nonce(appID + ":" + prepayID + ":jsapi")
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	signFields := map[string]string{
+		"appId":     strings.TrimSpace(appID),
+		"timeStamp": timestamp,
+		"nonceStr":  nonce,
+		"package":   packageValue,
+		"signType":  "MD5",
+	}
+	return &payment.WechatJSAPIPayload{
+		AppID:     signFields["appId"],
+		TimeStamp: signFields["timeStamp"],
+		NonceStr:  signFields["nonceStr"],
+		Package:   signFields["package"],
+		SignType:  signFields["signType"],
+		PaySign:   wxpayAPIv2Sign(signFields, apiKey),
 	}
 }
 
@@ -389,7 +537,114 @@ func buildWxpayTransactionMetadata(tx *payments.Transaction) map[string]string {
 	return metadata
 }
 
+type wxpayAPIv2UnifiedOrderResponse struct {
+	ReturnCode string `xml:"return_code"`
+	ReturnMsg  string `xml:"return_msg"`
+	ResultCode string `xml:"result_code"`
+	ErrCode    string `xml:"err_code"`
+	ErrCodeDes string `xml:"err_code_des"`
+	CodeURL    string `xml:"code_url"`
+	MWebURL    string `xml:"mweb_url"`
+	PrepayID   string `xml:"prepay_id"`
+}
+
+func parseWxpayAPIv2UnifiedOrder(data []byte) (*wxpayAPIv2UnifiedOrderResponse, error) {
+	var resp wxpayAPIv2UnifiedOrderResponse
+	if err := xml.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("wxpay api v2 parse unifiedorder: %w", err)
+	}
+	if resp.ReturnCode != "SUCCESS" {
+		msg := strings.TrimSpace(resp.ReturnMsg)
+		if msg == "" {
+			msg = "return_code=" + resp.ReturnCode
+		}
+		return nil, fmt.Errorf("wxpay api v2 unifiedorder failed: %s", msg)
+	}
+	if resp.ResultCode != "SUCCESS" {
+		msg := strings.TrimSpace(resp.ErrCodeDes)
+		if msg == "" {
+			msg = strings.TrimSpace(resp.ErrCode)
+		}
+		if msg == "" {
+			msg = "result_code=" + resp.ResultCode
+		}
+		return nil, fmt.Errorf("wxpay api v2 unifiedorder failed: %s", msg)
+	}
+	return &resp, nil
+}
+
+func wxpayAPIv2Nonce(seed string) string {
+	sum := md5.Sum([]byte(seed + ":sub2api:wxpay"))
+	return hex.EncodeToString(sum[:])
+}
+
+func wxpayAPIv2BuildSignedXML(fields map[string]string, apiKey string) string {
+	clean := make(map[string]string, len(fields)+1)
+	for k, v := range fields {
+		v = strings.TrimSpace(v)
+		if k != "" && v != "" {
+			clean[k] = v
+		}
+	}
+	clean["sign"] = wxpayAPIv2Sign(clean, apiKey)
+	var b strings.Builder
+	_, _ = b.WriteString("<xml>")
+	order := []string{"appid", "mch_id", "nonce_str", "body", "out_trade_no", "total_fee", "spbill_create_ip", "notify_url", "trade_type", "openid", "sign"}
+	written := map[string]bool{}
+	for _, k := range order {
+		if v, ok := clean[k]; ok {
+			writeWxpayAPIv2XMLField(&b, k, v)
+			written[k] = true
+		}
+	}
+	for k, v := range clean {
+		if !written[k] {
+			writeWxpayAPIv2XMLField(&b, k, v)
+		}
+	}
+	_, _ = b.WriteString("</xml>")
+	return b.String()
+}
+
+func writeWxpayAPIv2XMLField(b *strings.Builder, key, value string) {
+	_ = b.WriteByte('<')
+	_, _ = b.WriteString(key)
+	_ = b.WriteByte('>')
+	_, _ = b.WriteString(html.EscapeString(value))
+	_, _ = b.WriteString("</")
+	_, _ = b.WriteString(key)
+	_ = b.WriteByte('>')
+}
+
+func wxpayAPIv2Sign(fields map[string]string, apiKey string) string {
+	keys := make([]string, 0, len(fields))
+	for k, v := range fields {
+		if k != "" && k != "sign" && strings.TrimSpace(v) != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys)+1)
+	for _, k := range keys {
+		parts = append(parts, k+"="+strings.TrimSpace(fields[k]))
+	}
+	parts = append(parts, "key="+apiKey)
+	sum := md5.Sum([]byte(strings.Join(parts, "&")))
+	return strings.ToUpper(hex.EncodeToString(sum[:]))
+}
+
 func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
+	if w.credentialMode() == wxpayCredentialModeAPIv2 {
+		return &payment.QueryOrderResponse{
+			TradeNo: tradeNo,
+			Status:  payment.ProviderStatusPending,
+			Metadata: map[string]string{
+				wxpayMetadataAppID:      strings.TrimSpace(w.config["appId"]),
+				wxpayMetadataMerchantID: strings.TrimSpace(w.config["mchId"]),
+				wxpayMetadataCurrency:   wxpayCurrency,
+			},
+		}, nil
+	}
 	c, err := w.ensureClient()
 	if err != nil {
 		return nil, err
@@ -423,6 +678,9 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 }
 
 func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
+	if w.credentialMode() == wxpayCredentialModeAPIv2 {
+		return w.verifyAPIv2Notification(rawBody)
+	}
 	if _, err := w.ensureClient(); err != nil {
 		return nil, err
 	}
@@ -452,6 +710,50 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	return &payment.PaymentNotification{
 		TradeNo: wxSV(tx.TransactionId), OrderID: wxSV(tx.OutTradeNo),
 		Amount: amt, Status: st, RawData: rawBody, Metadata: buildWxpayTransactionMetadata(&tx),
+	}, nil
+}
+
+func (w *Wxpay) verifyAPIv2Notification(rawBody string) (*payment.PaymentNotification, error) {
+	fields := map[string]string{}
+	decoder := xml.NewDecoder(strings.NewReader(rawBody))
+	for {
+		tok, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("wxpay api v2 parse notification: %w", err)
+		}
+		start, ok := tok.(xml.StartElement)
+		if !ok || start.Name.Local == "xml" {
+			continue
+		}
+		var value string
+		if err := decoder.DecodeElement(&value, &start); err != nil {
+			return nil, fmt.Errorf("wxpay api v2 parse notification field: %w", err)
+		}
+		fields[start.Name.Local] = value
+	}
+	expected := wxpayAPIv2Sign(fields, w.config["apiV3Key"])
+	if subtle.ConstantTimeCompare([]byte(strings.ToUpper(fields["sign"])), []byte(expected)) != 1 {
+		return nil, fmt.Errorf("wxpay api v2 verify notification: invalid sign")
+	}
+	if fields["return_code"] != "SUCCESS" || fields["result_code"] != "SUCCESS" {
+		return nil, nil
+	}
+	totalFee, _ := strconv.ParseInt(fields["total_fee"], 10, 64)
+	return &payment.PaymentNotification{
+		TradeNo: fields["transaction_id"],
+		OrderID: fields["out_trade_no"],
+		Amount:  payment.FenToYuan(totalFee),
+		Status:  payment.ProviderStatusSuccess,
+		RawData: rawBody,
+		Metadata: map[string]string{
+			wxpayMetadataAppID:      fields["appid"],
+			wxpayMetadataMerchantID: fields["mch_id"],
+			wxpayMetadataCurrency:   wxpayCurrency,
+			wxpayMetadataTradeState: wxpayTradeStateSuccess,
+		},
 	}, nil
 }
 
