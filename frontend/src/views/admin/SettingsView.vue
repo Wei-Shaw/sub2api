@@ -6661,6 +6661,26 @@
                 />
               </div>
 
+              <div>
+                <label
+                  for="custom-head-script"
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.customHeadScript") }}
+                </label>
+                <textarea
+                  id="custom-head-script"
+                  v-model="form.custom_head_script"
+                  rows="8"
+                  class="input font-mono text-sm"
+                  spellcheck="false"
+                  data-testid="custom-head-script"
+                ></textarea>
+                <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  {{ t("admin.settings.site.customHeadScriptWarning") }}
+                </p>
+              </div>
+
               <!-- Home Content -->
               <div>
                 <label
@@ -9768,6 +9788,7 @@ const form = reactive<SettingsForm>({
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
+  custom_head_script: "",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
@@ -11475,6 +11496,7 @@ async function saveSettings() {
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name,
+      custom_head_script: form.custom_head_script,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
       api_base_url: form.api_base_url,

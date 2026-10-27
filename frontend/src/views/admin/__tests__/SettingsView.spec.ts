@@ -382,6 +382,7 @@ const baseSettingsResponse = {
   default_concurrency: 1,
   default_subscriptions: [],
   site_name: "Sub2API",
+  custom_head_script: "",
   site_logo: "",
   site_subtitle: "",
   api_base_url: "",
@@ -763,6 +764,28 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ compact_home_enabled: true }),
     );
+  });
+
+  it("loads, saves and clears custom head scripts without executing the editor content", async () => {
+    const source = '<script>window.customEditorExecuted = true;</script>';
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_head_script: source });
+    const wrapper = mountView();
+    await flushPromises();
+    const editor = wrapper.get<HTMLTextAreaElement>('[data-testid="custom-head-script"]');
+    expect(editor.element.value).toBe(source);
+    expect(document.head.querySelector('script[data-custom-head-script]')).toBeNull();
+
+    const updated = '<script async src="https://example.com/analytics.js"></script>';
+    await editor.setValue(updated);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ custom_head_script: updated }));
+
+    await editor.setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ custom_head_script: "" }));
+    wrapper.unmount();
   });
 
   it("renders panel rate limit card and saves settings", async () => {
