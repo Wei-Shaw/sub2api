@@ -111,6 +111,9 @@ export default {
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
     importToCcSwitch: 'Import to CCS',
+    importToThinkWatchLite: 'Import to ThinkWatch Lite',
+    importToThinkWatchLiteHint:
+      'Add this key to ThinkWatch Lite, which then shows its quota, time windows and usage (requires version 2026.10.16 or later)',
     enable: 'Enable',
     disable: 'Disable',
     nameLabel: 'Name',
@@ -278,6 +281,8 @@ export default {
     ipBlacklistHint: 'One IP or CIDR per line. These IPs will be blocked from using this key.',
     ipRestrictionEnabled: 'IP restriction enabled',
     ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
+    thinkWatchLiteNotInstalled:
+      'ThinkWatch Lite is not installed or the protocol handler is not registered. Please install ThinkWatch Lite 2026.10.16 or later (https://thinkwat.ch/lite) first or manually copy the API key.',
     ccsClientSelect: {
       title: 'Select Client',
       description: 'Please select the client type to import to CC-Switch:',
