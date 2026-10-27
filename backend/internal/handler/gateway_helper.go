@@ -142,6 +142,18 @@ const (
 	SSEPingFormatComment SSEPingFormat = ":\n\n"
 )
 
+// queuePingFormat keeps shared gateway helpers compatible with the downstream
+// protocol, including requests routed to Anthropic or Antigravity accounts.
+func queuePingFormat(c *gin.Context, configured SSEPingFormat) SSEPingFormat {
+	if configured == SSEPingFormatClaude && c != nil && c.Request != nil {
+		switch c.Request.URL.Path {
+		case "/v1/chat/completions", "/v1/responses":
+			return SSEPingFormatComment
+		}
+	}
+	return configured
+}
+
 // ConcurrencyError represents a concurrency limit error with context
 type ConcurrencyError struct {
 	SlotType  string
@@ -380,7 +392,8 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	}
 
 	// Determine if ping is needed (streaming + ping format defined)
-	needPing := isStream && h.pingFormat != ""
+	pingFormat := queuePingFormat(c, h.pingFormat)
+	needPing := isStream && pingFormat != ""
 
 	var flusher http.Flusher
 	if needPing {
@@ -423,7 +436,7 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			written, err := fmt.Fprint(c.Writer, string(pingFormat))
 			if err != nil {
 				return nil, err
 			}
