@@ -164,6 +164,28 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			wantErr:        "duplicate customMethods type",
 		},
 		{
+			name:           "valid https icon",
+			config:         map[string]string{"customMethods": `[{"type":"usdt","upstreamType":"usdt","icon":"https://cdn.example.com/usdt.svg"}]`},
+			supportedTypes: "alipay,wxpay,usdt",
+		},
+		{
+			name:           "valid data image icon",
+			config:         map[string]string{"customMethods": `[{"type":"usdt","upstreamType":"usdt","icon":"data:image/svg+xml;base64,AAAA"}]`},
+			supportedTypes: "alipay,wxpay,usdt",
+		},
+		{
+			name:           "icon rejects plain http",
+			config:         map[string]string{"customMethods": `[{"type":"usdt","upstreamType":"usdt","icon":"http://cdn.example.com/usdt.svg"}]`},
+			supportedTypes: "alipay,wxpay,usdt",
+			wantErr:        "customMethods icon must be an https URL or a data:image URI",
+		},
+		{
+			name:           "icon rejects javascript scheme",
+			config:         map[string]string{"customMethods": `[{"type":"usdt","upstreamType":"usdt","icon":"javascript:alert(1)"}]`},
+			supportedTypes: "alipay,wxpay,usdt",
+			wantErr:        "customMethods icon must be an https URL or a data:image URI",
+		},
+		{
 			name:           "custom type must already be lowercase",
 			config:         map[string]string{"customMethods": `[{"type":"LDC","upstreamType":"epay"}]`},
 			supportedTypes: "alipay,wxpay,ldc",
