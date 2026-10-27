@@ -150,6 +150,8 @@ docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
 !docs/screenshots/codex-referral-dialog.png
 !docs/screenshots/codex-referral-success.png
+!docs/screenshots/compact-policy-inherit.png
+!docs/screenshots/compact-policy-summary.png
 .serena/
 .codex/
 frontend/coverage/
