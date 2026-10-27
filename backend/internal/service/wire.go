@@ -302,8 +302,14 @@ func ProvideCNProviderQuotaService(
 	proxyRepo ProxyRepository,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
+	rateLimitService *RateLimitService,
 ) *CNProviderQuotaService {
-	return NewCNProviderQuotaService(accountRepo, proxyRepo, httpUpstream, cfg)
+	svc := NewCNProviderQuotaService(accountRepo, proxyRepo, httpUpstream, cfg)
+	// 智谱用卡后在服务层恢复账号运行时状态（不依赖 handler / 客户端连接）。
+	if rateLimitService != nil {
+		svc.SetZhipuResetRecoverer(rateLimitService)
+	}
+	return svc
 }
 
 // ProvideCNProviderBalanceService 构造国产供应商余额探测服务。
