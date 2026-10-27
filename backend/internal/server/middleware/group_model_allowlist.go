@@ -19,7 +19,7 @@ import (
 // 保证校验发生在合成路由改写与调度之前，且只看客户端书写的公开模型名。
 //
 // 行为：
-//   - 快速路径：未绑定分组或白名单未开启时直接放行，不读请求体。
+//   - 快速路径：未绑定分组时直接放行；关闭白名单仍检查请求模型歧义。
 //   - Responses WebSocket 入口跳过（首帧与后续 turn 由 ResponsesWebSocket 逐帧
 //     校验）；Grok Realtime 的升级请求模型固定在查询参数里，仍走中间件校验，
 //     其他路由伪造 Upgrade 头不得绕过校验。
@@ -27,12 +27,13 @@ import (
 //     model）提取模型；提取不到放行，由 handler 决定是否报「model is required」。
 //   - 带请求体的方法：读体（PrereadBody 回填，下游零拷贝）、提取 JSON
 //     `model`/`session.model` 或 multipart `model`/`session` 后回填请求体。
-//   - 拒绝：按入口协议格式返回 404，并标记运维业务限流原因
+//   - 重复模型载体返回 400 invalid_request_error，不进入路由或计费。
+//   - 白名单拒绝：按入口协议格式返回 404，并标记运维业务限流原因
 //     local_model_configuration 与 ingress 拒绝原因 model_not_allowed。
 func GroupModelAllowlist() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey, ok := GetAPIKeyFromContext(c)
-		if !ok || apiKey == nil || apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {
+		if !ok || apiKey == nil || apiKey.Group == nil {
 			c.Next()
 			return
 		}
@@ -68,6 +69,11 @@ func GroupModelAllowlist() gin.HandlerFunc {
 					models = []string{model}
 				}
 			}
+		}
+
+		if !apiKey.Group.ModelAllowlistEnabled() {
+			c.Next()
+			return
 		}
 
 		blocked := ""
@@ -125,6 +131,14 @@ func groupModelAllowlistModelsFromBody(c *gin.Context) ([]string, bool) {
 		return nil, false
 	}
 	requestmodel.ResetRequestBody(c.Request, body)
+	if err := requestmodel.ValidateBody(c.FullPath(), c.GetHeader("Content-Type"), body); err != nil {
+		response := gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}}
+		if strings.Contains(c.Request.URL.Path, "/messages") {
+			response["type"] = "error"
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, response)
+		return nil, false
+	}
 	return requestmodel.FromBodyCandidates(c.FullPath(), c.GetHeader("Content-Type"), body), true
 }
 

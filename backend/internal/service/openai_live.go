@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	coderws "github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -108,6 +109,9 @@ func ValidateLiveCallRequest(request *LiveCallRequest) error {
 	}
 	if len(request.Session) == 0 || !json.Valid(request.Session) {
 		return errors.New("session must be valid JSON")
+	}
+	if requestmodel.HasDuplicateTopLevelKey(request.Session, "model") {
+		return errors.New("session.model is specified more than once")
 	}
 	var sessionObject map[string]json.RawMessage
 	if err := json.Unmarshal(request.Session, &sessionObject); err != nil {
