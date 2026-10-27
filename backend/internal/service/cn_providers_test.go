@@ -463,29 +463,27 @@ func TestCNBalanceURL(t *testing.T) {
 	require.Equal(t, "https://api.deepseek.com/user/balance", cnBalanceURL(deepseek))
 }
 
-// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly / Kimi monthly 候选。
+// TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly 候选。
 func TestCNProviderThresholdCandidates(t *testing.T) {
 	t.Parallel()
 	account := &Account{
 		Platform: PlatformKimi,
 		Extra: map[string]any{
-			"kimi_5h_used_percent":      90.0,
-			"kimi_5h_reset_at":          "2026-08-14T15:00:00Z",
-			"kimi_weekly_used_percent":  50.0,
-			"kimi_weekly_reset_at":      "2026-08-18T00:00:00Z",
-			"kimi_monthly_used_percent": 75.0,
-			"kimi_monthly_reset_at":     "2026-09-01T00:00:00Z",
+			"kimi_5h_used_percent":     90.0,
+			"kimi_5h_reset_at":         "2026-08-14T15:00:00Z",
+			"kimi_weekly_used_percent": 50.0,
+			"kimi_weekly_reset_at":     "2026-08-18T00:00:00Z",
 		},
 	}
 	cands := cnProviderThresholdCandidates(account, PlatformKimi)
-	// Used-percent window candidates include Kimi's monthly bucket.
+	// 仅返回非 nil 候选（两窗口均存在 → 2 条）。
 	var present []*accountSchedulingThresholdCandidate
 	for _, c := range cands {
 		if c != nil {
 			present = append(present, c)
 		}
 	}
-	require.Len(t, present, 3)
+	require.Len(t, present, 2)
 
 	// 缺少 used 键的窗口不产生候选。
 	partial := &Account{
@@ -588,8 +586,6 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	futureWeekly := now.Add(3 * 24 * time.Hour)
 	pastWeekly := now.Add(-24 * time.Hour)
 
-	monthlyReset := now.Add(30 * 24 * time.Hour)
-
 	// 5h 在未来、weekly 已过期 → 返回 5h。
 	account := &Account{
 		Platform:    PlatformKimi,
@@ -603,32 +599,18 @@ func TestCNProviderQuotaSnapshotReset(t *testing.T) {
 	require.NotNil(t, got)
 	require.True(t, future5h.Equal(*got))
 
-	// 同时检查周窗与月窗保持各自的 reset。
+	// 两窗口均在未来 → 取较早者（429 多由 5h 窗口触发，避免冷却到 weekly 重置）。
 	both := &Account{
 		Platform:    PlatformKimi,
 		Credentials: map[string]any{"account_mode": AccountModeCoding},
 		Extra: map[string]any{
-			"kimi_5h_reset_at":      future5h.Format(time.RFC3339),
-			"kimi_weekly_reset_at":  futureWeekly.Format(time.RFC3339),
-			"kimi_monthly_reset_at": monthlyReset.Format(time.RFC3339),
+			"kimi_5h_reset_at":     future5h.Format(time.RFC3339),
+			"kimi_weekly_reset_at": futureWeekly.Format(time.RFC3339),
 		},
 	}
 	gotBoth := cnProviderQuotaSnapshotReset(both, now)
 	require.NotNil(t, gotBoth)
 	require.True(t, future5h.Equal(*gotBoth))
-
-	// Once the 5h reset passes, a still-future monthly reset remains a cooldown candidate.
-	monthlyOnly := &Account{
-		Platform:    PlatformKimi,
-		Credentials: map[string]any{"account_mode": AccountModeCoding},
-		Extra: map[string]any{
-			"kimi_5h_reset_at":      future5h.Format(time.RFC3339),
-			"kimi_monthly_reset_at": monthlyReset.Format(time.RFC3339),
-		},
-	}
-	gotMonthly := cnProviderQuotaSnapshotReset(monthlyOnly, future5h.Add(time.Second))
-	require.NotNil(t, gotMonthly)
-	require.True(t, monthlyReset.Equal(*gotMonthly))
 
 	// 两窗口均过期 → nil。
 	expired := &Account{
