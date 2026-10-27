@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
+import ru from '@/i18n/locales/ru'
 
 function flattenKeys(obj: Record<string, any>, prefix = ''): string[] {
   const keys: string[] = []
@@ -41,6 +42,13 @@ describe('ops locale key completeness', () => {
     it(`zh locale has ${key}`, () => {
       const zhKeys = flattenKeys(zh)
       expect(zhKeys).toContain(key)
+    })
+  }
+
+  for (const key of requiredKeys) {
+    it(`ru locale has ${key}`, () => {
+      const ruKeys = flattenKeys(ru)
+      expect(ruKeys).toContain(key)
     })
   }
 })

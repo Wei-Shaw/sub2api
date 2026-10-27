@@ -1,6 +1,6 @@
 import { createI18n } from 'vue-i18n'
 
-type LocaleCode = 'en' | 'zh'
+type LocaleCode = 'en' | 'zh' | 'ru'
 
 type LocaleMessages = Record<string, any>
 
@@ -9,11 +9,12 @@ const DEFAULT_LOCALE: LocaleCode = 'en'
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
-  zh: () => import('./locales/zh')
+  zh: () => import('./locales/zh'),
+  ru: () => import('./locales/ru')
 }
 
 function isLocaleCode(value: string): value is LocaleCode {
-  return value === 'en' || value === 'zh'
+  return value === 'en' || value === 'zh' || value === 'ru'
 }
 
 function getDefaultLocale(): LocaleCode {
@@ -26,6 +27,9 @@ function getDefaultLocale(): LocaleCode {
   if (browserLang.startsWith('zh')) {
     return 'zh'
   }
+  if (browserLang.startsWith('ru')) {
+    return 'ru'
+  }
 
   return DEFAULT_LOCALE
 }
@@ -37,8 +41,26 @@ export const i18n = createI18n({
   messages: {},
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
-  warnHtmlMessage: false
+  warnHtmlMessage: false,
+  pluralRules: {
+    ru: russianPluralRule
+  }
 })
+
+// Русские множественные формы: «1 задача | 2 задачи | 5 задач».
+// Строка из трёх форм выбирается по славянскому правилу; две формы — как в en.
+export function russianPluralRule(choice: number, choicesLength: number): number {
+  const n = Math.abs(choice)
+  if (choicesLength < 3) {
+    return n === 1 ? 0 : 1
+  }
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (!Number.isInteger(n)) return 1
+  if (mod10 === 1 && mod100 !== 11) return 0
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 1
+  return 2
+}
 
 const loadedLocales = new Set<LocaleCode>()
 
@@ -93,7 +115,8 @@ export function getLocale(): LocaleCode {
 
 export const availableLocales = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'zh', name: '中文', flag: '🇨🇳' }
+  { code: 'zh', name: '中文', flag: '🇨🇳' },
+  { code: 'ru', name: 'Русский', flag: '🇷🇺' }
 ] as const
 
 export default i18n
