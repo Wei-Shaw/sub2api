@@ -134,11 +134,18 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
 		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
-		// Enable thinking for non-low efforts
+		// Enable thinking for non-low efforts. Adaptive-only models (Fable 5,
+		// Opus 4.7+, Sonnet 5+) reject thinking.type="enabled" plus a manual
+		// budget_tokens, so they must use adaptive mode with
+		// output_config.effort controlling depth.
 		if effort != "low" {
-			out.Thinking = &AnthropicThinking{
-				Type:         "enabled",
-				BudgetTokens: defaultThinkingBudget(effort),
+			if claude.RequiresAdaptiveThinking(req.Model) {
+				out.Thinking = &AnthropicThinking{Type: "adaptive"}
+			} else {
+				out.Thinking = &AnthropicThinking{
+					Type:         "enabled",
+					BudgetTokens: defaultThinkingBudget(effort),
+				}
 			}
 		}
 	}
