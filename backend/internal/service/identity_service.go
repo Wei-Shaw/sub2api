@@ -124,11 +124,11 @@ func defaultFingerprint() Fingerprint {
 	return Fingerprint{
 		UserAgent:               claude.DefaultUserAgent(),
 		StainlessLang:           "js",
-		StainlessPackageVersion: "0.94.0",
+		StainlessPackageVersion: "0.128.0",
 		StainlessOS:             "Linux",
 		StainlessArch:           "arm64",
 		StainlessRuntime:        "node",
-		StainlessRuntimeVersion: "v24.3.0",
+		StainlessRuntimeVersion: "v26.12.1",
 	}
 }
 
@@ -203,6 +203,14 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 			logger.LegacyPrintf("service.identity",
 				"Replaced malformed cached fingerprint for account %d: %q -> %q",
 				accountID, poisoned, cached.UserAgent)
+		} else if uaAcceptable && isClaudeCLIUserAgent(clientUA) && !isClaudeCLIUserAgent(cached.UserAgent) {
+			// 缓存里的身份不是 claude-cli（首次请求来自 curl / SDK 探针，形态合法所以
+			// 不会被上面的自愈逻辑拦下），而当前客户端是真 CLI：整体换成客户端的。
+			// 否则账号会永久用 curl/x.y 的 UA 和 SDK 默认 stainless 值出站。
+			mergeHeadersIntoFingerprint(cached, headers)
+			needWrite = true
+			logger.LegacyPrintf("service.identity",
+				"Replaced non-CLI cached fingerprint for account %d: %q -> %q", accountID, cached.UserAgent, clientUA)
 		} else {
 			// 客户端送来更新版本时的常规升级：merge 语义 — 仅更新请求中实际携带的字段，
 			// 保留缓存值，避免缺失的头被硬编码默认值覆盖（如新 CLI 版本 + 旧 SDK 默认值的不一致）
@@ -262,6 +270,11 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 
 	logger.LegacyPrintf("service.identity", "Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
 	return fp, nil
+}
+
+// isClaudeCLIUserAgent 判断 UA 是否来自 Claude Code CLI 本体。
+func isClaudeCLIUserAgent(ua string) bool {
+	return strings.HasPrefix(strings.TrimSpace(ua), "claude-cli/")
 }
 
 // createFingerprintFromHeaders 从请求头创建指纹

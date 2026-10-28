@@ -226,7 +226,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 
-		normalizeOpts := claudeOAuthNormalizeOptions{}
+		normalizeOpts := claudeOAuthNormalizeOptions{
+			clientOS: c.Request.Header.Get("X-Stainless-OS"),
+		}
 		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {

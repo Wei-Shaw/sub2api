@@ -15,11 +15,12 @@ func withCLIVersionResolver(t *testing.T, resolver func() string) {
 // a. resolver 未注入时，EffectiveCLIVersion() 必须等于 CLIVersion()，
 // 且 DefaultHeaders()["User-Agent"] 与改造前的 init 固化值完全一致。
 func TestEffectiveCLIVersionDefaultsToCLIVersion(t *testing.T) {
+	t.Setenv(CLIVersionEnv, "")
 	SetCLIVersionResolver(nil)
 	if got := EffectiveCLIVersion(); got != CLIVersion() {
 		t.Fatalf("EffectiveCLIVersion() = %q, want CLIVersion() = %q", got, CLIVersion())
 	}
-	wantUA := "claude-cli/" + CLIVersion() + " (external, cli)"
+	wantUA := "claude-cli/" + CLIVersion() + " (external, sdk-cli)"
 	if got := DefaultHeaders()["User-Agent"]; got != wantUA {
 		t.Fatalf("DefaultHeaders()[User-Agent] = %q, want %q", got, wantUA)
 	}
@@ -28,12 +29,13 @@ func TestEffectiveCLIVersionDefaultsToCLIVersion(t *testing.T) {
 // b. 注入返回更高版本的 resolver 后，DefaultHeaders()["User-Agent"] 跟随变化。
 func TestEffectiveCLIVersionFollowsResolver(t *testing.T) {
 	const upgraded = "9.9.9"
+	t.Setenv(CLIVersionEnv, "")
 	withCLIVersionResolver(t, func() string { return upgraded })
 
 	if got := EffectiveCLIVersion(); got != upgraded {
 		t.Fatalf("EffectiveCLIVersion() = %q, want %q", got, upgraded)
 	}
-	wantUA := "claude-cli/" + upgraded + " (external, cli)"
+	wantUA := "claude-cli/" + upgraded + " (external, sdk-cli)"
 	if got := DefaultHeaders()["User-Agent"]; got != wantUA {
 		t.Fatalf("DefaultHeaders()[User-Agent] = %q, want %q", got, wantUA)
 	}
@@ -51,6 +53,7 @@ func TestEffectiveCLIVersionFallsBackOnInvalidResolverValues(t *testing.T) {
 		"whitespace":     "   ",
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Setenv(CLIVersionEnv, "")
 			withCLIVersionResolver(t, func() string { return invalid })
 			if got := EffectiveCLIVersion(); got != CLIVersion() {
 				t.Fatalf("resolver %q: EffectiveCLIVersion() = %q, want fallback %q", invalid, got, CLIVersion())
@@ -65,9 +68,22 @@ func TestEffectiveCLIVersionFallsBackOnInvalidResolverValues(t *testing.T) {
 
 // 撤销注入（传 nil）后回到 CLIVersion()。
 func TestSetCLIVersionResolverNilRestoresFallback(t *testing.T) {
+	t.Setenv(CLIVersionEnv, "")
 	withCLIVersionResolver(t, func() string { return "9.9.9" })
 	SetCLIVersionResolver(nil)
 	if got := EffectiveCLIVersion(); got != CLIVersion() {
 		t.Fatalf("after nil resolver: EffectiveCLIVersion() = %q, want %q", got, CLIVersion())
+	}
+}
+
+// env 覆盖必须优先于 resolver，供镜像部署钉死版本。
+func TestEffectiveCLIVersionEnvOverridesResolver(t *testing.T) {
+	t.Setenv(CLIVersionEnv, "2.1.311")
+	withCLIVersionResolver(t, func() string { return "9.9.9" })
+	if got := EffectiveCLIVersion(); got != "2.1.311" {
+		t.Fatalf("EffectiveCLIVersion() = %q, want env value", got)
+	}
+	if got := DefaultUserAgent(); got != "claude-cli/2.1.311 (external, sdk-cli)" {
+		t.Fatalf("DefaultUserAgent() = %q", got)
 	}
 }

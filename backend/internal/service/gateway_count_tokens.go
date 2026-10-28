@@ -86,7 +86,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	if shouldMimicClaudeCode {
 		var normalizedBody []byte
-		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, claudeOAuthNormalizeOptions{})
+		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, claudeOAuthNormalizeOptions{clientOS: c.Request.Header.Get("X-Stainless-OS")})
 		if err := replaceBody(normalizedBody); err != nil {
 			return err
 		}
@@ -591,7 +591,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// OAuth + mimic Claude Code：强制注入 CLI 指纹 header
 	if tokenType == "oauth" && mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, false, ctMimicUserAgent)
+		applyClaudeCodeMimicHeaders(req, false, ctMimicUserAgent, c.Request.Header)
 	}
 
 	// 写入最终 anthropic-beta header（Del 一次避免白名单透传值残留）

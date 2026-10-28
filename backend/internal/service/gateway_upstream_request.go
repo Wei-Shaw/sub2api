@@ -13,7 +13,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 
 	"github.com/gin-gonic/gin"
@@ -210,7 +209,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// OAuth + mimic Claude Code：强制注入 CLI 指纹相关 header
 	// （user-agent/x-stainless-*/x-app/Accept/x-stainless-helper-method/x-client-request-id）
 	if tokenType == "oauth" && mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, reqStream, mimicUserAgent)
+		applyClaudeCodeMimicHeaders(req, reqStream, mimicUserAgent, clientHeaders)
 	}
 
 	// 写入最终 anthropic-beta header
@@ -960,7 +959,7 @@ var defaultDroppedBetasSet = buildBetaTokenSet(claude.DroppedBetas)
 // headers when using Claude Code-scoped OAuth credentials.
 // mimicUserAgent 由调用方在同一请求内取一次传入，保证出站 User-Agent 头与
 // 请求体 billing attribution 的 cc_version 版本号严格一致。
-func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgent string) {
+func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgent string, clientHeaders http.Header) {
 	if req == nil {
 		return
 	}
@@ -980,13 +979,23 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgen
 	}
 	// Real Claude CLI uses Accept: application/json (even for streaming).
 	setHeaderRaw(req.Header, "Accept", "application/json")
-	if isStream {
-		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
+	// 2.1.311 的 CLI 不发 x-stainless-helper-method，也不发 x-client-request-id，
+	// 多出来反而与真机不一致，因此不再注入。
+	// 平台相关字段跟随当前客户端，否则 Linux 网关会把 Windows 客户端说成 Linux，
+	// 与 X-Stainless-OS 自相矛盾。
+	applyClientPlatformHeaders(req.Header, clientHeaders)
+}
+
+// applyClientPlatformHeaders 用当前客户端的 X-Stainless-OS/Arch 覆盖默认值。
+// 只有客户端确实带了这两个头才覆盖（真机 CLI 一定带），否则保留默认值。
+func applyClientPlatformHeaders(dst, clientHeaders http.Header) {
+	if clientHeaders == nil {
+		return
 	}
-	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
-	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
-	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
-		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
+	for _, key := range []string{"X-Stainless-OS", "X-Stainless-Arch"} {
+		if v := strings.TrimSpace(clientHeaders.Get(key)); v != "" {
+			setHeaderRaw(dst, resolveWireCasing(key), v)
+		}
 	}
 }
 

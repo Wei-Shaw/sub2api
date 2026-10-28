@@ -44,6 +44,9 @@ func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte
 type claudeOAuthNormalizeOptions struct {
 	injectMetadata bool
 	metadataUserID string
+	// clientOS 来自客户端 X-Stainless-OS，用于让 safeguards 的 platform 与
+	// 出站 X-Stainless-OS 头一致。
+	clientOS string
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -328,7 +331,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// attribution header 里的 cc_version 互相矛盾（头声称新版本、体却是旧形状）。
 	// 客户端传了就透传；否则按 CLI 形状补一份最小但字段齐全的上下文。
 	if !gjson.GetBytes(out, "safeguards").Exists() {
-		if raw, err := buildSafeguardsBlock(); err == nil {
+		if raw, err := buildSafeguardsBlock(opts.clientOS); err == nil {
 			if next, ok := setJSONRawBytes(out, "safeguards", raw); ok {
 				out = next
 				modified = true

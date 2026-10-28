@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -85,7 +86,17 @@ type gitVisibility struct {
 func emptyStrings() []string { return []string{} }
 
 // claudePlatform 与 Node 的 process.platform 取值一致。
-func claudePlatform() string {
+// clientOS 是客户端 X-Stainless-OS 头（真机 CLI 一定带），优先按它判定——
+// 否则 Linux 网关会把 Windows 客户端说成 linux，与出站 X-Stainless-OS 自相矛盾。
+func claudePlatform(clientOS string) string {
+	switch strings.ToLower(strings.TrimSpace(clientOS)) {
+	case "windows":
+		return "windows"
+	case "macos", "mac os", "darwin":
+		return "darwin"
+	case "linux":
+		return "linux"
+	}
 	switch runtime.GOOS {
 	case "windows":
 		return "windows"
@@ -97,7 +108,7 @@ func claudePlatform() string {
 }
 
 // buildSafeguardsBlock 按真实 CLI 形状构造 safeguards 数组。
-func buildSafeguardsBlock() ([]byte, error) {
+func buildSafeguardsBlock(clientOS string) ([]byte, error) {
 	cwd, _ := os.Getwd()
 	cwd = filepath.ToSlash(cwd)
 	home, _ := os.UserHomeDir()
@@ -118,9 +129,15 @@ func buildSafeguardsBlock() ([]byte, error) {
 		roots[k] = cwd
 	}
 
+	// 容器里通常没有 USER/USERNAME 环境变量，回落到 passwd 用户名，避免空串。
 	identity := os.Getenv("USERNAME")
 	if identity == "" {
 		identity = os.Getenv("USER")
+	}
+	if identity == "" {
+		if u, err := user.Current(); err == nil {
+			identity = u.Username
+		}
 	}
 
 	block := []safeguardsBlock{{
@@ -128,7 +145,7 @@ func buildSafeguardsBlock() ([]byte, error) {
 		ClassifierContext: classifierContext{
 			V:              safeguardsClassifierVersion,
 			PermissionMode: "auto",
-			Platform:       claudePlatform(),
+			Platform:       claudePlatform(clientOS),
 			LiveCwd:        cwd,
 			HomeDir:        home,
 			RuleRoots:      roots,
@@ -142,7 +159,7 @@ func buildSafeguardsBlock() ([]byte, error) {
 			Rules:            ruleSets{Allow: emptyStrings(), Deny: emptyStrings(), Ask: emptyStrings()},
 			AutoMode:         autoModeSets{Allow: emptyStrings(), SoftDeny: emptyStrings(), HardDeny: emptyStrings(), Environment: emptyStrings()},
 			ConsentHoldback:  false,
-			CaseInsensitive:  runtime.GOOS == "windows" || runtime.GOOS == "darwin",
+			CaseInsensitive:  claudePlatform(clientOS) != "linux",
 			Restricted:       false,
 			IsRemoteMode:     false,
 			ClassifyAllShell: false,

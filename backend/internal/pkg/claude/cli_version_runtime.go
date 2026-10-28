@@ -1,6 +1,9 @@
 package claude
 
-import "sync/atomic"
+import (
+	"os"
+	"sync/atomic"
+)
 
 // cliVersionResolver 返回运行期生效的 Claude CLI 版本号（管理员面板手动值 →
 // 后台同步值）。由 SettingService 在装配时注入（wire.go），解析器内部自带
@@ -27,6 +30,11 @@ func SetCLIVersionResolver(resolver func() string) {
 // 内置基线），否则回退 CLIVersion()（环境变量覆盖 → 内置基线）。
 // 运行期值恒 >= 内置基线，identity_service 的"只升不降"语义不受影响。
 func EffectiveCLIVersion() string {
+	// 环境变量优先于库里的设置值：镜像部署时用它把版本钉死，避免后台自动同步
+	// 到比本机真机更新的版本，导致 UA/billing/beta 与真机分叉。
+	if v := os.Getenv(CLIVersionEnv); IsSupportedCLIVersion(v) {
+		return v
+	}
 	if r := cliVersionResolver.Load(); r != nil {
 		if v := (*r)(); IsSupportedCLIVersion(v) {
 			return v

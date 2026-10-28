@@ -916,7 +916,9 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			for key, value := range claude.DefaultHeaders() {
 				require.Equal(t, value, getHeaderRaw(upstream.lastReq.Header, key), "mimic fingerprint header %s", key)
 			}
-			require.NotEmpty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
+			// 2.1.311 的真机 CLI 既不发 x-client-request-id 也不发 x-stainless-helper-method
+			require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
+			require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-stainless-helper-method"))
 
 			require.Equal(t, tt.wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			system := gjson.GetBytes(upstream.lastBody, "system")
