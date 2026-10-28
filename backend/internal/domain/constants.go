@@ -38,6 +38,9 @@ const (
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
 	PlatformCline     = "cline"
+	// PlatformOllama is Ollama Cloud (Ollama's hosted models). One API key serves
+	// both an OpenAI-compatible (/v1) and an Anthropic-compatible endpoint.
+	PlatformOllama    = "ollama"
 	PlatformComposite = "composite"
 )
 
