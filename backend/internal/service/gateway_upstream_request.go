@@ -221,12 +221,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)
 	}
 
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
+	// X-Claude-Code-Session-Id：真实 CLI 每条请求都带，且与 metadata.user_id 的
+	// session_id 相同。客户端没带时按 body 补齐，带了则用 body 的会话值覆盖，
+	// 避免头与体指向两个不同的会话。
+	if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+		if parsed := ParseMetadataUserID(uid); parsed != nil {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 		}
 	}
 
@@ -602,7 +602,14 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 					incomingBetas = append(incomingBetas, token)
 				}
 			}
-			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), strings.Join(incomingBetas, ","), effectiveDropSet), true
+			mimicBetas := claude.FullClaudeCodeMimicryBetas()
+			// per-turn-control / mid-conversation-tool-changes 只在 thinking 打开时
+			// 才出现在真机请求里（thinking disabled 的请求两个都没有）。无条件发送
+			// 会让单轮浅请求比真机多两个 token。
+			if thinkingDisabled(body) {
+				mimicBetas = dropBetaTokens(mimicBetas, claude.BetaPerTurnControl, claude.BetaMidConversationToolChanges)
+			}
+			return mergeAnthropicBetaDropping(mimicBetas, strings.Join(incomingBetas, ","), effectiveDropSet), true
 		}
 		// 真 Claude Code 客户端透传路径
 		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true
@@ -1027,4 +1034,28 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
+}
+
+// thinkingDisabled 报告 body 是否显式关闭了 thinking。
+func thinkingDisabled(body []byte) bool {
+	t := gjson.GetBytes(body, "thinking.type").String()
+	return t == "disabled"
+}
+
+// dropBetaTokens 从 beta 列表里去掉指定 token。
+func dropBetaTokens(betas []string, drop ...string) []string {
+	out := make([]string, 0, len(betas))
+	for _, b := range betas {
+		keep := true
+		for _, d := range drop {
+			if b == d {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, b)
+		}
+	}
+	return out
 }

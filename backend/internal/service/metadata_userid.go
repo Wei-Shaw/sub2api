@@ -86,9 +86,13 @@ func FormatMetadataUserID(deviceID, accountUUID, sessionID, uaVersion string) st
 
 // IsNewMetadataFormatVersion returns true if the given CLI version uses the
 // new JSON metadata.user_id format (>= 2.1.78).
+//
+// 空版本按新格式处理：所有仍受支持的客户端（>= 2.1.7x）都用 JSON 形状，
+// 而旧拼接格式只在更老的版本上出现。伪装路径取不到版本时用旧格式，会与
+// User-Agent 里声明的新版本自相矛盾。
 func IsNewMetadataFormatVersion(version string) bool {
 	if version == "" {
-		return false
+		return true
 	}
 	return CompareVersions(version, NewMetadataFormatMinVersion) >= 0
 }

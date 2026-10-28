@@ -149,9 +149,11 @@ func DefaultHeaders() map[string]string {
 		"X-Stainless-Runtime":                       "node",
 		"X-Stainless-Runtime-Version":               "v26.12.1",
 		"X-Stainless-Retry-Count":                   "0",
-		"X-Stainless-Timeout":                       "300",
+		"X-Stainless-Timeout":                       "600",
 		"X-App":                                     "cli",
 		"Anthropic-Dangerous-Direct-Browser-Access": "true",
+		// 真机的 Accept-Encoding；Go 默认只发 gzip，与真机对不上。
+		"Accept-Encoding": "gzip, deflate, br, zstd",
 	}
 }
 

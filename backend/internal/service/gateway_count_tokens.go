@@ -600,12 +600,12 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)
 	}
 
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
+	// X-Claude-Code-Session-Id：真实 CLI 每条请求都带，且与 metadata.user_id 的
+	// session_id 相同。客户端没带时按 body 补齐，带了则用 body 的会话值覆盖，
+	// 避免头与体指向两个不同的会话。
+	if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+		if parsed := ParseMetadataUserID(uid); parsed != nil {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 		}
 	}
 

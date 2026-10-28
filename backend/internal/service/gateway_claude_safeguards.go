@@ -103,9 +103,16 @@ func buildSafeguardsBlock() ([]byte, error) {
 	home, _ := os.UserHomeDir()
 	home = filepath.ToSlash(home)
 
-	roots := map[string]string{}
+	// userSettings 指向配置目录，其余指向 cwd —— 与真机一致。
+	configDir, _ := os.UserConfigDir()
+	if v := os.Getenv("CLAUDE_CONFIG_DIR"); v != "" {
+		configDir = v
+	} else if home != "" {
+		configDir = filepath.ToSlash(filepath.Join(home, ".claude"))
+	}
+	roots := map[string]string{"userSettings": filepath.ToSlash(configDir)}
 	for _, k := range []string{
-		"userSettings", "projectSettings", "localSettings", "flagSettings", "policySettings",
+		"projectSettings", "localSettings", "flagSettings", "policySettings",
 		"cliArg", "command", "session", "toolsNarrowing", "mcpServerPolicy", "hostCredential",
 	} {
 		roots[k] = cwd
@@ -126,8 +133,9 @@ func buildSafeguardsBlock() ([]byte, error) {
 			HomeDir:        home,
 			RuleRoots:      roots,
 			TrustedDirs: trustedDirectories{
-				Primary:    trustedPath{Path: cwd, Resolved: []string{cwd}},
-				Additional: []trustedPath{},
+				Primary: trustedPath{Path: cwd, Resolved: []string{cwd}},
+				// 真机会把会话目录作为 additional 项重复一次（source=session）。
+				Additional: []trustedPath{{Path: cwd, Resolved: []string{cwd, cwd}, Source: "session"}},
 				Network:    emptyStrings(),
 				BlockReads: false,
 			},

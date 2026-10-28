@@ -55,7 +55,7 @@ func TestBuildOAuthMimicRequest_RuntimeVersionConsistentBetweenHeaderAndBilling(
 			}
 			require.NoError(t, err)
 
-			wantUA := "claude-cli/" + upgraded + " (external, cli)"
+			wantUA := "claude-cli/" + upgraded + " (external, sdk-cli)"
 			outboundUA := getHeaderRaw(req.Header, "User-Agent")
 			require.Equal(t, wantUA, outboundUA)
 
@@ -116,5 +116,5 @@ func TestIsAcceptableFingerprintUserAgent_UsesRuntimeVersion(t *testing.T) {
 func TestDefaultFingerprintUsesRuntimeVersion(t *testing.T) {
 	const upgraded = "9.9.9"
 	withCLIVersionResolverForTest(t, func() string { return upgraded })
-	require.Equal(t, "claude-cli/"+upgraded+" (external, cli)", defaultFingerprint().UserAgent)
+	require.Equal(t, "claude-cli/"+upgraded+" (external, sdk-cli)", defaultFingerprint().UserAgent)
 }

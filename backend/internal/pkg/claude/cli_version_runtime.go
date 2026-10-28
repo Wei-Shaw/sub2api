@@ -39,5 +39,5 @@ func EffectiveCLIVersion() string {
 // 所有出站路径都必须经本函数取 UA，保证 User-Agent 头与请求体 billing
 // attribution 块中的 cc_version 始终源自同一个版本号。
 func DefaultUserAgent() string {
-	return "claude-cli/" + EffectiveCLIVersion() + " (external, cli)"
+	return "claude-cli/" + EffectiveCLIVersion() + " (external, sdk-cli)"
 }

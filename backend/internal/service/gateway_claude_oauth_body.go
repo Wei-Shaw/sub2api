@@ -260,23 +260,9 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
-	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
-	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
-	// 策略：客户端传了什么就透传；没传则补默认 1。
-	// 例外：采样锁定的模型（sonnet-5-5/haiku-5-5）上 temperature+top_p 共存即 400，
-	// 客户端只传 top_p 时不得再补 temperature，否则网关自己制造 400（issue #7919）。
-	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
-	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) &&
-		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
-		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
-			out = next
-			modified = true
-		}
-	}
-
-	// max_tokens：真实 CLI 的默认值是 128000。缺失时补齐以对齐指纹。
+	// max_tokens：真实 CLI 的默认值是 64000。缺失时补齐以对齐指纹。
 	if !gjson.GetBytes(out, "max_tokens").Exists() {
-		if next, ok := setJSONValueBytes(out, "max_tokens", 128000); ok {
+		if next, ok := setJSONValueBytes(out, "max_tokens", 64000); ok {
 			out = next
 			modified = true
 		}
@@ -299,6 +285,41 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 				out = next
 				modified = true
 			}
+		}
+	}
+
+	// thinking / output_config：真机总会带。缺失时按模型默认补齐，
+	// thinking 关闭的模型补 disabled，其余补 adaptive（默认 omit 显示）。
+	if !gjson.GetBytes(out, "thinking").Exists() {
+		thinking := `{"type":"adaptive","display":"omitted"}`
+		if claude.IsSonnet55(modelID) || strings.Contains(modelID, "sonnet-5") || strings.Contains(modelID, "haiku") {
+			thinking = `{"type":"disabled"}`
+		}
+		if next, ok := setJSONRawBytes(out, "thinking", []byte(thinking)); ok {
+			out = next
+			modified = true
+		}
+	}
+	// output_config.effort：opus 系列的上游默认就是 medium，省略即等价，因此不补
+	// （补了反而会改变签名历史的重放语义）；其余模型补 high 与真机默认一致。
+	if !gjson.GetBytes(out, "output_config").Exists() && !claude.IsOpus55(modelID) {
+		if next, ok := setJSONRawBytes(out, "output_config", []byte(`{"effort":"high"}`)); ok {
+			out = next
+			modified = true
+		}
+	}
+
+	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
+	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
+	// 策略：客户端传了什么就透传；没传则补默认 1。
+	// 例外：采样锁定的模型（sonnet-5-5/haiku-5-5）上 temperature+top_p 共存即 400，
+	// 客户端只传 top_p 时不得再补 temperature，否则网关自己制造 400（issue #7919）。
+	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
+	if !gjson.GetBytes(out, "temperature").Exists() && !gjson.GetBytes(out, "thinking").Exists() && !claude.IsOpus55(modelID) &&
+		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
+		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
+			out = next
+			modified = true
 		}
 	}
 
@@ -333,7 +354,65 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		return body, modelID
 	}
 
-	return out, modelID
+	return reorderClaudeBodyKeys(out), modelID
+}
+
+// claudeBodyKeyOrder 是真机请求体的字段顺序。上游按这个顺序做前缀缓存，
+// 顺序错乱会让同样的对话算不出同样的前缀。
+var claudeBodyKeyOrder = []string{
+	"model", "messages", "system", "tools", "metadata", "max_tokens",
+	"thinking", "context_management", "safeguards", "output_config", "stream",
+}
+
+// reorderClaudeBodyKeys 按 claudeBodyKeyOrder 重排顶层键，未知键保持原相对顺序追加在尾部。
+func reorderClaudeBodyKeys(body []byte) []byte {
+	var src map[string]json.RawMessage
+	if err := json.Unmarshal(body, &src); err != nil {
+		return body
+	}
+	ordered := make([]string, 0, len(src))
+	for _, k := range claudeBodyKeyOrder {
+		if _, ok := src[k]; ok {
+			ordered = append(ordered, k)
+		}
+	}
+	seen := make(map[string]bool, len(ordered))
+	for _, k := range ordered {
+		seen[k] = true
+	}
+	// 未知键按原 JSON 出现顺序追加
+	rest := make([]string, 0)
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if tok, err := dec.Token(); err == nil && tok == json.Delim('{') {
+		for dec.More() {
+			t, err := dec.Token()
+			if err != nil {
+				break
+			}
+			if k, ok := t.(string); ok && !seen[k] {
+				rest = append(rest, k)
+			}
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				break
+			}
+		}
+	}
+	ordered = append(ordered, rest...)
+
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range ordered {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		buf.Write(kb)
+		buf.WriteByte(':')
+		buf.Write(src[k])
+	}
+	buf.WriteByte('}')
+	return buf.Bytes()
 }
 
 func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account *Account, fp *Fingerprint) string {
