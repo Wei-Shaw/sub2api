@@ -328,6 +328,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "Invalid model in URL")
 		return
 	}
+	urlModel := modelName
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
 		modelName = strings.TrimSpace(resolvedModel)
 	}
@@ -358,14 +359,19 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
 
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && !decision.AllowNextStage {
+	// 解析渠道级模型映射
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
+	reqModel := modelName // 保存映射前的原始模型名
+	if action != "countTokens" && geminiImageGenerationRejected(c, apiKey, body, urlModel, reqModel, channelMapping.MappedModel) {
+		googleError(c, http.StatusBadRequest, service.ImageGenerationPermissionMessage())
+		return
+	}
+
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, reqModel, body); decision != nil && !decision.AllowNextStage {
 		googleSecurityAuditError(c, decision)
 		return
 	}
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
-	reqModel := modelName // 保存映射前的原始模型名
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}
@@ -546,12 +552,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 	fs := NewFailoverState(maxAccountSwitches, hasBoundSession)
 
-	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
-	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
-	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
-		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
-		c.Request = c.Request.WithContext(ctx)
-	}
+	// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
+	// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
+	c.Request = c.Request.WithContext(h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), apiKey.GroupID))
 
 	for {
 		excludedAccountIDs := fs.FailedAccountIDs

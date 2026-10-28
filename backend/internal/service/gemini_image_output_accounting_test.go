@@ -3,11 +3,15 @@
 package service
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -28,7 +32,7 @@ func geminiImageResponse(parts string) string {
 	return `{"candidates":[{"content":{"role":"model","parts":[` + parts + `]},"finishReason":"STOP"}]}`
 }
 
-func TestCountGeminiInlineImageOutputs(t *testing.T) {
+func TestCountGeminiImageOutputs(t *testing.T) {
 	cases := []struct {
 		name    string
 		payload string
@@ -78,6 +82,46 @@ func TestCountGeminiInlineImageOutputs(t *testing.T) {
 			payload: geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":""}}`),
 			want:    0,
 		},
+		{
+			name:    "camelCase fileData",
+			payload: geminiImageResponse(`{"fileData":{"mimeType":"image/jpeg","fileUri":"https://example.test/image.jpg"}}`),
+			want:    1,
+		},
+		{
+			name:    "snake_case file_data",
+			payload: geminiImageResponse(`{"file_data":{"mime_type":"image/png","file_uri":"gs://bucket/image.png"}}`),
+			want:    1,
+		},
+		{
+			name:    "mixed inline and referenced images",
+			payload: geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},{"fileData":{"mimeType":"image/webp","fileUri":"https://example.test/image.webp"}}`),
+			want:    2,
+		},
+		{
+			name:    "a part is counted once",
+			payload: geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"},"fileData":{"mimeType":"image/png","fileUri":"https://example.test/image.png"}}`),
+			want:    1,
+		},
+		{
+			name:    "non image file",
+			payload: geminiImageResponse(`{"fileData":{"mimeType":"application/pdf","fileUri":"https://example.test/file.pdf"}}`),
+			want:    0,
+		},
+		{
+			name:    "empty file URI",
+			payload: geminiImageResponse(`{"fileData":{"mimeType":"image/png","fileUri":"  "}}`),
+			want:    0,
+		},
+		{
+			name:    "missing file URI",
+			payload: geminiImageResponse(`{"fileData":{"mimeType":"image/png"}}`),
+			want:    0,
+		},
+		{
+			name:    "non string file URI",
+			payload: geminiImageResponse(`{"fileData":{"mimeType":"image/png","fileUri":123}}`),
+			want:    0,
+		},
 		{name: "empty payload", payload: "", want: 0},
 		{name: "invalid json", payload: "not-json", want: 0},
 		{name: "error response", payload: `{"error":{"code":429,"message":"quota"}}`, want: 0},
@@ -85,7 +129,7 @@ func TestCountGeminiInlineImageOutputs(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, countGeminiInlineImageOutputs([]byte(tc.payload)))
+			require.Equal(t, tc.want, countGeminiImageOutputs([]byte(tc.payload)))
 		})
 	}
 }
@@ -201,4 +245,47 @@ func TestHandleNativeNonStreamingResponse_FeedsImageCounter(t *testing.T) {
 
 	require.Equal(t, 1, observedGeminiImageOutputs(c))
 	require.Equal(t, 1, resolveGeminiImageCount(c, "nana-banana-2", "nana-banana-2"))
+}
+
+// fileData from a custom native model must reach per-image billing without
+// depending on the model-name heuristic (issue #8300).
+func TestHandleNativeNonStreamingResponse_FileDataImageBilling(t *testing.T) {
+	c := newGeminiImageTestContext(t)
+	beginGeminiImageOutputObservation(c)
+	body := geminiImageResponse(`{"file_data":{"mime_type":"image/jpeg","file_uri":"https://example.test/one.jpg"}},{"fileData":{"mimeType":"image/png","fileUri":"https://example.test/two.png"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	_, err := (&GeminiMessagesCompatService{}).handleNativeNonStreamingResponse(c, resp, false, nil, "")
+	require.NoError(t, err)
+	const model = "gemini-nano-banana-2.1"
+	require.False(t, isImageGenerationModel(model))
+	count := resolveGeminiImageCount(c, model, model)
+	require.Equal(t, 2, count)
+	groupID := int64(128)
+	svc := &GatewayService{
+		billingService: NewBillingService(&config.Config{}, nil),
+		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, model, 0.25),
+	}
+	cost := svc.calculateRecordUsageCost(context.Background(),
+		&ForwardResult{Model: model, ImageCount: count, ImageSize: "1K"},
+		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
+		model, 0.15, 1.0, time.Time{})
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+	require.InDelta(t, 0.50, cost.TotalCost, 1e-12)
+}
+
+func TestObserveGeminiImageOutputs_FileDataCumulativeChunks(t *testing.T) {
+	c := newGeminiImageTestContext(t)
+	beginGeminiImageOutputObservation(c)
+	payload := []byte(geminiImageResponse(`{"fileData":{"mimeType":"image/png","fileUri":"https://example.test/image.png"}}`))
+	for range 4 {
+		observeGeminiImageOutputs(c, payload)
+	}
+	require.Equal(t, 1, observedGeminiImageOutputs(c))
+	beginGeminiImageOutputObservation(c)
+	require.Zero(t, observedGeminiImageOutputs(c))
 }

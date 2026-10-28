@@ -53,9 +53,19 @@ type UpstreamModelMetadataSnapshot struct {
 }
 
 type UpstreamModelCatalog struct {
-	Models   []string                         `json:"models"`
-	Metadata map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
-	Warnings []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+	Models               []string                         `json:"models"`
+	Metadata             map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
+	Warnings             []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+	DiscoverySource      string                           `json:"discovery_source,omitempty"`
+	GrokModelDiagnostics *GrokModelDiagnostics            `json:"grok_model_diagnostics,omitempty"`
+}
+
+// upstreamModelListFetchResult is the live model list plus an optional Grok
+// observation. Non-Grok fetches leave the observation nil.
+type upstreamModelListFetchResult struct {
+	Models          []string
+	Body            []byte
+	GrokObservation *GrokCatalogObservation
 }
 
 type UpstreamModelSyncWarning struct {
@@ -213,12 +223,31 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // snapshot. When no model is complete, the existing account snapshot is left
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
-	models, body, err := s.fetchUpstreamModelList(ctx, account)
+	fetched, err := s.fetchUpstreamModelListWithObservation(ctx, account)
+	var (
+		models          []string
+		body            []byte
+		grokObservation *GrokCatalogObservation
+	)
+	if fetched != nil {
+		models = fetched.Models
+		body = fetched.Body
+		grokObservation = fetched.GrokObservation
+	}
 	liveListAvailable := err == nil
 	if err != nil {
 		configuredModels := configuredUpstreamModelsForCapabilitySync(account)
 		if !upstreamModelListEndpointUnsupported(err) || len(configuredModels) == 0 {
+			s.keepGrokCatalogFailure(ctx, account, grokObservation)
 			return nil, err
+		}
+		if grokObservation != nil {
+			grokObservation.Attempt.Status = grokCatalogStatusConfiguredFallback
+			grokObservation.Attempt.ErrorCode = "http_error"
+			grokObservation.Models = nil
+		}
+		if saveErr := s.saveGrokCatalogObservation(ctx, account, grokObservation); saveErr != nil {
+			return nil, newUpstreamModelSyncInternalError("Failed to save upstream model catalog", saveErr)
 		}
 		models = configuredModels
 		body = nil
@@ -228,8 +257,21 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			"status_code", upstreamModelSyncStatusCode(err),
 			"model_count", len(models),
 		)
+	} else if saveErr := s.saveGrokCatalogObservation(ctx, account, grokObservation); saveErr != nil {
+		return nil, newUpstreamModelSyncInternalError("Failed to save upstream model catalog", saveErr)
 	}
 	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
+	if account != nil && account.IsGrok() {
+		if grokObservation != nil && grokObservation.Attempt.Status == grokCatalogStatusConfiguredFallback {
+			catalog.DiscoverySource = "configured_fallback"
+			catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
+				Code:    "grok_model_catalog_configured_fallback",
+				Message: "The upstream model list was unavailable; configured IDs were used only for capability enrichment.",
+			})
+		} else if liveListAvailable {
+			catalog.DiscoverySource = "upstream"
+		}
+	}
 	if len(body) > 0 {
 		_, directMetadata, parseErr := extractUpstreamModelCatalog(body, account != nil && account.IsGrok())
 		if parseErr == nil {
@@ -734,34 +776,54 @@ func normalizeModelRegistryBaseURL(raw string) string {
 }
 
 func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account *Account) ([]string, []byte, error) {
+	result, err := s.fetchUpstreamModelListWithObservation(ctx, account)
+	if result == nil {
+		return nil, nil, err
+	}
+	return result.Models, result.Body, err
+}
+
+func (s *AccountTestService) fetchUpstreamModelListWithObservation(ctx context.Context, account *Account) (*upstreamModelListFetchResult, error) {
+	started := time.Now().UTC()
+	models, body, req, err := s.fetchUpstreamModelListRequest(ctx, account)
+	result := &upstreamModelListFetchResult{Models: models, Body: body}
+	if account != nil && account.IsGrok() {
+		observation := buildGrokCatalogObservation(account, req, started, models, err)
+		result.GrokObservation = &observation
+	}
+	return result, err
+}
+
+func (s *AccountTestService) fetchUpstreamModelListRequest(ctx context.Context, account *Account) ([]string, []byte, *http.Request, error) {
 	if s == nil {
-		return nil, nil, newUpstreamModelSyncConfigError("Account test service is not configured", nil)
+		return nil, nil, nil, newUpstreamModelSyncConfigError("Account test service is not configured", nil)
 	}
 	if account == nil {
-		return nil, nil, newUpstreamModelSyncConfigError("Account is required", nil)
+		return nil, nil, nil, newUpstreamModelSyncConfigError("Account is required", nil)
 	}
 
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
-		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
+		models, body, err := s.fetchAntigravityOAuthUpstreamModels(ctx, account)
+		return models, body, nil, err
 	}
 
 	if s.httpUpstream == nil {
-		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
+		return nil, nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
 
 	if account.IsGemini() && account.IsVertexServiceAccount() {
 		models, err := s.fetchVertexGeminiUpstreamModels(ctx, account)
-		return models, nil, err
+		return models, nil, nil, err
 	}
 
 	req, err := s.buildUpstreamModelsRequest(ctx, account)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	body, err := s.readUpstreamModelsResponse(req, account)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, req, err
 	}
 
 	extractModels := extractUpstreamModelIDs
@@ -770,13 +832,38 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	}
 	models, err := extractModels(body)
 	if err != nil {
-		return nil, nil, newUpstreamModelSyncUpstreamError("Upstream model list response was not valid JSON", err)
+		if account.IsGrok() && errors.Is(err, errGrokCatalogEmpty) {
+			return nil, nil, req, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", err)
+		}
+		return nil, nil, req, newUpstreamModelSyncUpstreamError("Upstream model list response was not valid JSON", err)
 	}
 	if len(models) == 0 {
-		return nil, nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
+		return nil, nil, req, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
 	}
 
-	return models, body, nil
+	return models, body, req, nil
+}
+
+func (s *AccountTestService) saveGrokCatalogObservation(ctx context.Context, account *Account, observation *GrokCatalogObservation) error {
+	if s == nil || account == nil || !account.IsGrok() || account.ID <= 0 || observation == nil {
+		return nil
+	}
+	snap, err := PersistGrokCatalogObservation(ctx, s.accountRepo, account.ID, *observation)
+	if err != nil {
+		return err
+	}
+	rememberGrokObservedSnapshot(account, snap)
+	return nil
+}
+
+func (s *AccountTestService) keepGrokCatalogFailure(ctx context.Context, account *Account, observation *GrokCatalogObservation) {
+	if err := s.saveGrokCatalogObservation(ctx, account, observation); err != nil {
+		slog.Warn("grok model catalog observation was not saved",
+			"account_id", upstreamModelSyncAccountID(account),
+			"platform", upstreamModelSyncPlatform(account),
+			"error", err,
+		)
+	}
 }
 
 // readUpstreamModelsResponse 发送模型列表请求并读取受限大小的响应体；非 2xx 返回带状态码的同步错误。
@@ -1415,7 +1502,7 @@ func extractUpstreamModelIDs(body []byte) ([]string, error) {
 }
 
 func extractGrokUpstreamModelIDs(body []byte) ([]string, error) {
-	return extractUpstreamModelIDsWithSelector(body, grokUpstreamModelEntryID)
+	return parseGrokCatalogModelIDs(body)
 }
 
 func extractUpstreamModelCatalog(body []byte, grok bool) ([]string, map[string]UpstreamModelMetadata, error) {
