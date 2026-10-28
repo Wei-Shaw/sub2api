@@ -41,6 +41,11 @@ type StreamingProcessor struct {
 	cacheReadTokens   int
 	imageOutputTokens int
 	hasContent        bool
+
+	// toolProgressFallback 由调用方显式启用；默认关闭，保持原有行为。
+	toolProgressFallback bool
+	// hasVisibleText 记录是否已输出过可见正文，thinking 不计入。
+	hasVisibleText bool
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -54,6 +59,13 @@ func NewStreamingProcessor(originalModel string) *StreamingProcessor {
 // SetUsageMapHook sets an optional hook that modifies usage maps before they are emitted.
 func (p *StreamingProcessor) SetUsageMapHook(fn UsageMapHook) {
 	p.usageMapHook = fn
+}
+
+// SetToolProgressFallback 启用或关闭“工具进度回退”。默认关闭，保持原有行为。
+// 启用后，仅当整条响应在工具调用之前没有任何可见正文（thinking 不算正文）时，
+// 会在 function_call 之前补一条中文普通 text，说明接下来要调用的工具。
+func (p *StreamingProcessor) SetToolProgressFallback(enabled bool) {
+	p.toolProgressFallback = enabled
 }
 
 func usageToMap(u ClaudeUsage) map[string]any {
@@ -246,6 +258,13 @@ func (p *StreamingProcessor) processPart(part *GeminiPart) []byte {
 			p.trailingSignature = ""
 		}
 
+		// 工具进度回退：仅调用方显式启用且此前没有任何可见正文时补一条普通 text。
+		// 不暴露 thought，也不声称工具已经执行；processText 会置 hasVisibleText，
+		// 因此同一条响应里后续工具不会重复补。
+		if p.toolProgressFallback && !p.hasVisibleText {
+			_, _ = result.Write(p.processText(buildToolProgressText(part.FunctionCall.Name), ""))
+		}
+
 		_, _ = result.Write(p.processFunctionCall(part.FunctionCall, signature))
 		return result.Bytes()
 	}
@@ -330,6 +349,9 @@ func (p *StreamingProcessor) processText(text, signature string) []byte {
 		return nil
 	}
 
+	// 非空普通正文即视为可见正文，供工具进度回退判断；thinking 不计入。
+	p.hasVisibleText = true
+
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
 		_, _ = result.Write(p.endBlock())
@@ -403,6 +425,14 @@ func (p *StreamingProcessor) processFunctionCall(fc *GeminiFunctionCall, signatu
 	_, _ = result.Write(p.endBlock())
 
 	return result.Bytes()
+}
+
+// buildToolProgressText 生成工具进度提示文本（仅用于工具进度回退）。
+func buildToolProgressText(name string) string {
+	if name == "" {
+		name = "工具"
+	}
+	return fmt.Sprintf("【工具进度】接下来调用 %s，继续处理当前任务。", name)
 }
 
 // startBlock 开始新的内容块
