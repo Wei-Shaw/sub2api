@@ -357,3 +357,101 @@ func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 		})
 	}
 }
+
+func newBodyPassthroughRule(statusCode int) *model.ErrorPassthroughRule {
+	return &model.ErrorPassthroughRule{
+		ID:              1,
+		Name:            "openai-4xx-passthrough",
+		Enabled:         true,
+		ErrorCodes:      []int{statusCode},
+		MatchMode:       model.MatchModeAny,
+		Platforms:       []string{PlatformOpenAI},
+		PassthroughCode: true,
+		PassthroughBody: true,
+	}
+}
+
+// passthrough_body=true 的规则意在原样透传上游错误：type/code/param 与 message 一起保留。
+func TestHandleErrorResponse_BodyPassthroughRulePreservesUpstreamFields(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		body      string
+		wantType  string
+		wantCode  string
+		wantParam string
+		wantMsg   string
+	}{
+		{
+			name:      "previous_response_not_found",
+			status:    http.StatusBadRequest,
+			body:      `{"error":{"message":"Previous response with id 'resp_1' not found.","type":"invalid_request_error","param":"previous_response_id","code":"previous_response_not_found"}}`,
+			wantType:  "invalid_request_error",
+			wantCode:  "previous_response_not_found",
+			wantParam: "previous_response_id",
+			wantMsg:   "Previous response with id 'resp_1' not found.",
+		},
+		{
+			name:     "model_not_found_404",
+			status:   http.StatusNotFound,
+			body:     `{"error":{"message":"The model 'x' does not exist","type":"invalid_request_error","code":"model_not_found"}}`,
+			wantType: "invalid_request_error",
+			wantCode: "model_not_found",
+			wantMsg:  "The model 'x' does not exist",
+		},
+		{
+			// 上游没给 type 时保持规则路径原有的 upstream_error。
+			name:     "message_only_keeps_upstream_error_type",
+			status:   http.StatusUnprocessableEntity,
+			body:     `{"error":{"message":"Model not found."}}`,
+			wantType: "upstream_error",
+			wantMsg:  "Model not found.",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newOpenAIUpstreamErrorTestContext(t)
+			ruleSvc := &ErrorPassthroughService{}
+			ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{newBodyPassthroughRule(tc.status)})
+			BindErrorPassthroughService(c, ruleSvc)
+			svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+			_, err := svc.handleErrorResponse(
+				context.Background(),
+				newOpenAIUpstreamErrorResponse(tc.status, tc.body),
+				c, newOpenAIUpstreamErrorTestAccount(), nil,
+			)
+
+			require.Error(t, err)
+			require.Equal(t, tc.status, rec.Code)
+			body := rec.Body.String()
+			require.Equal(t, tc.wantType, gjson.Get(body, "error.type").String())
+			require.Equal(t, tc.wantCode, gjson.Get(body, "error.code").String())
+			require.Equal(t, tc.wantParam, gjson.Get(body, "error.param").String())
+			require.Equal(t, tc.wantMsg, gjson.Get(body, "error.message").String())
+		})
+	}
+}
+
+// passthrough_body=false 时自定义消息仍是唯一输出，不夹带上游 code/param。
+func TestHandleErrorResponse_CustomMessageRuleDoesNotLeakUpstreamFields(t *testing.T) {
+	c, rec := newOpenAIUpstreamErrorTestContext(t)
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{
+		newNonFailoverPassthroughRule(http.StatusBadRequest, "automation_update", http.StatusTeapot, "自定义文案"),
+	})
+	BindErrorPassthroughService(c, ruleSvc)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+	_, err := svc.handleErrorResponse(
+		context.Background(),
+		newOpenAIUpstreamErrorResponse(http.StatusBadRequest, openAIInvalidFunctionParametersBody),
+		c, newOpenAIUpstreamErrorTestAccount(), nil,
+	)
+
+	require.Error(t, err)
+	body := rec.Body.String()
+	require.Equal(t, "upstream_error", gjson.Get(body, "error.type").String())
+	require.False(t, gjson.Get(body, "error.code").Exists())
+	require.False(t, gjson.Get(body, "error.param").Exists())
+}
