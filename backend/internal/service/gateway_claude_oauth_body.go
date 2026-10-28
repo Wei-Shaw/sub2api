@@ -302,6 +302,19 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
+	// safeguards：真实 CLI 2.1.31x 起每条请求都带
+	// [{"type":"dangerous_tool_use","classifier_context":{...}}]。缺它会与
+	// attribution header 里的 cc_version 互相矛盾（头声称新版本、体却是旧形状）。
+	// 客户端传了就透传；否则按 CLI 形状补一份最小但字段齐全的上下文。
+	if !gjson.GetBytes(out, "safeguards").Exists() {
+		if raw, err := buildSafeguardsBlock(); err == nil {
+			if next, ok := setJSONRawBytes(out, "safeguards", raw); ok {
+				out = next
+				modified = true
+			}
+		}
+	}
+
 	// tool_choice：与 Parrot 对齐，不再无条件删除。
 	// - 客户端传了 {"type":"tool","name":"X"} → 保留结构，name 由
 	//   applyToolNameRewriteToBody 同步映射为假名
@@ -915,7 +928,7 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	originalSystemText, originalSystemCacheControl := extractSystemTextAndCacheControl(system)
 
 	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
-	//    [0] billing attribution block（cc_version={cliVer}.{fp}; cc_entrypoint=cli;）
+	//    [0] billing attribution block（cc_version={cliVer}.{fp}; cc_entrypoint=sdk-cli;）
 	//    [1] "You are Claude Code..." 身份前缀 block（默认不带 cache_control）
 	//    [2] 工具无关的通用提示词扩充 block（带 cache_control 作为稳定缓存断点）
 	//

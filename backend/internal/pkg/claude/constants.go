@@ -24,6 +24,13 @@ const (
 	BetaMidConversationToolChanges = "mid-conversation-tool-changes-2026-07-01"
 	BetaInlineTools                = "inline-tools-2026-09-15"
 
+	// 2.1.31x 起真实 CLI 每条请求都会带的 token（缺任何一个都会被判非正版）。
+	BetaPerTurnControl     = "per-turn-control-2026-07-01"
+	BetaThinkingTokenCount = "thinking-token-count-2026-05-13"
+	BetaAdvancedToolUse    = "advanced-tool-use-2025-11-20"
+	BetaDangerousToolUse   = "dangerous-tool-use-2026-09-03"
+	BetaAfkMode            = "afk-mode-2026-01-31"
+
 	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
 	BetaPromptCachingScope          = "prompt-caching-scope-2026-01-05"
 	BetaEffort                      = "effort-2025-11-24"
@@ -50,7 +57,12 @@ const (
 var DroppedBetas = []string{}
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
-const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+// 顺序与真实 CLI 抓包一致。fine-grained-tool-streaming 从 2.1.3x 起已不再发送，
+// 保留常量供显式请求使用，但不放进任何默认列表。
+const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," +
+	BetaContextManagement + "," + BetaPerTurnControl + "," + BetaMidConversationToolChanges + "," +
+	BetaThinkingTokenCount + "," + BetaAdvancedToolUse + "," + BetaEffort + "," +
+	BetaDangerousToolUse + "," + BetaAfkMode
 
 // MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
 //
@@ -58,7 +70,9 @@ const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleav
 // Claude Code for non-Claude-Code clients, we must include the claude-code beta
 // even if the request doesn't use tools, otherwise upstream may reject the
 // request as a non-Claude-Code API request.
-const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
+const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," +
+	BetaContextManagement + "," + BetaPerTurnControl + "," + BetaThinkingTokenCount + "," +
+	BetaAdvancedToolUse + "," + BetaEffort + "," + BetaDangerousToolUse + "," + BetaAfkMode
 
 // MessageBetaHeaderWithTools /v1/messages 在有工具时的 beta header
 const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
@@ -71,7 +85,9 @@ const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInter
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 
 // APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth）
-const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + BetaContextManagement + "," +
+	BetaPerTurnControl + "," + BetaMidConversationToolChanges + "," + BetaThinkingTokenCount + "," +
+	BetaAdvancedToolUse + "," + BetaEffort + "," + BetaDangerousToolUse + "," + BetaAfkMode
 
 // APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking
@@ -99,15 +115,19 @@ const CLICurrentVersion = "2.1.258"
 //   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
 //   - 不默认加入 redact-thinking，避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
 func FullClaudeCodeMimicryBetas() []string {
+	// 严格按真实 CLI 2.1.311 的抓包顺序，不多不少、不重排。
 	return []string{
 		BetaClaudeCode,
 		BetaOAuth,
 		BetaInterleavedThinking,
-		BetaPromptCachingScope,
-		BetaEffort,
 		BetaContextManagement,
-		BetaThinkingBindingControls,
-		BetaMidConversationOutputConfig,
+		BetaPerTurnControl,
+		BetaMidConversationToolChanges,
+		BetaThinkingTokenCount,
+		BetaAdvancedToolUse,
+		BetaEffort,
+		BetaDangerousToolUse,
+		BetaAfkMode,
 		BetaExtendedCacheTTL,
 	}
 }
@@ -123,13 +143,13 @@ func DefaultHeaders() map[string]string {
 		// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
 		"User-Agent":                                DefaultUserAgent(),
 		"X-Stainless-Lang":                          "js",
-		"X-Stainless-Package-Version":               "0.94.0",
+		"X-Stainless-Package-Version":               "0.128.0",
 		"X-Stainless-OS":                            "Linux",
 		"X-Stainless-Arch":                          "arm64",
 		"X-Stainless-Runtime":                       "node",
-		"X-Stainless-Runtime-Version":               "v24.3.0",
+		"X-Stainless-Runtime-Version":               "v26.12.1",
 		"X-Stainless-Retry-Count":                   "0",
-		"X-Stainless-Timeout":                       "600",
+		"X-Stainless-Timeout":                       "300",
 		"X-App":                                     "cli",
 		"Anthropic-Dangerous-Direct-Browser-Access": "true",
 	}

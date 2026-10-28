@@ -45,7 +45,7 @@ func TestClaudeCodeFingerprint_JavaScriptUTF16(t *testing.T) {
 
 				billing, err := buildBillingAttributionText(body, version)
 				require.NoError(t, err)
-				require.Equal(t, "x-anthropic-billing-header: cc_version="+version+"."+tt.want+"; cc_entrypoint=cli;", billing)
+				require.Equal(t, "x-anthropic-billing-header: cc_version="+version+"."+tt.want+"; cc_entrypoint=sdk-cli;", billing)
 			})
 		}
 	}

@@ -52,7 +52,10 @@ func TestSonnet55ToolsetDropsLegacyStreamingBeta(t *testing.T) {
 						got, set = svc.computeFinalAnthropicBeta("apikey", false, tc.model, requestHeaders, body, nil)
 					}
 					require.True(t, set)
-					require.Equal(t, !tc.wantDrop, containsBetaToken(got, claude.BetaFineGrainedToolStreaming))
+					// 2.1.31x 起不再默认注入 fine-grained-tool-streaming：只有客户端自己
+					// 传了才可能保留，且 toolset 场景下仍会被过滤掉。
+					wantPresent := tokens.clientBeta && !tc.wantDrop
+					require.Equal(t, wantPresent, containsBetaToken(got, claude.BetaFineGrainedToolStreaming))
 					if tokens.clientBeta {
 						require.True(t, containsBetaToken(got, claude.BetaContext1M))
 					}

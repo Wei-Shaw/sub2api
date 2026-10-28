@@ -928,7 +928,7 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			billingText := arr[0].Get("text").String()
 			require.Contains(t, billingText, "x-anthropic-billing-header:")
 			require.Contains(t, billingText, "cc_version="+claude.CLICurrentVersion+".")
-			require.Contains(t, billingText, "cc_entrypoint=cli;")
+			require.Contains(t, billingText, "cc_entrypoint=sdk-cli;")
 
 			require.Equal(t, claudeCodeSystemPrompt, arr[1].Get("text").String())
 			require.False(t, arr[1].Get("cache_control").Exists(), "身份前缀 block 不应带 cache_control")
