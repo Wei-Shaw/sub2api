@@ -84,6 +84,7 @@ const FETCHED_AT = '2026-10-25T11:00:00.000Z'
 const EXPIRES_AT = '2026-10-25T12:00:05.000Z'
 const LONG_ENDPOINT = `https://relay.example.com/${'endpoint-segment-'.repeat(12)}v1/models`
 const LONG_MODEL = `grok-${'very-long-model-id-'.repeat(8)}custom`
+const UNBREAKABLE_MODEL = 'a'.repeat(128)
 
 let locale: 'en' | 'zh' = 'zh'
 const initialI18nLocale = i18n.global.locale.value
@@ -753,6 +754,18 @@ describe('GrokModelDiagnosticsPanel', () => {
     await openDetails(wrapper)
     expect(wrapper.get('[data-testid="grok-diagnostics-endpoint"]').classes()).toContain('break-all')
     expect(wrapper.get('[data-testid="grok-diagnostics-model"]').text()).toContain(LONG_MODEL)
+  })
+
+  it('lets unbreakable long model ids shrink and break inside flex-wrap tags', async () => {
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        models: [UNBREAKABLE_MODEL]
+      })
+    }))
+    await openDetails(wrapper)
+    const tag = wrapper.get('[data-testid="grok-diagnostics-model"]')
+    expect(tag.text()).toBe(UNBREAKABLE_MODEL)
+    expect(tag.classes()).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full', 'break-all']))
   })
 
   it('toggles details with aria-expanded and aria-controls', async () => {

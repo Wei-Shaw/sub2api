@@ -156,7 +156,7 @@
             v-for="model in visibleModels"
             :key="model"
             data-testid="grok-diagnostics-model"
-            class="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-mono text-xs dark:border-dark-600 dark:bg-dark-800"
+            class="min-w-0 max-w-full break-all rounded-md border border-gray-200 bg-white px-2 py-0.5 font-mono text-xs dark:border-dark-600 dark:bg-dark-800"
           >
             {{ model }}
           </span>
