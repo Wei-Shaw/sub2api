@@ -5,6 +5,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type compatStreamUsageUpstream struct {
@@ -69,6 +71,13 @@ type compatStreamUsageRun struct {
 // closeUpstream 为 false 时保持连接不再发送数据。
 func runCompatStreamUsageHandler(t *testing.T, endpoint, upstreamStream string, closeUpstream bool) compatStreamUsageRun {
 	t.Helper()
+	return runCompatUsageHandler(t, endpoint, true, upstreamStream, closeUpstream)
+}
+
+// runCompatUsageHandler 同 runCompatStreamUsageHandler，clientStream 为 false 时发非流式请求
+// （上游仍被强制流式）。
+func runCompatUsageHandler(t *testing.T, endpoint string, clientStream bool, upstreamStream string, closeUpstream bool) compatStreamUsageRun {
+	t.Helper()
 	cfg := &config.Config{Gateway: config.GatewayConfig{StreamDataIntervalTimeout: 1}}
 	groupID := int64(9300)
 	group := &service.Group{ID: groupID, Hydrated: true, Platform: service.PlatformAnthropic, Status: service.StatusActive, RateMultiplier: 1}
@@ -109,9 +118,9 @@ func runCompatStreamUsageHandler(t *testing.T, endpoint, upstreamStream string, 
 		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0),
 	}
 
-	body := `{"model":"claude-sonnet-4.5","stream":true,"input":"hello"}`
+	body := fmt.Sprintf(`{"model":"claude-sonnet-4.5","stream":%t,"input":"hello"}`, clientStream)
 	if endpoint == "chat/completions" {
-		body = `{"model":"claude-sonnet-4.5","stream":true,"messages":[{"role":"user","content":"hello"}]}`
+		body = fmt.Sprintf(`{"model":"claude-sonnet-4.5","stream":%t,"messages":[{"role":"user","content":"hello"}]}`, clientStream)
 	}
 	c, _ := gin.CreateTestContext(run.rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, bytes.NewBufferString(body))
@@ -223,6 +232,64 @@ func TestGatewayCompatibilityHandlers_UpstreamErrorEventAfterOutputIsNotBilled(t
 			run.billingRepo.mu.Lock()
 			defer run.billingRepo.mu.Unlock()
 			require.Empty(t, run.billingRepo.commands, "an upstream error event is not billed while the client is online")
+			require.Empty(t, run.usageRepo.created)
+		})
+	}
+}
+
+// 非流式请求的上游在结束事件前关闭：经 handler 返回 502 而非半截内容，已观测到的
+// usage 只结算一次，且不重放上游请求。
+func TestGatewayCompatibilityHandlers_BufferedTruncationIsNotSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, endpoint := range []string{"chat/completions", "responses"} {
+		for _, tc := range []struct {
+			name       string
+			completion string
+			wantStatus int
+			wantOutput int
+		}{
+			{name: "complete", completion: compatStreamUsageCompletion, wantStatus: http.StatusOK, wantOutput: 7},
+			{name: "truncated", wantStatus: http.StatusBadGateway, wantOutput: 1},
+		} {
+			t.Run(endpoint+"/"+tc.name, func(t *testing.T) {
+				run := runCompatUsageHandler(t, endpoint, false, compatStreamUsagePartialStream+tc.completion, true)
+
+				require.Equal(t, 1, run.upstream.calls, "a metered truncation is not replayed")
+				require.Equal(t, tc.wantStatus, run.rec.Code)
+				out := run.rec.Body.String()
+				require.True(t, gjson.Valid(out), "the handler must not append a fallback body: %s", out)
+				if tc.completion == "" {
+					require.NotContains(t, out, "partial", "the half-assembled answer must not reach the client")
+					require.Contains(t, out, "stream_incomplete")
+				} else {
+					require.Contains(t, out, "partial")
+				}
+
+				run.billingRepo.mu.Lock()
+				defer run.billingRepo.mu.Unlock()
+				require.Len(t, run.billingRepo.commands, 1, "usage must be settled exactly once")
+				require.Equal(t, 12, run.billingRepo.commands[0].InputTokens)
+				require.Equal(t, tc.wantOutput, run.billingRepo.commands[0].OutputTokens)
+				require.Len(t, run.usageRepo.created, 1)
+			})
+		}
+	}
+}
+
+func TestGatewayCompatibilityHandlers_BufferedUpstreamErrorEventIsNotBilled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstreamError := "event: error\n" + `data: {"type":"error","error":{"type":"api_error","message":"Internal server error"}}` + "\n\n"
+	for _, endpoint := range []string{"chat/completions", "responses"} {
+		t.Run(endpoint, func(t *testing.T) {
+			run := runCompatUsageHandler(t, endpoint, false, compatStreamUsagePartialStream+upstreamError, true)
+
+			require.Equal(t, 1, run.upstream.calls)
+			require.NotEqual(t, http.StatusOK, run.rec.Code)
+			require.NotContains(t, run.rec.Body.String(), "partial")
+
+			run.billingRepo.mu.Lock()
+			defer run.billingRepo.mu.Unlock()
+			require.Empty(t, run.billingRepo.commands, "an upstream error event is not billed")
 			require.Empty(t, run.usageRepo.created)
 		})
 	}

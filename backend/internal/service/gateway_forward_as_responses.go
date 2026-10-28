@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -197,18 +196,18 @@ func (s *GatewayService) ForwardAsResponses(
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
+	writerSizeBeforeStream := c.Writer.Size()
 	if clientStream {
-		writerSizeBeforeStream := c.Writer.Size()
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
-		var sseErr *sseStreamErrorEventError
-		switch {
-		case errors.As(handleErr, &sseErr):
-			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
-		case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
-			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
-		}
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
+	}
+	var sseErr *sseStreamErrorEventError
+	switch {
+	case errors.As(handleErr, &sseErr):
+		return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
+	case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
+		s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 	}
 
 	return result, handleErr
@@ -386,29 +385,41 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	scanner := bufio.NewScanner(resp.Body)
-	maxLineSize := defaultMaxLineSize
-	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
-		maxLineSize = s.cfg.Gateway.MaxLineSize
-	}
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
-
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	stream := newAnthropicCompatStream(s.cfg, c, resp, "forward_as_responses buffered", requestID)
+	defer stream.stop()
+
+	resultWithUsage := func() *ForwardResult {
+		return &ForwardResult{
+			RequestID:       requestID,
+			UpstreamHeaders: resp.Header,
+			Usage:           usage,
+			Model:           originalModel,
+			UpstreamModel:   mappedModel,
+			ReasoningEffort: reasoningEffort,
+			Stream:          false,
+			Duration:        time.Since(startTime),
+		}
+	}
+
+	for {
+		line, ok := stream.nextLine()
+		if !ok {
+			break
+		}
 		eventType, ok := parseAnthropicSSEField(line, "event")
 		if !ok {
 			continue
 		}
 
 		// Read the data line
-		if !scanner.Scan() {
+		dataLine, ok := stream.nextLine()
+		if !ok {
 			break
 		}
-		dataLine := scanner.Text()
 		payload, ok := parseAnthropicSSEField(dataLine, "data")
 		if !ok {
 			continue
@@ -422,6 +433,11 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+
+		stream.observe(&event, payload)
+		if stream.upstreamErrType != "" {
+			break
 		}
 
 		// message_start carries the initial response structure
@@ -461,13 +477,8 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_responses buffered: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
-		}
+	if failure := stream.failure(); failure != nil {
+		return finishAnthropicCompatBufferedFailure(c, failure, resultWithUsage(), writeResponsesError)
 	}
 
 	if finalResp == nil {
@@ -512,16 +523,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		c.JSON(http.StatusOK, responsesResp)
 	}
 
-	return &ForwardResult{
-		RequestID:       requestID,
-		UpstreamHeaders: resp.Header,
-		Usage:           usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          false,
-		Duration:        time.Since(startTime),
-	}, nil
+	return resultWithUsage(), nil
 }
 
 // handleResponsesStreamingResponse reads Anthropic SSE events from upstream,
