@@ -34,6 +34,8 @@ import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   persistOAuthTokenContext,
+  throwIfRegistrationPendingReview,
+  RegistrationPendingReviewError,
   type PendingOAuthExchangeResponse
 } from '@/api/auth'
 import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
@@ -89,10 +91,12 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
               tencent_captcha_randstr: payload.tencentCaptchaRandstr
           }
           : {}),
+        ...(payload.registrationReason ? { registration_reason: payload.registrationReason } : {}),
         invitation_code: payload.invitationCode || undefined
       }
     )
 
+    throwIfRegistrationPendingReview(data)
     const redirect = sanitizeRedirectPath(data.redirect || (route.query.redirect as string | undefined))
 
     if (data.access_token) {
@@ -112,6 +116,13 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
 
     accountActionError.value = t('auth.loginFailed')
   } catch (e: unknown) {
+    if (e instanceof RegistrationPendingReviewError) {
+      authStore.clearPendingAuthSession?.()
+      clearAllAffiliateReferralCodes()
+      appStore.showSuccess(t('auth.registrationPendingReviewSuccess'))
+      await router.replace('/login')
+      return
+    }
     // 全局"开放注册"关闭且未开启钉钉企业模式豁免时，引导用户去绑定已有账户而非死路
     const err = e as { response?: { data?: { reason?: string } } }
     if (err.response?.data?.reason === 'REGISTRATION_DISABLED') {

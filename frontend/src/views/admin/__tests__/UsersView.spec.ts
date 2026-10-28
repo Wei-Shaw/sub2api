@@ -134,6 +134,7 @@ const mountBulkDeleteView = () => mount(UsersView, {
   global: {
     stubs: {
       AppLayout: { template: '<div><slot /></div>' },
+      RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
       TablePageLayout: {
         template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
       },
@@ -207,6 +208,51 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it.each([
+    { action: 'reviewApprove', status: 'active', message: 'reviewApproved' },
+    { action: 'reviewReject', status: 'disabled', message: 'reviewRejected' }
+  ])('reviews a pending applicant using $action directly', async ({ action, status, message }) => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ status: 'pending', current_concurrency: 3 })],
+      total: 1, page: 1, page_size: 20, pages: 1
+    })
+    toggleStatus.mockResolvedValue(createAdminUser({ status: status as AdminUser['status'] }))
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+
+    const button = wrapper.get('[data-test="actions-42"]').findAll('button')
+      .find(candidate => candidate.text() === `admin.users.${action}`)
+    expect(button, `pending applicant must offer ${action}`).toBeDefined()
+    expect(wrapper.get('[data-test="actions-42"] a').attributes('href')).toBe('/admin/users/42/registration-review')
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(toggleStatus.mock.calls).toEqual([[42, status]])
+    expect(wrapper.get('[data-test="row-state"]').text()).toBe(`42:${status}:3`)
+    expect(showSuccess).toHaveBeenCalledWith(`admin.users.${message}`)
+    expect(wrapper.get('[data-test="actions-42"]').text()).not.toContain('admin.users.reviewReject')
+    wrapper.unmount()
+  })
+
+  it('prevents conflicting review requests while an applicant is being reviewed', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ status: 'pending' })],
+      total: 1, page: 1, page_size: 20, pages: 1
+    })
+    toggleStatus.mockImplementation(() => new Promise(() => {}))
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+    const actions = wrapper.get('[data-test="actions-42"]').findAll('button')
+    const approve = actions.find(button => button.text() === 'admin.users.reviewApprove')!
+    await approve.trigger('click')
+    await flushPromises()
+
+    expect(approve.attributes('disabled')).toBeDefined()
+    expect(actions.find(button => button.text() === 'admin.users.reviewReject')?.attributes('disabled')).toBeDefined()
+    expect(toggleStatus).toHaveBeenCalledOnce()
+    wrapper.unmount()
   })
 
   it('cancels bulk deletion without deleting or clearing selected users', async () => {
@@ -355,6 +401,7 @@ describe('admin UsersView', () => {
       global: {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
           TablePageLayout: {
             template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
           },
@@ -441,6 +488,7 @@ describe('admin UsersView', () => {
       global: {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
           TablePageLayout: {
             template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
           },
@@ -519,6 +567,7 @@ describe('admin UsersView', () => {
       global: {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
           TablePageLayout: {
             template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
           },

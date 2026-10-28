@@ -203,3 +203,24 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
+
+func TestUpdateSettingsRegistrationReviewRequirements(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{"registration_review_instructions": "Original requirements", "registration_reason_max_length": "800"})
+	rec := doUpdateSettings(t, h, map[string]any{"registration_review_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "Original requirements", repo.values["registration_review_instructions"])
+	require.Equal(t, "800", repo.values["registration_reason_max_length"])
+	rec = doUpdateSettings(t, h, map[string]any{"registration_review_instructions": "  Research purpose\nTeam name  ", "registration_reason_max_length": 1200}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "Research purpose\nTeam name", repo.values["registration_review_instructions"])
+	require.Equal(t, "1200", repo.values["registration_reason_max_length"])
+	require.Contains(t, rec.Body.String(), `"registration_reason_max_length":1200`)
+	rec = doUpdateSettings(t, h, map[string]any{"registration_review_instructions": ""}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Empty(t, repo.values["registration_review_instructions"])
+	for _, limit := range []int{0, -1, 10001} {
+		rec = doUpdateSettings(t, h, map[string]any{"registration_reason_max_length": limit}, nil)
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		require.Equal(t, "1200", repo.values["registration_reason_max_length"])
+	}
+}

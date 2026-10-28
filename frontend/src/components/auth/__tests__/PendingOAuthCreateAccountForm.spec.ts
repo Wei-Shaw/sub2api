@@ -51,6 +51,57 @@ describe('PendingOAuthCreateAccountForm', () => {
     })
   })
 
+  it('requires a trimmed reason only when signup review is enabled', async () => {
+    getPublicSettings.mockResolvedValue({ registration_review_enabled: true, email_verify_enabled: false })
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: { testIdPrefix: 'oidc', initialEmail: 'user@example.com', isSubmitting: false },
+      global: { stubs: { TurnstileWidget: true } }
+    })
+    await flushPromises()
+    await wrapper.get('input[type="password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')).toBeUndefined()
+    await wrapper.get('textarea').setValue(' Research project ')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ registrationReason: 'Research project' })
+    wrapper.unmount()
+  })
+
+  it('prevents reasons longer than 500 characters from implicit form submission', async () => {
+    getPublicSettings.mockResolvedValue({ registration_review_enabled: true, email_verify_enabled: false })
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: { testIdPrefix: 'oidc', initialEmail: 'user@example.com', isSubmitting: false },
+      global: { stubs: { TurnstileWidget: true } }
+    })
+    await flushPromises()
+    await wrapper.get('input[type="password"]').setValue('secret-123')
+    await wrapper.get('textarea').setValue('x'.repeat(501))
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')).toBeUndefined()
+    expect(showError).toHaveBeenCalledWith('auth.registrationReasonTooLong')
+    wrapper.unmount()
+  })
+
+  it('uses configured requirements and a Unicode character limit', async () => {
+    getPublicSettings.mockResolvedValue({ registration_review_enabled: true, registration_review_instructions: 'Describe your team\nExplain the intended use', registration_reason_max_length: 3 })
+    const wrapper = mount(PendingOAuthCreateAccountForm, {
+      props: { testIdPrefix: 'oidc', initialEmail: 'user@example.com', isSubmitting: false },
+      global: { stubs: { TurnstileWidget: true } }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Describe your team')
+    await wrapper.get('input[type="password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('textarea').setValue('abcd')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')).toBeUndefined()
+    await wrapper.get('textarea').setValue('😀😀😀')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ registrationReason: '😀😀😀' })
+    wrapper.unmount()
+  })
+
   it('does not restart the code cooldown after switching away during a send', async () => {
     vi.useFakeTimers()
     let finish!: (value: { countdown: number }) => void
@@ -169,9 +220,10 @@ describe('PendingOAuthCreateAccountForm', () => {
     expect(wrapper.text()).toContain('auth.alreadyHaveAccount')
   })
 
-  it('hides email verification controls when public settings disable email verification', async () => {
+  it.each([false, true])('verifies the supplied OAuth email when ordinary email verification is disabled and review=%s', async (review) => {
     getPublicSettings.mockResolvedValue({
       email_verify_enabled: false,
+      registration_review_enabled: review,
       turnstile_enabled: false,
       turnstile_site_key: ''
     })
@@ -186,19 +238,30 @@ describe('PendingOAuthCreateAccountForm', () => {
 
     await flushPromises()
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    if (review) await wrapper.get('textarea').setValue('Research access')
+    expect(wrapper.find('[data-testid="linuxdo-create-account-verify-code"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="linuxdo-create-account-send-code"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="linuxdo-create-account-submit"]').attributes('disabled')).toBeDefined()
     await wrapper.get('form').trigger('submit.prevent')
+    expect(wrapper.emitted('submit')).toBeUndefined()
 
-    expect(wrapper.find('[data-testid="linuxdo-create-account-verify-code"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="linuxdo-create-account-send-code"]').exists()).toBe(false)
+    sendPendingOAuthVerifyCode.mockResolvedValue({ countdown: 0 })
+    await wrapper.get('[data-testid="linuxdo-create-account-send-code"]').trigger('click')
+    await flushPromises()
+    expect(sendPendingOAuthVerifyCode).toHaveBeenCalledWith(expect.objectContaining({ email: 'prefill@example.com' }))
+    await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('form').trigger('submit.prevent')
     expect(wrapper.emitted('submit')).toEqual([
       [
         {
           email: 'prefill@example.com',
           password: 'secret-123',
-          verifyCode: ''
+          verifyCode: '246810',
+          ...(review ? { registrationReason: 'Research access' } : {})
         }
       ]
     ])
+    wrapper.unmount()
   })
 
   it('shows and emits invitation code when invitation-only signup is enabled', async () => {
@@ -377,6 +440,7 @@ describe('PendingOAuthCreateAccountForm', () => {
 
     await flushPromises()
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
 
     expect(wrapper.get('[data-testid="linuxdo-create-account-submit"]').attributes('disabled')).toBeDefined()
 
@@ -395,7 +459,7 @@ describe('PendingOAuthCreateAccountForm', () => {
         {
           email: 'user@example.com',
           password: 'secret-123',
-          verifyCode: '',
+          verifyCode: '246810',
           turnstileToken: 'turnstile-token',
           invitationCode: undefined
         }
@@ -428,6 +492,7 @@ describe('PendingOAuthCreateAccountForm', () => {
 
     await flushPromises()
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="turnstile-verify"]').trigger('click')
     await wrapper.get('[data-testid="linuxdo-create-account-send-code"]').trigger('click')
     await flushPromises()

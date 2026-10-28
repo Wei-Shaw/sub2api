@@ -30,6 +30,9 @@ type CustomEndpoint struct {
 type SystemSettings struct {
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
+	RegistrationReviewEnabled           bool                     `json:"registration_review_enabled"`
+	RegistrationReviewInstructions      string                   `json:"registration_review_instructions"`
+	RegistrationReasonMaxLength         int                      `json:"registration_reason_max_length"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
@@ -367,6 +370,9 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
+	RegistrationReviewEnabled           bool                     `json:"registration_review_enabled"`
+	RegistrationReviewInstructions      string                   `json:"registration_review_instructions"`
+	RegistrationReasonMaxLength         int                      `json:"registration_reason_max_length"`
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`

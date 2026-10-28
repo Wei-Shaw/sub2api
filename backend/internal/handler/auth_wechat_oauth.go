@@ -484,18 +484,11 @@ func (h *AuthHandler) wechatPaymentResumeService() *service.PaymentResumeService
 	return service.NewLegacyAwarePaymentResumeService(legacyKey)
 }
 
-type completeWeChatOAuthRequest struct {
-	InvitationCode   string `json:"invitation_code" binding:"required"`
-	AffCode          string `json:"aff_code,omitempty"`
-	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
-}
-
 // CompleteWeChatOAuthRegistration completes a pending WeChat OAuth registration by
 // validating the invitation code and consuming the current pending browser session.
 // POST /api/v1/auth/oauth/wechat/complete-registration
 func (h *AuthHandler) CompleteWeChatOAuthRegistration(c *gin.Context) {
-	var req completeWeChatOAuthRequest
+	var req completeOAuthRegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
 		return
@@ -561,6 +554,7 @@ func (h *AuthHandler) CompleteWeChatOAuthRegistration(c *gin.Context) {
 		req.AffCode,
 		pendingOAuthPromoCode(session),
 		"wechat",
+		req.RegistrationReason,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -571,29 +565,28 @@ func (h *AuthHandler) CompleteWeChatOAuthRegistration(c *gin.Context) {
 		AdoptAvatar:      req.AdoptAvatar,
 	})
 	if err != nil {
+		if h.rollbackPendingOAuthRegistration(c, user, req.InvitationCode, err) {
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, &user.ID); err != nil {
-		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ADOPTION_APPLY_FAILED", "failed to apply oauth profile adoption").WithCause(err))
-		return
-	}
-	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
-	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), sessionToken, browserSessionKey); err != nil {
-		clearOAuthPendingSessionCookie(c, secureCookie)
-		clearOAuthPendingBrowserCookie(c, secureCookie)
-		response.ErrorFrom(c, err)
+	if err := applyPendingOAuthAdoptionAndConsumeSession(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, user.ID, tokenPair == nil && user.Status == service.StatusPending); err != nil {
+		if h.rollbackPendingOAuthRegistration(c, user, req.InvitationCode, err) {
+			return
+		}
+		respondPendingOAuthBindingApplyError(c, err)
 		return
 	}
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  tokenPair.AccessToken,
-		"refresh_token": tokenPair.RefreshToken,
-		"expires_in":    tokenPair.ExpiresIn,
-		"token_type":    "Bearer",
-	})
+	if writeOAuthPendingReviewResponse(c, user) {
+		return
+	}
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
 func (h *AuthHandler) createWeChatPendingSession(

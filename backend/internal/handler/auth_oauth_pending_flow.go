@@ -65,7 +65,16 @@ type bindPendingOAuthLoginRequest struct {
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
 
+type completeOAuthRegistrationRequest struct {
+	InvitationCode     string `json:"invitation_code,omitempty"`
+	RegistrationReason string `json:"registration_reason,omitempty"`
+	AffCode            string `json:"aff_code,omitempty"`
+	AdoptDisplayName   *bool  `json:"adopt_display_name,omitempty"`
+	AdoptAvatar        *bool  `json:"adopt_avatar,omitempty"`
+}
+
 type createPendingOAuthAccountRequest struct {
+	RegistrationReason    string `json:"registration_reason,omitempty"`
 	Email                 string `json:"email" binding:"required,email"`
 	VerifyCode            string `json:"verify_code,omitempty"`
 	Password              string `json:"password" binding:"required,min=6"`
@@ -237,6 +246,10 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		return err
 	}
 
+	if payload.CompletionResponse == nil {
+		payload.CompletionResponse = map[string]any{}
+	}
+	payload.CompletionResponse["registration_review_enabled"] = h.isOAuthRegistrationReviewEnabled(c.Request.Context())
 	localFlowState := map[string]any{
 		oauthCompletionResponseKey: payload.CompletionResponse,
 	}
@@ -1096,6 +1109,9 @@ func findActiveUserByID(ctx context.Context, client *dbent.Client, userID int64)
 		}
 		return nil, infraerrors.InternalServer("AUTH_IDENTITY_USER_LOOKUP_FAILED", "failed to load auth identity user").WithCause(err)
 	}
+	if strings.EqualFold(strings.TrimSpace(userEntity.Status), service.StatusPending) {
+		return nil, service.ErrRegistrationPending
+	}
 	if !strings.EqualFold(strings.TrimSpace(userEntity.Status), service.StatusActive) {
 		return nil, service.ErrUserNotActive
 	}
@@ -1137,6 +1153,7 @@ func applyPendingOAuthBinding(
 	overrideUserID *int64,
 	forceBind bool,
 	applyFirstBindDefaults bool,
+	isNewUser ...bool,
 ) error {
 	if client == nil || session == nil {
 		return nil
@@ -1146,7 +1163,7 @@ func applyPendingOAuthBinding(
 	}
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
-		return applyPendingOAuthBindingTx(ctx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults)
+		return applyPendingOAuthBindingTx(ctx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults, isNewUser...)
 	}
 
 	tx, err := client.Tx(ctx)
@@ -1156,7 +1173,7 @@ func applyPendingOAuthBinding(
 	defer func() { _ = tx.Rollback() }()
 
 	txCtx := dbent.NewTxContext(ctx, tx)
-	if err := applyPendingOAuthBindingTx(txCtx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults); err != nil {
+	if err := applyPendingOAuthBindingTx(txCtx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults, isNewUser...); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1172,6 +1189,7 @@ func applyPendingOAuthBindingTx(
 	overrideUserID *int64,
 	forceBind bool,
 	applyFirstBindDefaults bool,
+	isNewUser ...bool,
 ) error {
 	if tx == nil || session == nil {
 		return nil
@@ -1189,6 +1207,17 @@ func applyPendingOAuthBindingTx(
 			return err
 		}
 		targetUserID = resolvedUserID
+	}
+	targetUser, err := tx.Client().User.Get(ctx, targetUserID)
+	if err != nil {
+		return err
+	}
+	if targetUser.Status == service.StatusPending {
+		if len(isNewUser) == 0 || !isNewUser[0] {
+			return service.ErrRegistrationPending
+		}
+	} else if targetUser.Status != service.StatusActive {
+		return service.ErrUserNotActive
 	}
 
 	adoptedDisplayName := ""
@@ -1320,6 +1349,7 @@ func applyPendingOAuthAdoptionAndConsumeSession(
 	session *dbent.PendingAuthSession,
 	decision *dbent.IdentityAdoptionDecision,
 	userID int64,
+	isNewUser ...bool,
 ) error {
 	if client == nil {
 		return infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
@@ -1335,7 +1365,7 @@ func applyPendingOAuthAdoptionAndConsumeSession(
 	defer func() { _ = tx.Rollback() }()
 
 	txCtx := dbent.NewTxContext(ctx, tx)
-	if err := applyPendingOAuthAdoption(txCtx, client, authService, userService, session, decision, &userID); err != nil {
+	if err := applyPendingOAuthBinding(txCtx, client, authService, userService, session, decision, &userID, true, false, isNewUser...); err != nil {
 		return err
 	}
 	if err := consumePendingOAuthBrowserSessionTx(txCtx, tx, session); err != nil {
@@ -1620,6 +1650,30 @@ func writeOAuthTokenPairResponse(c *gin.Context, tokenPair *service.TokenPair) {
 	})
 }
 
+func (h *AuthHandler) isOAuthRegistrationReviewEnabled(ctx context.Context) bool {
+	return h != nil && h.settingSvc != nil && h.settingSvc.IsRegistrationReviewEnabled(ctx)
+}
+
+func writeOAuthPendingReviewResponse(c *gin.Context, user *service.User) bool {
+	if user == nil || user.Status != service.StatusPending {
+		return false
+	}
+	c.JSON(http.StatusOK, gin.H{"pending_review": true})
+	return true
+}
+
+func (h *AuthHandler) rollbackPendingOAuthRegistration(c *gin.Context, user *service.User, invitationCode string, originalErr error) bool {
+	if user == nil || user.Status != service.StatusPending {
+		return false
+	}
+	if err := h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(invitationCode)); err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ACCOUNT_ROLLBACK_FAILED", "failed to rollback pending oauth account creation").WithCause(
+			fmt.Errorf("original error: %w; rollback error: %v", originalErr, err)))
+		return true
+	}
+	return false
+}
+
 func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 	var req bindPendingOAuthLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1773,6 +1827,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		strings.TrimSpace(req.VerifyCode),
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
+		req.RegistrationReason,
 	)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {
@@ -1832,7 +1887,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	defer func() { _ = tx.Rollback() }()
 	txCtx := dbent.NewTxContext(c.Request.Context(), tx)
 
-	if err := applyPendingOAuthBinding(txCtx, client, h.authService, h.userService, session, decision, &user.ID, true, false); err != nil {
+	if err := applyPendingOAuthBinding(txCtx, client, h.authService, h.userService, session, decision, &user.ID, true, false, true); err != nil {
 		_ = tx.Rollback()
 		if rollbackCreatedUser(err) {
 			return
@@ -1886,10 +1941,13 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	}
 
 	h.authService.ApplyOAuthSignupPromoCode(c.Request.Context(), user.ID, pendingOAuthPromoCode(session))
-	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
 	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
 	clearCookies()
+	if writeOAuthPendingReviewResponse(c, user) {
+		return
+	}
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 

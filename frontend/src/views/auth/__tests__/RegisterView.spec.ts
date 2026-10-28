@@ -109,6 +109,24 @@ describe('RegisterView', () => {
     registerMock.mockResolvedValue({})
   })
 
+  it('displays configured requirements and rejects reasons above the site limit', async () => {
+    getPublicSettingsMock.mockResolvedValue({ ...publicSettings, turnstile_enabled: false, registration_review_enabled: true, registration_review_instructions: 'Include your intended use', registration_reason_max_length: 3 })
+    const wrapper = mountRegister()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Include your intended use')
+    await wrapper.get('#email').setValue('user@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirmPassword').setValue('secret-123')
+    await wrapper.get('#registration_reason').setValue('abcd')
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(registerMock).not.toHaveBeenCalled()
+    await wrapper.get('#registration_reason').setValue('😀😀😀')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(registerMock).toHaveBeenCalledWith(expect.objectContaining({ registration_reason: '😀😀😀' }))
+    wrapper.unmount()
+  })
+
   it('does not flash the promo-code field before disabled settings finish loading', async () => {
     let resolveSettings!: (settings: typeof publicSettings) => void
     getPublicSettingsMock.mockReturnValueOnce(

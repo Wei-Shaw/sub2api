@@ -35,6 +35,15 @@ func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsRegistrationReviewEnabled 检查是否启用注册审核（默认关闭）
+func (s *SettingService) IsRegistrationReviewEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationReviewEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
 // IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
 // 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
 func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {

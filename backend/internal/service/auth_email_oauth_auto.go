@@ -115,8 +115,8 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		}
 	}
 
-	if !user.IsActive() {
-		return nil, nil, ErrUserNotActive
+	if err := activeUserError(user); err != nil {
+		return nil, nil, err
 	}
 	if err := s.ensureEmailOAuthIdentity(ctx, user.ID, EmailOAuthIdentityInput{
 		ProviderType:     providerType,
@@ -157,6 +157,9 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode string) (*User, error) {
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return nil, ErrRegDisabled
+	}
+	if _, _, err := s.resolveRegistrationStatus(ctx, ""); err != nil {
+		return nil, err
 	}
 	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
 	if err != nil {

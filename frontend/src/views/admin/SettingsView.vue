@@ -1426,6 +1426,37 @@
                 <Toggle v-model="form.email_verify_enabled" />
               </div>
 
+              <!-- Registration Review -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.reviewEnabled")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.reviewEnabledHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  :model-value="form.registration_review_enabled === true"
+                  @update:model-value="form.registration_review_enabled = $event"
+                />
+              </div>
+
+              <div v-if="form.registration_review_enabled" class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div>
+                  <label for="registration_review_instructions" class="input-label">{{ t("admin.settings.registration.reviewInstructions") }}</label>
+                  <textarea id="registration_review_instructions" v-model="form.registration_review_instructions" class="input w-full" rows="3" maxlength="5000" :placeholder="t('auth.registrationReasonPlaceholder')" />
+                  <p class="mt-1 text-sm text-gray-500">{{ t("admin.settings.registration.reviewInstructionsHint") }}</p>
+                </div>
+                <div>
+                  <label for="registration_reason_max_length" class="input-label">{{ t("admin.settings.registration.reasonMaxLength") }}</label>
+                  <input id="registration_reason_max_length" v-model.number="form.registration_reason_max_length" class="input" type="number" min="1" max="10000" step="1" />
+                  <p class="mt-1 text-sm text-gray-500">{{ t("admin.settings.registration.reasonMaxLengthHint") }}</p>
+                </div>
+              </div>
+
               <!-- Email Suffix Whitelist -->
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <label class="font-medium text-gray-900 dark:text-white">{{
@@ -9737,6 +9768,9 @@ function platformQuotaRows(map: DefaultPlatformQuotasMap | undefined): string[] 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
+  registration_review_enabled: false,
+  registration_review_instructions: "",
+  registration_reason_max_length: 500,
   registration_email_suffix_whitelist: [],
   registration_email_domain_quota_enabled: false,
   promo_code_enabled: true,
@@ -11280,6 +11314,10 @@ const siteBillingModeHint = computed(() =>
 async function saveSettings() {
   saving.value = true;
   try {
+    if (!Number.isInteger(form.registration_reason_max_length) || Number(form.registration_reason_max_length) < 1 || Number(form.registration_reason_max_length) > 10000) {
+      appStore.showError(t("admin.settings.registration.reasonMaxLengthHint"));
+      return;
+    }
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11439,6 +11477,9 @@ async function saveSettings() {
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
+      registration_review_enabled: form.registration_review_enabled,
+      registration_review_instructions: form.registration_review_instructions,
+      registration_reason_max_length: form.registration_reason_max_length,
       registration_email_suffix_whitelist:
         registrationEmailSuffixWhitelistTags.value.map((suffix) =>
           suffix.startsWith("*.") ? suffix : `@${suffix}`,

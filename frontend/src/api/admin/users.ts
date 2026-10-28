@@ -68,7 +68,7 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    status?: 'active' | 'disabled'
+    status?: 'active' | 'disabled' | 'pending'
     role?: 'admin' | 'user'
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
@@ -213,7 +213,10 @@ export async function batchUpdateLimits(
  * @param status - New status
  * @returns Updated user
  */
-export async function toggleStatus(id: number, status: 'active' | 'disabled'): Promise<AdminUser> {
+export async function toggleStatus(
+  id: number,
+  status: 'active' | 'disabled' | 'pending'
+): Promise<AdminUser> {
   return update(id, { status })
 }
 
