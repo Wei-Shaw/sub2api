@@ -468,6 +468,23 @@ describe('ModelWhitelistSelector', () => {
     expect(syncButton?.exists()).toBe(true)
   })
 
+  it('labels the fill button as preset models for Grok only', () => {
+    const grok = mountSelector({ platform: 'grok' })
+    expect(grok.findAll('button').some(button => button.text() === 'admin.accounts.fillPresetModels')).toBe(true)
+    expect(grok.findAll('button').some(button => button.text() === 'admin.accounts.fillRelatedModels')).toBe(false)
+    grok.unmount()
+
+    const openai = mountSelector({ platform: 'openai' })
+    expect(openai.findAll('button').some(button => button.text() === 'admin.accounts.fillRelatedModels')).toBe(true)
+    expect(openai.findAll('button').some(button => button.text() === 'admin.accounts.fillPresetModels')).toBe(false)
+    openai.unmount()
+
+    const mixed = mountSelector({ platforms: ['grok', 'openai'] })
+    expect(mixed.findAll('button').some(button => button.text() === 'admin.accounts.fillRelatedModels')).toBe(true)
+    expect(mixed.findAll('button').some(button => button.text() === 'admin.accounts.fillPresetModels')).toBe(false)
+    mixed.unmount()
+  })
+
   it('can hide only the built-in trigger while retaining its public sync action', async () => {
     syncUpstreamModels.mockResolvedValue({ models: ['grok-4.7'], discovery_source: 'upstream' })
     const wrapper = mountSelector({ platform: 'grok', accountId: 46, showSyncButton: false })
