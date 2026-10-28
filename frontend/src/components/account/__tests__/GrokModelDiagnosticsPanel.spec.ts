@@ -439,6 +439,159 @@ describe('GrokModelDiagnosticsPanel', () => {
     expect(text).not.toContain('正常')
   })
 
+  it.each([
+    '2026-02-29T12:00:00Z',
+    '2026-02-30T12:00:00Z',
+    '2026-10-25T24:00:00Z',
+    '2026-10-25T12:60:00Z',
+    '2026-10-25T12:00:60Z',
+    '2026-10-25T12:00:00+24:00',
+    '2026-10-25T12:00:00+08:60'
+  ])('does not present an impossible catalog time %s as a successful observation', async (invalid) => {
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        state: 'fresh',
+        fetched_at: invalid,
+        expires_at: invalid,
+        mappings: [
+          { requested: 'composer-2.5', upstream: 'grok-composer-2.5-fast', status: 'not_listed' }
+        ]
+      })
+    }))
+    expect(stateBadge(wrapper).text()).toContain('未知')
+    expect(stateBadge(wrapper).text()).not.toContain('历史目录')
+    expect(wrapper.find('[data-testid="grok-diagnostics-last-success"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="grok-diagnostics-missing-summary"]').exists()).toBe(false)
+    const text = wrapper.text()
+    expect(text).not.toContain(invalid)
+    expect(text).not.toContain(NOT_LISTED_ZH)
+    expect(text).not.toContain('正常')
+    expect(text).not.toContain('来源已变更')
+    await openDetails(wrapper)
+    expect(wrapper.text()).toContain('历史目录')
+  })
+
+  it('keeps a real leap day, numeric offset, and fractional second as the last success', async () => {
+    const leapDay = '2024-02-29T23:30:00.5+08:00'
+    const expiresAt = '2026-10-25T20:00:00.123+08:00'
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        state: 'fresh',
+        fetched_at: leapDay,
+        expires_at: expiresAt,
+        mappings: [
+          { requested: 'composer-2.5', upstream: 'grok-composer-2.5-fast', status: 'not_listed' }
+        ]
+      })
+    }))
+    expect(stateBadge(wrapper).text()).toBe('1 项上游无此模型')
+    expect(wrapper.get('[data-testid="grok-diagnostics-last-success"]').text()).toMatch(/\d+天前同步/)
+    expect(wrapper.get('[data-testid="grok-diagnostics-missing-summary"]').text())
+      .toContain('有 1 个映射的目标模型不在该账号的上游模型清单里，转发时可能报错。')
+    expect(wrapper.text()).not.toContain('未知')
+  })
+
+  it('does not present a future fetched_at echo as a successful observation', async () => {
+    const future = '2026-10-25T13:00:00.000Z'
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        state: 'unknown',
+        fetched_at: future,
+        expires_at: undefined,
+        models: ['grok-4.7'],
+        mappings: [
+          { requested: 'friendly', upstream: 'grok-4.7', status: 'listed' },
+          { requested: 'composer-2.5', upstream: 'grok-composer-2.5-fast', status: 'not_listed' }
+        ]
+      })
+    }))
+    expect(stateBadge(wrapper).text()).toContain('未知')
+    expect(stateBadge(wrapper).text()).not.toContain('历史目录')
+    expect(wrapper.find('[data-testid="grok-diagnostics-last-success"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="grok-diagnostics-missing-summary"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(NOT_LISTED_ZH)
+    expect(wrapper.text()).not.toContain('正常')
+    await openDetails(wrapper)
+    expect(wrapper.text()).toContain('grok-4.7')
+    expect(wrapper.text()).toContain('历史目录')
+  })
+
+  it('counts each not_listed mapping without folding suffixes or wildcard rows', async () => {
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        mappings: [
+          { requested: 'composer-a', upstream: 'grok-composer-2.5-fast', status: 'not_listed' },
+          { requested: 'composer-b', upstream: 'grok-composer-2.5-fast', status: 'not_listed' },
+          { requested: 'custom-*', status: 'unverifiable' },
+          { requested: 'grok-imagine-image', upstream: 'grok-imagine-image', status: 'out_of_scope' }
+        ]
+      })
+    }))
+    expect(wrapper.get('[data-testid="grok-diagnostics-summary"]').text()).toContain('4 个模型')
+    expect(stateBadge(wrapper).text()).toBe('2 项上游无此模型')
+    expect(wrapper.get('[data-testid="grok-diagnostics-missing-summary"]').text())
+      .toContain('有 2 个映射的目标模型不在该账号的上游模型清单里，转发时可能报错。')
+    expect(wrapper.find('[data-testid="grok-diagnostics-difference-toggle"]').exists()).toBe(false)
+    await openDetails(wrapper)
+    const saved = wrapper.get('[data-testid="grok-diagnostics-mappings"]').text()
+    expect(saved).toContain('composer-a')
+    expect(saved).toContain('composer-b')
+    expect(saved.split(NOT_LISTED_ZH).length - 1).toBe(2)
+    expect(saved).toContain('custom-*')
+    expect(saved).toContain('无法逐项核验')
+    expect(saved).toContain('grok-imagine-image')
+    expect(saved).toContain('不在此文本目录范围内')
+  })
+
+  it('labels an unrecognized attempt status without splicing its raw value', () => {
+    const wrapper = track(mountPanel({
+      diagnostics: freshDiagnostics({
+        mappings: [{ requested: 'friendly', upstream: 'grok-4.7', status: 'listed' }],
+        last_attempt: {
+          started_at: '2026-10-25T11:50:00.000Z',
+          finished_at: '2026-10-25T11:50:02.000Z',
+          status: 'weird_status',
+          error_code: 'http_error'
+        }
+      })
+    }))
+    expect(stateBadge(wrapper).text()).toBe('正常')
+    expect(wrapper.find('[data-testid="grok-diagnostics-missing-summary"]').exists()).toBe(false)
+    const text = wrapper.text()
+    expect(text).not.toContain('weird_status')
+    expect(text).not.toContain('http_error')
+    expect(text).not.toContain('上游请求失败')
+    expect(text).not.toContain('同步失败')
+    expect(wrapper.find('[data-testid="grok-diagnostics-last-attempt"]').exists()).toBe(false)
+  })
+
+  it.each(['__proto__', 'constructor', 'toString'] as const)(
+    'treats inherited attempt status %s as unknown without showing it',
+    (status) => {
+      const wrapper = track(mountPanel({
+        diagnostics: freshDiagnostics({
+          mappings: [{ requested: 'friendly', upstream: 'grok-4.7', status: 'listed' }],
+          last_attempt: {
+            started_at: '2026-10-25T11:50:00.000Z',
+            finished_at: '2026-10-25T11:50:02.000Z',
+            status,
+            error_code: 'http_error'
+          }
+        })
+      }))
+      expect(stateBadge(wrapper).text()).toBe('正常')
+      expect(stateBadge(wrapper).classes()).toEqual(expect.arrayContaining(['badge', 'badge-success']))
+      expect(wrapper.find('[data-testid="grok-diagnostics-missing-summary"]').exists()).toBe(false)
+      const text = wrapper.text()
+      expect(text).not.toContain('同步失败')
+      expect(text).not.toContain('上游请求失败')
+      expect(text).not.toContain(status)
+      expect(text).not.toContain('http_error')
+      expect(text).not.toContain('[object Object]')
+      expect(wrapper.findAll('.bg-amber-50').length).toBe(0)
+    }
+  )
+
   it('shows a source change without borrowing the previous catalog as current', async () => {
     const wrapper = track(mountPanel({
       diagnostics: freshDiagnostics({
