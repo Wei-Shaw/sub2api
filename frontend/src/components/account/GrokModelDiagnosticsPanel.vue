@@ -1,32 +1,41 @@
 <template>
   <section
     data-testid="grok-model-diagnostics"
-    class="min-w-0 max-w-full overflow-hidden rounded-xl border border-gray-200 bg-white text-sm text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200"
+    class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600"
   >
     <div
       data-testid="grok-diagnostics-summary"
-      class="flex flex-wrap items-center justify-between gap-3 p-4"
+      class="flex items-center gap-3"
     >
+      <div
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+        :class="iconToneClass"
+      >
+        <Icon name="database" size="sm" aria-hidden="true" />
+      </div>
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <h3 class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.accounts.grokModelDiagnostics.catalogTitle') }}
           </h3>
-          <p data-testid="grok-diagnostics-state" :class="stateClass">{{ headline }}</p>
+          <span data-testid="grok-diagnostics-state" :class="badgeClass">{{ headline }}</span>
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+        <p
+          v-if="modelCountLabel || hasUsableSyncTime"
+          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+        >
           <span v-if="modelCountLabel">{{ modelCountLabel }}</span>
-          <span v-if="catalogHost">{{ modelCountLabel ? ' · ' : '' }}{{ catalogHost }}</span>
-          <span data-testid="grok-diagnostics-last-success">
-            {{ modelCountLabel || catalogHost ? ' · ' : '' }}{{ t('admin.accounts.grokModelDiagnostics.lastSuccessRelative', { time: lastSuccessRelative }) }}
-          </span>
+          <span
+            v-if="hasUsableSyncTime"
+            data-testid="grok-diagnostics-last-success"
+          >{{ modelCountLabel ? ' · ' : '' }}{{ syncedRelativeLabel }}</span>
         </p>
       </div>
       <button
         v-if="canSync"
         type="button"
         data-testid="grok-diagnostics-sync"
-        class="btn btn-secondary btn-sm"
+        class="btn btn-secondary btn-sm ml-auto shrink-0"
         :title="t('admin.accounts.grokModelDiagnostics.syncSavedConfig')"
         :aria-label="`${t('admin.accounts.grokModelDiagnostics.syncCatalog')} — ${t('admin.accounts.grokModelDiagnostics.syncSavedConfig')}`"
         :disabled="syncing || loading"
@@ -37,185 +46,150 @@
       </button>
     </div>
 
-    <p v-if="loading" class="px-4 pb-3 text-xs text-gray-500 dark:text-dark-400">
+    <div
+      v-if="statusNotice || hasFreshGaps"
+      class="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+    >
+      <div class="flex items-start gap-1.5">
+        <Icon name="exclamationTriangle" size="xs" aria-hidden="true" class="mt-0.5 shrink-0" />
+        <div class="min-w-0 space-y-1">
+          <p v-if="statusNotice">{{ statusNotice }}</p>
+          <p
+            v-if="hasFreshGaps"
+            data-testid="grok-diagnostics-missing-summary"
+            class="flex flex-wrap items-center gap-2"
+          >
+            <span>{{ t('admin.accounts.grokModelDiagnostics.missingDetail', { count: missingMappings.length }) }}</span>
+            <button
+              type="button"
+              class="font-medium underline-offset-2 hover:underline"
+              @click="detailsOpen = true"
+            >
+              {{ t('admin.accounts.grokModelDiagnostics.viewDetails') }}
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <p
+      v-if="loading"
+      class="mt-3 flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+    >
       {{ t('common.loading') }}
     </p>
     <p
       v-if="refreshFailed"
       data-testid="grok-diagnostics-refresh-failed"
-      class="px-4 pb-3 text-xs text-red-600 dark:text-red-400"
+      class="mt-3 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
     >
       {{ t('admin.accounts.grokModelDiagnostics.refreshFailed') }}
     </p>
-
-    <div
-      v-if="showFailureNotice || showFallbackNotice || showStateNotice || showPreviousValid"
-      class="mx-4 mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
-    >
-      <p v-if="showFailureNotice" class="flex items-start gap-2">
-        <Icon name="exclamationTriangle" size="xs" aria-hidden="true" class="mt-0.5 shrink-0" />
-        <span>{{ attemptErrorLabel }}</span>
-      </p>
-      <p v-if="showFallbackNotice" class="flex items-start gap-2">
-        <Icon name="exclamationTriangle" size="xs" aria-hidden="true" class="mt-0.5 shrink-0" />
-        <span>{{ t('admin.accounts.grokModelDiagnostics.fallbackNotice') }}</span>
-      </p>
-      <p v-if="showPreviousValid">{{ t('admin.accounts.grokModelDiagnostics.previousCatalogValid') }}</p>
-      <p v-if="effectiveState === 'stale'">{{ t('admin.accounts.grokModelDiagnostics.staleNotice') }}</p>
-      <p v-if="effectiveState === 'source_changed'">{{ t('admin.accounts.grokModelDiagnostics.changedNotice') }}</p>
-      <p v-if="effectiveState === 'unknown'">{{ t('admin.accounts.grokModelDiagnostics.unknownNotice') }}</p>
-    </div>
-
-    <div
-      v-if="missingMappings.length > 0"
-      class="mx-4 mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
-    >
-      <p data-testid="grok-diagnostics-missing-summary" class="flex items-start gap-2">
-        <Icon name="exclamationTriangle" size="xs" aria-hidden="true" class="mt-0.5 shrink-0" />
-        <span>{{ t('admin.accounts.grokModelDiagnostics.missingSummary', { count: missingMappings.length }) }}</span>
-      </p>
-      <p class="mt-1">{{ t('admin.accounts.grokModelDiagnostics.summaryNotice') }}</p>
-      <button
-        type="button"
-        data-testid="grok-diagnostics-difference-toggle"
-        class="mt-2 inline-flex items-center gap-1 font-medium"
-        :aria-expanded="differencesOpen"
-        :aria-controls="differencesId"
-        @click="differencesOpen = !differencesOpen"
-      >
-        <Icon
-          name="chevronRight"
-          size="xs"
-          aria-hidden="true"
-          :class="differencesOpen ? 'rotate-90' : ''"
-        />
-        {{ differencesOpen
-          ? t('admin.accounts.grokModelDiagnostics.hideDifferences')
-          : t('admin.accounts.grokModelDiagnostics.viewDifferences') }}
-      </button>
-      <div
-        v-if="differencesOpen"
-        :id="differencesId"
-        data-testid="grok-diagnostics-difference-list"
-        class="mt-2 space-y-2"
-      >
-        <p>{{ t('admin.accounts.grokModelDiagnostics.notListed') }} {{ t('admin.accounts.grokModelDiagnostics.compatibilityNotice') }}</p>
-        <p v-if="attemptStatus === 'configured_fallback'">
-          {{ t('admin.accounts.grokModelDiagnostics.lastSuccessRelative', { time: lastSuccessRelative }) }}
-        </p>
-        <ul class="space-y-2">
-          <li v-for="(item, index) in missingMappings" :key="`${item.requested}-${index}`">
-            <MappingRow :item="item" :status="''" />
-          </li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="border-t border-gray-200 dark:border-dark-600">
-      <button
-        type="button"
-        data-testid="grok-diagnostics-details-toggle"
-        class="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-gray-800 dark:text-gray-100"
-        :aria-expanded="detailsOpen"
-        :aria-controls="detailsId"
-        @click="detailsOpen = !detailsOpen"
-      >
-        <Icon
-          name="chevronRight"
-          size="xs"
-          aria-hidden="true"
-          :class="detailsOpen ? 'rotate-90' : ''"
-        />
-        {{ t('admin.accounts.grokModelDiagnostics.details') }}
-      </button>
-      <div
-        v-if="detailsOpen"
-        :id="detailsId"
-        data-testid="grok-diagnostics-details"
-        class="border-t border-gray-200 p-4 dark:border-dark-600"
-      >
-        <dl class="space-y-3 text-xs">
-          <div>
-            <dt class="text-gray-500 dark:text-dark-400">
-              {{ effectiveState !== 'fresh'
-                ? t('admin.accounts.grokModelDiagnostics.historicalSource')
-                : t('admin.accounts.grokModelDiagnostics.source') }}
-            </dt>
-            <dd data-testid="grok-diagnostics-endpoint" class="min-w-0 break-all font-mono text-xs">
-              {{ diagnostics?.endpoint || t('admin.accounts.grokModelDiagnostics.unknown') }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-gray-500 dark:text-dark-400">{{ t('admin.accounts.grokModelDiagnostics.lastSuccess') }}</dt>
-            <dd>{{ observedTime(diagnostics?.fetched_at) }}</dd>
-          </div>
-          <div>
-            <dt class="text-gray-500 dark:text-dark-400">{{ t('admin.accounts.grokModelDiagnostics.lastAttempt') }}</dt>
-            <dd data-testid="grok-diagnostics-last-attempt" class="min-w-0 break-all">
-              <template v-if="diagnostics?.last_attempt">
-                {{ attemptLabel }}
-                <template v-if="attemptDetail"> {{ attemptDetail }}</template>
-                {{ observedTime(diagnostics.last_attempt.finished_at) }}
-              </template>
-              <template v-else>{{ t('admin.accounts.grokModelDiagnostics.unknown') }}</template>
-            </dd>
-          </div>
-        </dl>
-
-        <div class="mt-4">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">
-            {{ effectiveState !== 'fresh'
-              ? t('admin.accounts.grokModelDiagnostics.historicalModels')
-              : t('admin.accounts.grokModelDiagnostics.upstreamModels') }}
-          </h4>
-          <ul class="mt-1 max-h-48 space-y-1 overflow-y-auto">
-            <li
-              v-for="model in diagnostics?.models ?? []"
-              :key="model"
-              data-testid="grok-diagnostics-model"
-              class="min-w-0 break-all font-mono text-xs"
-            >
-              {{ model }}
-            </li>
-          </ul>
-        </div>
-
-        <div class="mt-4" data-testid="grok-diagnostics-mappings">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">
-            {{ t('admin.accounts.grokModelDiagnostics.savedMappings') }}
-          </h4>
-          <p v-if="hasFreshGaps" class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-            {{ t('admin.accounts.grokModelDiagnostics.compatibilityNotice') }}
-          </p>
-          <div class="mt-2 hidden text-xs text-gray-500 dark:text-dark-400 sm:grid sm:grid-cols-2 sm:gap-3">
-            <span>{{ t('admin.accounts.grokModelDiagnostics.requestColumn') }}</span>
-            <span>{{ t('admin.accounts.grokModelDiagnostics.targetColumn') }}</span>
-          </div>
-          <ul class="mt-2 space-y-2">
-            <li v-for="(item, index) in diagnostics?.mappings ?? []" :key="`${item.requested}-${index}`">
-              <MappingRow :item="item" :status="mappingStatus(item)" />
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
     <p
       v-if="dirty"
       data-testid="grok-diagnostics-dirty"
-      class="flex items-start gap-2 px-4 py-3 text-xs text-gray-500 dark:text-dark-400"
+      class="mt-3 flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400"
     >
       <Icon name="infoCircle" size="xs" aria-hidden="true" class="mt-0.5 shrink-0" />
       <span>{{ t('admin.accounts.grokModelDiagnostics.savedConfigHint') }}</span>
     </p>
+
+    <button
+      type="button"
+      data-testid="grok-diagnostics-details-toggle"
+      class="mt-3 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+      :aria-expanded="detailsOpen"
+      :aria-controls="detailsId"
+      @click="detailsOpen = !detailsOpen"
+    >
+      <Icon
+        name="chevronRight"
+        size="xs"
+        aria-hidden="true"
+        :class="detailsOpen ? 'rotate-90' : ''"
+      />
+      {{ detailsOpen
+        ? t('admin.accounts.grokModelDiagnostics.hideDetails')
+        : t('admin.accounts.grokModelDiagnostics.viewDetails') }}
+    </button>
+
+    <div
+      v-if="detailsOpen"
+      :id="detailsId"
+      data-testid="grok-diagnostics-details"
+      class="mt-3 space-y-4 rounded-lg bg-gray-50 p-3 dark:bg-dark-700/50"
+    >
+      <div
+        v-if="(diagnostics?.mappings?.length ?? 0) > 0"
+        data-testid="grok-diagnostics-mappings"
+      >
+        <div class="flex flex-wrap items-baseline gap-2">
+          <h4 class="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.accounts.grokModelDiagnostics.mappingCheck') }}
+          </h4>
+          <span class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.grokModelDiagnostics.mappingCheckHint') }}
+          </span>
+        </div>
+        <ul class="mt-2 space-y-2">
+          <li
+            v-for="(item, index) in diagnostics?.mappings ?? []"
+            :key="`${item.requested}-${index}`"
+            class="flex items-center gap-2 rounded-lg px-3 py-2"
+            :class="mappingRowClass(item)"
+          >
+            <span class="min-w-0 flex-1 break-all font-mono text-xs">
+              <template v-if="item.upstream">{{ item.requested }} → {{ item.upstream }}</template>
+              <template v-else>{{ item.requested }}</template>
+            </span>
+            <span :class="mappingBadgeClass(item)">{{ mappingStatus(item) }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div v-if="(diagnostics?.models?.length ?? 0) > 0">
+        <h4 class="text-xs font-medium text-gray-700 dark:text-gray-300">
+          {{ modelsSectionTitle }}
+        </h4>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <span
+            v-for="model in visibleModels"
+            :key="model"
+            data-testid="grok-diagnostics-model"
+            class="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-mono text-xs dark:border-dark-600 dark:bg-dark-800"
+          >
+            {{ model }}
+          </span>
+          <button
+            v-if="hiddenModelCount > 0 || modelsExpanded"
+            type="button"
+            data-testid="grok-diagnostics-models-more"
+            class="text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400"
+            @click="modelsExpanded = !modelsExpanded"
+          >
+            {{ modelsExpanded
+              ? t('admin.accounts.grokModelDiagnostics.collapseModels')
+              : t('admin.accounts.grokModelDiagnostics.showMoreModels', { count: hiddenModelCount }) }}
+          </button>
+        </div>
+      </div>
+
+      <p
+        v-if="diagnostics?.endpoint"
+        data-testid="grok-diagnostics-endpoint"
+        class="break-all font-mono text-xs text-gray-400"
+      >
+        {{ t('admin.accounts.grokModelDiagnostics.sourcePrefix') }} {{ diagnostics.endpoint }}
+      </p>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GrokModelDiagnosticItem, GrokModelDiagnostics } from '@/types'
-import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import { formatRelativeTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = withDefaults(defineProps<{
@@ -241,16 +215,11 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const nowMs = ref(Date.now())
 const detailsOpen = ref(false)
-const differencesOpen = ref(false)
+const modelsExpanded = ref(false)
 const instanceId = useId()
 const detailsId = 'grok-catalog-' + instanceId
-const differencesId = 'grok-differences-' + instanceId
+const MODEL_PREVIEW_LIMIT = 6
 const RFC3339_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/
-const ATTEMPT_LABEL_KEYS: Record<string, string> = {
-  success: 'admin.accounts.grokModelDiagnostics.attemptSuccess',
-  failed: 'admin.accounts.grokModelDiagnostics.syncFailed',
-  configured_fallback: 'admin.accounts.grokModelDiagnostics.attemptFallback'
-}
 const ERROR_LABEL_KEYS: Record<string, string> = {
   configuration: 'admin.accounts.grokModelDiagnostics.errorConfiguration',
   http_error: 'admin.accounts.grokModelDiagnostics.errorHTTP',
@@ -335,16 +304,15 @@ const missingMappings = computed(() => effectiveState.value === 'fresh'
   ? (props.diagnostics?.mappings ?? []).filter(item => item.status === 'not_listed')
   : [])
 
-const catalogHost = computed(() => {
-  try { return new URL(props.diagnostics?.endpoint ?? '').host }
-  catch { return '' }
-})
+const hasFreshGaps = computed(() => missingMappings.value.length > 0)
+const hasUsableSyncTime = computed(() => fetchedUsable.value)
 
-const lastSuccessRelative = computed(() => {
-  const time = fetchedMs.value
+const syncedRelativeLabel = computed(() => {
   const current = nowMs.value
-  if (time === null || time > current) return t('admin.accounts.grokModelDiagnostics.unknown')
-  return formatRelativeTime(props.diagnostics?.fetched_at)
+  if (fetchedMs.value === null || fetchedMs.value > current) return ''
+  return t('admin.accounts.grokModelDiagnostics.syncedRelative', {
+    time: formatRelativeTime(props.diagnostics?.fetched_at)
+  })
 })
 
 const modelCountLabel = computed(() => {
@@ -358,7 +326,31 @@ const modelCountLabel = computed(() => {
   return ''
 })
 
+const badgeTone = computed<'success' | 'warning' | 'gray'>(() => {
+  const attention = effectiveState.value !== 'fresh'
+    || attemptStatus.value === 'failed'
+    || attemptStatus.value === 'configured_fallback'
+  if (effectiveState.value === 'fresh' && !hasFreshGaps.value && !attention) {
+    return 'success'
+  }
+  if (effectiveState.value === 'fresh' && hasFreshGaps.value) {
+    return 'warning'
+  }
+  if (effectiveState.value === 'unknown' && attemptStatus.value !== 'failed' && attemptStatus.value !== 'configured_fallback') {
+    return 'gray'
+  }
+  return 'warning'
+})
+
 const headline = computed(() => {
+  if (effectiveState.value === 'fresh' && !hasFreshGaps.value
+    && attemptStatus.value !== 'failed'
+    && attemptStatus.value !== 'configured_fallback') {
+    return t('admin.accounts.grokModelDiagnostics.fresh')
+  }
+  if (effectiveState.value === 'fresh' && hasFreshGaps.value) {
+    return t('admin.accounts.grokModelDiagnostics.badgeMissing', { count: missingMappings.value.length })
+  }
   if (effectiveState.value === 'stale') return t('admin.accounts.grokModelDiagnostics.stale')
   if (effectiveState.value === 'source_changed') return t('admin.accounts.grokModelDiagnostics.sourceChanged')
   if (effectiveState.value === 'unknown') return t('admin.accounts.grokModelDiagnostics.unknown')
@@ -367,23 +359,20 @@ const headline = computed(() => {
   return t('admin.accounts.grokModelDiagnostics.fresh')
 })
 
-const stateClass = computed(() => {
-  const attention = effectiveState.value !== 'fresh'
-    || attemptStatus.value === 'failed'
-    || attemptStatus.value === 'configured_fallback'
-  if (!attention && effectiveState.value === 'fresh') {
-    return 'text-xs font-medium text-emerald-700 dark:text-emerald-300'
-  }
-  if (effectiveState.value === 'unknown' && attemptStatus.value !== 'failed' && attemptStatus.value !== 'configured_fallback') {
-    return 'text-xs font-medium text-gray-500 dark:text-dark-400'
-  }
-  return 'text-xs font-medium text-amber-800 dark:text-amber-200'
+const badgeClass = computed(() => {
+  if (badgeTone.value === 'success') return 'badge badge-success'
+  if (badgeTone.value === 'warning') return 'badge badge-warning'
+  return 'badge badge-gray'
 })
 
-const attemptLabel = computed(() => {
-  const status = props.diagnostics?.last_attempt?.status
-  if (!status) return ''
-  return t(ownedLabelKey(ATTEMPT_LABEL_KEYS, status) ?? 'admin.accounts.grokModelDiagnostics.attemptUnknown')
+const iconToneClass = computed(() => {
+  if (badgeTone.value === 'success') {
+    return 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+  }
+  if (badgeTone.value === 'warning') {
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+  }
+  return 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
 })
 
 const attemptErrorLabel = computed(() => {
@@ -392,27 +381,43 @@ const attemptErrorLabel = computed(() => {
   return t(ownedLabelKey(ERROR_LABEL_KEYS, attempt.error_code) ?? 'admin.accounts.grokModelDiagnostics.attemptUnavailable')
 })
 
-const attemptDetail = computed(() => {
+const showPreviousValid = computed(() => effectiveState.value === 'fresh'
+  && (attemptStatus.value === 'failed' || attemptStatus.value === 'configured_fallback'))
+
+const statusNotice = computed(() => {
+  if (attemptStatus.value === 'failed') {
+    let notice = attemptErrorLabel.value
+    if (showPreviousValid.value) {
+      notice += t('admin.accounts.grokModelDiagnostics.previousCatalogValid')
+    }
+    notice += t('admin.accounts.grokModelDiagnostics.retryHint')
+    return notice
+  }
   if (attemptStatus.value === 'configured_fallback') {
     return t('admin.accounts.grokModelDiagnostics.fallbackNotice')
   }
-  return attemptErrorLabel.value
+  if (effectiveState.value === 'stale') return t('admin.accounts.grokModelDiagnostics.staleNotice')
+  if (effectiveState.value === 'source_changed') return t('admin.accounts.grokModelDiagnostics.changedNotice')
+  if (effectiveState.value === 'unknown') return t('admin.accounts.grokModelDiagnostics.unknownNotice')
+  return ''
 })
 
-const showFailureNotice = computed(() => attemptStatus.value === 'failed')
-const showFallbackNotice = computed(() => attemptStatus.value === 'configured_fallback')
-const showPreviousValid = computed(() => effectiveState.value === 'fresh'
-  && (attemptStatus.value === 'failed' || attemptStatus.value === 'configured_fallback'))
-const showStateNotice = computed(() => effectiveState.value === 'stale'
-  || effectiveState.value === 'source_changed'
-  || effectiveState.value === 'unknown')
-const hasFreshGaps = computed(() => missingMappings.value.length > 0)
+const allModels = computed(() => props.diagnostics?.models ?? [])
+const hiddenModelCount = computed(() => Math.max(0, allModels.value.length - MODEL_PREVIEW_LIMIT))
+const visibleModels = computed(() => {
+  if (modelsExpanded.value || allModels.value.length <= MODEL_PREVIEW_LIMIT) return allModels.value
+  return allModels.value.slice(0, MODEL_PREVIEW_LIMIT)
+})
 
-function observedTime(value: string | undefined): string {
-  const parsed = parseCatalogTime(value)
-  if (parsed === null || parsed > nowMs.value) return t('admin.accounts.grokModelDiagnostics.unknown')
-  return formatDateTime(value)
-}
+const modelsSectionTitle = computed(() => {
+  const title = effectiveState.value !== 'fresh'
+    ? t('admin.accounts.grokModelDiagnostics.historicalModels')
+    : t('admin.accounts.grokModelDiagnostics.upstreamModels')
+  return t('admin.accounts.grokModelDiagnostics.modelsWithCount', {
+    title,
+    count: allModels.value.length
+  })
+})
 
 function mappingStatus(item: GrokModelDiagnosticItem): string {
   if (item.status === 'out_of_scope') return t('admin.accounts.grokModelDiagnostics.outOfScope')
@@ -430,34 +435,23 @@ function mappingStatus(item: GrokModelDiagnosticItem): string {
   return ''
 }
 
+function mappingBadgeClass(item: GrokModelDiagnosticItem): string {
+  if (item.status === 'unverifiable' || item.status === 'out_of_scope') return 'badge badge-gray shrink-0'
+  if (effectiveState.value !== 'fresh') return 'badge badge-gray shrink-0'
+  if (item.status === 'listed') return 'badge badge-success shrink-0'
+  if (item.status === 'not_listed') return 'badge badge-warning shrink-0'
+  return 'badge badge-gray shrink-0'
+}
+
+function mappingRowClass(item: GrokModelDiagnosticItem): string {
+  if (effectiveState.value === 'fresh' && item.status === 'not_listed') {
+    return 'bg-amber-50 dark:bg-amber-900/10'
+  }
+  return 'bg-white dark:bg-dark-800'
+}
+
 function requestSync() {
   if (props.syncing || props.loading) return
   emit('sync')
 }
-
-const MappingRow = defineComponent({
-  name: 'GrokDiagnosticsMappingRow',
-  props: {
-    item: { type: Object as () => GrokModelDiagnosticItem, required: true },
-    status: { type: String, default: '' }
-  },
-  setup(rowProps) {
-    return () => h('div', { class: 'grid grid-cols-1 gap-1 sm:grid-cols-2 sm:items-start sm:gap-3' }, [
-      h('div', { class: 'min-w-0 break-all font-mono text-xs' }, rowProps.item.requested),
-      h('div', { class: 'flex min-w-0 items-start gap-1' }, [
-        rowProps.item.upstream
-          ? h(Icon, { name: 'arrowRight', size: 'xs', 'aria-hidden': 'true', class: 'mt-0.5 shrink-0' })
-          : null,
-        h('div', { class: 'min-w-0' }, [
-          rowProps.item.upstream
-            ? h('div', { class: 'min-w-0 break-all font-mono text-xs' }, rowProps.item.upstream)
-            : null,
-          rowProps.status
-            ? h('div', { class: 'text-xs' }, rowProps.status)
-            : null
-        ])
-      ])
-    ])
-  }
-})
 </script>
