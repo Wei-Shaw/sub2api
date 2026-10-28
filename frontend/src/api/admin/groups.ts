@@ -470,7 +470,16 @@ export async function getCapacitySummary(): Promise<
   return data
 }
 
+/** List concrete model choices for native client exports of a single group. */
+export async function getClientExportOptions(id: number, platform: GroupPlatform) {
+  const { data } = await apiClient.get<import('@/utils/groupClientExport').ClientExportOptions>(
+    `/admin/groups/${id}/client-export-options`, { params: { platform } }
+  )
+  return data
+}
+
 export const groupsAPI = {
+  getClientExportOptions,
   list,
   getAll,
   getByPlatform,

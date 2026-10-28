@@ -1205,6 +1205,10 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[55].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	// groupDescClientExportConfig is the schema descriptor for client_export_config field.
+	groupDescClientExportConfig := groupFields[55].Descriptor()
+	// group.DefaultClientExportConfig holds the default value on creation for the client_export_config field.
+	group.DefaultClientExportConfig = groupDescClientExportConfig.Default.(domain.GroupClientExportConfig)
 	// groupDescModelAllowlist is the schema descriptor for model_allowlist field.
 	groupDescModelAllowlist := groupFields[56].Descriptor()
 	// group.DefaultModelAllowlist holds the default value on creation for the model_allowlist field.

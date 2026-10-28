@@ -216,6 +216,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldModelAllowlist,
+				group.FieldClientExportConfig,
 				group.FieldCodexModelsManifestConfig,
 				group.FieldRpmLimit,
 				group.FieldMaxReasoningEffort,
@@ -964,6 +965,8 @@ func userEntityToService(u *dbent.User) *service.User {
 	return out
 }
 
+// groupEntityToService converts persisted group policies, including client
+// defaults, for both group reads and API key authentication projections.
 func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
@@ -1032,6 +1035,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelAllowlist:                  service.GroupModelAllowlistFromDomain(g.ModelAllowlist),
+		ClientExportConfig:              g.ClientExportConfig,
 		CodexModelsManifestConfig:       g.CodexModelsManifestConfig,
 		RPMLimit:                        g.RpmLimit,
 		MaxReasoningEffort:              g.MaxReasoningEffort,

@@ -93,6 +93,8 @@ func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConf
 	return cloned
 }
 
+// cloneGroupForDuplicate copies group policies and client defaults into the
+// inactive duplicate without reusing the source group's identity.
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
@@ -150,6 +152,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		FreeOpenAIFast:                  source.FreeOpenAIFast,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
+		ClientExportConfig:              source.ClientExportConfig,
 		DefaultMappedModel:              source.DefaultMappedModel,
 		MessagesDispatchModelConfig:     cloneGroupMessagesDispatchModelConfig(source.MessagesDispatchModelConfig),
 		ModelAllowlist: GroupModelAllowlist{

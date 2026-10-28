@@ -1093,6 +1093,20 @@ func (_u *GroupUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _u
 }
 
+// SetClientExportConfig sets the "client_export_config" field.
+func (_u *GroupUpdate) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupUpdate {
+	_u.mutation.SetClientExportConfig(v)
+	return _u
+}
+
+// SetNillableClientExportConfig sets the "client_export_config" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableClientExportConfig(v *domain.GroupClientExportConfig) *GroupUpdate {
+	if v != nil {
+		_u.SetClientExportConfig(*v)
+	}
+	return _u
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_u *GroupUpdate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpdate {
 	_u.mutation.SetModelAllowlist(v)
@@ -1901,6 +1915,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ClientExportConfig(); ok {
+		_spec.SetField(group.FieldClientExportConfig, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
@@ -3313,6 +3330,20 @@ func (_u *GroupUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenA
 	return _u
 }
 
+// SetClientExportConfig sets the "client_export_config" field.
+func (_u *GroupUpdateOne) SetClientExportConfig(v domain.GroupClientExportConfig) *GroupUpdateOne {
+	_u.mutation.SetClientExportConfig(v)
+	return _u
+}
+
+// SetNillableClientExportConfig sets the "client_export_config" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableClientExportConfig(v *domain.GroupClientExportConfig) *GroupUpdateOne {
+	if v != nil {
+		_u.SetClientExportConfig(*v)
+	}
+	return _u
+}
+
 // SetModelAllowlist sets the "model_allowlist" field.
 func (_u *GroupUpdateOne) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpdateOne {
 	_u.mutation.SetModelAllowlist(v)
@@ -4151,6 +4182,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ClientExportConfig(); ok {
+		_spec.SetField(group.FieldClientExportConfig, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ModelAllowlist(); ok {
 		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
