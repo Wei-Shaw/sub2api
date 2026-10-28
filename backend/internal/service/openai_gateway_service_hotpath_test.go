@@ -591,7 +591,7 @@ func TestOpenAIGatewayService_Forward_HTTPRetryRecoveryDoesNotDecodeBeforeError(
 	require.Equal(t, "summary_text", gjson.GetBytes(upstream.bodies[1], "input.0.summary.0.type").String())
 }
 
-func TestOpenAIGatewayService_Forward_HTTPRetryRecoveryDropsCompaction(t *testing.T) {
+func TestOpenAIGatewayService_Forward_HTTPRetryRecoveryStopsWithoutDroppingCompaction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
 		responses: []*http.Response{
@@ -629,12 +629,11 @@ func TestOpenAIGatewayService_Forward_HTTPRetryRecoveryDropsCompaction(t *testin
 
 	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":[{"id":"cmp_stale","type":"compaction","encrypted_content":"gAAA"},{"type":"message","content":[{"type":"input_text","text":"hi"}]}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, upstream.bodies, 2)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Len(t, upstream.bodies, 1, "unrecoverable compaction history must not be retried after deletion")
 	require.Equal(t, "compaction", gjson.GetBytes(upstream.bodies[0], "input.0.type").String())
-	require.Equal(t, "message", gjson.GetBytes(upstream.bodies[1], "input.0.type").String())
-	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.1").Exists())
+	require.Equal(t, "gAAA", gjson.GetBytes(upstream.bodies[0], "input.0.encrypted_content").String())
 }
 
 func TestOpenAIGatewayService_Forward_HTTPThinkingSignatureRecoveryAndLineage(t *testing.T) {

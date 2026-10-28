@@ -22,7 +22,6 @@ func TestCollectOpenAIEncryptedContentDigestsRaw(t *testing.T) {
 	// 剥离端处理不了的类型（message）不收摘要，否则该摘要永远命中却剥不掉。
 	require.Equal(t, []string{
 		openAIEncryptedContentDigest("cipher-a"),
-		openAIEncryptedContentDigest("cipher-b"),
 	}, digests)
 
 	require.Nil(t, collectOpenAIEncryptedContentDigestsRaw([]byte(`{"model":"gpt-5"}`)))
@@ -59,7 +58,7 @@ func TestStripOpenAIInvalidEncryptedContentItems(t *testing.T) {
 		require.Equal(t, "fresh-cipher", second["encrypted_content"], "新密文不得误删")
 	})
 
-	t.Run("compaction_removed_entirely", func(t *testing.T) {
+	t.Run("compaction_never_removed", func(t *testing.T) {
 		t.Parallel()
 		reqBody := map[string]any{
 			"input": []any{
@@ -68,13 +67,13 @@ func TestStripOpenAIInvalidEncryptedContentItems(t *testing.T) {
 			},
 		}
 		stripped := stripOpenAIInvalidEncryptedContentItems(reqBody, invalid)
-		require.Equal(t, 1, stripped)
+		require.Zero(t, stripped)
 		input, ok := reqBody["input"].([]any)
 		require.True(t, ok)
-		require.Len(t, input, 1)
+		require.Len(t, input, 2)
 		survivor, ok := input[0].(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, "input_text", survivor["type"])
+		require.Equal(t, "compaction", survivor["type"])
 	})
 
 	t.Run("no_hit_no_change", func(t *testing.T) {
@@ -103,8 +102,8 @@ func TestStripOpenAIInvalidEncryptedContentFromReplayItems(t *testing.T) {
 		items := []json.RawMessage{original, clean, compaction}
 
 		next, stripped := stripOpenAIInvalidEncryptedContentFromReplayItems(items, invalid)
-		require.Equal(t, 2, stripped)
-		require.Len(t, next, 2, "compaction 命中项应整项删除")
+		require.Equal(t, 1, stripped)
+		require.Len(t, next, 3, "compaction 必须保留")
 		var rewritten map[string]any
 		require.NoError(t, json.Unmarshal(next[0], &rewritten))
 		require.Equal(t, "rs_1", rewritten["id"])
@@ -112,6 +111,7 @@ func TestStripOpenAIInvalidEncryptedContentFromReplayItems(t *testing.T) {
 		require.False(t, hasEncrypted)
 		// 未命中项正文共享；原命中项正文不被修改（整体替换语义）。
 		require.Same(t, &clean[0], &next[1][0])
+		require.Equal(t, string(compaction), string(next[2]))
 		require.Contains(t, string(original), "stale-cipher")
 	})
 

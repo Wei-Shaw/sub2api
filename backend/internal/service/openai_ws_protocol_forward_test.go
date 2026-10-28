@@ -272,6 +272,149 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentO
 	require.Equal(t, "client_protocol_http", reason)
 }
 
+func TestOpenAIGatewayService_Forward_HTTPIngressRetriesResponseFailedSSEInvalidEncryptedContentOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	wsFallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer wsFallbackServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	upstream := &httpUpstreamSequenceRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(
+					"event: response.failed\n" +
+						"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"invalid_encrypted_content\",\"type\":\"invalid_request_error\",\"message\":\"The encrypted content could not be verified.\"},\"output\":[],\"status\":\"failed\"}}\n\n",
+				)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"resp_http_retry_sse_ok","usage":{"input_tokens":1,"output_tokens":2,"input_tokens_details":{"cached_tokens":0}}}`,
+				)),
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+	}
+
+	account := &Account{
+		ID:          104,
+		Name:        "openai-apikey-response-failed-sse",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": wsFallbackServer.URL,
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_retry_sse","input":[{"type":"reasoning","encrypted_content":"gAAA","summary":[{"type":"summary_text","text":"keep SSE summary"}]},{"type":"input_text","text":"hello"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.OpenAIWSMode, "HTTP 入站应保持 HTTP 转发")
+	require.Equal(t, 2, upstream.callCount, "response.failed SSE invalid_encrypted_content 应只在 HTTP 路径重试一次")
+	require.Len(t, upstream.bodies, 2)
+
+	firstBody := upstream.bodies[0]
+	secondBody := upstream.bodies[1]
+	require.True(t, gjson.GetBytes(firstBody, "input.0.encrypted_content").Exists(), "首次请求不应做发送前预清理")
+	require.False(t, gjson.GetBytes(secondBody, "input.0.encrypted_content").Exists(), "SSE 错误恢复应移除 reasoning.encrypted_content")
+	require.Equal(t, "keep SSE summary", gjson.GetBytes(secondBody, "input.0.summary.0.text").String(), "SSE 错误恢复应保留有效 reasoning summary")
+}
+
+func TestOpenAIGatewayService_Forward_NormalizesPlaintextAgentMessageForOpenAI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	wsFallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer wsFallbackServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	upstream := &httpUpstreamSequenceRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"resp_agent_message_normalized","usage":{"input_tokens":1,"output_tokens":2,"input_tokens_details":{"cached_tokens":0}}}`,
+				)),
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+	}
+
+	account := &Account{
+		ID:          105,
+		Name:        "openai-apikey-agent-message",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": wsFallbackServer.URL,
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-6-astra","stream":false,"input":[{"type":"agent_message","id":"amsg_fixture","author":"/root","recipient":"/root/child","content":[{"type":"input_text","text":"Message Type: NEW_TASK\n"},{"type":"encrypted_content","encrypted_content":"do the task"}]},{"type":"input_text","text":"continue"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, upstream.callCount)
+	require.Equal(t, "message", gjson.GetBytes(upstream.bodies[0], "input.0.type").String())
+	require.Equal(t, "user", gjson.GetBytes(upstream.bodies[0], "input.0.role").String())
+	require.Equal(t, "input_text", gjson.GetBytes(upstream.bodies[0], "input.0.content.0.type").String())
+	require.Equal(t, "Message Type: NEW_TASK\ndo the task", gjson.GetBytes(upstream.bodies[0], "input.0.content.0.text").String())
+	require.NotContains(t, string(upstream.bodies[0]), "encrypted_content")
+}
+
 func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedContentOnce(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wsFallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1438,125 +1581,115 @@ func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundOnlyRecoversOn
 	require.False(t, gjson.GetBytes(requests[1], "previous_response_id").Exists(), "恢复重试应移除 previous_response_id")
 }
 
-func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversOnce(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentFailsClosedWithEncryptedCompaction(t *testing.T) {
+	tests := []struct {
+		name     string
+		itemJSON string
+		wantType string
+	}{
+		{
+			name:     "native compaction",
+			itemJSON: `{"type":"compaction","encrypted_content":"cAAA"}`,
+			wantType: "compaction",
+		},
+		{
+			name:     "native compaction with summary",
+			itemJSON: `{"type":"compaction","encrypted_content":"cAAA","summary":[{"type":"summary_text","text":"not sufficient"}]}`,
+			wantType: "compaction",
+		},
+		{
+			name:     "compaction summary alias",
+			itemJSON: `{"type":"compaction_summary","encrypted_content":"cAAA"}`,
+			wantType: "compaction_summary",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
 
-	var wsAttempts atomic.Int32
-	var wsRequestPayloads [][]byte
-	var wsRequestMu sync.Mutex
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempt := wsAttempts.Add(1)
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			t.Errorf("upgrade websocket failed: %v", err)
-			return
-		}
-		defer func() {
-			_ = conn.Close()
-		}()
+			var wsAttempts atomic.Int32
+			var wsRequestPayloads [][]byte
+			var wsRequestMu sync.Mutex
+			upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+			wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				wsAttempts.Add(1)
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					t.Errorf("upgrade websocket failed: %v", err)
+					return
+				}
+				defer func() { _ = conn.Close() }()
 
-		var req map[string]any
-		if err := conn.ReadJSON(&req); err != nil {
-			t.Errorf("read ws request failed: %v", err)
-			return
-		}
-		reqRaw, _ := json.Marshal(req)
-		wsRequestMu.Lock()
-		wsRequestPayloads = append(wsRequestPayloads, reqRaw)
-		wsRequestMu.Unlock()
-		if attempt == 1 {
-			_ = conn.WriteJSON(map[string]any{
-				"type": "error",
-				"error": map[string]any{
-					"code":    "invalid_encrypted_content",
-					"type":    "invalid_request_error",
-					"message": "The encrypted content could not be verified.",
-				},
-			})
-			return
-		}
-		_ = conn.WriteJSON(map[string]any{
-			"type": "response.completed",
-			"response": map[string]any{
-				"id":    "resp_ws_invalid_encrypted_content_recover_ok",
-				"model": "gpt-5.3-codex",
-				"usage": map[string]any{
-					"input_tokens":  1,
-					"output_tokens": 1,
-					"input_tokens_details": map[string]any{
-						"cached_tokens": 0,
+				var req map[string]any
+				if err := conn.ReadJSON(&req); err != nil {
+					t.Errorf("read ws request failed: %v", err)
+					return
+				}
+				reqRaw, _ := json.Marshal(req)
+				wsRequestMu.Lock()
+				wsRequestPayloads = append(wsRequestPayloads, reqRaw)
+				wsRequestMu.Unlock()
+				_ = conn.WriteJSON(map[string]any{
+					"type": "error",
+					"error": map[string]any{
+						"code":    "invalid_encrypted_content",
+						"type":    "invalid_request_error",
+						"message": "The encrypted content could not be verified.",
 					},
-				},
-			},
+				})
+			}))
+			defer wsServer.Close()
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+			c.Request.Header.Set("User-Agent", "custom-client/1.0")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"resp_http_should_not_run","usage":{"input_tokens":1,"output_tokens":1}}`)),
+			}}
+			cfg := &config.Config{}
+			cfg.Security.URLAllowlist.Enabled = false
+			cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+			cfg.Gateway.OpenAIWS.Enabled = true
+			cfg.Gateway.OpenAIWS.OAuthEnabled = true
+			cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+			cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+			cfg.Gateway.OpenAIWS.FallbackCooldownSeconds = 1
+			stateStore := NewOpenAIWSStateStore(nil)
+			svc := &OpenAIGatewayService{
+				cfg:                cfg,
+				httpUpstream:       upstream,
+				openaiWSResolver:   NewOpenAIWSProtocolResolver(cfg),
+				toolCorrector:      NewCodexToolCorrector(),
+				openaiWSStateStore: stateStore,
+			}
+			account := &Account{
+				ID: 95, Name: "openai-apikey", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": wsServer.URL},
+				Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+			}
+			body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":[{"type":"reasoning","encrypted_content":"gAAA"},` + tt.itemJSON + `,{"type":"input_text","text":"hello"}]}`)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Empty(t, upstream.requests, "invalid_encrypted_content 不应回退 HTTP")
+			require.Equal(t, int32(1), wsAttempts.Load(), "encrypted native compaction 必须一次失败并停止")
+			require.False(t, stateStore.HasAnySessionInvalidEncryptedContent(), "fail-closed 不得写入 reasoning invalid lineage")
+
+			wsRequestMu.Lock()
+			requests := append([][]byte(nil), wsRequestPayloads...)
+			wsRequestMu.Unlock()
+			require.Len(t, requests, 1)
+			require.Equal(t, "resp_prev_encrypted", gjson.GetBytes(requests[0], "previous_response_id").String())
+			require.Equal(t, "gAAA", gjson.GetBytes(requests[0], `input.#(type=="reasoning").encrypted_content`).String())
+			require.Equal(t, tt.wantType, gjson.GetBytes(requests[0], `input.#(encrypted_content=="cAAA").type`).String())
+			require.Equal(t, "cAAA", gjson.GetBytes(requests[0], `input.#(encrypted_content=="cAAA").encrypted_content`).String())
 		})
-	}))
-	defer wsServer.Close()
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c.Request.Header.Set("User-Agent", "custom-client/1.0")
-
-	upstream := &httpUpstreamRecorder{
-		resp: &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_http_drop_reasoning","usage":{"input_tokens":1,"output_tokens":1}}`)),
-		},
 	}
-
-	cfg := &config.Config{}
-	cfg.Security.URLAllowlist.Enabled = false
-	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
-	cfg.Gateway.OpenAIWS.Enabled = true
-	cfg.Gateway.OpenAIWS.OAuthEnabled = true
-	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
-	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
-	cfg.Gateway.OpenAIWS.FallbackCooldownSeconds = 1
-
-	svc := &OpenAIGatewayService{
-		cfg:              cfg,
-		httpUpstream:     upstream,
-		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
-		toolCorrector:    NewCodexToolCorrector(),
-	}
-
-	account := &Account{
-		ID:          95,
-		Name:        "openai-apikey",
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeAPIKey,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": wsServer.URL,
-		},
-		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
-		},
-	}
-
-	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":[{"type":"reasoning","encrypted_content":"gAAA"},{"type":"compaction","encrypted_content":"cAAA"},{"type":"input_text","text":"hello"}]}`)
-	result, err := svc.Forward(context.Background(), c, account, body)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "resp_ws_invalid_encrypted_content_recover_ok", result.RequestID)
-	require.Nil(t, upstream.lastReq, "invalid_encrypted_content 不应回退 HTTP")
-	require.Equal(t, int32(2), wsAttempts.Load(), "invalid_encrypted_content 应触发一次清洗后重试")
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "resp_ws_invalid_encrypted_content_recover_ok", gjson.Get(rec.Body.String(), "id").String())
-
-	wsRequestMu.Lock()
-	requests := append([][]byte(nil), wsRequestPayloads...)
-	wsRequestMu.Unlock()
-	require.Len(t, requests, 2)
-	require.True(t, gjson.GetBytes(requests[0], "previous_response_id").Exists(), "首轮请求应保留 previous_response_id")
-	require.True(t, gjson.GetBytes(requests[0], `input.0.encrypted_content`).Exists(), "首轮请求应保留 encrypted reasoning")
-	require.True(t, gjson.GetBytes(requests[0], `input.1.encrypted_content`).Exists(), "首轮请求应保留 encrypted compaction")
-	require.False(t, gjson.GetBytes(requests[1], "previous_response_id").Exists(), "恢复重试应移除 previous_response_id")
-	require.False(t, gjson.GetBytes(requests[1], `input.0.encrypted_content`).Exists(), "恢复重试应移除 encrypted reasoning item")
-	require.Equal(t, "input_text", gjson.GetBytes(requests[1], `input.0.type`).String())
 }
 
 func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentSkipsRecoveryWithoutReasoningItem(t *testing.T) {
