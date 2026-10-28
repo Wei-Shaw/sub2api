@@ -587,7 +587,12 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 	}
 
 	if tokenType == "oauth" {
-		if mimicClaudeCode {
+		// 真 Claude Code 客户端 + API-key 认证（客户端自己发的 beta 里没有 oauth token）：
+		// 账号是 OAuth 订阅号，上游看到的是 OAuth 令牌，但客户端在 api-key 模式下少发
+		// oauth-2025-04-20 / dangerous-tool-use / afk-mode / extended-cache-ttl——四个
+		// 都是订阅号请求的固定特征，缺了就是"用 api key 的假客户端"。按 canonical 顺序
+		// 补齐，客户端多带的 token 追加在尾部且去重。
+		if mimicClaudeCode || oauthAccountWithAPIKeyClient(clientHeaders, clientBeta) {
 			// Preserve explicitly requested compatibility tokens so the forwarded
 			// body and headers agree. Unknown betas remain excluded; policy drops
 			// still take precedence. Missing companion tokens are not inferred.
@@ -604,9 +609,20 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 			mimicBetas := claude.FullClaudeCodeMimicryBetas()
 			// per-turn-control / mid-conversation-tool-changes 只在 thinking 打开时
 			// 才出现在真机请求里（thinking disabled 的请求两个都没有）。无条件发送
-			// 会让单轮浅请求比真机多两个 token。
+			// 会让单轮浅请求比真机多两个 token。客户端自己带了就以客户端为准。
 			if thinkingDisabled(body) {
-				mimicBetas = dropBetaTokens(mimicBetas, claude.BetaPerTurnControl, claude.BetaMidConversationToolChanges)
+				var drop []string
+				if !containsBetaToken(clientBeta, claude.BetaPerTurnControl) {
+					drop = append(drop, claude.BetaPerTurnControl)
+				}
+				if !containsBetaToken(clientBeta, claude.BetaMidConversationToolChanges) {
+					drop = append(drop, claude.BetaMidConversationToolChanges)
+				}
+				mimicBetas = dropBetaTokens(mimicBetas, drop...)
+			}
+			if !mimicClaudeCode {
+				// api-key 客户端路径：把客户端原有的 token 也并入，避免丢它显式要求的能力。
+				incomingBetas = append(incomingBetas, splitBetaTokens(clientBeta)...)
 			}
 			return mergeAnthropicBetaDropping(mimicBetas, strings.Join(incomingBetas, ","), effectiveDropSet), true
 		}
@@ -626,6 +642,33 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 		}
 	}
 	return "", false
+}
+
+// oauthAccountWithAPIKeyClient 判断"OAuth 账号 + 真 Claude Code 客户端用 API-key 认证"
+// 这一组合：客户端 UA 是 claude-cli，但它发来的 beta 里没有 oauth token（api-key 模式
+// 的特征）。此时上游必须看到 OAuth 订阅号的完整 beta 集合，否则与令牌身份自相矛盾。
+func oauthAccountWithAPIKeyClient(headers http.Header, clientBeta string) bool {
+	if headers == nil || clientBeta == "" {
+		return false
+	}
+	if !strings.HasPrefix(strings.TrimSpace(headers.Get("User-Agent")), "claude-cli/") {
+		return false
+	}
+	return !containsBetaToken(clientBeta, claude.BetaOAuth)
+}
+
+// splitBetaTokens 切分 beta header 为 token 列表。
+func splitBetaTokens(header string) []string {
+	if header == "" {
+		return nil
+	}
+	out := make([]string, 0, 8)
+	for _, p := range strings.Split(header, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // computeFinalCountTokensAnthropicBeta 是 count_tokens 路径上 anthropic-beta header 的
@@ -653,7 +696,12 @@ func (s *GatewayService) computeFinalCountTokensAnthropicBeta(
 	}
 
 	if tokenType == "oauth" {
-		if mimicClaudeCode {
+		// 真 Claude Code 客户端 + API-key 认证（客户端自己发的 beta 里没有 oauth token）：
+		// 账号是 OAuth 订阅号，上游看到的是 OAuth 令牌，但客户端在 api-key 模式下少发
+		// oauth-2025-04-20 / dangerous-tool-use / afk-mode / extended-cache-ttl——四个
+		// 都是订阅号请求的固定特征，缺了就是"用 api key 的假客户端"。按 canonical 顺序
+		// 补齐，客户端多带的 token 追加在尾部且去重。
+		if mimicClaudeCode || oauthAccountWithAPIKeyClient(clientHeaders, clientBeta) {
 			// 与原代码严格等价：original buildCountTokensRequest 在 count_tokens mimic
 			// 分支上**不**会跳过白名单透传（与 messages mimic 路径不同），所以
 			// incomingBeta = req.Header[anthropic-beta] = 客户端透传过来的 client beta。
@@ -663,6 +711,11 @@ func (s *GatewayService) computeFinalCountTokensAnthropicBeta(
 		}
 		if clientBeta == "" {
 			return claude.CountTokensBetaHeader, true
+		}
+		if oauthAccountWithAPIKeyClient(clientHeaders, clientBeta) {
+			// 与 messages 路径同因：api-key 认证的真 CLI 也要补齐订阅号的 beta 集合。
+			required := append(claude.FullClaudeCodeMimicryBetas(), claude.BetaTokenCounting)
+			return mergeAnthropicBetaDropping(required, clientBeta, effectiveDropSet), true
 		}
 		beta := s.getBetaHeader(modelID, clientBeta)
 		if !strings.Contains(beta, claude.BetaTokenCounting) {

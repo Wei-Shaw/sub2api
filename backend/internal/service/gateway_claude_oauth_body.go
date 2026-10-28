@@ -455,6 +455,63 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 	return FormatMetadataUserID(userID, accountUUID, sessionID, uaVersion)
 }
 
+// oauthClientMetadataUserID 保持真机字段顺序（device_id, account_uuid, session_id），
+// 反序列化后再序列化不会把键顺序打乱。
+type oauthClientMetadataUserID struct {
+	DeviceID    string `json:"device_id"`
+	AccountUUID string `json:"account_uuid"`
+	SessionID   string `json:"session_id"`
+}
+
+// patchOAuthClientAttributionForAPIKeyClient 补齐"真 Claude Code 客户端 + API-key 认证
+// 打 OAuth 账号"这一组合下客户端不会自己发的字段：
+//
+//   - safeguards：api-key 模式下 CLI 不发分类器上下文，而 OAuth 订阅号的每条请求都带。
+//     缺了它，UA 声称 2.1.311 但 body 是旧形状，是可被检测的矛盾。
+//   - metadata.user_id 里的 account_uuid：真 CLI 在订阅模式下填账号 UUID，api-key 模式
+//     留空串。上游拿账号 UUID 做归属，空串等于自报"非订阅通道"。
+//
+// 刻意不重写 system（billing block 客户端自己发的是对的），以保留 prompt cache 前缀。
+func patchOAuthClientAttributionForAPIKeyClient(body []byte, account *Account, clientOS string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if !gjson.GetBytes(body, "safeguards").Exists() {
+		if raw, err := buildSafeguardsBlock(clientOS); err == nil {
+			if next, ok := setJSONRawBytes(body, "safeguards", raw); ok {
+				// sjson 只能追加到尾部，真机把 safeguards 放在 thinking/output_config
+				// 之间；位置错了同样是可检测的形状差异。
+				body = reorderClaudeBodyKeys(next)
+			}
+		}
+	}
+
+	raw := gjson.GetBytes(body, "metadata.user_id")
+	if raw.Type != gjson.String || account == nil {
+		return body
+	}
+	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
+	if accountUUID == "" {
+		return body
+	}
+	var uid oauthClientMetadataUserID
+	if err := json.Unmarshal([]byte(raw.String()), &uid); err != nil {
+		return body
+	}
+	if uid.AccountUUID != "" {
+		return body
+	}
+	uid.AccountUUID = accountUUID
+	encoded, err := json.Marshal(uid)
+	if err != nil {
+		return body
+	}
+	if next, ok := setJSONValueBytes(body, "metadata.user_id", string(encoded)); ok {
+		body = next
+	}
+	return body
+}
+
 // applyClaudeCodeOAuthMimicryToBody 将"非 Claude Code 客户端 + Claude OAuth 账号"
 // 路径上原本只在 /v1/messages 里做的完整伪装应用到任意 body 上。
 //

@@ -212,58 +212,65 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
-	if shouldMimicClaudeCode {
-		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
-		// 风格的 system prompt）。原因：第三方工具（opencode 等）会发 "You are Claude
-		// Code..." system prompt 但缺少 billing attribution block，导致 Anthropic
-		// 检测到"有 CC prompt 但无 billing block"的不一致而判为 third-party。
-		// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
-		systemRaw, _ := parsed.SystemValue()
-		systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
-		if systemPromptInjectionEnabled {
-			if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
-				return nil, err
+	if shouldMimicClaudeCode || (account.IsOAuth() && isClaudeCode) {
+		if shouldMimicClaudeCode {
+			// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
+			// 风格的 system prompt）。原因：第三方工具（opencode 等）会发 "You are Claude
+			// Code..." system prompt 但缺少 billing attribution block，导致 Anthropic
+			// 检测到"有 CC prompt 但无 billing block"的不一致而判为 third-party。
+			// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
+			systemRaw, _ := parsed.SystemValue()
+			systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
+			if systemPromptInjectionEnabled {
+				if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
+					return nil, err
+				}
 			}
-		}
 
-		normalizeOpts := claudeOAuthNormalizeOptions{
-			clientOS: c.Request.Header.Get("X-Stainless-OS"),
-		}
-		if s.identityService != nil && c != nil {
-			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
-			if err == nil && fp != nil {
-				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
-				if !mimicMPT {
-					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
-						normalizeOpts.injectMetadata = true
-						normalizeOpts.metadataUserID = metadataUserID
+			normalizeOpts := claudeOAuthNormalizeOptions{
+				clientOS: c.Request.Header.Get("X-Stainless-OS"),
+			}
+			if s.identityService != nil && c != nil {
+				fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+				if err == nil && fp != nil {
+					// metadata 透传开启时跳过 metadata 注入
+					_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
+					if !mimicMPT {
+						if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
+							normalizeOpts.injectMetadata = true
+							normalizeOpts.metadataUserID = metadataUserID
+						}
 					}
 				}
 			}
-		}
 
-		var normalizedBody []byte
-		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
-		if err := replaceBody(normalizedBody); err != nil {
-			return nil, err
-		}
-
-		// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
-		// 与 forward_as_chat_completions / forward_as_responses 路径对齐，
-		// 原生 /v1/messages 路径也走同一套可配置字段级改写。
-		if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
-			return nil, err
-		}
-		if rw := buildToolNameRewriteFromBody(body); rw != nil {
-			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
+			var normalizedBody []byte
+			normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+			if err := replaceBody(normalizedBody); err != nil {
 				return nil, err
 			}
-			if c != nil {
-				c.Set(toolNameRewriteKey, rw)
+
+			// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
+			if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
+				return nil, err
 			}
-		} else {
-			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
+			if rw := buildToolNameRewriteFromBody(body); rw != nil {
+				if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
+					return nil, err
+				}
+				if c != nil {
+					c.Set(toolNameRewriteKey, rw)
+				}
+			} else {
+				if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
+					return nil, err
+				}
+			}
+		} else if account.IsOAuth() && isClaudeCode {
+			// 真 Claude Code 客户端 + API-key 认证：不重写 system，只补订阅通道必需而
+			// 客户端在 api-key 模式下不发的字段（safeguards、metadata.account_uuid）。
+			patched := patchOAuthClientAttributionForAPIKeyClient(body, account, c.GetHeader("X-Stainless-OS"))
+			if err := replaceBody(patched); err != nil {
 				return nil, err
 			}
 		}
