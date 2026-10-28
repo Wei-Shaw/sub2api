@@ -53,6 +53,9 @@ func computeClaudeCodeFingerprint(body []byte, version string) string {
 
 // extractFirstUserText 提取 messages 中第一条 user 消息的首段 text 内容。
 // 兼容 string 和 []block 两种 content 格式。
+//
+// isMeta 消息必须跳过：真机 CLI 的取文本函数（uH）条件就是 role==="user" && !isMeta，
+// 命中一条注入的 meta reminder 会让采样码元整体错位、指纹与真机不同。
 func extractFirstUserText(body []byte) string {
 	messages := gjson.GetBytes(body, "messages")
 	if !messages.IsArray() {
@@ -60,7 +63,7 @@ func extractFirstUserText(body []byte) string {
 	}
 	first := ""
 	messages.ForEach(func(_, msg gjson.Result) bool {
-		if msg.Get("role").String() != "user" {
+		if msg.Get("role").String() != "user" || msg.Get("isMeta").Bool() {
 			return true
 		}
 		content := msg.Get("content")
