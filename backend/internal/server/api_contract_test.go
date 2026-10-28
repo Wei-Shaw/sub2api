@@ -1668,6 +1668,10 @@ func (r *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) 
 	return service.BalanceChange{}, errors.New("not implemented")
 }
 
+func (r *stubUserRepo) TransferBalance(context.Context, service.BalanceTransferInput) (*service.BalanceTransfer, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	return errors.New("not implemented")
 }

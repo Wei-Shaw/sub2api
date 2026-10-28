@@ -544,6 +544,15 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
 	}
+	if openai.IsGPT61TerraModelSpelling(modelID) {
+		// The Codex descriptor differs from the API model page: Codex offers
+		// low through ultra with a 500k default window. API requests keep none.
+		if err := json.Unmarshal(openai.CodexGPT61TerraMetadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = openai.CodexGPT61TerraMetadata
+	}
 	return descriptor
 }
 
@@ -648,9 +657,6 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
 		})
-	}
-	if openai.IsGPT61TerraModelSpelling(modelID) {
-		levels = append([]configuredCodexReasoningLevel{{Effort: "none", Description: "No reasoning"}}, levels...)
 	}
 	return levels
 }
@@ -2083,6 +2089,7 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-6.1-terra": {},
 	"gpt-6.1-sol":   {},
 	"gpt-6-astra":   {},
 	"gpt-5.6-sol":   {},

@@ -53,6 +53,19 @@ type AdminUser struct {
 	RestrictPublicGroups bool `json:"restrict_public_groups"`
 }
 
+type BalanceTransfer struct {
+	ID          int64          `json:"id"`
+	ExternalID  string         `json:"external_id"`
+	FromUserID  int64          `json:"from_user_id"`
+	ToUserID    int64          `json:"to_user_id"`
+	Amount      float64        `json:"amount"`
+	Reason      string         `json:"reason"`
+	Metadata    map[string]any `json:"metadata"`
+	FromBalance float64        `json:"from_balance"`
+	ToBalance   float64        `json:"to_balance"`
+	CreatedAt   time.Time      `json:"created_at"`
+}
+
 type APIKey struct {
 	ID          int64      `json:"id"`
 	UserID      int64      `json:"user_id"`

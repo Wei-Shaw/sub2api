@@ -70,6 +70,9 @@ func (s *userRepoStubForGroupUpdate) UpdateBalance(context.Context, int64, float
 func (s *userRepoStubForGroupUpdate) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) TransferBalance(context.Context, BalanceTransferInput) (*BalanceTransfer, error) {
+	panic("unexpected")
+}
 
 func (s *userRepoStubForGroupUpdate) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
 	panic("unexpected AdjustBalance call")
@@ -144,6 +147,15 @@ func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*API
 	clone := *s.key
 	return &clone, nil
 }
+func (s *apiKeyRepoStubForGroupUpdate) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
+	if s.getErr != nil {
+		return "", 0, s.getErr
+	}
+	if s.key == nil {
+		return "", 0, ErrAPIKeyNotFound
+	}
+	return s.key.Key, s.key.UserID, nil
+}
 func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	if s.updateErr != nil {
 		return s.updateErr
@@ -155,9 +167,6 @@ func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ 
 
 // Unused methods – panic on unexpected call.
 func (s *apiKeyRepoStubForGroupUpdate) Create(context.Context, *APIKey) error { panic("unexpected") }
-func (s *apiKeyRepoStubForGroupUpdate) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
-	panic("unexpected")
-}
 func (s *apiKeyRepoStubForGroupUpdate) GetByKey(context.Context, string) (*APIKey, error) {
 	panic("unexpected")
 }
@@ -166,7 +175,11 @@ func (s *apiKeyRepoStubForGroupUpdate) GetByKeyForAuth(context.Context, string) 
 }
 func (s *apiKeyRepoStubForGroupUpdate) Delete(context.Context, int64) error { panic("unexpected") }
 func (s *apiKeyRepoStubForGroupUpdate) DeleteWithAudit(context.Context, int64) error {
-	panic("unexpected")
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	s.updated = &APIKey{ID: s.key.ID, Key: s.key.Key, UserID: s.key.UserID}
+	return nil
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListByUserID(context.Context, int64, pagination.PaginationParams, APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected")
@@ -564,4 +577,24 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+func TestAdminService_AdminDeleteAPIKey(t *testing.T) {
+	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test"}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, authCacheInvalidator: cache}
+
+	err := svc.AdminDeleteAPIKey(context.Background(), 1)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), apiKeyRepo.updated.ID)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+}
+
+func TestAdminService_AdminDeleteAPIKey_NotFound(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{getErr: ErrAPIKeyNotFound}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	err := svc.AdminDeleteAPIKey(context.Background(), 999)
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 }

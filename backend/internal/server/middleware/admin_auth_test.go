@@ -206,6 +206,10 @@ func (s *stubUserRepo) SetBalance(ctx context.Context, id int64, value float64) 
 	panic("unexpected SetBalance call")
 }
 
+func (s *stubUserRepo) TransferBalance(context.Context, service.BalanceTransferInput) (*service.BalanceTransfer, error) {
+	panic("unexpected TransferBalance call")
+}
+
 func (s *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	panic("unexpected UpdateConcurrency call")
 }

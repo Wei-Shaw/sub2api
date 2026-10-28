@@ -102,6 +102,11 @@ func (s *userHandlerRepoStub) AdjustBalance(ctx context.Context, id int64, delta
 func (s *userHandlerRepoStub) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
 	panic("unexpected SetBalance call")
 }
+
+func (s *userHandlerRepoStub) TransferBalance(context.Context, service.BalanceTransferInput) (*service.BalanceTransfer, error) {
+	panic("unexpected TransferBalance call")
+}
+
 func (s *userHandlerRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	return 0, nil
 }
