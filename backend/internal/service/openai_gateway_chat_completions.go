@@ -311,7 +311,25 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 	}
 
-	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
+	// 4b. Drop explicit prompt-cache hints the mapped upstream rejects, so the
+	// common case does not spend an upstream round trip on a 400 first.
+	if policy := resolvePromptCacheHintPolicy(account, upstreamModel); policy.stripsHints() {
+		sanitizedBody, report, sanitizeErr := sanitizePromptCacheHints(responsesBody, policy)
+		if sanitizeErr != nil {
+			return nil, fmt.Errorf("sanitize prompt cache hints: %w", sanitizeErr)
+		}
+		if report.changed() {
+			responsesBody = sanitizedBody
+			logger.L().Debug("openai chat_completions: stripped unsupported prompt cache hints",
+				zap.Int64("account_id", account.ID),
+				zap.String("upstream_model", upstreamModel),
+				zap.Int("prompt_cache_breakpoints", report.Breakpoints),
+				zap.Bool("prompt_cache_options", report.Options),
+			)
+		}
+	}
+
+	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	responsesBody, _, err = normalizeGPT6ResponsesSampling(responsesBody, upstreamModel)
 	if err != nil {
 		return nil, err
