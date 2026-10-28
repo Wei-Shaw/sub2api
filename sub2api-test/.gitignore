@@ -1,0 +1,11 @@
+sub2api.exe
+*.log
+cap/
+postgres_data/
+redis_data/
+data/
+token.txt
+gid.txt
+phrase.txt
+body.json
+app.log
