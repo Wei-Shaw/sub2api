@@ -655,7 +655,9 @@ func compareVersions(current, latest string) int {
 
 func parseVersion(v string) [3]int {
 	v = strings.TrimPrefix(v, "v")
-	if idx := strings.IndexByte(v, '-'); idx != -1 {
+	// Build metadata identifies a local build, not a different patch release.
+	// Keep the existing prerelease handling while excluding metadata from Atoi.
+	if idx := strings.IndexAny(v, "-+"); idx != -1 {
 		v = v[:idx]
 	}
 	parts := strings.Split(v, ".")
