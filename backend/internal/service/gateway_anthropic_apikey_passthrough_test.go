@@ -1307,7 +1307,7 @@ func TestGatewayService_ParseSSEUsagePassthrough_MessageDeltaSelectiveOverwrite(
 
 	parseSSEUsagePassthrough(data, usage)
 
-	require.Equal(t, 10, usage.InputTokens, "message_delta 中 0 值不应覆盖已有 input_tokens")
+	require.Equal(t, 0, usage.InputTokens, "message_delta 中显式 0 应覆盖已有 input_tokens")
 	require.Equal(t, 5, usage.OutputTokens)
 	require.Equal(t, 463184, usage.CacheCreationInputTokens)
 	require.Equal(t, 11, usage.CacheReadInputTokens, "cache_read_input_tokens 为空时应回退到 cached_tokens")
