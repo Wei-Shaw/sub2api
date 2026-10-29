@@ -106,9 +106,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { BodyOverrideMode } from '@/api/admin/channelMonitor'
+import type { APIMode, BodyOverrideMode, Provider } from '@/api/admin/channelMonitor'
+import {
+  API_MODE_RESPONSES,
+  DEFAULT_GROK_MODEL,
+  PROVIDER_GROK,
+  PROVIDER_OPENAI,
+} from '@/constants/channelMonitor'
 
 const props = defineProps<{
+  provider?: Provider
+  apiMode?: APIMode
   extraHeaders: Record<string, string>
   bodyOverrideMode: BodyOverrideMode
   bodyOverride: Record<string, unknown> | null
@@ -293,6 +301,19 @@ const bodyModeHint = computed(() => {
 })
 
 const bodyPlaceholder = computed(() => {
+  if (props.provider === PROVIDER_OPENAI && props.apiMode === API_MODE_RESPONSES) {
+    if (props.bodyOverrideMode === 'merge') {
+      return '{\n  "max_output_tokens": 20\n}'
+    }
+    return '{\n  "model": "gpt-4o-mini",\n  "instructions": "You are a health check endpoint. Reply briefly.",\n  "input": "Reply with exactly: ok",\n  "max_output_tokens": 20,\n  "stream": false\n}'
+  }
+  if (props.provider === PROVIDER_OPENAI || props.provider === PROVIDER_GROK) {
+    if (props.bodyOverrideMode === 'merge') {
+      return '{\n  "max_tokens": 20\n}'
+    }
+    const model = props.provider === PROVIDER_GROK ? DEFAULT_GROK_MODEL : 'gpt-4o-mini'
+    return `{\n  "model": "${model}",\n  "messages": [{"role":"user","content":"Reply with exactly: ok"}],\n  "max_tokens": 20,\n  "stream": false\n}`
+  }
   if (props.bodyOverrideMode === 'merge') {
     return '{\n  "system": "You are Claude Code..."\n}'
   }

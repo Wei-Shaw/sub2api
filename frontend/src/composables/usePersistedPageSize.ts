@@ -3,6 +3,10 @@ import { getConfiguredTableDefaultPageSize, normalizeTablePageSize } from '@/uti
 const STORAGE_KEY = 'table-page-size'
 
 export function getPersistedPageSize(fallback = getConfiguredTableDefaultPageSize()): number {
+  if (typeof window !== 'undefined' && window.__APP_CONFIG__?.table_default_page_size !== undefined) {
+    return normalizeTablePageSize(getConfiguredTableDefaultPageSize())
+  }
+
   if (typeof window !== 'undefined') {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY)

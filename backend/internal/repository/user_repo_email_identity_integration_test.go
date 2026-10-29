@@ -60,7 +60,7 @@ func (s *UserRepoSuite) TestUpdate_ReplacesEmailAuthIdentityWhenEmailChanges() {
 	})
 
 	user.Email = "after-update@example.com"
-	s.Require().NoError(s.repo.Update(s.ctx, user))
+	s.Require().NoError(s.repo.Update(s.ctx, user, service.UserUpdateFields{Email: true}))
 
 	newIdentity, err := s.client.AuthIdentity.Query().
 		Where(

@@ -97,13 +97,16 @@ func TestOpsServiceCleanupSystemLogs_SuccessAndAudit(t *testing.T) {
 	}
 	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	userID := int64(7)
+	apiKeyID := int64(8)
 	now := time.Now().UTC()
 	filter := &OpsSystemLogCleanupFilter{
 		StartTime:       &now,
+		Host:            "api-node-1",
 		Level:           "warn",
 		RequestID:       "req-1",
 		ClientRequestID: "creq-1",
 		UserID:          &userID,
+		APIKeyID:        &apiKeyID,
 		Query:           "timeout",
 	}
 
@@ -117,11 +120,17 @@ func TestOpsServiceCleanupSystemLogs_SuccessAndAudit(t *testing.T) {
 	if audit == nil {
 		t.Fatalf("expected cleanup audit")
 	}
+	if !strings.Contains(audit.Conditions, `"host":"api-node-1"`) {
+		t.Fatalf("audit conditions should include host: %s", audit.Conditions)
+	}
 	if !strings.Contains(audit.Conditions, `"client_request_id":"creq-1"`) {
 		t.Fatalf("audit conditions should include client_request_id: %s", audit.Conditions)
 	}
 	if !strings.Contains(audit.Conditions, `"user_id":7`) {
 		t.Fatalf("audit conditions should include user_id: %s", audit.Conditions)
+	}
+	if !strings.Contains(audit.Conditions, `"api_key_id":8`) {
+		t.Fatalf("audit conditions should include api_key_id: %s", audit.Conditions)
 	}
 }
 
@@ -216,13 +225,15 @@ func TestMarshalSystemLogCleanupConditions_NilAndMarshalError(t *testing.T) {
 
 	now := time.Now().UTC()
 	userID := int64(1)
+	apiKeyID := int64(2)
 	filter := &OpsSystemLogCleanupFilter{
 		StartTime: &now,
 		EndTime:   &now,
 		UserID:    &userID,
+		APIKeyID:  &apiKeyID,
 	}
 	got := marshalSystemLogCleanupConditions(filter)
-	if !strings.Contains(got, `"start_time"`) || !strings.Contains(got, `"user_id":1`) {
+	if !strings.Contains(got, `"start_time"`) || !strings.Contains(got, `"user_id":1`) || !strings.Contains(got, `"api_key_id":2`) {
 		t.Fatalf("unexpected marshal payload: %s", got)
 	}
 }

@@ -805,6 +805,18 @@ func (m *mockGeminiProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyI
 func (m *mockGeminiProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	panic("not impl")
 }
+func (m *mockGeminiProxyRepo) SweepExpiredProxies(ctx context.Context, now time.Time) (int64, error) {
+	panic("not impl")
+}
+func (m *mockGeminiProxyRepo) ListAllForFallback(ctx context.Context) ([]Proxy, error) {
+	panic("not impl")
+}
+func (m *mockGeminiProxyRepo) CountExpired(ctx context.Context) (int64, error) {
+	panic("not impl")
+}
+func (m *mockGeminiProxyRepo) CountExpiringSoon(ctx context.Context, now time.Time) (int64, error) {
+	panic("not impl")
+}
 
 // mockDriveClient implements geminicli.DriveClient for tests.
 type mockDriveClient struct {

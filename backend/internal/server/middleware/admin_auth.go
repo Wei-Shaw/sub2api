@@ -5,9 +5,10 @@ import (
 	"crypto/subtle"
 	"errors"
 	"strings"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,8 +17,9 @@ func NewAdminAuthMiddleware(
 	authService *service.AuthService,
 	userService *service.UserService,
 	settingService *service.SettingService,
+	auditService *service.AuditLogService,
 ) AdminAuthMiddleware {
-	return AdminAuthMiddleware(adminAuth(authService, userService, settingService))
+	return AdminAuthMiddleware(adminAuth(authService, userService, settingService, auditService))
 }
 
 // adminAuth 管理员认证中间件实现
@@ -28,6 +30,7 @@ func adminAuth(
 	authService *service.AuthService,
 	userService *service.UserService,
 	settingService *service.SettingService,
+	auditService *service.AuditLogService,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// WebSocket upgrade requests cannot set Authorization headers in browsers.
@@ -36,7 +39,7 @@ func adminAuth(
 		//   Sec-WebSocket-Protocol: sub2api-admin, jwt.<token>
 		if isWebSocketUpgradeRequest(c) {
 			if token := extractJWTFromWebSocketSubprotocol(c); token != "" {
-				if !validateJWTForAdmin(c, token, authService, userService) {
+				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService) {
 					return
 				}
 				c.Next()
@@ -47,6 +50,16 @@ func adminAuth(
 		// 检查 x-api-key header（Admin API Key 认证）
 		apiKey := c.GetHeader("x-api-key")
 		if apiKey != "" {
+			if strings.HasPrefix(apiKey, "adm_sc_") {
+				authenticateScopedAdminRequest(c, apiKey, settingService, userService, auditService)
+				return
+			}
+			if strings.Contains(c.FullPath(), "/settings/admin-api-key") {
+				AbortWithError(c, 403, "FORBIDDEN", "仅 JWT 管理员可管理密钥")
+				recordAdminKeyRequest(c, auditService, nil)
+				return
+			}
+
 			if !validateAdminAPIKey(c, apiKey, settingService, userService) {
 				return
 			}
@@ -64,7 +77,7 @@ func adminAuth(
 					AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
 					return
 				}
-				if !validateJWTForAdmin(c, token, authService, userService) {
+				if !validateJWTForAdmin(c, token, authService, userService, settingService, auditService) {
 					return
 				}
 				c.Next()
@@ -146,6 +159,7 @@ func validateAdminAPIKey(
 		Concurrency: admin.Concurrency,
 	})
 	c.Set(string(ContextKeyUserRole), admin.Role)
+	c.Set(ContextKeyAuthEmail, admin.Email)
 	c.Set("auth_method", "admin_api_key")
 	return true
 }
@@ -156,6 +170,8 @@ func validateJWTForAdmin(
 	token string,
 	authService *service.AuthService,
 	userService *service.UserService,
+	settingService *service.SettingService,
+	auditService *service.AuditLogService,
 ) bool {
 	// 验证 JWT token
 	claims, err := authService.ValidateToken(token)
@@ -171,7 +187,11 @@ func validateJWTForAdmin(
 	// 从数据库获取用户
 	user, err := userService.GetByID(c.Request.Context(), claims.UserID)
 	if err != nil {
-		AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
+		if errors.Is(err, service.ErrUserNotFound) {
+			AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
+		} else {
+			AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to load user")
+		}
 		return false
 	}
 
@@ -187,6 +207,11 @@ func validateJWTForAdmin(
 		return false
 	}
 
+	// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
+	if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
+		return false
+	}
+
 	// 检查管理员权限
 	if !user.IsAdmin() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
@@ -198,7 +223,60 @@ func validateJWTForAdmin(
 		Concurrency: user.Concurrency,
 	})
 	c.Set(string(ContextKeyUserRole), user.Role)
+	c.Set(ContextKeyAuthEmail, user.Email)
+	c.Set(ContextKeySessionID, claims.SessionID)
 	c.Set("auth_method", "jwt")
 
 	return true
+}
+
+// 每次请求查库，未登记的管理动作默认拒绝。
+func authenticateScopedAdminRequest(c *gin.Context, key string, settings *service.SettingService, users *service.UserService, audit *service.AuditLogService) {
+	if settings == nil || users == nil {
+		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
+		recordAdminKeyRequest(c, audit, nil)
+		return
+	}
+	item, err := settings.AuthenticateScopedAdminKey(c.Request.Context(), key, SecurityClientIP(c))
+	defer func() { recordAdminKeyRequest(c, audit, item) }()
+	if err != nil {
+		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
+		return
+	}
+	user, err := users.GetByID(c.Request.Context(), item.CreatedBy)
+	if err != nil || user == nil || !user.IsActive() || !user.IsAdmin() {
+		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
+		return
+	}
+	principal := &adminaccess.Principal{KeyID: item.ID, KeyName: item.Name, CreatorID: item.CreatedBy, Policy: item.Policy}
+	c.Request = c.Request.WithContext(adminaccess.WithPrincipal(c.Request.Context(), principal))
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: user.ID, Concurrency: user.Concurrency})
+	c.Set(string(ContextKeyUserRole), user.Role)
+	c.Set(ContextKeyAuthEmail, user.Email)
+	c.Set("auth_method", service.AuditAuthMethodAdminAPIKey)
+	c.Set(auditCtxKeySkip, true)
+	if strings.Contains(c.FullPath(), "/settings/admin-api-key") || !adminaccess.RouteAllowed(item.Policy, c.Request.Method, c.FullPath()) {
+		c.Set("admin_key_denial_reason", "permission_denied")
+		AbortWithError(c, 403, "FORBIDDEN", "管理密钥未获此操作权限")
+		return
+	}
+	c.Next()
+}
+func recordAdminKeyRequest(c *gin.Context, audit *service.AuditLogService, item *service.ScopedAdminKey) {
+	if audit == nil {
+		return
+	}
+	entry := &service.AuditLog{CreatedAt: time.Now().UTC(), AuthMethod: service.AuditAuthMethodAdminAPIKey, Action: "admin.api_key.request", Method: c.Request.Method, Path: c.Request.URL.Path, StatusCode: c.Writer.Status(), ClientIP: SecurityClientIP(c), UserAgent: c.Request.UserAgent()}
+	if item != nil {
+		entry.Extra = map[string]any{"admin_key_id": item.ID, "admin_key_name": item.Name}
+		uid := item.CreatedBy
+		entry.ActorUserID = &uid
+	}
+	if reason := c.GetString("admin_key_denial_reason"); reason != "" {
+		if entry.Extra == nil {
+			entry.Extra = map[string]any{}
+		}
+		entry.Extra["denial_reason"] = reason
+	}
+	audit.Record(entry)
 }

@@ -37,7 +37,7 @@ func (s *GatewayService) forwardCompatBedrockAnthropicStream(
 	if err != nil {
 		return nil, "", err
 	}
-	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(anthropicBody, mappedModel, betaTokens)
+	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(anthropicBody, mappedModel, betaTokens, false)
 	if err != nil {
 		return nil, "", fmt.Errorf("prepare bedrock request body: %w", err)
 	}

@@ -119,7 +119,7 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	require.NoError(t, err)
 
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil, nil)
-	h := NewPaymentHandler(paymentSvc, nil, nil)
+	h := NewPaymentHandler(paymentSvc, nil)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -135,35 +135,34 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var resp struct {
-		Code int `json:"code"`
-		Data struct {
-			ID           int64   `json:"id"`
-			OutTradeNo   string  `json:"out_trade_no"`
-			Amount       float64 `json:"amount"`
-			PayAmount    float64 `json:"pay_amount"`
-			FeeRate      float64 `json:"fee_rate"`
-			Currency     string  `json:"currency"`
-			PaymentType  string  `json:"payment_type"`
-			OrderType    string  `json:"order_type"`
-			Status       string  `json:"status"`
-			RefundAmount float64 `json:"refund_amount"`
-			CreatedAt    string  `json:"created_at"`
-			ExpiresAt    string  `json:"expires_at"`
-		} `json:"data"`
+		Code int            `json:"code"`
+		Data map[string]any `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
-	require.Equal(t, order.ID, resp.Data.ID)
-	require.Equal(t, "legacy-order-no", resp.Data.OutTradeNo)
-	require.Equal(t, 90.64, resp.Data.PayAmount)
-	require.Equal(t, 0.03, resp.Data.FeeRate)
-	require.Equal(t, "HKD", resp.Data.Currency)
-	require.Equal(t, payment.TypeAlipay, resp.Data.PaymentType)
-	require.Equal(t, payment.OrderTypeBalance, resp.Data.OrderType)
-	require.Equal(t, service.OrderStatusPending, resp.Data.Status)
-	require.Equal(t, 0.0, resp.Data.RefundAmount)
-	require.NotEmpty(t, resp.Data.CreatedAt)
-	require.NotEmpty(t, resp.Data.ExpiresAt)
+	require.Equal(t, "legacy-order-no", resp.Data["out_trade_no"])
+	require.Equal(t, service.OrderStatusPending, resp.Data["status"])
+	require.Equal(t, false, resp.Data["paid"])
+	require.NotEmpty(t, resp.Data["created_at"])
+	require.NotEmpty(t, resp.Data["expires_at"])
+	for _, field := range []string{
+		"id",
+		"amount",
+		"pay_amount",
+		"fee_rate",
+		"currency",
+		"payment_type",
+		"order_type",
+		"refund_amount",
+		"refund_reason",
+		"refund_requested_at",
+		"refund_requested_by",
+		"refund_request_reason",
+		"plan_id",
+	} {
+		require.NotContains(t, resp.Data, field)
+	}
+	require.NotZero(t, order.ID)
 }
 
 func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing.T) {
@@ -220,7 +219,7 @@ func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing
 
 	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"))
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
-	h := NewPaymentHandler(paymentSvc, nil, nil)
+	h := NewPaymentHandler(paymentSvc, nil)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -308,7 +307,7 @@ func TestResolveOrderPublicByResumeTokenReturnsBadRequestForMismatchedToken(t *t
 
 	configSvc := service.NewPaymentConfigService(client, nil, []byte("0123456789abcdef0123456789abcdef"))
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
-	h := NewPaymentHandler(paymentSvc, nil, nil)
+	h := NewPaymentHandler(paymentSvc, nil)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -348,7 +347,7 @@ func TestVerifyOrderPublicRejectsBlankOutTradeNo(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil, nil)
-	h := NewPaymentHandler(paymentSvc, nil, nil)
+	h := NewPaymentHandler(paymentSvc, nil)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

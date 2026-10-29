@@ -51,19 +51,6 @@ func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 				s.AssertTTLWithin(ttl, 1*time.Second, apiKeyRateLimitDuration)
 			},
 		},
-		{
-			name: "delete_removes_key",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
-				userID := int64(1)
-
-				require.NoError(s.T(), cache.IncrementCreateAttemptCount(ctx, userID))
-				require.NoError(s.T(), cache.DeleteCreateAttemptCount(ctx, userID), "DeleteCreateAttemptCount")
-
-				count, err := cache.GetCreateAttemptCount(ctx, userID)
-				require.NoError(s.T(), err, "expected nil error after delete")
-				require.Equal(s.T(), 0, count, "expected zero count after delete")
-			},
-		},
 	}
 
 	for _, tt := range tests {

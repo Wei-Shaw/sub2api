@@ -31,6 +31,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GitHubMark from './GitHubMark.vue'
 import GoogleMark from './GoogleMark.vue'
+import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
 type EmailOAuthProvider = 'github' | 'google'
@@ -39,12 +40,16 @@ const EMAIL_OAUTH_PENDING_PROVIDER_KEY = 'email_oauth_pending_provider'
 const props = withDefaults(defineProps<{
   disabled?: boolean
   affCode?: string
+  promoCode?: string
   githubEnabled?: boolean
   googleEnabled?: boolean
   showDivider?: boolean
 }>(), {
   showDivider: true
 })
+const emit = defineEmits<{
+  start: [request: OAuthLoginStart]
+}>()
 
 const route = useRoute()
 const { t } = useI18n()
@@ -75,13 +80,14 @@ function startLogin(provider: EmailOAuthProvider): void {
   const affiliateCode = resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code)
   storeOAuthAffiliateCode(affiliateCode)
   window.sessionStorage.setItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY, provider)
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
-  const params = new URLSearchParams({ redirect: redirectTo })
+  const params: Record<string, string> = { redirect: redirectTo }
   if (affiliateCode) {
-    params.set('aff_code', affiliateCode)
+    params.aff_code = affiliateCode
   }
-  const startURL = `${normalized}/auth/oauth/${provider}/start?${params.toString()}`
-  window.location.href = startURL
+  const promoCode = props.promoCode?.trim()
+  if (promoCode) {
+    params.promo_code = promoCode
+  }
+  emit('start', { provider, params })
 }
 </script>

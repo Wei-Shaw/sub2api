@@ -148,7 +148,7 @@ func (h *PromoHandler) Update(c *gin.Context) {
 	if req.ExpiresAt != nil {
 		if *req.ExpiresAt == 0 {
 			// 0 表示清除过期时间
-			input.ExpiresAt = nil
+			input.ExpiresAt = &time.Time{}
 		} else {
 			t := time.Unix(*req.ExpiresAt, 0)
 			input.ExpiresAt = &t
@@ -207,5 +207,5 @@ func (h *PromoHandler) GetUsages(c *gin.Context) {
 	for i := range usages {
 		out = append(out, *dto.PromoCodeUsageFromService(&usages[i]))
 	}
-	response.Paginated(c, out, paginationResult.Total, page, pageSize)
+	response.Paginated(c, adminPromoUsagesResponse(c, out), paginationResult.Total, page, pageSize)
 }

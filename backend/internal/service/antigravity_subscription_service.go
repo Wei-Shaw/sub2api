@@ -21,9 +21,14 @@ func NormalizeAntigravitySubscription(resp *antigravity.LoadCodeAssistResponse) 
 	if resp == nil {
 		return AntigravitySubscriptionResult{PlanType: "Free"}
 	}
+	tierID := resp.GetTier()
+	planType := antigravity.TierIDToPlanType(tierID)
 	if len(resp.IneligibleTiers) > 0 {
+		if planType == "" || planType == "Free" {
+			planType = "Abnormal"
+		}
 		result := AntigravitySubscriptionResult{
-			PlanType:           "Abnormal",
+			PlanType:           planType,
 			SubscriptionStatus: antigravitySubscriptionAbnormal,
 		}
 		if resp.IneligibleTiers[0] != nil {
@@ -31,8 +36,7 @@ func NormalizeAntigravitySubscription(resp *antigravity.LoadCodeAssistResponse) 
 		}
 		return result
 	}
-	tierID := resp.GetTier()
 	return AntigravitySubscriptionResult{
-		PlanType: antigravity.TierIDToPlanType(tierID),
+		PlanType: planType,
 	}
 }

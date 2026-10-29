@@ -12,11 +12,17 @@ permissions:
   pull-requests: write
   statuses: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   cla-check:
     if: |
-      github.event_name == 'issue_comment' ||
-      (github.event_name == 'pull_request_target' && github.event.action != 'closed')
+      github.repository == 'Wei-Shaw/sub2api' &&
+      (
+        github.event_name == 'issue_comment' ||
+        (github.event_name == 'pull_request_target' && github.event.action != 'closed')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: "CLA Assistant"
@@ -45,7 +51,11 @@ jobs:
           custom-allsigned-prcomment: "All contributors have signed the CLA. ✅"
 
   cla-lock:
-    if: github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    if: |
+      github.repository == 'Wei-Shaw/sub2api' &&
+      github.event_name == 'pull_request_target' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - name: "Lock merged PR"

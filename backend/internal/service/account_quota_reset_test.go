@@ -210,9 +210,11 @@ func TestIsFixedDailyPeriodExpired_NotExpired(t *testing.T) {
 		"quota_daily_reset_hour": float64(9),
 		"quota_reset_timezone":   "UTC",
 	}}
-	// Period started after the most recent reset → not expired
-	// (This test uses a time very close to "now", which is after the last reset)
-	periodStart := time.Now().Add(-1 * time.Minute)
+	// Anchor periodStart to today's 12:00 UTC: always strictly after today's
+	// 09:00 UTC reset (and yesterday's). Using time.Now().Add(-1*time.Minute)
+	// is flaky inside the 09:00-09:01 UTC reset window.
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
 	assert.False(t, a.isFixedDailyPeriodExpired(periodStart))
 }
 
@@ -259,8 +261,12 @@ func TestIsFixedWeeklyPeriodExpired_NotExpired(t *testing.T) {
 		"quota_weekly_reset_hour": float64(9),
 		"quota_reset_timezone":    "UTC",
 	}}
-	// Period started 1 minute ago → not expired
-	periodStart := time.Now().Add(-1 * time.Minute)
+	// Anchor periodStart to today's 12:00 UTC: always strictly after the most
+	// recent Monday 09:00 UTC reset, regardless of which weekday/hour the test
+	// runs. Using time.Now().Add(-1*time.Minute) is flaky inside the
+	// Monday 09:00-09:01 UTC reset window.
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
 	assert.False(t, a.isFixedWeeklyPeriodExpired(periodStart))
 }
 
@@ -396,6 +402,51 @@ func TestValidateQuotaResetConfig_BoundaryValues(t *testing.T) {
 		"quota_weekly_reset_hour": float64(23),
 	}
 	assert.NoError(t, ValidateQuotaResetConfig(extra2))
+}
+
+// ---------------------------------------------------------------------------
+// NormalizeFixedQuotaWindows
+// ---------------------------------------------------------------------------
+
+func TestNormalizeFixedQuotaWindows_ClearsExpiredWeeklyWindow(t *testing.T) {
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	currentWeekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -daysSinceMonday)
+	staleStart := currentWeekStart.Add(-24 * time.Hour)
+	extra := map[string]any{
+		"quota_weekly_limit":      500.0,
+		"quota_weekly_used":       76.0,
+		"quota_weekly_start":      staleStart.Format(time.RFC3339),
+		"quota_weekly_reset_mode": "fixed",
+		"quota_weekly_reset_day":  float64(1),
+		"quota_weekly_reset_hour": float64(0),
+		"quota_reset_timezone":    "UTC",
+	}
+
+	NormalizeFixedQuotaWindows(extra)
+
+	assert.Equal(t, 0.0, extra["quota_weekly_used"])
+	assert.Equal(t, currentWeekStart.Format(time.RFC3339), extra["quota_weekly_start"])
+}
+
+func TestNormalizeFixedQuotaWindows_KeepsActiveWeeklyWindow(t *testing.T) {
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	currentWeekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -daysSinceMonday)
+	extra := map[string]any{
+		"quota_weekly_limit":      500.0,
+		"quota_weekly_used":       76.0,
+		"quota_weekly_start":      currentWeekStart.Format(time.RFC3339),
+		"quota_weekly_reset_mode": "fixed",
+		"quota_weekly_reset_day":  float64(1),
+		"quota_weekly_reset_hour": float64(0),
+		"quota_reset_timezone":    "UTC",
+	}
+
+	NormalizeFixedQuotaWindows(extra)
+
+	assert.Equal(t, 76.0, extra["quota_weekly_used"])
+	assert.Equal(t, currentWeekStart.Format(time.RFC3339), extra["quota_weekly_start"])
 }
 
 // ---------------------------------------------------------------------------

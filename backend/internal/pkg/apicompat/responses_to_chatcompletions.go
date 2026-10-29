@@ -15,7 +15,8 @@ import (
 
 // ResponsesToChatCompletions converts a Responses API response into a Chat
 // Completions response. Text output items are concatenated into
-// choices[0].message.content; function_call items become tool_calls.
+// choices[0].message.content, refusal parts into choices[0].message.refusal;
+// function_call items become tool_calls.
 func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatCompletionsResponse {
 	id := resp.ID
 	if id == "" {
@@ -23,13 +24,15 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 	}
 
 	out := &ChatCompletionsResponse{
-		ID:      id,
-		Object:  "chat.completion",
-		Created: time.Now().Unix(),
-		Model:   model,
+		ID:          id,
+		Object:      "chat.completion",
+		Created:     time.Now().Unix(),
+		Model:       model,
+		ServiceTier: resp.ServiceTier,
 	}
 
 	var contentText string
+	var refusalText string
 	var reasoningText string
 	var toolCalls []ChatToolCall
 
@@ -37,8 +40,11 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		switch item.Type {
 		case "message":
 			for _, part := range item.Content {
-				if part.Type == "output_text" && part.Text != "" {
+				switch {
+				case part.Type == "output_text" && part.Text != "":
 					contentText += part.Text
+				case part.Type == "refusal" && part.Refusal != "":
+					refusalText += part.Refusal
 				}
 			}
 		case "function_call":
@@ -61,7 +67,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		}
 	}
 
-	msg := ChatMessage{Role: "assistant"}
+	msg := ChatMessage{Role: "assistant", Refusal: refusalText}
 	if len(toolCalls) > 0 {
 		msg.ToolCalls = toolCalls
 	}
@@ -81,19 +87,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		FinishReason: finishReason,
 	}}
 
-	if resp.Usage != nil {
-		usage := &ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
-		}
-		if resp.Usage.InputTokensDetails != nil && resp.Usage.InputTokensDetails.CachedTokens > 0 {
-			usage.PromptTokensDetails = &ChatTokenDetails{
-				CachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
-			}
-		}
-		out.Usage = usage
-	}
+	out.Usage = chatUsageFromResponsesUsage(resp.Usage)
 
 	return out
 }
@@ -101,8 +95,13 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 func responsesStatusToChatFinishReason(status string, details *ResponsesIncompleteDetails, toolCalls []ChatToolCall) string {
 	switch status {
 	case "incomplete":
-		if details != nil && details.Reason == "max_output_tokens" {
-			return "length"
+		if details != nil {
+			switch details.Reason {
+			case "max_output_tokens":
+				return "length"
+			case "content_filter":
+				return "content_filter"
+			}
 		}
 		return "stop"
 	case "completed":
@@ -125,12 +124,14 @@ type ResponsesEventToChatState struct {
 	ID                     string
 	Model                  string
 	Created                int64
+	ServiceTier            string // upstream tier observed on response events; echoed on chunks
 	SentRole               bool
 	SawToolCall            bool
 	SawText                bool
 	Finalized              bool        // true after finish chunk has been emitted
 	NextToolCallIndex      int         // next sequential tool_call index to assign
 	OutputIndexToToolIndex map[int]int // Responses output_index → Chat tool_calls index
+	OutputIndexToArguments map[int]string
 	IncludeUsage           bool
 	Usage                  *ChatUsage
 }
@@ -141,6 +142,7 @@ func NewResponsesEventToChatState() *ResponsesEventToChatState {
 		ID:                     generateChatCmplID(),
 		Created:                time.Now().Unix(),
 		OutputIndexToToolIndex: make(map[int]int),
+		OutputIndexToArguments: make(map[int]string),
 	}
 }
 
@@ -152,11 +154,21 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleCreated(evt, state)
 	case "response.output_text.delta":
 		return resToChatHandleTextDelta(evt, state)
+	case "response.refusal.delta":
+		return resToChatHandleRefusalDelta(evt, state)
 	case "response.output_item.added":
 		return resToChatHandleOutputItemAdded(evt, state)
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta",
+		// custom/freeform 工具（如新版 apply_patch）的输入增量与 function_call 参数增量同形，
+		// 均按 OutputIndex 累加到对应工具调用。
+		"response.custom_tool_call_input.delta":
 		return resToChatHandleFuncArgsDelta(evt, state)
-	case "response.reasoning_summary_text.delta":
+	case "response.function_call_arguments.done", "response.custom_tool_call_input.done":
+		return resToChatHandleFuncArgsDone(evt, state)
+	case "response.reasoning_summary_text.delta",
+		// 原始推理文本增量（真实 Codex 客户端消费的 reasoning_text.delta），
+		// 与 reasoning summary 一样映射为 reasoning_content。
+		"response.reasoning_text.delta":
 		return resToChatHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
 		return nil
@@ -188,12 +200,13 @@ func FinalizeResponsesChatStream(state *ResponsesEventToChatState) []ChatComplet
 
 	if state.IncludeUsage && state.Usage != nil {
 		chunks = append(chunks, ChatCompletionsChunk{
-			ID:      state.ID,
-			Object:  "chat.completion.chunk",
-			Created: state.Created,
-			Model:   state.Model,
-			Choices: []ChatChunkChoice{},
-			Usage:   state.Usage,
+			ID:          state.ID,
+			Object:      "chat.completion.chunk",
+			Created:     state.Created,
+			Model:       state.Model,
+			ServiceTier: state.ServiceTier,
+			Choices:     []ChatChunkChoice{},
+			Usage:       state.Usage,
 		})
 	}
 
@@ -219,6 +232,9 @@ func resToChatHandleCreated(evt *ResponsesStreamEvent, state *ResponsesEventToCh
 		if state.Model == "" && evt.Response.Model != "" {
 			state.Model = evt.Response.Model
 		}
+		if evt.Response.ServiceTier != "" {
+			state.ServiceTier = evt.Response.ServiceTier
+		}
 	}
 	// Emit the role chunk.
 	if state.SentRole {
@@ -239,8 +255,18 @@ func resToChatHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{Content: &content})}
 }
 
+func resToChatHandleRefusalDelta(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if evt.Delta == "" {
+		return nil
+	}
+	refusal := evt.Delta
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{Refusal: &refusal})}
+}
+
 func resToChatHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
-	if evt.Item == nil || evt.Item.Type != "function_call" {
+	// function_call 与 custom_tool_call（custom/freeform 工具）均按工具调用注册，
+	// 以便后续 *_input.delta / *_arguments.delta 能映射到正确的工具索引。
+	if evt.Item == nil || (evt.Item.Type != "function_call" && evt.Item.Type != "custom_tool_call") {
 		return nil
 	}
 
@@ -270,12 +296,40 @@ func resToChatHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	if !ok {
 		return nil
 	}
+	state.OutputIndexToArguments[evt.OutputIndex] += evt.Delta
 
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
 		ToolCalls: []ChatToolCall{{
 			Index: &idx,
 			Function: ChatFunctionCall{
 				Arguments: evt.Delta,
+			},
+		}},
+	})}
+}
+
+func resToChatHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	idx, ok := state.OutputIndexToToolIndex[evt.OutputIndex]
+	if !ok {
+		return nil
+	}
+
+	completed := evt.Arguments
+	if evt.Type == "response.custom_tool_call_input.done" {
+		completed = evt.Input
+	}
+	current := state.OutputIndexToArguments[evt.OutputIndex]
+	if completed == "" || !strings.HasPrefix(completed, current) || completed == current {
+		return nil
+	}
+
+	remainder := completed[len(current):]
+	state.OutputIndexToArguments[evt.OutputIndex] = completed
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
+		ToolCalls: []ChatToolCall{{
+			Index: &idx,
+			Function: ChatFunctionCall{
+				Arguments: remainder,
 			},
 		}},
 	})}
@@ -293,26 +347,26 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	state.Finalized = true
 	finishReason := "stop"
 
+	if evt.Usage != nil {
+		state.Usage = chatUsageFromResponsesUsage(evt.Usage)
+	}
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
-			u := evt.Response.Usage
-			usage := &ChatUsage{
-				PromptTokens:     u.InputTokens,
-				CompletionTokens: u.OutputTokens,
-				TotalTokens:      u.InputTokens + u.OutputTokens,
-			}
-			if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens > 0 {
-				usage.PromptTokensDetails = &ChatTokenDetails{
-					CachedTokens: u.InputTokensDetails.CachedTokens,
-				}
-			}
-			state.Usage = usage
+			state.Usage = chatUsageFromResponsesUsage(evt.Response.Usage)
+		}
+		if evt.Response.ServiceTier != "" {
+			state.ServiceTier = evt.Response.ServiceTier
 		}
 
 		switch evt.Response.Status {
 		case "incomplete":
-			if evt.Response.IncompleteDetails != nil && evt.Response.IncompleteDetails.Reason == "max_output_tokens" {
-				finishReason = "length"
+			if evt.Response.IncompleteDetails != nil {
+				switch evt.Response.IncompleteDetails.Reason {
+				case "max_output_tokens":
+					finishReason = "length"
+				case "content_filter":
+					finishReason = "content_filter"
+				}
 			}
 		case "completed":
 			if state.SawToolCall {
@@ -328,24 +382,87 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 	if state.IncludeUsage && state.Usage != nil {
 		chunks = append(chunks, ChatCompletionsChunk{
-			ID:      state.ID,
-			Object:  "chat.completion.chunk",
-			Created: state.Created,
-			Model:   state.Model,
-			Choices: []ChatChunkChoice{},
-			Usage:   state.Usage,
+			ID:          state.ID,
+			Object:      "chat.completion.chunk",
+			Created:     state.Created,
+			Model:       state.Model,
+			ServiceTier: state.ServiceTier,
+			Choices:     []ChatChunkChoice{},
+			Usage:       state.Usage,
 		})
 	}
 
 	return chunks
 }
 
+func chatUsageFromResponsesUsage(u *ResponsesUsage) *ChatUsage {
+	if u == nil {
+		return nil
+	}
+	usage := &ChatUsage{
+		PromptTokens:     u.InputTokens,
+		CompletionTokens: u.OutputTokens,
+		TotalTokens:      u.InputTokens + u.OutputTokens,
+	}
+	usage.PromptTokensDetails = promptDetailsFromResponses(u.InputTokensDetails)
+	if u.CacheCreationInputTokens > 0 {
+		if usage.PromptTokensDetails == nil {
+			usage.PromptTokensDetails = &ChatTokenDetails{}
+		}
+		if usage.PromptTokensDetails.CacheWriteTokens == 0 && usage.PromptTokensDetails.CacheCreationTokens == 0 {
+			usage.PromptTokensDetails.CacheCreationTokens = u.CacheCreationInputTokens
+		}
+	}
+	usage.CompletionTokensDetails = completionDetailsFromResponses(u.OutputTokensDetails)
+	return usage
+}
+
+// promptDetailsFromResponses maps Responses-API input_tokens_details into a
+// Chat-Completions prompt_tokens_details. Returns nil when nothing would be
+// emitted, so upstreams that do not break down prompt usage stay clean.
+func promptDetailsFromResponses(src *ResponsesInputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.CachedTokens == 0 && src.AudioTokens == 0 && src.CacheCreationTokens == 0 && src.CacheWriteTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		CachedTokens:        src.CachedTokens,
+		AudioTokens:         src.AudioTokens,
+		CacheCreationTokens: src.CacheCreationTokens,
+		CacheWriteTokens:    src.CacheWriteTokens,
+	}
+}
+
+// completionDetailsFromResponses maps Responses-API output_tokens_details
+// into a Chat-Completions completion_tokens_details. Mirrors the OpenAI
+// official CompletionUsage schema: reasoning_tokens, audio_tokens, and
+// the predicted-outputs accepted/rejected counts. Returns nil when nothing
+// would be emitted so non-reasoning, non-audio responses stay clean.
+func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.ReasoningTokens == 0 && src.AudioTokens == 0 &&
+		src.AcceptedPredictionTokens == 0 && src.RejectedPredictionTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		ReasoningTokens:          src.ReasoningTokens,
+		AudioTokens:              src.AudioTokens,
+		AcceptedPredictionTokens: src.AcceptedPredictionTokens,
+		RejectedPredictionTokens: src.RejectedPredictionTokens,
+	}
+}
+
 func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatCompletionsChunk {
 	return ChatCompletionsChunk{
-		ID:      state.ID,
-		Object:  "chat.completion.chunk",
-		Created: state.Created,
-		Model:   state.Model,
+		ID:          state.ID,
+		Object:      "chat.completion.chunk",
+		Created:     state.Created,
+		Model:       state.Model,
+		ServiceTier: state.ServiceTier,
 		Choices: []ChatChunkChoice{{
 			Index:        0,
 			Delta:        delta,
@@ -357,10 +474,11 @@ func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatC
 func makeChatFinishChunk(state *ResponsesEventToChatState, finishReason string) ChatCompletionsChunk {
 	empty := ""
 	return ChatCompletionsChunk{
-		ID:      state.ID,
-		Object:  "chat.completion.chunk",
-		Created: state.Created,
-		Model:   state.Model,
+		ID:          state.ID,
+		Object:      "chat.completion.chunk",
+		Created:     state.Created,
+		Model:       state.Model,
+		ServiceTier: state.ServiceTier,
 		Choices: []ChatChunkChoice{{
 			Index:        0,
 			Delta:        ChatDelta{Content: &empty},
@@ -382,9 +500,10 @@ func generateChatCmplID() string {
 // ---------------------------------------------------------------------------
 
 type bufferedFuncCall struct {
-	CallID string
-	Name   string
-	Args   strings.Builder
+	OutputIndex int
+	CallID      string
+	Name        string
+	Args        strings.Builder
 }
 
 // BufferedResponseAccumulator collects content from Responses SSE delta events
@@ -392,6 +511,7 @@ type bufferedFuncCall struct {
 // (response.completed / response.done) carries an empty output array.
 type BufferedResponseAccumulator struct {
 	text                 strings.Builder
+	refusal              strings.Builder
 	reasoning            strings.Builder
 	funcCalls            []bufferedFuncCall
 	outputIndexToFuncIdx map[int]int
@@ -413,22 +533,38 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 		if event.Delta != "" {
 			_, _ = a.text.WriteString(event.Delta)
 		}
+	case "response.refusal.delta":
+		if event.Delta != "" {
+			_, _ = a.refusal.WriteString(event.Delta)
+		}
 	case "response.output_item.added":
-		if event.Item != nil && event.Item.Type == "function_call" {
+		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
-				CallID: event.Item.CallID,
-				Name:   event.Item.Name,
+				OutputIndex: event.OutputIndex,
+				CallID:      event.Item.CallID,
+				Name:        event.Item.Name,
 			})
 		}
-	case "response.function_call_arguments.delta":
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
 				_, _ = a.funcCalls[idx].Args.WriteString(event.Delta)
 			}
 		}
-	case "response.reasoning_summary_text.delta":
+	case "response.function_call_arguments.done", "response.custom_tool_call_input.done":
+		completed := event.Arguments
+		if event.Type == "response.custom_tool_call_input.done" {
+			completed = event.Input
+		}
+		if completed != "" {
+			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
+				a.funcCalls[idx].Args.Reset()
+				_, _ = a.funcCalls[idx].Args.WriteString(completed)
+			}
+		}
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
 		}
@@ -437,7 +573,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 
 // HasContent reports whether any content has been accumulated.
 func (a *BufferedResponseAccumulator) HasContent() bool {
-	return a.text.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0
+	return a.text.Len() > 0 || a.refusal.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0
 }
 
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
@@ -456,14 +592,18 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 		})
 	}
 
-	if a.text.Len() > 0 {
+	if a.text.Len() > 0 || a.refusal.Len() > 0 {
+		var content []ResponsesContentPart
+		if a.text.Len() > 0 {
+			content = append(content, ResponsesContentPart{Type: "output_text", Text: a.text.String()})
+		}
+		if a.refusal.Len() > 0 {
+			content = append(content, ResponsesContentPart{Type: "refusal", Refusal: a.refusal.String()})
+		}
 		out = append(out, ResponsesOutput{
-			Type: "message",
-			Role: "assistant",
-			Content: []ResponsesContentPart{{
-				Type: "output_text",
-				Text: a.text.String(),
-			}},
+			Type:    "message",
+			Role:    "assistant",
+			Content: content,
 		})
 	}
 
@@ -479,15 +619,96 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	return out
 }
 
-// SupplementResponseOutput fills resp.Output from accumulated delta content
-// when the terminal event delivered an empty output array. If resp.Output is
-// already populated, this is a no-op (preserves backward compatibility).
+// SupplementResponseOutput fills resp.Output from accumulated stream content
+// when the terminal event delivered an empty output array. It also fills empty
+// function-call arguments from authoritative argument-done events.
 func (a *BufferedResponseAccumulator) SupplementResponseOutput(resp *ResponsesResponse) {
-	if resp == nil || len(resp.Output) > 0 {
+	if resp == nil {
 		return
 	}
-	if !a.HasContent() {
+	if len(resp.Output) == 0 {
+		if a.HasContent() {
+			resp.Output = a.BuildOutput()
+		}
 		return
 	}
-	resp.Output = a.BuildOutput()
+
+	// The terminal event can carry a non-empty output array whose message has
+	// no usable text. Trusting it as-is silently drops the text that already
+	// streamed: the client gets an empty reply while usage still bills the
+	// terminal output_tokens. Refill it from the accumulated deltas; non-empty
+	// terminal text stays authoritative.
+	if a.text.Len() > 0 && !responsesOutputHasText(resp.Output) {
+		if !fillResponsesOutputText(resp.Output, a.text.String()) {
+			resp.Output = append(resp.Output, ResponsesOutput{
+				Type: "message",
+				Role: "assistant",
+				Content: []ResponsesContentPart{{
+					Type: "output_text",
+					Text: a.text.String(),
+				}},
+			})
+		}
+	}
+
+	for outputIndex := range resp.Output {
+		item := &resp.Output[outputIndex]
+		if item.Type != "function_call" || item.Arguments != "" {
+			continue
+		}
+		for funcIndex := range a.funcCalls {
+			call := &a.funcCalls[funcIndex]
+			matchesCallID := item.CallID != "" && item.CallID == call.CallID
+			if !matchesCallID && call.OutputIndex != outputIndex {
+				continue
+			}
+			if call.Args.Len() > 0 {
+				item.Arguments = call.Args.String()
+			}
+			break
+		}
+	}
+}
+
+// responsesOutputHasText reports whether the terminal output already carries
+// usable message text. Whitespace-only text does not count.
+func responsesOutputHasText(output []ResponsesOutput) bool {
+	for i := range output {
+		if output[i].Type != "message" {
+			continue
+		}
+		for _, part := range output[i].Content {
+			if part.Type == "output_text" && strings.TrimSpace(part.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fillResponsesOutputText writes text into the first empty output_text part of
+// the first message item, adding an output_text part when that message has
+// none. It returns false when the output holds no message item, leaving the
+// caller to append one.
+func fillResponsesOutputText(output []ResponsesOutput, text string) bool {
+	for i := range output {
+		if output[i].Type != "message" {
+			continue
+		}
+		for j := range output[i].Content {
+			if output[i].Content[j].Type != "output_text" {
+				continue
+			}
+			if strings.TrimSpace(output[i].Content[j].Text) == "" {
+				output[i].Content[j].Text = text
+				return true
+			}
+		}
+		output[i].Content = append(output[i].Content, ResponsesContentPart{
+			Type: "output_text",
+			Text: text,
+		})
+		return true
+	}
+	return false
 }

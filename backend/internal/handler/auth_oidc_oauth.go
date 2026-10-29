@@ -115,6 +115,9 @@ type oidcJWK struct {
 // OIDCOAuthStart 启动通用 OIDC OAuth 登录流程。
 // GET /api/v1/auth/oauth/oidc/start?redirect=/dashboard
 func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
+	if !h.requireActionCaptchaForOAuthLoginStart(c) {
+		return
+	}
 	cfg, err := h.getOIDCOAuthConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -143,6 +146,7 @@ func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
 	oidcSetCookie(c, oidcOAuthRedirectCookie, encodeCookieValue(redirectTo), oidcOAuthCookieMaxAgeSec, secureCookie)
 	intent := normalizeOAuthIntent(c.Query("intent"))
 	oidcSetCookie(c, oidcOAuthIntentCookieName, encodeCookieValue(intent), oidcOAuthCookieMaxAgeSec, secureCookie)
+	captureOAuthPromoCode(c, secureCookie)
 	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	if intent == oauthIntentBindCurrentUser {
@@ -189,7 +193,7 @@ func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, authURL)
+	respondOAuthStart(c, authURL)
 }
 
 // OIDCOAuthCallback 处理 OIDC 回调：校验 id_token、创建/登录用户并重定向到前端。
@@ -226,6 +230,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		oidcClearCookie(c, oidcOAuthNonceCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthIntentCookieName, secureCookie)
 		oidcClearCookie(c, oidcOAuthBindUserCookieName, secureCookie)
+		clearOAuthPromoCodeCookie(c, secureCookie)
 	}()
 
 	expectedState, err := readCookieDecoded(c, oidcOAuthStateCookieName)
@@ -454,6 +459,24 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		}
 	}
 
+	// 快捷路径：当上游返回已验证邮箱、部署不要求额外确认且本地没有同邮箱账号时，
+	// 直接信任上游身份完成注册/登录，避免展示 choice 页。
+	if compatEmailUser == nil &&
+		strings.TrimSpace(compatEmail) != "" &&
+		emailVerified != nil && *emailVerified {
+		if handled := h.tryOIDCVerifiedEmailFastPath(
+			c,
+			frontendCallback,
+			redirectTo,
+			identityRef,
+			compatEmail,
+			username,
+			upstreamClaims,
+		); handled {
+			return
+		}
+	}
+
 	if h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
 		if err := h.createOIDCOAuthChoicePendingSession(
 			c,
@@ -502,7 +525,8 @@ func (h *AuthHandler) findOIDCCompatEmailUser(ctx context.Context, email string)
 	if email == "" ||
 		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) {
 		return nil, nil
 	}
 
@@ -666,7 +690,15 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairAndPromoCode(
+		c.Request.Context(),
+		email,
+		username,
+		req.InvitationCode,
+		req.AffCode,
+		pendingOAuthPromoCode(session),
+		"oidc",
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1112,10 +1144,10 @@ func (k oidcJWK) publicKey() (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode ec y: %w", err)
 		}
-		if !curve.IsOnCurve(x, y) {
+		if !curve.IsOnCurve(x, y) { //nolint:staticcheck // JWK 以裸坐标给出公钥；替换为 ecdsa.ParseUncompressedPublicKey 需改变点编码，待单独迁移
 			return nil, errors.New("ec point is not on curve")
 		}
-		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil //nolint:staticcheck // 同上
 	default:
 		return nil, fmt.Errorf("unsupported jwk kty: %s", k.Kty)
 	}
@@ -1188,4 +1220,77 @@ func oidcClearCookie(c *gin.Context, name string, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// tryOIDCVerifiedEmailFastPath 在 OIDC 上游已返回已验证邮箱时尝试跳过 choice/pending 页。
+// 返回 true 表示已经写出重定向响应；返回 false 表示调用方应继续回退到常规 choice 流程。
+func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity service.PendingAuthIdentityKey,
+	compatEmail string,
+	username string,
+	upstreamClaims map[string]any,
+) bool {
+	if h == nil || h.authService == nil || h.settingSvc == nil {
+		return false
+	}
+	ctx := c.Request.Context()
+	if h.isForceEmailOnThirdPartySignup(ctx) {
+		return false
+	}
+	if h.settingSvc.IsInvitationCodeEnabled(ctx) {
+		return false
+	}
+	if err := h.ensureBackendModeAllowsNewUserLogin(ctx); err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: reason=%s", infraerrors.Reason(err))
+		clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
+		clearOAuthPendingBrowserCookie(c, isRequestHTTPS(c))
+		redirectOAuthError(c, frontendCallback, "login_blocked", infraerrors.Reason(err), infraerrors.Message(err))
+		return true
+	}
+
+	verifiedEmail := strings.TrimSpace(strings.ToLower(compatEmail))
+	upstreamMetadata := make(map[string]any, len(upstreamClaims)+1)
+	for k, v := range upstreamClaims {
+		upstreamMetadata[k] = v
+	}
+	if syntheticEmail := pendingSessionStringValue(upstreamClaims, "email"); syntheticEmail != "" && !strings.EqualFold(syntheticEmail, verifiedEmail) {
+		upstreamMetadata["synthetic_email"] = syntheticEmail
+	}
+	upstreamMetadata["email"] = verifiedEmail
+	input := service.EmailOAuthIdentityInput{
+		ProviderType:     strings.TrimSpace(identity.ProviderType),
+		ProviderKey:      strings.TrimSpace(identity.ProviderKey),
+		ProviderSubject:  strings.TrimSpace(identity.ProviderSubject),
+		Email:            verifiedEmail,
+		EmailVerified:    true,
+		Username:         strings.TrimSpace(username),
+		DisplayName:      pendingSessionStringValue(upstreamClaims, "suggested_display_name"),
+		AvatarURL:        pendingSessionStringValue(upstreamClaims, "suggested_avatar_url"),
+		UpstreamMetadata: upstreamMetadata,
+	}
+	tokenPair, _, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithSignupCodes(
+		ctx,
+		input,
+		"",
+		"",
+		readOAuthPromoCode(c),
+	)
+	if err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path skipped: reason=%s", infraerrors.Reason(err))
+		return false
+	}
+
+	fragment := url.Values{}
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("redirect", redirectTo)
+	clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
+	clearOAuthPendingBrowserCookie(c, isRequestHTTPS(c))
+	redirectWithFragment(c, frontendCallback, fragment)
+	return true
 }

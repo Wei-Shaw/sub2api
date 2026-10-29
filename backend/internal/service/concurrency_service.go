@@ -3,13 +3,19 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
+	"errors"
 	"os"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // ConcurrencyCache 定义并发控制的缓存接口
@@ -33,7 +39,7 @@ type ConcurrencyCache interface {
 	ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error
 	GetUserConcurrency(ctx context.Context, userID int64) (int, error)
 
-	// 等待队列计数（只在首次创建时设置 TTL）
+	// 等待队列计数（每次入队都会刷新 TTL，避免长时间排队时计数提前过期）
 	IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error)
 	DecrementWaitCount(ctx context.Context, userID int64) error
 
@@ -43,9 +49,141 @@ type ConcurrencyCache interface {
 
 	// 清理过期槽位（后台任务）
 	CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error
+	CleanupExpiredAccountSlotKeys(ctx context.Context) error
 
 	// 启动时清理旧进程遗留槽位与等待计数
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
+}
+
+type APIKeyConcurrencyCache interface {
+	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
+	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
+}
+
+// OpenAIWSIngressLeaseCache owns the short-lived distributed lease used to
+// bound live client WebSocket sessions. It is deliberately independent of the
+// request-slot namespace: idle ingress connections do not occupy turn slots.
+type OpenAIWSIngressLeaseCache interface {
+	AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int, leaseID string) (bool, error)
+	RefreshOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, leaseID string) (bool, error)
+	ReleaseOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, leaseID string) error
+}
+
+const (
+	openAIWSIngressLeaseTTL             = 60 * time.Second
+	openAIWSIngressLeaseRefreshInterval = 20 * time.Second
+	openAIWSIngressLeaseOperationTO     = 2 * time.Second
+)
+
+var ErrOpenAIWSIngressLeaseLost = errors.New("openai websocket ingress lease lost")
+
+// OpenAIWSIngressLease keeps a Redis-backed ingress lease alive and cancels
+// its context if Redis cannot confirm ownership for a full lease lifetime.
+// Call Release on every handler exit to reclaim capacity immediately.
+type OpenAIWSIngressLease struct {
+	ctx      context.Context
+	cancel   context.CancelCauseFunc
+	cache    OpenAIWSIngressLeaseCache
+	apiKeyID int64
+	leaseID  string
+
+	stopOnce    sync.Once
+	stopCh      chan struct{}
+	refreshDone chan struct{}
+}
+
+func (l *OpenAIWSIngressLease) Context() context.Context {
+	if l == nil || l.ctx == nil {
+		return context.Background()
+	}
+	return l.ctx
+}
+
+func (l *OpenAIWSIngressLease) Release() {
+	if l == nil {
+		return
+	}
+	l.stopOnce.Do(func() {
+		if l.stopCh != nil {
+			close(l.stopCh)
+		}
+		if l.cancel != nil {
+			l.cancel(nil)
+		}
+		if l.refreshDone != nil {
+			<-l.refreshDone
+		}
+		if l.cache == nil || l.apiKeyID <= 0 || l.leaseID == "" {
+			return
+		}
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), openAIWSIngressLeaseOperationTO)
+		defer releaseCancel()
+		if err := l.cache.ReleaseOpenAIWSIngressLease(releaseCtx, l.apiKeyID, l.leaseID); err != nil {
+			logger.L().Warn("openai_ws_ingress_lease_release_failed",
+				zap.Int64("api_key_id", l.apiKeyID),
+				zap.Error(err),
+			)
+		}
+	})
+}
+
+func (l *OpenAIWSIngressLease) refreshLoop() {
+	defer func() {
+		if l != nil && l.refreshDone != nil {
+			close(l.refreshDone)
+		}
+	}()
+	if l == nil || l.cache == nil {
+		return
+	}
+	ticker := time.NewTicker(openAIWSIngressLeaseRefreshInterval)
+	defer ticker.Stop()
+	lastConfirmedAt := time.Now()
+	for {
+		select {
+		case <-l.ctx.Done():
+			return
+		case <-l.stopCh:
+			return
+		case <-ticker.C:
+			var lost bool
+			lastConfirmedAt, lost = l.refresh(lastConfirmedAt)
+			if lost {
+				l.cancel(ErrOpenAIWSIngressLeaseLost)
+				return
+			}
+		}
+	}
+}
+
+// refresh confirms the lease is still owned. A missing member is an immediate
+// lease loss; transient Redis errors are tolerated only for one full lease TTL.
+func (l *OpenAIWSIngressLease) refresh(lastConfirmedAt time.Time) (time.Time, bool) {
+	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), openAIWSIngressLeaseOperationTO)
+	owned, err := l.cache.RefreshOpenAIWSIngressLease(refreshCtx, l.apiKeyID, l.leaseID)
+	refreshCancel()
+	if err == nil && owned {
+		return time.Now(), false
+	}
+	if err == nil {
+		err = ErrOpenAIWSIngressLeaseLost
+	}
+	elapsed := time.Since(lastConfirmedAt)
+	logger.L().Warn("openai_ws_ingress_lease_refresh_failed",
+		zap.Int64("api_key_id", l.apiKeyID),
+		zap.Duration("unconfirmed_for", elapsed),
+		zap.Error(err),
+	)
+	if errors.Is(err, ErrOpenAIWSIngressLeaseLost) || elapsed >= openAIWSIngressLeaseTTL {
+		logger.L().Error("openai_ws_ingress_lease_lost",
+			zap.Int64("api_key_id", l.apiKeyID),
+			zap.Duration("unconfirmed_for", elapsed),
+			zap.Error(err),
+		)
+		return lastConfirmedAt, true
+	}
+	return lastConfirmedAt, false
 }
 
 var (
@@ -79,18 +217,93 @@ func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error
 }
 
 const (
-	// Default extra wait slots beyond concurrency limit
+	// 默认等待队列额外槽位
 	defaultExtraWaitSlots = 20
+
+	defaultAccountLoadBatchCacheTTL = 200 * time.Millisecond
+	accountLoadBatchFetchTimeout    = 3 * time.Second
+	maxAccountLoadBatchCacheEntries = 256
+	apiKeyConcurrencyFetchTimeout   = 3 * time.Second
+	apiKeySlotTrackTimeout          = 2 * time.Second
 )
 
-// ConcurrencyService manages concurrent request limiting for accounts and users
+// ConcurrencyService 管理账号和用户的并发限制。
 type ConcurrencyService struct {
 	cache ConcurrencyCache
+
+	accountLoadCacheTTL atomic.Int64
+	accountLoadCacheMu  sync.RWMutex
+	accountLoadCache    map[string]cachedAccountLoadBatch
+	accountLoadGroup    singleflight.Group
 }
 
-// NewConcurrencyService creates a new ConcurrencyService
+type cachedAccountLoadBatch struct {
+	loadMap   map[int64]*AccountLoadInfo
+	expiresAt time.Time
+}
+
+// NewConcurrencyService 创建并发控制服务。
 func NewConcurrencyService(cache ConcurrencyCache) *ConcurrencyService {
-	return &ConcurrencyService{cache: cache}
+	svc := &ConcurrencyService{
+		cache:            cache,
+		accountLoadCache: make(map[string]cachedAccountLoadBatch),
+	}
+	svc.SetAccountLoadBatchCacheTTL(defaultAccountLoadBatchCacheTTL)
+	return svc
+}
+
+// AcquireOpenAIWSIngressLease atomically reserves one live ingress connection
+// for an API key. A non-positive limit explicitly disables this protection.
+func (s *ConcurrencyService) AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int) (*OpenAIWSIngressLease, bool, error) {
+	if maxConnections <= 0 {
+		return nil, true, nil
+	}
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return nil, false, errors.New("openai websocket ingress lease cache is unavailable")
+	}
+	cache, ok := s.cache.(OpenAIWSIngressLeaseCache)
+	if !ok {
+		return nil, false, errors.New("openai websocket ingress lease cache is unsupported")
+	}
+	leaseID := generateRequestID()
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	acquireCtx, acquireCancel := context.WithTimeout(baseCtx, openAIWSIngressLeaseOperationTO)
+	acquired, err := cache.AcquireOpenAIWSIngressLease(acquireCtx, apiKeyID, maxConnections, leaseID)
+	acquireCancel()
+	if err != nil || !acquired {
+		return nil, acquired, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	leaseCtx, leaseCancel := context.WithCancelCause(ctx)
+	lease := &OpenAIWSIngressLease{
+		ctx:         leaseCtx,
+		cancel:      leaseCancel,
+		cache:       cache,
+		apiKeyID:    apiKeyID,
+		leaseID:     leaseID,
+		stopCh:      make(chan struct{}),
+		refreshDone: make(chan struct{}),
+	}
+	go lease.refreshLoop()
+	return lease, true, nil
+}
+
+// SetAccountLoadBatchCacheTTL 设置账号负载批量读取的极短 TTL 缓存；非正数表示禁用缓存。
+func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
+	if s == nil {
+		return
+	}
+	s.accountLoadCacheTTL.Store(int64(ttl))
+	if ttl <= 0 {
+		s.accountLoadCacheMu.Lock()
+		s.accountLoadCache = make(map[string]cachedAccountLoadBatch)
+		s.accountLoadCacheMu.Unlock()
+	}
 }
 
 // AcquireResult represents the result of acquiring a concurrency slot
@@ -201,6 +414,77 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	}, nil
 }
 
+// TrackAPIKeySlot records one active request slot for an API key without
+// applying key-level concurrency limits. It is fail-open: Redis errors are
+// logged and return a no-op release function.
+func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64) func() {
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return func() {}
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyCache)
+	if !ok {
+		return func() {}
+	}
+
+	requestID := generateRequestID()
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	trackCtx, cancel := context.WithTimeout(baseCtx, apiKeySlotTrackTimeout)
+	err := cache.TrackAPIKeySlot(trackCtx, apiKeyID, requestID)
+	cancel()
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: failed to track api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+		return func() {}
+	}
+
+	return func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := cache.ReleaseAPIKeySlot(bgCtx, apiKeyID, requestID); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+		}
+	}
+}
+
+// GetAPIKeyConcurrencyBatch gets real-time active request counts for API keys.
+// Stats are best-effort: missing Redis support or Redis errors return zeroes.
+func (s *ConcurrencyService) GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error) {
+	result := zeroAPIKeyConcurrencyMap(apiKeyIDs)
+	if len(apiKeyIDs) == 0 {
+		return result, nil
+	}
+	if s == nil || s.cache == nil {
+		return result, nil
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyCache)
+	if !ok {
+		return result, nil
+	}
+
+	redisCtx, cancel := context.WithTimeout(context.Background(), apiKeyConcurrencyFetchTimeout)
+	defer cancel()
+
+	counts, err := cache.GetAPIKeyConcurrencyBatch(redisCtx, apiKeyIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: get api key concurrency batch failed: %v", err)
+		return result, nil
+	}
+	for _, apiKeyID := range apiKeyIDs {
+		result[apiKeyID] = counts[apiKeyID]
+	}
+	return result, nil
+}
+
+func zeroAPIKeyConcurrencyMap(apiKeyIDs []int64) map[int64]int {
+	result := make(map[int64]int, len(apiKeyIDs))
+	for _, apiKeyID := range apiKeyIDs {
+		result[apiKeyID] = 0
+	}
+	return result
+}
+
 // ============================================
 // Wait Queue Count Methods
 // ============================================
@@ -284,12 +568,140 @@ func CalculateMaxWait(userConcurrency int) int {
 	return userConcurrency + defaultExtraWaitSlots
 }
 
-// GetAccountsLoadBatch returns load info for multiple accounts.
+// GetAccountsLoadBatch 批量获取账号负载信息。
 func (s *ConcurrencyService) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	return s.getAccountsLoadBatch(ctx, accounts, true)
+}
+
+// GetAccountsLoadBatchFresh 绕过极短 TTL 缓存，用于抢槽失败后的实时刷新兜底。
+func (s *ConcurrencyService) GetAccountsLoadBatchFresh(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	return s.getAccountsLoadBatch(ctx, accounts, false)
+}
+
+func (s *ConcurrencyService) getAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency, allowCache bool) (map[int64]*AccountLoadInfo, error) {
+	if len(accounts) == 0 {
+		return map[int64]*AccountLoadInfo{}, nil
+	}
 	if s.cache == nil {
 		return map[int64]*AccountLoadInfo{}, nil
 	}
-	return s.cache.GetAccountsLoadBatch(ctx, accounts)
+
+	ttl := time.Duration(s.accountLoadCacheTTL.Load())
+	if !allowCache || ttl <= 0 {
+		return s.fetchAccountsLoadBatch(ctx, accounts)
+	}
+
+	key := accountLoadBatchCacheKey(accounts)
+	if cached, ok := s.getCachedAccountLoadBatch(key, time.Now()); ok {
+		return cached, nil
+	}
+
+	value, err, _ := s.accountLoadGroup.Do(key, func() (any, error) {
+		now := time.Now()
+		if cached, ok := s.getCachedAccountLoadBatch(key, now); ok {
+			return cached, nil
+		}
+		loadMap, fetchErr := s.fetchAccountsLoadBatch(ctx, accounts)
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
+		cached := cloneAccountLoadMap(loadMap)
+		s.storeCachedAccountLoadBatch(key, cached, now.Add(ttl))
+		return cached, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	loadMap, _ := value.(map[int64]*AccountLoadInfo)
+	if loadMap == nil {
+		return map[int64]*AccountLoadInfo{}, nil
+	}
+	return loadMap, nil
+}
+
+func (s *ConcurrencyService) fetchAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	if s.cache == nil {
+		return map[int64]*AccountLoadInfo{}, nil
+	}
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	redisCtx, cancel := context.WithTimeout(baseCtx, accountLoadBatchFetchTimeout)
+	defer cancel()
+	return s.cache.GetAccountsLoadBatch(redisCtx, accounts)
+}
+
+func (s *ConcurrencyService) getCachedAccountLoadBatch(key string, now time.Time) (map[int64]*AccountLoadInfo, bool) {
+	s.accountLoadCacheMu.RLock()
+	cached, ok := s.accountLoadCache[key]
+	s.accountLoadCacheMu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if !now.Before(cached.expiresAt) {
+		s.accountLoadCacheMu.Lock()
+		if current, exists := s.accountLoadCache[key]; exists && !now.Before(current.expiresAt) {
+			delete(s.accountLoadCache, key)
+		}
+		s.accountLoadCacheMu.Unlock()
+		return nil, false
+	}
+	return cached.loadMap, true
+}
+
+func (s *ConcurrencyService) storeCachedAccountLoadBatch(key string, loadMap map[int64]*AccountLoadInfo, expiresAt time.Time) {
+	s.accountLoadCacheMu.Lock()
+	if s.accountLoadCache == nil {
+		s.accountLoadCache = make(map[string]cachedAccountLoadBatch)
+	}
+	if len(s.accountLoadCache) >= maxAccountLoadBatchCacheEntries {
+		now := time.Now()
+		for cacheKey, cached := range s.accountLoadCache {
+			if !now.Before(cached.expiresAt) {
+				delete(s.accountLoadCache, cacheKey)
+			}
+		}
+		for len(s.accountLoadCache) >= maxAccountLoadBatchCacheEntries {
+			for cacheKey := range s.accountLoadCache {
+				delete(s.accountLoadCache, cacheKey)
+				break
+			}
+		}
+	}
+	s.accountLoadCache[key] = cachedAccountLoadBatch{
+		loadMap:   loadMap,
+		expiresAt: expiresAt,
+	}
+	s.accountLoadCacheMu.Unlock()
+}
+
+func accountLoadBatchCacheKey(accounts []AccountWithConcurrency) string {
+	hash := sha256.New()
+	var buf [16]byte
+	for _, account := range accounts {
+		binary.LittleEndian.PutUint64(buf[:8], uint64(account.ID))
+		binary.LittleEndian.PutUint64(buf[8:], uint64(int64(account.MaxConcurrency)))
+		_, _ = hash.Write(buf[:])
+	}
+	sum := hash.Sum(nil)
+	return strconv.Itoa(len(accounts)) + ":" + hex.EncodeToString(sum)
+}
+
+func cloneAccountLoadMap(loadMap map[int64]*AccountLoadInfo) map[int64]*AccountLoadInfo {
+	if len(loadMap) == 0 {
+		return map[int64]*AccountLoadInfo{}
+	}
+	clone := make(map[int64]*AccountLoadInfo, len(loadMap))
+	for accountID, loadInfo := range loadMap {
+		if loadInfo == nil {
+			clone[accountID] = nil
+			continue
+		}
+		copied := *loadInfo
+		clone[accountID] = &copied
+	}
+	return clone
 }
 
 // GetUsersLoadBatch returns load info for multiple users.
@@ -309,26 +721,18 @@ func (s *ConcurrencyService) CleanupExpiredAccountSlots(ctx context.Context, acc
 }
 
 // StartSlotCleanupWorker starts a background cleanup worker for expired account slots.
-func (s *ConcurrencyService) StartSlotCleanupWorker(accountRepo AccountRepository, interval time.Duration) {
-	if s == nil || s.cache == nil || accountRepo == nil || interval <= 0 {
+func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interval time.Duration) {
+	if s == nil || s.cache == nil || interval <= 0 {
 		return
 	}
 
 	runCleanup := func() {
-		listCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		accounts, err := accountRepo.ListSchedulable(listCtx)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
 		cancel()
 		if err != nil {
-			logger.LegacyPrintf("service.concurrency", "Warning: list schedulable accounts failed: %v", err)
+			logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired account slots failed: %v", err)
 			return
-		}
-		for _, account := range accounts {
-			accountCtx, accountCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			err := s.cache.CleanupExpiredAccountSlots(accountCtx, account.ID)
-			accountCancel()
-			if err != nil {
-				logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired slots failed for account %d: %v", account.ID, err)
-			}
 		}
 	}
 
