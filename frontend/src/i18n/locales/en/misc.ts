@@ -87,6 +87,33 @@ export default {
     copyCodeFailed: 'Failed'
   },
 
+  // Support tickets (user)
+  tickets: {
+    title: 'Support Tickets',
+    description: 'Submit issues and talk with admins',
+    create: 'New Ticket',
+    searchPlaceholder: 'Search ticket subject...',
+    empty: 'No tickets yet',
+    subject: 'Subject',
+    content: 'Content',
+    reply: 'Send Reply',
+    replyPlaceholder: 'Write your reply...',
+    closeTicket: 'Close Ticket',
+    closedHint: 'This ticket is closed',
+    createSuccess: 'Ticket created',
+    fillRequired: 'Please fill in subject and content',
+    messagesCount: '{count} messages',
+    admin: 'Admin',
+    me: 'Me',
+    statusAll: 'All statuses',
+    status: {
+      open: 'Open',
+      waiting_admin: 'Waiting for admin',
+      answered: 'Answered',
+      closed: 'Closed'
+    }
+  },
+
   // Announcements Page
   announcements: {
     title: 'Announcements',

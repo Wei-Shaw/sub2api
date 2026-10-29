@@ -32,9 +32,10 @@ var quotaDimLabels = map[string]string{
 	quotaDimTotal:  "总限额 / Total",
 }
 
-// AccountQuotaReader provides read access to account quota data.
+// AccountQuotaReader provides read/write access to account quota and notify state.
 type AccountQuotaReader interface {
 	GetByID(ctx context.Context, id int64) (*Account, error)
+	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 }
 
 // BalanceNotifyService handles balance and quota threshold notifications.
@@ -249,6 +250,77 @@ func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, account
 	}()
 }
 
+const accountBalanceLowNotifiedExtraKey = "account_balance_low_notified"
+
+// CheckAccountBalanceLow notifies admins when a probed account balance drops below the configured threshold.
+// De-dupes with accounts.extra.account_balance_low_notified until the balance recovers.
+func (s *BalanceNotifyService) CheckAccountBalanceLow(ctx context.Context, account *Account, balance float64, currency string) {
+	if account == nil || s.emailService == nil || s.settingRepo == nil {
+		return
+	}
+	enabled, threshold, emails := s.getAccountBalanceLowNotifyConfig(ctx)
+	if !enabled || threshold <= 0 || len(emails) == 0 {
+		return
+	}
+
+	alreadyNotified := account.getExtraBool(accountBalanceLowNotifiedExtraKey)
+	if balance >= threshold {
+		if alreadyNotified && s.accountRepo != nil {
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{accountBalanceLowNotifiedExtraKey: false}); err != nil {
+				slog.Warn("account_balance_low_clear_flag_failed", "account_id", account.ID, "error", err)
+			}
+		}
+		return
+	}
+	if alreadyNotified {
+		return
+	}
+
+	siteName := s.getSiteName(ctx)
+	currencyLabel := strings.TrimSpace(currency)
+	if currencyLabel == "" {
+		currencyLabel = "USD"
+	}
+	slog.Info("CheckAccountBalanceLow: sending notification",
+		"account_id", account.ID, "balance", balance, "currency", currencyLabel, "threshold", threshold)
+	if s.accountRepo != nil {
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{accountBalanceLowNotifiedExtraKey: true}); err != nil {
+			slog.Warn("account_balance_low_set_flag_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic in account balance low notification", "recover", r)
+			}
+		}()
+		s.sendAccountBalanceLowEmails(emails, account.ID, account.Name, account.Platform, balance, currencyLabel, threshold, siteName)
+	}()
+}
+
+// getAccountBalanceLowNotifyConfig reads global account-balance-low notification settings.
+func (s *BalanceNotifyService) getAccountBalanceLowNotifyConfig(ctx context.Context) (enabled bool, threshold float64, emails []string) {
+	keys := []string{
+		SettingKeyAccountBalanceLowNotifyEnabled,
+		SettingKeyAccountBalanceLowNotifyThreshold,
+		SettingKeyAccountBalanceLowNotifyEmails,
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return false, 0, nil
+	}
+	enabled = settings[SettingKeyAccountBalanceLowNotifyEnabled] == "true"
+	if v := settings[SettingKeyAccountBalanceLowNotifyThreshold]; v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			threshold = f
+		}
+	}
+	if raw := strings.TrimSpace(settings[SettingKeyAccountBalanceLowNotifyEmails]); raw != "" && raw != "[]" {
+		emails = filterVerifiedEmails(ParseNotifyEmails(raw))
+	}
+	return enabled, threshold, emails
+}
+
 // getBalanceNotifyConfig reads global balance notification settings.
 func (s *BalanceNotifyService) getBalanceNotifyConfig(ctx context.Context) (enabled bool, threshold float64, rechargeURL string) {
 	keys := []string{SettingKeyBalanceLowNotifyEnabled, SettingKeyBalanceLowNotifyThreshold, SettingKeyBalanceLowNotifyRechargeURL}
@@ -450,6 +522,57 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dim.name)
 }
 
+// sendAccountBalanceLowEmails sends upstream/account balance-low alerts to admin emails.
+func (s *BalanceNotifyService) sendAccountBalanceLowEmails(
+	adminEmails []string,
+	accountID int64,
+	accountName, platform string,
+	balance float64,
+	currency string,
+	threshold float64,
+	siteName string,
+) {
+	if s.notificationEmailService != nil {
+		fallbackRecipients := make([]string, 0, len(adminEmails))
+		for _, to := range adminEmails {
+			ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+			err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventAccountBalanceLow,
+				RecipientEmail: to,
+				RecipientName:  emailRecipientName(to),
+				SourceType:     "account_balance_low",
+				SourceID:       strconv.FormatInt(accountID, 10),
+				ReminderKey:    time.Now().UTC().Format("2006-01-02"),
+				Variables: map[string]string{
+					"account_id":      strconv.FormatInt(accountID, 10),
+					"account_name":    accountName,
+					"platform":        platform,
+					"current_balance": fmt.Sprintf("%.2f", balance),
+					"currency":        currency,
+					"threshold":       fmt.Sprintf("%.2f", threshold),
+				},
+			})
+			cancel()
+			if err != nil {
+				if shouldFallbackNotificationEmail(err) {
+					slog.Warn("template account balance low alert failed; falling back to built-in body", "to", to, "account_id", accountID, "err", err.Error())
+					fallbackRecipients = append(fallbackRecipients, to)
+				} else {
+					slog.Warn("template account balance low alert delivery failed; not sending fallback to avoid duplicates", "to", to, "account_id", accountID, "err", err.Error())
+				}
+			}
+		}
+		if len(fallbackRecipients) == 0 {
+			return
+		}
+		adminEmails = fallbackRecipients
+	}
+
+	subject := fmt.Sprintf("[%s] 账号余额不足 / Account Balance Low - %s", sanitizeEmailHeader(siteName), sanitizeEmailHeader(accountName))
+	body := s.buildAccountBalanceLowEmailBody(accountID, html.EscapeString(accountName), html.EscapeString(platform), balance, html.EscapeString(currency), threshold, html.EscapeString(siteName))
+	s.sendEmails(adminEmails, subject, body, "account", accountName, "balance", balance)
+}
+
 // sanitizeEmailHeader removes CR/LF characters to prevent SMTP header injection.
 func sanitizeEmailHeader(s string) string {
 	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
@@ -552,4 +675,61 @@ func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountID int64, account
 		limitStr = "无限制 / Unlimited"
 	}
 	return fmt.Sprintf(quotaAlertEmailTemplate, siteName, accountID, accountName, platform, dimLabel, used, limitStr, remaining, thresholdDisplay)
+}
+
+const accountBalanceLowEmailTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #f59e0b 0%%, #d97706 100%%); color: white; padding: 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { padding: 40px 30px; }
+        .balance { font-size: 32px; font-weight: bold; color: #dc2626; margin: 16px 0; text-align: center; }
+        .info { color: #666; font-size: 14px; line-height: 1.6; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; }
+        table { width: 100%%; border-collapse: collapse; margin-top: 16px; }
+        td { padding: 8px 0; border-bottom: 1px solid #eee; color: #444; font-size: 14px; }
+        td:last-child { text-align: right; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>%s</h1></div>
+        <div class="content">
+            <p class="info">上游账号 <strong>%s</strong> 余额已低于告警阈值。</p>
+            <p class="info">Upstream account <strong>%s</strong> balance fell below the alert threshold.</p>
+            <div class="balance">%s %.2f</div>
+            <table>
+              <tr><td>Account ID</td><td>%d</td></tr>
+              <tr><td>Platform</td><td>%s</td></tr>
+              <tr><td>Threshold</td><td>%.2f</td></tr>
+            </table>
+        </div>
+        <div class="footer"><p>此邮件由系统自动发送，请勿回复。</p></div>
+    </div>
+</body>
+</html>`
+
+func (s *BalanceNotifyService) buildAccountBalanceLowEmailBody(
+	accountID int64,
+	accountName, platform string,
+	balance float64,
+	currency string,
+	threshold float64,
+	siteName string,
+) string {
+	return fmt.Sprintf(
+		accountBalanceLowEmailTemplate,
+		siteName,
+		accountName,
+		accountName,
+		currency,
+		balance,
+		accountID,
+		platform,
+		threshold,
+	)
 }

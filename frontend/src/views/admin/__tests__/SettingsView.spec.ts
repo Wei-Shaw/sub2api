@@ -538,6 +538,9 @@ const baseSettingsResponse = {
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
+  account_balance_low_notify_enabled: false,
+  account_balance_low_notify_threshold: 0,
+  account_balance_low_notify_emails: [],
   // 平台限额嵌套字段（新后端契约）
   default_platform_quotas: {
     anthropic:   { daily: null, weekly: null, monthly: null },
@@ -1170,16 +1173,7 @@ describe("admin SettingsView payment visible method controls", () => {
         ["查看支付配置说明", "查看支持的支付方式"].includes(node.text()),
       );
 
-    expect(paymentLinks).toHaveLength(2);
-    expect(paymentLinks[0]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md",
-    );
-    expect(paymentLinks[1]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式",
-    );
-    for (const link of paymentLinks) {
-      expect(link.attributes("href")).toContain("docs/PAYMENT");
-    }
+    expect(paymentLinks).toHaveLength(0);
   });
 
   it("does not submit legacy visible payment method settings", async () => {

@@ -909,7 +909,7 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 }
 
 // SetModelRouting sets the "model_routing" field.
-func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
+func (_u *GroupUpdate) SetModelRouting(v domain.ModelRoutingMap) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
 	return _u
 }
@@ -3129,7 +3129,7 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 }
 
 // SetModelRouting sets the "model_routing" field.
-func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
+func (_u *GroupUpdateOne) SetModelRouting(v domain.ModelRoutingMap) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
 	return _u
 }
