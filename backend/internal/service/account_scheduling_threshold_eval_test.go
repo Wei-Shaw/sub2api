@@ -499,26 +499,39 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesConfiguredThresholds(t *test
 	require.True(t, wantUntil.Equal(*decision.Until))
 }
 
-func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *testing.T) {
+func TestEvaluateAccountSchedulingThreshold_GrokUsesFreshOAuthBillingWindow(t *testing.T) {
 	t.Parallel()
-	// Billing seven_day/thirty_day must not drive pause; only grok_sched_* may.
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 	weeklyEnd := now.Add(3 * time.Hour)
 	weeklyPct := 99.0
 	headerUntil := now.Add(2 * time.Hour)
+	billing := map[string]any{
+		"usage_percent":     weeklyPct,
+		"period_end":        weeklyEnd.Format(time.RFC3339),
+		"weekly_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+	}
 	account := &Account{
 		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
 		Extra: map[string]any{
 			"grok_sched_utilization": 50.0, // below threshold
 			"grok_sched_reset_at":    headerUntil.Format(time.RFC3339),
-			grokBillingExtraKey: &xai.BillingSummary{
-				UsagePercent: &weeklyPct,
-				PeriodEnd:    weeklyEnd.Format(time.RFC3339),
-			},
+			grokBillingExtraKey:      billing,
 		},
 	}
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90}, now)
-	require.False(t, decision.ShouldPause, "high billing % alone must not pause under scheduling windows")
+	require.True(t, decision.ShouldPause, "fresh official OAuth billing usage must drive auto-pause")
+	require.Equal(t, "7d", decision.Window)
+	require.Equal(t, "grok", decision.Scope)
+	require.Equal(t, 99.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, weeklyEnd.Equal(*decision.Until))
+
+	// A stale billing value must not pause a new account, while a fresh header
+	// quota snapshot remains an independent supported signal.
+	billing["weekly_updated_at"] = now.Add(-11 * time.Minute).Format(time.RFC3339)
+	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90}, now)
+	require.False(t, decision.ShouldPause)
 
 	account.Extra["grok_sched_utilization"] = 95.0
 	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90}, now)
@@ -527,4 +540,63 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *tes
 	require.Equal(t, "quota", decision.Window)
 	require.NotNil(t, decision.Until)
 	require.True(t, headerUntil.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_GrokUsesFreshOAuthMonthlyBillingWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	monthlyEnd := now.Add(27 * 24 * time.Hour)
+	monthlyPct := 97.0
+	weeklyPct := 99.0
+	billing := map[string]any{
+		"usage_percent":      weeklyPct,
+		"period_end":         now.Add(6 * 24 * time.Hour).Format(time.RFC3339),
+		"weekly_updated_at":  now.Add(-11 * time.Minute).Format(time.RFC3339),
+		"used_percent":       monthlyPct,
+		"billing_period_end": monthlyEnd.Format(time.RFC3339),
+		"monthly_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+		"partial":            true,
+		"failed_windows":     []string{"weekly"},
+	}
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			grokBillingExtraKey: billing,
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 95}, now)
+	require.True(t, decision.ShouldPause, "a fresh successful monthly window remains usable when the weekly probe failed")
+	require.Equal(t, "30d", decision.Window)
+	require.Equal(t, 97.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, monthlyEnd.Equal(*decision.Until))
+
+	billing["monthly_updated_at"] = now.Add(-11 * time.Minute).Format(time.RFC3339)
+	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 95}, now)
+	require.False(t, decision.ShouldPause, "failed and stale windows must not reuse retained values")
+}
+
+func TestEvaluateAccountSchedulingThreshold_GrokBillingWindowRequiresOAuthAccount(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	weeklyEnd := now.Add(3 * time.Hour)
+	weeklyPct := 99.0
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				UsagePercent:    &weeklyPct,
+				PeriodEnd:       weeklyEnd.Format(time.RFC3339),
+				WeeklyUpdatedAt: now.Add(-time.Minute).Format(time.RFC3339),
+			},
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90}, now)
+	require.False(t, decision.ShouldPause, "OAuth billing snapshots must not affect API-key accounts")
 }

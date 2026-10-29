@@ -52,6 +52,46 @@ func TestRateLimitService_ApplyAccountSchedulingThreshold_SetsTempUnschedulable(
 	require.Contains(t, payload["error_message"], "91.5% used >= 80%")
 }
 
+func TestRateLimitService_ApplyAccountSchedulingThreshold_UsesGrokOAuthBillingSnapshot(t *testing.T) {
+	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
+	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
+
+	settingsRepo := newMockSettingRepo()
+	settingsRepo.data[SettingKeyAccountSchedulingThresholds] = `{"grok":95}`
+
+	accountRepo := &rateLimitAccountRepoStub{}
+	rl := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	rl.SetSettingService(NewSettingService(settingsRepo, &config.Config{}))
+
+	now := time.Now().UTC()
+	until := now.Add(6 * 24 * time.Hour).Truncate(time.Second)
+	account := &Account{
+		ID:          1005,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			grokBillingExtraKey: map[string]any{
+				"usage_percent":     97.0,
+				"period_end":        until.Format(time.RFC3339),
+				"weekly_updated_at": now.Format(time.RFC3339),
+			},
+		},
+	}
+
+	blocked := rl.ApplyAccountSchedulingThreshold(context.Background(), account)
+
+	require.True(t, blocked)
+	require.Equal(t, 1, accountRepo.tempCalls)
+	require.WithinDuration(t, until, *account.TempUnschedulableUntil, time.Second)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(accountRepo.lastTempReason), &payload))
+	require.Equal(t, "7d", payload["window"])
+	require.Equal(t, "grok", payload["scope"])
+	require.Equal(t, float64(97), payload["used_percent"])
+}
+
 func TestRateLimitService_ApplyAccountSchedulingThreshold_UsesAccountOverrideInReason(t *testing.T) {
 	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
 	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
