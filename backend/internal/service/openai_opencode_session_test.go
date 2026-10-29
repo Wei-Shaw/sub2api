@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func newOpenCodeSessionTestContext(t *testing.T, value string) *gin.Context {
@@ -392,7 +393,7 @@ func TestApplyOpenCodeUpstreamUserAgent(t *testing.T) {
 			if tt.seed != "" {
 				headers.Set("User-Agent", tt.seed)
 			}
-			applyOpenCodeUpstreamUserAgent(tt.account, tt.targetURL, headers)
+			applyOpenCodeUpstreamUserAgent(nil, tt.account, tt.targetURL, headers)
 			require.Equal(t, tt.want, headers.Get("User-Agent"))
 		})
 	}
@@ -400,7 +401,7 @@ func TestApplyOpenCodeUpstreamUserAgent(t *testing.T) {
 
 func TestApplyOpenCodeUpstreamUserAgentDropsNonCanonicalKeyVariants(t *testing.T) {
 	headers := http.Header{"user-agent": []string{"Python-urllib/3.13"}}
-	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+	applyOpenCodeUpstreamUserAgent(nil, &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
 		"https://opencode.ai/zen/go/v1/chat/completions", headers)
 
 	count := 0
@@ -414,8 +415,119 @@ func TestApplyOpenCodeUpstreamUserAgentDropsNonCanonicalKeyVariants(t *testing.T
 }
 
 func TestApplyOpenCodeUpstreamUserAgentNilSafe(t *testing.T) {
-	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+	applyOpenCodeUpstreamUserAgent(nil, &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
 		"https://opencode.ai/zen/go/v1/chat/completions", nil)
+}
+
+func TestParseOpenCodeClientVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		userAgent string
+		want      [3]int
+		wantOK    bool
+	}{
+		{
+			name:      "抓包真实 UA 带额外后缀段",
+			userAgent: openCodeUpstreamUserAgent,
+			want:      [3]int{1, 18, 35},
+			wantOK:    true,
+		},
+		{name: "仅版本号", userAgent: "opencode/1.18.0", want: [3]int{1, 18, 0}, wantOK: true},
+		{name: "版本号带 prerelease 后缀", userAgent: "opencode/1.19.0-beta.1", wantOK: false},
+		{name: "缺少 patch 段", userAgent: "opencode/1.18", wantOK: false},
+		{name: "非 opencode UA", userAgent: "Python-urllib/3.13", wantOK: false},
+		{name: "空版本", userAgent: "opencode/", wantOK: false},
+		{name: "非数字版本", userAgent: "opencode/v1.18.0", wantOK: false},
+		{name: "缺少前缀", userAgent: "1.18.0", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parseOpenCodeClientVersion(tt.userAgent)
+			require.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestGenerateOpenCodeID(t *testing.T) {
+	ses := generateOpenCodeID("ses", true)
+	require.True(t, strings.HasPrefix(ses, "ses_"))
+	require.Len(t, ses, 4+12+14)
+
+	msg := generateOpenCodeID("msg", false)
+	require.True(t, strings.HasPrefix(msg, "msg_"))
+	require.Len(t, msg, 4+12+14)
+
+	// 验证降序 session 前缀格式与真实客户端一致 (0xec... ~ 0xed...)
+	require.True(t, strings.HasPrefix(ses, "ses_ec") || strings.HasPrefix(ses, "ses_eb") || strings.HasPrefix(ses, "ses_ed"))
+	// 验证升序 message 前缀格式与真实客户端一致 (0x13... ~ 0x14...)
+	require.True(t, strings.HasPrefix(msg, "msg_13") || strings.HasPrefix(msg, "msg_14"))
+}
+
+func TestMeetsOpenCodeFreeTierMinVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		userAgent string
+		want      bool
+	}{
+		{name: "抓包真实 UA", userAgent: openCodeUpstreamUserAgent, want: true},
+		{name: "恰好等于下限 1.18.0", userAgent: "opencode/1.18.0", want: true},
+		{name: "高于下限", userAgent: "opencode/1.19.0", want: true},
+		{name: "低于下限 1.17.9（Zen 返回 426）", userAgent: "opencode/1.17.9", want: false},
+		{name: "旧的兜底 UA（回归：曾撞 426）", userAgent: "opencode/1.0.0", want: false},
+		{name: "编程库 UA", userAgent: "Python-urllib/3.13", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, meetsOpenCodeFreeTierMinVersion(tt.userAgent))
+		})
+	}
+}
+
+// 回归：真实 opencode 客户端自带 UA 时原样透传。
+func TestApplyOpenCodeUpstreamUserAgentPassesThroughRealClientUA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	targetURL := "https://opencode.ai/zen/v1/chat/completions"
+
+	t.Run("OpenCode 客户端 UA 原样透传", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", openCodeUpstreamUserAgent)
+		headers := http.Header{"User-Agent": []string{"opencode/1.0.0"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
+
+	t.Run("OpenCode 任意版本客户端 UA 原样透传", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", "opencode/1.17.0")
+		headers := http.Header{"User-Agent": []string{"opencode/1.17.0"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, "opencode/1.17.0", headers.Get("User-Agent"))
+	})
+
+	t.Run("编程库 UA 收敛为兜底值（保留 Cloudflare 防护）", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("User-Agent", "Python-urllib/3.13")
+		headers := http.Header{"User-Agent": []string{"Python-urllib/3.13"}}
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
+
+	t.Run("客户端未带 UA 时使用兜底值", func(t *testing.T) {
+		c := newOpenCodeSessionTestContext(t, "")
+		headers := make(http.Header)
+
+		applyOpenCodeUpstreamUserAgent(c, account, targetURL, headers)
+		require.Equal(t, openCodeUpstreamUserAgent, headers.Get("User-Agent"))
+	})
 }
 
 func TestOpenCodeUpstreamUserAgentCanonicalizedAfterPassthrough(t *testing.T) {
@@ -532,3 +644,56 @@ func TestOpenCodeSessionIsNotForwardedToOtherUpstreams(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureOpenCodeFreeTierChatCompletionsBody(t *testing.T) {
+	freeAccount := &Account{
+		ID:          153,
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "public"},
+	}
+	require.True(t, freeAccount.IsOpenCodeFreeTier())
+
+	nonFreeAccount := &Account{
+		ID:          154,
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-real-key"},
+	}
+	require.False(t, nonFreeAccount.IsOpenCodeFreeTier())
+
+	t.Run("non free tier account is no-op", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(nonFreeAccount, body)
+		require.Equal(t, string(body), string(out))
+	})
+
+	t.Run("injects 12 tools and stream and tool_choice when missing", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(freeAccount, body)
+
+		require.True(t, gjson.GetBytes(out, "stream").Bool())
+		require.Equal(t, "auto", gjson.GetBytes(out, "tool_choice").String())
+		tools := gjson.GetBytes(out, "tools").Array()
+		require.Len(t, tools, 12)
+		require.Equal(t, "bash", tools[0].Get("function.name").String())
+	})
+
+	t.Run("preserves existing tools and merges missing built-in tools", func(t *testing.T) {
+		body := []byte(`{"model":"space-bunny-free","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"custom_mcp_tool","parameters":{}}}]}`)
+		out := ensureOpenCodeFreeTierChatCompletionsBody(freeAccount, body)
+
+		tools := gjson.GetBytes(out, "tools").Array()
+		require.Len(t, tools, 13)
+		require.Equal(t, "custom_mcp_tool", tools[0].Get("function.name").String())
+
+		toolNames := make([]string, 0, len(tools))
+		for _, tool := range tools {
+			toolNames = append(toolNames, tool.Get("function.name").String())
+		}
+		for _, required := range []string{"bash", "edit", "glob", "grep", "question", "read", "skill", "task", "todowrite", "webfetch", "websearch", "write"} {
+			require.Contains(t, toolNames, required)
+		}
+	})
+}
+
