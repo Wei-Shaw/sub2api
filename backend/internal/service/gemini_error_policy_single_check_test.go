@@ -182,6 +182,7 @@ func TestGeminiForward_UncheckedFinalResponseIsCheckedAfterLoop(t *testing.T) {
 		geminiSequenceUpstreamResponse{status: http.StatusServiceUnavailable, body: `{"error":{"code":503,"message":"backend busy","status":"UNAVAILABLE"}}`},
 		geminiSequenceUpstreamResponse{status: http.StatusBadRequest, body: `{"error":{"code":400,"message":"quota project misconfigured","status":"FAILED_PRECONDITION"}}`},
 	)
+	svc.cfg.Gateway.MaxSameAccountRetriesGemini = 1
 	account := geminiAPIKeyAccountWithTempRule(map[string]any{
 		"error_code":       float64(400),
 		"keywords":         []any{"misconfigured"},

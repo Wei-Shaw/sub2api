@@ -964,7 +964,11 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+	result := h.buildAccountResponseWithRuntime(c.Request.Context(), account)
+	if h.accountTestService != nil && account != nil && account.IsGrok() {
+		result.GrokModelDiagnostics = h.accountTestService.GetGrokModelDiagnostics(c.Request.Context(), account)
+	}
+	response.Success(c, result)
 }
 
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.
@@ -1419,7 +1423,9 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
-			h.adminService.EnsureOpenAIPrivacy(ctx, account)
+			service.AfterAccountCommit(ctx, func(committed context.Context) {
+				h.adminService.EnsureOpenAIPrivacy(committed, account)
+			})
 			return nil, "", err
 		}
 
@@ -1471,7 +1477,10 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 			if updateErr != nil {
 				return nil, "", fmt.Errorf("failed to update credentials: %w", updateErr)
 			}
-			h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+			h.invalidateScopedAccountToken(ctx, updatedAccount)
+			service.AfterAccountCommit(ctx, func(committed context.Context) {
+				h.adminService.EnsureAntigravityPrivacy(committed, updatedAccount)
+			})
 			return updatedAccount, "missing_project_id_temporary", nil
 		}
 
@@ -1527,17 +1536,19 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		return nil, "", err
 	}
 
-	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
-	if h.tokenCacheInvalidator != nil {
-		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
-			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
+	service.AfterAccountCommit(ctx, func(ctx context.Context) {
+		// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
+		if h.tokenCacheInvalidator != nil {
+			if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
+				log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
+			}
 		}
-	}
 
-	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
-	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+		// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
+		h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
+		// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
+		h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+	})
 
 	return updatedAccount, "", nil
 }
@@ -2804,6 +2815,10 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	h.respondAvailableModels(c, account)
+}
+
+func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service.Account) {
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
@@ -3078,6 +3093,11 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
+	}
+	if catalog != nil && account != nil && account.IsGrok() && account.ID > 0 && h.accountTestService != nil {
+		if latest, readErr := h.adminService.GetAccount(c.Request.Context(), account.ID); readErr == nil && latest != nil {
+			catalog.GrokModelDiagnostics = h.accountTestService.GetGrokModelDiagnostics(c.Request.Context(), latest)
+		}
 	}
 
 	response.Success(c, catalog)
