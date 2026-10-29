@@ -150,6 +150,7 @@ docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
 !docs/screenshots/codex-referral-dialog.png
 !docs/screenshots/codex-referral-success.png
+!docs/screenshots/openai-reset-credit-expiry-settings.png
 .serena/
 .codex/
 frontend/coverage/

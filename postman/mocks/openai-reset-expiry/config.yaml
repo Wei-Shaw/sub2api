@@ -1,0 +1,10 @@
+version: 1
+name: openai-reset-expiry
+slug: openai-reset-expiry
+protocol: http
+port: 4910
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
