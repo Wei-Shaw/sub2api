@@ -212,6 +212,9 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity, GrokFailureCompatibility:
 		return decision.ShouldFailover
 	}
+	if isGrokUnrecognizedPaymentRequired(statusCode, responseBody) {
+		return false
+	}
 	return s.shouldFailoverUpstreamError(statusCode)
 }
 
