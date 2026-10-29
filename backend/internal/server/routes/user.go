@@ -17,6 +17,9 @@ func RegisterUserRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
+	if h.OAuth != nil {
+		jwtAuth = h.OAuth.AuthMiddleware(jwtAuth)
+	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -78,6 +81,7 @@ func RegisterUserRoutes(
 			keys.GET("", h.APIKey.List)
 			keys.GET("/:id", h.APIKey.GetByID)
 			keys.POST("", h.APIKey.Create)
+			keys.POST("/:id/reveal", h.APIKey.RevealOAuth)
 			keys.PUT("/:id", h.APIKey.Update)
 			keys.DELETE("/:id", h.APIKey.Delete)
 		}

@@ -106,7 +106,7 @@ export const useAuthStore = defineStore('auth', () => {
    * Call this on app startup to restore session
    * Also starts auto-refresh and immediately fetches latest user data
    */
-  function checkAuth(): void {
+  async function checkAuth(): Promise<void> {
     const savedToken = localStorage.getItem(AUTH_TOKEN_KEY)
     const savedUser = localStorage.getItem(AUTH_USER_KEY)
     const savedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
@@ -120,13 +120,17 @@ export const useAuthStore = defineStore('auth', () => {
         refreshTokenValue.value = savedRefreshToken
         tokenExpiresAt.value = savedExpiresAt ? parseInt(savedExpiresAt, 10) : null
 
-        // Immediately refresh user data from backend (async, don't block)
-        refreshUser().catch((error) => {
-          console.error('Failed to refresh user on init:', error)
-        })
-
-        // Start auto-refresh interval for user data
+        // Start auto-refresh interval for user data first so the awaited
+        // refresh below cannot delay it on slow networks
         startAutoRefresh()
+
+        // Refresh user data from the backend. checkAuth stays awaitable so
+        // pages like the OAuth consent screen can wait for fresh user data.
+        try {
+          await refreshUser()
+        } catch (error) {
+          console.error('Failed to refresh user on init:', error)
+        }
 
         // Start proactive token refresh if we have refresh token and expiry info
         // Note: use !== null to handle case when tokenExpiresAt.value is 0 (expired)

@@ -115,6 +115,11 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	// Standard OAuth Authorization Server Metadata endpoint. The versioned
+	// alias is registered with the OAuth routes for dsh compatibility.
+	if h.OAuth != nil {
+		r.GET("/.well-known/oauth-authorization-server", h.OAuth.Discovery)
+	}
 
 	// API v1
 	v1 := r.Group("/api/v1")
@@ -124,6 +129,7 @@ func registerRoutes(
 	panelRateLimiter := middleware2.NewPanelRateLimiter(redisClient, settingService)
 
 	// 注册各模块路由
+	routes.RegisterOAuthProviderRoutes(v1, h, jwtAuth)
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
