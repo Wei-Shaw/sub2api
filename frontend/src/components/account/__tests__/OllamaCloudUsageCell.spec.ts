@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OllamaCloudUsageCell from '../OllamaCloudUsageCell.vue'
-import UsageProgressBar from '../UsageProgressBar.vue'
+import QuotaPoolTable from '../QuotaPoolTable.vue'
 import type { Account, OllamaCloudUsageState } from '@/types'
 
 const { refreshOllamaCloudUsage } = vi.hoisted(() => ({
@@ -86,18 +86,11 @@ describe('OllamaCloudUsageCell', () => {
     expect(cell.classes()).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full']))
     expect(cell.classes()).not.toContain('min-w-[12rem]')
 
-    const bars = wrapper.findAllComponents(UsageProgressBar)
-    expect(bars).toHaveLength(2)
-    expect(bars[0].props()).toMatchObject({
-      label: '5h',
-      utilization: 5.6,
-      resetsAt: '2026-07-23T03:00:00Z'
-    })
-    expect(bars[1].props()).toMatchObject({
-      label: '7d',
-      utilization: 14.2,
-      resetsAt: '2026-07-29T00:00:00Z'
-    })
+    const pool = wrapper.getComponent(QuotaPoolTable).props('pools')[0]
+    expect(pool.name).toBe('Ollama Cloud')
+    expect(wrapper.findAll('.quota-meter').map(meter=>meter.text())).toEqual(['94.4%', '85.8%'])
+    expect(pool.windows[0].resets_at).toBe('2026-07-23T03:00:00Z')
+    expect(pool.windows[1].resets_at).toBe('2026-07-29T00:00:00Z')
 
     expect(wrapper.find('[data-testid="ollama-cloud-usage-details"]').exists()).toBe(false)
     const query = wrapper.get('[data-testid="ollama-cloud-usage-query"]')
@@ -115,7 +108,7 @@ describe('OllamaCloudUsageCell', () => {
 
     await wrapper.setProps({ account: account(next) })
 
-    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
+    expect(wrapper.findAll('.quota-meter')[0].text()).toBe('57.0%')
   })
 
   it('queries through the edit-page refresh endpoint and emits the updated state', async () => {
@@ -128,7 +121,7 @@ describe('OllamaCloudUsageCell', () => {
     await flushPromises()
 
     expect(refreshOllamaCloudUsage).toHaveBeenCalledWith(7)
-    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
+    expect(wrapper.findAll('.quota-meter')[0].text()).toBe('57.0%')
     expect(wrapper.emitted<OllamaCloudUsageState[]>('updated')?.[0]?.[0]).toEqual(next)
   })
 
