@@ -645,6 +645,34 @@ func TestLoadDefaultGrokFreeQuotaSoftGate(t *testing.T) {
 	require.Equal(t, 60, cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds)
 }
 
+func TestLoadDefaultGrokRateLimit(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, GatewayGrokRateLimitConfig{
+		FallbackCooldownSeconds:    120,
+		RepeatCooldownSeconds:      600,
+		SustainedCooldownSeconds:   1800,
+		MaxAdaptiveCooldownSeconds: 3600,
+		BackoffQuietPeriodSeconds:  3600,
+	}, cfg.Gateway.Grok.RateLimit)
+}
+
+func TestLoadGrokRateLimitFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_GROK_RATE_LIMIT_MIN_COOLDOWN_SECONDS", "86400")
+	t.Setenv("GATEWAY_GROK_RATE_LIMIT_MANUAL_RECOVERY", "true")
+	t.Setenv("GATEWAY_GROK_RATE_LIMIT_DISABLE_ADAPTIVE_BACKOFF", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 86400, cfg.Gateway.Grok.RateLimit.MinCooldownSeconds)
+	require.True(t, cfg.Gateway.Grok.RateLimit.ManualRecovery)
+	require.True(t, cfg.Gateway.Grok.RateLimit.DisableAdaptiveBackoff)
+	require.Equal(t, 120, cfg.Gateway.Grok.RateLimit.FallbackCooldownSeconds)
+}
+
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -1909,6 +1937,31 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway gemini same account retries too large",
 			mutate:  func(c *Config) { c.Gateway.MaxSameAccountRetriesGemini = 11 },
 			wantErr: "gateway.max_same_account_retries_gemini",
+		},
+		{
+			name:    "gateway grok rate limit fallback cooldown zero",
+			mutate:  func(c *Config) { c.Gateway.Grok.RateLimit.FallbackCooldownSeconds = 0 },
+			wantErr: "gateway.grok.rate_limit.fallback_cooldown_seconds",
+		},
+		{
+			name:    "gateway grok rate limit min cooldown negative",
+			mutate:  func(c *Config) { c.Gateway.Grok.RateLimit.MinCooldownSeconds = -1 },
+			wantErr: "gateway.grok.rate_limit.min_cooldown_seconds",
+		},
+		{
+			name:    "gateway grok rate limit min cooldown too large",
+			mutate:  func(c *Config) { c.Gateway.Grok.RateLimit.MinCooldownSeconds = 30*24*60*60 + 1 },
+			wantErr: "gateway.grok.rate_limit.min_cooldown_seconds",
+		},
+		{
+			name:    "gateway grok rate limit repeat cooldown zero",
+			mutate:  func(c *Config) { c.Gateway.Grok.RateLimit.RepeatCooldownSeconds = 0 },
+			wantErr: "gateway.grok.rate_limit.repeat_cooldown_seconds",
+		},
+		{
+			name:    "gateway grok rate limit ladder decreasing",
+			mutate:  func(c *Config) { c.Gateway.Grok.RateLimit.SustainedCooldownSeconds = 300 },
+			wantErr: "gateway.grok.rate_limit cooldown ladder",
 		},
 		{
 			name:    "gateway openai first output timeout below minimum",

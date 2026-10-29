@@ -1152,6 +1152,9 @@ type GatewayConfig struct {
 //   - free_quota_window_hours: local usage rolling window length in hours.
 //   - free_quota_stats_cache_seconds: cache TTL for free-tier usage stats
 //     (hot path never blocks on DB; misses fail open and refresh in background).
+//
+// Account-level 429 cooldown keys live under gateway.grok.rate_limit.*; see
+// GatewayGrokRateLimitConfig.
 type GatewayGrokConfig struct {
 	// PasswordAuthEnabled controls the optional password-to-SSO OAuth flow.
 	// It defaults to false and must be explicitly enabled by the operator.
@@ -1169,6 +1172,41 @@ type GatewayGrokConfig struct {
 	// FreeQuotaStatsCacheSeconds is the soft-gate stats cache TTL. Hot path never
 	// waits on usage_logs; misses fail open and refresh asynchronously.
 	FreeQuotaStatsCacheSeconds int `mapstructure:"free_quota_stats_cache_seconds"`
+	// RateLimit controls the account-level cooldown after a Grok upstream 429.
+	RateLimit GatewayGrokRateLimitConfig `mapstructure:"rate_limit"`
+}
+
+// GatewayGrokRateLimitConfig controls the account-level cooldown installed after
+// a Grok upstream 429 (gateway.grok.rate_limit.*). Defaults reproduce the
+// built-in behavior: 2m for a bare 429, escalating 10m → 30m → 1h when OAuth
+// accounts keep hitting 429 within an hour of the previous cooldown ending.
+// Upstream Retry-After and quota-window resets are always honored; model
+// capacity 429s and pool-mode accounts never install account cooldowns.
+//
+//   - fallback_cooldown_seconds: cooldown when the 429 carries neither
+//     Retry-After nor an exhausted quota window with a reset (default 120).
+//   - disable_adaptive_backoff: never escalate repeated 429s; every bare 429
+//     costs only fallback_cooldown_seconds. Useful for small pools where one
+//     escalated account takes the whole platform offline.
+//   - repeat/sustained/max_adaptive_cooldown_seconds: escalation ladder
+//     (defaults 600/1800/3600, must be non-decreasing).
+//   - backoff_quiet_period_seconds: a 429 later than this after the previous
+//     cooldown ended restarts from the fallback cooldown (default 3600).
+//   - min_cooldown_seconds: floor for every 429 cooldown, including upstream
+//     Retry-After and quota-window resets; 0 disables (default 0). E.g. 86400
+//     keeps a 429'd account out of rotation for at least 24h.
+//   - manual_recovery: after a gateway 429, also turn the account's scheduling
+//     off so it does not rejoin rotation when the cooldown expires; an admin
+//     re-enables scheduling to recover it (default false).
+type GatewayGrokRateLimitConfig struct {
+	FallbackCooldownSeconds    int  `mapstructure:"fallback_cooldown_seconds"`
+	DisableAdaptiveBackoff     bool `mapstructure:"disable_adaptive_backoff"`
+	RepeatCooldownSeconds      int  `mapstructure:"repeat_cooldown_seconds"`
+	SustainedCooldownSeconds   int  `mapstructure:"sustained_cooldown_seconds"`
+	MaxAdaptiveCooldownSeconds int  `mapstructure:"max_adaptive_cooldown_seconds"`
+	BackoffQuietPeriodSeconds  int  `mapstructure:"backoff_quiet_period_seconds"`
+	MinCooldownSeconds         int  `mapstructure:"min_cooldown_seconds"`
+	ManualRecovery             bool `mapstructure:"manual_recovery"`
 }
 
 // GatewayCNProvidersConfig 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
@@ -2520,6 +2558,15 @@ func setDefaults() {
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
 	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
+	// Grok 429 account cooldown (defaults match the built-in 2m → 10m → 30m → 1h ladder).
+	viper.SetDefault("gateway.grok.rate_limit.fallback_cooldown_seconds", 120)
+	viper.SetDefault("gateway.grok.rate_limit.disable_adaptive_backoff", false)
+	viper.SetDefault("gateway.grok.rate_limit.repeat_cooldown_seconds", 600)
+	viper.SetDefault("gateway.grok.rate_limit.sustained_cooldown_seconds", 1800)
+	viper.SetDefault("gateway.grok.rate_limit.max_adaptive_cooldown_seconds", 3600)
+	viper.SetDefault("gateway.grok.rate_limit.backoff_quiet_period_seconds", 3600)
+	viper.SetDefault("gateway.grok.rate_limit.min_cooldown_seconds", 0)
+	viper.SetDefault("gateway.grok.rate_limit.manual_recovery", false)
 	// 国产供应商余额检测（kimi/deepseek payg；zhipu 无余额端点，仅靠响应式 429/402）。
 	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
 	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
@@ -3789,8 +3836,45 @@ func (c *Config) Validate() error {
 	if c.Gateway.Grok.FreeQuotaStatsCacheSeconds < 0 {
 		return fmt.Errorf("gateway.grok.free_quota_stats_cache_seconds must be non-negative")
 	}
+	if err := validateGrokRateLimitConfig(c.Gateway.Grok.RateLimit); err != nil {
+		return err
+	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	return nil
+}
+
+const (
+	grokRateLimitMaxCooldownSeconds    = 7 * 24 * 60 * 60
+	grokRateLimitMaxMinCooldownSeconds = 30 * 24 * 60 * 60
+)
+
+func validateGrokRateLimitConfig(rl GatewayGrokRateLimitConfig) error {
+	if rl.FallbackCooldownSeconds < 1 || rl.FallbackCooldownSeconds > grokRateLimitMaxCooldownSeconds {
+		return fmt.Errorf("gateway.grok.rate_limit.fallback_cooldown_seconds must be between 1 and %d", grokRateLimitMaxCooldownSeconds)
+	}
+	if rl.MinCooldownSeconds < 0 || rl.MinCooldownSeconds > grokRateLimitMaxMinCooldownSeconds {
+		return fmt.Errorf("gateway.grok.rate_limit.min_cooldown_seconds must be between 0 and %d", grokRateLimitMaxMinCooldownSeconds)
+	}
+	if rl.DisableAdaptiveBackoff {
+		return nil
+	}
+	for _, field := range []struct {
+		name  string
+		value int
+	}{
+		{"repeat_cooldown_seconds", rl.RepeatCooldownSeconds},
+		{"sustained_cooldown_seconds", rl.SustainedCooldownSeconds},
+		{"max_adaptive_cooldown_seconds", rl.MaxAdaptiveCooldownSeconds},
+		{"backoff_quiet_period_seconds", rl.BackoffQuietPeriodSeconds},
+	} {
+		if field.value < 1 || field.value > grokRateLimitMaxCooldownSeconds {
+			return fmt.Errorf("gateway.grok.rate_limit.%s must be between 1 and %d", field.name, grokRateLimitMaxCooldownSeconds)
+		}
+	}
+	if rl.RepeatCooldownSeconds > rl.SustainedCooldownSeconds || rl.SustainedCooldownSeconds > rl.MaxAdaptiveCooldownSeconds {
+		return fmt.Errorf("gateway.grok.rate_limit cooldown ladder must be non-decreasing: repeat <= sustained <= max_adaptive")
 	}
 	return nil
 }
