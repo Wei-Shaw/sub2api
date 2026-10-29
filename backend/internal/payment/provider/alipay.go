@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/smartwalle/alipay/v3"
 )
 
@@ -24,7 +25,10 @@ const (
 const (
 	alipayFundChangeYes    = "Y"
 	alipayErrTradeNotExist = "ACQ.TRADE_NOT_EXIST"
-	alipayRefundSuffix     = "-refund"
+	alipayRefundStatusSucc = "REFUND_SUCCESS"
+	alipayRefundRequestSep = "-refund-"
+	// 支付宝提示退款发起后过早查询可能查不到、之后又处理成功；超过该时长仍无记录才判定失败。
+	alipayRefundQueryNotFoundGrace = 10 * time.Minute
 )
 
 var (
@@ -36,6 +40,12 @@ var (
 	}
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		return client.TradePagePay(param)
+	}
+	alipayTradeRefund = func(ctx context.Context, client *alipay.Client, param alipay.TradeRefund) (*alipay.TradeRefundRsp, error) {
+		return client.TradeRefund(ctx, param)
+	}
+	alipayTradeFastPayRefundQuery = func(ctx context.Context, client *alipay.Client, param alipay.TradeFastPayRefundQuery) (*alipay.TradeFastPayRefundQueryRsp, error) {
+		return client.TradeFastPayRefundQuery(ctx, param)
 	}
 )
 
@@ -338,14 +348,18 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		return nil, err
 	}
 
-	result, err := client.TradeRefund(ctx, alipay.TradeRefund{
+	outRequestNo := fmt.Sprintf("%s%s%d", req.OrderID, alipayRefundRequestSep, time.Now().UnixNano())
+	result, err := alipayTradeRefund(ctx, client, alipay.TradeRefund{
 		OutTradeNo:   req.OrderID,
 		RefundAmount: req.Amount,
 		RefundReason: req.Reason,
-		OutRequestNo: fmt.Sprintf("%s-refund-%d", req.OrderID, time.Now().UnixNano()),
+		OutRequestNo: outRequestNo,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("alipay TradeRefund: %w", err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("alipay TradeRefund: empty response")
 	}
 
 	refundStatus := payment.ProviderStatusPending
@@ -353,15 +367,55 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		refundStatus = payment.ProviderStatusSuccess
 	}
 
-	refundID := result.TradeNo
-	if refundID == "" {
-		refundID = req.OrderID + alipayRefundSuffix
-	}
-
+	// fund_change != Y 时需凭退款请求号查询终态，因此 RefundID 记录 out_request_no。
 	return &payment.RefundResponse{
-		RefundID: refundID,
+		RefundID: outRequestNo,
 		Status:   refundStatus,
 	}, nil
+}
+
+// QueryRefund 通过 alipay.trade.fastpay.refund.query 查询退款终态。refund_status 为 REFUND_SUCCESS
+// 表示成功；退款发起超过宽限期仍查不到记录表示支付宝未受理或退款失败；其余情况视为仍在处理中。
+func (a *Alipay) QueryRefund(ctx context.Context, req payment.RefundQueryRequest) (*payment.RefundResponse, error) {
+	orderID := strings.TrimSpace(req.OrderID)
+	outRequestNo := strings.TrimSpace(req.RefundID)
+	// 旧版本把支付宝交易号记为 RefundID，无法据此查询退款请求，只能人工核实。
+	if orderID == "" || !strings.HasPrefix(outRequestNo, orderID+alipayRefundRequestSep) {
+		return nil, infraerrors.BadRequest("REFUND_QUERY_UNSUPPORTED", "this refund was issued without a queryable refund request number; please verify manually")
+	}
+	client, err := a.getClient()
+	if err != nil {
+		return nil, err
+	}
+	result, err := alipayTradeFastPayRefundQuery(ctx, client, alipay.TradeFastPayRefundQuery{
+		OutTradeNo:   orderID,
+		OutRequestNo: outRequestNo,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("alipay query refund: %w", err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("alipay query refund: empty response")
+	}
+	// SDK 对带签名的业务失败响应（如 ACQ.SYSTEM_ERROR）不返回 error，字段为空；
+	// 不检查错误码会被误判为"无退款记录"而失败收尾。
+	if result.IsFailure() {
+		return nil, fmt.Errorf("alipay query refund: %w", result.Error)
+	}
+
+	status := payment.ProviderStatusPending
+	switch {
+	case strings.TrimSpace(result.RefundStatus) == alipayRefundStatusSucc:
+		status = payment.ProviderStatusSuccess
+	case strings.TrimSpace(result.OutRequestNo) == "" && strings.TrimSpace(result.RefundAmount) == "" &&
+		alipayRefundAbsenceIsFinal(req.RequestedAt, time.Now()):
+		status = payment.ProviderStatusFailed
+	}
+	return &payment.RefundResponse{RefundID: outRequestNo, Status: status}, nil
+}
+
+func alipayRefundAbsenceIsFinal(requestedAt, now time.Time) bool {
+	return !requestedAt.IsZero() && now.Sub(requestedAt) >= alipayRefundQueryNotFoundGrace
 }
 
 // CancelPayment closes a pending trade on Alipay.
@@ -406,5 +460,6 @@ func parseAlipayAmount(values ...string) (float64, error) {
 var (
 	_ payment.Provider                 = (*Alipay)(nil)
 	_ payment.CancelableProvider       = (*Alipay)(nil)
+	_ payment.RefundQueryProvider      = (*Alipay)(nil)
 	_ payment.MerchantIdentityProvider = (*Alipay)(nil)
 )

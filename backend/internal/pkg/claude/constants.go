@@ -223,6 +223,12 @@ var DefaultModels = []Model{
 		DisplayName: "Claude Haiku 4.5",
 		CreatedAt:   "2025-10-01T00:00:00Z",
 	},
+	{
+		ID:          "claude-haiku-5-5",
+		Type:        "model",
+		DisplayName: "Claude Haiku 5.5",
+		CreatedAt:   "2026-10-07T00:00:00Z",
+	},
 }
 
 // DefaultModelIDs 返回默认模型的 ID 列表
