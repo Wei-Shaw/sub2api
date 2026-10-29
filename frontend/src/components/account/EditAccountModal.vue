@@ -190,6 +190,13 @@
           </div>
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.apiProtocol.${cnProtocolDescKey}Desc`) }}</p>
         </div>
+        <div v-if="isCNApiKeyAccount" class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.cnProviders.webSearchCapable.title') }}</label>
+            <p class="input-hint">{{ t('admin.accounts.cnProviders.webSearchCapable.hint') }}</p>
+          </div>
+          <Toggle v-model="webSearchCapable" />
+        </div>
         <OpenCodeGoProtocolRulesEditor
           v-if="isCNApiKeyAccount && providerRoutesByModel(account.platform) && editApiProtocol === 'adaptive'"
           v-model:rows="editOpenCodeGoProtocolRules"
@@ -4167,6 +4174,7 @@ type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
+const webSearchCapable = ref(false)
 const webSearchGlobalEnabled = ref(false)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
@@ -4661,6 +4669,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+  webSearchCapable.value = extra?.web_search_capable === true
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openaiFlattenNamespacesEnabled.value =
@@ -6389,6 +6398,16 @@ const handleSubmit = async () => {
       }
       updatePayload.extra = newExtra
     }
+
+    const capabilityExtra = (updatePayload.extra as Record<string, unknown> | undefined) || {
+      ...((props.account.extra as Record<string, unknown> | undefined) || {}),
+    }
+    if (webSearchCapable.value) {
+      capabilityExtra.web_search_capable = true
+    } else {
+      delete capabilityExtra.web_search_capable
+    }
+    updatePayload.extra = capabilityExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

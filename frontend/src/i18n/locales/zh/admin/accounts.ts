@@ -341,6 +341,10 @@ export default {
           responses: 'Responses',
           responsesDesc: '供应商原生 Responses 端点，适配 Codex。',
         },
+        webSearchCapable: {
+          title: '支持网页搜索',
+          hint: '标记后，纯 web_search 请求可由该账号的原生 Anthropic 端点执行；账号协议需为 Anthropic 或自适应。',
+        },
         zhipuTeam: {
           title: '团队版组织 / 项目 ID',
           organization: '组织 ID（团队版可选）',

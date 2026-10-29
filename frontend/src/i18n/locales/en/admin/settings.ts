@@ -602,6 +602,10 @@ export default {
         description: 'Inject web search capability for Anthropic API Key accounts that don\'t natively support it',
         enabled: 'Enable Web Search Emulation',
         enabledHint: 'Global switch. When disabled, web search emulation is inactive for all channels and accounts.',
+        managedAccount: 'Managed Search Account ID',
+        managedAccountHint:
+          'Optional. When set, pure web_search turns are served by this account\'s native Anthropic endpoint. Users keep using their own API key and do not configure a search endpoint or key.',
+        managedAccountPlaceholder: 'e.g. 918',
         providers: 'Search Providers',
         addProvider: 'Add Provider',
         providerType: 'Provider Type',

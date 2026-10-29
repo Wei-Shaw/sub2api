@@ -690,6 +690,14 @@
         </div>
       </div>
 
+      <div v-if="isMultiProtocolPlatform" class="mt-4 flex items-center justify-between">
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.cnProviders.webSearchCapable.title') }}</label>
+          <p class="input-hint">{{ t('admin.accounts.cnProviders.webSearchCapable.hint') }}</p>
+        </div>
+        <Toggle v-model="webSearchCapable" />
+      </div>
+
       <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后额度探测走团队版端点） -->
       <div v-if="form.platform === 'zhipu' && accountMode === 'coding'" class="mt-4">
         <div class="flex items-center">
@@ -4726,6 +4734,7 @@ type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
 const webSearchEmulationMode = ref('default')
+const webSearchCapable = ref(false)
 const webSearchGlobalEnabled = ref(false)
 
 const toggleOpenAILongContextBilling = () => {
@@ -5221,6 +5230,7 @@ watch(
       anthropicPassthroughEnabled.value = false
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
       webSearchEmulationMode.value = 'default'
+      webSearchCapable.value = false
     }
     // 请求头覆写为平台相关配置（常用头集合不同），切换平台时清空，
     // 避免上一平台的配置行被提交到新平台账号
@@ -5251,6 +5261,7 @@ watch(
       anthropicPassthroughEnabled.value = false
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
       webSearchEmulationMode.value = 'default'
+      webSearchCapable.value = false
     }
   }
 )
@@ -5682,6 +5693,7 @@ const resetForm = () => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+      webSearchCapable.value = false
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -5842,6 +5854,11 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
     delete extra.web_search_emulation
   } else {
     extra.web_search_emulation = webSearchEmulationMode.value
+  }
+  if (webSearchCapable.value) {
+    extra.web_search_capable = true
+  } else {
+    delete extra.web_search_capable
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

@@ -286,6 +286,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		Stream:           false,
 		ReasoningEffort:  reasoningEffort,
 		Duration:         time.Since(startTime),
+		WebSearchCalls:   countAnthropicWebSearchCalls(gjson.GetBytes(body, "content")),
 	}, nil
 }
 
@@ -302,7 +303,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	upstreamModel string,
 	reasoningEffort *string,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (result *OpenAIForwardResult, err error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -339,6 +340,12 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	webSearchCalls := 0
+	defer func() {
+		if result != nil {
+			result.WebSearchCalls = webSearchCalls
+		}
+	}()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -466,6 +473,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 					firstTokenMs = &ms
 				}
 				parseSSEUsagePassthrough(data, usage)
+				if anthropicStreamEventIsWebSearchToolUse(trimmed) {
+					webSearchCalls++
+				}
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -563,6 +573,35 @@ func (s *OpenAIGatewayService) nativeAnthropicStreamResult(
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnect,
 	}
+}
+
+// countAnthropicWebSearchCalls counts Anthropic server_tool_use content blocks
+// that invoke the native web_search tool. The count feeds per-call search
+// billing; text-only tool uses and other server tools are ignored.
+func countAnthropicWebSearchCalls(content gjson.Result) int {
+	if !content.IsArray() {
+		return 0
+	}
+	count := 0
+	content.ForEach(func(_, block gjson.Result) bool {
+		if block.Get("type").String() == blockTypeServerToolUse &&
+			block.Get("name").String() == toolNameWebSearch {
+			count++
+		}
+		return true
+	})
+	return count
+}
+
+// anthropicStreamEventIsWebSearchToolUse reports whether one SSE data line
+// starts the native web_search server tool block.
+func anthropicStreamEventIsWebSearchToolUse(data string) bool {
+	if gjson.Get(data, "type").String() != "content_block_start" {
+		return false
+	}
+	block := gjson.Get(data, "content_block")
+	return block.Get("type").String() == blockTypeServerToolUse &&
+		block.Get("name").String() == toolNameWebSearch
 }
 
 // claudeUsageToOpenAIUsage 把 Anthropic 格式 usage 映射到 OpenAI 网关统一的

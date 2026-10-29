@@ -138,6 +138,10 @@ export default {
           responses: 'Responses',
           responsesDesc: 'Provider’s native Responses endpoint — ideal for Codex.',
         },
+        webSearchCapable: {
+          title: 'Supports web search',
+          hint: 'When enabled, pure web_search turns may be served by this account’s native Anthropic endpoint. The account protocol must be Anthropic or Adaptive.',
+        },
         zhipuTeam: {
           title: 'Team Plan Organization / Project ID',
           organization: 'Organization ID (team plan, optional)',
