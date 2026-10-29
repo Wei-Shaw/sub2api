@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/conversationlog"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
@@ -69,6 +70,19 @@ func SetupRouter(
 		return nil
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
+	if handlers.ConversationLogs != nil {
+		r.Use(handlers.ConversationLogs.Middleware(func(c *gin.Context) (conversationlog.Identity, bool) {
+			key, ok := middleware2.GetAPIKeyFromContext(c)
+			if !ok {
+				return conversationlog.Identity{}, false
+			}
+			identity := conversationlog.Identity{UserID: key.UserID, KeyID: key.ID, KeyName: key.Name}
+			if key.User != nil {
+				identity.UserLabel = key.User.Email
+			}
+			return identity, true
+		}))
+	}
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {

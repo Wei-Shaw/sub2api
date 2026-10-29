@@ -636,6 +636,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/conversation-logs',
+    name: 'AdminConversationLogs',
+    component: () => import('@/features/conversation-logs/ConversationLogsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Conversation logs' }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },
