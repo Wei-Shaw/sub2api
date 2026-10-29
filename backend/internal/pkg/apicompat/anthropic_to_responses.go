@@ -359,10 +359,16 @@ func fromResponsesCallID(id string) string {
 	return id
 }
 
-// anthropicImageToDataURI converts an AnthropicImageSource to a data URI string.
-// Returns "" if the source is nil or has no data.
+// anthropicImageToDataURI returns a URL source unchanged or encodes base64 data
+// as a data URI. Returns "" if the source is nil or has no image data.
 func anthropicImageToDataURI(src *AnthropicImageSource) string {
-	if src == nil || src.Data == "" {
+	if src == nil {
+		return ""
+	}
+	if src.Type == "url" {
+		return src.URL
+	}
+	if src.Data == "" {
 		return ""
 	}
 	mediaType := src.MediaType
