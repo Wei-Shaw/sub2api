@@ -94,6 +94,17 @@
           {{ autoResetState.trigger_window }}
         </span>
       </span>
+      <span v-if="autoResetTriggerLabel" class="text-gray-500 dark:text-gray-400" data-testid="auto-reset-credit-reason">
+        {{ autoResetTriggerLabel }}
+      </span>
+      <span
+        v-if="autoResetState.credit_expires_at"
+        class="text-gray-500 tabular-nums dark:text-gray-400"
+        data-testid="auto-reset-credit-target-expiry"
+        :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(autoResetState.credit_expires_at, 'full') })"
+      >
+        {{ t('admin.accounts.openaiQuotaReset.expiresAt', { time: formatResetCreditExpiry(autoResetState.credit_expires_at, 'short') }) }}
+      </span>
       <span v-if="autoResetState.checked_at" class="text-gray-500 dark:text-gray-400">
         {{ formatResetCreditExpiry(autoResetState.checked_at, 'short') }}
       </span>
@@ -249,12 +260,23 @@ const updateCredits = (usage: OpenAIQuotaUsage | null) => {
 }
 
 type AutoResetCreditState = NonNullable<NonNullable<Account['extra']>['codex_auto_reset_credit_state']>
-const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'no_credit', 'failed'])
+const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'not_consumed', 'no_credit', 'failed'])
 const autoResetState = computed<AutoResetCreditState | null>(() => {
-  if (props.account.extra?.auto_reset_credit_enabled !== true) return null
+  // 临期兜底可单独开启，关闭用量触发不应隐藏后台临期尝试的结果。
+  if (props.account.extra?.auto_reset_credit_enabled !== true && props.account.extra?.auto_reset_credit_expiry_enabled !== true) return null
   const state = props.account.extra?.codex_auto_reset_credit_state
   if (!state || typeof state !== 'object' || !validAutoResetStatuses.has(String(state.status))) return null
   return state
+})
+const autoResetTriggerLabel = computed(() => {
+  switch (autoResetState.value?.trigger_reason) {
+    case 'usage_threshold':
+      return t('admin.accounts.openaiQuotaReset.autoTrigger.usageThreshold')
+    case 'credit_expiring':
+      return t('admin.accounts.openaiQuotaReset.autoTrigger.creditExpiring')
+    default:
+      return ''
+  }
 })
 const autoResetStateLabel = computed(() => {
   if (!autoResetState.value?.status) return ''
@@ -263,6 +285,7 @@ const autoResetStateLabel = computed(() => {
     available: 'available',
     resetting: 'resetting',
     success: 'success',
+    not_consumed: 'notConsumed',
     no_credit: 'noCredit',
     failed: 'failed'
   }
@@ -494,14 +517,25 @@ const confirmReset = async () => {
       data.value = result.quota
       cachedData.value = result.quota
     } else {
-      // A credit was consumed but the post-reset count could not be read back.
-      // Whatever we still hold is one generation stale, so report the count as
-      // unknown instead of letting a second consumption start from stale data.
+      // The request may have consumed a credit, but the latest count could not
+      // be read back. Report it as unknown to avoid a second consumption based
+      // on stale data.
       data.value = null
     }
     if (result.account) emit('account-updated', result.account)
 
-    if (result.warning_code === 'reset_credit_cache_refresh_failed') {
+    // 上游 HTTP 成功不代表实际兑换；nothing_to_reset 保留卡，不能展示用卡成功。
+    if (result.code.trim().toLowerCase() === 'nothing_to_reset') {
+      resetWarning.value = t('admin.accounts.openaiQuotaReset.resetNotConsumed')
+      // 未消费与后处理失败可同时发生；仍须提示失败，且不能套用“窗口已重置”的文案。
+      const warningKeys: Record<string, string> = {
+        reset_credit_cache_refresh_failed: 'admin.accounts.openaiQuotaReset.resetNotConsumedCacheRefreshFailed',
+        account_state_recovery_failed: 'admin.accounts.openaiQuotaReset.resetNotConsumedAccountRecoveryFailed',
+        account_state_refresh_failed: 'admin.accounts.openaiQuotaReset.resetNotConsumedAccountRefreshFailed'
+      }
+      const warningKey = result.warning_code ? warningKeys[result.warning_code] : undefined
+      if (warningKey) resetWarning.value += ` ${t(warningKey)}`
+    } else if (result.warning_code === 'reset_credit_cache_refresh_failed') {
       resetWarning.value = t('admin.accounts.openaiQuotaReset.resetCacheRefreshFailed')
     } else if (result.warning_code === 'account_state_recovery_failed') {
       resetWarning.value = t('admin.accounts.openaiQuotaReset.resetAccountRecoveryFailed')
