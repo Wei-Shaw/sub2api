@@ -56,8 +56,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
-	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	// 配额必须来自实际转发端点，避免其他端点的成功响应掩盖已消耗的额度或限流。
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(
+		ctx,
+		resolveAntigravityForwardBaseURL(account),
+		accessToken,
+		projectID,
+		resolveModelsListReadLimit(f.cfg),
+	)
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
