@@ -852,21 +852,6 @@ func openAIAutoResetStateStale(state *OpenAIAutoResetCreditState, now time.Time)
 	return err != nil || now.Sub(checkedAt) >= openAIAutoResetSnapshotTTL
 }
 
-func stateAvailableCount(state *OpenAIAutoResetCreditState) int {
-	if state == nil {
-		return 0
-	}
-	return state.AvailableCount
-}
-
-func copyOpenAIAutoResetAttempt(target, source *OpenAIAutoResetCreditState) {
-	if target == nil || source == nil {
-		return
-	}
-	target.AttemptCycleHash = source.AttemptCycleHash
-	target.AttemptCreditHash = source.AttemptCreditHash
-}
-
 func (s *OpenAIQuotaAutoResetService) persistState(ctx context.Context, accountID int64, state *OpenAIAutoResetCreditState) error {
 	if state == nil {
 		return nil

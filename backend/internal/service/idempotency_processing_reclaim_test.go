@@ -118,7 +118,9 @@ func TestOpenAIQuotaAutoResetService_ExpiredProcessingLeaseReusesOriginalRedeemI
 		CreditExpiresAt: quota.usage.autoResetCandidates[0].ExpiresAt, TriggerReason: openAIAutoResetTriggerExpiry}
 	stableKey := openAIAutoResetAttemptKey(601, attempt)
 	redeemID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(stableKey)).String()
-	seedProcessingLease(t, svc.idempotency.repo.(*inMemoryIdempotencyRepo), IdempotencyExecuteOptions{
+	idempotencyRepo, ok := svc.idempotency.repo.(*inMemoryIdempotencyRepo)
+	require.True(t, ok)
+	seedProcessingLease(t, idempotencyRepo, IdempotencyExecuteOptions{
 		Scope: "openai_auto_reset_credit", ActorScope: "account:601", Method: "POST", Route: "/system/openai/reset-credit/auto", IdempotencyKey: stableKey,
 		Payload: map[string]any{"account_id": int64(601), "credit_hash": creditHash, "generation": ""},
 	}, time.Now().Add(-time.Second))
