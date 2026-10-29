@@ -155,6 +155,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		nil,
 		group.ModelAllowlist.Models,
 		group.ModelAllowlistEnabled(),
+		nil,
 	)
 	if err != nil {
 		return nil, false, fmt.Errorf("build group configured Codex models: %w", err)
@@ -200,6 +201,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		configuredModels,
 		group.ModelAllowlist.Models,
 		group.ModelAllowlistEnabled(),
+		codexCatalogMetadataModels(PlatformOpenAI, configuredModels, visible, nil, false),
 	)
 	if err != nil {
 		return fmt.Errorf("merge group configured Codex models: %w", err)
@@ -544,6 +546,24 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
 	}
+	return descriptor
+}
+
+// newConfiguredCodexAliasDescriptor builds the catalog entry for a public
+// model alias from the capabilities of the upstream model it maps to, so a
+// mapped alias (for example "my-sol" -> "gpt-6.1-sol") advertises the same
+// reasoning levels as its target instead of the conservative "none" fallback.
+// Unknown targets keep the conservative descriptor.
+func newConfiguredCodexAliasDescriptor(slug, targetModelID string) configuredCodexModelDescriptor {
+	slug = strings.TrimSpace(slug)
+	targetModelID = strings.TrimSpace(targetModelID)
+	if targetModelID == "" || targetModelID == slug {
+		return newConfiguredCodexModelDescriptor(slug)
+	}
+	descriptor := newConfiguredCodexModelDescriptor(targetModelID)
+	descriptor.Slug = slug
+	descriptor.DisplayName = slug
+	descriptor.Description = configuredCodexCustomDescription
 	return descriptor
 }
 
@@ -1370,6 +1390,7 @@ func mergeConfiguredCodexModelsManifest(
 	configuredModels []string,
 	selectedModels []string,
 	filterBySelection bool,
+	metadataModels map[string]string,
 ) ([]byte, bool, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -1446,7 +1467,7 @@ func mergeConfiguredCodexModelsManifest(
 		if _, exists := seen[modelID]; exists {
 			continue
 		}
-		rawModel, err := json.Marshal(newConfiguredCodexModelDescriptor(modelID))
+		rawModel, err := json.Marshal(newConfiguredCodexAliasDescriptor(modelID, metadataModels[modelID]))
 		if err != nil {
 			return nil, false, err
 		}
@@ -2303,7 +2324,7 @@ func applySyncedAPIKeyCodexModelMetadata(body []byte, account *Account, overwrit
 			metadata.Description = ""
 		}
 
-		descriptor := newConfiguredCodexModelDescriptor(slug)
+		descriptor := newConfiguredCodexAliasDescriptor(slug, lookupModel)
 		applyUpstreamModelMetadataToCodexDescriptor(
 			&descriptor,
 			codexModelMetadataOverride{UpstreamModelMetadata: metadata},
@@ -2428,7 +2449,11 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 			continue
 		}
 
-		descriptor := newConfiguredCodexModelDescriptor(slug)
+		metadataModel := slug
+		if account != nil {
+			metadataModel = account.GetMappedModel(slug)
+		}
+		descriptor := newConfiguredCodexAliasDescriptor(slug, metadataModel)
 		descriptor.SupportsSearchTool = shouldForwardOpenAIResponsesViaRawChatCompletions(account)
 		if accountCodexModelSupportsImageInput(account, slug) {
 			descriptor.InputModalities = []string{"text", "image"}
