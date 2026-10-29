@@ -52,13 +52,13 @@ require (
 	github.com/wechatpay-apiv3/wechatpay-go v0.2.21
 	github.com/zeromicro/go-zero v1.9.4
 	go.uber.org/zap v1.24.0
-	golang.org/x/crypto v0.57.0
+	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.41.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.60.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
-	golang.org/x/term v0.46.0
+	golang.org/x/term v0.47.0
 	google.golang.org/api v0.297.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12

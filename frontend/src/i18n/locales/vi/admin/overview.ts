@@ -974,6 +974,7 @@ export default mergeLocaleMessages(
       imageMultiplier: 'Hệ số ảnh',
       independentMultiplier: 'Dùng hệ số ảnh độc lập',
       modeHint: 'Mặc định, tính phí ảnh dùng giá ảnh × hệ số nhóm hiệu lực hiện tại. Chế độ độc lập dùng giá ảnh × hệ số ảnh.',
+      perImageBilling: 'Tính phí theo từng ảnh',
       notConfigured: 'Chưa cấu hình',
   },
     claudeCode: {
