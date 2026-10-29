@@ -292,6 +292,9 @@ type openAIWSConn struct {
 
 	readMu  sync.Mutex
 	writeMu sync.Mutex
+	// The subscription backend fixes hosted-search support on the first create.
+	responseCreateSent bool // guarded by writeMu
+	initialWebSearch   bool // guarded by writeMu
 
 	// readerLoopResults 非 nil 表示池为该连接常驻了读循环：coder/websocket 只在
 	// 阻塞读期间应答上游 ping，空闲连接没有读循环会被上游按保活超时关闭。
@@ -599,6 +602,9 @@ func (c *openAIWSConn) writeJSON(value any, writeCtx context.Context) error {
 	}
 	if err := c.ws.WriteJSON(writeCtx, value); err != nil {
 		return err
+	}
+	if !c.responseCreateSent {
+		c.recordInitialWebSearch(value)
 	}
 	c.touch()
 	return nil
