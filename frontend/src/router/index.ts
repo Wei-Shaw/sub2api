@@ -110,6 +110,13 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/feishu/callback',
+    name: 'FeishuOAuthCallback',
+    component: () => import('@/views/auth/OidcCallbackView.vue'),
+    props: { provider: 'feishu' },
+    meta: { requiresAuth: false, title: 'Feishu OAuth Callback' }
+  },
+  {
     path: '/auth/dingtalk/callback',
     name: 'DingTalkOAuthCallback',
     component: () => import('@/views/auth/DingTalkCallbackView.vue'),
@@ -755,6 +762,7 @@ const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
+  '/auth/feishu/callback',
   '/auth/dingtalk/callback',
   '/auth/dingtalk/email-completion',
   '/auth/oidc/callback',
