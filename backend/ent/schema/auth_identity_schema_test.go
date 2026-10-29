@@ -83,7 +83,7 @@ func TestAuthIdentityFoundationSchemas(t *testing.T) {
 	require.Equal(t, 1, signupSource.Validators)
 
 	validator := requireStringFieldValidator(t, User{}.Fields(), "signup_source")
-	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google"} {
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google", "dingtalk"} {
 		require.NoError(t, validator(value))
 	}
 	require.Error(t, validator("unknown"))

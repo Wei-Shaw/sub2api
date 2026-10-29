@@ -1,9 +1,12 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -11,7 +14,10 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
-	system, messages, err := convertResponsesInputToAnthropic(req.Input)
+	isOpus55 := claude.IsOpus55(req.Model)
+	isSonnet55 := claude.IsSonnet55(req.Model)
+	isHaiku55 := claude.IsHaiku55(req.Model)
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +55,79 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
 		out.ToolChoice = tc
+	}
+
+	// The 5.5 models reject manual thinking. Opus/Sonnet 5.5 additionally reject
+	// forced tool use; Haiku 5.5 accepts it (starts with the tool call, no thinking
+	// block). Sonnet 5.5 supports between_tools to disable up-front thinking;
+	// Haiku 5.5 uses disabled (at high effort or below) instead.
+	// Resolve the upstream model before conversion: client aliases need not
+	// identify a Claude model.
+	if isOpus55 || isSonnet55 || isHaiku55 {
+		var choice struct {
+			Type string `json:"type"`
+		}
+		if len(out.ToolChoice) > 0 {
+			if err := json.Unmarshal(out.ToolChoice, &choice); err != nil {
+				return nil, fmt.Errorf("invalid tool_choice: %w", err)
+			}
+		}
+		if (choice.Type == "any" || choice.Type == "tool") && !isHaiku55 {
+			return nil, fmt.Errorf("%s does not support forced tool_choice; use auto or none", req.Model)
+		}
+		effort := "medium"
+		if isSonnet55 {
+			effort = "high"
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && (*req.TopP < 0.99 || *req.TopP > 1) {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default top_p")
+			}
+		}
+		if isHaiku55 {
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && *req.TopP != 0.99 {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not support non-default top_p")
+			}
+			if req.Temperature != nil && req.TopP != nil {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not allow temperature and top_p together; omit both")
+			}
+		}
+		if req.Reasoning != nil && req.Reasoning.Effort != "" {
+			effort = req.Reasoning.Effort
+		}
+		if isSonnet55 && effort == "none" {
+			// OpenAI's no-reasoning request maps to Sonnet 5.5's lowest
+			// thinking mode. between_tools still preserves signed progress
+			// blocks produced during tool use.
+			out.Thinking = &AnthropicThinking{Type: "between_tools"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		if isHaiku55 && effort == "none" {
+			// Haiku 5.5's lowest thinking mode is disabled (valid at high
+			// effort or below); low keeps token spend minimal like Sonnet above.
+			out.Thinking = &AnthropicThinking{Type: "disabled"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		switch effort {
+		case "low", "medium", "high", "xhigh", "max":
+		default:
+			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
+		}
+		out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
+		return out, nil
 	}
 
 	// reasoning.effort → output_config.effort + thinking
@@ -98,14 +177,23 @@ func mapResponsesEffortToAnthropic(effort string) string {
 }
 
 // convertResponsesInputToAnthropic extracts system prompt and messages from
-// a Responses API input array. Returns the system as raw JSON (for Anthropic's
-// polymorphic system field) and a list of Anthropic messages.
-func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage, []AnthropicMessage, error) {
+// a Responses API instructions + input array. Returns the system as raw JSON
+// (for Anthropic's polymorphic system field) and a list of Anthropic messages.
+func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool) (json.RawMessage, []AnthropicMessage, error) {
+	var systemParts []string
+	if strings.TrimSpace(instructions) != "" {
+		systemParts = append(systemParts, strings.TrimSpace(instructions))
+	}
+
 	// Try as plain string input.
 	var inputStr string
 	if err := json.Unmarshal(inputRaw, &inputStr); err == nil {
 		content, _ := json.Marshal(inputStr)
-		return nil, []AnthropicMessage{{Role: "user", Content: content}}, nil
+		var system json.RawMessage
+		if len(systemParts) > 0 {
+			system, _ = json.Marshal(strings.Join(systemParts, "\n\n"))
+		}
+		return system, []AnthropicMessage{{Role: "user", Content: content}}, nil
 	}
 
 	var items []ResponsesInputItem
@@ -113,16 +201,14 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 		return nil, nil, fmt.Errorf("parse responses input: %w", err)
 	}
 
-	var system json.RawMessage
 	var messages []AnthropicMessage
 
 	for _, item := range items {
 		switch {
-		case item.Role == "system":
-			// System prompt → Anthropic system field
+		case item.Role == "system" || item.Role == "developer":
 			text := extractTextFromContent(item.Content)
 			if text != "" {
-				system, _ = json.Marshal(text)
+				systemParts = append(systemParts, text)
 			}
 
 		case item.Type == "function_call":
@@ -145,11 +231,7 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 
 		case item.Type == "function_call_output":
 			// function_call_output → user message with tool_result block
-			outputContent := item.Output
-			if outputContent == "" {
-				outputContent = "(empty)"
-			}
-			contentJSON, _ := json.Marshal(outputContent)
+			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
 				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
@@ -161,10 +243,38 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: blockJSON,
 			})
 
+		case item.Type == "reasoning":
+			// Only decode marked Anthropic bridge envelopes, not arbitrary
+			// OpenAI ciphertext. The upstream remains responsible for signature validation.
+			if preserveThinking && strings.HasPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix) {
+				raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix))
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking envelope: %w", err)
+				}
+				var block AnthropicContentBlock
+				if err := json.Unmarshal(raw, &block); err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking block: %w", err)
+				}
+				if (block.Type != "thinking" || block.Signature == "") && (block.Type != "redacted_thinking" || block.Data == "") {
+					return nil, nil, fmt.Errorf("invalid Anthropic signed thinking block")
+				}
+				content, err := json.Marshal([]AnthropicContentBlock{block})
+				if err != nil {
+					return nil, nil, err
+				}
+				messages = append(messages, AnthropicMessage{Role: "assistant", Content: content})
+			}
+
 		case item.Role == "user":
 			content, err := convertResponsesUserToAnthropicContent(item.Content)
 			if err != nil {
 				return nil, nil, err
+			}
+			// 内容里只有网关不认识的分片时，sanitize 会得到空串。Anthropic 拒收
+			// 空内容消息（"all messages must have non-empty content"），整条丢掉
+			// 比发一条必然 400 的消息更可用。
+			if anthropicContentIsEmpty(content) {
+				continue
 			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "user",
@@ -176,26 +286,209 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 			if err != nil {
 				return nil, nil, err
 			}
+			// 同上：分片全不认识时会退化成单个空 text 块，而 Anthropic 拒收
+			// 空文本块（"text content blocks must contain non-whitespace text"）。
+			if anthropicContentIsEmpty(content) || anthropicContentIsOnlyBlankText(content) {
+				continue
+			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "assistant",
 				Content: content,
 			})
 
 		default:
-			// Unknown role/type — attempt as user message
-			if item.Content != nil {
-				messages = append(messages, AnthropicMessage{
-					Role:    "user",
-					Content: item.Content,
-				})
+			// 未知 role/type —— 尽量当作 user 消息保留其中的文本/图片。
+			// 必须走与真实 user 消息同一套白名单转换：直接透传 item.Content 会把
+			// Responses 专有的分片类型（reasoning_text、web_search_call 的载荷等）
+			// 原样发给 Anthropic，上游只会回 400 把整轮打挂。
+			if item.Content == nil {
+				continue
+			}
+			content, err := convertResponsesUserToAnthropicContent(item.Content)
+			if err != nil {
+				return nil, nil, err
+			}
+			if anthropicContentIsEmpty(content) {
+				continue
+			}
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: content,
+			})
+		}
+	}
+
+	// Repair tool_use/tool_result pairing, then merge consecutive same-role
+	// messages (Anthropic requires alternating roles). The first merge groups
+	// parallel calls (and their results) so the pairing pass sees them together;
+	// the pairing pass may re-split a user turn (e.g. when an injected message
+	// sat between a call and its output), so a second merge restores alternation.
+	messages = mergeConsecutiveMessages(messages)
+	messages = normalizeAnthropicToolPairing(messages)
+	messages = mergeConsecutiveMessages(messages)
+
+	var system json.RawMessage
+	if len(systemParts) > 0 {
+		system, _ = json.Marshal(strings.Join(systemParts, "\n\n"))
+	}
+
+	return system, messages, nil
+}
+
+func responsesFunctionOutputToAnthropicContent(item ResponsesInputItem) json.RawMessage {
+	if len(item.outputRaw) == 0 {
+		output := item.Output
+		if output == "" {
+			output = "(empty)"
+		}
+		content, _ := json.Marshal(output)
+		return content
+	}
+
+	var parts []ResponsesContentPart
+	if err := json.Unmarshal(item.outputRaw, &parts); err == nil {
+		blocks := make([]AnthropicContentBlock, 0, len(parts))
+		for _, part := range parts {
+			switch part.Type {
+			case "input_text", "output_text", "text":
+				if part.Text != "" {
+					blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: part.Text})
+				}
+			case "input_image":
+				if source := dataURIToAnthropicImageSource(part.ImageURL); source != nil {
+					blocks = append(blocks, AnthropicContentBlock{Type: "image", Source: source})
+				}
+			}
+		}
+		if len(blocks) > 0 {
+			content, _ := json.Marshal(blocks)
+			return content
+		}
+		if len(parts) == 0 {
+			content, _ := json.Marshal("(empty)")
+			return content
+		}
+	}
+
+	content, _ := json.Marshal(item.Output)
+	return content
+}
+
+// normalizeAnthropicToolPairing rebuilds the message sequence so it satisfies
+// Anthropic's tool_use/tool_result invariants, which the naive item-by-item
+// conversion violates whenever the Responses history interleaves anything
+// between a function_call and its function_call_output:
+//
+//   - every tool_result block must have a matching tool_use in the immediately
+//     preceding assistant message ("tool_result ... must have a corresponding
+//     tool_use block in the previous message");
+//   - every tool_use block must be answered by a tool_result in the immediately
+//     following user message (Anthropic rejects unanswered tool_use ids);
+//   - user/assistant turns must alternate.
+//
+// codex (Responses, store:false) re-sends the whole history each turn and
+// frequently injects items between a call and its output — a developer/approval
+// notice, or a sibling parallel call whose output never arrived. The unrepaired
+// converter emits each function_call as its own assistant message and each
+// output as its own user message, so any such interleaving breaks
+// tool_use↔tool_result adjacency and yields an upstream 400.
+//
+// The repair indexes every tool_result by its tool_use id, then for each
+// assistant message carrying tool_use blocks keeps only the answered ones
+// (dropping unanswered/dangling calls — and the assistant message entirely if it
+// has no other content) and emits the matching tool_result blocks, in call
+// order, as the very next user message. Standalone tool_result blocks are
+// dropped from their original position (re-emitted adjacent to their call);
+// orphan tool_results with no announcing tool_use are dropped. Non-tool content
+// passes through in place. This mirrors normalizeChatMessages on the
+// Responses→Chat path.
+func normalizeAnthropicToolPairing(messages []AnthropicMessage) []AnthropicMessage {
+	// Index every tool_result block by its tool_use id (last wins on dup).
+	results := make(map[string]AnthropicContentBlock)
+	for _, m := range messages {
+		if m.Role != "user" {
+			continue
+		}
+		for _, b := range parseContentBlocks(m.Content) {
+			if b.Type == "tool_result" && b.ToolUseID != "" {
+				results[b.ToolUseID] = b
 			}
 		}
 	}
 
-	// Merge consecutive same-role messages (Anthropic requires alternating roles)
-	messages = mergeConsecutiveMessages(messages)
+	out := make([]AnthropicMessage, 0, len(messages))
+	for _, m := range messages {
+		blocks := parseContentBlocks(m.Content)
+		switch m.Role {
+		case "assistant":
+			var toolUses, others []AnthropicContentBlock
+			for _, b := range blocks {
+				if b.Type == "tool_use" {
+					toolUses = append(toolUses, b)
+				} else {
+					others = append(others, b)
+				}
+			}
+			if len(toolUses) == 0 {
+				out = append(out, m)
+				continue
+			}
+			kept := make([]AnthropicContentBlock, 0, len(toolUses))
+			for _, tu := range toolUses {
+				if _, ok := results[tu.ID]; ok {
+					kept = append(kept, tu)
+				}
+			}
+			if len(kept) == 0 {
+				// No answered calls: keep any non-tool content, else drop.
+				if len(others) > 0 {
+					out = append(out, anthropicMessageFromBlocks("assistant", others))
+				}
+				continue
+			}
+			asstBlocks := make([]AnthropicContentBlock, 0, len(others)+len(kept))
+			asstBlocks = append(asstBlocks, others...)
+			asstBlocks = append(asstBlocks, kept...)
+			out = append(out, anthropicMessageFromBlocks("assistant", asstBlocks))
 
-	return system, messages, nil
+			resBlocks := make([]AnthropicContentBlock, 0, len(kept))
+			for _, tu := range kept {
+				resBlocks = append(resBlocks, results[tu.ID])
+			}
+			out = append(out, anthropicMessageFromBlocks("user", resBlocks))
+
+		case "user":
+			var nonResult []AnthropicContentBlock
+			hasResult := false
+			for _, b := range blocks {
+				if b.Type == "tool_result" {
+					hasResult = true
+					continue
+				}
+				nonResult = append(nonResult, b)
+			}
+			if !hasResult {
+				out = append(out, m)
+				continue
+			}
+			// The tool_result blocks are re-emitted next to their call; keep any
+			// other content of this user turn in place, drop it if there is none.
+			if len(nonResult) > 0 {
+				out = append(out, anthropicMessageFromBlocks("user", nonResult))
+			}
+
+		default:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// anthropicMessageFromBlocks builds an AnthropicMessage whose content is the
+// marshaled block array.
+func anthropicMessageFromBlocks(role string, blocks []AnthropicContentBlock) AnthropicMessage {
+	content, _ := json.Marshal(blocks)
+	return AnthropicMessage{Role: role, Content: content}
 }
 
 // extractTextFromContent extracts text from a content field that may be a
@@ -223,6 +516,32 @@ func extractTextFromContent(raw json.RawMessage) string {
 
 // convertResponsesUserToAnthropicContent converts a Responses user message
 // content field into Anthropic content blocks JSON.
+// anthropicContentIsEmpty 判断转换结果是否为"空内容"。
+// convertResponsesUserToAnthropicContent 在没有任何可识别分片时返回 JSON 空串，
+// 而 Anthropic 拒收空内容消息。
+func anthropicContentIsEmpty(content json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(content))
+	switch trimmed {
+	case "", "null", `""`, "[]":
+		return true
+	}
+	return false
+}
+
+// anthropicContentIsOnlyBlankText 判断内容是否只由空白 text 块组成。
+func anthropicContentIsOnlyBlankText(content json.RawMessage) bool {
+	blocks := parseContentBlocks(content)
+	if len(blocks) == 0 {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type != "text" || strings.TrimSpace(b.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return json.Marshal("") // empty string content
@@ -256,6 +575,14 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 			if src != nil {
 				blocks = append(blocks, AnthropicContentBlock{
 					Type:   "image",
+					Source: src,
+				})
+			}
+		case "input_file":
+			src := dataURIToAnthropicFileSource(p.FileData)
+			if src != nil {
+				blocks = append(blocks, AnthropicContentBlock{
+					Type:   "document",
 					Source: src,
 				})
 			}
@@ -346,6 +673,12 @@ func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
 	}
 }
 
+// dataURIToAnthropicFileSource parses a data URI into a document source.
+// file_id-only parts are not convertible here and stay dropped.
+func dataURIToAnthropicFileSource(fileData string) *AnthropicImageSource {
+	return dataURIToAnthropicImageSource(fileData)
+}
+
 // mergeConsecutiveMessages merges consecutive messages with the same role
 // because Anthropic requires alternating user/assistant turns.
 func mergeConsecutiveMessages(messages []AnthropicMessage) []AnthropicMessage {
@@ -401,25 +734,63 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				Description: t.Description,
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
+		case "custom":
+			out = append(out, AnthropicTool{
+				Name:        t.Name,
+				Description: t.Description,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+			})
 		default:
 			// Pass through unknown tool types
 			out = append(out, AnthropicTool{
 				Type:        t.Type,
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: t.Parameters,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		}
 	}
 	return out
 }
 
-// normalizeAnthropicInputSchema ensures the input_schema has a "type" field.
+// normalizeAnthropicInputSchema ensures input_schema is a valid object schema.
+// Codex 会把部分内置工具（例如 codex_app 的 automation_update）的 parameters
+// 根节点声明成对象分支的 oneOf/anyOf，Anthropic 只接受 object 根节点，这里把
+// 顶层联合摊平成单个 object schema。
 func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
-	if len(schema) == 0 || string(schema) == "null" {
+	const emptyObjectSchema = `{"type":"object","properties":{}}`
+
+	trimmed := strings.TrimSpace(string(schema))
+	if trimmed == "" || trimmed == "null" {
+		return json.RawMessage(emptyObjectSchema)
+	}
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(schema, &m); err != nil {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
 	}
-	return schema
+
+	flattenAnthropicRootUnions(m)
+
+	typeRaw, ok := m["type"]
+	if !ok || strings.TrimSpace(string(typeRaw)) == "" || string(typeRaw) == "null" {
+		m["type"] = json.RawMessage(`"object"`)
+	} else {
+		var typ string
+		if err := json.Unmarshal(typeRaw, &typ); err != nil || typ != "object" {
+			return json.RawMessage(emptyObjectSchema)
+		}
+	}
+
+	if _, ok := m["properties"]; !ok {
+		m["properties"] = json.RawMessage(`{}`)
+	}
+
+	out, err := json.Marshal(m)
+	if err != nil {
+		return json.RawMessage(emptyObjectSchema)
+	}
+	return out
 }
 
 // convertResponsesToAnthropicToolChoice maps Responses tool_choice to Anthropic format.

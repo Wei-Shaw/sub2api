@@ -41,6 +41,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
+import { isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
@@ -69,8 +70,8 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
-const isAlipay = computed(() => paymentType.value.includes('alipay'))
-const isWxpay = computed(() => paymentType.value.includes('wxpay'))
+const isAlipay = computed(() => isBuiltInAlipayMethod(paymentType.value))
+const isWxpay = computed(() => isBuiltInWxpayMethod(paymentType.value))
 
 const scanTitle = computed(() => {
   if (isAlipay.value) return t('payment.qr.scanAlipay')
@@ -131,27 +132,38 @@ async function renderQR() {
   }
 }
 
+let pollInFlight = false
 async function pollStatus() {
   if (!orderId.value) return
-  const order = await paymentStore.pollOrderStatus(orderId.value)
-  if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
-    cleanup()
-    router.push({ path: '/payment/result', query: { order_id: String(orderId.value), status: 'success' } })
-  } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
-    cleanup()
-    expired.value = true
+  // 防重入：接口响应慢于 3 秒轮询间隔时避免并发重叠请求与重复跳转。
+  if (pollInFlight) return
+  pollInFlight = true
+  try {
+    const order = await paymentStore.pollOrderStatus(orderId.value)
+    if (!order) return
+    // 定时器已被 cleanup 清除时不再执行终态跳转（响应可能在 cleanup 后才回来）。
+    if (!pollTimer) return
+    if (order.status === 'COMPLETED' || order.status === 'PAID') {
+      cleanup()
+      router.push({ path: '/payment/result', query: { order_id: String(orderId.value), status: 'success' } })
+    } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
+      cleanup()
+      expired.value = true
+    }
+  } finally {
+    pollInFlight = false
   }
 }
 
 function startCountdown(seconds: number) {
   remainingSeconds.value = Math.max(0, seconds)
+  const deadline = Date.now() + remainingSeconds.value * 1000
   if (remainingSeconds.value <= 0) {
     expired.value = true
     return
   }
   countdownTimer = setInterval(() => {
-    remainingSeconds.value--
+    remainingSeconds.value = Math.max(0, Math.floor((deadline - Date.now()) / 1000))
     if (remainingSeconds.value <= 0) {
       expired.value = true
       cleanup()

@@ -42,6 +42,9 @@ var (
 	// ARGV[3] = sessionUUID
 	// 返回: 1 = 允许, 0 = 拒绝
 	registerSessionScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local maxSessions = tonumber(ARGV[1])
 		local idleTimeout = tonumber(ARGV[2])
@@ -82,6 +85,9 @@ var (
 	// ARGV[1] = idleTimeout（秒）
 	// ARGV[2] = sessionUUID
 	refreshSessionScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 		local sessionUUID = ARGV[2]
@@ -102,6 +108,9 @@ var (
 	// KEYS[1] = session_limit:account:{accountID}
 	// ARGV[1] = idleTimeout（秒）
 	getActiveSessionCountScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 
@@ -120,6 +129,9 @@ var (
 	// ARGV[1] = idleTimeout（秒）
 	// ARGV[2] = sessionUUID
 	isSessionActiveScript = redis.NewScript(`
+		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local idleTimeout = tonumber(ARGV[1])
 		local sessionUUID = ARGV[2]
@@ -202,6 +214,15 @@ func (c *sessionLimitCache) RegisterSession(ctx context.Context, accountID int64
 		return true, err // 失败开放：缓存错误时允许请求通过
 	}
 	return result == 1, nil
+}
+
+// UnregisterSession 立即移除会话注册（不等待空闲超时）
+// 请求最终失败时调用：上游从未服务该会话，继续占槽会卡住 max_sessions 受限的账号
+func (c *sessionLimitCache) UnregisterSession(ctx context.Context, accountID int64, sessionUUID string) error {
+	if sessionUUID == "" {
+		return nil
+	}
+	return c.rdb.ZRem(ctx, sessionLimitKey(accountID), sessionUUID).Err()
 }
 
 // RefreshSession 刷新会话时间戳

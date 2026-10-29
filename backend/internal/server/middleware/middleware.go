@@ -24,6 +24,11 @@ const (
 	ContextKeySubscription ContextKey = "subscription"
 	// ContextKeyForcePlatform 强制平台（用于 /antigravity 路由）
 	ContextKeyForcePlatform ContextKey = "force_platform"
+	// ContextKeyOpsFallbackAPIKey 运维错误日志专用回退键。
+	// 鉴权早退（分组停用/删除、Key 停用/过期/额度、用户停用、IP 限制等）时，
+	// apiKey 已加载但尚未写入 ContextKeyAPIKey；该键让 Ops 错误日志仍能取到
+	// user/group/platform。仅供 Ops 错误日志读取，不代表请求已通过鉴权。
+	ContextKeyOpsFallbackAPIKey ContextKey = "ops_fallback_api_key"
 )
 
 // ForcePlatform 返回设置强制平台的中间件
@@ -75,6 +80,19 @@ func AbortWithError(c *gin.Context, statusCode int, code, message string) {
 	c.Abort()
 }
 
+// abortWithOpenAIQuotaError writes the OpenAI-compatible insufficient quota response.
+func abortWithOpenAIQuotaError(c *gin.Context, statusCode int, message string) {
+	c.JSON(statusCode, gin.H{
+		"error": gin.H{
+			"message": message,
+			"type":    "insufficient_quota",
+			"param":   nil,
+			"code":    "insufficient_quota",
+		},
+	})
+	c.Abort()
+}
+
 // ──────────────────────────────────────────────────────────
 // RequireGroupAssignment — 未分组 Key 拦截中间件
 // ──────────────────────────────────────────────────────────
@@ -82,11 +100,19 @@ func AbortWithError(c *gin.Context, statusCode int, code, message string) {
 // GatewayErrorWriter 定义网关错误响应格式（不同协议使用不同格式）
 type GatewayErrorWriter func(c *gin.Context, status int, message string)
 
-// AnthropicErrorWriter 按 Anthropic API 规范输出错误
+// AnthropicErrorWriter 按 Anthropic API 规范输出错误；error.type 随状态码映射
+// （404 -> not_found_error，403 -> permission_error，其余 api_error）。
 func AnthropicErrorWriter(c *gin.Context, status int, message string) {
+	errorType := "api_error"
+	switch status {
+	case http.StatusNotFound:
+		errorType = "not_found_error"
+	case http.StatusForbidden:
+		errorType = "permission_error"
+	}
 	c.JSON(status, gin.H{
 		"type":  "error",
-		"error": gin.H{"type": "permission_error", "message": message},
+		"error": gin.H{"type": errorType, "message": message},
 	})
 }
 
@@ -97,6 +123,17 @@ func GoogleErrorWriter(c *gin.Context, status int, message string) {
 			"code":    status,
 			"message": message,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
+		},
+	})
+}
+
+// OpenAIErrorWriter 按 OpenAI API 规范输出模型级错误（model_not_found）。
+func OpenAIErrorWriter(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"message": message,
+			"type":    "invalid_request_error",
+			"code":    "model_not_found",
 		},
 	})
 }
@@ -115,6 +152,8 @@ func RequireGroupAssignment(settingService *service.SettingService, writeError G
 			c.Next()
 			return
 		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned)
+		MarkIngressRejected(c, IngressRejectGroupUnassigned)
 		writeError(c, http.StatusForbidden, "API Key is not assigned to any group and cannot be used. Please contact the administrator to assign it to a group.")
 		c.Abort()
 	}

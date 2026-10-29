@@ -73,10 +73,9 @@ func TestCalculateOpenAI429ResetTime_5hExhausted(t *testing.T) {
 	}
 }
 
-func TestCalculateOpenAI429ResetTime_NeitherExhausted_UsesMax(t *testing.T) {
+func TestCalculateOpenAI429ResetTime_NeitherExhausted_ReturnsNil(t *testing.T) {
 	svc := &RateLimitService{}
 
-	// Neither limit at 100%, should use the longer reset time
 	headers := http.Header{}
 	headers.Set("x-codex-primary-used-percent", "80")
 	headers.Set("x-codex-primary-reset-after-seconds", "100000")
@@ -85,22 +84,7 @@ func TestCalculateOpenAI429ResetTime_NeitherExhausted_UsesMax(t *testing.T) {
 	headers.Set("x-codex-secondary-reset-after-seconds", "5000")
 	headers.Set("x-codex-secondary-window-minutes", "300")
 
-	before := time.Now()
-	resetAt := svc.calculateOpenAI429ResetTime(headers)
-	after := time.Now()
-
-	if resetAt == nil {
-		t.Fatal("expected non-nil resetAt")
-	}
-
-	// Should use the max (100000 seconds from 7d window)
-	expectedDuration := 100000 * time.Second
-	minExpected := before.Add(expectedDuration)
-	maxExpected := after.Add(expectedDuration)
-
-	if resetAt.Before(minExpected) || resetAt.After(maxExpected) {
-		t.Errorf("resetAt %v not in expected range [%v, %v]", resetAt, minExpected, maxExpected)
-	}
+	require.Nil(t, svc.calculateOpenAI429ResetTime(headers))
 }
 
 func TestCalculateOpenAI429ResetTime_NoCodexHeaders(t *testing.T) {
@@ -115,6 +99,49 @@ func TestCalculateOpenAI429ResetTime_NoCodexHeaders(t *testing.T) {
 	if resetAt != nil {
 		t.Errorf("expected nil resetAt when no codex headers, got %v", resetAt)
 	}
+}
+
+func TestParseOpenAIRateLimitResetTime_OpenCodeGoUsageLimit(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want time.Duration
+	}{
+		{
+			name: "days",
+			body: `{"type":"error","error":{"type":"GoUsageLimitError","message":"Weekly usage limit reached. Resets in 2 days."}}`,
+			want: 48 * time.Hour,
+		},
+		{
+			name: "hours",
+			body: `{"type":"error","error":{"type":"GoUsageLimitError","message":"Weekly usage limit reached. Resets in 18 hours."}}`,
+			want: 18 * time.Hour,
+		},
+		{
+			name: "hours and minutes",
+			body: `{"type":"error","error":{"type":"GoUsageLimitError","message":"5-hour usage limit reached. Resets in 4hr 59min."}}`,
+			want: 4*time.Hour + 59*time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := time.Now()
+			resetAt := parseOpenAIRateLimitResetTime([]byte(tt.body))
+			after := time.Now()
+
+			require.NotNil(t, resetAt)
+			actual := time.Unix(*resetAt, 0)
+			require.False(t, actual.Before(before.Add(tt.want).Truncate(time.Second)))
+			require.False(t, actual.After(after.Add(tt.want)))
+		})
+	}
+}
+
+func TestParseOpenAIRateLimitResetTime_DoesNotParseUnknownErrorMessage(t *testing.T) {
+	body := []byte(`{"error":{"type":"rate_limit_error","message":"Resets in 2 days."}}`)
+
+	require.Nil(t, parseOpenAIRateLimitResetTime(body))
 }
 
 func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
@@ -217,6 +244,44 @@ func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {
 	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
 	require.Equal(t, "free", account.Credentials["plan_type"])
 	require.Equal(t, account.ID, repo.rateLimitedID)
+}
+
+// TestHandle429_SkipsSparkShadow 外审第8轮 P1:spark 影子的限流状态只由 QueryUsage(/wham/usage
+// codex_bengalfox)维护;/responses 429 携带的 global x-codex-* 不得对影子做任何 DB 限流写入,
+// 否则会把 spark 误耦合到 global codex 窗口、冷却到 global reset。
+func TestHandle429_SkipsSparkShadow(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "604800")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	headers.Set("x-codex-secondary-used-percent", "100")
+	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
+	headers.Set("x-codex-secondary-window-minutes", "300")
+
+	parentID := int64(900)
+	shadowRepo := &openAI429SnapshotRepo{}
+	shadowSvc := NewRateLimitService(shadowRepo, nil, nil, nil, nil)
+	shadow := &Account{
+		ID:              901,
+		Platform:        PlatformOpenAI,
+		Type:            AccountTypeOAuth,
+		ParentAccountID: &parentID,
+		QuotaDimension:  QuotaDimensionSpark,
+	}
+
+	shadowSvc.handle429(context.Background(), shadow, headers, nil)
+
+	require.Zero(t, shadowRepo.rateLimitedID, "spark shadow must not be SetRateLimited from /responses global 429")
+	require.Empty(t, shadowRepo.updatedExtra, "spark shadow must not get a codex snapshot from /responses 429")
+
+	// 反向对照:普通 OpenAI OAuth 账号仍按 global 429 限流。
+	normalRepo := &openAI429SnapshotRepo{}
+	normalSvc := NewRateLimitService(normalRepo, nil, nil, nil, nil)
+	normal := &Account{ID: 902, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	normalSvc.handle429(context.Background(), normal, headers, nil)
+
+	require.Equal(t, normal.ID, normalRepo.rateLimitedID, "normal OpenAI OAuth account should still be rate limited")
 }
 
 func TestNormalizedCodexLimits(t *testing.T) {

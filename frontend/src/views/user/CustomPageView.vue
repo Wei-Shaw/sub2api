@@ -35,7 +35,7 @@
             class="toc-sidebar"
           >
             <div class="toc-header">
-              <span class="toc-title">目录</span>
+              <span class="toc-title">{{ t('customPage.tableOfContents') }}</span>
               <button class="toc-close-btn" @click="tocVisible = false">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
@@ -64,7 +64,7 @@
             @click="tocVisible = true"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-            <span class="ml-1 text-xs">目录</span>
+            <span class="ml-1 text-xs">{{ t('customPage.tableOfContents') }}</span>
           </button>
 
           <!-- Content -->
@@ -94,12 +94,22 @@
         </div>
 
         <!-- Iframe embed mode -->
-        <div v-else class="custom-embed-shell">
+        <div v-else ref="embedShell" class="custom-embed-shell">
           <a
+            v-if="!menuItem?.hide_open_button"
+            ref="openButton"
             :href="embeddedUrl"
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-secondary btn-sm custom-open-fab"
+            :style="openButtonPosition ? { left: `${openButtonPosition.x}px`, top: `${openButtonPosition.y}px`, right: 'auto' } : undefined"
+            @pointerdown="startButtonDrag"
+            @pointermove="moveButtonDrag"
+            @pointerup="endButtonDrag"
+            @pointercancel="endButtonDrag"
+            @lostpointercapture="endButtonDrag"
+            @dragstart.prevent
+            @click="handleOpenButtonClick"
           >
             <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
             {{ t('customPage.openInNewTab') }}
@@ -118,12 +128,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useResizeObserver } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { buildApiUrl } from '@/api/client'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -148,6 +160,64 @@ const tocItems = ref<TocItem[]>([])
 const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
 const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
+let markdownRequestVersion = 0
+
+const embedShell = ref<HTMLElement | null>(null)
+const openButton = ref<HTMLAnchorElement | null>(null)
+const openButtonPosition = ref<{ x: number; y: number } | null>(null)
+let buttonDrag: { pointerId: number; startX: number; startY: number; x: number; y: number } | null = null
+let suppressButtonClick = false
+
+function setOpenButtonPosition(x: number, y: number) {
+  const shell = embedShell.value
+  const button = openButton.value
+  if (!shell || !button) return
+  openButtonPosition.value = {
+    x: Math.max(0, Math.min(x, shell.clientWidth - button.offsetWidth)),
+    y: Math.max(0, Math.min(y, shell.clientHeight - button.offsetHeight)),
+  }
+}
+
+function startButtonDrag(event: PointerEvent) {
+  if (event.button !== 0 || !event.isPrimary || !openButton.value) return
+  const button = openButton.value
+  suppressButtonClick = false
+  buttonDrag = {
+    pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+    x: button.offsetLeft, y: button.offsetTop,
+  }
+  // Capture keeps receiving moves when the pointer crosses the embedded iframe.
+  button.setPointerCapture(event.pointerId)
+}
+
+function moveButtonDrag(event: PointerEvent) {
+  if (!buttonDrag || event.pointerId !== buttonDrag.pointerId) return
+  const dx = event.clientX - buttonDrag.startX
+  const dy = event.clientY - buttonDrag.startY
+  if (!suppressButtonClick && Math.hypot(dx, dy) < 4) return
+  suppressButtonClick = true
+  setOpenButtonPosition(buttonDrag.x + dx, buttonDrag.y + dy)
+  event.preventDefault()
+}
+
+function endButtonDrag(event: PointerEvent) {
+  if (!buttonDrag || event.pointerId !== buttonDrag.pointerId) return
+  buttonDrag = null
+  if (openButton.value?.hasPointerCapture(event.pointerId)) {
+    openButton.value.releasePointerCapture(event.pointerId)
+  }
+}
+
+function handleOpenButtonClick(event: MouseEvent) {
+  if (suppressButtonClick && event.detail !== 0) event.preventDefault()
+  suppressButtonClick = false
+}
+
+useResizeObserver([embedShell, openButton], () => {
+  if (openButtonPosition.value) {
+    setOpenButtonPosition(openButtonPosition.value.x, openButtonPosition.value.y)
+  }
+})
 
 const menuItemId = computed(() => route.params.id as string)
 
@@ -217,22 +287,25 @@ function buildPageImageUrl(slug: string, src: string): string {
     .filter((part) => part && part !== '.')
     .map((part) => encodeURIComponent(part))
     .join('/')
-  return `/api/v1/pages/${encodeURIComponent(slug)}/images/${encodedPath}${suffix}`
+  return buildApiUrl(`/pages/${encodeURIComponent(slug)}/images/${encodedPath}${suffix}`)
 }
 
 async function fetchAndRenderMarkdown(slug: string) {
+  const version = ++markdownRequestVersion
   loading.value = true
   tocItems.value = []
   activeHeadingId.value = ''
   try {
-    const resp = await fetch(`/api/v1/pages/${encodeURIComponent(slug)}`, {
+    const resp = await fetch(buildApiUrl(`/pages/${encodeURIComponent(slug)}`), {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
+    if (version !== markdownRequestVersion) return
     if (!resp.ok) {
-      renderedHtml.value = '<p class="text-red-500">Page not found</p>'
+      renderedHtml.value = `<p class="text-red-500">${t('common.pageNotFound')}</p>`
       return
     }
     let raw = await resp.text()
+    if (version !== markdownRequestVersion) return
 
     raw = raw.replace(
       /!\[([^\]]*)\]\(([^)]+)\)/g,
@@ -262,12 +335,16 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    if (version === markdownRequestVersion) {
+      renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    }
   } finally {
-    loading.value = false
-    await nextTick()
-    await nextTick()
-    injectCopyButtons()
+    if (version === markdownRequestVersion) {
+      loading.value = false
+      await nextTick()
+      await nextTick()
+      if (version === markdownRequestVersion) injectCopyButtons()
+    }
   }
 }
 
@@ -316,16 +393,16 @@ function injectCopyButtons() {
     if (pre.querySelector('.copy-btn')) return
     const btn = document.createElement('button')
     btn.className = 'copy-btn'
-    btn.textContent = '复制'
+    btn.textContent = t('customPage.copyCode')
     btn.addEventListener('click', async () => {
       const code = pre.querySelector('code')?.textContent ?? pre.textContent ?? ''
       try {
         await navigator.clipboard.writeText(code)
-        btn.textContent = '已复制 ✓'
-        setTimeout(() => { btn.textContent = '复制' }, 2000)
+        btn.textContent = t('customPage.copiedCode')
+        setTimeout(() => { btn.textContent = t('customPage.copyCode') }, 2000)
       } catch {
-        btn.textContent = '失败'
-        setTimeout(() => { btn.textContent = '复制' }, 2000)
+        btn.textContent = t('customPage.copyCodeFailed')
+        setTimeout(() => { btn.textContent = t('customPage.copyCode') }, 2000)
       }
     })
     pre.style.position = 'relative'
@@ -337,6 +414,8 @@ watch(markdownSlug, (slug) => {
   if (slug) {
     fetchAndRenderMarkdown(slug)
   } else {
+    markdownRequestVersion++
+    loading.value = false
     renderedHtml.value = ''
     tocItems.value = []
   }
@@ -365,6 +444,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  markdownRequestVersion++
   if (themeObserver) {
     themeObserver.disconnect()
     themeObserver = null
@@ -444,7 +524,7 @@ onUnmounted(() => {
 }
 
 .custom-open-fab {
-  @apply absolute right-3 top-3 z-10;
+  @apply absolute right-3 top-3 z-10 w-max max-w-full touch-none select-none transition-colors;
   @apply shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:supports-[backdrop-filter]:bg-dark-800/80;
 }
 

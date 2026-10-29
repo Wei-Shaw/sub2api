@@ -14,6 +14,7 @@ export type OrderStatus =
   | 'FAILED'
   | 'REFUND_REQUESTED'
   | 'REFUNDING'
+  | 'REFUND_PENDING'
   | 'PARTIALLY_REFUNDED'
   | 'REFUNDED'
   | 'REFUND_FAILED'
@@ -24,6 +25,12 @@ export type OrderType = 'balance' | 'subscription'
 
 // ==================== Configuration ====================
 
+/** 充值赠送档位：支付金额 ≥ min_amount 时在到账基数上赠送 bonus_percent% */
+export interface RechargeBonusTier {
+  min_amount: number
+  bonus_percent: number
+}
+
 export interface PaymentConfig {
   payment_enabled: boolean
   min_amount: number
@@ -33,6 +40,7 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  subscription_usd_to_cny_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -41,6 +49,7 @@ export interface PaymentConfig {
 
 export interface MethodLimit {
   currency?: string
+  display_name?: string
   daily_limit: number
   daily_used: number
   daily_remaining: number
@@ -65,10 +74,22 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
+  subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
+  /** 充值赠送阶梯（按 min_amount 升序）；缺失/空数组 = 不赠送 */
+  recharge_bonus_tiers?: RechargeBonusTier[]
+  /** 阶梯模式：bonus 赠金 / discount 折扣；缺失按 bonus */
+  recharge_bonus_mode?: string
+  /** 充值页金额区顶部的 Markdown 活动文案；空 = 不展示 */
+  recharge_bonus_notice?: string
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
+  /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
+  alipay_force_qrcode?: boolean
+  /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
+  alipay_mobile_precreate_deep_link?: boolean
 }
 
 // ==================== Orders ====================
@@ -80,6 +101,8 @@ export interface PaymentOrder {
   pay_amount: number
   currency?: string
   fee_rate: number
+  /** 充值赠送额度（USD），已计入 amount */
+  bonus_amount?: number
   payment_type: string
   out_trade_no: string
   status: OrderStatus
@@ -105,6 +128,10 @@ export interface SubscriptionPlan {
   group_platform?: string
   group_name?: string
   rate_multiplier?: number
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -113,6 +140,8 @@ export interface SubscriptionPlan {
   description: string
   price: number
   original_price?: number
+  /** Display-only ISO 4217 currency label (e.g. "NZD"); empty means no label */
+  currency?: string
   validity_days: number
   validity_unit: string
   /** Stored as JSON string in backend; API layer should parse before use */
@@ -195,24 +224,46 @@ export interface CreateOrderResult {
   payment_env?: string
   pay_amount: number
   fee_rate: number
+  bonus_amount?: number
   expires_at: string
   result_type?: CreateOrderResultType
   payment_type?: string
   out_trade_no?: string
   payment_mode?: string
   resume_token?: string
+  alipay_mobile_precreate_deep_link?: boolean
   oauth?: WechatOAuthInfo
   jsapi?: WechatJSAPIPayload
   jsapi_payload?: WechatJSAPIPayload
 }
 
+export type CurrencyAmounts = Record<string, number>
+
+export interface DailyPaymentStats {
+  date: string
+  amount: CurrencyAmounts
+  count: number
+}
+
+export interface PaymentMethodStats {
+  type: string
+  amount: CurrencyAmounts
+  count: number
+}
+
+export interface TopUserPaymentStats {
+  user_id: number
+  email: string
+  amount: number
+}
+
 export interface DashboardStats {
-  today_amount: number
-  total_amount: number
+  today_amount: CurrencyAmounts
+  total_amount: CurrencyAmounts
   today_count: number
   total_count: number
-  avg_amount: number
-  daily_series: { date: string; amount: number; count: number }[]
-  payment_methods: { type: string; amount: number; count: number }[]
-  top_users: { user_id: number; email: string; amount: number }[]
+  avg_amount: CurrencyAmounts
+  daily_series: DailyPaymentStats[]
+  payment_methods: PaymentMethodStats[]
+  top_users: Record<string, TopUserPaymentStats[]>
 }

@@ -35,6 +35,7 @@ type OpsAlertEvaluatorService struct {
 	opsService   *OpsService
 	opsRepo      OpsRepository
 	emailService *EmailService
+	proxyRepo    ProxyRepository
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -67,11 +68,13 @@ func NewOpsAlertEvaluatorService(
 	emailService *EmailService,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
 	return &OpsAlertEvaluatorService{
 		opsService:   opsService,
 		opsRepo:      opsRepo,
 		emailService: emailService,
+		proxyRepo:    proxyRepo,
 		redisClient:  redisClient,
 		cfg:          cfg,
 		instanceID:   uuid.NewString(),
@@ -506,6 +509,18 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
 		})), true
+	case "account_temp_unscheduled_count":
+		if s == nil || s.opsService == nil {
+			return 0, false
+		}
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+		}
+		now := time.Now().UTC()
+		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
+			return acc.TempUnschedulableUntil != nil && now.Before(*acc.TempUnschedulableUntil)
+		})), true
 	case "group_rate_limit_ratio":
 		if groupID == nil || *groupID <= 0 {
 			return 0, false
@@ -548,6 +563,24 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.IsOverloaded
 		})), true
+	case "proxy_expired_count":
+		if s == nil || s.proxyRepo == nil {
+			return 0, false
+		}
+		n, err := s.proxyRepo.CountExpired(ctx)
+		if err != nil {
+			return 0, false
+		}
+		return float64(n), true
+	case "proxy_expiring_soon_count":
+		if s == nil || s.proxyRepo == nil {
+			return 0, false
+		}
+		n, err := s.proxyRepo.CountExpiringSoon(ctx, time.Now())
+		if err != nil {
+			return 0, false
+		}
+		return float64(n), true
 	}
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
@@ -686,6 +719,21 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		if !s.emailLimiter.Allow(time.Now().UTC()) {
 			continue
 		}
+		if s.emailService.notificationEmailService != nil {
+			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventOpsAlert,
+				RecipientEmail: addr,
+				RecipientName:  emailRecipientName(addr),
+				SourceType:     "ops_alert",
+				SourceID:       fmt.Sprintf("%d", event.ID),
+				Variables:      opsAlertEmailVariables(rule, event),
+			}); err == nil {
+				anySent = true
+				continue
+			} else if !shouldFallbackNotificationEmail(err) {
+				continue
+			}
+		}
 		if err := s.emailService.SendEmail(ctx, addr, subject, body); err != nil {
 			// Ignore per-recipient failures; continue best-effort.
 			continue
@@ -697,6 +745,46 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
 	}
 	return anySent
+}
+
+func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {
+	variables := map[string]string{
+		"rule_name":         "-",
+		"severity":          "-",
+		"alert_status":      "-",
+		"metric_type":       "-",
+		"operator":          "-",
+		"metric_value":      "-",
+		"threshold_value":   "-",
+		"triggered_at":      time.Now().UTC().Format(time.RFC3339),
+		"alert_description": "-",
+	}
+	if rule != nil {
+		variables["rule_name"] = strings.TrimSpace(rule.Name)
+		variables["severity"] = strings.TrimSpace(rule.Severity)
+		variables["metric_type"] = strings.TrimSpace(rule.MetricType)
+		variables["operator"] = strings.TrimSpace(rule.Operator)
+		variables["threshold_value"] = fmt.Sprintf("%.2f", rule.Threshold)
+		if strings.TrimSpace(rule.Description) != "" {
+			variables["alert_description"] = strings.TrimSpace(rule.Description)
+		}
+	}
+	if event != nil {
+		variables["alert_status"] = strings.TrimSpace(event.Status)
+		if event.MetricValue != nil {
+			variables["metric_value"] = fmt.Sprintf("%.2f", *event.MetricValue)
+		}
+		if event.ThresholdValue != nil {
+			variables["threshold_value"] = fmt.Sprintf("%.2f", *event.ThresholdValue)
+		}
+		if !event.FiredAt.IsZero() {
+			variables["triggered_at"] = event.FiredAt.UTC().Format(time.RFC3339)
+		}
+		if strings.TrimSpace(event.Description) != "" {
+			variables["alert_description"] = strings.TrimSpace(event.Description)
+		}
+	}
+	return variables
 }
 
 func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {

@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -439,6 +441,51 @@ func TestIdempotencyCoordinator_StoreUnavailableMetrics(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, infraerrors.Code(ErrIdempotencyStoreUnavail), infraerrors.Code(err))
 	require.GreaterOrEqual(t, GetIdempotencyMetricsSnapshot().StoreUnavailableTotal, uint64(1))
+}
+
+type utf8RejectingIdempotencyRepo struct {
+	inMemoryIdempotencyRepo
+}
+
+func newUTF8RejectingIdempotencyRepo() *utf8RejectingIdempotencyRepo {
+	return &utf8RejectingIdempotencyRepo{inMemoryIdempotencyRepo: *newInMemoryIdempotencyRepo()}
+}
+
+func (r *utf8RejectingIdempotencyRepo) MarkSucceeded(ctx context.Context, id int64, responseStatus int, responseBody string, expiresAt time.Time) error {
+	if !utf8.ValidString(responseBody) {
+		return errors.New(`pq: invalid byte sequence for encoding "UTF8": 0xe8 0xb4 0x2e`)
+	}
+	return r.inMemoryIdempotencyRepo.MarkSucceeded(ctx, id, responseStatus, responseBody, expiresAt)
+}
+
+func TestIdempotencyCoordinator_TruncatedStoredResponseRemainsUTF8(t *testing.T) {
+	repo := newUTF8RejectingIdempotencyRepo()
+	cfg := DefaultIdempotencyConfig()
+	cfg.MaxStoredResponseLen = len(`{"message":"`) + 2
+	coordinator := NewIdempotencyCoordinator(repo, cfg)
+
+	opts := IdempotencyExecuteOptions{
+		Scope:          "test.scope.truncate_utf8",
+		Method:         "POST",
+		Route:          "/api/v1/accounts/import/codex-session",
+		ActorScope:     "admin:1",
+		RequireKey:     true,
+		IdempotencyKey: "truncate-utf8",
+		Payload:        map[string]any{"content": "codex-session"},
+	}
+
+	result, err := coordinator.Execute(context.Background(), opts, func(ctx context.Context) (any, error) {
+		return map[string]any{"message": strings.Repeat("\u8d26", 8)}, nil
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	stored, err := repo.GetByScopeAndKeyHash(context.Background(), opts.Scope, HashIdempotencyKey(opts.IdempotencyKey))
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.NotNil(t, stored.ResponseBody)
+	require.True(t, utf8.ValidString(*stored.ResponseBody))
+	require.Contains(t, *stored.ResponseBody, "...(truncated)")
 }
 
 func TestDefaultIdempotencyCoordinatorAndTTLs(t *testing.T) {

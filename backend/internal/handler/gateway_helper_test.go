@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestWrapReleaseOnDone_NoGoroutineLeak 验证 wrapReleaseOnDone 修复后不会泄露 goroutine
@@ -65,6 +67,21 @@ func TestWrapReleaseOnDone_ContextCancellation(t *testing.T) {
 	if count := atomic.LoadInt32(&releaseCount); count != 1 {
 		t.Errorf("expected release count to be 1, got %d", count)
 	}
+}
+
+func TestWrapReleaseOnDone_AlreadyCancelledReleasesExactlyOnce(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var releaseCount int32
+	release := wrapReleaseOnDone(ctx, func() {
+		atomic.AddInt32(&releaseCount, 1)
+	})
+	release()
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&releaseCount) == 1
+	}, time.Second, time.Millisecond)
 }
 
 // TestWrapReleaseOnDone_MultipleCallsOnlyReleaseOnce 验证多次调用 release 只释放一次

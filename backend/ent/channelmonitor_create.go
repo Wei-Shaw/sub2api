@@ -65,6 +65,48 @@ func (_c *ChannelMonitorCreate) SetProvider(v channelmonitor.Provider) *ChannelM
 	return _c
 }
 
+// SetCheckMode sets the "check_mode" field.
+func (_c *ChannelMonitorCreate) SetCheckMode(v string) *ChannelMonitorCreate {
+	_c.mutation.SetCheckMode(v)
+	return _c
+}
+
+// SetNillableCheckMode sets the "check_mode" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableCheckMode(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetCheckMode(*v)
+	}
+	return _c
+}
+
+// SetAccountID sets the "account_id" field.
+func (_c *ChannelMonitorCreate) SetAccountID(v int64) *ChannelMonitorCreate {
+	_c.mutation.SetAccountID(v)
+	return _c
+}
+
+// SetNillableAccountID sets the "account_id" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableAccountID(v *int64) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetAccountID(*v)
+	}
+	return _c
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (_c *ChannelMonitorCreate) SetAPIMode(v string) *ChannelMonitorCreate {
+	_c.mutation.SetAPIMode(v)
+	return _c
+}
+
+// SetNillableAPIMode sets the "api_mode" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableAPIMode(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetAPIMode(*v)
+	}
+	return _c
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (_c *ChannelMonitorCreate) SetEndpoint(v string) *ChannelMonitorCreate {
 	_c.mutation.SetEndpoint(v)
@@ -120,6 +162,20 @@ func (_c *ChannelMonitorCreate) SetNillableEnabled(v *bool) *ChannelMonitorCreat
 // SetIntervalSeconds sets the "interval_seconds" field.
 func (_c *ChannelMonitorCreate) SetIntervalSeconds(v int) *ChannelMonitorCreate {
 	_c.mutation.SetIntervalSeconds(v)
+	return _c
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (_c *ChannelMonitorCreate) SetJitterSeconds(v int) *ChannelMonitorCreate {
+	_c.mutation.SetJitterSeconds(v)
+	return _c
+}
+
+// SetNillableJitterSeconds sets the "jitter_seconds" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableJitterSeconds(v *int) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetJitterSeconds(*v)
+	}
 	return _c
 }
 
@@ -275,6 +331,14 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.CheckMode(); !ok {
+		v := channelmonitor.DefaultCheckMode
+		_c.mutation.SetCheckMode(v)
+	}
+	if _, ok := _c.mutation.APIMode(); !ok {
+		v := channelmonitor.DefaultAPIMode
+		_c.mutation.SetAPIMode(v)
+	}
 	if _, ok := _c.mutation.ExtraModels(); !ok {
 		v := channelmonitor.DefaultExtraModels
 		_c.mutation.SetExtraModels(v)
@@ -286,6 +350,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := channelmonitor.DefaultEnabled
 		_c.mutation.SetEnabled(v)
+	}
+	if _, ok := _c.mutation.JitterSeconds(); !ok {
+		v := channelmonitor.DefaultJitterSeconds
+		_c.mutation.SetJitterSeconds(v)
 	}
 	if _, ok := _c.mutation.ExtraHeaders(); !ok {
 		v := channelmonitor.DefaultExtraHeaders
@@ -319,6 +387,22 @@ func (_c *ChannelMonitorCreate) check() error {
 	if v, ok := _c.mutation.Provider(); ok {
 		if err := channelmonitor.ProviderValidator(v); err != nil {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.provider": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CheckMode(); !ok {
+		return &ValidationError{Name: "check_mode", err: errors.New(`ent: missing required field "ChannelMonitor.check_mode"`)}
+	}
+	if v, ok := _c.mutation.CheckMode(); ok {
+		if err := channelmonitor.CheckModeValidator(v); err != nil {
+			return &ValidationError{Name: "check_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.check_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.APIMode(); !ok {
+		return &ValidationError{Name: "api_mode", err: errors.New(`ent: missing required field "ChannelMonitor.api_mode"`)}
+	}
+	if v, ok := _c.mutation.APIMode(); ok {
+		if err := channelmonitor.APIModeValidator(v); err != nil {
+			return &ValidationError{Name: "api_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.api_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
@@ -362,6 +446,14 @@ func (_c *ChannelMonitorCreate) check() error {
 	if v, ok := _c.mutation.IntervalSeconds(); ok {
 		if err := channelmonitor.IntervalSecondsValidator(v); err != nil {
 			return &ValidationError{Name: "interval_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.interval_seconds": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.JitterSeconds(); !ok {
+		return &ValidationError{Name: "jitter_seconds", err: errors.New(`ent: missing required field "ChannelMonitor.jitter_seconds"`)}
+	}
+	if v, ok := _c.mutation.JitterSeconds(); ok {
+		if err := channelmonitor.JitterSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "jitter_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.jitter_seconds": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedBy(); !ok {
@@ -421,6 +513,18 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 		_spec.SetField(channelmonitor.FieldProvider, field.TypeEnum, value)
 		_node.Provider = value
 	}
+	if value, ok := _c.mutation.CheckMode(); ok {
+		_spec.SetField(channelmonitor.FieldCheckMode, field.TypeString, value)
+		_node.CheckMode = value
+	}
+	if value, ok := _c.mutation.AccountID(); ok {
+		_spec.SetField(channelmonitor.FieldAccountID, field.TypeInt64, value)
+		_node.AccountID = &value
+	}
+	if value, ok := _c.mutation.APIMode(); ok {
+		_spec.SetField(channelmonitor.FieldAPIMode, field.TypeString, value)
+		_node.APIMode = value
+	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(channelmonitor.FieldEndpoint, field.TypeString, value)
 		_node.Endpoint = value
@@ -448,6 +552,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.IntervalSeconds(); ok {
 		_spec.SetField(channelmonitor.FieldIntervalSeconds, field.TypeInt, value)
 		_node.IntervalSeconds = value
+	}
+	if value, ok := _c.mutation.JitterSeconds(); ok {
+		_spec.SetField(channelmonitor.FieldJitterSeconds, field.TypeInt, value)
+		_node.JitterSeconds = value
 	}
 	if value, ok := _c.mutation.LastCheckedAt(); ok {
 		_spec.SetField(channelmonitor.FieldLastCheckedAt, field.TypeTime, value)
@@ -606,6 +714,54 @@ func (u *ChannelMonitorUpsert) UpdateProvider() *ChannelMonitorUpsert {
 	return u
 }
 
+// SetCheckMode sets the "check_mode" field.
+func (u *ChannelMonitorUpsert) SetCheckMode(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldCheckMode, v)
+	return u
+}
+
+// UpdateCheckMode sets the "check_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateCheckMode() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldCheckMode)
+	return u
+}
+
+// SetAccountID sets the "account_id" field.
+func (u *ChannelMonitorUpsert) SetAccountID(v int64) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldAccountID, v)
+	return u
+}
+
+// UpdateAccountID sets the "account_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateAccountID() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldAccountID)
+	return u
+}
+
+// AddAccountID adds v to the "account_id" field.
+func (u *ChannelMonitorUpsert) AddAccountID(v int64) *ChannelMonitorUpsert {
+	u.Add(channelmonitor.FieldAccountID, v)
+	return u
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *ChannelMonitorUpsert) ClearAccountID() *ChannelMonitorUpsert {
+	u.SetNull(channelmonitor.FieldAccountID)
+	return u
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (u *ChannelMonitorUpsert) SetAPIMode(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldAPIMode, v)
+	return u
+}
+
+// UpdateAPIMode sets the "api_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateAPIMode() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldAPIMode)
+	return u
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (u *ChannelMonitorUpsert) SetEndpoint(v string) *ChannelMonitorUpsert {
 	u.Set(channelmonitor.FieldEndpoint, v)
@@ -699,6 +855,24 @@ func (u *ChannelMonitorUpsert) UpdateIntervalSeconds() *ChannelMonitorUpsert {
 // AddIntervalSeconds adds v to the "interval_seconds" field.
 func (u *ChannelMonitorUpsert) AddIntervalSeconds(v int) *ChannelMonitorUpsert {
 	u.Add(channelmonitor.FieldIntervalSeconds, v)
+	return u
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (u *ChannelMonitorUpsert) SetJitterSeconds(v int) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldJitterSeconds, v)
+	return u
+}
+
+// UpdateJitterSeconds sets the "jitter_seconds" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateJitterSeconds() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldJitterSeconds)
+	return u
+}
+
+// AddJitterSeconds adds v to the "jitter_seconds" field.
+func (u *ChannelMonitorUpsert) AddJitterSeconds(v int) *ChannelMonitorUpsert {
+	u.Add(channelmonitor.FieldJitterSeconds, v)
 	return u
 }
 
@@ -885,6 +1059,62 @@ func (u *ChannelMonitorUpsertOne) UpdateProvider() *ChannelMonitorUpsertOne {
 	})
 }
 
+// SetCheckMode sets the "check_mode" field.
+func (u *ChannelMonitorUpsertOne) SetCheckMode(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetCheckMode(v)
+	})
+}
+
+// UpdateCheckMode sets the "check_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateCheckMode() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateCheckMode()
+	})
+}
+
+// SetAccountID sets the "account_id" field.
+func (u *ChannelMonitorUpsertOne) SetAccountID(v int64) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetAccountID(v)
+	})
+}
+
+// AddAccountID adds v to the "account_id" field.
+func (u *ChannelMonitorUpsertOne) AddAccountID(v int64) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddAccountID(v)
+	})
+}
+
+// UpdateAccountID sets the "account_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateAccountID() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateAccountID()
+	})
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *ChannelMonitorUpsertOne) ClearAccountID() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.ClearAccountID()
+	})
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (u *ChannelMonitorUpsertOne) SetAPIMode(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetAPIMode(v)
+	})
+}
+
+// UpdateAPIMode sets the "api_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateAPIMode() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateAPIMode()
+	})
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (u *ChannelMonitorUpsertOne) SetEndpoint(v string) *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
@@ -994,6 +1224,27 @@ func (u *ChannelMonitorUpsertOne) AddIntervalSeconds(v int) *ChannelMonitorUpser
 func (u *ChannelMonitorUpsertOne) UpdateIntervalSeconds() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateIntervalSeconds()
+	})
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (u *ChannelMonitorUpsertOne) SetJitterSeconds(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetJitterSeconds(v)
+	})
+}
+
+// AddJitterSeconds adds v to the "jitter_seconds" field.
+func (u *ChannelMonitorUpsertOne) AddJitterSeconds(v int) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddJitterSeconds(v)
+	})
+}
+
+// UpdateJitterSeconds sets the "jitter_seconds" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateJitterSeconds() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateJitterSeconds()
 	})
 }
 
@@ -1362,6 +1613,62 @@ func (u *ChannelMonitorUpsertBulk) UpdateProvider() *ChannelMonitorUpsertBulk {
 	})
 }
 
+// SetCheckMode sets the "check_mode" field.
+func (u *ChannelMonitorUpsertBulk) SetCheckMode(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetCheckMode(v)
+	})
+}
+
+// UpdateCheckMode sets the "check_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateCheckMode() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateCheckMode()
+	})
+}
+
+// SetAccountID sets the "account_id" field.
+func (u *ChannelMonitorUpsertBulk) SetAccountID(v int64) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetAccountID(v)
+	})
+}
+
+// AddAccountID adds v to the "account_id" field.
+func (u *ChannelMonitorUpsertBulk) AddAccountID(v int64) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddAccountID(v)
+	})
+}
+
+// UpdateAccountID sets the "account_id" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateAccountID() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateAccountID()
+	})
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (u *ChannelMonitorUpsertBulk) ClearAccountID() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.ClearAccountID()
+	})
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (u *ChannelMonitorUpsertBulk) SetAPIMode(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetAPIMode(v)
+	})
+}
+
+// UpdateAPIMode sets the "api_mode" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateAPIMode() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateAPIMode()
+	})
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (u *ChannelMonitorUpsertBulk) SetEndpoint(v string) *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
@@ -1471,6 +1778,27 @@ func (u *ChannelMonitorUpsertBulk) AddIntervalSeconds(v int) *ChannelMonitorUpse
 func (u *ChannelMonitorUpsertBulk) UpdateIntervalSeconds() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateIntervalSeconds()
+	})
+}
+
+// SetJitterSeconds sets the "jitter_seconds" field.
+func (u *ChannelMonitorUpsertBulk) SetJitterSeconds(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetJitterSeconds(v)
+	})
+}
+
+// AddJitterSeconds adds v to the "jitter_seconds" field.
+func (u *ChannelMonitorUpsertBulk) AddJitterSeconds(v int) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.AddJitterSeconds(v)
+	})
+}
+
+// UpdateJitterSeconds sets the "jitter_seconds" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateJitterSeconds() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateJitterSeconds()
 	})
 }
 

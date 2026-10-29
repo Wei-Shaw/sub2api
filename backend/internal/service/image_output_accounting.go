@@ -10,12 +10,18 @@ import (
 
 type openAIImageOutputCounter struct {
 	seen         map[string]struct{}
+	seenSizes    map[string]string
+	seenOrder    []string
+	dataSizes    []string
 	count        int
 	maxDataCount int
 }
 
 func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
-	return &openAIImageOutputCounter{seen: make(map[string]struct{})}
+	return &openAIImageOutputCounter{
+		seen:      make(map[string]struct{}),
+		seenSizes: make(map[string]string),
+	}
 }
 
 func (c *openAIImageOutputCounter) Count() int {
@@ -26,6 +32,25 @@ func (c *openAIImageOutputCounter) Count() int {
 		return c.maxDataCount
 	}
 	return c.count
+}
+
+func (c *openAIImageOutputCounter) Sizes() []string {
+	if c == nil {
+		return nil
+	}
+	sizes := make([]string, 0, len(c.seenOrder)+len(c.dataSizes))
+	for _, key := range c.seenOrder {
+		if size := strings.TrimSpace(c.seenSizes[key]); size != "" {
+			sizes = append(sizes, size)
+		}
+	}
+	if len(sizes) == 0 && len(c.dataSizes) > 0 {
+		sizes = append(sizes, c.dataSizes...)
+	}
+	if len(sizes) == 0 {
+		return nil
+	}
+	return sizes
 }
 
 func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
@@ -49,7 +74,7 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 		c.addImageOutputItem(root.Get("item"))
 	case "response.completed", "response.done":
 		c.addOutputArray(root.Get("response.output"))
-	case "image_generation.completed":
+	case "image_generation.completed", "image_edit.completed":
 		if item := root.Get("item"); item.Exists() {
 			c.addImageOutputItem(item)
 			return
@@ -73,9 +98,28 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 	if !data.IsArray() {
 		return
 	}
-	count := len(data.Array())
-	if count > c.maxDataCount {
-		c.maxDataCount = count
+	items := data.Array()
+	imageCount := 0
+	sizes := make([]string, 0, len(items))
+	for _, item := range items {
+		if !item.IsObject() {
+			continue
+		}
+		hasImageOutput := strings.TrimSpace(item.Get("url").String()) != "" ||
+			strings.TrimSpace(item.Get("b64_json").String()) != ""
+		if !hasImageOutput {
+			continue
+		}
+		imageCount++
+		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
+			sizes = append(sizes, size)
+		}
+	}
+	if imageCount > c.maxDataCount {
+		c.maxDataCount = imageCount
+	}
+	if len(sizes) > 0 {
+		c.dataSizes = sizes
 	}
 }
 
@@ -94,7 +138,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		return
 	}
 	itemType := strings.TrimSpace(item.Get("type").String())
-	if itemType != "" && itemType != "image_generation_call" && itemType != "image_generation.completed" {
+	if itemType != "" && itemType != "image_generation_call" && itemType != "image_generation.completed" && itemType != "image_edit.completed" {
 		return
 	}
 	if strings.Contains(strings.ToLower(item.Raw), "partial_image") {
@@ -107,7 +151,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if result == "" {
 		result = strings.TrimSpace(item.Get("url").String())
 	}
-	if result == "" && itemType != "image_generation.completed" {
+	if result == "" {
 		return
 	}
 	key := strings.TrimSpace(item.Get("id").String())
@@ -120,10 +164,18 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if key == "" {
 		return
 	}
+	size := strings.TrimSpace(item.Get("size").String())
 	if _, exists := c.seen[key]; exists {
+		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
+			c.seenSizes[key] = size
+		}
 		return
 	}
 	c.seen[key] = struct{}{}
+	c.seenOrder = append(c.seenOrder, key)
+	if size != "" {
+		c.seenSizes[key] = size
+	}
 	c.count++
 }
 
@@ -142,8 +194,20 @@ func countOpenAIResponseImageOutputsFromJSONBytes(body []byte) int {
 	return counter.Count()
 }
 
+func collectOpenAIResponseImageOutputSizesFromJSONBytes(body []byte) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	return counter.Sizes()
+}
+
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Count()
+}
+
+func collectOpenAIImageOutputSizesFromSSEBody(body string) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEBody(body)
+	return counter.Sizes()
 }

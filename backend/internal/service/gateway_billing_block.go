@@ -3,8 +3,8 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"unicode/utf16"
 
 	"github.com/tidwall/gjson"
 )
@@ -19,23 +19,35 @@ const fingerprintSalt = "59cf53e54c78"
 // computeClaudeCodeFingerprint 复刻真实 Claude Code CLI 的 cc_version 指纹算法：
 //
 //  1. 取 messages 中第一条 role=user 的纯文本（首块 text）
-//  2. 取该文本的第 4、7、20 字符（不足以 '0' 补齐）
-//  3. SHA256(SALT + chars + cc_version) 取 hex 前 3 字符
+//  2. 按 JavaScript UTF-16 码元取零基下标 4、7、20（不足以 '0' 补齐）
+//  3. 拼接采样码元后按 JavaScript UTF-8 语义编码，再对 SALT + chars + cc_version
+//     计算 SHA256，取 hex 前 3 字符
 //
 // 算法来自 Parrot src/transform/cc_mimicry.py:compute_fingerprint，与官方 CLI 字节对齐。
 // 任何偏差都会导致 cc_version=X.Y.Z.{fp} 在上游侧与真实 CLI 不一致。
 func computeClaudeCodeFingerprint(body []byte, version string) string {
 	firstText := extractFirstUserText(body)
-	indices := []int{4, 7, 20}
-	chars := make([]byte, 0, 3)
+	indices := [...]int{4, 7, 20}
+	// Only the prefix through index 20 is needed, even for very long prompts.
+	textUnits := make([]uint16, 0, 22)
+	for _, r := range firstText {
+		textUnits = utf16.AppendRune(textUnits, r)
+		if len(textUnits) > indices[len(indices)-1] {
+			break
+		}
+	}
+	chars := make([]uint16, 0, len(indices))
 	for _, i := range indices {
-		if i < len(firstText) {
-			chars = append(chars, firstText[i])
+		if i < len(textUnits) {
+			chars = append(chars, textUnits[i])
 		} else {
 			chars = append(chars, '0')
 		}
 	}
-	sum := sha256.Sum256([]byte(fingerprintSalt + string(chars) + version))
+	// Decode after joining: sampled halves can form a new surrogate pair.
+	// Unpaired halves become U+FFFD, matching JS UTF-8 encoding for the hash.
+	sample := string(utf16.Decode(chars))
+	sum := sha256.Sum256([]byte(fingerprintSalt + sample + version))
 	return hex.EncodeToString(sum[:])[:3]
 }
 
@@ -71,28 +83,26 @@ func extractFirstUserText(body []byte) string {
 	return first
 }
 
-// buildBillingAttributionBlockJSON 构造 system 数组的 billing attribution block。
+// buildBillingAttributionText 构造 system 数组的 billing attribution 文本。
 //
-// 形态严格对齐真实 Claude Code CLI：
+// 形态对齐真实 Claude Code CLI：
 //
-//	{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.92.{fp}; cc_entrypoint=cli; cch=00000;"}
+//	x-anthropic-billing-header: cc_version=2.1.161.{fp}; cc_entrypoint=cli;
 //
-// cch=00000 是签名占位符，由 signBillingHeaderCCH 在 buildUpstreamRequest 阶段
-// 替换为基于完整 body 的 xxhash64 5 位十六进制摘要。
+// 注意：新版 Claude Code CLI 已不再发送 cch=... 签名字段（见 issue #3358）。我们
+// 随之去掉了 cch 段——继续注入它反而会让伪装请求偏离真实 CLI 流量。cc_version +
+// cc_entrypoint=cli 仍保留：它们是客户端识别（claude_code_validator）与 Anthropic
+// 第一方判定都依赖的稳定信号。
 //
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的
 // Claude Code prompt block 承担）。
-func buildBillingAttributionBlockJSON(body []byte, cliVersion string) ([]byte, error) {
+func buildBillingAttributionText(body []byte, cliVersion string) (string, error) {
 	if cliVersion == "" {
-		return nil, fmt.Errorf("cliVersion required")
+		return "", fmt.Errorf("cliVersion required")
 	}
 	fp := computeClaudeCodeFingerprint(body, cliVersion)
-	text := fmt.Sprintf(
-		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;",
+	return fmt.Sprintf(
+		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli;",
 		cliVersion, fp,
-	)
-	return json.Marshal(map[string]string{
-		"type": "text",
-		"text": text,
-	})
+	), nil
 }

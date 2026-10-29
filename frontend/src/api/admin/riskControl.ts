@@ -1,12 +1,29 @@
 import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
+export type ModerationEngine = 'openai' | 'typesafe'
+export interface ModerationEngineMeta {
+  engine: ModerationEngine
+  model: string
+  rules_version: string
+  skipped_images: number
+}
+export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
+export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
+
+export interface ContentModerationModelFilter {
+  type: ContentModerationModelFilterType
+  models: string[]
+}
 
 export interface ContentModerationConfig {
+  engine?: ModerationEngine
+  engine_configs?: Record<ModerationEngine, ContentModerationConfig>
   enabled: boolean
   mode: ModerationMode
   base_url: string
   model: string
+  proxy_id: number | null
   api_key_configured: boolean
   api_key_masked: string
   api_key_count: number
@@ -17,6 +34,7 @@ export interface ContentModerationConfig {
   all_groups: boolean
   group_ids: number[]
   record_non_hits: boolean
+  thresholds: Record<string, number>
   worker_count: number
   queue_size: number
   block_status: number
@@ -29,6 +47,10 @@ export interface ContentModerationConfig {
   hit_retention_days: number
   non_hit_retention_days: number
   pre_hash_check_enabled: boolean
+  blocked_keywords: string[]
+  keyword_blocking_mode: KeywordBlockingMode
+  model_filter: ContentModerationModelFilter
+  cyber_policy_exclude_from_ban_count: boolean
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -50,10 +72,14 @@ export interface ContentModerationAPIKeyStatus {
 }
 
 export interface TestContentModerationAPIKeysPayload {
+  engine?: ModerationEngine
+  thresholds?: Record<string, number>
   api_keys?: string[]
   base_url?: string
   model?: string
   timeout_ms?: number
+  // null/undefined 沿用已保存配置的代理；0 强制直连；>0 指定代理
+  proxy_id?: number
   prompt?: string
   images?: string[]
 }
@@ -65,6 +91,7 @@ export interface TestContentModerationAPIKeysResponse {
 }
 
 export interface ContentModerationTestAuditResult {
+  engine_meta?: ModerationEngineMeta
   flagged: boolean
   highest_category: string
   highest_score: number
@@ -74,10 +101,14 @@ export interface ContentModerationTestAuditResult {
 }
 
 export interface UpdateContentModerationConfig {
+  engine?: ModerationEngine
+  engine_configs?: Partial<Record<ModerationEngine, UpdateModerationEngineConfig>>
   enabled?: boolean
   mode?: ModerationMode
   base_url?: string
   model?: string
+  // undefined 不修改；0 清除（直连）；>0 指定代理
+  proxy_id?: number
   api_key?: string
   api_keys?: string[]
   api_keys_mode?: 'append' | 'replace'
@@ -88,6 +119,7 @@ export interface UpdateContentModerationConfig {
   all_groups?: boolean
   group_ids?: number[]
   record_non_hits?: boolean
+  thresholds?: Record<string, number>
   worker_count?: number
   queue_size?: number
   block_status?: number
@@ -100,9 +132,14 @@ export interface UpdateContentModerationConfig {
   hit_retention_days?: number
   non_hit_retention_days?: number
   pre_hash_check_enabled?: boolean
+  blocked_keywords?: string[]
+  keyword_blocking_mode?: KeywordBlockingMode
+  model_filter?: ContentModerationModelFilter
+  cyber_policy_exclude_from_ban_count?: boolean
 }
 
 export interface ContentModerationRuntimeStatus {
+  engine?: ModerationEngine
   enabled: boolean
   risk_control_enabled: boolean
   mode: ModerationMode
@@ -117,6 +154,16 @@ export interface ContentModerationRuntimeStatus {
   dropped: number
   processed: number
   errors: number
+  pre_block_active: number
+  pre_block_checked: number
+  pre_block_allowed: number
+  pre_block_blocked: number
+  pre_block_errors: number
+  pre_block_avg_latency_ms: number
+  pre_block_api_key_active: number
+  pre_block_api_key_available_count: number
+  pre_block_api_key_total_calls: number
+  pre_block_api_key_loads: ContentModerationAPIKeyLoad[]
   api_key_statuses: ContentModerationAPIKeyStatus[]
   flagged_hash_count: number
   last_cleanup_at?: string
@@ -124,7 +171,22 @@ export interface ContentModerationRuntimeStatus {
   last_cleanup_deleted_non_hit: number
 }
 
+export interface ContentModerationAPIKeyLoad {
+  index: number
+  key_hash: string
+  masked: string
+  status: ContentModerationAPIKeyStatusValue
+  active: number
+  total: number
+  success: number
+  errors: number
+  avg_latency_ms: number
+  last_latency_ms: number
+  last_http_status: number
+}
+
 export interface ContentModerationLog {
+  engine_meta?: ModerationEngineMeta | null
   id: number
   request_id: string
   user_id: number | null
@@ -141,6 +203,7 @@ export interface ContentModerationLog {
   flagged: boolean
   highest_category: string
   highest_score: number
+  matched_keyword: string
   category_scores: Record<string, number>
   threshold_snapshot: Record<string, number>
   input_excerpt: string
@@ -153,6 +216,10 @@ export interface ContentModerationLog {
   queue_delay_ms: number | null
   created_at: string
 }
+
+export type UpdateModerationEngineConfig = Pick<UpdateContentModerationConfig,
+  'base_url' | 'model' | 'proxy_id' | 'api_keys' | 'api_keys_mode' | 'delete_api_key_hashes' |
+  'clear_api_key' | 'timeout_ms' | 'retry_count' | 'thresholds'>
 
 export interface ListContentModerationLogsParams {
   page?: number

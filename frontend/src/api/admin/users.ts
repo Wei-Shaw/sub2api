@@ -4,7 +4,8 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import { listPlatformIds } from '@/constants/platformCatalog'
+import type { AccountPlatform, AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -44,6 +45,17 @@ export interface AdminBoundAuthIdentity {
   channel?: AdminBoundAuthIdentityChannel | null
 }
 
+export interface BatchUpdateUserLimitsRequest {
+  user_ids: number[]
+  all?: boolean
+  concurrency?: number
+  rpm_limit?: number
+}
+
+export interface BatchUpdateUserLimitsResponse {
+  affected: number
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -60,6 +72,7 @@ export async function list(
     role?: 'admin' | 'user'
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
+    api_key_group_id?: number   // filter users by the group their API keys are bound to
     attributes?: Record<number, string>  // attributeId -> value
     include_subscriptions?: boolean
     sort_by?: string
@@ -77,6 +90,7 @@ export async function list(
     role: filters?.role,
     search: filters?.search,
     group_name: filters?.group_name,
+    api_key_group_id: filters?.api_key_group_id,
     include_subscriptions: filters?.include_subscriptions,
     sort_by: filters?.sort_by,
     sort_order: filters?.sort_order
@@ -100,10 +114,12 @@ export async function list(
 /**
  * Get user by ID
  * @param id - User ID
+ * @param includeDeleted - Whether to include soft-deleted users
  * @returns User details
  */
-export async function getById(id: number): Promise<AdminUser> {
-  const { data } = await apiClient.get<AdminUser>(`/admin/users/${id}`)
+export async function getById(id: number, includeDeleted = false): Promise<AdminUser> {
+  const url = includeDeleted ? `/admin/users/${id}?include_deleted=true` : `/admin/users/${id}`
+  const { data } = await apiClient.get<AdminUser>(url)
   return data
 }
 
@@ -115,8 +131,12 @@ export async function getById(id: number): Promise<AdminUser> {
 export async function create(userData: {
   email: string
   password: string
+  username?: string
+  notes?: string
+  role?: 'admin' | 'user'
   balance?: number
   concurrency?: number
+  rpm_limit?: number
   allowed_groups?: number[] | null
 }): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
@@ -174,6 +194,17 @@ export async function updateBalance(
  */
 export async function updateConcurrency(id: number, concurrency: number): Promise<AdminUser> {
   return update(id, { concurrency })
+}
+
+/** Overwrite concurrency and/or RPM limits for multiple users in one request. */
+export async function batchUpdateLimits(
+  request: BatchUpdateUserLimitsRequest
+): Promise<BatchUpdateUserLimitsResponse> {
+  const { data } = await apiClient.post<BatchUpdateUserLimitsResponse>(
+    '/admin/users/batch-limits',
+    request
+  )
+  return data
 }
 
 /**
@@ -297,6 +328,82 @@ export async function bindUserAuthIdentity(
   return data
 }
 
+/**
+ * Platform quota types
+ */
+// 与后端 AllowedQuotaPlatforms 同源：平台清单中的全部具体平台。
+export function platformQuotaPlatforms(): PlatformQuotaPlatform[] {
+  return listPlatformIds()
+}
+export type PlatformQuotaPlatform = AccountPlatform
+export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
+
+export interface PlatformQuotaItem {
+  platform: PlatformQuotaPlatform
+  daily_limit_usd: number | null
+  weekly_limit_usd: number | null
+  monthly_limit_usd: number | null
+  daily_usage_usd: number
+  weekly_usage_usd: number
+  monthly_usage_usd: number
+  daily_window_start?: string | null
+  weekly_window_start?: string | null
+  monthly_window_start?: string | null
+  daily_window_resets_at?: string | null
+  weekly_window_resets_at?: string | null
+  monthly_window_resets_at?: string | null
+}
+
+export interface PlatformQuotaUpdateItem {
+  platform: PlatformQuotaPlatform
+  daily_limit_usd: number | null
+  weekly_limit_usd: number | null
+  monthly_limit_usd: number | null
+}
+
+export interface PlatformQuotasResponse {
+  platform_quotas: PlatformQuotaItem[]
+}
+
+/**
+ * Get user's platform quotas
+ */
+export async function getPlatformQuotas(id: number): Promise<PlatformQuotasResponse> {
+  const { data } = await apiClient.get<PlatformQuotasResponse>(
+    `/admin/users/${id}/platform-quotas`
+  )
+  return data
+}
+
+/**
+ * Replace user's platform quotas (全量替换)
+ */
+export async function updatePlatformQuotas(
+  id: number,
+  quotas: PlatformQuotaUpdateItem[]
+): Promise<PlatformQuotasResponse> {
+  const { data } = await apiClient.put<PlatformQuotasResponse>(
+    `/admin/users/${id}/platform-quotas`,
+    { quotas }
+  )
+  return data
+}
+
+/**
+ * Reset a single (platform, window) usage immediately
+ */
+export async function resetPlatformQuotaWindow(
+  id: number,
+  platform: PlatformQuotaPlatform,
+  window: PlatformQuotaWindow
+): Promise<PlatformQuotasResponse> {
+  const { data } = await apiClient.post<PlatformQuotasResponse>(
+    `/admin/users/${id}/platform-quotas/reset`,
+    { platform, window }
+  )
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -305,12 +412,16 @@ export const usersAPI = {
   delete: deleteUser,
   updateBalance,
   updateConcurrency,
+  batchUpdateLimits,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
   replaceGroup,
-  bindUserAuthIdentity
+  bindUserAuthIdentity,
+  getPlatformQuotas,
+  updatePlatformQuotas,
+  resetPlatformQuotaWindow,
 }
 
 export default usersAPI

@@ -59,6 +59,18 @@ describe('getVisibleMethods', () => {
     expect(visible.alipay.single_min).toBe(2)
     expect(visible.wxpay.fee_rate).toBe(1.2)
   })
+
+  it('keeps custom EasyPay methods as visible methods', () => {
+    const visible = getVisibleMethods({
+      ldc: methodLimit({ single_min: 3 }),
+      usdt_trc20: methodLimit({ fee_rate: 1 }),
+    })
+
+    expect(visible).toEqual({
+      ldc: methodLimit({ single_min: 3 }),
+      usdt_trc20: methodLimit({ fee_rate: 1 }),
+    })
+  })
 })
 
 describe('decidePaymentLaunch', () => {
@@ -220,6 +232,64 @@ describe('decidePaymentLaunch', () => {
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
   })
+
+  it('forces qr_waiting for mobile alipay when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  })
+
+  it('launches the Alipay app for a mobile precreate order', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      qr_code: 'https://qr.alipay.com/dynamic-order-101',
+      alipay_mobile_precreate_deep_link: true,
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+    })
+
+    expect(decision.kind).toBe('alipay_deep_link')
+    expect(decision.paymentState.qrCode).toBe('https://qr.alipay.com/dynamic-order-101')
+    expect(decision.paymentState.alipayMobilePrecreateDeepLink).toBe(true)
+  })
+
+  it('keeps the desktop Alipay QR flow when a precreate marker is present', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      qr_code: 'https://qr.alipay.com/dynamic-order-102',
+      alipay_mobile_precreate_deep_link: true,
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+  })
+
+  it('does not affect non-alipay methods when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    }), {
+      visibleMethod: 'wxpay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    })
+
+    // wxpay mobile with pay_url still redirects
+    expect(decision.kind).toBe('redirect_waiting')
+  })
 })
 
 describe('buildCreateOrderPayload', () => {
@@ -258,6 +328,49 @@ describe('buildCreateOrderPayload', () => {
       return_url: 'https://app.example.com/payment/result',
       is_mobile: false,
       payment_source: 'wechat_in_app_resume',
+    })
+  })
+
+  it('passes is_mobile: false when forceQRCode is enabled for alipay', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'alipay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    })).toMatchObject({
+      is_mobile: false,
+    })
+  })
+
+  it('keeps is_mobile true when mobile precreate takes priority over forceQRCode', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'alipay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+      mobilePrecreateDeepLink: true,
+    })).toMatchObject({
+      is_mobile: true,
+    })
+  })
+
+  it('still passes is_mobile: true when forceQRCode is enabled for non-alipay methods', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'wxpay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    })).toMatchObject({
+      is_mobile: true,
     })
   })
 })

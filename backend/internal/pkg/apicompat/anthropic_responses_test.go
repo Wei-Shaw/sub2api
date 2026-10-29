@@ -146,7 +146,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 }
 
-func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
+func TestAnthropicToResponses_ThinkingWithoutSignatureIgnored(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -162,7 +162,7 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + assistant(text only, thinking ignored) + user = 3
+	// user + assistant(text only, thinking without signature ignored) + user = 3
 	require.Len(t, items, 3)
 	assert.Equal(t, "assistant", items[1].Role)
 	// Assistant content should only have text, not thinking.
@@ -171,6 +171,30 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "Hi!", parts[0].Text)
+}
+
+func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "grok-4.5",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"plan","signature":"enc-rs-1"},{"type":"text","text":"Hi!"},{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + reasoning + assistant text + function_call + function_call_output
+	require.GreaterOrEqual(t, len(items), 4)
+	assert.Equal(t, "reasoning", items[1].Type)
+	assert.Equal(t, "enc-rs-1", items[1].EncryptedContent)
+	assert.Equal(t, "assistant", items[2].Role)
+	assert.Equal(t, "function_call", items[3].Type)
 }
 
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
@@ -208,7 +232,7 @@ func TestResponsesToAnthropic_TextOnly(t *testing.T) {
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	assert.Equal(t, "resp_123", anth.ID)
 	assert.Equal(t, "claude-opus-4-6", anth.Model)
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "Hello there!", anth.Content[0].Text)
@@ -287,7 +311,7 @@ func TestResponsesToAnthropic_ToolUse(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "tool_use", anth.Content[1].Type)
@@ -318,7 +342,7 @@ func TestResponsesToAnthropic_ToolUseStopReasonDoesNotDependOnLastBlock(t *testi
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "tool_use", anth.Content[0].Type)
 	assert.Equal(t, "text", anth.Content[1].Type)
@@ -372,7 +396,8 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 		Status: "completed",
 		Output: []ResponsesOutput{
 			{
-				Type: "reasoning",
+				Type:             "reasoning",
+				EncryptedContent: "enc-rs-roundtrip",
 				Summary: []ResponsesSummary{
 					{Type: "summary_text", Text: "Thinking about the answer..."},
 				},
@@ -390,8 +415,55 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "thinking", anth.Content[0].Type)
 	assert.Equal(t, "Thinking about the answer...", anth.Content[0].Thinking)
+	assert.Equal(t, "enc-rs-roundtrip", anth.Content[0].Signature)
 	assert.Equal(t, "text", anth.Content[1].Type)
 	assert.Equal(t, "42", anth.Content[1].Text)
+}
+
+func TestResponsesToAnthropic_StreamEmitsThinkingSignature(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	var all []AnthropicStreamEvent
+
+	appendAll := func(events []AnthropicStreamEvent) {
+		all = append(all, events...)
+	}
+
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "reasoning", ID: "rs_1"},
+	}, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.delta",
+		OutputIndex:  0,
+		Delta:        "thinking...",
+		SummaryIndex: 0,
+	}, state))
+	// summary.done must not close the thinking block before encrypted_content arrives
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.done",
+		OutputIndex:  0,
+		SummaryIndex: 0,
+	}, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			ID:               "rs_1",
+			EncryptedContent: "enc-stream-1",
+			Status:           "completed",
+		},
+	}, state))
+
+	var sawSignature bool
+	for _, ev := range all {
+		if ev.Type == "content_block_delta" && ev.Delta != nil && ev.Delta.Type == "signature_delta" {
+			assert.Equal(t, "enc-stream-1", ev.Delta.Signature)
+			sawSignature = true
+		}
+	}
+	require.True(t, sawSignature, "expected signature_delta with encrypted_content")
 }
 
 func TestResponsesToAnthropic_Incomplete(t *testing.T) {
@@ -411,7 +483,7 @@ func TestResponsesToAnthropic_Incomplete(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "max_tokens", anth.StopReason)
+	assert.Equal(t, "max_tokens", AnthropicStopReasonString(anth.StopReason))
 }
 
 func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
@@ -515,6 +587,33 @@ func TestResponsesEventToAnthropicEvents_ResponseDone(t *testing.T) {
 	assert.Equal(t, 4, events[0].Usage.OutputTokens)
 	assert.Equal(t, "message_stop", events[1].Type)
 	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
+}
+
+func TestResponsesEventToAnthropicEvents_TopLevelTerminalUsage(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "gpt-4o"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  20,
+			OutputTokens: 6,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens: 5,
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	require.NotNil(t, events[0].Usage)
+	assert.Equal(t, 15, events[0].Usage.InputTokens)
+	assert.Equal(t, 5, events[0].Usage.CacheReadInputTokens)
+	assert.Equal(t, 6, events[0].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[1].Type)
 }
 
 func TestResponsesEventToAnthropicEvents_ResponseDoneIncomplete(t *testing.T) {
@@ -691,7 +790,7 @@ func TestStreamingToolCallDoneWithoutDeltaEmitsArguments(t *testing.T) {
 	assert.Equal(t, "content_block_stop", events[1].Type)
 }
 
-func TestStreamingReadToolDropsEmptyPages(t *testing.T) {
+func TestStreamingReadToolStreamsDeltas(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
 	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
@@ -712,18 +811,17 @@ func TestStreamingReadToolDropsEmptyPages(t *testing.T) {
 		OutputIndex: 0,
 		Delta:       `{"file_path":"/tmp/demo.py","limit":2000,"offset":0,"pages":""}`,
 	}, state)
-	assert.Len(t, events, 0)
+	require.Len(t, events, 1, "Read tool deltas must be streamed like any other tool")
+	assert.Equal(t, "content_block_delta", events[0].Type)
+	assert.Equal(t, "input_json_delta", events[0].Delta.Type)
 
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.function_call_arguments.done",
 		OutputIndex: 0,
 		Arguments:   `{"file_path":"/tmp/demo.py","limit":2000,"offset":0,"pages":""}`,
 	}, state)
-	require.Len(t, events, 2)
-	assert.Equal(t, "content_block_delta", events[0].Type)
-	assert.Equal(t, "input_json_delta", events[0].Delta.Type)
-	assert.JSONEq(t, `{"file_path":"/tmp/demo.py","limit":2000,"offset":0}`, events[0].Delta.PartialJSON)
-	assert.Equal(t, "content_block_stop", events[1].Type)
+	require.Len(t, events, 1, "after streaming deltas, .done should just close the block")
+	assert.Equal(t, "content_block_stop", events[0].Type)
 }
 
 func TestStreamingReasoning(t *testing.T) {
@@ -744,6 +842,10 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "content_block_start", events[0].Type)
 	assert.Equal(t, "thinking", events[0].ContentBlock.Type)
 
+	sse, err := ResponsesAnthropicEventToSSE(events[0])
+	require.NoError(t, err)
+	assert.Contains(t, sse, `"content_block":{"thinking":"","signature":"","type":"thinking"}`)
+
 	// reasoning text delta
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.reasoning_summary_text.delta",
@@ -755,12 +857,26 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "thinking_delta", events[0].Delta.Type)
 	assert.Equal(t, "Let me think...", events[0].Delta.Thinking)
 
-	// reasoning done
+	// summary.done keeps thinking open until output_item.done (for signature)
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type: "response.reasoning_summary_text.done",
 	}, state)
-	require.Len(t, events, 1)
-	assert.Equal(t, "content_block_stop", events[0].Type)
+	require.Len(t, events, 0)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			EncryptedContent: "enc-rs-stream",
+			Status:           "completed",
+		},
+	}, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "content_block_delta", events[0].Type)
+	assert.Equal(t, "signature_delta", events[0].Delta.Type)
+	assert.Equal(t, "enc-rs-stream", events[0].Delta.Signature)
+	assert.Equal(t, "content_block_stop", events[1].Type)
 }
 
 func TestStreamingIncomplete(t *testing.T) {
@@ -965,7 +1081,7 @@ func TestResponsesToAnthropic_Failed(t *testing.T) {
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	// Failed status defaults to "end_turn" stop reason
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	// Should have at least an empty text block
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
@@ -1020,9 +1136,24 @@ func TestAnthropicToResponses_ThinkingDisabled(t *testing.T) {
 
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
-	// Default effort applies (medium) even when thinking is disabled.
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "medium", resp.Reasoning.Effort)
+	assert.Equal(t, "none", resp.Reasoning.Effort)
+	assert.Empty(t, resp.Reasoning.Summary)
+}
+
+func TestAnthropicToResponses_ThinkingDisabledOverridesOutputEffort(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:        "gpt-5.6-sol",
+		MaxTokens:    1024,
+		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Thinking:     &AnthropicThinking{Type: "disabled"},
+		OutputConfig: &AnthropicOutputConfig{Effort: "max"},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "none", resp.Reasoning.Effort)
 }
 
 func TestAnthropicToResponses_NoThinking(t *testing.T) {
@@ -1519,4 +1650,411 @@ func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
 	assert.JSONEq(t, `"object"`, string(params["type"]))
 	assert.JSONEq(t, `{}`, string(params["properties"]))
+}
+
+// ---------------------------------------------------------------------------
+// isReasoningModel / temperature-stripping tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_TemperatureStrippedForReasoningModel(t *testing.T) {
+	temp := 0.7
+	req := &AnthropicRequest{
+		Model:       "gpt-5.2",
+		MaxTokens:   1024,
+		Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Temperature: &temp,
+		TopP:        &temp,
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Nil(t, resp.Temperature, "reasoning model: temperature must be stripped")
+	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
+
+	// Verify the fields are absent from the serialised JSON.
+	b, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"temperature"`)
+	assert.NotContains(t, string(b), `"top_p"`)
+}
+
+func TestAnthropicToResponses_TemperatureStrippedForAllGpt5Variants(t *testing.T) {
+	temp := 1.0
+	models := []string{"gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.5"}
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			req := &AnthropicRequest{
+				Model:       model,
+				MaxTokens:   1024,
+				Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				Temperature: &temp,
+				TopP:        &temp,
+			}
+			resp, err := AnthropicToResponses(req)
+			require.NoError(t, err)
+			assert.Nil(t, resp.Temperature, "model %s: temperature must be stripped", model)
+			assert.Nil(t, resp.TopP, "model %s: top_p must be stripped", model)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AnthropicToResponsesResponse: Anthropic input_tokens excludes cached tokens
+// while OpenAI Responses input_tokens is the total including cached tokens.
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponsesResponse_CacheTokensUseOpenAIInputSemantics(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_cache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: AnthropicStopReasonPtr("end_turn"),
+		Usage: AnthropicUsage{
+			InputTokens:              3318,
+			OutputTokens:             123,
+			CacheReadInputTokens:     50688,
+			CacheCreationInputTokens: 200,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	// 3318 (uncached) + 50688 (read) + 200 (creation) = 54206
+	assert.Equal(t, 54206, out.Usage.InputTokens)
+	assert.Equal(t, 123, out.Usage.OutputTokens)
+	assert.Equal(t, 54329, out.Usage.TotalTokens)
+	require.NotNil(t, out.Usage.InputTokensDetails)
+	assert.Equal(t, 50688, out.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicToResponsesResponse_NoCacheTokens(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_nocache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: AnthropicStopReasonPtr("end_turn"),
+		Usage: AnthropicUsage{
+			InputTokens:  100,
+			OutputTokens: 50,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	assert.Equal(t, 100, out.Usage.InputTokens)
+	assert.Equal(t, 50, out.Usage.OutputTokens)
+	assert.Equal(t, 150, out.Usage.TotalTokens)
+	assert.Nil(t, out.Usage.InputTokensDetails)
+}
+
+func TestAnthropicEventToResponses_CacheTokensRoundTripFromMessageStart(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	// message_start carries cache fields on the initial Usage object.
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_stream_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{
+				InputTokens:              12,
+				CacheReadInputTokens:     9,
+				CacheCreationInputTokens: 3,
+			},
+		},
+	}, state)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens: 7,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	// The terminal response.completed event must include OpenAI-semantic usage.
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed, "response.completed event must be emitted")
+	require.NotNil(t, completed.Response)
+	require.NotNil(t, completed.Response.Usage)
+	// 12 (uncached) + 9 (read) + 3 (creation) = 24
+	assert.Equal(t, 24, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 7, completed.Response.Usage.OutputTokens)
+	assert.Equal(t, 31, completed.Response.Usage.TotalTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 9, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_delta_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{InputTokens: 20},
+		},
+	}, state)
+
+	// Some upstreams only emit cache fields on the final message_delta.
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens:             8,
+			CacheReadInputTokens:     11,
+			CacheCreationInputTokens: 4,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Response.Usage)
+	// 20 (uncached) + 11 (read) + 4 (creation) = 35
+	assert.Equal(t, 35, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestOpus55ResponsesAdaptiveThinkingAndToolChoice(t *testing.T) {
+	for _, effort := range []string{"", "low", "medium", "high", "xhigh", "max"} {
+		req := &ResponsesRequest{Model: "claude-opus-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: effort}}
+		out, err := ResponsesToAnthropicRequest(req)
+		require.NoError(t, err)
+		require.Equal(t, "adaptive", out.Thinking.Type)
+		require.Zero(t, out.Thinking.BudgetTokens)
+		if effort == "" {
+			effort = "medium"
+		}
+		require.Equal(t, effort, out.OutputConfig.Effort)
+	}
+	for _, choice := range []string{`"required"`, `{"type":"function","name":"lookup"}`} {
+		_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5-5", Input: json.RawMessage(`"hello"`), ToolChoice: json.RawMessage(choice)})
+		require.ErrorContains(t, err, "forced tool_choice")
+	}
+	_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "none"}})
+	require.ErrorContains(t, err, "reasoning effort")
+	old, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "xhigh"}})
+	require.NoError(t, err)
+	require.Equal(t, "max", old.OutputConfig.Effort)
+	require.Equal(t, "enabled", old.Thinking.Type)
+}
+
+func TestOpus55SignedThinkingResponsesRoundTrip(t *testing.T) {
+	block := AnthropicContentBlock{Type: "thinking", Thinking: "", Signature: "upstream-signed-block"}
+	response := AnthropicToResponsesResponse(&AnthropicResponse{Model: "claude-opus-5-5", Content: []AnthropicContentBlock{block, {Type: "tool_use", ID: "toolu_1", Name: "lookup", Input: json.RawMessage(`{}`)}}})
+	require.Len(t, response.Output, 2)
+	require.NotEmpty(t, response.Output[0].EncryptedContent)
+	raw, err := json.Marshal(response.Output)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	items = append(items, ResponsesInputItem{Type: "function_call_output", CallID: response.Output[1].CallID, Output: "ok"})
+	raw, err = json.Marshal(items)
+	require.NoError(t, err)
+	converted, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5-5", Input: raw})
+	require.NoError(t, err)
+	require.Len(t, converted.Messages, 2)
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(converted.Messages[0].Content, &blocks))
+	require.Equal(t, block, blocks[0])
+	require.Equal(t, "tool_use", blocks[1].Type)
+	// Arbitrary OpenAI ciphertext must never be treated as an Anthropic signature.
+	_, _, err = convertResponsesInputToAnthropic("", json.RawMessage(`[{"type":"reasoning","encrypted_content":"anthropic-thinking-v1:!"}]`), true)
+	require.Error(t, err)
+}
+
+func TestSonnet55ResponsesThinkingAndSampling(t *testing.T) {
+	for _, effort := range []string{"", "low", "medium", "high", "xhigh", "max", "none"} {
+		req := &ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: effort}}
+		out, err := ResponsesToAnthropicRequest(req)
+		require.NoError(t, err, effort)
+		require.Zero(t, out.Thinking.BudgetTokens)
+		if effort == "none" {
+			require.Equal(t, "between_tools", out.Thinking.Type)
+			require.Equal(t, "low", out.OutputConfig.Effort)
+		} else {
+			require.Equal(t, "adaptive", out.Thinking.Type)
+			if effort == "" {
+				effort = "high"
+			}
+			require.Equal(t, effort, out.OutputConfig.Effort)
+		}
+	}
+	for _, choice := range []string{`"required"`, `{"type":"function","name":"lookup"}`} {
+		_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), ToolChoice: json.RawMessage(choice)})
+		require.ErrorContains(t, err, "forced tool_choice")
+	}
+	temperature := 0.7
+	_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), Temperature: &temperature})
+	require.ErrorContains(t, err, "temperature")
+	topP := 0.5
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), TopP: &topP})
+	require.ErrorContains(t, err, "top_p")
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "minimal"}})
+	require.ErrorContains(t, err, "reasoning effort")
+
+	temperature, topP = 1, 0.99
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: json.RawMessage(`"hello"`), Temperature: &temperature, TopP: &topP})
+	require.NoError(t, err)
+}
+
+func TestSonnet55SignedThinkingResponsesRoundTrip(t *testing.T) {
+	block := AnthropicContentBlock{Type: "thinking", Thinking: "", Signature: "signed-sonnet-block"}
+	response := AnthropicToResponsesResponse(&AnthropicResponse{Model: "claude-sonnet-5-5", Content: []AnthropicContentBlock{block, {Type: "text", Text: "progress"}, {Type: "tool_use", ID: "toolu_1", Name: "lookup", Input: json.RawMessage(`{}`)}}})
+	require.Len(t, response.Output, 3)
+	require.NotEmpty(t, response.Output[0].EncryptedContent)
+	require.Equal(t, "message", response.Output[1].Type)
+	raw, err := json.Marshal(response.Output)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	items = append(items, ResponsesInputItem{Type: "function_call_output", CallID: response.Output[2].CallID, Output: "ok"})
+	raw, err = json.Marshal(items)
+	require.NoError(t, err)
+	converted, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-sonnet-5-5", Input: raw})
+	require.NoError(t, err)
+	require.Len(t, converted.Messages, 2)
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(converted.Messages[0].Content, &blocks))
+	require.Equal(t, block, blocks[0])
+	require.Equal(t, "text", blocks[1].Type)
+	require.Equal(t, "tool_use", blocks[2].Type)
+}
+
+func TestHaiku55ResponsesThinkingAndSampling(t *testing.T) {
+	for _, effort := range []string{"", "low", "medium", "high", "xhigh", "max", "none"} {
+		req := &ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: effort}}
+		out, err := ResponsesToAnthropicRequest(req)
+		require.NoError(t, err, effort)
+		require.Zero(t, out.Thinking.BudgetTokens)
+		if effort == "none" {
+			require.Equal(t, "disabled", out.Thinking.Type)
+			require.Equal(t, "low", out.OutputConfig.Effort)
+		} else {
+			require.Equal(t, "adaptive", out.Thinking.Type)
+			if effort == "" {
+				effort = "medium"
+			}
+			require.Equal(t, effort, out.OutputConfig.Effort)
+		}
+	}
+	// Haiku 5.5 accepts forced tool_choice, unlike opus/sonnet 5.5.
+	for _, choice := range []string{`"required"`, `{"type":"function","name":"lookup"}`} {
+		out, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), ToolChoice: json.RawMessage(choice)})
+		require.NoError(t, err, choice)
+		require.NotEmpty(t, out.ToolChoice)
+	}
+	temperature := 0.7
+	_, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), Temperature: &temperature})
+	require.ErrorContains(t, err, "temperature")
+	for _, topP := range []float64{0.5, 0.995, 1} {
+		_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), TopP: &topP})
+		require.ErrorContains(t, err, "top_p", "top_p=%v", topP)
+	}
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "minimal"}})
+	require.ErrorContains(t, err, "reasoning effort")
+
+	temperature = 1
+	topP := 0.99
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), Temperature: &temperature})
+	require.NoError(t, err)
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), TopP: &topP})
+	require.NoError(t, err)
+	_, err = ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: json.RawMessage(`"hello"`), Temperature: &temperature, TopP: &topP})
+	require.ErrorContains(t, err, "together")
+}
+
+func TestHaiku55SignedThinkingResponsesRoundTrip(t *testing.T) {
+	block := AnthropicContentBlock{Type: "thinking", Thinking: "", Signature: "signed-haiku-block"}
+	response := AnthropicToResponsesResponse(&AnthropicResponse{Model: "claude-haiku-5-5", Content: []AnthropicContentBlock{block, {Type: "text", Text: "progress"}, {Type: "tool_use", ID: "toolu_1", Name: "lookup", Input: json.RawMessage(`{}`)}}})
+	require.Len(t, response.Output, 3)
+	require.NotEmpty(t, response.Output[0].EncryptedContent)
+	require.Equal(t, "message", response.Output[1].Type)
+	raw, err := json.Marshal(response.Output)
+	require.NoError(t, err)
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	items = append(items, ResponsesInputItem{Type: "function_call_output", CallID: response.Output[2].CallID, Output: "ok"})
+	raw, err = json.Marshal(items)
+	require.NoError(t, err)
+	converted, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-haiku-5-5", Input: raw})
+	require.NoError(t, err)
+	require.Len(t, converted.Messages, 2)
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(converted.Messages[0].Content, &blocks))
+	require.Equal(t, block, blocks[0])
+	require.Equal(t, "text", blocks[1].Type)
+	require.Equal(t, "tool_use", blocks[2].Type)
+}
+
+func TestGPT6ChatSamplingAndCacheFields(t *testing.T) {
+	temperature := 0.7
+	for _, model := range []string{"gpt-6-sol", "gpt-6-luna"} {
+		for _, effort := range []string{"", "none", "medium", "max"} {
+			out, err := ChatCompletionsToResponses(&ChatCompletionsRequest{Model: model, ReasoningEffort: effort, Temperature: &temperature, TopP: &temperature, PromptCacheOptions: json.RawMessage(`{"mode":"explicit","ttl":"30m"}`), Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"hello","prompt_cache_breakpoint":{"mode":"explicit"}}]`)}}})
+			require.NoError(t, err)
+			if effort == "none" {
+				require.NotNil(t, out.Temperature)
+			} else {
+				require.Nil(t, out.Temperature)
+				require.Nil(t, out.TopP)
+			}
+			require.JSONEq(t, `{"mode":"explicit","ttl":"30m"}`, string(out.PromptCacheOptions))
+			require.Contains(t, string(out.Input), "prompt_cache_breakpoint")
+		}
+	}
+}
+
+func TestMessageStartSSE_StopReasonIsJSONNull(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "grok-4.5"
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.created",
+		Response: &ResponsesResponse{
+			ID:    "resp_test",
+			Model: "grok-4.5",
+		},
+	}, state)
+	require.Len(t, events, 1)
+	require.Equal(t, "message_start", events[0].Type)
+	require.NotNil(t, events[0].Message)
+	require.Nil(t, events[0].Message.StopReason, "message_start must use null stop_reason, not empty string")
+
+	sse, err := ResponsesAnthropicEventToSSE(events[0])
+	require.NoError(t, err)
+	// Official Anthropic wire: "stop_reason":null
+	require.Contains(t, sse, `"stop_reason":null`)
+	require.NotContains(t, sse, `"stop_reason":""`)
+}
+
+func TestGPT61SolCacheOptionsAndBreakpointsSurviveChatBridge(t *testing.T) {
+	sampling := 0.7
+	for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
+		out, err := ChatCompletionsToResponses(&ChatCompletionsRequest{Model: "gpt-6.1-sol", ReasoningEffort: effort, Temperature: &sampling, TopP: &sampling, PromptCacheOptions: json.RawMessage(`{"ttl":"30m","mode":"explicit"}`), Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"prefix","prompt_cache_breakpoint":{"mode":"explicit"}}]`)}}})
+		require.NoError(t, err)
+		require.Nil(t, out.Temperature)
+		require.Nil(t, out.TopP)
+		require.Equal(t, effort, out.Reasoning.Effort)
+		require.JSONEq(t, `{"ttl":"30m","mode":"explicit"}`, string(out.PromptCacheOptions))
+		require.Contains(t, string(out.Input), "prompt_cache_breakpoint")
+	}
 }

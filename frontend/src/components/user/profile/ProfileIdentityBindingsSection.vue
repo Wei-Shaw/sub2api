@@ -99,6 +99,7 @@
                   class="input"
                   :placeholder="t('profile.authBindings.emailPlaceholder')"
                   :disabled="isSendingEmailCode || isBindingEmail"
+                  @input="isEmailBindingFormDirty = true"
                 />
                 <button
                   data-testid="profile-binding-email-send-code"
@@ -122,6 +123,7 @@
                   class="input"
                   :placeholder="t('profile.authBindings.codePlaceholder')"
                   :disabled="isBindingEmail"
+                  @input="isEmailBindingFormDirty = true"
                 />
                 <input
                   v-model="emailBindingForm.password"
@@ -130,6 +132,7 @@
                   class="input"
                   :placeholder="emailPasswordPlaceholder"
                   :disabled="isBindingEmail"
+                  @input="isEmailBindingFormDirty = true"
                 />
                 <button
                   data-testid="profile-binding-email-submit"
@@ -217,6 +220,7 @@ const props = withDefaults(
   defineProps<{
     user: User | null
     linuxdoEnabled?: boolean
+    dingtalkEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -227,6 +231,7 @@ const props = withDefaults(
   }>(),
   {
     linuxdoEnabled: false,
+    dingtalkEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
@@ -245,6 +250,7 @@ const authStore = useAuthStore()
 const localUser = ref<User | null>(null)
 const isSendingEmailCode = ref(false)
 const isBindingEmail = ref(false)
+const isEmailBindingFormDirty = ref(false)
 const isEmailFormExpanded = ref(!props.compact)
 const unbindingProvider = ref<BindableProvider | null>(null)
 const emailBindingForm = reactive({
@@ -253,15 +259,21 @@ const emailBindingForm = reactive({
   password: '',
 })
 
+function resetEmailBindingForm(user: User | null): void {
+  emailBindingForm.email =
+    typeof user?.email === 'string' && !user.email.endsWith('.invalid') ? user.email : ''
+  emailBindingForm.verifyCode = ''
+  emailBindingForm.password = ''
+  isEmailBindingFormDirty.value = false
+}
+
 watch(
   () => props.user,
-  (user) => {
+  (user, previousUser) => {
     localUser.value = null
-    if (!user) {
-      return
-    }
-    if (typeof user.email === 'string' && !user.email.endsWith('.invalid')) {
-      emailBindingForm.email = user.email
+    // Profile polling must not overwrite an in-progress email verification flow.
+    if (user?.id !== previousUser?.id || !isEmailBindingFormDirty.value) {
+      resetEmailBindingForm(user)
     }
   },
   { immediate: true }
@@ -406,6 +418,9 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'linuxdo') {
     return props.linuxdoEnabled
   }
+  if (provider === 'dingtalk') {
+    return props.dingtalkEnabled
+  }
   if (provider === 'oidc') {
     return props.oidcEnabled
   }
@@ -431,6 +446,17 @@ const providerItems = computed(() => [
       (getBindingDetails('linuxdo')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
     details: getBindingDetails('linuxdo'),
+  },
+  {
+    provider: 'dingtalk' as const,
+    label: t('profile.authBindings.providers.dingtalk'),
+    bound: getBindingStatus('dingtalk'),
+    canBind:
+      !getBindingStatus('dingtalk') &&
+      isProviderEnabledForBinding('dingtalk') &&
+      (getBindingDetails('dingtalk')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('dingtalk') && getBindingDetails('dingtalk')?.can_unbind),
+    details: getBindingDetails('dingtalk'),
   },
   {
     provider: 'oidc' as const,
@@ -460,6 +486,9 @@ function providerInitial(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
     return 'L'
   }
+  if (provider === 'dingtalk') {
+    return 'D'
+  }
   if (provider === 'wechat') {
     return 'W'
   }
@@ -472,6 +501,9 @@ function providerInitial(provider: UserAuthProvider): string {
 function providerIconClass(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
     return 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-300'
+  }
+  if (provider === 'dingtalk') {
+    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
   }
   if (provider === 'wechat') {
     return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'
@@ -594,6 +626,7 @@ async function sendEmailCode(): Promise<void> {
     return
   }
 
+  isEmailBindingFormDirty.value = true
   isSendingEmailCode.value = true
   try {
     await sendEmailBindingCode(emailBindingForm.email)
@@ -610,6 +643,7 @@ async function bindEmail(): Promise<void> {
     return
   }
 
+  isEmailBindingFormDirty.value = true
   isBindingEmail.value = true
   try {
     const user = await bindEmailIdentity({
@@ -619,8 +653,7 @@ async function bindEmail(): Promise<void> {
     })
     const replacingBoundEmail = emailBound.value
     applyUpdatedUser(user)
-    emailBindingForm.verifyCode = ''
-    emailBindingForm.password = ''
+    resetEmailBindingForm(user)
     if (compact.value) {
       isEmailFormExpanded.value = false
     }
