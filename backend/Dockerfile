@@ -1,5 +1,8 @@
 FROM golang:1.27.2-alpine
 
+# Container updates belong to the image/deployment lifecycle.
+ENV SUB2API_UPDATE_MODE=managed
+
 WORKDIR /app
 
 # 安装必要的工具

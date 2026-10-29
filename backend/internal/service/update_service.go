@@ -23,6 +23,7 @@ import (
 )
 
 var (
+	ErrDeploymentManaged         = infraerrors.Conflict("DEPLOYMENT_MANAGED_UPDATE", "Updates are managed by the deployment platform. Update or roll back the container image or deployed source instead of replacing the running binary.")
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
 )
@@ -64,7 +65,7 @@ type UpdateService struct {
 	cache          UpdateCache
 	githubClient   GitHubReleaseClient
 	currentVersion string
-	buildType      string // "source" for manual builds, "release" for CI builds
+	buildType      string // "source", "release", or "managed" for externally managed deployments
 }
 
 // NewUpdateService creates a new UpdateService
@@ -85,7 +86,7 @@ type UpdateInfo struct {
 	ReleaseInfo    *ReleaseInfo `json:"release_info,omitempty"`
 	Cached         bool         `json:"cached"`
 	Warning        string       `json:"warning,omitempty"`
-	BuildType      string       `json:"build_type"` // "source" or "release"
+	BuildType      string       `json:"build_type"` // "source", "release", or "managed"
 }
 
 // ReleaseInfo contains GitHub release details
@@ -163,6 +164,10 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.buildType == "managed" {
+		return ErrDeploymentManaged
+	}
+
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -179,6 +184,10 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 // verifies its checksum, and atomically swaps the running binary.
 // Shared by PerformUpdate (latest) and RollbackToVersion (specific older version).
 func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []Asset) error {
+	if s.buildType == "managed" {
+		return ErrDeploymentManaged
+	}
+
 	// Find matching archive and checksum for current platform
 	archiveName := s.getArchiveName()
 	var downloadURL string
@@ -281,6 +290,10 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.buildType == "managed" {
+		return ErrDeploymentManaged
+	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -307,6 +320,10 @@ func (s *UpdateService) Rollback() error {
 // strictly older than the current version (the current version itself is excluded),
 // newest first. Draft and prerelease entries are skipped.
 func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVersion, error) {
+	if s.buildType == "managed" {
+		return nil, ErrDeploymentManaged
+	}
+
 	releases, err := s.fetchRollbackCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -327,6 +344,10 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
+	if s.buildType == "managed" {
+		return ErrDeploymentManaged
+	}
+
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

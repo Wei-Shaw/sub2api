@@ -29,6 +29,8 @@ export default {
     viewRelease: 'View Release',
     viewChangelog: 'View Changelog',
     refresh: 'Refresh',
+    managedMode: 'Updates managed by deployment platform',
+    managedModeHint: 'Update the container image or deployed source through Docker or your hosting platform. In-place binary updates are disabled because they can be lost on restart or overwrite custom builds. Use the same deployment platform to roll back.',
     sourceMode: 'Source Build',
     sourceModeHint: 'Source build, use git pull to update',
     updateNow: 'Update Now',
