@@ -15,18 +15,35 @@ function deferred<T>() {
 }
 
 import MonitorTemplateManagerDialog from '../MonitorTemplateManagerDialog.vue'
-const { list, showError } = vi.hoisted(() => ({ list: vi.fn(), showError: vi.fn() }))
-vi.mock('@/api/admin', () => ({ adminAPI: { channelMonitorTemplate: { list } } }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError }) }))
+const { list, create, showError } = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), showError: vi.fn() }))
+vi.mock('@/api/admin', () => ({ adminAPI: { channelMonitorTemplate: { list, create } } }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError, showSuccess: vi.fn() }) }))
 const response = (name: string) => ({ items: [{ id: 1, name, provider: 'anthropic', body_override_mode: 'off' }] })
 function mountDialog() {
   return shallowMount(MonitorTemplateManagerDialog, {
     props: { show: true },
-    global: { stubs: { BaseDialog: { template: '<div><slot /></div>' } } },
+    global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' } } },
   })
 }
 describe('monitor template list requests', () => {
   beforeEach(() => { vi.resetAllMocks() })
+  it('creates a Grok Responses template without silently resetting its protocol', async () => {
+    list.mockResolvedValue({ items: [] })
+    create.mockResolvedValue({})
+    const wrapper = mountDialog()
+    await flushPromises()
+    const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
+    await button('monitorCommon.providers.grok').trigger('click')
+    await button('admin.channelMonitor.template.createButton').trigger('click')
+    const responses = wrapper.findAll('button').find(b => b.text().includes('admin.channelMonitor.form.apiModeResponses'))
+    expect(responses).toBeDefined()
+    await responses!.trigger('click')
+    await wrapper.get('input[placeholder="admin.channelMonitor.template.form.namePlaceholder"]').setValue('Grok Responses')
+    await button('common.create').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ provider: 'grok', api_mode: 'responses' }))
+  })
+
   it.each(['resolve', 'reject'] as const)('ignores an old dialog request that %ss', async outcome => {
     const old = deferred<ReturnType<typeof response>>()
     list.mockReturnValueOnce(old.promise).mockResolvedValueOnce(response('current-template'))

@@ -981,7 +981,7 @@ func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdate
 	newAPIMode := defaultAPIMode(existing.APIMode)
 	if p.APIMode != nil {
 		newAPIMode = defaultAPIMode(*p.APIMode)
-	} else if existing.Provider != MonitorProviderOpenAI {
+	} else if !monitorProviderSupportsResponses(existing.Provider) {
 		newAPIMode = MonitorAPIModeChatCompletions
 	}
 	if err := validateAPIMode(existing.Provider, newAPIMode); err != nil {
