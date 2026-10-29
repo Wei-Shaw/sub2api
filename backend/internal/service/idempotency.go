@@ -87,6 +87,9 @@ type IdempotencyExecuteOptions struct {
 	Payload        any
 	TTL            time.Duration
 	RequireKey     bool
+	// ReclaimExpiredProcessing 仅适用于能够以相同上游幂等身份重发的操作。
+	// 默认关闭；开启后可原子回收进程退出留下的过期 processing 租约，并在执行时续租。
+	ReclaimExpiredProcessing bool
 	// ExecutionTimeout opts into bounded execution independent of client cancellation,
 	// with lease renewal and a separate short window to persist the final result.
 	ExecutionTimeout time.Duration
@@ -352,6 +355,20 @@ func (c *IdempotencyCoordinator) Execute(
 				logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "succeeded->replayed", true, nil)
 				return &IdempotencyExecuteResult{Data: data, Replayed: true}, nil
 			case IdempotencyStatusProcessing:
+				if opts.ReclaimExpiredProcessing && existing.LockedUntil != nil && !existing.LockedUntil.After(now) {
+					// 仓储同时检查状态和租约，续租中的旧进程或另一抢占者会使本次回收失败。
+					taken, reclaimErr := c.repo.TryReclaim(ctx, existing.ID, IdempotencyStatusProcessing, now, lockedUntil, expiresAt)
+					if reclaimErr != nil {
+						RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "try_reclaim_processing_error")
+						return nil, ErrIdempotencyStoreUnavail.WithCause(reclaimErr)
+					}
+					if taken {
+						record.ID = existing.ID
+						recordIdempotencyClaim(opts.Route, opts.Scope, map[string]string{"mode": "processing_lease_reclaim"})
+						logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->processing", false, map[string]string{"claim_mode": "processing_lease_reclaim"})
+						break
+					}
+				}
 				recordIdempotencyConflict(opts.Route, opts.Scope, map[string]string{"reason": "in_progress"})
 				logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->conflict", false, nil)
 				return nil, c.conflictWithRetryAfter(ErrIdempotencyInProgress, existing.LockedUntil, now)
@@ -400,7 +417,7 @@ func (c *IdempotencyCoordinator) Execute(
 		return nil, ErrIdempotencyStoreUnavail
 	}
 
-	if opts.ExecutionTimeout > 0 {
+	if opts.ExecutionTimeout > 0 || opts.ReclaimExpiredProcessing {
 		stopRenewal := c.renewProcessingLease(ctx, record, ttl)
 		defer stopRenewal()
 	}

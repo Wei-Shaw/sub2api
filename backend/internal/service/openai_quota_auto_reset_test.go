@@ -205,6 +205,18 @@ func (r *autoResetTestAccountRepo) UpdateExtra(_ context.Context, id int64, upda
 		r.account.Extra = make(map[string]any)
 	}
 	for key, value := range updates {
+		if key == OpenAIAutoResetCreditStateExtraKey {
+			// 仓储实际按 JSON 写入快照；测试不能把调用方还会继续修改的指针当成数据库行。
+			raw, err := json.Marshal(value)
+			if err != nil {
+				return err
+			}
+			var snapshot any
+			if err := json.Unmarshal(raw, &snapshot); err != nil {
+				return err
+			}
+			value = snapshot
+		}
 		r.account.Extra[key] = value
 	}
 	return nil
