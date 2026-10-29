@@ -975,7 +975,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
 				continue
 			}
-			if stageFirstOutput {
+			if openAIKeepaliveMayBypassDownstreamBuffer(stageFirstOutput, bufferedWriter.Buffered()) {
 				// Bypass attempt-local buffered frames. The stable SSE headers may be
 				// committed here, but account headers remain private until semantic output.
 				n, err := w.Write([]byte(":\n\n"))
@@ -1003,6 +1003,27 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 	}
 
+}
+
+// openAIKeepaliveMayBypassDownstreamBuffer 报告心跳注释行能否绕过下游缓冲、直接
+// 写 ResponseWriter。
+//
+// 直写存在的理由：首个可见输出之前，帧全部压在 attempt-local 暂存区里，下游一个
+// 字节都收不到（gin 的 ResponseWriter 要到首次写入才提交响应头），推理模型思考
+// 数百秒时中间层代理会按空闲超时把连接判死。此时 w 上没有任何未提交字节，暂存区
+// 提交时整体追加在注释行之后，次序安全。
+//
+// 但暂存区一旦提交关闭，帧就改走 bufferedWriter（bufio 包着同一个 w）。此时若缓冲
+// 里还有未提交字节，直写 w 会抢在它们前面：bufio 写满 4KB 自动 flush，切点落在哪个
+// 字节与帧边界无关，注释行于是可能插进一帧中间把 JSON 劈开。线上实测坏帧形态：
+//
+//	data: {"type":"response.function_call_arguments.delta","sequen:\n\nce_number":3287,...}
+//	data: {"type":"response.output_item.done",...,"status":"completed"}}:\n\n\n
+//
+// eventInProgress 守的是上游帧的逻辑边界（见 PR #4275），管不到下游缓冲的物理残留，
+// 所以这里必须单独判。缓冲非空时调用方退回缓冲路径，注释行与帧同序写出。
+func openAIKeepaliveMayBypassDownstreamBuffer(stageFirstOutput bool, bufferedPending int) bool {
+	return stageFirstOutput && bufferedPending == 0
 }
 
 // extractOpenAISSEDataLine 低开销提取 SSE `data:` 行内容。

@@ -1965,6 +1965,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	// 任何返回路径都要停拍。Stop 与心跳 goroutine 之间有互斥锁，
 	// 返回后不会再有字节写出。
 	defer stopKeepalive()
+	// 心跳启动时把 c.Writer 换成了带互斥锁的包装器（startOpenAISSEKeepalive →
+	// openAICompactKeepaliveWriter），写侧方法会先在锁内停拍，才轮到真正的写。
+	// 上面捕获的 w 是换包装器【之前】的裸 writer：继续用它写帧等于绕过 suspend()，
+	// 与心跳 goroutine 之间就没有任何互斥，两边的字节可以交错到一帧中间去。
+	// 这里重新取一次，让所有帧写入都经过包装器。
+	w = c.Writer
+	if wrapped, isFlusher := w.(http.Flusher); isFlusher {
+		flusher = wrapped
+	}
 	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
 	flushPending := false
 	pendingSSEEventType := ""
