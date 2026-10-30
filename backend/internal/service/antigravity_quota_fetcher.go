@@ -85,6 +85,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 
 	// 转换为 UsageInfo
 	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
+	summaryCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	if summary, summaryErr := client.FetchQuotaSummary(summaryCtx, accessToken, projectID); summaryErr == nil {
+		usageInfo.QuotaPools = quotaPoolsFromSummary(summary)
+		if len(usageInfo.QuotaPools) > 0 {
+			usageInfo.Source = "antigravity-oauth"
+		}
+	}
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,

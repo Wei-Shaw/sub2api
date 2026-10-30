@@ -4,22 +4,7 @@
     class="min-w-0 max-w-full space-y-1"
     data-testid="ollama-cloud-usage-cell"
   >
-    <UsageProgressBar
-      v-if="snapshot?.data?.five_hour"
-      label="5h"
-      :utilization="snapshot.data.five_hour.used_percent"
-      :resets-at="snapshot.data.five_hour.reset_at"
-      color="indigo"
-      data-testid="ollama-cloud-five-hour"
-    />
-    <UsageProgressBar
-      v-if="snapshot?.data?.seven_day"
-      label="7d"
-      :utilization="snapshot.data.seven_day.used_percent"
-      :resets-at="snapshot.data.seven_day.reset_at"
-      color="emerald"
-      data-testid="ollama-cloud-seven-day"
-    />
+    <QuotaPoolTable :pools="pools" />
     <div v-if="state.configured" class="flex items-center pt-0.5">
       <button
         type="button"
@@ -54,14 +39,15 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, OllamaCloudUsageState } from '@/types'
-import UsageProgressBar from './UsageProgressBar.vue'
+import QuotaPoolTable from './QuotaPoolTable.vue'
+import { snapshotQuotaPools } from '@/utils/quotaPools'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
 const { t } = useI18n()
 const state = ref(props.account.ollama_cloud_usage)
 const refreshing = ref(false)
-const snapshot = computed(() => state.value?.snapshot)
+const pools = computed(() => snapshotQuotaPools({ ...props.account, ollama_cloud_usage: state.value }))
 
 watch(() => props.account.ollama_cloud_usage, (next) => {
   state.value = next

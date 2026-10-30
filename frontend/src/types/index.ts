@@ -1489,7 +1489,8 @@ export interface GrokBillingSummary {
 }
 
 export interface AccountUsageInfo {
-  source?: 'passive' | 'active'
+  source?: 'passive' | 'active' | 'antigravity-oauth'
+  quota_pools?: import('@/utils/quotaPools').QuotaPool[]
   updated_at: string | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null

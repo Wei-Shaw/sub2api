@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OpenCodeGoUsageCell from '../OpenCodeGoUsageCell.vue'
-import UsageProgressBar from '../UsageProgressBar.vue'
+import QuotaPoolTable from '../QuotaPoolTable.vue'
 import type { Account, OpenCodeGoUsageState } from '@/types'
 
 const { refreshOpenCodeGoUsage } = vi.hoisted(() => ({
@@ -92,26 +92,11 @@ describe('OpenCodeGoUsageCell', () => {
     expect(cell.classes()).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full']))
     expect(cell.classes()).not.toContain('min-w-[12rem]')
 
-    const bars = wrapper.findAllComponents(UsageProgressBar)
-    expect(bars).toHaveLength(3)
-    expect(bars[0].props()).toMatchObject({
-      label: '5h',
-      utilization: 5.6,
-      resetsAt: '2026-07-23T03:00:00Z',
-      color: 'indigo'
-    })
-    expect(bars[1].props()).toMatchObject({
-      label: '7d',
-      utilization: 14.2,
-      resetsAt: '2026-07-29T00:00:00Z',
-      color: 'emerald'
-    })
-    expect(bars[2].props()).toMatchObject({
-      label: '1m',
-      utilization: 33.3,
-      resetsAt: '2026-08-01T00:00:00Z',
-      color: 'amber'
-    })
+    const pool = wrapper.getComponent(QuotaPoolTable).props('pools')[0]
+    expect(pool.name).toBe('OpenCode Go')
+    expect(wrapper.findAll('.quota-meter').map(meter=>meter.text())).toEqual(['94.4%', '85.8%', '66.7%'])
+    expect(pool.windows[0].resets_at).toBe('2026-07-23T03:00:00Z')
+    expect(pool.windows[1].resets_at).toBe('2026-07-29T00:00:00Z')
 
     expect(wrapper.find('[data-testid="opencode-go-status-badge"]').exists()).toBe(false)
     const query = wrapper.get('[data-testid="opencode-go-usage-query"]')
@@ -128,7 +113,7 @@ describe('OpenCodeGoUsageCell', () => {
     await flushPromises()
 
     expect(refreshOpenCodeGoUsage).toHaveBeenCalledWith(7)
-    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(42)
+    expect(wrapper.findAll('.quota-meter')[0].text()).toBe('58.0%')
     expect(wrapper.emitted<OpenCodeGoUsageState[]>('updated')?.[0]?.[0]).toEqual(next)
   })
 
@@ -163,6 +148,6 @@ describe('OpenCodeGoUsageCell', () => {
 
     await wrapper.setProps({ account: account(next) })
 
-    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
+    expect(wrapper.findAll('.quota-meter')[0].text()).toBe('57.0%')
   })
 })

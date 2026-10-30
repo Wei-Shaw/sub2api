@@ -13,7 +13,8 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
-vi.mock('vue-i18n', () => ({
+vi.mock('vue-i18n', async () => ({
+  ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({
     t: (key: string) => key
   })
@@ -41,7 +42,8 @@ describe('CNProviderBalanceCell', () => {
 
     // Snapshot value renders without any probe.
     expect(queryBalance).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-test="cn-provider-balance-value"]').text()).toContain('CNY 12.50')
+    expect(wrapper.get('[data-test="cn-provider-balance-value"]').text()).toContain('CNY')
+    expect(wrapper.find('.quota-meter').text()).toBe('12.50')
 
     // The control reads as an action; the i18n mock returns the key itself.
     const probeButton = wrapper.get('[data-test="cn-provider-balance-probe"]')
@@ -70,7 +72,8 @@ describe('CNProviderBalanceCell', () => {
     await wrapper.get('[data-test="cn-provider-balance-probe"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('CNY 12.50')
+    expect(wrapper.text()).toContain('CNY')
+    expect(wrapper.find('.quota-meter').text()).toBe('12.50')
     expect(wrapper.text()).toContain('HTTP 401')
   })
 })

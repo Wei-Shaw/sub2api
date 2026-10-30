@@ -1,11 +1,12 @@
 <template>
-  <div>
+  <div v-if="!statsOnly || (windowStats && (windowStats.requests > 0 || windowStats.tokens > 0))">
     <!-- Window stats row (above progress bar) -->
     <div
       v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
       <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+        <span v-if="statsOnly" class="font-medium">{{ label }}</span>
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
@@ -34,7 +35,7 @@
     </div>
 
     <!-- Progress bar row -->
-    <div class="flex items-center gap-1">
+    <div v-if="!statsOnly" class="flex items-center gap-1">
       <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
       <span :class="[labelSizeClass, labelClass]">
         {{ label }}
@@ -70,6 +71,7 @@ import { formatCompactNumber } from '@/utils/format'
 
 const props = withDefaults(
   defineProps<{
+    statsOnly?: boolean
     label: string
     utilization: number // Percentage (0-100+)
     resetsAt?: string | null
@@ -96,16 +98,16 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   60_000,
   { immediate: false },
 )
-if (props.resetsAt) resumeClock()
+if (!props.statsOnly && props.resetsAt) resumeClock()
 const refreshClockWhenVisible = () => {
-  if (!document.hidden && props.resetsAt) now.value = new Date()
+  if (!props.statsOnly && !document.hidden && props.resetsAt) now.value = new Date()
 }
 onMounted(() => document.addEventListener('visibilitychange', refreshClockWhenVisible))
 onUnmounted(() => document.removeEventListener('visibilitychange', refreshClockWhenVisible))
 watch(
   () => props.resetsAt,
   (val) => {
-    if (val) {
+    if (!props.statsOnly && val) {
       now.value = new Date()
       resumeClock()
     } else {

@@ -4,30 +4,7 @@
     class="min-w-0 max-w-full space-y-1"
     data-testid="opencode-go-usage-cell"
   >
-    <UsageProgressBar
-      v-if="snapshot?.data?.rolling"
-      :label="t('admin.accounts.opencodeGo.rollingShort')"
-      :utilization="snapshot.data.rolling.percent"
-      :resets-at="snapshot.data.rolling.resets_at"
-      color="indigo"
-      data-testid="opencode-go-rolling"
-    />
-    <UsageProgressBar
-      v-if="snapshot?.data?.weekly"
-      :label="t('admin.accounts.opencodeGo.weeklyShort')"
-      :utilization="snapshot.data.weekly.percent"
-      :resets-at="snapshot.data.weekly.resets_at"
-      color="emerald"
-      data-testid="opencode-go-weekly"
-    />
-    <UsageProgressBar
-      v-if="snapshot?.data?.monthly"
-      :label="t('admin.accounts.opencodeGo.monthlyShort')"
-      :utilization="snapshot.data.monthly.percent"
-      :resets-at="snapshot.data.monthly.resets_at"
-      color="amber"
-      data-testid="opencode-go-monthly"
-    />
+    <QuotaPoolTable :pools="pools" />
     <span
       v-if="snapshot && snapshot.status !== 'ok'"
       class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium"
@@ -72,7 +49,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, OpenCodeGoUsageState } from '@/types'
-import UsageProgressBar from './UsageProgressBar.vue'
+import QuotaPoolTable from './QuotaPoolTable.vue'
+import { snapshotQuotaPools } from '@/utils/quotaPools'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OpenCodeGoUsageState] }>()
@@ -80,6 +58,7 @@ const { t } = useI18n()
 const state = ref(props.account.opencode_go_usage)
 const refreshing = ref(false)
 const snapshot = computed(() => state.value?.snapshot)
+const pools = computed(() => snapshotQuotaPools({ ...props.account, opencode_go_usage: state.value }))
 const statusLabel = computed(() => {
   if (snapshot.value?.status === 'unauthorized') return t('admin.accounts.opencodeGo.unauthorized')
   if (snapshot.value?.status === 'failed') return t('admin.accounts.opencodeGo.failed')
