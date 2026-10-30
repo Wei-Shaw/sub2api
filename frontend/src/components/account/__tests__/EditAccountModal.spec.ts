@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -270,6 +270,23 @@ function buildGrokOAuthAccount() {
     group_ids: [],
     expires_at: null,
     auto_pause_on_expired: false
+  } as any
+}
+
+function buildAnthropicOAuthAccount(type: 'oauth' | 'setup-token' = 'oauth') {
+  return {
+    ...buildAccount(),
+    id: type === 'oauth' ? 12 : 13,
+    name: `Anthropic ${type}`,
+    platform: 'anthropic',
+    type,
+    credentials: {
+      model_mapping: {
+        'claude-fable-5': 'claude-fable-5',
+        'claude-sonnet-5': 'claude-sonnet-4-6'
+      }
+    },
+    extra: {}
   } as any
 }
 
@@ -1909,6 +1926,51 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+})
+
+describe('EditAccountModal Anthropic model restriction', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it.each(['oauth', 'setup-token'] as const)(
+    'loads and persists model restriction for Anthropic %s accounts',
+    async (type) => {
+      const account = buildAnthropicOAuthAccount(type)
+      updateAccountMock.mockResolvedValue(account)
+
+      const wrapper = mountModal(account)
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="oauth-model-mapping-section"]').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('claude-fable-5')
+
+      const mappingToggle = wrapper
+        .findAll('button')
+        .find((button) => button.text() === 'admin.accounts.modelMapping')
+      expect(mappingToggle).toBeTruthy()
+      await mappingToggle!.trigger('click')
+
+      const froms = wrapper.findAll<HTMLInputElement>('[data-testid="oauth-model-mapping-from"]')
+      expect(froms).toHaveLength(1)
+      expect(froms[0].element.value).toBe('claude-sonnet-5')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="oauth-model-mapping-to"]').element.value).toBe(
+        'claude-sonnet-4-6'
+      )
+
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+        'claude-fable-5': 'claude-fable-5',
+        'claude-sonnet-5': 'claude-sonnet-4-6'
+      })
+      wrapper.unmount()
+    }
+  )
 })
 
 describe('EditAccountModal gemini explicit cache upstream switch', () => {
