@@ -364,6 +364,8 @@
               :model-mappings="modelMappings"
               :platform="account?.platform || 'anthropic'"
               :account-id="account?.id"
+              :web-image-compatibility="isFreeWebImageEligible"
+              :web-image-bridge-enabled="webImageEnabled"
               :show-sync-button="account.platform !== 'grok' || !account.id"
               @upstream-sync-finished="refreshGrokDiagnostics"
             />
@@ -960,6 +962,8 @@
             :model-mappings="modelMappings"
             :platform="account?.platform || 'anthropic'"
             :account-id="account?.id"
+            :web-image-compatibility="isFreeWebImageEligible"
+            :web-image-bridge-enabled="webImageEnabled"
             :show-sync-button="account.platform !== 'grok' || !account.id"
             @upstream-sync-finished="refreshGrokDiagnostics"
           />
@@ -1228,7 +1232,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :web-image-compatibility="isFreeWebImageEligible" :web-image-bridge-enabled="webImageEnabled" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -2074,6 +2078,15 @@
           </button>
         </div>
       </div>
+
+      <FreeWebImageSettings
+        v-if="isFreeWebImageEligible"
+        :enabled="webImageEnabled"
+        :configured="webImageConfigured"
+        @update:enabled="setWebImageEnabled"
+        v-model:regular-chat="webImageRegularChat"
+        v-model:markdown-preview="webImageMarkdownPreview"
+      />
 
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
@@ -3413,6 +3426,8 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import FreeWebImageSettings from '@/components/account/FreeWebImageSettings.vue'
+import { hasWebImageConfiguration, readWebImageSettings } from '@/components/account/webImageBridge'
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -4163,6 +4178,18 @@ type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
+const webImageEnabled = ref(false)
+const webImageTouched = ref(false)
+const webImageConfigured = computed(() => hasWebImageConfiguration(props.account?.extra) || webImageTouched.value)
+function setWebImageEnabled(enabled: boolean) {
+  webImageTouched.value = true
+  webImageEnabled.value = enabled
+}
+const webImageRegularChat = ref(false)
+const webImageMarkdownPreview = ref(true)
+const isFreeWebImageEligible = computed(() => props.account?.platform === 'openai' &&
+  props.account?.type === 'oauth' && !isSparkShadow.value && editPlanType.value.trim().toLowerCase() === 'free')
+
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
@@ -4658,6 +4685,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
+  webImageTouched.value = false
+  const webImageSettings = readWebImageSettings(extra)
+  webImageEnabled.value = webImageSettings.enabled
+  webImageRegularChat.value = webImageSettings.regularChat
+  webImageMarkdownPreview.value = webImageSettings.markdownPreview
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5628,6 +5660,11 @@ const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
 
+  if (isFreeWebImageEligible.value && webImageEnabled.value && !webImageRegularChat.value) {
+    appStore.showError(t('admin.accounts.openai.webImageConsentRequired'))
+    return
+  }
+
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
@@ -6269,6 +6306,12 @@ const handleSubmit = async () => {
 		}
 		// 运行态只允许后端服务更新，账号编辑不得回写旧状态。
 		delete newExtra.codex_auto_reset_credit_state
+
+      if (isFreeWebImageEligible.value && webImageConfigured.value) {
+        newExtra.chatgpt_web_image_enabled = webImageEnabled.value
+        newExtra.chatgpt_web_image_regular_chat = webImageRegularChat.value
+        newExtra.chatgpt_web_image_markdown_preview = webImageMarkdownPreview.value
+      }
 
 		delete newExtra.codex_image_generation_bridge_enabled
       switch (codexImageToolMode.value) {

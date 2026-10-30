@@ -398,7 +398,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	// hit an unrelated same-name upstream model.
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
 		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
-			return "account_model_not_owned"
+			if !OpenAIImagesEndpointFromContext(ctx) || !chatGPTWebImageOwnsNativeModel(account, publicModel) {
+				return "account_model_not_owned"
+			}
 		}
 	}
 	if account.Platform != platform || !account.IsOpenAICompatible() {
@@ -440,7 +442,12 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
+	if OpenAIImagesEndpointFromContext(ctx) {
+		if reason := chatGPTWebImageSchedulingFailureReason(ctx, account, requestedModel); reason != "" {
+			return reason
+		}
+	}
+	if requestedModel != "" && (!OpenAIImagesEndpointFromContext(ctx) || !isFreeChatGPTWebImageAccount(account)) && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return "model_not_supported"
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -814,6 +821,9 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 // would be sent for a given request, honoring the legacy compact-only mapping
 // when the caller is on the /responses/compact path.
 func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	if !requireCompact && isFreeChatGPTWebImageAccount(account) && IsGPTImageGenerationModel(requestedModel) {
+		return strings.TrimSpace(requestedModel)
+	}
 	// Forward checks the raw Chat Completions fallback before passthrough.
 	// These API-key accounts therefore apply normal account model_mapping and
 	// upstream normalization, but never compact_model_mapping.
