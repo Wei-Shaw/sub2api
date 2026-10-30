@@ -224,3 +224,43 @@ func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 }
+
+func TestRateLimitClientKeyAggregatesIPv6Prefix(t *testing.T) {
+	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd", 64))
+	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2::1", 64))
+	require.Equal(t, "2001:db8:1:3::/64", rateLimitClientKey("2001:db8:1:3::1", 64))
+	require.Equal(t, "2001:db8:1:2::1", rateLimitClientKey("2001:db8:1:2::1", 0), "per-address keys stay the default")
+	for _, ip := range []string{"203.0.113.9", "::ffff:203.0.113.9", "not-an-ip", ""} {
+		require.Equal(t, ip, rateLimitClientKey(ip, 64))
+	}
+}
+
+func TestRateLimiterIPv6PrefixSharesOneBudget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	callCounts := make(map[string]int64)
+	originalRun := rateLimitRun
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		callCounts[key]++
+		return callCounts[key], false, nil
+	}
+	t.Cleanup(func() { rateLimitRun = originalRun })
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+	router := gin.New()
+	router.Use(limiter.LimitWithOptions("api", 1, time.Second, RateLimitOptions{IPv6PrefixBits: 64}))
+	router.GET("/test", func(c *gin.Context) { c.Status(http.StatusOK) })
+	for _, tc := range []struct {
+		addr   string
+		status int
+	}{
+		{"[2001:db8::1]:1234", http.StatusOK},
+		{"[2001:db8::2]:1234", http.StatusTooManyRequests}, // same /64, rotated address
+		{"[2001:db8:0:1::1]:1234", http.StatusOK},          // different /64
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = tc.addr
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, tc.status, rec.Code, tc.addr)
+	}
+}
