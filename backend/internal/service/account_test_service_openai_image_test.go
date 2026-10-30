@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,4 +91,51 @@ func TestAccountTestService_OpenAIImageAPIKeyUsesConfiguredV1BaseURL(t *testing.
 	require.Equal(t, "Bearer test-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")
 	require.Contains(t, rec.Body.String(), "\"success\":true")
+}
+
+func TestAccountTestService_OpenAIImageAPIKeyOmitsUnsupportedResponseFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, model := range []string{
+		"gpt-image-1",
+		"gpt-image-1-mini",
+		"gpt-image-1.5",
+		"gpt-image-2",
+		"gpt-image-2-2026-04-21",
+		"gpt-image-2.5-flare",
+	} {
+		t.Run(model, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
+
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)),
+				},
+			}
+			svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+			account := &Account{
+				ID: 54, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "test-api-key"},
+			}
+
+			err := svc.testOpenAIAccountConnection(c, account, model, "draw a cat", AccountTestModeDefault)
+
+			require.NoError(t, err)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, "https://api.openai.com/v1/images/generations", upstream.lastReq.URL.String())
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(upstream.lastBody, &payload))
+			require.Equal(t, model, payload["model"])
+			require.Equal(t, "draw a cat", payload["prompt"])
+			require.Equal(t, float64(1), payload["n"])
+			// GPT Image models always return base64 images and reject this legacy parameter.
+			require.NotContains(t, payload, "response_format")
+			require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")
+			require.Contains(t, rec.Body.String(), `"success":true`)
+		})
+	}
 }
