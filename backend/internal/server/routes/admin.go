@@ -705,6 +705,8 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/minimax-media/tasks", h.OpenAIGateway.AdminMiniMaxBillingDetail)
+	admin.GET("/usage/media/:task_id", h.OpenAIGateway.AdminMiniMaxBillingDetail)
 	usage := admin.Group("/usage")
 	{
 		usage.GET("", h.Admin.Usage.List)

@@ -336,6 +336,31 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('allows enabling MiniMax media for coding-plan API keys', async () => {
+    const account = buildAccount()
+    account.platform = 'minimax'
+    account.name = 'MiniMax Coding Plan'
+    account.credentials = {
+      api_key: 'minimax-test-key',
+      base_url: 'https://api.minimaxi.com/v1',
+      account_mode: 'coding',
+      api_protocol: 'chat_completions'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="minimax-media-capability"] input[type="checkbox"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({ account_mode: 'coding' })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      minimax_media_enabled: true,
+      minimax_media_base_url: 'https://api.minimax.cn'
+    })
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }

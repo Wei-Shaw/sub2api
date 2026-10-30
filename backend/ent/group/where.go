@@ -200,6 +200,16 @@ func BatchImageHoldMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldBatchImageHoldMultiplier, v))
 }
 
+// MinimaxRateIndependent applies equality check predicate on the "minimax_rate_independent" field. It's identical to MinimaxRateIndependentEQ.
+func MinimaxRateIndependent(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMinimaxRateIndependent, v))
+}
+
+// MinimaxRateMultiplier applies equality check predicate on the "minimax_rate_multiplier" field. It's identical to MinimaxRateMultiplierEQ.
+func MinimaxRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMinimaxRateMultiplier, v))
+}
+
 // VideoRateIndependent applies equality check predicate on the "video_rate_independent" field. It's identical to VideoRateIndependentEQ.
 func VideoRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldVideoRateIndependent, v))
@@ -1618,6 +1628,66 @@ func BatchImageHoldMultiplierLT(v float64) predicate.Group {
 // BatchImageHoldMultiplierLTE applies the LTE predicate on the "batch_image_hold_multiplier" field.
 func BatchImageHoldMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldBatchImageHoldMultiplier, v))
+}
+
+// MinimaxRateIndependentEQ applies the EQ predicate on the "minimax_rate_independent" field.
+func MinimaxRateIndependentEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMinimaxRateIndependent, v))
+}
+
+// MinimaxRateIndependentNEQ applies the NEQ predicate on the "minimax_rate_independent" field.
+func MinimaxRateIndependentNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMinimaxRateIndependent, v))
+}
+
+// MinimaxRateMultiplierEQ applies the EQ predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxRateMultiplierNEQ applies the NEQ predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxRateMultiplierIn applies the In predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldMinimaxRateMultiplier, vs...))
+}
+
+// MinimaxRateMultiplierNotIn applies the NotIn predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldMinimaxRateMultiplier, vs...))
+}
+
+// MinimaxRateMultiplierGT applies the GT predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxRateMultiplierGTE applies the GTE predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxRateMultiplierLT applies the LT predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxRateMultiplierLTE applies the LTE predicate on the "minimax_rate_multiplier" field.
+func MinimaxRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldMinimaxRateMultiplier, v))
+}
+
+// MinimaxMediaPricesIsNil applies the IsNil predicate on the "minimax_media_prices" field.
+func MinimaxMediaPricesIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldMinimaxMediaPrices))
+}
+
+// MinimaxMediaPricesNotNil applies the NotNil predicate on the "minimax_media_prices" field.
+func MinimaxMediaPricesNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldMinimaxMediaPrices))
 }
 
 // VideoRateIndependentEQ applies the EQ predicate on the "video_rate_independent" field.

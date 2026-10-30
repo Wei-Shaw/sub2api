@@ -66,6 +66,7 @@ const messages: Record<string, string> = {
   'usage.imageSizeSourceLegacy': 'Legacy record',
   'usage.imageSizeSourceMissing': 'Not recorded',
   'usage.imageSizeNotRecorded': 'not recorded',
+  'usage.imageSizePerImage': 'per image',
   'usage.imageSizeLegacyUnstandardized': 'legacy unstandardized',
   'usage.imageSizeUnknown': 'unknown',
   'usage.imageUnitPrice': 'Per-image price',
@@ -145,6 +146,16 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('renders MiniMax in the standard usage row without a separate media bill', () => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, request_id: 'mm_native_image', model: 'image-01', image_size: 'per_image' }], loading: false, columns: [{ key: 'model', label: 'Model' }] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.text()).toContain('image-01')
+    expect(wrapper.text()).toMatch(/2 images\s*\(per image\)/)
+    expect(wrapper.find('details').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'MiniMaxMediaBill' }).exists()).toBe(false)
+  })
   it('shows output TPS in the latency cell using total duration', () => {
     const row = { ...baseImageRow, image_count: 0, billing_mode: 'token', output_tokens: 1000, duration_ms: 20_000, first_token_ms: 10_000 }
     const wrapper = mount(UsageTable, {

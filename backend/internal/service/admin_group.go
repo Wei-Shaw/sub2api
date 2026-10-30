@@ -477,12 +477,23 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if batchImageHoldMultiplier < batchImageDiscountMultiplier {
 		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
 	}
+	if err := ValidateMiniMaxMediaPrices(input.MiniMaxMediaPrices); err != nil {
+		return nil, err
+	}
 	videoRateMultiplier := 1.0
 	if input.VideoRateMultiplier != nil {
 		if *input.VideoRateMultiplier < 0 {
 			return nil, errors.New("video_rate_multiplier must be >= 0")
 		}
 		videoRateMultiplier = *input.VideoRateMultiplier
+	}
+
+	minimaxRateMultiplier := 1.0
+	if input.MiniMaxRateMultiplier != nil {
+		if *input.MiniMaxRateMultiplier < 0 {
+			return nil, errors.New("minimax_rate_multiplier must be >= 0")
+		}
+		minimaxRateMultiplier = *input.MiniMaxRateMultiplier
 	}
 
 	peakRateMultiplier := 1.0
@@ -597,7 +608,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		VideoRateIndependent:            input.VideoRateIndependent,
+		MiniMaxRateIndependent:          input.MiniMaxRateIndependent,
 		VideoRateMultiplier:             videoRateMultiplier,
+		MiniMaxRateMultiplier:           minimaxRateMultiplier,
 		PeakRateEnabled:                 peakRateEnabled,
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
@@ -612,6 +625,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		VideoPrice720P:                  videoPrice720P,
 		VideoPrice1080P:                 videoPrice1080P,
 		VideoModelPrices:                NormalizeVideoModelPrices(input.VideoModelPrices),
+		MiniMaxMediaPrices:              NormalizeMiniMaxMediaPrices(input.MiniMaxMediaPrices),
 		WebSearchPricePerCall:           webSearchPricePerCall,
 		SearchPricePer1k:                searchPricePer1k,
 		AudioRealtimePricePerMin:        audioRealtimePricePerMin,
@@ -881,6 +895,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.BatchImageHoldMultiplier < group.BatchImageDiscountMultiplier {
 		return nil, errors.New("batch_image_hold_multiplier must be >= batch_image_discount_multiplier")
 	}
+	if err := ValidateMiniMaxMediaPrices(input.MiniMaxMediaPrices); err != nil {
+		return nil, err
+	}
 	if input.VideoRateIndependent != nil {
 		group.VideoRateIndependent = *input.VideoRateIndependent
 	}
@@ -889,6 +906,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("video_rate_multiplier must be >= 0")
 		}
 		group.VideoRateMultiplier = *input.VideoRateMultiplier
+	}
+	if input.MiniMaxRateIndependent != nil {
+		group.MiniMaxRateIndependent = *input.MiniMaxRateIndependent
+	}
+	if input.MiniMaxRateMultiplier != nil {
+		if *input.MiniMaxRateMultiplier < 0 {
+			return nil, errors.New("minimax_rate_multiplier must be >= 0")
+		}
+		group.MiniMaxRateMultiplier = *input.MiniMaxRateMultiplier
 	}
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled
@@ -945,6 +971,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// nil = leave unchanged; empty map = clear per-model prices.
 	if input.VideoModelPrices != nil {
 		group.VideoModelPrices = NormalizeVideoModelPrices(input.VideoModelPrices)
+	}
+	if input.MiniMaxMediaPrices != nil {
+		group.MiniMaxMediaPrices = NormalizeMiniMaxMediaPrices(input.MiniMaxMediaPrices)
 	}
 	if input.WebSearchPricePerCall != nil {
 		group.WebSearchPricePerCall = normalizePrice(input.WebSearchPricePerCall)
@@ -1187,6 +1216,16 @@ func normalizeGroupModelPricing(platform string, pricing []ChannelModelPricing) 
 		}
 		for j := range out[i].Models {
 			out[i].Models[j] = strings.TrimSpace(out[i].Models[j])
+		}
+		if out[i].MiniMaxMedia != nil {
+			if platform != PlatformMiniMax && platform != PlatformComposite {
+				return nil, infraerrors.BadRequest("INVALID_MEDIA_PRICING", "MiniMax media pricing requires a MiniMax or composite group")
+			}
+			for _, model := range out[i].Models {
+				if err := out[i].MiniMaxMedia.Validate(model); err != nil {
+					return nil, infraerrors.BadRequest("INVALID_MEDIA_PRICING", err.Error())
+				}
+			}
 		}
 		if len(out[i].Models) == 0 {
 			return nil, infraerrors.New(http.StatusBadRequest, "GROUP_MODEL_PRICING_MODELS_REQUIRED", "group model pricing entry requires at least one model")

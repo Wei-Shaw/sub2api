@@ -168,6 +168,8 @@ security:
       - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
+      - "api.minimax.cn"
+      - "api.minimax.io"
       - "opencode.ai"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"

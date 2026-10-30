@@ -548,6 +548,8 @@ export type GroupPlatform = AccountPlatform | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
+export type MiniMaxMediaPrices = Record<string, Record<string, number>>
+
 export type SubscriptionType = 'standard' | 'subscription'
 
 export interface OpenAIMessagesDispatchModelConfig {
@@ -605,12 +607,15 @@ export interface Group {
   image_price_2k: number | null
   image_price_4k: number | null
   video_rate_independent: boolean
+  minimax_rate_independent: boolean
   video_rate_multiplier: number
+  minimax_rate_multiplier: number
   video_price_480p: number | null
   video_price_720p: number | null
   video_price_1080p: number | null
   // Optional model-family x resolution overrides for Grok video pricing.
   video_model_prices?: VideoModelPrices
+  minimax_media_prices?: MiniMaxMediaPrices
   // Codex 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
   web_search_price_per_call: number | null
   // Grok Voice 显式定价（分组级）
@@ -691,6 +696,8 @@ export interface CodexModelsManifestConfig {
 export type CompositeRouteMatchType = 'exact' | 'prefix'
 
 export type CompositeRouteEndpoint =
+  | 'speech'
+  | 'video'
   | 'any'
   | 'messages'
   | 'count_tokens'
@@ -831,11 +838,14 @@ export interface CreateGroupRequest {
   image_price_2k?: number | null
   image_price_4k?: number | null
   video_rate_independent?: boolean
+  minimax_rate_independent?: boolean
   video_rate_multiplier?: number
+  minimax_rate_multiplier?: number
   video_price_480p?: number | null
   video_price_720p?: number | null
   video_price_1080p?: number | null
   video_model_prices?: VideoModelPrices
+  minimax_media_prices?: MiniMaxMediaPrices
   web_search_price_per_call?: number | null
   search_price_per_1k?: number | null
   audio_realtime_price_per_min?: number | null
@@ -899,11 +909,14 @@ export interface UpdateGroupRequest {
   image_price_2k?: number | null
   image_price_4k?: number | null
   video_rate_independent?: boolean
+  minimax_rate_independent?: boolean
   video_rate_multiplier?: number
+  minimax_rate_multiplier?: number
   video_price_480p?: number | null
   video_price_720p?: number | null
   video_price_1080p?: number | null
   video_model_prices?: VideoModelPrices
+  minimax_media_prices?: MiniMaxMediaPrices
   web_search_price_per_call?: number | null
   search_price_per_1k?: number | null
   audio_realtime_price_per_min?: number | null

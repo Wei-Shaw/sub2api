@@ -106,6 +106,7 @@ func provideCleanup(
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	geminiCachedContent *service.GeminiCachedContentService,
 	batchImageCleanup *service.BatchImageCleanupService,
+	minimaxMedia *service.MiniMaxMediaService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
@@ -254,6 +255,12 @@ func provideCleanup(
 			{"BatchImageCleanupService", func() error {
 				if batchImageCleanup != nil {
 					batchImageCleanup.Stop()
+				}
+				return nil
+			}},
+			{"MiniMaxMediaService", func() error {
+				if minimaxMedia != nil {
+					minimaxMedia.Stop()
 				}
 				return nil
 			}},

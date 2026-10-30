@@ -1400,13 +1400,46 @@ func mixedListingModelAllowed(groupPlatform, model string) bool {
 	return groupPlatform == PlatformGemini && isAntigravityGeminiModel(model)
 }
 
-func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
+// Media models supplement the caller's default text catalog only when no
+// account declares a mapping. Keep defaults out of the shared cache: ordinary
+// clients and Codex can use different defaults for the same group/platform.
+type availableModelsCacheEntry struct {
+	models          []string
+	includeDefaults bool
+}
+
+func (entry availableModelsCacheEntry) modelIDs(defaults ...[]string) []string {
+	if !entry.includeDefaults || len(defaults) == 0 {
+		return cloneStringSlice(entry.models)
+	}
+	seen := make(map[string]struct{}, len(entry.models))
+	for _, model := range entry.models {
+		seen[model] = struct{}{}
+	}
+	for _, models := range defaults {
+		for _, model := range models {
+			seen[model] = struct{}{}
+		}
+	}
+	models := make([]string, 0, len(seen))
+	for model := range seen {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models
+}
+
+func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string, defaults ...[]string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
-			if models, ok := cached.([]string); ok {
+			switch entry := cached.(type) {
+			case availableModelsCacheEntry:
 				modelsListCacheHitTotal.Add(1)
-				return cloneStringSlice(models)
+				return entry.modelIDs(defaults...)
+			case []string:
+				modelsListCacheHitTotal.Add(1)
+				return cloneStringSlice(entry)
 			}
 		}
 	}
@@ -1441,8 +1474,30 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
+	var mediaGroup *Group
+	if groupID != nil && s.groupRepo != nil {
+		for _, acc := range accounts {
+			if _, err := MiniMaxMediaOrigin(&acc); err == nil {
+				if group, err := s.groupRepo.GetByID(ctx, *groupID); err == nil && group != nil && (group.Platform == PlatformMiniMax || group.Platform == PlatformComposite) {
+					mediaGroup = group
+				}
+				break
+			}
+		}
+	}
 
 	for _, acc := range accounts {
+		if _, err := MiniMaxMediaOrigin(&acc); err == nil {
+			if mediaGroup != nil {
+				for card := range MiniMaxDefaultPrices() {
+					model := strings.SplitN(card, "/", 2)[0]
+					if model == "voice_clone" || model == "voice_design" {
+						continue
+					}
+					modelSet[model] = struct{}{}
+				}
+			}
+		}
 		// Passthrough routing accepts models independently of model_mapping, so a
 		// stale mapping on a passthrough account must not narrow the public list.
 		// Treat it like an unmapped account: skip its mapping here and let
@@ -1472,7 +1527,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			return models
 		}
 	}
-	if !hasAnyMapping {
+	if !hasAnyMapping && len(modelSet) == 0 {
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
 			modelsListCacheStoreTotal.Add(1)
@@ -1497,11 +1552,12 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 	}
 
+	entry := availableModelsCacheEntry{models: models, includeDefaults: !hasAnyMapping}
 	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		s.modelsListCache.Set(cacheKey, entry, s.modelsListCacheTTL)
 		modelsListCacheStoreTotal.Add(1)
 	}
-	return cloneStringSlice(models)
+	return entry.modelIDs(defaults...)
 }
 
 func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {

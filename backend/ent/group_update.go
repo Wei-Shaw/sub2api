@@ -545,6 +545,53 @@ func (_u *GroupUpdate) AddBatchImageHoldMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (_u *GroupUpdate) SetMinimaxRateIndependent(v bool) *GroupUpdate {
+	_u.mutation.SetMinimaxRateIndependent(v)
+	return _u
+}
+
+// SetNillableMinimaxRateIndependent sets the "minimax_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMinimaxRateIndependent(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetMinimaxRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (_u *GroupUpdate) SetMinimaxRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetMinimaxRateMultiplier()
+	_u.mutation.SetMinimaxRateMultiplier(v)
+	return _u
+}
+
+// SetNillableMinimaxRateMultiplier sets the "minimax_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMinimaxRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetMinimaxRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddMinimaxRateMultiplier adds value to the "minimax_rate_multiplier" field.
+func (_u *GroupUpdate) AddMinimaxRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddMinimaxRateMultiplier(v)
+	return _u
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (_u *GroupUpdate) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupUpdate {
+	_u.mutation.SetMinimaxMediaPrices(v)
+	return _u
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (_u *GroupUpdate) ClearMinimaxMediaPrices() *GroupUpdate {
+	_u.mutation.ClearMinimaxMediaPrices()
+	return _u
+}
+
 // SetVideoRateIndependent sets the "video_rate_independent" field.
 func (_u *GroupUpdate) SetVideoRateIndependent(v bool) *GroupUpdate {
 	_u.mutation.SetVideoRateIndependent(v)
@@ -1730,6 +1777,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedBatchImageHoldMultiplier(); ok {
 		_spec.AddField(group.FieldBatchImageHoldMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.MinimaxRateIndependent(); ok {
+		_spec.SetField(group.FieldMinimaxRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MinimaxRateMultiplier(); ok {
+		_spec.SetField(group.FieldMinimaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMinimaxRateMultiplier(); ok {
+		_spec.AddField(group.FieldMinimaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MinimaxMediaPrices(); ok {
+		_spec.SetField(group.FieldMinimaxMediaPrices, field.TypeJSON, value)
+	}
+	if _u.mutation.MinimaxMediaPricesCleared() {
+		_spec.ClearField(group.FieldMinimaxMediaPrices, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.VideoRateIndependent(); ok {
 		_spec.SetField(group.FieldVideoRateIndependent, field.TypeBool, value)
 	}
@@ -2762,6 +2824,53 @@ func (_u *GroupUpdateOne) SetNillableBatchImageHoldMultiplier(v *float64) *Group
 // AddBatchImageHoldMultiplier adds value to the "batch_image_hold_multiplier" field.
 func (_u *GroupUpdateOne) AddBatchImageHoldMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddBatchImageHoldMultiplier(v)
+	return _u
+}
+
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (_u *GroupUpdateOne) SetMinimaxRateIndependent(v bool) *GroupUpdateOne {
+	_u.mutation.SetMinimaxRateIndependent(v)
+	return _u
+}
+
+// SetNillableMinimaxRateIndependent sets the "minimax_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMinimaxRateIndependent(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMinimaxRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetMinimaxRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetMinimaxRateMultiplier()
+	_u.mutation.SetMinimaxRateMultiplier(v)
+	return _u
+}
+
+// SetNillableMinimaxRateMultiplier sets the "minimax_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMinimaxRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMinimaxRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddMinimaxRateMultiplier adds value to the "minimax_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddMinimaxRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddMinimaxRateMultiplier(v)
+	return _u
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (_u *GroupUpdateOne) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupUpdateOne {
+	_u.mutation.SetMinimaxMediaPrices(v)
+	return _u
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (_u *GroupUpdateOne) ClearMinimaxMediaPrices() *GroupUpdateOne {
+	_u.mutation.ClearMinimaxMediaPrices()
 	return _u
 }
 
@@ -3979,6 +4088,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedBatchImageHoldMultiplier(); ok {
 		_spec.AddField(group.FieldBatchImageHoldMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MinimaxRateIndependent(); ok {
+		_spec.SetField(group.FieldMinimaxRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MinimaxRateMultiplier(); ok {
+		_spec.SetField(group.FieldMinimaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMinimaxRateMultiplier(); ok {
+		_spec.AddField(group.FieldMinimaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.MinimaxMediaPrices(); ok {
+		_spec.SetField(group.FieldMinimaxMediaPrices, field.TypeJSON, value)
+	}
+	if _u.mutation.MinimaxMediaPricesCleared() {
+		_spec.ClearField(group.FieldMinimaxMediaPrices, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.VideoRateIndependent(); ok {
 		_spec.SetField(group.FieldVideoRateIndependent, field.TypeBool, value)

@@ -117,11 +117,14 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetMinimaxRateIndependent(groupIn.MiniMaxRateIndependent).
 		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetMinimaxRateMultiplier(groupIn.MiniMaxRateMultiplier).
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
+		SetMinimaxMediaPrices(service.NormalizeMiniMaxMediaPrices(groupIn.MiniMaxMediaPrices)).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
 		SetNillableSearchPricePer1k(groupIn.SearchPricePer1k).
 		SetNillableAudioRealtimePricePerMin(groupIn.AudioRealtimePricePerMin).
@@ -309,11 +312,14 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetMinimaxRateIndependent(groupIn.MiniMaxRateIndependent).
 		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetMinimaxRateMultiplier(groupIn.MiniMaxRateMultiplier).
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
+		SetMinimaxMediaPrices(service.NormalizeMiniMaxMediaPrices(groupIn.MiniMaxMediaPrices)).
 		SetLongContextPricingEnabled(groupIn.LongContextPricingEnabled).
 		SetModelPricing(modelPricing).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).

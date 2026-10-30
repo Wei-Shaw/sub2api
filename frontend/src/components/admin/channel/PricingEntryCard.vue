@@ -81,7 +81,7 @@
               class="mt-1"
             />
           </div>
-          <div class="w-40">
+          <div v-if="!entry.minimax_media" class="w-40">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.billingMode') }}
             </label>
@@ -99,6 +99,8 @@
           </div>
         </div>
 
+        <p v-if="entry.minimax_media" class="mt-3 text-xs text-gray-500">{{ t('minimaxMedia.legacyHint') }}</p>
+        <template v-if="!entry.minimax_media">
         <!-- Token mode -->
         <div v-if="entry.billing_mode === 'token'">
           <!-- Default prices (fallback when no interval matches) -->
@@ -293,6 +295,7 @@
             {{ reasoningEffortMultiplierError }}
           </p>
         </div>
+        </template>
       </div>
     </div>
   </div>
@@ -410,6 +413,8 @@ function removeInterval(idx: number) {
 async function onModelsUpdate(newModels: string[]) {
   const oldModels = props.entry.models
   emit('update', { ...props.entry, models: newModels })
+
+  if (props.entry.minimax_media) return
 
   // 仅在「空条目首次加入单个模型」时自动填充默认价：
   // 条目已有模型时（即使价格留空、按各模型的官方默认价回退）追加模型不应改写整条价格，

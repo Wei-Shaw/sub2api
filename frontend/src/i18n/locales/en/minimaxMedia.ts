@@ -1,0 +1,23 @@
+export default {
+  minimaxMedia: {
+    allowImageVideoGeneration: 'Allow image and video generation for this group',
+    pricing: 'MiniMax media billing',
+    groupHint: 'Prices are USD. Blank uses international list prices or an existing legacy override; 0 is free.',
+    independent: 'Use independent media multiplier',
+    multiplier: 'MiniMax media multiplier',
+    finalPrice: 'Final unit price',
+    voice: 'Per voice on first use',
+    image: 'Per successful image',
+    characters_per_million: 'Per million billable characters',
+    output_second: 'Per output second',
+    input_second: 'Per input video second',
+    extra_image: 'Per extra image',
+    voiceFeeHint: 'Otherwise uses the effective user/group multiplier. Voice fees apply on first synthesis; preview characters are billed separately.',
+    legacyHint: 'Legacy media card retained. Configure new prices and multipliers in the group MiniMax media billing section.',
+    capability: 'Enable MiniMax media',
+    capabilityHint: 'Only for a MiniMax API key with verified media permissions. Supports system voices and private voices registered to this key.',
+    origin: 'Media API region',
+    china: 'China',
+    international: 'International',
+  },
+}

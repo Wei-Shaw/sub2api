@@ -11,6 +11,16 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
+      <div v-if="account.platform === 'minimax' && account.type === 'apikey'" class="space-y-2 rounded border p-3" data-testid="minimax-media-capability">
+        <label class="flex items-center gap-2 text-sm"><input v-model="minimaxMediaEnabled" type="checkbox" />{{ t('minimaxMedia.capability') }}</label>
+        <p class="text-xs text-gray-500">{{ t('minimaxMedia.capabilityHint') }}</p>
+        <label v-if="minimaxMediaEnabled" class="block text-xs">{{ t('minimaxMedia.origin') }}
+          <select v-model="minimaxMediaOrigin" class="input mt-1">
+            <option value="https://api.minimax.cn">{{ t('minimaxMedia.china') }} · api.minimax.cn</option>
+            <option value="https://api.minimax.io">{{ t('minimaxMedia.international') }} · api.minimax.io</option>
+          </select>
+        </label>
+      </div>
       <div>
         <label class="input-label">{{ t('common.name') }}</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
@@ -4096,6 +4106,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const minimaxMediaEnabled = ref(false)
+const minimaxMediaOrigin = ref('https://api.minimax.cn')
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -4847,6 +4859,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
 
   // Initialize API Key fields for apikey type
+  minimaxMediaEnabled.value = newAccount.extra?.minimax_media_enabled === true
+  minimaxMediaOrigin.value = newAccount.extra?.minimax_media_base_url === 'https://api.minimax.io' ? 'https://api.minimax.io' : 'https://api.minimax.cn'
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
@@ -6390,6 +6404,13 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
+    if (props.account.platform === 'minimax' && props.account.type === 'apikey') {
+      updatePayload.extra = {
+        ...(updatePayload.extra || props.account.extra || {}),
+        minimax_media_enabled: minimaxMediaEnabled.value,
+        minimax_media_base_url: minimaxMediaOrigin.value,
+      }
+    }
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)
     })

@@ -139,6 +139,9 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0.6).
 			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
+		field.Bool("minimax_rate_independent").Default(false),
+		field.Float("minimax_rate_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).Default(1),
+		field.JSON("minimax_media_prices", map[string]map[string]float64{}).Optional().SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Bool("video_rate_independent").
 			Default(false).
 			Comment("视频生成是否使用独立倍率；false 表示共享分组有效倍率"),

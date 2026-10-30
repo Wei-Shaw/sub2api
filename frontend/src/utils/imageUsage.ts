@@ -59,6 +59,9 @@ export const formatImageBillingSize = (row: ImageUsageRow | null | undefined, t:
   if (!size) {
     return t('usage.imageSizeNotRecorded')
   }
+  if (size === 'per_image') {
+    return t('usage.imageSizePerImage')
+  }
   if (knownImageBillingSizes.has(size)) {
     return size
   }

@@ -437,6 +437,7 @@ export default {
     imageSizeSourceLegacy: 'Legacy record',
     imageSizeSourceMissing: 'Not recorded',
     imageSizeNotRecorded: 'not recorded',
+    imageSizePerImage: 'per image',
     imageSizeLegacyUnstandardized: 'legacy unstandardized',
     imageSizeUnknown: 'unknown',
     cacheRead: 'Read',

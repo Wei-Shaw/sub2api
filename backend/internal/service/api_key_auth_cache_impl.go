@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 25 // v25: group image_count_billing switch (per-image billing on image endpoints)
+const apiKeyAuthSnapshotVersion = 26 // v26: MiniMax group media prices and independent multiplier.
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -403,6 +403,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			VideoPrice720P:                  apiKey.Group.VideoPrice720P,
 			VideoPrice1080P:                 apiKey.Group.VideoPrice1080P,
 			VideoModelPrices:                NormalizeVideoModelPrices(apiKey.Group.VideoModelPrices),
+			MiniMaxRateIndependent:          apiKey.Group.MiniMaxRateIndependent,
+			MiniMaxRateMultiplier:           apiKey.Group.MiniMaxRateMultiplier,
+			MiniMaxMediaPrices:              NormalizeMiniMaxMediaPrices(apiKey.Group.MiniMaxMediaPrices),
 			WebSearchPricePerCall:           apiKey.Group.WebSearchPricePerCall,
 			SearchPricePer1k:                apiKey.Group.SearchPricePer1k,
 			AudioRealtimePricePerMin:        apiKey.Group.AudioRealtimePricePerMin,
@@ -501,11 +504,14 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
 			VideoRateIndependent:            snapshot.Group.VideoRateIndependent,
+			MiniMaxRateIndependent:          snapshot.Group.MiniMaxRateIndependent,
 			VideoRateMultiplier:             snapshot.Group.VideoRateMultiplier,
+			MiniMaxRateMultiplier:           snapshot.Group.MiniMaxRateMultiplier,
 			VideoPrice480P:                  snapshot.Group.VideoPrice480P,
 			VideoPrice720P:                  snapshot.Group.VideoPrice720P,
 			VideoPrice1080P:                 snapshot.Group.VideoPrice1080P,
 			VideoModelPrices:                NormalizeVideoModelPrices(snapshot.Group.VideoModelPrices),
+			MiniMaxMediaPrices:              NormalizeMiniMaxMediaPrices(snapshot.Group.MiniMaxMediaPrices),
 			WebSearchPricePerCall:           snapshot.Group.WebSearchPricePerCall,
 			SearchPricePer1k:                snapshot.Group.SearchPricePer1k,
 			AudioRealtimePricePerMin:        snapshot.Group.AudioRealtimePricePerMin,

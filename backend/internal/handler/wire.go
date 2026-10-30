@@ -124,6 +124,7 @@ func ProvideGatewayHandler(
 }
 
 func ProvideOpenAIGatewayHandler(
+	minimaxMedia *service.MiniMaxMediaService,
 	gatewayService *service.OpenAIGatewayService,
 	pluginManager *service.PluginManager,
 	concurrencyService *service.ConcurrencyService,
@@ -142,6 +143,7 @@ func ProvideOpenAIGatewayHandler(
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.compositeResolver = compositeResolver
+	h.minimaxMedia = minimaxMedia
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
 	return h
