@@ -2,9 +2,9 @@
   <div :class="props.embedded ? 'space-y-4' : 'card overflow-hidden'">
     <div
       v-if="!props.embedded"
-      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+      class="card-header"
     >
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">
         {{ t('profile.authBindings.title') }}
       </h2>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -31,7 +31,7 @@
           <div class="flex min-w-0 flex-1 items-start gap-4">
             <div
               :class="providerIconClass(item.provider)"
-              class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-semibold"
             >
               <Icon
                 v-if="item.provider === 'email'"
@@ -294,8 +294,8 @@ const compact = computed(() => props.compact)
 const rowClass = computed(() =>
   props.embedded
     ? compact.value
-      ? 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/40'
-      : 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
+      ? 'rounded-lg border border-gray-200/70 bg-white p-4 dark:border-dark-800 dark:bg-dark-900'
+      : 'rounded-lg border border-gray-200/70 bg-gray-50/60 p-4 dark:border-dark-800 dark:bg-dark-900/60'
     : 'px-6 py-5'
 )
 const emailBound = computed(() => getBindingStatus('email'))
@@ -500,18 +500,18 @@ function providerInitial(provider: UserAuthProvider): string {
 
 function providerIconClass(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-300'
+    return 'bg-orange-50 text-orange-600 ring-1 ring-inset ring-orange-600/10 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-400/20'
   }
   if (provider === 'dingtalk') {
-    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
+    return 'bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-600/10 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-400/20'
   }
   if (provider === 'wechat') {
-    return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'
+    return 'bg-green-50 text-green-600 ring-1 ring-inset ring-green-600/10 dark:bg-green-500/10 dark:text-green-300 dark:ring-green-400/20'
   }
   if (provider === 'oidc') {
-    return 'bg-sky-100 text-sky-600 dark:bg-sky-900/20 dark:text-sky-300'
+    return 'bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-600/10 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-400/20'
   }
-  return 'bg-primary-100 text-primary-600 dark:bg-primary-900/20 dark:text-primary-300'
+  return 'bg-primary-50 text-primary-600 ring-1 ring-inset ring-primary-600/10 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/20'
 }
 
 function providerSummary(provider: UserAuthProvider): string {
