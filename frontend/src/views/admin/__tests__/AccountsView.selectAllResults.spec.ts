@@ -81,7 +81,7 @@ const makeAccounts = (count: number) => Array.from({ length: count }, (_, index)
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds', 'totalResults', 'selectingAll', 'allResultsSelected'],
-  emits: ['select-all-results', 'select-page', 'clear', 'refresh-token'],
+  emits: ['select-all-results', 'select-page', 'clear', 'refresh-token', 'rename'],
   template: `
     <div>
       <span data-test="selected-count">{{ selectedIds.length }}</span>
@@ -89,6 +89,7 @@ const AccountBulkActionsBarStub = {
       <span data-test="all-results-selected">{{ String(allResultsSelected) }}</span>
       <button data-test="select-page" @click="$emit('select-page')">select page</button>
       <button data-test="select-all-results" @click="$emit('select-all-results')">select all</button>
+      <button data-test="rename" @click="$emit('rename')">rename</button>
       <button data-test="clear" @click="$emit('clear')">clear</button>
       <button data-test="refresh-token" @click="$emit('refresh-token')">refresh token</button>
     </div>
@@ -129,6 +130,7 @@ const mountView = () => mount(AccountsView, {
       CreateAccountModal: true,
       EditAccountModal: true,
       BulkEditAccountModal: true,
+      BulkRenameAccountModal: { props: ['show', 'accountIds'], template: '<div v-if="show" data-test="rename-target">{{ accountIds.join(",") }}</div>' },
       PlatformTypeBadge: true,
       AccountCapacityCell: true,
       AccountStatusIndicator: true,
@@ -230,10 +232,14 @@ describe('admin AccountsView select all filtered results', () => {
       include_scheduler_score: '0'
     }))
 
+    await wrapper.get('[data-test="rename"]').trigger('click')
+    expect(wrapper.get('[data-test="rename-target"]').text()).toBe(allAccounts.map(a => a.id).join(','))
+
     await wrapper.get('[data-test="change-filter"]').trigger('click')
 
     expect(wrapper.get('[data-test="selected-count"]').text()).toBe('0')
     expect(wrapper.get('[data-test="all-results-selected"]').text()).toBe('false')
+    expect(wrapper.get('[data-test="rename-target"]').text()).toBe(allAccounts.map(a => a.id).join(','))
   })
 
   it('keeps the original page selection when loading all results fails', async () => {

@@ -1868,6 +1868,7 @@ func (stubGroupRepo) CreateFromSource(ctx context.Context, group *service.Group,
 }
 
 type stubAccountRepo struct {
+	service.AccountNameRepository
 	bulkUpdateIDs []int64
 }
 

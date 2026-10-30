@@ -106,6 +106,8 @@ type AdminService interface {
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
+	PreviewAccountRenames(ctx context.Context, input *BulkAccountRenameInput) (*BulkAccountRenamePreview, error)
+	ApplyAccountRenames(ctx context.Context, items []AccountRenameItem) (*BulkAccountRenameResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
 	// RevertAccountProxyFallback 将账号的 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
 	// 若账号不存在返回 ErrAccountNotFound；若账号存在但不在 fallback 状态，返回 ErrAccountNotInFallback。
@@ -697,6 +699,7 @@ type adminServiceImpl struct {
 	accountRepo          AccountRepository
 	accountDuplicateRepo AccountDuplicateRepository
 	accountBillingRepo   AccountBillingSettingsRepository
+	accountNameRepo      AccountNameRepository
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
@@ -768,6 +771,7 @@ func NewAdminService(
 		accountRepo:          accountRepo,
 		accountDuplicateRepo: accountRepo,
 		accountBillingRepo:   accountRepo,
+		accountNameRepo:      accountRepo,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,

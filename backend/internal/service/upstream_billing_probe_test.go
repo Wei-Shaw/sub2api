@@ -19,6 +19,7 @@ import (
 )
 
 type upstreamBillingProbeAccountRepo struct {
+	AccountNameRepository
 	AccountRepository
 	mu          sync.Mutex
 	accounts    map[int64]*Account
