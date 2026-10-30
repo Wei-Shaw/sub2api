@@ -749,3 +749,81 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsUntypedStatusAtInde
 	require.Equal(t, "keep_a", gjson.GetBytes(retryBody, "input.0.status").String())
 	require.False(t, gjson.GetBytes(retryBody, "input.1.status").Exists())
 }
+
+// Chat Completions requests converted to Responses carry their explicit cache
+// breakpoints inside content parts. The wordings below are the ones observed
+// from the upstream that rejects them on gpt-5.6/6.x.
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRemovesNestedPromptCacheHints(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		responseBody string
+		removedPath  string
+		preserved    []string
+	}{
+		{
+			name:         "nested content part named by missing required parameter",
+			body:         `{"prompt_cache_options":{"mode":"explicit"},"prompt_cache_key":"keep-key","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello","prompt_cache_breakpoint":{"mode":"explicit"}}]}]}`,
+			responseBody: `{"error":{"message":"Missing required parameter: 'input[0].content[0].prompt_cache_breakpoint.mode'.","type":"invalid_request_error"}}`,
+			removedPath:  "input.0.content.0.prompt_cache_breakpoint",
+			preserved:    []string{"input.0.content.0.text", "prompt_cache_key"},
+		},
+		{
+			name:         "nested content part named by model rejection",
+			body:         `{"input":[{"content":[{"type":"input_text","text":"hello","prompt_cache_breakpoint":{"mode":"explicit"}}]}]}`,
+			responseBody: `{"error":{"message":"input[0].content[0].prompt_cache_breakpoint is not supported on this model","type":"invalid_request_error"}}`,
+			removedPath:  "input.0.content.0.prompt_cache_breakpoint",
+			preserved:    []string{"input.0.content.0.text"},
+		},
+		{
+			name:         "prompt_cache_options named by model rejection",
+			body:         `{"prompt_cache_options":{"mode":"implicit"},"input":"keep"}`,
+			responseBody: `{"error":{"message":"prompt_cache_options is not supported on this model","type":"invalid_request_error"}}`,
+			removedPath:  "prompt_cache_options",
+			preserved:    []string{"input"},
+		},
+		{
+			name:         "top level breakpoint named by unsupported parameter",
+			body:         `{"prompt_cache_breakpoint":{"mode":"explicit"},"input":"keep"}`,
+			responseBody: `{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: prompt_cache_breakpoint"}}`,
+			removedPath:  "prompt_cache_breakpoint",
+			preserved:    []string{"input"},
+		},
+		{
+			name:         "chat shaped messages content part",
+			body:         `{"messages":[{"role":"user","content":[{"type":"text","text":"hello","prompt_cache_breakpoint":{"mode":"explicit"}}]}]}`,
+			responseBody: `{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'messages[0].content[0].prompt_cache_breakpoint'."}}`,
+			removedPath:  "messages.0.content.0.prompt_cache_breakpoint",
+			preserved:    []string{"messages.0.content.0.text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(
+				http.StatusBadRequest, []byte(tt.body), []byte(tt.responseBody))
+
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.False(t, gjson.GetBytes(retryBody, tt.removedPath).Exists())
+			for _, path := range tt.preserved {
+				require.True(t, gjson.GetBytes(retryBody, path).Exists(), "%s must survive", path)
+			}
+		})
+	}
+}
+
+// Dropping the breakpoint alone would leave mode=explicit behind, which turns
+// caching off for the request instead of failing it.
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyDropsExplicitOptionsWithBreakpoint(t *testing.T) {
+	body := []byte(`{"prompt_cache_options":{"mode":"explicit","ttl":"30m"},"input":[{"content":[{"type":"input_text","text":"hello","prompt_cache_breakpoint":{"mode":"explicit"}}]}]}`)
+	responseBody := []byte(`{"error":{"message":"Missing required parameter: 'input[0].content[0].prompt_cache_breakpoint.mode'.","type":"invalid_request_error"}}`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(retryBody, "input.0.content.0.prompt_cache_breakpoint").Exists())
+	require.False(t, gjson.GetBytes(retryBody, "prompt_cache_options").Exists())
+	require.Equal(t, "hello", gjson.GetBytes(retryBody, "input.0.content.0.text").String())
+}
