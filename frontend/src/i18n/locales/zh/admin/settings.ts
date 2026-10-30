@@ -733,7 +733,7 @@ export default {
         maxAmount: '最高金额',
         dailyLimit: '每日限额',
         balanceRechargeMultiplier: '余额充值倍率',
-        balanceRechargeMultiplierHint: '用户每支付 1 CNY 可获得多少 USD 余额',
+        balanceRechargeMultiplierHint: '非 USD 通道每支付 1 单位支付币种可获得多少 USD 余额；USD 通道固定按 1:1 换算，赠金、折扣及手续费另计',
         balanceRechargePreview: '预览：1 CNY = {usd} USD',
         subscriptionUsdToCnyRate: '订阅 CNY 换算汇率',
         subscriptionUsdToCnyRateHint:

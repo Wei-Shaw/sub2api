@@ -2,6 +2,7 @@ package service
 
 import (
 	"math"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/shopspring/decimal"
@@ -14,6 +15,13 @@ func normalizeBalanceRechargeMultiplier(multiplier float64) float64 {
 		return defaultBalanceRechargeMultiplier
 	}
 	return multiplier
+}
+
+func resolveBalanceRechargeMultiplier(multiplier float64, currency string) float64 {
+	if strings.EqualFold(strings.TrimSpace(currency), "USD") {
+		return 1
+	}
+	return normalizeBalanceRechargeMultiplier(multiplier)
 }
 
 // normalizeSubscriptionUSDToCNYRate 将非法值归一为 0（换算关闭）。

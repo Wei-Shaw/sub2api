@@ -738,7 +738,7 @@ export default {
         maxAmount: 'Maximum Amount',
         dailyLimit: 'Daily Limit',
         balanceRechargeMultiplier: 'Balance Recharge Multiplier',
-        balanceRechargeMultiplierHint: 'How many USD balance the user receives for each 1 CNY paid',
+        balanceRechargeMultiplierHint: 'USD balance per unit of payment currency for non-USD channels. USD channels always convert at 1:1; bonuses, discounts, and fees apply separately.',
         balanceRechargePreview: 'Preview: 1 CNY = {usd} USD',
         subscriptionUsdToCnyRate: 'Subscription USD to CNY Rate',
         subscriptionUsdToCnyRateHint:
