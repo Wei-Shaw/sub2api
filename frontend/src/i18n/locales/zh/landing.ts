@@ -163,6 +163,7 @@ export default {
     usedQuota: '已用额度',
     resetNow: '即将重置',
     subscriptionType: '订阅类型',
+    billingType: '计费方式',
     subscriptionExpires: '订阅到期',
     // Usage stat cells
     todayRequests: '今日请求',
@@ -215,8 +216,10 @@ export default {
       description: '连接到您的 Redis 服务器',
       host: '主机',
       port: '端口',
+      username: '用户名（可选）',
       password: '密码（可选）',
       database: '数据库',
+      usernamePlaceholder: '默认用户留空',
       passwordPlaceholder: '密码',
       enableTls: '启用 TLS',
       enableTlsHint: '连接 Redis 时使用 TLS（公共 CA 证书）'

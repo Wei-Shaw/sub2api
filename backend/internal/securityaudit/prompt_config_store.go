@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -29,6 +30,10 @@ type ConfigManager struct {
 	redis     *redis.Client
 	encryptor SecretEncryptor
 	clock     Clock
+	// encryptionKeyConfigured mirrors cfg.Totp.EncryptionKeyConfigured. With an
+	// auto-generated (per-boot) key, newly saved endpoint tokens would become
+	// undecryptable after the next restart, so Save rejects them (issue #4887).
+	encryptionKeyConfigured bool
 
 	snapshot atomic.Pointer[activeConfigSnapshot]
 	expected atomic.Int64
@@ -53,8 +58,11 @@ type ConfigManager struct {
 	wg          sync.WaitGroup
 }
 
-func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClient *redis.Client, encryptor service.SecretEncryptor) *ConfigManager {
-	return &ConfigManager{db: db, settings: settings, redis: redisClient, encryptor: encryptor, clock: realClock{}}
+func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClient *redis.Client, encryptor service.SecretEncryptor, cfg *config.Config) *ConfigManager {
+	return &ConfigManager{
+		db: db, settings: settings, redis: redisClient, encryptor: encryptor, clock: realClock{},
+		encryptionKeyConfigured: cfg != nil && cfg.Totp.EncryptionKeyConfigured,
+	}
 }
 
 func (m *ConfigManager) Start(ctx context.Context) error {
@@ -125,13 +133,57 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 		return err
 	}
 	now := m.clock.Now()
+	previous := m.snapshot.Load()
 	m.snapshot.Store(&activeConfigSnapshot{storage: cloneStorageConfig(storage), active: cloneActiveConfig(active), loadedAt: now})
 	m.configUntrusted.Store(false)
-	m.clearLoadError()
-	LogInfo(EventConfigLoaded, map[string]any{
-		"config_version": storage.ConfigVersion, "status": "loaded",
-	})
+	recovered := m.clearLoadError()
+	m.logInvalidTokenEndpoints(previous, active)
+	// refreshLoop calls Reload every 5s, so logging every successful load turns
+	// config_loaded into a heartbeat that buries real config changes.
+	if recovered || shouldLogConfigLoaded(previous, storage, active) {
+		LogInfo(EventConfigLoaded, map[string]any{
+			"config_version": storage.ConfigVersion, "status": "loaded",
+		})
+	}
 	return nil
+}
+
+// shouldLogConfigLoaded reports whether a successful reload carries news: the
+// first snapshot, a new config version (every admin save bumps it under the
+// advisory lock in UpdateConfig) or a flip of the global risk control gate,
+// which lives in its own setting and so leaves the version untouched.
+func shouldLogConfigLoaded(previous *activeConfigSnapshot, storage storageConfig, active ActiveConfig) bool {
+	return previous == nil ||
+		previous.storage.ConfigVersion != storage.ConfigVersion ||
+		previous.active.RiskControlEnabled != active.RiskControlEnabled
+}
+
+// logInvalidTokenEndpoints warns once per change (not on every 5s refresh)
+// when stored endpoint tokens cannot be decrypted with the current key.
+func (m *ConfigManager) logInvalidTokenEndpoints(previous *activeConfigSnapshot, active ActiveConfig) {
+	invalid := active.InvalidTokenEndpointIDs()
+	if len(invalid) == 0 {
+		return
+	}
+	if previous != nil {
+		prior := previous.active.InvalidTokenEndpointIDs()
+		if len(prior) == len(invalid) {
+			same := true
+			for i := range invalid {
+				if prior[i] != invalid[i] {
+					same = false
+					break
+				}
+			}
+			if same && previous.active.ConfigVersion == active.ConfigVersion {
+				return
+			}
+		}
+	}
+	LogWarn(EventConfigTokenInvalid, map[string]any{
+		"config_version": active.ConfigVersion, "status": "degraded",
+		"error_code": "endpoint_token_undecryptable", "guard_endpoint_id": strings.Join(invalid, ","),
+	})
 }
 
 func (m *ConfigManager) Active() (ActiveConfig, bool) {
@@ -194,15 +246,15 @@ func (m *ConfigManager) markUntrustedIfNoActiveSnapshot() {
 	}
 }
 
-func (m *ConfigManager) Public() PublicConfig {
+func (m *ConfigManager) Public() (PublicConfig, error) {
 	if m == nil {
-		return PublicFromStorage(DefaultStorageConfig(), false)
+		return PublicConfig{}, infraerrors.ServiceUnavailable(ErrorCodeConfigUnavailable, "提示词审计配置暂不可用")
 	}
 	snapshot := m.snapshot.Load()
 	if snapshot == nil {
-		return PublicFromStorage(DefaultStorageConfig(), false)
+		return PublicConfig{}, infraerrors.ServiceUnavailable(ErrorCodeConfigUnavailable, "提示词审计配置暂不可用")
 	}
-	return PublicFromStorage(cloneStorageConfig(snapshot.storage), snapshot.active.RiskControlEnabled)
+	return PublicFromStorage(cloneStorageConfig(snapshot.storage), snapshot.active.RiskControlEnabled, snapshot.active.InvalidTokenEndpointIDs()), nil
 }
 
 func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
@@ -268,11 +320,13 @@ func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actor
 	}
 	m.expected.Store(next.ConfigVersion)
 	m.expectedBlocking.Store(active.RiskControlEnabled && next.Enabled && next.BlockingEnabled)
+	previous := m.snapshot.Load()
 	m.snapshot.Store(&activeConfigSnapshot{storage: cloneStorageConfig(next), active: cloneActiveConfig(active), loadedAt: m.clock.Now()})
 	// A successful admin save installs a trustworthy snapshot; clear any prior
 	// fail-closed degradation so disabling audit actually takes effect.
 	m.configUntrusted.Store(false)
 	m.clearLoadError()
+	m.logInvalidTokenEndpoints(previous, active)
 	LogInfo(EventConfigUpdated, map[string]any{
 		"config_version": next.ConfigVersion, "status": "updated",
 	})
@@ -283,7 +337,7 @@ func (m *ConfigManager) Save(ctx context.Context, req UpdateConfigRequest, actor
 			})
 		}
 	}
-	return PublicFromStorage(next, active.RiskControlEnabled), nil
+	return PublicFromStorage(next, active.RiskControlEnabled, active.InvalidTokenEndpointIDs()), nil
 }
 
 func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfigRequest, actorID int64) (storageConfig, error) {
@@ -295,7 +349,7 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		currentByID[endpoint.ID] = endpoint
 	}
 	next := storageConfig{
-		Enabled: req.Enabled, BlockingEnabled: req.BlockingEnabled, StorePassEvents: req.StorePassEvents,
+		Enabled: req.Enabled, BlockingEnabled: req.BlockingEnabled, BlockingLatestTurnOnly: req.BlockingLatestTurnOnly, StorePassEvents: req.StorePassEvents,
 		Strategy: strings.TrimSpace(req.Strategy), WorkerCount: req.WorkerCount,
 		QueueCapacity: req.QueueCapacity, Scanners: append([]string(nil), req.Scanners...),
 		AllGroups: req.AllGroups, GroupIDs: append([]int64(nil), req.GroupIDs...),
@@ -317,6 +371,10 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		case endpoint.ClearToken:
 			stored.TokenCiphertext = ""
 		case strings.TrimSpace(endpoint.Token) != "":
+			if !m.encryptionKeyConfigured {
+				return storageConfig{}, infraerrors.BadRequest(ErrorCodeEncryptionKeyRequired,
+					"未配置固定加密密钥，审计节点 Token 将在服务重启后失效。请先设置 TOTP_ENCRYPTION_KEY 环境变量（64 位十六进制）并重启服务")
+			}
 			ciphertext, err := m.encryptor.Encrypt(strings.TrimSpace(endpoint.Token))
 			if err != nil {
 				return storageConfig{}, fmt.Errorf("encrypt prompt audit endpoint token: %w", err)
@@ -446,11 +504,15 @@ func (m *ConfigManager) recordLoadError(_ error) {
 	m.stateMu.Unlock()
 }
 
-func (m *ConfigManager) clearLoadError() {
+// clearLoadError drops the recorded load failure and reports whether one was
+// pending, so callers can tell a recovery apart from an unchanged reload.
+func (m *ConfigManager) clearLoadError() bool {
 	m.stateMu.Lock()
+	recovered := m.lastLoadError != ""
 	m.lastLoadError = ""
 	m.lastErrorAt = nil
 	m.stateMu.Unlock()
+	return recovered
 }
 
 func cloneStorageConfig(cfg storageConfig) storageConfig {

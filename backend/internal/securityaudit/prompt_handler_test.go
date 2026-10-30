@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -29,7 +31,9 @@ type fakePromptAdminService struct {
 	deleteFilter func(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
 }
 
-func (s *fakePromptAdminService) GetConfig() PublicConfig { return s.config }
+func (s *fakePromptAdminService) GetConfig() (PublicConfig, error) {
+	return s.config, nil
+}
 func (s *fakePromptAdminService) SaveConfig(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
 	if s.save == nil {
 		return PublicConfig{}, errors.New("unexpected SaveConfig call")
@@ -156,6 +160,21 @@ func TestPromptAdminConfigRequiresVersionMapsConflictAndNeverEchoesToken(t *test
 	})
 }
 
+func TestPromptAdminGetConfigReturnsSecretFreeUnavailableError(t *testing.T) {
+	const canary = "persisted-config-secret-canary"
+	repository := &switchableSettingRepository{loadErr: errors.New("failed to load token " + canary)}
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
+	require.Error(t, manager.Reload(context.Background()))
+	service := &PromptService{config: manager}
+
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodGet, "/admin/prompt-audit/config", nil)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Contains(t, response.Body.String(), ErrorCodeConfigUnavailable)
+	require.NotContains(t, response.Body.String(), canary)
+	require.NotContains(t, response.Body.String(), `"config_version"`)
+	require.NotContains(t, response.Body.String(), `"token"`)
+}
+
 func TestPromptAdminProbeSupportsTemporaryOrSavedTokenWithoutEcho(t *testing.T) {
 	const canary = "probe-token-canary"
 	for _, tc := range []struct {
@@ -194,11 +213,24 @@ func TestPromptAdminRejectsInvalidEventIDsTimesAndPagination(t *testing.T) {
 		{http.MethodGet, "/admin/prompt-audit/events?group_id=bad", nil, "prompt_audit_invalid_filter_id"},
 		{http.MethodGet, "/admin/prompt-audit/events?start_at=not-time", nil, "prompt_audit_invalid_time"},
 		{http.MethodGet, "/admin/prompt-audit/events?page=0", nil, "prompt_audit_invalid_pagination"},
+		{http.MethodGet, "/admin/prompt-audit/events?page=9223372036854775807", nil, "prompt_audit_invalid_pagination"},
 		{http.MethodPost, "/admin/prompt-audit/events/batch-delete", map[string]any{"ids": []int64{1, -2}}, "prompt_audit_invalid_event_id"},
 	} {
 		response := promptAdminRequest(t, router, tc.method, tc.path, tc.body)
 		require.Equalf(t, http.StatusBadRequest, response.Code, "%s %s", tc.method, tc.path)
 		require.Contains(t, response.Body.String(), tc.reason)
+	}
+}
+
+func TestPromptAdminRejectsOverflowingPagination(t *testing.T) {
+	router := promptAdminRouter(nil)
+	for _, size := range []int{20, 21, 100} {
+		query := "/admin/prompt-audit/events?page=" + strconv.Itoa(math.MaxInt/size+1) + "&page_size=" + strconv.Itoa(size)
+		t.Run(query, func(t *testing.T) {
+			response := promptAdminRequest(t, router, http.MethodGet, query, nil)
+			require.Equal(t, http.StatusBadRequest, response.Code)
+			require.Contains(t, response.Body.String(), "prompt_audit_invalid_pagination")
+		})
 	}
 }
 

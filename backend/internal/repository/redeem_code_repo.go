@@ -347,7 +347,7 @@ func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, lim
 	codes, err := r.client.RedeemCode.Query().
 		Where(redeemcode.UsedByEQ(userID)).
 		WithGroup().
-		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldID)).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -377,7 +377,7 @@ func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID i
 		WithGroup().
 		Offset(params.Offset()).
 		Limit(params.Limit()).
-		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, err

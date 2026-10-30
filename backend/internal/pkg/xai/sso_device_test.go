@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"testing"
@@ -22,10 +23,14 @@ type ssoDeviceFakeClient struct {
 
 func (c *ssoDeviceFakeClient) Do(req *http.Request) (*http.Response, error) {
 	c.cookieHeaders = append(c.cookieHeaders, req.Header.Get("Cookie"))
+	if req.URL.String() != SSOApproveURL {
+		require.Empty(c.t, req.Header.Get("Origin"))
+		require.Empty(c.t, req.Header.Get("Referer"))
+	}
 	switch req.URL.String() {
 	case SSOAccountsURL:
 		require.Equal(c.t, http.MethodGet, req.Method)
-		return ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {"session=web-session; Path=/"}}, `{}`), nil
+		return ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {"session=web-session; Domain=x.ai; Path=/"}}, `{}`), nil
 	case SSODeviceURL:
 		require.Equal(c.t, http.MethodPost, req.Method)
 		values := readSSODeviceForm(c.t, req)
@@ -42,13 +47,16 @@ func (c *ssoDeviceFakeClient) Do(req *http.Request) (*http.Response, error) {
 		return ssoDeviceResponse(http.StatusFound, http.Header{"Location": {"/oauth2/device/consent"}}, ``), nil
 	case "https://auth.x.ai/oauth2/device/consent":
 		require.Equal(c.t, http.MethodGet, req.Method)
-		return ssoDeviceResponse(http.StatusOK, nil, `<html>consent</html>`), nil
+		return ssoDeviceResponse(http.StatusOK, nil, `<html><form><input type="hidden" name="consent_token" value="consent&amp;token"/></form></html>`), nil
 	case SSOApproveURL:
 		require.Equal(c.t, http.MethodPost, req.Method)
+		require.Equal(c.t, "https://auth.x.ai", req.Header.Get("Origin"))
+		require.Equal(c.t, "https://auth.x.ai/oauth2/device/consent", req.Header.Get("Referer"))
 		values := readSSODeviceForm(c.t, req)
 		require.Equal(c.t, "USER-1", values.Get("user_code"))
 		require.Equal(c.t, "allow", values.Get("action"))
 		require.Equal(c.t, "User", values.Get("principal_type"))
+		require.Equal(c.t, "consent&token", values.Get("consent_token"))
 		return ssoDeviceResponse(http.StatusSeeOther, http.Header{"Location": {"/oauth2/device/done"}}, ``), nil
 	case "https://auth.x.ai/oauth2/device/done":
 		require.Equal(c.t, http.MethodGet, req.Method)
@@ -86,12 +94,57 @@ func TestConvertSSOToBuildCompletesDeviceFlow(t *testing.T) {
 	require.Contains(t, client.cookieHeaders[0], "sso-rw=sso-token")
 	require.Contains(t, client.cookieHeaders[len(client.cookieHeaders)-1], "session=web-session")
 	require.Contains(t, client.cookieHeaders[len(client.cookieHeaders)-1], "csrf=csrf-token")
+	for _, cookie := range client.cookieHeaders {
+		require.NotContains(t, cookie, "consent&token")
+	}
+}
+
+func TestSSOConsentToken(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"legacy page", `<html>consent</html>`, ""},
+		{"encoded hidden value", `<input value='a&amp;b&#43;c' name='consent_token' type='hidden'>`, "a&b+c"},
+		{"case insensitive HTML", `<INPUT TYPE="HIDDEN" NAME="consent_token" VALUE="token"/>`, "token"},
+		{"ignore script and visible fields", `<script>"<input type='hidden' name='consent_token' value='fake'>"</script><input name='consent_token' value='visible'><input type='hidden' name='user_code' value='user'><input type='hidden' name='consent_token' value='real'>`, "real"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ssoConsentToken([]byte(tc.body)))
+		})
+	}
 }
 
 func TestNormalizeSSOTokenAcceptsCookieHeader(t *testing.T) {
 	require.Equal(t, "token-1", NormalizeSSOToken("Cookie: foo=bar; sso=token-1; sso-rw=token-2"))
 	require.Equal(t, "token-2", NormalizeSSOToken("sso-rw=token-2; foo=bar"))
 	require.Equal(t, "raw-token", NormalizeSSOToken(" raw-token ; ignored=1"))
+	require.Empty(t, NormalizeSSOToken(strings.Repeat("x", ssoMaxTokenLength+1)))
+}
+
+func TestSSODeviceCookieJarHonorsDomainAndPath(t *testing.T) {
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	flow := &ssoDeviceFlow{cookieJar: jar}
+	accountsURL, err := url.Parse("https://accounts.x.ai/")
+	require.NoError(t, err)
+	authURL, err := url.Parse("https://auth.x.ai/oauth2/device/verify")
+	require.NoError(t, err)
+
+	flow.captureCookies(accountsURL, ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {
+		"host-only=accounts; Path=/",
+		"shared=all-xai; Domain=x.ai; Path=/",
+		"narrow=oauth-only; Domain=x.ai; Path=/oauth2",
+	}}, ""))
+
+	authCookies := flow.cookieHeader(authURL)
+	require.NotContains(t, authCookies, "host-only=accounts")
+	require.Contains(t, authCookies, "shared=all-xai")
+	require.Contains(t, authCookies, "narrow=oauth-only")
+
+	accountsCookies := flow.cookieHeader(accountsURL)
+	require.Contains(t, accountsCookies, "host-only=accounts")
+	require.Contains(t, accountsCookies, "shared=all-xai")
+	require.NotContains(t, accountsCookies, "narrow=oauth-only")
 }
 
 func ssoDeviceResponse(status int, header http.Header, body string) *http.Response {

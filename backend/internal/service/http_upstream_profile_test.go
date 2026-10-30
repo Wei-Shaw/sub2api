@@ -20,6 +20,13 @@ func TestWithHTTPUpstreamProfile_OpenAI(t *testing.T) {
 	}
 }
 
+func TestWithHTTPUpstreamProfile_LongStream(t *testing.T) {
+	ctx := WithHTTPUpstreamProfile(context.TODO(), HTTPUpstreamProfileLongStream)
+	if profile := HTTPUpstreamProfileFromContext(ctx); profile != HTTPUpstreamProfileLongStream {
+		t.Fatalf("expected profile %q, got %q", HTTPUpstreamProfileLongStream, profile)
+	}
+}
+
 func TestWithHTTPUpstreamRedirectsDisabled(t *testing.T) {
 	//nolint:staticcheck // Exercises the defensive nil-context fallback.
 	ctx := WithHTTPUpstreamRedirectsDisabled(nil)
@@ -28,5 +35,19 @@ func TestWithHTTPUpstreamRedirectsDisabled(t *testing.T) {
 	}
 	if HTTPUpstreamRedirectsDisabled(context.Background()) {
 		t.Fatal("redirects should remain enabled by default")
+	}
+}
+
+func TestWithHTTPUpstreamPublicHostsOnly(t *testing.T) {
+	//nolint:staticcheck // Exercises the defensive nil-context fallback.
+	ctx := WithHTTPUpstreamPublicHostsOnly(nil)
+	if !HTTPUpstreamPublicHostsOnly(ctx) {
+		t.Fatal("expected public-hosts-only marker to be set")
+	}
+	if HTTPUpstreamPublicHostsOnly(context.Background()) {
+		t.Fatal("marker must be absent by default")
+	}
+	if HTTPUpstreamRedirectsDisabled(ctx) {
+		t.Fatal("public-hosts-only must not disable redirects")
 	}
 }

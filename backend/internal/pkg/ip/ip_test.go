@@ -154,6 +154,26 @@ func TestGetSecurityClientIPCustomHeaderPrecedenceAndFallback(t *testing.T) {
 			want: "4.4.4.4",
 		},
 		{
+			name:         "invalid legacy values continue to a valid forwarded address",
+			trustForward: true,
+			requestHeaders: map[string]string{
+				"CF-Connecting-IP": "unknown",
+				"X-Real-IP":        "proxy.internal",
+				"X-Forwarded-For":  "also-invalid, 203.0.113.50",
+			},
+			want: "203.0.113.50",
+		},
+		{
+			name:         "all invalid legacy values fall back to the connection address",
+			trustForward: true,
+			requestHeaders: map[string]string{
+				"CF-Connecting-IP": "unknown",
+				"X-Real-IP":        "proxy.internal",
+				"X-Forwarded-For":  "also-invalid",
+			},
+			want: "9.9.9.9",
+		},
+		{
 			name:         "disabled mode ignores custom and legacy headers",
 			trustForward: false,
 			headers:      []string{"X-CDN-IP"},

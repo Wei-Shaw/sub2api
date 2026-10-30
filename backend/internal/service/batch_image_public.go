@@ -57,6 +57,7 @@ type BatchImageSubmitRequest struct {
 	AspectRatio      string                 `json:"aspect_ratio"`
 	ImageSize        string                 `json:"image_size"`
 	Metadata         map[string]string      `json:"metadata"`
+	SessionID        *string                `json:"-"`
 }
 
 type BatchImageSubmitItem struct {
@@ -281,6 +282,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		HoldID:                  &holdID,
 		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
 		RequestHash:             batchImageStringPtr(requestHash),
+		SessionID:               normalized.SessionID,
 	})
 	if err != nil {
 		return nil, err
@@ -942,9 +944,10 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		if err != nil {
 			return nil, nil, err
 		}
+		// 与普通账号调度一致：priority 数值越小越优先，同优先级按 ID 排序。
 		sort.SliceStable(accounts, func(i, j int) bool {
 			if accounts[i].Priority != accounts[j].Priority {
-				return accounts[i].Priority > accounts[j].Priority
+				return accounts[i].Priority < accounts[j].Priority
 			}
 			return accounts[i].ID < accounts[j].ID
 		})

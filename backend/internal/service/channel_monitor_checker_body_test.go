@@ -199,7 +199,7 @@ func TestGrokMonitorConfiguration(t *testing.T) {
 	if err := validateProvider(MonitorProviderGrok); err != nil {
 		t.Fatalf("grok provider should be supported: %v", err)
 	}
-	if got := normalizeMonitorPrimaryModel(MonitorProviderGrok, ""); got != MonitorDefaultGrokModel {
+	if got := normalizeMonitorPrimaryModel(MonitorProviderGrok, MonitorCheckModeProbe, ""); got != MonitorDefaultGrokModel {
 		t.Fatalf("expected default Grok model %q, got %q", MonitorDefaultGrokModel, got)
 	}
 	if err := validateAPIMode(MonitorProviderGrok, MonitorAPIModeChatCompletions); err != nil {
@@ -276,6 +276,17 @@ func TestRunCheckForModel_Grok_RedactsXAIKeyFromUpstreamBody(t *testing.T) {
 	}
 	if !strings.Contains(res.Message, "xai-***REDACTED***") {
 		t.Fatalf("Grok error message should contain redaction marker, got %q", res.Message)
+	}
+}
+
+func TestSanitizeErrorMessage_RedactsGeminiAuthKey(t *testing.T) {
+	authKey := "AQ." + "Ab" + strings.Repeat("Xy9_-z", 8)
+	got := sanitizeErrorMessage(`{"error":{"message":"API key not valid: ` + authKey + `"}}`)
+	if strings.Contains(got, authKey) {
+		t.Fatalf("Gemini auth key leaked: %q", got)
+	}
+	if !strings.Contains(got, "AQ.***REDACTED***") {
+		t.Fatalf("expected redaction marker, got %q", got)
 	}
 }
 
@@ -496,5 +507,28 @@ func TestValidateChallenge_AnthropicTextAfterThinking(t *testing.T) {
 
 	if !validateChallenge(respText, "2") {
 		t.Fatalf("validateChallenge(%q, %q) = false, want true", respText, "2")
+	}
+}
+
+func TestGeminiMonitorBodyIncludesExplicitUserRole(t *testing.T) {
+	adapter := providerAdapters[MonitorProviderGemini]
+	body, err := adapter.buildBody("gemini-3.6-flash", "Reply with only 7.")
+	if err != nil {
+		t.Fatalf("buildBody() error = %v", err)
+	}
+
+	var payload struct {
+		Contents []struct {
+			Role string `json:"role"`
+		} `json:"contents"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(payload.Contents) != 1 {
+		t.Fatalf("contents length = %d, want 1", len(payload.Contents))
+	}
+	if payload.Contents[0].Role != "user" {
+		t.Fatalf("contents[0].role = %q, want user", payload.Contents[0].Role)
 	}
 }

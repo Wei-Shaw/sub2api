@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // installMutex prevents concurrent installation attempts (TOCTOU protection)
@@ -83,19 +84,29 @@ func validateUsername(name string) bool {
 	return validName.MatchString(name) && len(name) <= 63
 }
 
-// validateEmail checks if email format is valid
+// validateEmail checks if email format is valid. The address must also pass the
+// login endpoint's `binding:"email"` rule, otherwise the admin could be created
+// with an email (e.g. "a@b" or "Name <a@b.com>") that can never log in.
 func validateEmail(email string) bool {
-	_, err := mail.ParseAddress(email)
-	return err == nil && len(email) <= 254
+	if _, err := mail.ParseAddress(email); err != nil || len(email) > 254 {
+		return false
+	}
+	loginReq := struct {
+		Email string `binding:"required,email"`
+	}{Email: email}
+	return binding.Validator.ValidateStruct(&loginReq) == nil
 }
+
+// maxPasswordBytes is bcrypt's input limit; longer passwords fail to hash.
+const maxPasswordBytes = 72
 
 // validatePassword checks password strength
 func validatePassword(password string) error {
 	if len(password) < 8 {
 		return fmt.Errorf("password must be at least 8 characters")
 	}
-	if len(password) > 128 {
-		return fmt.Errorf("password must be at most 128 characters")
+	if len(password) > maxPasswordBytes {
+		return fmt.Errorf("password must be at most %d bytes", maxPasswordBytes)
 	}
 	return nil
 }
@@ -178,6 +189,7 @@ func testDatabase(c *gin.Context) {
 type TestRedisRequest struct {
 	Host      string `json:"host" binding:"required"`
 	Port      int    `json:"port" binding:"required"`
+	Username  string `json:"username"`
 	Password  string `json:"password"`
 	DB        int    `json:"db"`
 	EnableTLS bool   `json:"enable_tls"`
@@ -204,10 +216,16 @@ func testRedis(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "Invalid Redis database number (0-15)")
 		return
 	}
+	req.Username = strings.TrimSpace(req.Username)
+	if len(req.Username) > 128 {
+		response.Error(c, http.StatusBadRequest, "Invalid Redis username")
+		return
+	}
 
 	cfg := &RedisConfig{
 		Host:      req.Host,
 		Port:      req.Port,
+		Username:  req.Username,
 		Password:  req.Password,
 		DB:        req.DB,
 		EnableTLS: req.EnableTLS,
@@ -252,6 +270,7 @@ func install(c *gin.Context) {
 	req.Database.User = strings.TrimSpace(req.Database.User)
 	req.Database.DBName = strings.TrimSpace(req.Database.DBName)
 	req.Redis.Host = strings.TrimSpace(req.Redis.Host)
+	req.Redis.Username = strings.TrimSpace(req.Redis.Username)
 
 	// ========== COMPREHENSIVE INPUT VALIDATION ==========
 	// Database validation
@@ -283,6 +302,10 @@ func install(c *gin.Context) {
 	}
 	if req.Redis.DB < 0 || req.Redis.DB > 15 {
 		response.Error(c, http.StatusBadRequest, "Invalid Redis database number")
+		return
+	}
+	if len(req.Redis.Username) > 128 {
+		response.Error(c, http.StatusBadRequest, "Invalid Redis username")
 		return
 	}
 

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,12 +82,66 @@ func TestNormalizePaymentSource(t *testing.T) {
 func TestCanonicalizeReturnURL(t *testing.T) {
 	t.Parallel()
 
+	// Client-supplied query and fragment are both dropped: user-controlled
+	// pairs inside the signed return_url value could be smuggled into
+	// EasyPay-style sign base strings (issue #7881).
 	got, err := CanonicalizeReturnURL("https://example.com/payment/result?b=2#a", "example.com", "")
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
-	if got != "https://example.com/payment/result?b=2" {
-		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://example.com/payment/result?b=2")
+	if got != "https://example.com/payment/result" {
+		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://example.com/payment/result")
+	}
+}
+
+func TestCanonicalizeReturnURLStripsSmuggledTradeStatus(t *testing.T) {
+	t.Parallel()
+
+	got, err := CanonicalizeReturnURL(
+		"https://example.com/payment/result?trade_status=TRADE_SUCCESS",
+		"example.com", "",
+	)
+	if err != nil {
+		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
+	}
+	if strings.Contains(got, "trade_status") {
+		t.Fatalf("CanonicalizeReturnURL kept smuggled trade_status: %q", got)
+	}
+}
+
+func TestCanonicalizeReturnURLRejectsNonPlainHostAndUserinfo(t *testing.T) {
+	t.Parallel()
+
+	badHost := "a&b=c.example.com"
+	cases := []struct {
+		name    string
+		raw     string
+		srcHost string
+		srcURL  string
+	}{
+		{"host matched via referer", "https://" + badHost + "/payment/result", "app.example.com", "https://" + badHost + "/purchase"},
+		{"host matched via request host", "https://" + badHost + "/payment/result", badHost, ""},
+		{"userinfo", "https://a&b=c@app.example.com/payment/result", "app.example.com", ""},
+	}
+	for _, tc := range cases {
+		if got, err := CanonicalizeReturnURL(tc.raw, tc.srcHost, tc.srcURL); err == nil {
+			t.Fatalf("%s: CanonicalizeReturnURL accepted %q", tc.name, got)
+		}
+	}
+}
+
+func TestCanonicalizeReturnURLAllowsIPAndPortHosts(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"http://127.0.0.1:3000/payment/result",
+		"http://[::1]:8080/payment/result",
+		"https://pay_site-1.example.com/payment/result",
+	} {
+		parsed, _ := url.Parse(raw)
+		if _, err := CanonicalizeReturnURL(raw, parsed.Host, ""); err != nil {
+			t.Fatalf("CanonicalizeReturnURL(%q) returned error: %v", raw, err)
+		}
 	}
 }
 
@@ -117,8 +172,10 @@ func TestCanonicalizeReturnURLAllowsConfiguredFrontendHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
-	if got != "https://app.example.com/payment/result?from=checkout" {
-		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://app.example.com/payment/result?from=checkout")
+	// The host allowlist still applies, but client query parameters are
+	// always dropped (issue #7881: signed-value parameter smuggling).
+	if got != "https://app.example.com/payment/result" {
+		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://app.example.com/payment/result")
 	}
 }
 

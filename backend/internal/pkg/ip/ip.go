@@ -113,13 +113,13 @@ func resolveCustomForwardedClientIP(c *gin.Context, headers []string) (string, s
 
 func resolveLegacyForwardedHeaderIP(c *gin.Context) (string, string) {
 	var fallback string
-	if forwarded := normalizeIP(c.GetHeader("CF-Connecting-IP")); forwarded != "" {
+	if forwarded := normalizeValidIP(c.GetHeader("CF-Connecting-IP")); forwarded != "" {
 		fallback = forwarded
 		if !isPrivateIP(forwarded) {
 			return forwarded, fallback
 		}
 	}
-	if realIP := normalizeIP(c.GetHeader("X-Real-IP")); realIP != "" {
+	if realIP := normalizeValidIP(c.GetHeader("X-Real-IP")); realIP != "" {
 		if fallback == "" {
 			fallback = realIP
 		}
@@ -130,13 +130,18 @@ func resolveLegacyForwardedHeaderIP(c *gin.Context) (string, string) {
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
 		ips := strings.Split(xff, ",")
 		for _, candidate := range ips {
-			candidate = strings.TrimSpace(candidate)
+			candidate = normalizeValidIP(candidate)
 			if candidate != "" && !isPrivateIP(candidate) {
-				return normalizeIP(candidate), fallback
+				return candidate, fallback
 			}
 		}
-		if fallback == "" && len(ips) > 0 {
-			fallback = normalizeIP(strings.TrimSpace(ips[0]))
+		if fallback == "" {
+			for _, candidate := range ips {
+				if candidate = normalizeValidIP(candidate); candidate != "" {
+					fallback = candidate
+					break
+				}
+			}
 		}
 	}
 	return "", fallback
@@ -174,6 +179,16 @@ func normalizeIP(ip string) string {
 		return host
 	}
 	return ip
+}
+
+// normalizeValidIP 规范化并验证代理头中的候选值，避免把 unknown、主机名等非法值传给安全服务。
+func normalizeValidIP(value string) string {
+	normalized := normalizeIP(value)
+	parsed := net.ParseIP(normalized)
+	if parsed == nil {
+		return ""
+	}
+	return parsed.String()
 }
 
 // privateNets contains the private/loopback ranges skipped while selecting a

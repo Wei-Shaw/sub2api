@@ -128,6 +128,20 @@ server {
 }
 ```
 
+If Nginx gzip is enabled in the `http` block, keep `text/event-stream` out of
+`gzip_types` and do not use `gzip_types *` for Sub2API. The
+`proxy_buffering off` setting above prevents proxy buffering, but it does not
+disable the gzip response filter. Use an explicit list for ordinary responses:
+
+```nginx
+gzip on;
+gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
+```
+
+If a shared global configuration cannot exclude SSE by content type, set
+`gzip off;` in the locations serving streaming API routes. This leaves gzip
+available for the web UI and static assets.
+
 Do not use an incoming `$http_x_forwarded_for` value unless Nginx real-IP
 processing is restricted to explicit trusted proxy CIDRs.
 
@@ -139,6 +153,17 @@ the TCP peer. It is therefore a direct-to-Caddy baseline. Do not use its
 `{remote_host}` forwarding lines unchanged behind a CDN: all clients would be
 attributed to a CDN egress address, collapsing rejection aggregation and the
 invalid-auth limiter onto unrelated users.
+
+The bundled Caddy configuration leaves `flush_interval` unset so Caddy can
+automatically flush `text/event-stream` responses while still propagating
+client cancellation upstream. Do not set it globally: positive values can add
+streaming latency, while Caddy 2.6.2's special `-1` mode also causes
+reverse-proxied requests to continue after clients disconnect. The
+configuration uses an explicit response content-type list for compression. Do
+not replace that list with `text/*` or the shorthand `encode gzip zstd`: both
+match `text/event-stream` and can buffer SSE until the response ends. Keep
+streaming responses uncompressed while retaining compression for the web UI,
+JSON, and static assets.
 
 For a CDN deployment, first firewall the origin so only current CDN egress
 CIDRs can connect. Then configure those exact ranges as Caddy trusted proxies

@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,6 +91,56 @@ func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	require.Len(t, items, 2)
 	assert.Equal(t, "system", items[0].Role)
 	assert.Equal(t, "user", items[1].Role)
+}
+
+func TestChatCompletionsToResponses_MessageTypesWithReasoningAndTools(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "step-5-preview",
+		Messages: []ChatMessage{
+			{Role: "system", Content: json.RawMessage(`"You are helpful."`)},
+			{Role: "user", Content: json.RawMessage(`"Check the directory"`)},
+			{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"I will check."`),
+				ReasoningContent: "Need to inspect the directory.",
+				ToolCalls: []ChatToolCall{{
+					ID: "call_1", Type: "function",
+					Function: ChatFunctionCall{Name: "bash", Arguments: `{"cmd":"pwd"}`},
+				}},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: json.RawMessage(`"/tmp"`)},
+			{Role: "assistant", ReasoningContent: "The tool returned /tmp."},
+			{Role: "user", Content: json.RawMessage(`"Continue"`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 7)
+	for i, want := range []struct{ typ, role string }{
+		{"message", "system"},
+		{"message", "user"},
+		{"message", "assistant"},
+		{"function_call", ""},
+		{"function_call_output", ""},
+		{"message", "assistant"},
+		{"message", "user"},
+	} {
+		assert.Equal(t, want.typ, items[i].Type, "input item %d type", i)
+		assert.Equal(t, want.role, items[i].Role, "input item %d role", i)
+	}
+	var assistantContent, reasoningOnlyContent []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[2].Content, &assistantContent))
+	require.NoError(t, json.Unmarshal(items[5].Content, &reasoningOnlyContent))
+	require.Len(t, assistantContent, 1)
+	require.Len(t, reasoningOnlyContent, 1)
+	assert.Equal(t, "<thinking>Need to inspect the directory.</thinking>\nI will check.", assistantContent[0].Text)
+	assert.Equal(t, "<thinking>The tool returned /tmp.</thinking>", reasoningOnlyContent[0].Text)
+	assert.Equal(t, "call_1", items[3].CallID)
+	assert.Equal(t, "call_1", items[4].CallID)
 }
 
 func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
@@ -240,6 +291,46 @@ func mustMarshalJSON(t *testing.T, value any) []byte {
 }
 
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
+	t.Run("default floor", func(t *testing.T) {
+		maxTokens := 1
+		req := &ChatCompletionsRequest{
+			Model:     "gpt-4o",
+			MaxTokens: &maxTokens,
+			Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, DefaultMinMaxOutputTokens, *resp.MaxOutputTokens)
+	})
+
+	t.Run("configured floor", func(t *testing.T) {
+		for _, input := range []int{16, 64, 127, 128} {
+			input := input
+			t.Run(fmt.Sprintf("input_%d", input), func(t *testing.T) {
+				req := &ChatCompletionsRequest{
+					Model:     "gpt-4o",
+					MaxTokens: &input,
+					Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				}
+				resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+				require.NoError(t, err)
+				require.NotNil(t, resp.MaxOutputTokens)
+				assert.Equal(t, input, *resp.MaxOutputTokens)
+			})
+		}
+		input := 1
+		req := &ChatCompletionsRequest{
+			Model:     "gpt-4o",
+			MaxTokens: &input,
+			Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, 16, *resp.MaxOutputTokens)
+	})
+
 	t.Run("max_tokens", func(t *testing.T) {
 		maxTokens := 100
 		req := &ChatCompletionsRequest{
@@ -267,6 +358,21 @@ func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp.MaxOutputTokens)
 		assert.Equal(t, 500, *resp.MaxOutputTokens)
+	})
+
+	t.Run("max_completion_tokens_preferred before configured floor", func(t *testing.T) {
+		maxTokens := 500
+		maxCompletion := 1
+		req := &ChatCompletionsRequest{
+			Model:               "gpt-4o",
+			MaxTokens:           &maxTokens,
+			MaxCompletionTokens: &maxCompletion,
+			Messages:            []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, 16, *resp.MaxOutputTokens)
 	})
 }
 
@@ -407,6 +513,79 @@ func TestChatCompletionsToResponses_WhitespaceOnlyBase64ImageURLSkipped(t *testi
 	assert.Equal(t, "Describe this", parts[0].Text)
 }
 
+func TestChatCompletionsToResponses_FilePartFileData(t *testing.T) {
+	content := `[{"type":"text","text":"Summarize the attached document"},{"type":"file","file":{"filename":"document.pdf","file_data":"data:application/pdf;base64,JVBERi0xLjQ="}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Summarize the attached document", parts[0].Text)
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "document.pdf", parts[1].Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0xLjQ=", parts[1].FileData)
+	assert.Empty(t, parts[1].FileID)
+}
+
+func TestChatCompletionsToResponses_FilePartFileID(t *testing.T) {
+	content := `[{"type":"file","file":{"file_id":"file-abc123"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "file-abc123", parts[0].FileID)
+	assert.Empty(t, parts[0].FileData)
+}
+
+func TestChatCompletionsToResponses_EmptyFilePartSkipped(t *testing.T) {
+	// A file part with neither file_data nor file_id carries nothing the
+	// Responses API can use; dropping it (like empty image URLs) avoids an
+	// upstream 400 on an empty input_file part.
+	content := `[{"type":"text","text":"Describe this"},{"type":"file","file":{"filename":"empty.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+}
+
 func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 	// Regression for #2515: the upstream Responses API rejects an input item
 	// whose content field is JSON null. Any chat-completions message that
@@ -459,7 +638,7 @@ func TestChatCompletionsResponseToResponses_DeepSeekReasoningOnlyFallsBackToMess
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, nil, false, nil)
 
 	require.Len(t, out.Output, 2)
 	require.Equal(t, "reasoning", out.Output[0].Type)
@@ -493,7 +672,7 @@ func TestChatCompletionsResponseToResponses_DeepSeekReasoningToolCallDoesNotFall
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, nil, false, nil)
 
 	require.Len(t, out.Output, 2)
 	require.Equal(t, "reasoning", out.Output[0].Type)
@@ -1546,6 +1725,108 @@ func TestBufferedResponseAccumulator_ToolCalls(t *testing.T) {
 	assert.Equal(t, "call_abc", output[0].CallID)
 	assert.Equal(t, "get_weather", output[0].Name)
 	assert.Equal(t, `{"city":"NYC"}`, output[0].Arguments)
+}
+
+func TestResponsesEventToChatChunks_FunctionArgumentsDoneWithoutDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5-codex"
+	state.SentRole = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item: &ResponsesOutput{
+			Type:      "function_call",
+			CallID:    "call_lookup",
+			Name:      "lookup_item",
+			Arguments: "",
+		},
+	}, state)
+	require.Len(t, chunks, 1)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 1,
+		CallID:      "call_lookup",
+		Name:        "lookup_item",
+		Arguments:   `{"id":1}`,
+	}, state)
+	require.Len(t, chunks, 1)
+	require.Len(t, chunks[0].Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, `{"id":1}`, chunks[0].Choices[0].Delta.ToolCalls[0].Function.Arguments)
+}
+
+func TestResponsesEventToChatChunks_FunctionArgumentsDoneDoesNotDuplicateDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5-codex"
+	state.SentRole = true
+
+	ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	}, state)
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       `{"id":1}`,
+	}, state)
+	require.Len(t, chunks, 1)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 0,
+		Arguments:   `{"id":1}`,
+	}, state)
+	assert.Empty(t, chunks)
+}
+
+func TestBufferedResponseAccumulator_FunctionArgumentsDoneWithoutDeltas(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 1,
+		Arguments:   `{"id":1}`,
+	})
+
+	resp := &ResponsesResponse{Output: []ResponsesOutput{{
+		Type:      "function_call",
+		CallID:    "call_lookup",
+		Name:      "lookup_item",
+		Arguments: "",
+	}}}
+	acc.SupplementResponseOutput(resp)
+
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, `{"id":1}`, resp.Output[0].Arguments)
+}
+
+func TestBufferedResponseAccumulator_FunctionArgumentsDoneReplacesDeltas(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       `{"id":1}`,
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 0,
+		Arguments:   `{"id":1}`,
+	})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 1)
+	assert.Equal(t, `{"id":1}`, output[0].Arguments)
 }
 
 func TestBufferedResponseAccumulator_Reasoning(t *testing.T) {

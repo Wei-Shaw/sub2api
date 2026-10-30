@@ -45,6 +45,8 @@ const (
 	FieldExpiryWarnDays = "expiry_warn_days"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
+	// EdgePrimaryProxies holds the string denoting the primary_proxies edge name in mutations.
+	EdgePrimaryProxies = "primary_proxies"
 	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
 	EdgeBackupProxy = "backup_proxy"
 	// Table holds the table name of the proxy in the database.
@@ -56,6 +58,10 @@ const (
 	AccountsInverseTable = "accounts"
 	// AccountsColumn is the table column denoting the accounts relation/edge.
 	AccountsColumn = "proxy_id"
+	// PrimaryProxiesTable is the table that holds the primary_proxies relation/edge.
+	PrimaryProxiesTable = "proxies"
+	// PrimaryProxiesColumn is the table column denoting the primary_proxies relation/edge.
+	PrimaryProxiesColumn = "backup_proxy_id"
 	// BackupProxyTable is the table that holds the backup_proxy relation/edge.
 	BackupProxyTable = "proxies"
 	// BackupProxyColumn is the table column denoting the backup_proxy relation/edge.
@@ -219,6 +225,20 @@ func ByAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByPrimaryProxiesCount orders the results by primary_proxies count.
+func ByPrimaryProxiesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPrimaryProxiesStep(), opts...)
+	}
+}
+
+// ByPrimaryProxies orders the results by primary_proxies terms.
+func ByPrimaryProxies(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPrimaryProxiesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByBackupProxyField orders the results by backup_proxy field.
 func ByBackupProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -232,10 +252,17 @@ func newAccountsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, true, AccountsTable, AccountsColumn),
 	)
 }
+func newPrimaryProxiesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(Table, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, PrimaryProxiesTable, PrimaryProxiesColumn),
+	)
+}
 func newBackupProxyStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(Table, FieldID),
-		sqlgraph.Edge(sqlgraph.O2O, false, BackupProxyTable, BackupProxyColumn),
+		sqlgraph.Edge(sqlgraph.M2O, false, BackupProxyTable, BackupProxyColumn),
 	)
 }

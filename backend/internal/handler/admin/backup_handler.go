@@ -140,7 +140,13 @@ func (h *BackupHandler) DeleteBackup(c *gin.Context) {
 		response.BadRequest(c, "backup ID is required")
 		return
 	}
-	if err := h.backupService.DeleteBackup(c.Request.Context(), backupID); err != nil {
+	var err error
+	if c.Query("delete_archived") == "true" {
+		err = h.backupService.DeleteArchivedBackup(c.Request.Context(), backupID)
+	} else {
+		err = h.backupService.DeleteBackup(c.Request.Context(), backupID)
+	}
+	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -153,12 +159,12 @@ func (h *BackupHandler) GetDownloadURL(c *gin.Context) {
 		response.BadRequest(c, "backup ID is required")
 		return
 	}
-	url, err := h.backupService.GetBackupDownloadURL(c.Request.Context(), backupID)
+	download, err := h.backupService.GetBackupDownloadURL(c.Request.Context(), backupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"url": url})
+	response.Success(c, download)
 }
 
 // ─── 恢复操作（需要重新输入管理员密码） ───

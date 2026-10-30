@@ -22,13 +22,34 @@ type antigravityStreamResult struct {
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
 }
 
+func (s *AntigravityGatewayService) observeAntigravityGeminiSSELine(c *gin.Context, line string) {
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "data:") {
+		return
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return
+	}
+	// Observe the original payload: ObserveGemini supports both the v1internal
+	// wrapper and direct Gemini response shapes. The main stream handler will
+	// unwrap the same line for business processing, so unwrapping here would be
+	// duplicate work on every SSE event.
+	observer.ObserveGemini([]byte(payload))
+}
+
 // antigravityClientWriter 封装流式响应的客户端写入，自动检测断开并标记。
 // 断开后所有写入操作变为 no-op，调用方通过 Disconnected() 判断是否继续 drain 上游。
 type antigravityClientWriter struct {
-	w            gin.ResponseWriter
-	flusher      http.Flusher
-	disconnected bool
-	prefix       string // 日志前缀，标识来源方法
+	w                gin.ResponseWriter
+	flusher          http.Flusher
+	disconnected     bool
+	prefix           string // 日志前缀，标识来源方法
+	beforeFirstWrite func()
 }
 
 func newAntigravityClientWriter(w gin.ResponseWriter, flusher http.Flusher, prefix string) *antigravityClientWriter {
@@ -40,6 +61,7 @@ func (cw *antigravityClientWriter) Write(p []byte) bool {
 	if cw.disconnected {
 		return false
 	}
+	cw.prepareFirstWrite()
 	if _, err := cw.w.Write(p); err != nil {
 		cw.markDisconnected()
 		return false
@@ -53,6 +75,7 @@ func (cw *antigravityClientWriter) Fprintf(format string, args ...any) bool {
 	if cw.disconnected {
 		return false
 	}
+	cw.prepareFirstWrite()
 	if _, err := fmt.Fprintf(cw.w, format, args...); err != nil {
 		cw.markDisconnected()
 		return false
@@ -62,6 +85,15 @@ func (cw *antigravityClientWriter) Fprintf(format string, args ...any) bool {
 }
 
 func (cw *antigravityClientWriter) Disconnected() bool { return cw.disconnected }
+
+func (cw *antigravityClientWriter) prepareFirstWrite() {
+	if cw.beforeFirstWrite == nil {
+		return
+	}
+	prepare := cw.beforeFirstWrite
+	cw.beforeFirstWrite = nil
+	prepare()
+}
 
 func (cw *antigravityClientWriter) markDisconnected() {
 	cw.disconnected = true
@@ -83,6 +115,9 @@ func handleStreamReadError(err error, clientDisconnected bool, prefix string) (d
 }
 
 func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
+	if upstreamResponseModelObserverFromContext(c) == nil {
+		beginUpstreamResponseModelObservation(c)
+	}
 	c.Status(resp.StatusCode)
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -162,6 +197,11 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.StreamKeepaliveInterval > 0 {
 		keepaliveInterval = time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 	}
+	// go-genai / python-genai 不会忽略 SSE 注释行，收到 ":\n\n" 会直接把整个流判成
+	// invalid stream chunk 而中断（Antigravity CLI 在用 go-genai）。对这类客户端宁可不发心跳。
+	if keepaliveInterval > 0 && downstreamRejectsSSEComments(c) {
+		keepaliveInterval = 0
+	}
 	var keepaliveTicker *time.Ticker
 	if keepaliveInterval > 0 {
 		keepaliveTicker = time.NewTicker(keepaliveInterval)
@@ -208,6 +248,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 			lastDataAt = time.Now()
 
 			line := ev.line
+			s.observeAntigravityGeminiSSELine(c, line)
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
@@ -252,6 +293,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				continue
 			}
 
+			// 上游每个 data 事件后面跟一个空行作为事件分隔。上面已经把 data 行写成
+			// "data: ...\n\n"，若再把这个空行透传出去，事件之间就会变成 "\n\n\n"。
+			// google-genai 的 Go SDK（Antigravity CLI 在用）按 "\n\n" 切事件，多出的
+			// "\n" 会粘到下一个事件开头，前缀变成 "\ndata" 而被判成 invalid stream chunk。
+			if trimmed == "" {
+				continue
+			}
+
 			cw.Fprintf("%s\n", line)
 
 		case <-intervalCh:
@@ -286,6 +335,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 // handleGeminiStreamToNonStreaming 读取上游流式响应，合并为非流式响应返回给客户端
 // Gemini 流式响应是增量的，需要累积所有 chunk 的内容
 func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
+	if upstreamResponseModelObserverFromContext(c) == nil {
+		beginUpstreamResponseModelObservation(c)
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -298,8 +350,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedImageParts []map[string]any // 收集所有包含图片的 parts
-	var collectedTextParts []string          // 收集所有文本片段
+	var collectedParts []map[string]any // 收集所有 parts（text、thinking、functionCall、inlineData 等）
 
 	type scanEvent struct {
 		line string
@@ -365,6 +416,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 			}
 
 			line := ev.line
+			s.observeAntigravityGeminiSSELine(c, line)
 			trimmed := strings.TrimRight(line, "\r\n")
 
 			if !strings.HasPrefix(trimmed, "data:") {
@@ -414,19 +466,10 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 				}
 			}
 
-			// 保留最后一个有 parts 的响应
+			// 保留最后一个有 parts 的响应，并收集所有 parts
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
-				// 收集包含图片和文本的 parts
-				for _, part := range parts {
-					if inlineData, ok := part["inlineData"].(map[string]any); ok {
-						collectedImageParts = append(collectedImageParts, part)
-						_ = inlineData // 避免 unused 警告
-					}
-					if text, ok := part["text"].(string); ok && text != "" {
-						collectedTextParts = append(collectedTextParts, text)
-					}
-				}
+				collectedParts = append(collectedParts, parts...)
 			}
 
 		case <-intervalCh:
@@ -453,14 +496,9 @@ returnResponse:
 		}
 	}
 
-	// 如果收集到了图片 parts，需要合并到最终响应中
-	if len(collectedImageParts) > 0 {
-		finalResponse = mergeImagePartsToResponse(finalResponse, collectedImageParts)
-	}
-
-	// 如果收集到了文本，需要合并到最终响应中
-	if len(collectedTextParts) > 0 {
-		finalResponse = mergeTextPartsToResponse(finalResponse, collectedTextParts)
+	// 将收集的所有 parts 合并到最终响应中
+	if len(collectedParts) > 0 {
+		finalResponse = mergeCollectedPartsToResponse(finalResponse, collectedParts)
 	}
 
 	respBody, err := json.Marshal(finalResponse)
@@ -523,21 +561,27 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 		return response
 	}
 
-	result, _, setParts := getOrCreateGeminiParts(response)
+	result, existingParts, setParts := getOrCreateGeminiParts(response)
 
 	// 合并策略：
 	// 1. 保持原始顺序
-	// 2. 连续的普通 text parts 合并为一个
+	// 2. 连续的普通 text parts 合并为一个，并保留关联的 thoughtSignature
 	// 3. thinking、functionCall、inlineData 等保持原样
 	var mergedParts []any
 	var textBuffer strings.Builder
+	var textSignature string
 
 	flushTextBuffer := func() {
-		if textBuffer.Len() > 0 {
-			mergedParts = append(mergedParts, map[string]any{
+		if textBuffer.Len() > 0 || textSignature != "" {
+			part := map[string]any{
 				"text": textBuffer.String(),
-			})
+			}
+			if textSignature != "" {
+				part["thoughtSignature"] = textSignature
+			}
+			mergedParts = append(mergedParts, part)
 			textBuffer.Reset()
+			textSignature = ""
 		}
 	}
 
@@ -552,6 +596,9 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 			} else {
 				// 普通 text，累积到 buffer
 				_, _ = textBuffer.WriteString(text)
+				if sig, ok := part["thoughtSignature"].(string); ok && sig != "" {
+					textSignature = sig
+				}
 			}
 		} else {
 			// 非 text part（functionCall、inlineData 等），先刷新 text buffer，然后保留原样
@@ -563,75 +610,16 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 	// 刷新剩余的 text
 	flushTextBuffer()
 
+	if len(mergedParts) == 0 {
+		mergedParts = existingParts
+	}
+
 	setParts(mergedParts)
 	return result
 }
 
-// mergeImagePartsToResponse 将收集到的图片 parts 合并到 Gemini 响应中
-func mergeImagePartsToResponse(response map[string]any, imageParts []map[string]any) map[string]any {
-	if len(imageParts) == 0 {
-		return response
-	}
-
-	result, existingParts, setParts := getOrCreateGeminiParts(response)
-
-	// 检查现有 parts 中是否已经有图片
-	for _, p := range existingParts {
-		if pm, ok := p.(map[string]any); ok {
-			if _, hasInline := pm["inlineData"]; hasInline {
-				return result // 已有图片，不重复添加
-			}
-		}
-	}
-
-	// 添加收集到的图片 parts
-	for _, imgPart := range imageParts {
-		existingParts = append(existingParts, imgPart)
-	}
-	setParts(existingParts)
-	return result
-}
-
-// mergeTextPartsToResponse 将收集到的文本合并到 Gemini 响应中
-func mergeTextPartsToResponse(response map[string]any, textParts []string) map[string]any {
-	if len(textParts) == 0 {
-		return response
-	}
-
-	mergedText := strings.Join(textParts, "")
-	result, existingParts, setParts := getOrCreateGeminiParts(response)
-
-	// 查找并更新第一个 text part，或创建新的
-	newParts := make([]any, 0, len(existingParts)+1)
-	textUpdated := false
-
-	for _, p := range existingParts {
-		pm, ok := p.(map[string]any)
-		if !ok {
-			newParts = append(newParts, p)
-			continue
-		}
-		if _, hasText := pm["text"]; hasText && !textUpdated {
-			// 用累积的文本替换
-			newPart := make(map[string]any)
-			for k, v := range pm {
-				newPart[k] = v
-			}
-			newPart["text"] = mergedText
-			newParts = append(newParts, newPart)
-			textUpdated = true
-		} else {
-			newParts = append(newParts, pm)
-		}
-	}
-
-	if !textUpdated {
-		newParts = append([]any{map[string]any{"text": mergedText}}, newParts...)
-	}
-
-	setParts(newParts)
-	return result
-}
+// antigravityStatusClientClosed 是客户端在上游响应前断开时回写的状态码（499 client closed request）。
+const antigravityStatusClientClosed = 499
 
 func (s *AntigravityGatewayService) writeClaudeError(c *gin.Context, status int, errType, message string) error {
 	MarkResponseCommitted(c)
@@ -655,6 +643,8 @@ func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, accou
 	upstreamDetail := s.getUpstreamErrorDetail(body)
 	setOpsUpstreamError(c, upstreamStatus, upstreamMsg, upstreamDetail)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           account.Platform,
 		AccountID:          account.ID,
 		AccountName:        account.Name,
@@ -735,6 +725,8 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 		statusStr = "NOT_FOUND"
 	case 429:
 		statusStr = "RESOURCE_EXHAUSTED"
+	case antigravityStatusClientClosed:
+		statusStr = "CANCELLED"
 	case 500:
 		statusStr = "INTERNAL"
 	case 502, 503:
@@ -751,9 +743,12 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 	return fmt.Errorf("%s", message)
 }
 
-// handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
+// collectClaudeStreamResponse 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) ([]byte, *antigravityStreamResult, error) {
+	if upstreamResponseModelObserverFromContext(c) == nil {
+		beginUpstreamResponseModelObservation(c)
+	}
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -766,6 +761,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 	var last map[string]any
 	var lastWithParts map[string]any
 	var collectedParts []map[string]any // 收集所有 parts（包括 text、thinking、functionCall、inlineData 等）
+	var meaningfulResponse bool
 
 	type scanEvent struct {
 		line string
@@ -827,7 +823,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity claude non-stream): max_size=%d error=%v", maxLineSize, ev.err)
 				}
-				return nil, ev.err
+				return nil, nil, ev.err
 			}
 
 			line := ev.line
@@ -847,26 +843,34 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 			if parseErr != nil {
 				continue
 			}
+			upstreamResponseModelObserverFromContext(c).ObserveGemini(inner)
 
 			var parsed map[string]any
 			if err := json.Unmarshal(inner, &parsed); err != nil {
 				continue
 			}
 
-			// 记录首 token 时间
-			if firstTokenMs == nil {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
+			// 最后的错误帧可能没有 parts，必须在聚合选择前保留失败原因。
+			if extractGeminiFinishReason(parsed) == "MALFORMED_FUNCTION_CALL" {
+				return nil, nil, antigravity.ErrMalformedFunctionCall
 			}
 
 			last = parsed
 
 			// 保留最后一个有 parts 的响应，并收集所有 parts
-			if parts := extractGeminiParts(parsed); len(parts) > 0 {
+			parts := extractGeminiParts(parsed)
+			if len(parts) > 0 {
 				lastWithParts = parsed
 
 				// 收集所有 parts（text、thinking、functionCall、inlineData 等）
 				collectedParts = append(collectedParts, parts...)
+			}
+			if len(parts) > 0 || strings.TrimSpace(extractGeminiFinishReason(parsed)) != "" {
+				meaningfulResponse = true
+				if firstTokenMs == nil {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
 			}
 
 		case <-intervalCh:
@@ -875,23 +879,23 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 				continue
 			}
 			logger.LegacyPrintf("service.antigravity_gateway", "Stream data interval timeout (antigravity claude non-stream)")
-			return nil, fmt.Errorf("stream data interval timeout")
+			return nil, nil, fmt.Errorf("stream data interval timeout")
 		}
 	}
 
 returnResponse:
-	// 选择最后一个有效响应
-	finalResponse := pickGeminiCollectResult(last, lastWithParts)
-
 	// 处理空响应情况 — 触发同账号重试 + failover 切换账号
-	if last == nil && lastWithParts == nil {
+	if !meaningfulResponse {
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] warning: empty stream response (claude non-stream), triggering failover")
-		return nil, &UpstreamFailoverError{
+		return nil, nil, &UpstreamFailoverError{
 			StatusCode:             http.StatusBadGateway,
 			ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
 			RetryableOnSameAccount: true,
 		}
 	}
+
+	// 选择最后一个有效响应
+	finalResponse := pickGeminiCollectResult(last, lastWithParts)
 
 	// 将收集的所有 parts 合并到最终响应中
 	if len(collectedParts) > 0 {
@@ -901,17 +905,15 @@ returnResponse:
 	// 序列化为 JSON（Gemini 格式）
 	geminiBody, err := json.Marshal(finalResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal gemini response: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal gemini response: %w", err)
 	}
 
 	// 转换 Gemini 响应为 Claude 格式
 	claudeResp, agUsage, err := antigravity.TransformGeminiToClaude(geminiBody, originalModel)
 	if err != nil {
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] transform_error error=%v body=%s", err, string(geminiBody))
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, nil, fmt.Errorf("failed to parse upstream response: %w", err)
 	}
-
-	c.Data(http.StatusOK, "application/json", claudeResp)
 
 	// 转换为 service.ClaudeUsage
 	usage := &ClaudeUsage{
@@ -919,9 +921,40 @@ returnResponse:
 		OutputTokens:             agUsage.OutputTokens,
 		CacheCreationInputTokens: agUsage.CacheCreationInputTokens,
 		CacheReadInputTokens:     agUsage.CacheReadInputTokens,
+		ImageOutputTokens:        agUsage.ImageOutputTokens,
 	}
 
-	return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+	return claudeResp, &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+}
+
+// handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
+// 用于处理客户端非流式请求但上游只支持流式的情况
+func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+	claudeResp, streamRes, err := s.collectClaudeStreamResponse(c, resp, startTime, originalModel)
+	if err != nil {
+		var failoverErr *UpstreamFailoverError
+		if errors.As(err, &failoverErr) {
+			return nil, err
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
+		errMsg := "Failed to parse upstream response"
+		errType := "upstream_error"
+		if strings.Contains(err.Error(), "stream data interval timeout") {
+			errMsg = "Upstream stream data interval timeout"
+			errType = "upstream_timeout"
+		} else if errors.Is(err, bufio.ErrTooLong) {
+			errMsg = "Upstream response line too long"
+			errType = "response_too_large"
+		}
+
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, errType, errMsg)
+	}
+	c.Data(http.StatusOK, "application/json", claudeResp)
+	return streamRes, nil
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
@@ -1076,6 +1109,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			}
 
 			lastDataAt = time.Now()
+			s.observeAntigravityGeminiSSELine(c, ev.line)
 
 			// 处理 SSE 行，转换为 Claude 格式
 			claudeEvents := processor.ProcessLine(strings.TrimRight(ev.line, "\r\n"))
@@ -1131,7 +1165,7 @@ func (s *AntigravityGatewayService) extractImageInputSize(body []byte) string {
 }
 
 // isImageGenerationModel 判断模型是否为图片生成模型
-// 支持的模型：gemini-3.1-flash-image, gemini-3-pro-image, gemini-2.5-flash-image 等
+// 支持的模型：gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-pro-image, gemini-2.5-flash-image 等
 func isImageGenerationModel(model string) bool {
 	modelLower := strings.ToLower(model)
 	// 移除 models/ 前缀
@@ -1141,6 +1175,8 @@ func isImageGenerationModel(model string) bool {
 	return modelLower == "gemini-3.1-flash-image" ||
 		modelLower == "gemini-3.1-flash-image-preview" ||
 		strings.HasPrefix(modelLower, "gemini-3.1-flash-image-") ||
+		modelLower == "gemini-3.1-flash-lite-image" ||
+		strings.HasPrefix(modelLower, "gemini-3.1-flash-lite-image-") ||
 		modelLower == "gemini-3-pro-image" ||
 		modelLower == "gemini-3-pro-image-preview" ||
 		strings.HasPrefix(modelLower, "gemini-3-pro-image-") ||

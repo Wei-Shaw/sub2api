@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,8 +158,12 @@ func (f *fakeConcurrencyCache) CleanupStaleProcessSlots(context.Context, string)
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {
 	t.Helper()
+	return newTestGatewayHandlerWithSchedulerCache(t, group, &fakeSchedulerCache{accounts: accounts})
+}
 
-	schedulerCache := &fakeSchedulerCache{accounts: accounts}
+func newTestGatewayHandlerWithSchedulerCache(t *testing.T, group *service.Group, schedulerCache service.SchedulerCache) (*GatewayHandler, func()) {
+	t.Helper()
+
 	schedulerSnapshot := service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil)
 
 	gwSvc := service.NewGatewayService(
@@ -187,6 +192,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // tlsFPProfileService
 		nil, // channelService
 		nil, // resolver
+		nil, // compositeResolver
 		nil, // balanceNotifyService
 		nil, // userPlatformQuotaRepo
 	)
@@ -288,7 +294,7 @@ func TestGatewayHandlerMessages_InterceptWarmup_AntigravityAccount_MixedScheduli
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "msg_mock_warmup", resp["id"])
+	require.True(t, strings.HasPrefix(resp["id"].(string), "msg_01"))
 	require.Equal(t, "claude-sonnet-4-5", resp["model"])
 
 	content, ok := resp["content"].([]any)
@@ -377,6 +383,6 @@ func TestGatewayHandlerMessages_InterceptWarmup_AntigravityAccount_ForcePlatform
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "msg_mock_warmup", resp["id"])
+	require.True(t, strings.HasPrefix(resp["id"].(string), "msg_01"))
 	require.Equal(t, "claude-sonnet-4-5", resp["model"])
 }

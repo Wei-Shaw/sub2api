@@ -13,6 +13,7 @@ func TestBuildRedisOptions(t *testing.T) {
 		Redis: config.RedisConfig{
 			Host:                "localhost",
 			Port:                6379,
+			Username:            "app-user",
 			Password:            "secret",
 			DB:                  2,
 			DialTimeoutSeconds:  5,
@@ -25,6 +26,7 @@ func TestBuildRedisOptions(t *testing.T) {
 
 	opts := buildRedisOptions(cfg)
 	require.Equal(t, "localhost:6379", opts.Addr)
+	require.Equal(t, "app-user", opts.Username)
 	require.Equal(t, "secret", opts.Password)
 	require.Equal(t, 2, opts.DB)
 	require.Equal(t, 5*time.Second, opts.DialTimeout)

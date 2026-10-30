@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -7,6 +8,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
 import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
+import { getAccountNameMap } from '../utils/accountNameMap'
 
 export interface OpsRequestDetailsPreset {
   title: string
@@ -22,6 +24,7 @@ interface Props {
   preset: OpsRequestDetailsPreset
   platform?: string
   groupId?: number | null
+  resumeState?: boolean
 }
 
 const props = defineProps<Props>()
@@ -34,13 +37,25 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
 
+// 与 DataTable 一致：< 768px 切换为卡片视图，避免宽表在移动端被截断。
+const isDesktopViewport = useMediaQuery('(min-width: 768px)')
+
 const loading = ref(false)
 const items = ref<OpsRequestDetail[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
+const accountNameById = ref<Map<number, string>>(new Map())
 
 const close = () => emit('update:modelValue', false)
+
+const showTTFT = computed(() => props.preset.sort === 'ttft_desc')
+const latencyLabel = computed(() => t(showTTFT.value ? 'admin.ops.ttftLabel' : 'admin.ops.requestDetails.table.duration'))
+
+function formatLatency(row: OpsRequestDetail): string {
+  const value = showTTFT.value ? row.first_token_ms : row.duration_ms
+  return typeof value === 'number' ? `${value} ms` : '-'
+}
 
 const rangeLabel = computed(() => {
   const minutes = parseTimeRangeMinutes(props.timeRange)
@@ -80,6 +95,7 @@ const fetchData = async () => {
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
     total.value = res.total || 0
+    refreshAccountNames()
   } catch (e: any) {
     console.error('[OpsRequestDetailsModal] Failed to fetch request details', e)
     appStore.showError(e?.message || t('admin.ops.requestDetails.failedToLoad'))
@@ -94,6 +110,7 @@ watch(
   () => props.modelValue,
   (open) => {
     if (open) {
+      if (props.resumeState) return
       page.value = 1
       pageSize.value = 10
       fetchData()
@@ -138,13 +155,33 @@ async function handleCopyRequestId(requestId: string) {
 
 function openErrorDetail(errorId: number | null | undefined) {
   if (!errorId) return
-  close()
   emit('openErrorDetail', errorId)
 }
 
 const kindBadgeClass = (kind: string) => {
   if (kind === 'error') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+}
+
+// 明细行只带 account_id；账号名来自 lite 账号列表映射，缺项时强制刷新一次缓存（新建账号场景）。
+async function refreshAccountNames() {
+  const ids = items.value
+    .map(row => row.account_id)
+    .filter((id): id is number => typeof id === 'number' && id > 0)
+  if (ids.length === 0) return
+  try {
+    let map = await getAccountNameMap()
+    if (ids.some(id => !map.has(id))) map = await getAccountNameMap(true)
+    accountNameById.value = map
+  } catch (e) {
+    console.warn('[OpsRequestDetailsModal] Failed to load account names', e)
+  }
+}
+
+function accountLabel(row: OpsRequestDetail): string {
+  const id = row.account_id
+  if (typeof id !== 'number' || id <= 0) return '-'
+  return accountNameById.value.get(id) || `#${id}`
 }
 </script>
 
@@ -189,7 +226,44 @@ const kindBadgeClass = (kind: string) => {
 
           <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
             <div class="min-h-0 flex-1 overflow-auto">
-              <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <div v-if="!isDesktopViewport" class="divide-y divide-gray-100 dark:divide-dark-800">
+                <div v-for="(row, idx) in items" :key="idx" class="space-y-2 p-4">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full px-2 py-1 text-[10px] font-bold" :class="kindBadgeClass(row.kind)">
+                      {{ row.kind === 'error' ? t('admin.ops.requestDetails.kind.error') : t('admin.ops.requestDetails.kind.success') }}
+                    </span>
+                    <span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ (row.platform || 'unknown').toUpperCase() }}</span>
+                    <span class="ml-auto text-[11px] text-gray-500 dark:text-gray-400">{{ formatDateTime(row.created_at) }}</span>
+                  </div>
+                  <div class="break-all text-xs text-gray-600 dark:text-gray-300">{{ row.model || '-' }}</div>
+                  <div v-if="typeof row.account_id === 'number' && row.account_id > 0" class="break-all text-xs text-gray-500 dark:text-gray-400" :title="accountLabel(row)">
+                    {{ t('admin.ops.requestDetails.table.account') }}: {{ accountLabel(row) }}
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                    <span>{{ latencyLabel }}: {{ formatLatency(row) }}</span>
+                    <span>{{ row.status_code ?? '-' }}</span>
+                  </div>
+                  <div v-if="row.request_id" class="flex items-center gap-2">
+                    <span class="min-w-0 flex-1 truncate font-mono text-[11px] text-gray-700 dark:text-gray-200" :title="row.request_id">
+                      {{ row.request_id }}
+                    </span>
+                    <button
+                      class="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+                      @click="handleCopyRequestId(row.request_id)"
+                    >
+                      {{ t('admin.ops.requestDetails.copy') }}
+                    </button>
+                  </div>
+                  <button
+                    v-if="row.kind === 'error' && row.error_id"
+                    class="w-full rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
+                    @click="openErrorDetail(row.error_id)"
+                  >
+                    {{ t('admin.ops.requestDetails.viewError') }}
+                  </button>
+                </div>
+              </div>
+              <table v-else class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
                 <thead class="sticky top-0 z-10 bg-gray-50 dark:bg-dark-900">
                 <tr>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -205,7 +279,10 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {{ t('admin.ops.requestDetails.table.duration') }}
+                    {{ t('admin.ops.requestDetails.table.account') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ latencyLabel }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.status') }}
@@ -234,8 +311,11 @@ const kindBadgeClass = (kind: string) => {
                   <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
                     {{ row.model || '-' }}
                   </td>
+                  <td class="max-w-[180px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="accountLabel(row)">
+                    {{ accountLabel(row) }}
+                  </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
+                    {{ formatLatency(row) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ row.status_code ?? '-' }}

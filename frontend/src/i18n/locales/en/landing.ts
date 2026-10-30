@@ -163,6 +163,7 @@ export default {
     usedQuota: 'Used Quota',
     resetNow: 'Resetting soon',
     subscriptionType: 'Subscription Type',
+    billingType: 'Billing Type',
     subscriptionExpires: 'Subscription Expires',
     // Usage stat cells
     todayRequests: 'Today Requests',
@@ -215,8 +216,10 @@ export default {
       description: 'Connect to your Redis server',
       host: 'Host',
       port: 'Port',
+      username: 'Username (optional)',
       password: 'Password (optional)',
       database: 'Database',
+      usernamePlaceholder: 'Leave empty for default user',
       passwordPlaceholder: 'Password',
       enableTls: 'Enable TLS',
       enableTlsHint: 'Use TLS when connecting to Redis (public CA certs)'

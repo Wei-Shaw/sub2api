@@ -67,6 +67,21 @@ func cloneGroupModelRouting(value map[string][]int64) map[string][]int64 {
 	return cloned
 }
 
+func cloneGroupVideoModelPrices(value map[string]map[string]float64) map[string]map[string]float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]map[string]float64, len(value))
+	for model, prices := range value {
+		clonedPrices := make(map[string]float64, len(prices))
+		for resolution, price := range prices {
+			clonedPrices[resolution] = price
+		}
+		cloned[model] = clonedPrices
+	}
+	return cloned
+}
+
 func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConfig) OpenAIMessagesDispatchModelConfig {
 	cloned := value
 	if value.ExactModelMappings != nil {
@@ -82,12 +97,16 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
 		Description:                     source.Description,
+		I18n:                            cloneGroupI18nForDuplicate(source.I18n),
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,
 		PeakRateMultiplier:              source.PeakRateMultiplier,
+		ProfitControlEnabled:            source.ProfitControlEnabled,
+		ProfitMinMargin:                 source.ProfitMinMargin,
+		ProfitSafetyBuffer:              source.ProfitSafetyBuffer,
 		IsExclusive:                     source.IsExclusive,
 		Status:                          duplicateGroupInactiveStatus,
 		DuplicateOperationID:            operationID,
@@ -98,6 +117,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		DefaultValidityDays:             source.DefaultValidityDays,
 		AllowImageGeneration:            source.AllowImageGeneration,
 		AllowBatchImageGeneration:       source.AllowBatchImageGeneration,
+		ImageCountBilling:               source.ImageCountBilling,
 		ImageRateIndependent:            source.ImageRateIndependent,
 		ImageRateMultiplier:             source.ImageRateMultiplier,
 		ImagePrice1K:                    cloneGroupValuePointer(source.ImagePrice1K),
@@ -110,7 +130,12 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		VideoPrice480P:                  cloneGroupValuePointer(source.VideoPrice480P),
 		VideoPrice720P:                  cloneGroupValuePointer(source.VideoPrice720P),
 		VideoPrice1080P:                 cloneGroupValuePointer(source.VideoPrice1080P),
+		VideoModelPrices:                cloneGroupVideoModelPrices(source.VideoModelPrices),
 		WebSearchPricePerCall:           cloneGroupValuePointer(source.WebSearchPricePerCall),
+		SearchPricePer1k:                cloneGroupValuePointer(source.SearchPricePer1k),
+		AudioRealtimePricePerMin:        cloneGroupValuePointer(source.AudioRealtimePricePerMin),
+		AudioTTSPricePerMillionChars:    cloneGroupValuePointer(source.AudioTTSPricePerMillionChars),
+		AudioSTTPricePerHour:            cloneGroupValuePointer(source.AudioSTTPricePerHour),
 		ClaudeCodeOnly:                  source.ClaudeCodeOnly,
 		FallbackGroupID:                 cloneGroupValuePointer(source.FallbackGroupID),
 		FallbackGroupIDOnInvalidRequest: cloneGroupValuePointer(source.FallbackGroupIDOnInvalidRequest),
@@ -120,21 +145,32 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		SupportedModelScopes:            append([]string(nil), source.SupportedModelScopes...),
 		SortOrder:                       source.SortOrder,
 		AllowMessagesDispatch:           source.AllowMessagesDispatch,
+		AllowLive:                       source.AllowLive,
+		ForceOpenAIFast:                 source.ForceOpenAIFast,
+		FreeOpenAIFast:                  source.FreeOpenAIFast,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
 		DefaultMappedModel:              source.DefaultMappedModel,
 		MessagesDispatchModelConfig:     cloneGroupMessagesDispatchModelConfig(source.MessagesDispatchModelConfig),
-		ModelsListConfig: GroupModelsListConfig{
-			Enabled: source.ModelsListConfig.Enabled,
-			Models:  append([]string(nil), source.ModelsListConfig.Models...),
+		ModelAllowlist: GroupModelAllowlist{
+			Enabled: source.ModelAllowlist.Enabled,
+			Models:  append([]string(nil), source.ModelAllowlist.Models...),
 		},
-		RPMLimit: source.RPMLimit,
+		// 固定账号 manifest 配置指向源分组的账号 ID，复制后成员关系可能变化，重置为关闭且列表为空。
+		CodexModelsManifestConfig:   GroupCodexModelsManifestConfig{},
+		RPMLimit:                    source.RPMLimit,
+		MaxReasoningEffort:          source.MaxReasoningEffort,
+		MaxReasoningEffortOverLimit: source.MaxReasoningEffortOverLimit,
+		ReasoningEffortMappings:     append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 	}
 }
 
 // RecoverDuplicateGroup performs a read-only lookup for a copy that was already
 // committed for the same actor, source group, and idempotency key.
 func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error) {
+	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDuplicate); err != nil {
+		return nil, err
+	}
 	operationID := duplicateGroupOperationID(id, actorScope, operationKey)
 	if operationID == "" {
 		return nil, nil
@@ -160,6 +196,9 @@ func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, 
 // account priorities. The repository commits the group, bindings, and outbox
 // event atomically so a failed binding never leaves an orphan group.
 func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error) {
+	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDuplicate); err != nil {
+		return nil, err
+	}
 	existing, err := s.RecoverDuplicateGroup(ctx, id, actorScope, operationKey)
 	if err != nil {
 		return nil, err
@@ -177,6 +216,7 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 	}
 
 	duplicate := cloneGroupForDuplicate(source, duplicateGroupOperationID(id, actorScope, operationKey))
+	sanitizeGroupReasoningEffortPolicy(duplicate)
 	for copyNumber := 1; ; copyNumber++ {
 		duplicate.Name = duplicateGroupName(source.Name, copyNumber)
 		duplicate.ID = 0

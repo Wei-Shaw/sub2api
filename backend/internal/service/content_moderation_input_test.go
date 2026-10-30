@@ -50,6 +50,21 @@ func TestExtractContentModerationInput_AnthropicMultiTurnExtractsLatestUser(t *t
 	require.Equal(t, "Q2", input.Text)
 }
 
+func TestExtractContentModerationInput_AnthropicTrailingSystemExtractsLatestUser(t *testing.T) {
+	body := []byte(`{
+		"messages": [
+			{"role":"user","content":"Q1"},
+			{"role":"assistant","content":"A1"},
+			{"role":"user","content":"Q2"},
+			{"role":"system","content":"request metadata"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolAnthropicMessages, body)
+
+	require.Equal(t, "Q2", input.Text)
+}
+
 func TestExtractContentModerationInput_AnthropicStreamResendExtractsResend(t *testing.T) {
 	body := []byte(`{
 		"messages": [

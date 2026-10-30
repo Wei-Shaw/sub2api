@@ -3,6 +3,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +64,43 @@ type UpdateAPIKeyRequest struct {
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
 }
 
+func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
+
+func validateAPIKeyCreateRequest(req CreateAPIKeyRequest) error {
+	if req.Quota != nil && !validAPIKeyLimit(*req.Quota) {
+		return errors.New("invalid quota")
+	}
+	if req.RateLimit5h != nil && !validAPIKeyLimit(*req.RateLimit5h) {
+		return errors.New("invalid rate_limit_5h")
+	}
+	if req.RateLimit1d != nil && !validAPIKeyLimit(*req.RateLimit1d) {
+		return errors.New("invalid rate_limit_1d")
+	}
+	if req.RateLimit7d != nil && !validAPIKeyLimit(*req.RateLimit7d) {
+		return errors.New("invalid rate_limit_7d")
+	}
+	if req.ExpiresInDays != nil && *req.ExpiresInDays <= 0 {
+		return errors.New("invalid expires_in_days")
+	}
+	return nil
+}
+
+func validateAPIKeyUpdateRequest(req UpdateAPIKeyRequest) error {
+	if req.Quota != nil && !validAPIKeyLimit(*req.Quota) {
+		return errors.New("invalid quota")
+	}
+	if req.RateLimit5h != nil && !validAPIKeyLimit(*req.RateLimit5h) {
+		return errors.New("invalid rate_limit_5h")
+	}
+	if req.RateLimit1d != nil && !validAPIKeyLimit(*req.RateLimit1d) {
+		return errors.New("invalid rate_limit_1d")
+	}
+	if req.RateLimit7d != nil && !validAPIKeyLimit(*req.RateLimit7d) {
+		return errors.New("invalid rate_limit_7d")
+	}
+	return nil
+}
+
 // List handles listing user's API keys with pagination
 // GET /api/v1/api-keys
 func (h *APIKeyHandler) List(c *gin.Context) {
@@ -103,7 +142,7 @@ func (h *APIKeyHandler) List(c *gin.Context) {
 
 	out := make([]dto.APIKey, 0, len(keys))
 	for i := range keys {
-		out = append(out, *dto.APIKeyFromService(&keys[i]))
+		out = append(out, *dto.APIKeyFromService(&keys[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -135,7 +174,7 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.APIKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Create handles creating a new API key
@@ -150,6 +189,10 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	var req CreateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := validateAPIKeyCreateRequest(req); err != nil {
+		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative, and expires_in_days must be greater than zero")
 		return
 	}
 
@@ -179,7 +222,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		return dto.APIKeyFromService(key), nil
+		return dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")), nil
 	})
 }
 
@@ -201,6 +244,10 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	var req UpdateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := validateAPIKeyUpdateRequest(req); err != nil {
+		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative")
 		return
 	}
 
@@ -243,7 +290,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.APIKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Delete handles deleting an API key
@@ -287,7 +334,7 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		out = append(out, *dto.GroupFromService(&groups[i]))
+		out = append(out, *dto.GroupFromService(&groups[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Success(c, out)
 }

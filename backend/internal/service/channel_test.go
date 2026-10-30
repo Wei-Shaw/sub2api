@@ -193,13 +193,25 @@ func TestChannelClone_Nil(t *testing.T) {
 
 func TestChannelModelPricingClone(t *testing.T) {
 	original := ChannelModelPricing{
-		Models: []string{"a", "b"},
+		ReasoningEffortMultipliers: map[string]float64{"high": 1.5},
+		Models:                     []string{"a", "b"},
 		Intervals: []PricingInterval{
 			{MinTokens: 0, TierLabel: "tier1"},
+		},
+		TimePricing: &ChannelTimePricing{
+			Timezone:     "Asia/Shanghai",
+			WeekdaysOnly: true,
+			Periods: []ChannelTimePricingPeriod{{
+				StartTime:  "09:00",
+				EndTime:    "12:00",
+				Multiplier: 2,
+			}},
 		},
 	}
 
 	cloned := original.Clone()
+	cloned.ReasoningEffortMultipliers["high"] = 2
+	require.Equal(t, 1.5, original.ReasoningEffortMultipliers["high"])
 
 	// Modify clone slices — original unchanged
 	cloned.Models[0] = "hacked"
@@ -207,6 +219,15 @@ func TestChannelModelPricingClone(t *testing.T) {
 
 	cloned.Intervals[0].TierLabel = "hacked"
 	require.Equal(t, "tier1", original.Intervals[0].TierLabel)
+
+	cloned.TimePricing.Timezone = "America/New_York"
+	cloned.TimePricing.WeekdaysOnly = false
+	cloned.TimePricing.Periods[0].StartTime = "10:00"
+	cloned.TimePricing.Periods[0].Multiplier = 3
+	require.Equal(t, "Asia/Shanghai", original.TimePricing.Timezone)
+	require.True(t, original.TimePricing.WeekdaysOnly)
+	require.Equal(t, "09:00", original.TimePricing.Periods[0].StartTime)
+	require.Equal(t, 2.0, original.TimePricing.Periods[0].Multiplier)
 }
 
 // --- BillingMode.IsValid ---
@@ -512,7 +533,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 		require.NotContains(t, m.Name, "*")
 	}
 }
-
 
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{

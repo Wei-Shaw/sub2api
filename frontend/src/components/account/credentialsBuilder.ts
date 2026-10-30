@@ -1,3 +1,11 @@
+import { openAIPlanTypeKey, openAIPlanTypeLabel, openAIPlanTypes } from '@/utils/planType'
+import {
+  BUILTIN_PLATFORM_CATALOG,
+  getProviderMode,
+  getProviderProfile,
+  type ProviderProtocolRule
+} from '@/constants/platformCatalog'
+
 export function applyInterceptWarmup(
   credentials: Record<string, unknown>,
   enabled: boolean,
@@ -25,7 +33,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（anthropic/openai 的 api_key 账号 + grok 的 api_key/oauth 账号） ==========
+// ========== 请求头覆写（API-key 平台 + grok 的 api_key/oauth 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -37,7 +45,7 @@ export interface HeaderOverrideRow {
 
 /** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
 export function isHeaderOverrideCapable(platform: string, type: string): boolean {
-  if (platform === 'anthropic' || platform === 'openai') {
+  if (platform === 'anthropic' || platform === 'openai' || isMultiProtocolApiKeyPlatform(platform)) {
     return type === 'apikey'
   }
   if (platform === 'grok') {
@@ -242,6 +250,361 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
   { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
 ]
 
+// ========== 多协议 API Key 供应商（国产厂商与聚合平台） ==========
+// 默认端点、原生协议能力与内置分流规则来自平台清单（constants/platformCatalog，
+// 即后端 ProviderProfile），新登记的供应商无需在此补充。
+// 账号类型（account_mode，如 payg 按量付费 / coding 编程套餐）决定额度监控方式与
+// 默认端点；API 协议（chat_completions / anthropic / responses）决定转发端点与
+// 格式，两者正交。同协议请求零转换直通，跨协议组合才走转换链。
+
+export type CnAccountMode = 'payg' | 'coding'
+export type OpenCodeAccountMode = 'zen' | 'go'
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+
+/** adaptive 按入站协议（或按模型规则）选择原生端点。 */
+export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
+export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
+
+const NATIVE_API_PROTOCOLS: CnNativeApiProtocol[] = ['chat_completions', 'anthropic', 'responses']
+
+export function isCNProviderPlatform(platform: string): platform is CnProviderPlatform {
+  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
+}
+
+/** 平台是否为多协议 API Key 供应商（平台清单中带 profile）。 */
+export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
+  return !!getProviderProfile(platform)
+}
+
+/** 供应商在该接入模式下是否提供某协议的原生端点（未知模式按默认模式）。 */
+export function providerSupportsProtocol(platform: string, mode: string | undefined, protocol: CnNativeApiProtocol): boolean {
+  return !!getProviderMode(platform, mode)?.base_urls[protocol]
+}
+
+/** 供应商是否提供原生 Responses 端点（DeepSeek / Kimi / MiniMax / OpenCode 等）。 */
+export function cnSupportsNativeResponses(platform: string, mode?: string): boolean {
+  return providerSupportsProtocol(platform, mode, 'responses')
+}
+
+/** 该接入模式下可直连的原生协议（按 chat_completions、anthropic、responses 顺序）。 */
+export function providerNativeProtocols(platform: string, mode?: string): CnNativeApiProtocol[] {
+  return NATIVE_API_PROTOCOLS.filter(protocol => providerSupportsProtocol(platform, mode, protocol))
+}
+
+/** 供应商按模型名选择上游协议（多模型聚合平台），此时 adaptive 账号携带分流规则。 */
+export function providerRoutesByModel(platform: string): boolean {
+  return getProviderProfile(platform)?.routing === 'by_model'
+}
+
+/** 上游模型目录给出每个模型支持的协议；未命中分流规则的模型据此选协议。 */
+export function providerHasModelCatalog(platform: string): boolean {
+  return getProviderProfile(platform)?.model_catalog === true
+}
+
+/** 接入模式的展示名；未知模式原样显示。 */
+export function providerModeLabel(mode: string, t: (key: string) => string): string {
+  switch (mode) {
+    case 'payg':
+      return t('admin.accounts.cnProviders.accountMode.payg')
+    case 'coding':
+      return t('admin.accounts.cnProviders.accountMode.coding')
+    case 'zen':
+      return t('admin.accounts.opencodeGo.accountMode.zen')
+    case 'go':
+      return t('admin.accounts.opencodeGo.accountMode.go')
+    default:
+      return mode
+  }
+}
+
+/** 供应商的接入模式，默认模式在前。 */
+export function providerAccountModes(platform: string): string[] {
+  return getProviderProfile(platform)?.modes.map(item => item.mode) ?? []
+}
+
+/** 规范化接入模式：不在该供应商模式列表中的值回落默认模式。 */
+export function resolveProviderAccountMode(platform: string, value: unknown): string {
+  const profile = getProviderProfile(platform)
+  if (!profile) return typeof value === 'string' ? value : ''
+  if (typeof value === 'string' && profile.modes.some(item => item.mode === value)) return value
+  return profile.default_mode
+}
+
+function builtinModeBaseUrl(platform: string, mode: string, protocol: CnNativeApiProtocol): string {
+  const profile = BUILTIN_PLATFORM_CATALOG.platforms.find(spec => spec.id === platform)?.multi_protocol
+  return profile?.modes.find(item => item.mode === mode)?.base_urls[protocol] ?? ''
+}
+
+export const OPENCODE_GO_BASE_URL = builtinModeBaseUrl('opencode_go', 'go', 'chat_completions')
+export const OPENCODE_GO_ANTHROPIC_BASE_URL = builtinModeBaseUrl('opencode_go', 'go', 'anthropic')
+export const OPENCODE_ZEN_BASE_URL = builtinModeBaseUrl('opencode_go', 'zen', 'chat_completions')
+export const OPENCODE_ZEN_ANTHROPIC_BASE_URL = builtinModeBaseUrl('opencode_go', 'zen', 'anthropic')
+
+export function isOpenCodeGoPlatform(platform: string): boolean {
+  return platform === 'opencode_go'
+}
+
+export const OPENCODE_GO_PROTOCOL_RULES_KEY = 'protocol_rules'
+
+export interface OpenCodeGoProtocolRule {
+  pattern: string
+  /** 首选协议：入站协议不在模型支持的协议中时使用。 */
+  protocol: CnNativeApiProtocol
+  /** 模型同时支持的其他协议（不含 protocol）；入站协议在其中时同协议直通，免去协议转换。 */
+  extraProtocols?: CnNativeApiProtocol[]
+}
+
+function isNativeOpenCodeGoProtocol(value: unknown): value is CnNativeApiProtocol {
+  return value === 'chat_completions' || value === 'anthropic' || value === 'responses'
+}
+
+/** 从 protocols 列表中取出首选协议以外的原生协议（去重、保持顺序）。 */
+function extraRuleProtocols(protocol: CnNativeApiProtocol, protocols: unknown): CnNativeApiProtocol[] {
+  if (!Array.isArray(protocols)) return []
+  const extra: CnNativeApiProtocol[] = []
+  for (const item of protocols) {
+    if (isNativeOpenCodeGoProtocol(item) && item !== protocol && !extra.includes(item)) extra.push(item)
+  }
+  return extra
+}
+
+function buildRule(pattern: string, protocol: CnNativeApiProtocol, protocols?: unknown): OpenCodeGoProtocolRule {
+  const extra = extraRuleProtocols(protocol, protocols)
+  return extra.length > 0 ? { pattern, protocol, extraProtocols: extra } : { pattern, protocol }
+}
+
+/** 规则支持的协议集合，首项为首选协议。 */
+export function protocolRuleSet(rule: OpenCodeGoProtocolRule): CnNativeApiProtocol[] {
+  return [rule.protocol, ...extraRuleProtocols(rule.protocol, rule.extraProtocols)]
+}
+
+function normalizeProfileRules(rules: ProviderProtocolRule[] | undefined): OpenCodeGoProtocolRule[] {
+  return (rules ?? [])
+    .filter(rule => rule.pattern && isNativeOpenCodeGoProtocol(rule.protocol))
+    .map(rule => buildRule(rule.pattern, rule.protocol as CnNativeApiProtocol, rule.protocols))
+}
+
+function builtinProtocolRules(platform: string, mode: string): OpenCodeGoProtocolRule[] {
+  const profile = BUILTIN_PLATFORM_CATALOG.platforms.find(spec => spec.id === platform)?.multi_protocol
+  return normalizeProfileRules(profile?.modes.find(item => item.mode === mode)?.protocol_rules)
+}
+
+export const DEFAULT_OPENCODE_GO_PROTOCOL_RULES: OpenCodeGoProtocolRule[] = builtinProtocolRules('opencode_go', 'go')
+export const DEFAULT_OPENCODE_ZEN_PROTOCOL_RULES: OpenCodeGoProtocolRule[] = builtinProtocolRules('opencode_go', 'zen')
+
+/** 供应商该接入模式的内置分流规则（首条命中生效；未知模式按默认模式）。 */
+export function defaultProviderProtocolRules(platform: string, mode?: string): OpenCodeGoProtocolRule[] {
+  return normalizeProfileRules(getProviderMode(platform, mode)?.protocol_rules)
+}
+
+export function resolveOpenCodeAccountMode(value: unknown): OpenCodeAccountMode {
+  return value === 'zen' ? 'zen' : 'go'
+}
+
+export function defaultOpenCodeProtocolRules(mode: string = 'go'): OpenCodeGoProtocolRule[] {
+  return defaultProviderProtocolRules('opencode_go', mode === 'zen' ? 'zen' : 'go')
+}
+
+export function cloneOpenCodeGoProtocolRules(
+  rules: OpenCodeGoProtocolRule[] = DEFAULT_OPENCODE_GO_PROTOCOL_RULES
+): OpenCodeGoProtocolRule[] {
+  return rules.map(rule => buildRule(rule.pattern, rule.protocol, rule.extraProtocols))
+}
+
+export function parseOpenCodeGoProtocolRules(raw: unknown): OpenCodeGoProtocolRule[] | null {
+  if (raw == null) return null
+  if (!Array.isArray(raw)) return cloneOpenCodeGoProtocolRules()
+  const rules: OpenCodeGoProtocolRule[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const pattern = typeof (item as { pattern?: unknown }).pattern === 'string'
+      ? (item as { pattern: string }).pattern.trim()
+      : ''
+    const protocols = (item as { protocols?: unknown }).protocols
+    let protocol = (item as { protocol?: unknown }).protocol
+    // 与后端一致：只给了 protocols 时首项即首选协议。
+    if ((protocol == null || protocol === '') && Array.isArray(protocols)) protocol = protocols[0]
+    if (!pattern || !isNativeOpenCodeGoProtocol(protocol)) continue
+    rules.push(buildRule(pattern, protocol, protocols))
+  }
+  return rules
+}
+
+export function applyOpenCodeGoProtocolRules(
+  credentials: Record<string, unknown>,
+  rules: OpenCodeGoProtocolRule[],
+  mode: 'create' | 'edit'
+): void {
+  const serialized = rules
+    .filter(rule => isNativeOpenCodeGoProtocol(rule.protocol))
+    .map(rule => {
+      const entry: { pattern: string; protocol: CnNativeApiProtocol; protocols?: CnNativeApiProtocol[] } = {
+        pattern: rule.pattern.trim().toLowerCase(),
+        protocol: rule.protocol
+      }
+      const protocols = protocolRuleSet(rule)
+      if (protocols.length > 1) entry.protocols = protocols
+      return entry
+    })
+    .filter(rule => rule.pattern.length > 0)
+  if (serialized.length > 0 || mode === 'edit') {
+    credentials[OPENCODE_GO_PROTOCOL_RULES_KEY] = serialized
+  }
+}
+
+export interface CnBaseUrlPreset {
+  mode: CnAccountMode
+  protocol: CnApiProtocol
+  /** 专有名词，不参与 i18n */
+  label: string
+  url: string
+}
+
+/** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
+export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> = {
+  kimi: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
+  ],
+  zhipu: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
+    { mode: 'payg', protocol: 'anthropic', label: 'GLM Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'GLM Coding', url: 'https://open.bigmodel.cn/api/coding/paas/v4' },
+    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' }
+  ],
+  deepseek: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'DeepSeek', url: 'https://api.deepseek.com' },
+    { mode: 'payg', protocol: 'anthropic', label: 'DeepSeek Anthropic', url: 'https://api.deepseek.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'DeepSeek Responses', url: 'https://api.deepseek.com' }
+  ],
+  minimax: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax CN', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax CN Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiniMax CN Responses', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'payg', protocol: 'chat_completions', label: 'MiniMax Intl', url: 'https://api.minimax.io/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'MiniMax Intl Anthropic', url: 'https://api.minimax.io/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'MiniMax Intl Responses', url: 'https://api.minimax.io/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Coding CN', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Coding CN Anthropic', url: 'https://api.minimaxi.com/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'MiniMax Coding CN Responses', url: 'https://api.minimaxi.com/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Coding Intl', url: 'https://api.minimax.io/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Coding Intl Anthropic', url: 'https://api.minimax.io/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'MiniMax Coding Intl Responses', url: 'https://api.minimax.io/v1' }
+  ]
+}
+
+/**
+ * 返回指定供应商 + 接入模式 + API 协议的默认 base url（来自平台清单）。
+ * 该模式不提供原生 Responses 时回落 Chat Completions 基址；不提供 Anthropic 时为空串。
+ */
+export function defaultCNBaseUrl(
+  platform: string,
+  mode: string,
+  protocol: CnApiProtocol = 'chat_completions'
+): string {
+  const baseUrls = getProviderMode(platform, mode)?.base_urls
+  if (!baseUrls) return ''
+  const chatBaseUrl = baseUrls.chat_completions ?? ''
+  switch (protocol) {
+    case 'anthropic':
+      return baseUrls.anthropic ?? ''
+    case 'responses':
+      return baseUrls.responses || chatBaseUrl
+    default:
+      return chatBaseUrl
+  }
+}
+
+/** 返回自适应模式下各原生协议的默认端点；不提供的协议为空串。 */
+export function defaultCNAdaptiveBaseUrls(
+  platform: string,
+  mode: string
+): Record<CnNativeApiProtocol, string> {
+  const baseUrls = getProviderMode(platform, mode)?.base_urls ?? {}
+  return {
+    chat_completions: baseUrls.chat_completions ?? '',
+    anthropic: baseUrls.anthropic ?? '',
+    responses: baseUrls.responses ?? ''
+  }
+}
+
+// ===== 国产供应商用量单元格可见性（单一事实源） =====
+// CNProviderQuotaCell / CNProviderBalanceCell 与 AccountUsageCell 的占位符判定
+// 共用，避免多处复制条件后一处改另一处漏改。
+
+/** 用量单元格可见性判定所需的账号字段。 */
+export interface CNUsageCellAccount {
+  platform: string
+  type: string
+  credentials?: Record<string, unknown>
+}
+
+// Command Code、Cline 的积分与用量接口只查官方主机上的 API Key 账号（与后端
+// commandCodeUsageSupported / clineAccountAPISupported 一致）：自定义中转的 Key 不发往
+// 官方接口，后端直接拒绝探测，单元格只会显示一行报错。
+const OFFICIAL_ACCOUNT_API_PLATFORMS = ['command_code', 'cline']
+
+function cnUsageCellAccountMode(account: CNUsageCellAccount): string {
+  const mode = account.credentials?.account_mode
+  return typeof mode === 'string' ? mode : ''
+}
+
+/** 与后端 Account.GetAPIProtocol 一致：按模型分流的供应商未指定原生协议时为 adaptive。 */
+function accountUsesAdaptiveProtocol(platform: string, mode: string, protocol: unknown): boolean {
+  if (protocol === 'adaptive') return true
+  if (protocol === 'chat_completions' || protocol === 'anthropic') return false
+  if (protocol === 'responses' && cnSupportsNativeResponses(platform, mode)) return false
+  return providerRoutesByModel(platform)
+}
+
+/**
+ * 账号实际使用的 Chat Completions 端点（与后端 Account.GetOpenAIBaseURL 一致）：adaptive
+ * 账号优先分协议端点，其次 base_url，都没填时为平台清单的默认端点。
+ */
+function accountChatBaseUrl(account: CNUsageCellAccount, mode: string): string {
+  const credentials = account.credentials
+  const baseUrls = credentials?.api_base_urls
+  if (baseUrls && typeof baseUrls === 'object' && accountUsesAdaptiveProtocol(account.platform, mode, credentials?.api_protocol)) {
+    const chat = (baseUrls as Record<string, unknown>).chat_completions
+    if (typeof chat === 'string' && chat.trim()) return chat.trim()
+  }
+  const baseUrl = credentials?.base_url
+  if (typeof baseUrl === 'string' && baseUrl.trim()) return baseUrl.trim()
+  return defaultCNBaseUrl(account.platform, mode)
+}
+
+/** 官方主机即平台清单默认端点的主机，且必须是 https。 */
+function officialAccountAPISupported(account: CNUsageCellAccount, mode: string): boolean {
+  if (account.type !== 'apikey') return false
+  try {
+    const target = new URL(accountChatBaseUrl(account, mode))
+    const official = new URL(defaultCNBaseUrl(account.platform, mode))
+    return target.protocol === 'https:' && target.hostname === official.hostname
+  } catch {
+    return false
+  }
+}
+
+export function cnQuotaCellVisible(account: CNUsageCellAccount): boolean {
+  const { platform } = account
+  const mode = cnUsageCellAccountMode(account)
+  if (platform === 'opencode_go') return mode !== 'zen'
+  // Command Code、Cline：订阅窗口与积分由一次探测同时刷新。
+  if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(platform)) return officialAccountAPISupported(account, mode)
+  return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && mode === 'coding'
+}
+
+export function cnBalanceCellVisible(account: CNUsageCellAccount): boolean {
+  const { platform } = account
+  const mode = cnUsageCellAccountMode(account)
+  if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(platform)) return officialAccountAPISupported(account, mode)
+  return (platform === 'kimi' || platform === 'deepseek') && mode !== 'coding'
+}
+
 /**
  * 将请求头覆写写入 credentials。
  * create 模式：关闭时不写入任何字段；edit 模式：关闭时删除字段（全量替换语义）。
@@ -271,23 +634,12 @@ export interface PlanTypeOption {
 }
 
 /**
- * plan_type 值的友好显示标签，镜像 PlatformTypeBadge 的映射
- * （canonical 值 chatgptpro 显示为 Pro，team 显示为 Team）。未知值原样返回。
+ * plan_type 值的友好显示标签（ChatGPT 档位命名）。
+ * 与 PlatformTypeBadge 共用 openAIPlanTypeLabel，避免两处映射漂移；
+ * canonical 值 chatgptpro 显示为 Pro 200，team 显示为 Business。未知值原样返回。
  */
 export function planTypeDisplayLabel(value: string): string {
-  switch (value.trim().toLowerCase()) {
-    case 'plus':
-      return 'Plus'
-    case 'pro':
-    case 'chatgptpro':
-      return 'Pro'
-    case 'free':
-      return 'Free'
-    case 'team':
-      return 'Team'
-    default:
-      return value
-  }
+  return openAIPlanTypeLabel(value) || value
 }
 
 /**
@@ -299,30 +651,16 @@ export function readPlanType(credentials: Record<string, unknown> | undefined | 
   return typeof v === 'string' ? v : ''
 }
 
-/**
- * 构建 plan_type 下拉选项：清空 + Plus/Pro/Free 预设。
- * 若当前值是某预设的别名（如 chatgptpro↔Pro），用当前的 canonical 值占据该
- * 标签位（保留 canonical，显示友好标签，避免重复项）；若是完全预设外的值
- * （如 team 或异常值），追加为一项，避免编辑时下拉丢失原值。
- */
+/** Build SKU-preserving choices; aliases replace only the same canonical SKU. */
 export function buildPlanTypeOptions(current: string, clearLabel: string): PlanTypeOption[] {
   const cur = (current || '').trim()
-  const curLabel = cur ? planTypeDisplayLabel(cur) : ''
-  const presets: PlanTypeOption[] = [
-    { value: 'plus', label: 'Plus' },
-    { value: 'pro', label: 'Pro' },
-    { value: 'free', label: 'Free' }
-  ]
+  const key = openAIPlanTypeKey(cur)
   const opts: PlanTypeOption[] = [{ value: '', label: clearLabel }]
-  for (const p of presets) {
-    if (cur && p.value !== cur.toLowerCase() && p.label === curLabel) {
-      // 当前值是该预设的别名：用 canonical 当前值占位，标签仍显示友好名
-      opts.push({ value: cur, label: p.label })
-    } else {
-      opts.push(p)
-    }
+  for (const preset of openAIPlanTypes) {
+    const value = cur && key === openAIPlanTypeKey(preset) ? cur : preset
+    opts.push({ value, label: planTypeDisplayLabel(value) })
   }
-  if (cur && !opts.some(o => o.value.toLowerCase() === cur.toLowerCase())) {
+  if (cur && !opts.some(option => option.value === cur)) {
     opts.push({ value: cur, label: planTypeDisplayLabel(cur) })
   }
   return opts

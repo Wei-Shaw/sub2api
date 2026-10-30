@@ -48,9 +48,14 @@ var claudeCodeSystemPrompts = []string{
 }
 
 const (
+	// These markers identify Claude Code's official security-monitor classifier
+	// request without coupling validation to every wording change in the prompt.
+	claudeCodeSecurityMonitorPromptPrefix = "You are a security monitor for autonomous AI coding agents."
+	claudeCodeSecurityMonitorPromptMinLen = 10_000
+
 	// claudeCodeBillingHeaderPrefix 是 Claude Code 在 system 数组首块注入的计费归因块前缀。
-	// 该块存在于所有真实 Claude Code CLI 请求中（含安全监视器等无身份 prose 的子请求），
-	// 格式固定、不随提示词改版漂移，是比身份 prose 更稳定的客户端标识。
+	// 大多数真实 CLI 请求（含部分无身份 prose 的子请求）会携带该块；不携带该块的
+	// 固定官方辅助请求由独立规则识别。该格式比身份 prose 更稳定。
 	// 生成见 gateway_billing_block.go；同类识别见 pkg/apicompat/anthropic_to_responses.go。
 	claudeCodeBillingHeaderPrefix = "x-anthropic-billing-header"
 	// claudeCodeEntrypointMarker 标识计费块携带入口归因字段。不绑定具体入口值
@@ -98,6 +103,12 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 	// 这类请求用于 Claude Code 验证 API 连通性，不携带 system prompt
 	if isMaxTokensOneHaiku, ok := IsMaxTokensOneHaikuRequestFromContext(r.Context()); ok && isMaxTokensOneHaiku {
 		return true // 绕过 system prompt 检查，UA 已在 Step 1 验证
+	}
+	// 探测请求并不总是打到 haiku：CLI 切换模型、刷新上下文用量时会向当前模型发
+	// max_tokens=1 的轻量请求，同样不携带 system。UA 已过 Step 1，且 1 个输出 token
+	// 对滥用者没有价值，故按请求体放行，不再限定模型名。
+	if isMaxTokensOneBody(body) {
+		return true
 	}
 
 	// Step 4: messages 路径，进行严格验证
@@ -149,6 +160,24 @@ func isMessagesCountTokensPath(path string) bool {
 	return strings.HasSuffix(path, "/messages/count_tokens")
 }
 
+// isMaxTokensOneBody 判断请求体是否显式声明 max_tokens=1。
+// 兼容 JSON 反序列化出的 float64 与 ParsedRequest 复用时的 int。
+func isMaxTokensOneBody(body map[string]any) bool {
+	if body == nil {
+		return false
+	}
+	switch v := body["max_tokens"].(type) {
+	case float64:
+		return v == 1
+	case int:
+		return v == 1
+	case int64:
+		return v == 1
+	default:
+		return false
+	}
+}
+
 // hasClaudeCodeSystemPrompt 检查请求是否包含 Claude Code 系统提示词
 // 使用字符串相似度匹配（Dice coefficient）
 func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) bool {
@@ -165,6 +194,10 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 	systemEntries, ok := body["system"].([]any)
 	if !ok {
 		return false
+	}
+
+	if isClaudeCodeSecurityMonitorPrompt(systemEntries) {
+		return true
 	}
 
 	// 检查每个 system entry
@@ -194,6 +227,57 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 	}
 
 	return false
+}
+
+// claudeCodeSecurityMonitorMarkers 与固定前缀、长度下限共同构成分类器提示词的
+// 判别条件，须全部命中。
+var claudeCodeSecurityMonitorMarkers = []string{
+	"## Threat Model",
+	"- `<transcript>`:",
+	"## HARD BLOCK",
+	"## SOFT BLOCK",
+	"## Classification Process",
+	"## Output Format",
+	"<block>yes</block>",
+	"<block>no</block>",
+}
+
+// isClaudeCodeSecurityMonitorPrompt 识别 Claude Code auto 模式安全监视器分类器请求。
+// 真实 CLI（实测 2.1.220）会在监视器提示词之外追加独立的会话上下文 system 块，
+// entry 数量不受服务端控制，故逐 entry 查找匹配项而非限定恰好一个 entry。
+func isClaudeCodeSecurityMonitorPrompt(systemEntries []any) bool {
+	for _, raw := range systemEntries {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		entryType, ok := entry["type"].(string)
+		if !ok || entryType != "text" {
+			continue
+		}
+
+		text, ok := entry["text"].(string)
+		if !ok || len(text) < claudeCodeSecurityMonitorPromptMinLen ||
+			!strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) {
+			continue
+		}
+
+		if hasAllClaudeCodeSecurityMonitorMarkers(text) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasAllClaudeCodeSecurityMonitorMarkers(text string) bool {
+	for _, marker := range claudeCodeSecurityMonitorMarkers {
+		if !strings.Contains(text, marker) {
+			return false
+		}
+	}
+	return true
 }
 
 // bestSimilarityScore 计算文本与所有 Claude Code 模板的最佳相似度

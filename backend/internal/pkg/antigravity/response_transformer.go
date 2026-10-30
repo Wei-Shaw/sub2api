@@ -3,12 +3,15 @@ package antigravity
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"sync/atomic"
 	"time"
 )
+
+var ErrMalformedFunctionCall = errors.New("upstream returned MALFORMED_FUNCTION_CALL")
 
 // TransformGeminiToClaude 将 Gemini 响应转换为 Claude 格式（非流式）
 func TransformGeminiToClaude(geminiResp []byte, originalModel string) ([]byte, *ClaudeUsage, error) {
@@ -32,6 +35,10 @@ func TransformGeminiToClaude(geminiResp []byte, originalModel string) ([]byte, *
 		v1Resp.Response = directResp
 		v1Resp.ResponseID = directResp.ResponseID
 		v1Resp.ModelVersion = directResp.ModelVersion
+	}
+
+	if len(v1Resp.Response.Candidates) > 0 && v1Resp.Response.Candidates[0].FinishReason == "MALFORMED_FUNCTION_CALL" {
+		return nil, nil, ErrMalformedFunctionCall
 	}
 
 	// 使用处理器转换
@@ -277,11 +284,12 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 	}
 
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
-	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
+	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去。
+	// prompt 被拦截时上游可能只报 cachedContentTokenCount，差值下限为 0。
 	usage := ClaudeUsage{}
 	if geminiResp.UsageMetadata != nil {
 		cached := geminiResp.UsageMetadata.CachedContentTokenCount
-		usage.InputTokens = geminiResp.UsageMetadata.PromptTokenCount - cached
+		usage.InputTokens = max(geminiResp.UsageMetadata.PromptTokenCount-cached, 0)
 		usage.OutputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		usage.CacheReadInputTokens = cached
 		usage.ImageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
@@ -293,7 +301,7 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 		respID = geminiResp.ResponseID
 	}
 	if respID == "" {
-		respID = "msg_" + generateRandomID()
+		respID = generateAnthropicMsgID()
 	}
 
 	return &ClaudeResponse{
@@ -371,4 +379,19 @@ func generateRandomID() string {
 		id[i] = chars[int(b)%len(chars)]
 	}
 	return string(id)
+}
+
+// generateAnthropicMsgID 生成 Anthropic 官方格式的 message ID：msg_01 + 22 位 Base62
+func generateAnthropicMsgID() string {
+	const charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	const idLen = 22
+	randomBytes := make([]byte, idLen)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "msg_01" + generateRandomID() + generateRandomID()[:10]
+	}
+	b := make([]byte, idLen)
+	for i := range b {
+		b[i] = charset[int(randomBytes[i])%len(charset)]
+	}
+	return "msg_01" + string(b)
 }

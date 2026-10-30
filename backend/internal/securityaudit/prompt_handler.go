@@ -3,6 +3,7 @@ package securityaudit
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 )
 
 type PromptAdminService interface {
-	GetConfig() PublicConfig
+	GetConfig() (PublicConfig, error)
 	SaveConfig(context.Context, UpdateConfigRequest, int64) (PublicConfig, error)
 	Probe(context.Context, ProbeRequest) ProbeResult
 	Runtime(context.Context) RuntimeSnapshot
@@ -31,7 +32,14 @@ func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
 	return &PromptAdminHandler{service: service}
 }
 
-func (h *PromptAdminHandler) GetConfig(c *gin.Context) { response.Success(c, h.service.GetConfig()) }
+func (h *PromptAdminHandler) GetConfig(c *gin.Context) {
+	config, err := h.service.GetConfig()
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, config)
+}
 
 func (h *PromptAdminHandler) UpdateConfig(c *gin.Context) {
 	var request UpdateConfigRequest
@@ -82,6 +90,10 @@ func (h *PromptAdminHandler) ListEvents(c *gin.Context) {
 	pageSize, err := positiveIntQuery(c, "page_size", 20, 100)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if page > math.MaxInt/pageSize {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_audit_invalid_pagination", "分页参数无效"))
 		return
 	}
 	filter, err := eventFilterFromQuery(c)
@@ -221,7 +233,8 @@ func configAuditFields(request UpdateConfigRequest, saved *PublicConfig) map[str
 	}
 	return map[string]any{
 		"enabled": request.Enabled, "blocking_enabled": request.BlockingEnabled,
-		"config_version": version, "endpoint_count": len(request.Endpoints),
+		"blocking_latest_turn_only": request.BlockingLatestTurnOnly,
+		"config_version":            version, "endpoint_count": len(request.Endpoints),
 		"scanner_count": len(request.Scanners), "all_groups": request.AllGroups,
 		"group_count": len(request.GroupIDs),
 	}

@@ -170,6 +170,74 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, "data: [DONE]")
 }
 
+func TestGeminiForwardAsChatCompletions_FunctionNamedWebSearchStaysClientSide(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"candidates":[{"content":{"parts":[{"text":"hello"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1}}`,
+			)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "gemini-api-key",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{
+		"model":"gemini-3.6-flash-high",
+		"messages":[{"role":"user","content":"search and read"}],
+		"tools":[
+			{"type":"function","function":{"name":"web_search","description":"Search through the Hermes client","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}},
+			{"type":"function","function":{"name":"read_file","description":"Read a local file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}}
+		]
+	}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, httpStub.lastReq)
+
+	postedBody, err := io.ReadAll(httpStub.lastReq.Body)
+	require.NoError(t, err)
+
+	var posted map[string]any
+	require.NoError(t, json.Unmarshal(postedBody, &posted))
+	tools, ok := posted["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1, "Chat Completions function tools must not be promoted to Gemini built-ins by name")
+
+	functionTool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	functionDecls, ok := functionTool["functionDeclarations"].([]any)
+	require.True(t, ok)
+	require.Len(t, functionDecls, 2)
+	webSearchDecl, ok := functionDecls[0].(map[string]any)
+	require.True(t, ok)
+	readFileDecl, ok := functionDecls[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "web_search", webSearchDecl["name"])
+	require.Equal(t, "read_file", readFileDecl["name"])
+	require.NotContains(t, functionTool, "googleSearch")
+	require.NotContains(t, functionTool, "google_search")
+}
+
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 	tests := []struct {
@@ -337,6 +405,330 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 	require.NotContains(t, emptySchema, "type")
 }
 
+func TestCleanToolSchema_ConvertsNestedIntegerExclusiveMinimum(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"counts": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":             "integer",
+					"exclusiveMinimum": float64(0),
+				},
+			},
+			"strict": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 0,
+				"minimum":          5,
+			},
+			"weak": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 2,
+				"minimum":          1,
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	counts, ok := properties["counts"].(map[string]any)
+	require.True(t, ok)
+	items, ok := counts["items"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, items, "exclusiveMinimum")
+	require.Equal(t, float64(1), items["minimum"])
+
+	strict, ok := properties["strict"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, strict, "exclusiveMinimum")
+	require.Equal(t, 5, strict["minimum"])
+
+	weak, ok := properties["weak"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, weak, "exclusiveMinimum")
+	require.Equal(t, 3, weak["minimum"])
+}
+
+func TestCleanToolSchema_DropsAmbiguousExclusiveMinimumWithoutConversion(t *testing.T) {
+	for name, schema := range map[string]map[string]any{
+		"number schema": {
+			"type":             "number",
+			"exclusiveMinimum": 0,
+		},
+		"fractional integer bound": {
+			"type":             "integer",
+			"exclusiveMinimum": 0.5,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cleaned, ok := cleanToolSchema(schema).(map[string]any)
+			require.True(t, ok)
+			require.NotContains(t, cleaned, "exclusiveMinimum")
+			require.NotContains(t, cleaned, "minimum")
+		})
+	}
+}
+
+func TestCleanToolSchema_RemovesNestedDeprecatedAndNormalizesMixedScalarEnum(t *testing.T) {
+	schema := map[string]any{
+		"anyOf": []any{
+			map[string]any{
+				"type":       "string",
+				"deprecated": true,
+			},
+			map[string]any{
+				"enum": []any{"enabled", false, float64(1), nil},
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	anyOf, ok := cleaned["anyOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, anyOf, 2)
+
+	deprecatedSchema, ok := anyOf[0].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, deprecatedSchema, "deprecated")
+
+	enumSchema, ok := anyOf[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"enabled", "false", "1", "null"}, enumSchema["enum"])
+}
+
+func TestCleanToolSchema_DropsEnumWithNonScalarValue(t *testing.T) {
+	schema := map[string]any{
+		"enum": []any{"valid", map[string]any{"invalid": true}},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, cleaned, "enum")
+}
+
+func TestCleanToolSchema_PreservesSchemaKeywordNamedProperties(t *testing.T) {
+	schema := map[string]any{
+		"type":     "object",
+		"examples": []any{"root example"},
+		"properties": map[string]any{
+			"const": map[string]any{
+				"type":  "string",
+				"const": "property const",
+			},
+			"enum": map[string]any{
+				"type":  "string",
+				"const": "property enum",
+			},
+			"examples": map[string]any{
+				"type": "string",
+			},
+			"type": map[string]any{
+				"type": "string",
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, cleaned, "examples")
+
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, properties, "const")
+	require.Contains(t, properties, "enum")
+	require.Contains(t, properties, "examples")
+	require.Contains(t, properties, "type")
+
+	constSchema, ok := properties["const"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"property const"}, constSchema["enum"])
+
+	enumPropertySchema, ok := properties["enum"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"property enum"}, enumPropertySchema["enum"])
+}
+
+func TestCleanToolSchema_NormalizesConstAndExamplesAtNestedSchemaNodes(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"values": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":     "string",
+					"examples": []any{"item example"},
+					"anyOf": []any{
+						map[string]any{"type": "string", "const": "a"},
+						map[string]any{"type": "string", "examples": []any{"branch example"}},
+					},
+				},
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	values, ok := properties["values"].(map[string]any)
+	require.True(t, ok)
+	items, ok := values["items"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, items, "examples")
+	anyOf, ok := items["anyOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, anyOf, 2)
+	firstBranch, ok := anyOf[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"a"}, firstBranch["enum"])
+	secondBranch, ok := anyOf[1].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, secondBranch, "examples")
+}
+
+func TestCleanToolSchema_TraversesRetainedSchemaValuedKeywords(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"additionalItems": map[string]any{
+			"type":     "string",
+			"const":    "additional",
+			"examples": []any{"additional example"},
+		},
+		"unevaluatedItems": map[string]any{
+			"type":     "string",
+			"const":    "unevaluated item",
+			"examples": []any{"item example"},
+		},
+		"unevaluatedProperties": map[string]any{
+			"type":     "string",
+			"const":    "unevaluated property",
+			"examples": []any{"property example"},
+		},
+		"dependencies": map[string]any{
+			"schema dependency": map[string]any{
+				"type":     "string",
+				"const":    "dependency",
+				"examples": []any{"dependency example"},
+			},
+			"required dependency": []any{"first", "second"},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	expectedEnums := map[string][]any{
+		"additionalItems":       {"additional"},
+		"unevaluatedItems":      {"unevaluated item"},
+		"unevaluatedProperties": {"unevaluated property"},
+	}
+	for keyword, expectedEnum := range expectedEnums {
+		child, ok := cleaned[keyword].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, expectedEnum, child["enum"])
+		require.NotContains(t, child, "const")
+		require.NotContains(t, child, "examples")
+	}
+
+	dependencies, ok := cleaned["dependencies"].(map[string]any)
+	require.True(t, ok)
+	dependencySchema, ok := dependencies["schema dependency"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"dependency"}, dependencySchema["enum"])
+	require.NotContains(t, dependencySchema, "const")
+	require.NotContains(t, dependencySchema, "examples")
+	require.Equal(t, []any{"first", "second"}, dependencies["required dependency"])
+}
+
+func TestCleanToolSchema_IntersectsStringConstWithEnum(t *testing.T) {
+	tests := []struct {
+		name       string
+		constValue string
+		enum       []any
+		expected   []any
+	}{
+		{name: "matching", constValue: "browser", enum: []any{"browser", "shell"}, expected: []any{"browser"}},
+		{name: "contradictory", constValue: "browser", enum: []any{"shell"}, expected: []any{}},
+		{name: "numeric string collision", constValue: "7", enum: []any{float64(7)}, expected: []any{}},
+		{name: "empty string", constValue: "", enum: []any{"", "shell"}, expected: []any{""}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			schema := map[string]any{
+				"type":  "string",
+				"const": test.constValue,
+				"enum":  test.enum,
+			}
+
+			cleaned, ok := cleanToolSchema(schema).(map[string]any)
+			require.True(t, ok)
+			require.NotContains(t, cleaned, "const")
+			require.Equal(t, test.expected, cleaned["enum"])
+		})
+	}
+
+	cleaned, ok := cleanToolSchema(map[string]any{"const": "browser"}).(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "STRING", cleaned["type"])
+	require.Equal(t, []any{"browser"}, cleaned["enum"])
+}
+
+func TestCleanToolSchema_DropsNonStringConstWithoutInferringType(t *testing.T) {
+	for _, constValue := range []any{true, float64(7), map[string]any{"value": "x"}} {
+		cleaned, ok := cleanToolSchema(map[string]any{"const": constValue}).(map[string]any)
+		require.True(t, ok)
+		require.NotContains(t, cleaned, "const")
+		require.NotContains(t, cleaned, "type")
+		require.NotContains(t, cleaned, "enum")
+	}
+}
+
+func TestCleanToolSchema_DropsNonStringConstAndRetainsExistingTypeAndEnum(t *testing.T) {
+	schema := map[string]any{
+		"type":  "integer",
+		"const": float64(7),
+		"enum":  []any{float64(8)},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, cleaned, "const")
+	require.Equal(t, "INTEGER", cleaned["type"])
+	require.Equal(t, []any{"8"}, cleaned["enum"])
+}
+
+func TestCleanToolSchema_PreservesNestedOneOfCombinator(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"value": map[string]any{
+				"oneOf": []any{
+					map[string]any{"const": "a"},
+					map[string]any{"type": "string", "const": "b"},
+				},
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	valueSchema, ok := properties["value"].(map[string]any)
+	require.True(t, ok)
+	oneOf, ok := valueSchema["oneOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, oneOf, 2)
+	firstBranch, ok := oneOf[0].(map[string]any)
+	require.True(t, ok)
+	secondBranch, ok := oneOf[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"a"}, firstBranch["enum"])
+	require.Equal(t, []any{"b"}, secondBranch["enum"])
+}
+
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	tools := []any{
 		map[string]any{
@@ -392,7 +784,7 @@ func TestGeminiHandleNativeNonStreamingResponse_DebugDisabledDoesNotEmitHeaderLo
 		Body: io.NopCloser(strings.NewReader(`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2}}`)),
 	}
 
-	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false)
+	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false, nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 	require.False(t, logSink.ContainsMessage("[GeminiAPI]"), "debug 关闭时不应输出 Gemini 响应头日志")
@@ -530,6 +922,105 @@ func TestConvertClaudeMessagesToGeminiGenerateContent_AddsThoughtSignatureForToo
 	if !strings.Contains(s, "\"thoughtSignature\":\""+geminiDummyThoughtSignature+"\"") {
 		t.Fatalf("expected injected thoughtSignature %q, got: %s", geminiDummyThoughtSignature, s)
 	}
+}
+
+func TestConvertClaudeMessagesToGeminiGenerateContent_ExtractsToolResultImages(t *testing.T) {
+	claudeReq := map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{
+						"type": "tool_use",
+						"id":   "toolu_123",
+						"name": "inspect",
+						"input": map[string]any{
+							"path": "image.png",
+						},
+					},
+				},
+			},
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": "toolu_123",
+						"content": []any{
+							map[string]any{"type": "text", "text": "found it"},
+							map[string]any{
+								"type": "image",
+								"source": map[string]any{
+									"type":       "base64",
+									"media_type": "image/png",
+									"data":       "aGVsbG8=",
+								},
+							},
+						},
+					},
+					map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": "toolu_123",
+						"content": []any{
+							map[string]any{
+								"type": "image",
+								"source": map[string]any{
+									"type":       "base64",
+									"media_type": "image/jpeg",
+									"data":       "d29ybGQ=",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	body, err := json.Marshal(claudeReq)
+	require.NoError(t, err)
+
+	converted, err := convertClaudeMessagesToGeminiGenerateContent(body)
+	require.NoError(t, err)
+
+	var geminiReq map[string]any
+	require.NoError(t, json.Unmarshal(converted, &geminiReq))
+	contents, ok := geminiReq["contents"].([]any)
+	require.True(t, ok)
+	content, ok := contents[1].(map[string]any)
+	require.True(t, ok)
+	parts, ok := content["parts"].([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 4)
+
+	firstPart, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	firstResponse, ok := firstPart["functionResponse"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "inspect", firstResponse["name"])
+	firstResponseBody, ok := firstResponse["response"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "found it", firstResponseBody["content"])
+
+	secondPart, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	secondResponse, ok := secondPart["functionResponse"].(map[string]any)
+	require.True(t, ok)
+	secondResponseBody, ok := secondResponse["response"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "[image attached below]", secondResponseBody["content"])
+
+	firstImagePart, ok := parts[2].(map[string]any)
+	require.True(t, ok)
+	firstImage, ok := firstImagePart["inlineData"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image/png", firstImage["mimeType"])
+	require.Equal(t, "aGVsbG8=", firstImage["data"])
+	secondImagePart, ok := parts[3].(map[string]any)
+	require.True(t, ok)
+	secondImage, ok := secondImagePart["inlineData"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image/jpeg", secondImage["mimeType"])
+	require.Equal(t, "d29ybGQ=", secondImage["data"])
 }
 
 func TestEnsureGeminiFunctionCallThoughtSignatures_InsertsWhenMissing(t *testing.T) {
@@ -677,6 +1168,16 @@ func TestExtractGeminiUsage(t *testing.T) {
 			},
 		},
 		{
+			name:    "prompt 被拦截只报 cachedContentTokenCount — input 下限为 0",
+			input:   `{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"},"usageMetadata":{"cachedContentTokenCount":12980}}`,
+			wantNil: false,
+			wantUsage: &ClaudeUsage{
+				InputTokens:          0,
+				OutputTokens:         0,
+				CacheReadInputTokens: 12980,
+			},
+		},
+		{
 			name:    "无 usageMetadata",
 			input:   `{"candidates":[]}`,
 			wantNil: true,
@@ -725,6 +1226,11 @@ func TestExtractGeminiUsage(t *testing.T) {
 			}
 			if got.CacheReadInputTokens != tt.wantUsage.CacheReadInputTokens {
 				t.Errorf("CacheReadInputTokens: 期望 %d，实际 %d", tt.wantUsage.CacheReadInputTokens, got.CacheReadInputTokens)
+			}
+			// Gemini usageMetadata 只有 cachedContentTokenCount（缓存命中），没有缓存写入
+			// 的 token 类别：cache_creation_input_tokens 恒为 0，计费侧不会产生缓存创建分项。
+			if got.CacheCreationInputTokens != 0 {
+				t.Errorf("CacheCreationInputTokens: 期望 0，实际 %d", got.CacheCreationInputTokens)
 			}
 		})
 	}
@@ -839,6 +1345,40 @@ func TestParseGeminiRateLimitResetTime(t *testing.T) {
 			input:       `not json but Please retry in 10s`,
 			wantNil:     false,
 			approxDelta: 10,
+		},
+		{
+			name:        "Vertex RetryInfo retryDelay",
+			input:       `{"error":{"code":429,"message":"Resource exhausted. Please try again later.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"39s"}]}}`,
+			wantNil:     false,
+			approxDelta: 39,
+		},
+		{
+			name:        "Vertex RetryInfo 小数秒向上取整",
+			input:       `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"1.5s"}]}}`,
+			wantNil:     false,
+			approxDelta: 2,
+		},
+		{
+			name:        "Vertex RetryInfo 超过上限被截断到 15 分钟",
+			input:       `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"3600s"}]}}`,
+			wantNil:     false,
+			approxDelta: 900,
+		},
+		{
+			name:    "retryDelay 存在但 @type 不是 RetryInfo 则忽略",
+			input:   `{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","retryDelay":"39s"}]}}`,
+			wantNil: true,
+		},
+		{
+			name:    "RetryInfo retryDelay 非法值忽略",
+			input:   `{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"soon"}]}}`,
+			wantNil: true,
+		},
+		{
+			name:        "quotaResetDelay 与 RetryInfo 并存时先到者优先",
+			input:       `{"error":{"code":429,"details":[{"metadata":{"quotaResetDelay":"120s"}},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"39s"}]}}`,
+			wantNil:     false,
+			approxDelta: 120,
 		},
 	}
 

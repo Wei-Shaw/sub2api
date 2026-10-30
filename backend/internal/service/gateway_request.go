@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -117,6 +118,7 @@ func clearGatewayRequestDerivedState(parsed *ParsedRequest) {
 	parsed.HasSystem = false
 	parsed.ThinkingEnabled = false
 	parsed.OutputEffort = ""
+	parsed.Speed = ""
 	parsed.MaxTokens = 0
 	parsed.systemRange = missingJSONRange()
 	parsed.messagesRange = missingJSONRange()
@@ -221,9 +223,13 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
 
 	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
-	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive"
+	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive" || thinkingType == "between_tools" ||
+		(protocol == domain.PlatformAnthropic && isClaude55SignedThinkingModel(parsed.Model))
 
 	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
+	if protocol == domain.PlatformAnthropic {
+		parsed.Speed = strings.ToLower(strings.TrimSpace(gjson.Get(jsonStr, "speed").String()))
+	}
 
 	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
 	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
@@ -282,6 +288,7 @@ type ParsedRequest struct {
 	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
 	OutputEffort    string          // output_config.effort（Claude API 的推理强度控制）
+	Speed           string          // Anthropic speed（当前可计费值为 "fast"）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 
@@ -560,6 +567,93 @@ func StripEmptyTextBlocks(body []byte) []byte {
 	return out
 }
 
+// isClaude55SignedThinkingModel identifies models whose default thinking mode
+// requires signed history to survive protocol conversion and request filtering.
+func isClaude55SignedThinkingModel(model string) bool {
+	return claude.IsOpus55(model) || claude.IsSonnet55(model) || claude.IsHaiku55(model)
+}
+
+// validateClaude55Request rejects settings that the upstream cannot honor.
+// Call before OAuth mimicry can remove tool_choice or alter thinking defaults.
+func validateClaude55Request(body []byte, model string) error {
+	if !isClaude55SignedThinkingModel(model) {
+		return nil
+	}
+	isSonnet55 := claude.IsSonnet55(model)
+	isHaiku55 := claude.IsHaiku55(model)
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	switch thinkingType {
+	case "disabled", "enabled":
+		if isHaiku55 {
+			// haiku-5-5：enabled 一律 400（用 adaptive）；disabled 仅 high 及以下
+			// 可用，xhigh/max 上 400。见官方 migration guide。
+			if thinkingType == "enabled" {
+				return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
+			}
+			switch gjson.GetBytes(body, "output_config.effort").String() {
+			case "xhigh", "max":
+				return fmt.Errorf("claude-haiku-5-5 thinking.type=disabled supports only low, medium or high effort")
+			}
+			break
+		}
+		if isSonnet55 {
+			return fmt.Errorf("claude-sonnet-5-5 requires adaptive thinking or thinking.type=between_tools; omit thinking or use one of those modes")
+		}
+		return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
+	case "between_tools":
+		if !isSonnet55 {
+			if isHaiku55 {
+				return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported (use thinking.type=disabled at high effort or below)")
+			}
+			return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported")
+		}
+		effort := gjson.GetBytes(body, "output_config.effort").String()
+		if effort == "xhigh" || effort == "max" {
+			return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools supports only low, medium or high effort")
+		}
+		for _, field := range []string{"thinking.display", "thinking.budget_tokens", "thinking.block_binding"} {
+			if gjson.GetBytes(body, field).Exists() {
+				return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools does not support %s", field)
+			}
+		}
+	}
+	modelName := "claude-opus-5-5"
+	if isSonnet55 {
+		modelName = "claude-sonnet-5-5"
+	}
+	if isHaiku55 {
+		modelName = "claude-haiku-5-5"
+	}
+	// haiku-5-5 接受强制 tool_choice（响应以 tool call 开头、无 thinking 块），
+	// 与 opus/sonnet-5-5 不同，不拦截。见官方 migration guide。
+	if !isHaiku55 {
+		if gjson.GetBytes(body, "tool_choice").String() == "required" {
+			return fmt.Errorf("%s does not support forced tool_choice; use auto or none", modelName)
+		}
+		switch gjson.GetBytes(body, "tool_choice.type").String() {
+		case "any", "tool", "function", "custom", "namespace":
+			return fmt.Errorf("%s does not support forced tool_choice; use auto or none", modelName)
+		}
+	}
+	if isSonnet55 || isHaiku55 {
+		if temperature := gjson.GetBytes(body, "temperature"); temperature.Exists() && (temperature.Type != gjson.Number || temperature.Float() != 1) {
+			return fmt.Errorf("%s does not support non-default temperature", modelName)
+		}
+		// Haiku 5.5 只接受显式 top_p=0.99；保留 Sonnet 5.5 既有的区间策略。
+		if topP := gjson.GetBytes(body, "top_p"); topP.Exists() && (topP.Type != gjson.Number ||
+			(isHaiku55 && topP.Float() != 0.99) || (isSonnet55 && (topP.Float() < 0.99 || topP.Float() > 1))) {
+			return fmt.Errorf("%s does not support non-default top_p", modelName)
+		}
+		if gjson.GetBytes(body, "top_k").Exists() {
+			return fmt.Errorf("%s does not support top_k", modelName)
+		}
+		if isHaiku55 && gjson.GetBytes(body, "temperature").Exists() && gjson.GetBytes(body, "top_p").Exists() {
+			return fmt.Errorf("%s does not allow temperature and top_p together; omit both", modelName)
+		}
+	}
+	return nil
+}
+
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures.
@@ -572,13 +666,13 @@ func StripEmptyTextBlocks(body []byte) []byte {
 //
 // 策略 (anthropic-strict only)：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
-//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
-//     (blocks with missing/empty/dummy signatures that would cause 400 errors)
+//   - 当 thinking.type 是 "enabled"/"adaptive"：移除缺失/无效 signature 的 thinking 块（避免 400）
+//   - 对要求签名历史完整的 5.5 模型，一旦有无效块，移除历史中的全部 thinking 块
 func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
 	if !ShouldPreFilterThinkingBlocks(mappedModel) {
 		return body
 	}
-	return filterThinkingBlocksInternal(body, false)
+	return filterThinkingBlocksInternal(body, isClaude55SignedThinkingModel(mappedModel))
 }
 
 // FilterThinkingBlocksForRetry strips thinking-related constructs for retry scenarios.
@@ -649,6 +743,9 @@ func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
 		bytes.Contains(body, patternThinkingFieldSpaced)
 	if !hasEmptyContent && !hasEmptyTextBlock && !containsThinkingBlocks {
 		if topThinking := gjson.Get(jsonStr, "thinking"); topThinking.Exists() {
+			if claude.IsSonnet55(mappedModel) && topThinking.Get("type").String() == "between_tools" {
+				return body
+			}
 			if out, err := sjson.DeleteBytes(body, "thinking"); err == nil {
 				out = removeThinkingDependentContextStrategies(out)
 				return out
@@ -666,7 +763,9 @@ func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
 	modified := false
 
 	// Disable top-level thinking mode for retry to avoid structural/signature constraints upstream.
-	deleteTopLevelThinking := gjson.Get(jsonStr, "thinking").Exists()
+	thinkingMode := gjson.Get(jsonStr, "thinking.type").String()
+	deleteTopLevelThinking := gjson.Get(jsonStr, "thinking").Exists() &&
+		(!claude.IsSonnet55(mappedModel) || thinkingMode != "between_tools")
 
 	for i := 0; i < len(messages); i++ {
 		msgMap, ok := messages[i].(map[string]any)
@@ -893,9 +992,38 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //   - 若两侧不一致上游 Pydantic schema 拒收：
 //     "context_management: Extra inputs are not permitted"
 //
-// 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的
-// context_management 字段：缺 beta token → strip。这将限制完全建立在
-// "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
+// fallbacks 场景（与 context_management 同构）：
+//   - `fallbacks` / `fallback_credit_token` 是 beta Messages API 的
+//     server-side refusal fallback 字段；标准 Messages schema 没有它们，
+//     客户端（Claude Code / SDK / OpenCode 等）最近开始默认透传
+//     `"fallbacks":"default"`（或模型列表）
+//   - 上游接受的前提是 anthropic-beta 含 `server-side-fallback-2026-07-01`
+//     （fallback_credit_token 额外接受 credit beta，见下）
+//   - 缺 token 时上游 Pydantic extra='forbid' 拒收：
+//     "fallbacks: Extra inputs are not permitted"
+//   - 本仓不写入该字段，全部来自客户端透传；OAuth mimic 用
+//     FullClaudeCodeMimicryBetas 覆盖客户端 beta（该列表不含 fallback beta），
+//     若不 strip，body 字段与 header 不对称 → 所有模型 400
+//
+// thinking.block_binding 场景：
+//   - Claude Fable 5.1 的会话前缀绑定控制受
+//     `thinking-binding-controls-2026-08-01` beta 保护
+//   - 缺 token 时上游拒收：
+//     "thinking.adaptive.block_binding: Extra inputs are not permitted"
+//
+// message-level output_config 场景：
+//   - pi-ai（Harness 使用的 Anthropic provider）会为 opus5 生成形如
+//     `{"role":"system","content":[],"output_config":{"effort":"high"}}` 的控制消息，
+//     并请求 `mid-conversation-output-config-2026-07-01` beta
+//   - 该 output_config 是 **message 级**字段，只有该 beta 保护；顶层 output_config/effort
+//     不受它约束
+//   - OAuth mimic 用 FullClaudeCodeMimicryBetas 覆盖客户端 beta；固定列表漏该 beta 时
+//     body 字段与 header 不对称 → 上游报 "output_config: Extra inputs are not permitted"
+//   - 缺 token 时净化消息级 output_config（详见 stripAnthropicMessageOutputConfigUnlessBeta）
+//
+// 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的上述字段：
+// 缺对应 beta token → strip；客户端 header 已带对应 beta → 保留（不过度删除）。
+// 这将限制完全建立在 "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
 //
 // 调用约束：必须在 CCH 签名之前调用，否则签名 hash 与最终 body
 // 不一致，上游会以 third-party 拒收。
@@ -906,23 +1034,71 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 	if len(body) == 0 {
 		return body, false
 	}
-	if !gjson.GetBytes(body, "context_management").Exists() {
+
+	changed := false
+
+	// context_management：需要 context-management beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// thinking.block_binding：需要 thinking-binding-controls beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// fallbacks：server-side refusal fallback，仅接受 server-side-fallback beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "fallbacks", anthropicBetaHeader, claude.BetaServerSideFallback,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// fallback_credit_token：server-side-fallback 或（新旧任一）fallback-credit beta
+	// 任意一个即可保留。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "fallback_credit_token", anthropicBetaHeader,
+		claude.BetaServerSideFallback, claude.BetaFallbackCredit, claude.BetaFallbackCreditLegacy,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// messages[].output_config：mid-conversation-output-config beta 专属字段。
+	// 顶层 output_config / effort 不受该 beta 约束，本分支只净化消息内字段。
+	if b, deleted := stripAnthropicMessageOutputConfigUnlessBeta(body, anthropicBetaHeader); deleted {
+		body, changed = b, true
+	}
+
+	return body, changed
+}
+
+// stripAnthropicBodyFieldUnlessBeta 当 field 存在且 anthropic-beta header 不含
+// requiredTokens 中**任何一个** token 时删除该字段（保留条件：含任一 required token）。
+// 单 token 调用即「缺该 beta 则 strip」。返回 (newBody, deleted)。
+func stripAnthropicBodyFieldUnlessBeta(body []byte, field, anthropicBetaHeader string, requiredTokens ...string) ([]byte, bool) {
+	if !gjson.GetBytes(body, field).Exists() {
 		return body, false
 	}
-	if anthropicBetaTokensContains(anthropicBetaHeader, anthropicBetaContextManagementToken) {
-		return body, false
+	for _, token := range requiredTokens {
+		if anthropicBetaTokensContains(anthropicBetaHeader, token) {
+			return body, false
+		}
 	}
-	if b, err := sjson.DeleteBytes(body, "context_management"); err == nil {
-		return b, true
-	} else {
+	b, err := sjson.DeleteBytes(body, field)
+	if err != nil {
 		// 不应发生：gjson 刚验证过字段存在 + body 是合法 JSON。如果 sjson 仍报错，
-		// 调用方会拿到 (body, false)，但此前 computeFinalAnthropicBeta 已按“strip 后”
-		// 计算了 finalBeta——两侧会不一致。记录 warning 最小限度提醒运维。
+		// 调用方会拿到原 body（视为未删除），但此前 computeFinalAnthropicBeta 可能已按
+		// "strip 后" 计算了 finalBeta——两侧会不一致。记录 warning 最小限度提醒运维。
 		logger.LegacyPrintf("service.gateway",
-			"[CtxMgmtSanitize] sjson.DeleteBytes failed unexpectedly: %v (body len=%d). "+
-				"body and final anthropic-beta header may be out of sync.", err, len(body))
+			"[BetaFieldSanitize] sjson.DeleteBytes(%s) failed unexpectedly: %v (body len=%d). "+
+				"body and final anthropic-beta header may be out of sync.", field, err, len(body))
+		return body, false
 	}
-	return body, false
+	return b, true
 }
 
 // anthropicBetaTokensContains 检测逗号分隔的 anthropic-beta header 是否含指定 token。
@@ -937,6 +1113,106 @@ func anthropicBetaTokensContains(header, token string) bool {
 		}
 	}
 	return false
+}
+
+// stripAnthropicMessageOutputConfigUnlessBeta 在 anthropic-beta header 缺
+// mid-conversation-output-config beta 时，净化 **messages[].output_config**：
+//   - 仅为携带 message-level output_config 的消息剥该字段；
+//   - 若该消息 role=system 且 content 无正文（缺失 / null / 空 string / 空 array /
+//     仅空 text 块），整条删除（pi-ai 为 opus5 生成的空 system 控制消息即此形态）；
+//   - system 有正文则保留正文与其余字段；user/assistant 只剥字段，绝不整条删除；
+//   - 无任何消息携带该字段时返回原 body（字节 no-op）。
+//
+// header 含该 beta 时完全保留。顶层 output_config / effort 不属于该 beta 保护范围，
+// 本函数不做任何处理。多条删除用「稳健重建」实现，保留其余字段与消息先后顺序。
+func stripAnthropicMessageOutputConfigUnlessBeta(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	if anthropicBetaTokensContains(anthropicBetaHeader, claude.BetaMidConversationOutputConfig) {
+		return body, false
+	}
+	// 快速路径：body 中不含 output_config 字面量时无需解析。
+	if !bytes.Contains(body, []byte("output_config")) {
+		return body, false
+	}
+	msgsRes := gjson.GetBytes(body, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body, false
+	}
+
+	hasMessageOutputConfig := false
+	for _, msg := range msgsRes.Array() {
+		if msg.Get("output_config").Exists() {
+			hasMessageOutputConfig = true
+			break
+		}
+	}
+	if !hasMessageOutputConfig {
+		return body, false
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal([]byte(msgsRes.Raw), &messages); err != nil {
+		// gjson 的 IsArray 只做形态判断、不保证 JSON 完整合法；此分支保守返回原 body。
+		return body, false
+	}
+
+	changed := false
+	rebuilt := make([]json.RawMessage, 0, len(messages))
+	for _, msg := range messages {
+		if !gjson.GetBytes(msg, "output_config").Exists() {
+			rebuilt = append(rebuilt, msg)
+			continue
+		}
+		changed = true
+
+		// 空正文的 system 控制消息整条删除；其余消息只剥字段。
+		if gjson.GetBytes(msg, "role").String() == "system" &&
+			!anthropicMessageContentHasBody(gjson.GetBytes(msg, "content")) {
+			continue
+		}
+		stripped, err := sjson.DeleteBytes(msg, "output_config")
+		if err != nil {
+			// 不应发生：字段存在且 msg 是合法 JSON。保守整条保留，不产出半成品。
+			rebuilt = append(rebuilt, msg)
+			continue
+		}
+		rebuilt = append(rebuilt, json.RawMessage(stripped))
+	}
+	if !changed {
+		return body, false
+	}
+
+	rebuiltBytes, err := json.Marshal(rebuilt)
+	if err != nil {
+		return body, false
+	}
+	out, err := sjson.SetRawBytes(body, "messages", rebuiltBytes)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+// anthropicMessageContentHasBody 判断单条消息的 content 是否携带正文。
+// 返回 false 表示「无正文」：content 缺失 / null / 空 string / 空 array /
+// 仅由空 text 块构成。未知或非 text 内容块（image / tool_use / tool_result 等）
+// 一律视为有正文，避免把未来新增内容块误判为空而连带删除整条 system 消息。
+func anthropicMessageContentHasBody(content gjson.Result) bool {
+	switch {
+	case !content.Exists():
+		return false
+	case content.Type == gjson.String:
+		return content.String() != ""
+	case content.IsArray():
+		var blocks []any
+		if err := json.Unmarshal([]byte(content.Raw), &blocks); err != nil {
+			return true // 无法解析时保守视为有正文
+		}
+		cleaned, _ := stripEmptyTextBlocksFromSlice(blocks)
+		return len(cleaned) > 0
+	default:
+		// null 视为无正文；object / number / bool 等非标准形态保守保留。
+		return content.Type != gjson.Null
+	}
 }
 
 // FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate
@@ -1137,8 +1413,10 @@ func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []b
 // filterThinkingBlocksInternal removes invalid thinking blocks from request
 // 策略：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
-//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块
-func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
+//   - 当 thinking.type 是 "enabled"/"adaptive"：移除缺失/无效 signature 的 thinking 块
+//   - 对 5.5 模型，只要历史中有无效 thinking，就移除所有 thinking/redacted_thinking，
+//     避免留下不连续的签名历史
+func filterThinkingBlocksInternal(body []byte, alwaysThinking bool) []byte {
 	// Fast path: if body doesn't contain "thinking", skip parsing
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
@@ -1155,7 +1433,7 @@ func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
 	}
 
 	// Check if thinking is enabled
-	thinkingEnabled := false
+	thinkingEnabled := alwaysThinking
 	if thinking, ok := req["thinking"].(map[string]any); ok {
 		if thinkType, ok := thinking["type"].(string); ok && (thinkType == "enabled" || thinkType == "adaptive") {
 			thinkingEnabled = true
@@ -1196,6 +1474,12 @@ func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
 				// When thinking is enabled and this is an assistant message,
 				// only keep thinking blocks with valid signatures
 				if thinkingEnabled && role == "assistant" {
+					if alwaysThinking && blockType == "redacted_thinking" {
+						if data, ok := blockMap["data"].(string); ok && data != "" {
+							newContent = append(newContent, block)
+							continue
+						}
+					}
 					signature, _ := blockMap["signature"].(string)
 					if signature != "" && signature != antigravity.DummyThoughtSignature {
 						newContent = append(newContent, block)
@@ -1226,6 +1510,44 @@ func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
 
 	if !filtered {
 		return body
+	}
+	if alwaysThinking {
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+			}
+			content, ok := msgMap["content"].([]any)
+			if !ok {
+				continue
+			}
+			cleaned := make([]any, 0, len(content))
+			for _, block := range content {
+				blockMap, ok := block.(map[string]any)
+				if !ok {
+					cleaned = append(cleaned, block)
+					continue
+				}
+				blockType, _ := blockMap["type"].(string)
+				if blockType == "thinking" || blockType == "redacted_thinking" {
+					continue
+				}
+				if blockType == "" {
+					if _, hasThinking := blockMap["thinking"]; hasThinking {
+						continue
+					}
+				}
+				cleaned = append(cleaned, block)
+			}
+			if len(cleaned) == 0 {
+				placeholder := "(content removed)"
+				if role, _ := msgMap["role"].(string); role == "assistant" {
+					placeholder = "(assistant content removed)"
+				}
+				cleaned = append(cleaned, map[string]any{"type": "text", "text": placeholder})
+			}
+			msgMap["content"] = cleaned
+		}
 	}
 
 	newBody, err := json.Marshal(req)
@@ -1334,6 +1656,9 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	}
 
 	mapped := normalizeGLMOpenAIReasoningEffort(raw)
+	if isGLM53Model(mappedModel) && mapped == "high" && normalizeEffortToken(raw) == "low" {
+		mapped = "low"
+	}
 	if mapped == "" || mapped == raw {
 		return body, false
 	}
@@ -1345,12 +1670,20 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	return modified, true
 }
 
-func normalizeGLMOpenAIReasoningEffort(raw string) string {
+func normalizeEffortToken(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
+	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+}
+
+func isGLM53Model(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "glm-5.3")
+}
+
+func normalizeGLMOpenAIReasoningEffort(raw string) string {
+	value := normalizeEffortToken(raw)
 	if value == "" {
 		return ""
 	}
-	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
 
 	switch value {
 	case "low", "medium", "high":
@@ -1360,6 +1693,42 @@ func normalizeGLMOpenAIReasoningEffort(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// NormalizeGLM53AnthropicThinking maps explicit client thinking effort onto the
+// GLM-5.3 Anthropic-compatible scale. Requests without an effort or thinking
+// preference are left unchanged so the upstream default remains in effect.
+func NormalizeGLM53AnthropicThinking(body []byte, mappedModel string) ([]byte, bool) {
+	if !isGLM53Model(mappedModel) {
+		return body, false
+	}
+
+	raw := gjson.GetBytes(body, "output_config.effort").String()
+	if strings.TrimSpace(raw) == "" {
+		raw = gjson.GetBytes(body, "thinking.type").String()
+	}
+
+	var effort string
+	switch normalizeEffortToken(raw) {
+	case "disabled", "off", "none", "minimal", "low":
+		effort = "low"
+	case "enabled", "adaptive", "medium", "high":
+		effort = "high"
+	case "xhigh", "max", "ultra":
+		effort = "max"
+	default:
+		return body, false
+	}
+
+	modified, err := sjson.SetBytes(body, "thinking.type", "enabled")
+	if err != nil {
+		return body, false
+	}
+	modified, err = sjson.SetBytes(modified, "output_config.effort", effort)
+	if err != nil {
+		return body, false
+	}
+	return modified, true
 }
 
 // =========================
@@ -1377,12 +1746,16 @@ const (
 
 // isThinkingBudgetConstraintError detects whether an upstream error message indicates
 // a budget_tokens constraint violation (e.g. "budget_tokens >= 1024").
-// Matches three conditions (all must be true):
+// Also recognizes Baseten's final-answer reserve constraint.
+// For the original budget constraint, all three conditions must be true:
 //  1. Contains "budget_tokens" or "budget tokens"
 //  2. Contains "thinking"
 //  3. Contains ">= 1024" or "greater than or equal to 1024" or ("1024" + "input should be")
 func isThinkingBudgetConstraintError(errMsg string) bool {
 	m := strings.ToLower(errMsg)
+	if isFinalAnswerReserveError(m) {
+		return true
+	}
 
 	// Condition 1: budget_tokens or budget tokens
 	hasBudget := strings.Contains(m, "budget_tokens") || strings.Contains(m, "budget tokens")
@@ -1404,6 +1777,14 @@ func isThinkingBudgetConstraintError(errMsg string) bool {
 	}
 
 	return false
+}
+
+// isFinalAnswerReserveError matches the specific reserve constraint, rather than
+// treating arbitrary reasoning quota or context-length errors as repairable.
+func isFinalAnswerReserveError(errMsg string) bool {
+	m := strings.ToLower(errMsg)
+	return strings.Contains(m, "must be greater than 1024 to reserve tokens for a final answer") &&
+		strings.Contains(m, "baseten reasoning is enabled")
 }
 
 // RectifyThinkingBudget modifies the request body to fix budget_tokens constraint errors.

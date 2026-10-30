@@ -38,7 +38,7 @@
                 <span v-else>{{ index + 1 }}</span>
               </div>
               <span
-                class="ml-2 text-sm font-medium"
+                class="ml-2 hidden text-sm font-medium sm:inline"
                 :class="
                   currentStep >= index
                     ? 'text-gray-900 dark:text-white'
@@ -50,7 +50,7 @@
             </div>
             <div
               v-if="index < steps.length - 1"
-              class="mx-3 h-0.5 w-12"
+              class="mx-2 h-0.5 w-6 sm:mx-3 sm:w-12"
               :class="currentStep > index ? 'bg-primary-500' : 'bg-gray-200 dark:bg-dark-700'"
             ></div>
           </template>
@@ -70,7 +70,7 @@
             </p>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label class="input-label">{{ t('setup.database.host') }}</label>
               <input
@@ -103,7 +103,7 @@
             <Toggle v-model="formData.redis.enable_tls" />
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label class="input-label">{{ t('setup.database.username') }}</label>
               <input
@@ -124,7 +124,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label class="input-label">{{ t('setup.database.databaseName') }}</label>
               <input
@@ -195,7 +195,7 @@
             </p>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label class="input-label">{{ t('setup.redis.host') }}</label>
               <input
@@ -216,7 +216,16 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t('setup.redis.username') }}</label>
+              <input
+                v-model="formData.redis.username"
+                type="text"
+                class="input"
+                :placeholder="t('setup.redis.usernamePlaceholder')"
+              />
+            </div>
             <div>
               <label class="input-label">{{ t('setup.redis.password') }}</label>
               <input
@@ -542,6 +551,7 @@ const formData = reactive<InstallRequest>({
   redis: {
     host: 'localhost',
     port: 6379,
+    username: '',
     password: '',
     db: 0,
     enable_tls: false

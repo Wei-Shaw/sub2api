@@ -55,7 +55,11 @@
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
               <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) }}</span>
             </div>
-            <div v-if="hasAmountFields(order) && order.amount !== order.pay_amount" class="flex justify-between">
+            <div v-if="hasAmountFields(order) && orderBonusAmount(order) > 0" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.bonusAmount') }}</span>
+              <span class="font-medium text-amber-600 dark:text-amber-400">+${{ orderBonusAmount(order).toFixed(2) }}</span>
+            </div>
+            <div v-if="hasAmountFields(order) && (order.amount !== order.pay_amount || orderBonusAmount(order) > 0)" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + order.amount.toFixed(2) : formatGatewayAmount(order.amount) }}</span>
             </div>
@@ -107,6 +111,7 @@ import {
   readPaymentRecoverySnapshot,
 } from '@/components/payment/paymentFlow'
 import { usePaymentStore } from '@/stores/payment'
+import { useAuthStore } from '@/stores/auth'
 import { paymentAPI } from '@/api/payment'
 import type { PublicOrderVerifyResult } from '@/api/payment'
 import type { OrderStatus, PaymentOrder } from '@/types/payment'
@@ -118,6 +123,7 @@ const { t } = i18n
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
+const authStore = useAuthStore()
 
 type ResolvedOrder = PaymentOrder | PublicOrderVerifyResult
 
@@ -139,6 +145,7 @@ const STATUS_REFRESH_INTERVAL_MS = 2000
 const STATUS_REFRESH_MAX_ATTEMPTS = 15
 
 let statusRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let userBalanceRefreshStarted = false
 const refreshAttempts = ref(0)
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
@@ -197,6 +204,21 @@ function setResolvedOrder(nextOrder: ResolvedOrder | null): void {
   if (nextOrder && 'currency' in nextOrder && nextOrder.currency) {
     currency.value = normalizePaymentCurrency(nextOrder.currency)
   }
+  refreshUserBalanceForSuccessfulOrder(nextOrder)
+}
+
+function refreshUserBalanceForSuccessfulOrder(nextOrder: ResolvedOrder | null): void {
+  if (!nextOrder || userBalanceRefreshStarted || normalizeOrderStatus(nextOrder.status) !== 'COMPLETED') {
+    return
+  }
+  if ('order_type' in nextOrder && nextOrder.order_type !== 'balance') {
+    return
+  }
+
+  userBalanceRefreshStarted = true
+  void authStore.refreshUser().catch(() => {
+    // The order result remains authoritative even if refreshing profile data fails.
+  })
 }
 
 function hasOrderId(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
@@ -205,6 +227,12 @@ function hasOrderId(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder 
 
 function hasAmountFields(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {
   return !!nextOrder && 'pay_amount' in nextOrder && typeof nextOrder.pay_amount === 'number' && 'amount' in nextOrder && typeof nextOrder.amount === 'number'
+}
+
+/** 充值赠送额度（USD）；老接口/订阅订单没有该字段时视为 0 */
+function orderBonusAmount(target: unknown): number {
+  const value = (target as { bonus_amount?: unknown } | null | undefined)?.bonus_amount
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 }
 
 function hasPaymentType(nextOrder: ResolvedOrder | null): nextOrder is PaymentOrder {

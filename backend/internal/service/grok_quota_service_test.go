@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -60,6 +62,39 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 	return nil
 }
 
+func (r *grokQuotaAccountRepo) CompareAndSwapGrokObservedModels(ctx context.Context, id int64, expected, next json.RawMessage) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if r == nil || r.mockAccountRepoForPlatform == nil {
+		return false, nil
+	}
+	account := r.accountsByID[id]
+	if account == nil || account.ID != id || account.Platform != PlatformGrok {
+		return false, nil
+	}
+	var current any
+	if account.Extra != nil {
+		current = account.Extra[grokObservedModelsExtraKey]
+	}
+	currentJSON, err := json.Marshal(current)
+	if err != nil {
+		return false, err
+	}
+	if !jsonValuesEqual(currentJSON, expected) {
+		return false, nil
+	}
+	var decoded any
+	if err := json.Unmarshal(next, &decoded); err != nil {
+		return false, err
+	}
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[grokObservedModelsExtraKey] = decoded
+	return true, nil
+}
+
 func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedCalls++
 	r.lastRateLimitedID = id
@@ -84,6 +119,61 @@ func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64,
 	r.lastTempUnschedUntil = until
 	r.lastTempUnschedReason = reason
 	return nil
+}
+
+func TestSyncGrokObservedModelsRejectsOAuthCustomURLOutsideOperatorPolicy(t *testing.T) {
+	account := &Account{
+		ID:       901,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "secret-token",
+			"base_url":     "https://blocked.example.test/v1",
+		},
+	}
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = true
+	cfg.Security.URLAllowlist.UpstreamHosts = []string{"allowed.example.test"}
+	svc := &GrokQuotaService{accountRepo: repo, httpUpstream: upstream, cfg: cfg}
+
+	err := svc.syncGrokObservedModels(context.Background(), account)
+	require.ErrorContains(t, err, "base URL rejected by URL security policy")
+	require.Nil(t, upstream.lastReq)
+}
+
+func TestSyncGrokObservedModelsUsesCLIIdentityAndAccountHeaders(t *testing.T) {
+	account := &Account{
+		ID:       902,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "secret-token",
+			"sub":          "user-902",
+			"email":        "user902@example.test",
+		},
+	}
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"grok-4.5"}]}`)),
+	}}
+	svc := &GrokQuotaService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+
+	require.NoError(t, svc.syncGrokObservedModels(context.Background(), account))
+	require.Equal(t, xai.DefaultCLIBaseURL+"/models", upstream.lastReq.URL.String())
+	require.Equal(t, xai.CLIClientVersion, upstream.lastReq.Header.Get("x-grok-client-version"))
+	require.Equal(t, xai.CLIClientIdentifier, upstream.lastReq.Header.Get("x-grok-client-identifier"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, "interactive", upstream.lastReq.Header.Get("X-Grok-Client-Mode"))
+	require.Equal(t, "user-902", upstream.lastReq.Header.Get("X-UserID"))
+	require.Equal(t, "user902@example.test", upstream.lastReq.Header.Get("X-Email"))
+	require.Equal(t, []string{"grok-4.5"}, parseGrokObservedModels(account.Extra).Models)
 }
 
 type grokQuotaProxyRepo struct {
@@ -244,6 +334,22 @@ func (u *grokHybridUpstream) snapshot() ([]*http.Request, [][]byte) {
 		bodies[i] = append([]byte(nil), u.bodies[i]...)
 	}
 	return requests, bodies
+}
+
+// quotaSnapshot 返回配额探测链路的请求及请求体，不含 scheduleGrokObservedModelsSync
+// 在 QueryQuota 返回后异步发出的 GET /v1/models：该请求是否已落到上游取决于调度时序。
+func (u *grokHybridUpstream) quotaSnapshot() ([]*http.Request, [][]byte) {
+	requests, bodies := u.snapshot()
+	quotaRequests := make([]*http.Request, 0, len(requests))
+	quotaBodies := make([][]byte, 0, len(bodies))
+	for i, req := range requests {
+		if req.URL.Path == "/v1/models" {
+			continue
+		}
+		quotaRequests = append(quotaRequests, req)
+		quotaBodies = append(quotaBodies, bodies[i])
+	}
+	return quotaRequests, quotaBodies
 }
 
 func (r *grokQuotaProxyRepo) GetByID(_ context.Context, id int64) (*Proxy, error) {
@@ -610,6 +716,28 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 }
 
+func TestGrokQuotaServiceProbeUsageDoesNotOverwriteSnapshotOnUnauthorized(t *testing.T) {
+	t.Parallel()
+
+	account := healthyGrokQuotaOAuthAccount(44)
+	previous := &xai.QuotaSnapshot{StatusCode: http.StatusOK, HeadersObserved: true}
+	account.Extra = map[string]any{grokQuotaSnapshotExtraKey: previous}
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"error":"unauthorized"}`)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+	_, err := svc.ProbeUsage(context.Background(), account.ID)
+	require.Error(t, err)
+	require.Equal(t, 0, repo.updateCalls)
+	require.Same(t, previous, account.Extra[grokQuotaSnapshotExtraKey])
+}
+
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -664,7 +792,7 @@ func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {
 	require.EqualValues(t, 2_000_000, *result.Snapshot.Tokens.Limit)
 	require.True(t, result.HeadersObserved)
 
-	requests, bodies := upstream.snapshot()
+	requests, bodies := upstream.quotaSnapshot()
 	require.Len(t, requests, 3)
 	responseCalls := 0
 	for i, req := range requests {
@@ -704,7 +832,7 @@ func TestGrokQuotaServiceQueryQuotaPaidBillingSkipsActiveProbe(t *testing.T) {
 	require.Empty(t, result.Model)
 	require.Nil(t, result.LocalUsage24h)
 
-	requests, _ := upstream.snapshot()
+	requests, _ := upstream.quotaSnapshot()
 	require.Len(t, requests, 2)
 	for _, req := range requests {
 		require.Equal(t, "/v1/billing", req.URL.Path)
@@ -729,7 +857,7 @@ func TestGrokQuotaServiceQueryQuotaCustomPaidMonthlyLimitSkipsActiveProbe(t *tes
 	require.InDelta(t, monthlyLimit, *result.Billing.MonthlyLimitCents, 1e-9)
 	require.Nil(t, result.Snapshot)
 
-	requests, _ := upstream.snapshot()
+	requests, _ := upstream.quotaSnapshot()
 	require.Len(t, requests, 2)
 	for _, req := range requests {
 		require.Equal(t, "/v1/billing", req.URL.Path)

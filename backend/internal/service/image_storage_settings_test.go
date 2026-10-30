@@ -69,10 +69,16 @@ func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (str
 }
 
 func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
+	return newImageStorageFixtureWithKey(t, fallback, true)
+}
+
+func newImageStorageFixtureWithKey(t *testing.T, fallback config.ImageStorageConfig, encryptionKeyConfigured bool) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
 	t.Helper()
 	repo := newStubSettingRepo()
 	encryptor := reversibleEncryptor{}
-	backup := NewBackupService(repo, &config.Config{}, encryptor, nil, nil)
+	backup := NewBackupService(repo, &config.Config{
+		Totp: config.TotpConfig{EncryptionKeyConfigured: encryptionKeyConfigured},
+	}, encryptor, nil, nil)
 
 	var built []config.ImageStorageConfig
 	factory := func(_ context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error) {
@@ -157,7 +163,7 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 
 	saved, err := svc.Update(ctx, ImageStorageSettings{
 		Enabled: true, Bucket: "my-images",
-		Endpoint: "https://acct.r2.cloudflarestorage.com",
+		Endpoint:    "https://acct.r2.cloudflarestorage.com",
 		AccessKeyID: "ak", SecretAccessKey: "super-secret",
 	})
 	require.NoError(t, err)
@@ -185,6 +191,34 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 	require.NoError(t, err)
 	svc.resolve()
 	require.Equal(t, "super-secret", (*built)[1].SecretAccessKey)
+}
+
+// Persisting the service's own S3 secret must be refused when the encryption key
+// is auto-generated, otherwise the ciphertext cannot be decrypted after a
+// restart (#4524). Reusing the backup credentials stays allowed because it does
+// not persist a second copy of the secret.
+func TestImageStorageSettingsRejectSecretWithEphemeralKey(t *testing.T) {
+	svc, repo, built := newImageStorageFixtureWithKey(t, config.ImageStorageConfig{}, false)
+	ctx := context.Background()
+
+	_, err := svc.Update(ctx, ImageStorageSettings{
+		Enabled: true, Bucket: "my-images",
+		Endpoint:    "https://acct.r2.cloudflarestorage.com",
+		AccessKeyID: "ak", SecretAccessKey: "super-secret",
+	})
+	require.ErrorIs(t, err, ErrSecretEncryptionKeyNotConfigured)
+
+	raw, _ := repo.GetValue(ctx, settingKeyImageStorageConfig)
+	require.Empty(t, raw, "nothing must be persisted when the secret is rejected")
+	require.Empty(t, *built)
+
+	// Reusing backup credentials does not persist a secret, so it stays allowed.
+	seedBackupS3(t, repo, BackupS3Config{
+		Endpoint: "https://acct.r2.cloudflarestorage.com", Region: "auto",
+		Bucket: "backup-bucket", AccessKeyID: "ak", SecretAccessKey: "sk", Prefix: "backups/",
+	})
+	_, err = svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true})
+	require.NoError(t, err)
 }
 
 func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {

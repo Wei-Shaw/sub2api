@@ -71,7 +71,7 @@ func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFacto
 
 	if resp.StatusCode == 403 || resp.StatusCode == 503 {
 		body := resp.String()
-		if strings.Contains(body, "cloudflare") || strings.Contains(body, "cf-") || strings.Contains(body, "Just a moment") {
+		if isCloudflareChallengeResponse(resp.Header.Get("cf-mitigated"), body) {
 			slog.Warn("openai_privacy_cf_blocked", "status", resp.StatusCode)
 			return PrivacyModeCFBlocked
 		}
@@ -86,10 +86,23 @@ func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFacto
 	return PrivacyModeTrainingOff
 }
 
+// isCloudflareChallengeResponse 判断 chatgpt.com 返回的是否为 Cloudflare 质询/拦截页。
+// 优先看 cf-mitigated 响应头（质询时为 "challenge"），再回退到正文关键字。
+func isCloudflareChallengeResponse(cfMitigated, body string) bool {
+	if strings.EqualFold(strings.TrimSpace(cfMitigated), "challenge") {
+		return true
+	}
+	return strings.Contains(body, "cloudflare") || strings.Contains(body, "cf-") || strings.Contains(body, "Just a moment")
+}
+
 // ChatGPTAccountInfo 从 chatgpt.com/backend-api/accounts/check 获取的账号信息
 type ChatGPTAccountInfo struct {
-	PlanType              string
-	Email                 string
+	PlanType string
+	Email    string
+	// AccountID 是本条信息所属账号的标识（优先取 account.account_id，否则取 accounts
+	// 的 map key）。accounts/check 是多账号/工作区端点，调用方需要据此判断拿到的
+	// plan_type / expires_at 到底属于个人账号还是某个 workspace。
+	AccountID             string
 	SubscriptionExpiresAt string // entitlement.expires_at (RFC3339)
 }
 
@@ -127,12 +140,12 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		Get(chatGPTAccountsCheckURL)
 
 	if err != nil {
-		slog.Debug("chatgpt_account_check_request_error", "error", err.Error())
+		slog.Warn("chatgpt_account_check_request_error", "error", err.Error())
 		return nil
 	}
 
 	if !resp.IsSuccessState() {
-		slog.Debug("chatgpt_account_check_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
+		slog.Warn("chatgpt_account_check_failed", "status", resp.StatusCode, "cf_challenge", isCloudflareChallengeResponse(resp.Header.Get("cf-mitigated"), resp.String()), "body", truncate(resp.String(), 200))
 		return nil
 	}
 
@@ -149,7 +162,7 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		if acctRaw, ok := accounts[orgID]; ok {
 			if acct, ok := acctRaw.(map[string]any); ok {
 				if isUsableChatGPTAccountCandidate(acct, time.Now()) {
-					fillAccountInfo(info, acct)
+					fillAccountInfo(info, acct, orgID)
 				}
 			}
 		}
@@ -160,9 +173,10 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		type candidate struct {
 			planType  string
 			expiresAt string
+			accountID string
 		}
 		var defaultC, paidC, anyC candidate
-		for _, acctRaw := range accounts {
+		for key, acctRaw := range accounts {
 			acct, ok := acctRaw.(map[string]any)
 			if !ok {
 				continue
@@ -175,26 +189,27 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 				continue
 			}
 			ea := extractEntitlementExpiresAt(acct)
+			id := chatGPTAccountObjectID(acct, key)
 			if anyC.planType == "" {
-				anyC = candidate{planType, ea}
+				anyC = candidate{planType, ea, id}
 			}
 			if account, ok := acct["account"].(map[string]any); ok {
 				if isDefault, _ := account["is_default"].(bool); isDefault {
-					defaultC = candidate{planType, ea}
+					defaultC = candidate{planType, ea, id}
 				}
 			}
 			if !strings.EqualFold(planType, "free") && paidC.planType == "" {
-				paidC = candidate{planType, ea}
+				paidC = candidate{planType, ea, id}
 			}
 		}
 		// 优先级：default > 非 free > 任意
 		switch {
 		case defaultC.planType != "":
-			info.PlanType, info.SubscriptionExpiresAt = defaultC.planType, defaultC.expiresAt
+			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = defaultC.planType, defaultC.expiresAt, defaultC.accountID
 		case paidC.planType != "":
-			info.PlanType, info.SubscriptionExpiresAt = paidC.planType, paidC.expiresAt
+			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = paidC.planType, paidC.expiresAt, paidC.accountID
 		default:
-			info.PlanType, info.SubscriptionExpiresAt = anyC.planType, anyC.expiresAt
+			info.PlanType, info.SubscriptionExpiresAt, info.AccountID = anyC.planType, anyC.expiresAt, anyC.accountID
 		}
 	}
 
@@ -241,11 +256,11 @@ func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory Privac
 		SetQueryParam("account_id", accountID).
 		Get(chatGPTSubscriptionsURL)
 	if err != nil {
-		slog.Debug("chatgpt_subscription_request_error", "error", err.Error())
+		slog.Warn("chatgpt_subscription_request_error", "error", err.Error())
 		return ""
 	}
 	if !resp.IsSuccessState() {
-		slog.Debug("chatgpt_subscription_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
+		slog.Warn("chatgpt_subscription_failed", "status", resp.StatusCode, "cf_challenge", isCloudflareChallengeResponse(resp.Header.Get("cf-mitigated"), resp.String()), "body", truncate(resp.String(), 200))
 		return ""
 	}
 
@@ -263,10 +278,23 @@ func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory Privac
 	return activeUntil
 }
 
-// fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at
-func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any) {
+// fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at。
+// fallbackID 是该对象在 accounts 里的 map key，用于 account.account_id 缺失时兜底。
+func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any, fallbackID string) {
 	info.PlanType = extractPlanType(acct)
 	info.SubscriptionExpiresAt = extractEntitlementExpiresAt(acct)
+	info.AccountID = chatGPTAccountObjectID(acct, fallbackID)
+}
+
+// chatGPTAccountObjectID 取单个 account 对象的账号标识。
+// accounts 的 map key 有时是 "default" 这类别名，所以优先读 account.account_id。
+func chatGPTAccountObjectID(acct map[string]any, fallbackID string) string {
+	if account, ok := acct["account"].(map[string]any); ok {
+		if id, ok := account["account_id"].(string); ok && strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	}
+	return strings.TrimSpace(fallbackID)
 }
 
 // extractPlanType 从单个 account 对象中提取 plan_type

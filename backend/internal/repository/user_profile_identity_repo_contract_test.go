@@ -482,7 +482,8 @@ func (s *UserProfileIdentityRepoSuite) TestWithUserProfileIdentityTx_AllowsAvata
 		if err != nil {
 			return err
 		}
-		return s.repo.Update(txCtx, model)
+		// 只改头像时用户行没有任何列需要写，掩码为空——与 UserService.updateProfile 一致。
+		return s.repo.Update(txCtx, model, service.UserUpdateFields{})
 	})
 	s.Require().NoError(err)
 

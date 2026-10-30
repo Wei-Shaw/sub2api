@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Icon from '@/components/icons/Icon.vue'
@@ -245,6 +245,13 @@ const toggle = () => {
   }
 }
 
+watch(() => props.disabled, (disabled) => {
+  if (disabled) {
+    isOpen.value = false
+    searchQuery.value = ''
+  }
+})
+
 const selectOption = (value: number | null) => {
   emit('update:modelValue', value)
   isOpen.value = false
@@ -274,20 +281,7 @@ const handleBatchTest = async () => {
   batchTesting.value = true
 
   // Test all proxies in parallel
-  const testPromises = props.proxies.map(async (proxy) => {
-    testingProxyIds.add(proxy.id)
-    try {
-      const result = await adminAPI.proxies.testProxy(proxy.id)
-      testResults[proxy.id] = result
-    } catch (error: any) {
-      testResults[proxy.id] = {
-        success: false,
-        message: error.response?.data?.detail || 'Test failed'
-      }
-    } finally {
-      testingProxyIds.delete(proxy.id)
-    }
-  })
+  const testPromises = props.proxies.map(handleTestProxy)
 
   await Promise.all(testPromises)
   batchTesting.value = false

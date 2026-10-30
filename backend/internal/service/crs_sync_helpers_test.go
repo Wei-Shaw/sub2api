@@ -115,15 +115,17 @@ func TestShouldCreateAccount(t *testing.T) {
 
 func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 	remote := map[string]any{
-		"crs_account_id":                    "remote-1",
-		UpstreamBillingProbeEnabledExtraKey: true,
-		UpstreamBillingProbeExtraKey:        map[string]any{"status": "remote"},
+		"crs_account_id":                       "remote-1",
+		UpstreamBillingProbeEnabledExtraKey:    true,
+		UpstreamBillingRateSyncEnabledExtraKey: true,
+		UpstreamBillingProbeExtraKey:           map[string]any{"status": "remote"},
 	}
 
 	t.Run("create drops remote managed fields", func(t *testing.T) {
 		extra := mergeMap(nil, remote)
 		reconcileCRSUpstreamBillingProbeExtra(nil, PlatformOpenAI, AccountTypeAPIKey, map[string]any{"api_key": "new"}, extra)
 		require.NotContains(t, extra, UpstreamBillingProbeEnabledExtraKey)
+		require.NotContains(t, extra, UpstreamBillingRateSyncEnabledExtraKey)
 		require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
 	})
 
@@ -132,8 +134,9 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Credentials: map[string]any{"api_key": "local", "base_url": "http://127.0.0.1:8080"},
 		Extra: map[string]any{
-			UpstreamBillingProbeEnabledExtraKey: false,
-			UpstreamBillingProbeExtraKey:        map[string]any{"status": "local"},
+			UpstreamBillingProbeEnabledExtraKey:    false,
+			UpstreamBillingRateSyncEnabledExtraKey: false,
+			UpstreamBillingProbeExtraKey:           map[string]any{"status": "local"},
 		},
 	}
 
@@ -141,15 +144,47 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		extra := mergeMap(existing.Extra, remote)
 		reconcileCRSUpstreamBillingProbeExtra(existing, existing.Platform, existing.Type, mergeMap(existing.Credentials, nil), extra)
 		require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
+		require.Equal(t, false, extra[UpstreamBillingRateSyncEnabledExtraKey])
 		require.Equal(t, map[string]any{"status": "local"}, extra[UpstreamBillingProbeExtraKey])
+	})
+
+	t.Run("same identity preserves enabled rate sync", func(t *testing.T) {
+		enabled := *existing
+		enabled.Extra = mergeMap(existing.Extra, map[string]any{
+			UpstreamBillingProbeEnabledExtraKey:    true,
+			UpstreamBillingRateSyncEnabledExtraKey: true,
+		})
+		extra := mergeMap(enabled.Extra, remote)
+		reconcileCRSUpstreamBillingProbeExtra(&enabled, enabled.Platform, enabled.Type, mergeMap(enabled.Credentials, nil), extra)
+		require.Equal(t, true, extra[UpstreamBillingProbeEnabledExtraKey])
+		require.Equal(t, true, extra[UpstreamBillingRateSyncEnabledExtraKey])
 	})
 
 	t.Run("identity change keeps enabled and clears snapshot", func(t *testing.T) {
 		extra := mergeMap(existing.Extra, remote)
 		reconcileCRSUpstreamBillingProbeExtra(existing, PlatformOpenAI, AccountTypeAPIKey, map[string]any{"api_key": "changed"}, extra)
 		require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
+		require.Equal(t, false, extra[UpstreamBillingRateSyncEnabledExtraKey])
 		require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
 	})
+
+	// API-key 平台间切换：探测资格保留（放宽后不再限 OpenAI），开关沿用本地值，
+	// 但平台属于探测身份，快照必须作废。
+	for _, target := range []struct {
+		name     string
+		platform string
+	}{
+		{name: "anthropic api key", platform: PlatformAnthropic},
+		{name: "gemini api key", platform: PlatformGemini},
+	} {
+		t.Run(target.name+" keeps enabled and clears snapshot", func(t *testing.T) {
+			extra := mergeMap(existing.Extra, remote)
+			reconcileCRSUpstreamBillingProbeExtra(existing, target.platform, AccountTypeAPIKey, existing.Credentials, extra)
+			require.Equal(t, false, extra[UpstreamBillingProbeEnabledExtraKey])
+			require.Equal(t, false, extra[UpstreamBillingRateSyncEnabledExtraKey])
+			require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
+		})
+	}
 
 	for _, target := range []struct {
 		name     string
@@ -157,15 +192,14 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		typeName string
 	}{
 		{name: "anthropic oauth", platform: PlatformAnthropic, typeName: AccountTypeOAuth},
-		{name: "anthropic api key", platform: PlatformAnthropic, typeName: AccountTypeAPIKey},
 		{name: "openai oauth", platform: PlatformOpenAI, typeName: AccountTypeOAuth},
 		{name: "gemini oauth", platform: PlatformGemini, typeName: AccountTypeOAuth},
-		{name: "gemini api key", platform: PlatformGemini, typeName: AccountTypeAPIKey},
 	} {
 		t.Run(target.name+" removes inapplicable state", func(t *testing.T) {
 			extra := mergeMap(existing.Extra, remote)
 			reconcileCRSUpstreamBillingProbeExtra(existing, target.platform, target.typeName, existing.Credentials, extra)
 			require.NotContains(t, extra, UpstreamBillingProbeEnabledExtraKey)
+			require.NotContains(t, extra, UpstreamBillingRateSyncEnabledExtraKey)
 			require.NotContains(t, extra, UpstreamBillingProbeExtraKey)
 		})
 	}

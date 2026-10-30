@@ -48,17 +48,14 @@ type antigravityRetryLoopResult struct {
 
 // resolveAntigravityForwardBaseURL 解析转发用 base URL。
 //
-// 默认使用生产端点 cloudcode-pa.googleapis.com（antigravity.BaseURLs 的首个地址，
-// 与账号 OAuth 登录/测试连接所用的 antigravity.BaseURL 一致）。
+// 显式环境变量优先。未配置时，LoadCodeAssist 返回 paidTier 的付费账号使用
+// daily 端点，其他账号继续使用生产端点，避免免费账号的 OAuth token 出现 401。
 //
 // 历史上这里改用 ForwardBaseURLs()（把 daily/sandbox 排到首位）并默认取首个地址，
 // 导致网关把带生产 OAuth token 的请求发到 daily-cloudcode-pa.sandbox.googleapis.com，
 // 上游拒绝 → 账号被 401「Invalid bearer token」/502 打入临时不可调度且无法恢复
 // （见 #3611 / #2962）。后台「测试连接」用的是生产端点，所以「测试成功但网关 401」。
-//
-// daily/sandbox 端点仅供内部联调，需显式设置
-// GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL=daily（或 sandbox）才启用。
-func resolveAntigravityForwardBaseURL() string {
+func resolveAntigravityForwardBaseURL(account *Account) string {
 	baseURLs := antigravity.BaseURLs
 	if len(baseURLs) == 0 {
 		return ""
@@ -67,7 +64,21 @@ func resolveAntigravityForwardBaseURL() string {
 	if (mode == "daily" || mode == "sandbox") && len(baseURLs) > 1 {
 		return baseURLs[1]
 	}
+	if mode == "" && accountHasAntigravityPaidTier(account) && len(baseURLs) > 1 {
+		return baseURLs[1]
+	}
 	return baseURLs[0]
+}
+
+func accountHasAntigravityPaidTier(account *Account) bool {
+	if account == nil || account.Credentials == nil {
+		return false
+	}
+	planType, ok := account.Credentials["plan_type"].(string)
+	if !ok {
+		return false
+	}
+	return antigravity.IsPaidPlanType(planType)
 }
 
 // smartRetryAction 智能重试的处理结果
@@ -488,7 +499,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 		}
 	}
 
-	baseURL := resolveAntigravityForwardBaseURL()
+	baseURL := resolveAntigravityForwardBaseURL(p.account)
 	if baseURL == "" {
 		return nil, errors.New("no antigravity forward base url configured")
 	}
@@ -532,6 +543,8 @@ urlFallbackLoop:
 			if err != nil {
 				safeErr := sanitizeUpstreamErrorMessage(err.Error())
 				appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+					ProxyID:            opsUpstreamProxyID(p.account),
+					ProxyName:          opsUpstreamProxyName(p.account),
 					Platform:           p.account.Platform,
 					AccountID:          p.account.ID,
 					AccountName:        p.account.Name,
@@ -609,6 +622,8 @@ urlFallbackLoop:
 						upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 						upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 						appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+							ProxyID:            opsUpstreamProxyID(p.account),
+							ProxyName:          opsUpstreamProxyName(p.account),
 							Platform:           p.account.Platform,
 							AccountID:          p.account.ID,
 							AccountName:        p.account.Name,
@@ -644,6 +659,8 @@ urlFallbackLoop:
 						upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 						upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 						appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+							ProxyID:            opsUpstreamProxyID(p.account),
+							ProxyName:          opsUpstreamProxyName(p.account),
 							Platform:           p.account.Platform,
 							AccountID:          p.account.ID,
 							AccountName:        p.account.Name,
@@ -833,10 +850,12 @@ func sleepAntigravityBackoffWithContext(ctx context.Context, attempt int) bool {
 	}
 }
 
-// isSingleAccountRetry 检查 context 中是否设置了单账号退避重试标记
+// isSingleAccountRetry 检查是否处于单账号退避重试模式：显式标记优先，否则使用请求挂载的延迟判定。
 func isSingleAccountRetry(ctx context.Context) bool {
-	v, _ := SingleAccountRetryFromContext(ctx)
-	return v
+	if v, ok := SingleAccountRetryFromContext(ctx); ok {
+		return v
+	}
+	return singleAccountRetryProbeResult(ctx)
 }
 
 // setModelRateLimitByModelName 使用官方模型 ID 设置模型级限流

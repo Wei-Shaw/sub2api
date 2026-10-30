@@ -131,6 +131,32 @@ func TestUserUsageListInvalidStream(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestUserUsageListNativeCompactionFilter(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage?request_type=stream&native_compaction_v2=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, repo.listFilters.RequestType)
+	require.Equal(t, int16(service.RequestTypeStream), *repo.listFilters.RequestType)
+	require.NotNil(t, repo.listFilters.NativeCompactionV2)
+	require.True(t, *repo.listFilters.NativeCompactionV2)
+}
+
+func TestUserUsageListInvalidNativeCompactionFilter(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage?native_compaction_v2=unknown", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestUserUsageListAdvancedFilters(t *testing.T) {
 	repo := &userUsageRepoCapture{}
 	router := newUserUsageRequestTypeTestRouter(repo)
@@ -189,6 +215,7 @@ func TestUserUsageListKeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) 
 			AccountID:             5,
 			RequestID:             "req_user_billing",
 			Model:                 "gpt-5",
+			NativeCompactionV2:    true,
 			InputCost:             0.01,
 			OutputCost:            0.02,
 			CacheCreationCost:     0.03,
@@ -219,11 +246,14 @@ func TestUserUsageListKeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) 
 	require.Contains(t, body, `"total_cost":0.1`)
 	require.Contains(t, body, `"actual_cost":0.08`)
 	require.Contains(t, body, `"rate_multiplier":0.8`)
+	require.Contains(t, body, `"native_compaction_v2":true`)
 	require.Contains(t, body, `"ip_address":"203.0.113.10"`)
 	require.NotContains(t, body, "upstream_endpoint")
 	require.NotContains(t, body, "account_rate_multiplier")
 	require.NotContains(t, body, "account_stats_cost")
 	require.NotContains(t, body, "upstream_model")
+	require.NotContains(t, body, "upstream_response_model")
+	require.NotContains(t, body, "upstream_model_mismatch")
 	require.NotContains(t, body, "billing_tier")
 	require.NotContains(t, body, "channel_id")
 	require.NotContains(t, body, `"account":`)

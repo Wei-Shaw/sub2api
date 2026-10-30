@@ -111,7 +111,7 @@
       </div>
     </BaseDialog>
 
-    <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" @confirm="handleRefund" @cancel="showRefundDialog = false" />
+    <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" :require-force="refundRequireForce" :warning="refundWarning" @confirm="handleRefund" @cancel="closeRefundDialog" />
   </AppLayout>
 </template>
 
@@ -153,6 +153,8 @@ const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
 const refundSubmitting = ref(false)
+const refundRequireForce = ref(false)
+const refundWarning = ref('')
 const refundQueryingIds = ref(new Set<number>())
 const orderAuditLogs = ref<AuditLog[]>([])
 const creditedAmountSymbol = currencySymbol('USD')
@@ -235,7 +237,18 @@ async function handleRetryOrder(order: PaymentOrder) {
   catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
 }
 
-function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
+function openRefundDialog(order: PaymentOrder) {
+  selectedOrder.value = order
+  refundRequireForce.value = false
+  refundWarning.value = ''
+  showRefundDialog.value = true
+}
+
+function closeRefundDialog() {
+  showRefundDialog.value = false
+  refundRequireForce.value = false
+  refundWarning.value = ''
+}
 
 function isRefundPendingWarning(warning: string | undefined): boolean {
   return /pending|处理中|待/.test(String(warning || '').toLowerCase())
@@ -248,14 +261,22 @@ async function handleRefund(data: { amount: number; reason: string; deduct_balan
     const res = await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
     if (res.data.success) {
       appStore.showSuccess(t('payment.admin.refundSuccess'))
-      showRefundDialog.value = false
+      closeRefundDialog()
       loadOrders()
       return
     }
     if (isRefundPendingWarning(res.data.warning)) {
       appStore.showSuccess(t('payment.admin.refundPending'))
-      showRefundDialog.value = false
+      closeRefundDialog()
       loadOrders()
+      return
+    }
+    if (res.data.require_force) {
+      // Backend needs an explicit force confirmation (e.g. the user spent their
+      // balance after requesting the refund). Keep the dialog open and surface
+      // the force checkbox instead of dropping the admin back to the list.
+      refundRequireForce.value = true
+      refundWarning.value = res.data.warning || ''
       return
     }
     appStore.showError(res.data.warning || t('common.error'))

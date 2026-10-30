@@ -167,7 +167,7 @@
             :class="activeTab === section.platform ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
             <PlatformIcon :platform="section.platform" size="xs" :class="platformTextClass(section.platform)" />
-            <span :class="platformTextClass(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
+            <span :class="platformTextClass(section.platform)">{{ t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform)) }}</span>
           </button>
         </div>
 
@@ -247,7 +247,7 @@
                     @change="togglePlatform(p)"
                   />
                   <PlatformIcon :platform="p" size="xs" :class="platformTextClass(p)" />
-                  <span :class="platformTextClass(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
+                  <span :class="platformTextClass(p)">{{ t('admin.groups.platforms.' + p, catalogPlatformLabel(p)) }}</span>
                 </label>
               </div>
             </div>
@@ -324,8 +324,8 @@
               </div>
             </div>
 
-            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
-            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+            <!-- Web Search Emulation (platform whitelist, hidden when global disabled) -->
+            <div v-if="WEB_SEARCH_EMULATION_PLATFORMS.has(section.platform) && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -423,9 +423,10 @@
                 <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }}</label>
                 <div class="flex items-center gap-2">
                   <button
+                    v-if="supportsPricingModelSync(section.platform)"
                     type="button"
                     @click="syncLatestModels(sIdx)"
-                    :disabled="syncingPlatform === section.platform"
+                    :disabled="!!syncingPlatform"
                     class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50"
                   >
                     {{ syncingPlatform === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels') }}
@@ -447,6 +448,8 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  enable-time-pricing
+                  enable-tier-multipliers
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -632,10 +635,11 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formReasoningEffortMultipliersToAPI, formTimePricingToAPI, isValidPositiveMultiplier, mTokToPerToken, perTokenToMTok, validateIntervals, validateReasoningEffortMultipliers, validateTimePricing } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
-import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
+import { platformTextClass, platformBadgeLightClass, platformLabel as catalogPlatformLabel } from '@/utils/platformColors'
+import { listPlatformIds, supportsPricingModelSync } from '@/constants/platformCatalog'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -655,6 +659,20 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 // Web Search global enabled state (loaded once on mount)
+// Platforms that support the account-level Web Search emulation toggle
+// (must stay in sync with the backend account-level whitelist in
+// backend/internal/service/account.go webSearchEmulationPlatformEnabled).
+// Both the rendering and the submit path use this set, so a platform added to
+// the backend whitelist automatically becomes configurable here.
+const WEB_SEARCH_EMULATION_PLATFORMS: ReadonlySet<string> = new Set([
+  'anthropic',
+  'openai',
+  'command_code',
+  'opencode_go',
+  'minimax',
+  'zhipu',
+])
+
 const webSearchGlobalEnabled = ref(false)
 async function loadWebSearchGlobalState() {
   try {
@@ -713,7 +731,8 @@ const statusEditOptions = computed(() => [
 const billingModelSourceOptions = computed(() => [
   { value: 'channel_mapped', label: t('admin.channels.form.billingModelSourceChannelMapped', 'Bill by channel-mapped model') },
   { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
-  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
+  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') },
+  { value: 'response_model', label: t('admin.channels.form.billingModelSourceResponse', 'Bill by upstream response model') }
 ])
 
 // ── State ──
@@ -760,7 +779,10 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+// 平台清单中的全部具体平台（展示顺序）。
+const platformOrder = computed<GroupPlatform[]>(() => listPlatformIds())
+// Composite pricing/mapping may target every concrete schedulable provider.
+const compositePlatforms = platformOrder
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -799,7 +821,9 @@ function togglePlatform(platform: GroupPlatform) {
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform)
+  return allGroups.value.filter(
+    g => g.platform === platform || (g.platform === 'composite' && compositePlatforms.value.includes(platform))
+  )
 }
 
 // ── Group helpers ──
@@ -854,25 +878,31 @@ function addPricingEntry(sectionIdx: number) {
     input_price: null,
     output_price: null,
     cache_write_price: null,
+    cache_write_1h_price: null,
     cache_read_price: null,
+    fast_multiplier: null,
+    flex_multiplier: null,
+    reasoning_effort_multipliers: null,
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
 const syncingPlatform = ref<string | null>(null)
 
 async function syncLatestModels(sectionIdx: number) {
-  const platform = form.platforms[sectionIdx].platform
-  if (syncingPlatform.value) return
+  const section = form.platforms[sectionIdx]
+  if (!section || syncingPlatform.value || !supportsPricingModelSync(section.platform)) return
+  const platform = section.platform
   syncingPlatform.value = platform
   try {
     const result = await adminAPI.channels.syncPricingModels(platform)
     // Collect all model names already present in this platform's pricing entries
     const existingModels = new Set<string>()
-    for (const entry of form.platforms[sectionIdx].model_pricing) {
+    for (const entry of section.model_pricing) {
       for (const m of entry.models) existingModels.add(m)
     }
     const newModels = result.models.filter(m => !existingModels.has(m))
@@ -881,17 +911,22 @@ async function syncLatestModels(sectionIdx: number) {
       return
     }
     // Add new models as a single new pricing entry (user fills in prices)
-    form.platforms[sectionIdx].model_pricing.push({
+    section.model_pricing.push({
       models: newModels,
       billing_mode: 'token',
       input_price: null,
       output_price: null,
       cache_write_price: null,
+      cache_write_1h_price: null,
       cache_read_price: null,
+      fast_multiplier: null,
+      flex_multiplier: null,
+      reasoning_effort_multipliers: null,
       image_input_price: null,
       image_output_price: null,
       per_request_price: null,
-      intervals: []
+      intervals: [],
+      time_pricing: createDefaultTimePricingForm()
     })
     appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
   } catch (error) {
@@ -952,11 +987,13 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     input_price: null,
     output_price: null,
     cache_write_price: null,
+    cache_write_1h_price: null,
     cache_read_price: null,
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
@@ -1068,11 +1105,14 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             input_price: mTokToPerToken(p.input_price),
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
+            cache_write_1h_price: mTokToPerToken(p.cache_write_1h_price),
             cache_read_price: mTokToPerToken(p.cache_read_price),
+            reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(p.reasoning_effort_multipliers),
             image_input_price: mTokToPerToken(p.image_input_price),
             image_output_price: mTokToPerToken(p.image_output_price),
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
-            intervals: formIntervalsToAPI(p.intervals || [])
+            intervals: formIntervalsToAPI(p.intervals || []),
+            time_pricing: null
           }))
       })
     }
@@ -1109,24 +1149,28 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         input_price: mTokToPerToken(entry.input_price),
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
+        cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),
+        fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
+        flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
+        reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(entry.reasoning_effort_multipliers),
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || [])
+        intervals: formIntervalsToAPI(entry.intervals || []),
+        time_pricing: formTimePricingToAPI(entry.time_pricing)
       })
     }
   }
+  const uniqueGroupIds = Array.from(new Set(group_ids))
 
-  // Collect web_search_emulation (only anthropic platform supports it)
-  // Always write the key so that disabling in the UI correctly sets platform to false,
-  // rather than leaving a stale true value from the cloned features_config.
+  // Collect web_search_emulation（whitelist platforms only: the UI is the single
+  // source of truth, so every whitelisted section is written explicitly — false
+  // included — to avoid leaving a stale `true` behind for disabled sections）.
   const wsEmulation: Record<string, boolean> = {}
   for (const section of form.platforms) {
-    if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
-      wsEmulation[section.platform] = !!section.web_search_emulation
-    }
+    if (!WEB_SEARCH_EMULATION_PLATFORMS.has(section.platform)) continue
+    wsEmulation[section.platform] = section.enabled ? !!section.web_search_emulation : false
   }
   if (Object.keys(wsEmulation).length > 0) {
     featuresConfig.web_search_emulation = wsEmulation
@@ -1160,7 +1204,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.bedrock_cc_compat
   }
 
-  return { group_ids, model_pricing, model_mapping, features_config: featuresConfig }
+  return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -1174,21 +1218,29 @@ function apiToForm(channel: Channel): PlatformSection[] {
   const activePlatforms = new Set<GroupPlatform>()
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
-    if (p) activePlatforms.add(p)
+    if (p === 'composite') {
+      compositePlatforms.value.forEach(platform => activePlatforms.add(platform))
+    } else if (p) {
+      activePlatforms.add(p)
+    }
   }
   for (const p of channel.model_pricing || []) {
     if (p.platform) activePlatforms.add(p.platform as GroupPlatform)
   }
   for (const p of Object.keys(channel.model_mapping || {})) {
-    if (platformOrder.includes(p as GroupPlatform)) activePlatforms.add(p as GroupPlatform)
+    if (platformOrder.value.includes(p as GroupPlatform)) activePlatforms.add(p as GroupPlatform)
   }
 
   // Build sections in platform order
   const sections: PlatformSection[] = []
-  for (const platform of platformOrder) {
+  for (const platform of platformOrder.value) {
     if (!activePlatforms.has(platform)) continue
 
-    const groupIds = (channel.group_ids || []).filter(gid => groupPlatformMap.get(gid) === platform)
+    const groupIds = (channel.group_ids || []).filter(gid => {
+      const groupPlatform = groupPlatformMap.get(gid)
+      return groupPlatform === platform ||
+        (groupPlatform === 'composite' && compositePlatforms.value.includes(platform))
+    })
     const mapping = (channel.model_mapping || {})[platform] || {}
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
@@ -1198,11 +1250,16 @@ function apiToForm(channel: Channel): PlatformSection[] {
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
+        cache_write_1h_price: perTokenToMTok(p.cache_write_1h_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
+        fast_multiplier: p.fast_multiplier,
+        flex_multiplier: p.flex_multiplier,
+        reasoning_effort_multipliers: p.reasoning_effort_multipliers ? { ...p.reasoning_effort_multipliers } : null,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_pricing: apiTimePricingToForm(p.time_pricing)
       } as PricingFormEntry))
 
     // Read web_search_emulation from features_config
@@ -1364,7 +1421,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
     const platforms = new Set<GroupPlatform>()
     for (const gid of apiRule.group_ids || []) {
       const p = groupPlatformMap.get(gid)
-      if (p) platforms.add(p)
+      if (p && p !== 'composite') platforms.add(p)
     }
     // If pricing has a platform field, use that as fallback
     if (platforms.size === 0 && apiRule.pricing?.length > 0) {
@@ -1387,11 +1444,14 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
+        cache_write_1h_price: perTokenToMTok(p.cache_write_1h_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
+        reasoning_effort_multipliers: p.reasoning_effort_multipliers ? { ...p.reasoning_effort_multipliers } : null,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_pricing: createDefaultTimePricingForm()
       } as PricingFormEntry))
     }
     section.account_stats_pricing_rules.push(formRule)
@@ -1440,14 +1500,14 @@ async function handleSubmit() {
   // Check for pricing entries with empty models (would be silently skipped)
   for (const section of form.platforms.filter(s => s.enabled)) {
     if (section.group_ids.length === 0) {
-      const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+      const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
       appStore.showError(t('admin.channels.noGroupsSelected', { platform: platformLabel }))
       activeTab.value = section.platform
       return
     }
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) {
-        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
         appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel }))
         activeTab.value = section.platform
         return
@@ -1499,15 +1559,54 @@ async function handleSubmit() {
     }
   }
 
+  // 思考等级倍率同时适用于渠道计价和独立的账号统计计价规则。
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    const entries = [
+      ...section.model_pricing,
+      ...section.account_stats_pricing_rules.flatMap(rule => rule.pricing),
+    ]
+    for (const entry of entries) {
+      const error = validateReasoningEffortMultipliers(entry.reasoning_effort_multipliers, t)
+      if (!error) continue
+      const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
+      const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+      appStore.showError(`${platformLabel} - ${modelLabel}: ${error}`)
+      activeTab.value = section.platform
+      return
+    }
+  }
+
   // 校验区间合法性（范围、重叠等）
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
+      if (!isValidPositiveMultiplier(entry.fast_multiplier) ||
+          !isValidPositiveMultiplier(entry.flex_multiplier)) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${t('admin.channels.form.multiplierPositive')}`)
+        activeTab.value = section.platform
+        return
+      }
       if (!entry.intervals || entry.intervals.length === 0) continue
       const intervalErr = validateIntervals(entry.intervals, entry.billing_mode, t)
       if (intervalErr) {
-        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${intervalErr}`)
+        activeTab.value = section.platform
+        return
+      }
+    }
+  }
+
+  // 校验时间段定价，并切换到对应平台便于修正
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    for (const entry of section.model_pricing) {
+      const timePricingError = validateTimePricing(entry.time_pricing, t)
+      if (timePricingError) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingError}`)
         activeTab.value = section.platform
         return
       }

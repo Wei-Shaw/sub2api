@@ -127,6 +127,12 @@
           <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
         </div>
 
+        <!-- Native compaction is independent of the transport request type. -->
+        <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('usage.compactionFilter') }}</label>
+          <Select v-model="filters.native_compaction_v2" :options="compactionOptions" @change="emitChange" />
+        </div>
+
         <!-- Billing Type Filter (usage only) -->
         <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[200px]">
           <label class="input-label">{{ t('admin.usage.billingType') }}</label>
@@ -137,6 +143,11 @@
         <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]">
           <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
           <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
+        </div>
+
+        <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[220px]">
+          <label class="input-label">{{ t('admin.usage.upstreamModelAudit') }}</label>
+          <Select v-model="filters.upstream_model_mismatch" :options="upstreamModelMismatchOptions" @change="emitChange" />
         </div>
 
         <!-- Error Phase Filter (errors only) -->
@@ -238,6 +249,7 @@ const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let userSearchSequence = 0
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -262,9 +274,15 @@ const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.a
 const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') },
   { value: 'ws_v2', label: t('usage.ws') },
+  { value: 'live', label: t('usage.live') },
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
   { value: 'cyber', label: t('usage.cyber') }
+])
+
+const compactionOptions = ref<SelectOption[]>([
+  { value: null, label: t('usage.allCompactionTypes') },
+  { value: true, label: t('usage.compactionOnly') }
 ])
 
 const billingTypeOptions = ref<SelectOption[]>([
@@ -305,20 +323,42 @@ const billingModeOptions = ref<SelectOption[]>([
   { value: 'video', label: t('admin.usage.billingModeVideo') }
 ])
 
+const upstreamModelMismatchOptions = ref<SelectOption[]>([
+  { value: null, label: t('admin.usage.allUpstreamModelAudit') },
+  { value: true, label: t('admin.usage.upstreamModelMismatchOnly') },
+  { value: false, label: t('admin.usage.upstreamModelMatchedOnly') }
+])
+
 const emitChange = () => emit('change')
 
+const clearPendingUserSearch = () => {
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+    userSearchTimeout = null
+  }
+  userSearchSequence += 1
+}
+
 const debounceUserSearch = () => {
-  if (userSearchTimeout) clearTimeout(userSearchTimeout)
+  clearPendingUserSearch()
+  const query = userKeyword.value.trim()
+  if (!query) {
+    userResults.value = []
+    return
+  }
+
+  const sequence = userSearchSequence
   userSearchTimeout = setTimeout(async () => {
-    if (!userKeyword.value) {
-      userResults.value = []
-      return
-    }
+    userSearchTimeout = null
     try {
-      const results = await adminAPI.usage.searchUsers(userKeyword.value)
-      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      const results = await adminAPI.usage.searchUsers(query)
+      if (sequence === userSearchSequence) {
+        userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      }
     } catch {
-      userResults.value = []
+      if (sequence === userSearchSequence) {
+        userResults.value = []
+      }
     }
   }, 300)
 }
@@ -338,6 +378,7 @@ const debounceApiKeySearch = () => {
 }
 
 const selectUser = async (u: SimpleUser) => {
+  clearPendingUserSearch()
   userKeyword.value = u.email
   showUserDropdown.value = false
   filters.value.user_id = u.id
@@ -354,6 +395,7 @@ const selectUser = async (u: SimpleUser) => {
 }
 
 const clearUser = () => {
+  clearPendingUserSearch()
   userKeyword.value = ''
   userResults.value = []
   showUserDropdown.value = false
@@ -453,6 +495,7 @@ watch(
   () => filters.value.user_id,
   (userId) => {
     if (!userId) {
+      clearPendingUserSearch()
       userKeyword.value = ''
       userResults.value = []
     }
@@ -490,15 +533,19 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearPendingUserSearch()
   document.removeEventListener('click', onDocumentClick)
 })
 
 // 供外部(如用户排行下钻)在程序化设置 user_id 后回显选中的用户邮箱
 const setUserKeyword = (email: string) => {
+  clearPendingUserSearch()
   userKeyword.value = email
   userResults.value = []
   showUserDropdown.value = false
 }
 
-defineExpose({ setUserKeyword })
+const getUserSearchRevision = () => userSearchSequence
+
+defineExpose({ getUserSearchRevision, setUserKeyword })
 </script>

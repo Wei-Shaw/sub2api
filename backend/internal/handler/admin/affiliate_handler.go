@@ -201,6 +201,42 @@ func (h *AffiliateHandler) GetUserOverview(c *gin.Context) {
 	response.Success(c, overview)
 }
 
+// WithdrawQuotaRequest 是登记线下提现的请求体。Amount 是已在站外打款给
+// 用户的金额，由 AffiliateService 校验。
+type WithdrawQuotaRequest struct {
+	Amount float64 `json:"amount"`
+}
+
+// WithdrawQuota records an offline withdrawal paid outside the site and
+// deducts it from the user's available affiliate quota. The required
+// Idempotency-Key header identifies one registration: a repeated request with
+// the same key deducts nothing and returns the first result with
+// X-Idempotency-Replayed: true.
+// POST /api/v1/admin/affiliates/users/:user_id/withdraw
+func (h *AffiliateHandler) WithdrawQuota(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+
+	var req WithdrawQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.affiliateService.AdminWithdrawQuota(c.Request.Context(), userID, req.Amount, c.GetHeader("Idempotency-Key"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Success(c, result)
+}
+
 // ListInviteRecords returns all inviter-invitee relationships.
 // GET /api/v1/admin/affiliates/invites
 func (h *AffiliateHandler) ListInviteRecords(c *gin.Context) {
@@ -214,7 +250,8 @@ func (h *AffiliateHandler) ListInviteRecords(c *gin.Context) {
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
-// ListRebateRecords returns all order-level affiliate rebate records.
+// ListRebateRecords returns every affiliate rebate accrual, with order details
+// when the rebate came from a payment order.
 // GET /api/v1/admin/affiliates/rebates
 func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
@@ -227,7 +264,8 @@ func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
-// ListTransferRecords returns all affiliate quota-to-balance transfer records.
+// ListTransferRecords returns affiliate quota outflows: user transfers into
+// balance and admin-recorded offline withdrawals.
 // GET /api/v1/admin/affiliates/transfers
 func (h *AffiliateHandler) ListTransferRecords(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,8 @@ var (
 	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrAPIKeyCreateLimited  = infraerrors.TooManyRequests("API_KEY_CREATE_RATE_LIMITED", "too many api keys created recently, please try again later")
+	ErrAPIKeyCountExceeded  = infraerrors.Forbidden("API_KEY_COUNT_EXCEEDED", "api key count limit reached, please delete unused keys first")
 	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
 	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
@@ -47,11 +50,40 @@ const (
 	defaultAuthLookupConcurrency = 64
 	defaultNegativeAuthCacheSize = 16384
 	apiKeyMaxErrorsPerHour       = 20
+	apiKeyCreateCountWindow      = time.Hour
 	apiKeyLastUsedMinTouch       = 30 * time.Second
 	apiKeySortCurrentConcurrency = "current_concurrency"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
 )
+
+// APIKeyUpdateFields 声明 APIKeyRepository.Update 允许写回的列。
+//
+// 与 UserUpdateFields 同理：api_keys 的用量列由计费热路径原子递增
+// （IncrementQuotaUsed / IncrementRateLimitUsage 的 quota_used、usage_5h/1d/7d），
+// 若编辑 Key 时无条件整行回写，并发累计的配额与限流计数就会被旧快照覆盖。
+// 因此调用方必须显式声明要改的列。
+type APIKeyUpdateFields struct {
+	Name      bool
+	Status    bool
+	Quota     bool
+	GroupID   bool
+	ExpiresAt bool
+	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
+	QuotaUsed bool
+	// RateLimits 覆盖 rate_limit_5h / _1d / _7d 三个阈值。
+	RateLimits bool
+	// RateLimitUsage 覆盖 usage_5h/_1d/_7d 与三个窗口起点，
+	// 仅供"重置限流用量"路径声明；常规计费走 IncrementRateLimitUsage。
+	RateLimitUsage bool
+	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
+	IPRules bool
+}
+
+// IsEmpty 报告该次 Update 是否不写任何列。
+func (f APIKeyUpdateFields) IsEmpty() bool {
+	return f == APIKeyUpdateFields{}
+}
 
 type APIKeyRepository interface {
 	Create(ctx context.Context, key *APIKey) error
@@ -61,7 +93,8 @@ type APIKeyRepository interface {
 	GetByKey(ctx context.Context, key string) (*APIKey, error)
 	// GetByKeyForAuth 认证专用查询，返回最小字段集
 	GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error)
-	Update(ctx context.Context, key *APIKey) error
+	// Update 只写 fields 中显式声明的列，其余列保持库中当前值。
+	Update(ctx context.Context, key *APIKey, fields APIKeyUpdateFields) error
 	Delete(ctx context.Context, id int64) error
 	// DeleteWithAudit keeps the legacy interface name for rolling-upgrade compatibility.
 	// Implementations must tombstone the key and soft-delete it atomically without
@@ -97,6 +130,8 @@ type apiKeyAllByUserIDLister interface {
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
+	// QuotaUsed 是总额度已用量（quota_used）。
+	QuotaUsed     float64
 	Usage5h       float64
 	Usage1d       float64
 	Usage7d       float64
@@ -142,7 +177,7 @@ type APIKeyQuotaUsageState struct {
 type APIKeyCache interface {
 	GetCreateAttemptCount(ctx context.Context, userID int64) (int, error)
 	IncrementCreateAttemptCount(ctx context.Context, userID int64) error
-	DeleteCreateAttemptCount(ctx context.Context, userID int64) error
+	IncrementCreateCount(ctx context.Context, userID int64, window time.Duration) (int64, error)
 
 	IncrementDailyUsage(ctx context.Context, apiKey string) error
 	SetDailyUsageExpiry(ctx context.Context, apiKey string, ttl time.Duration) error
@@ -214,6 +249,36 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+}
+
+func validateAPIKeyLimit(v float64) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+		return infraerrors.BadRequest("API_KEY_LIMIT_INVALID", "API key limits must be finite and non-negative")
+	}
+	return nil
+}
+
+func validateCreateAPIKeyRequest(req CreateAPIKeyRequest) error {
+	for _, v := range []float64{req.Quota, req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
+		if err := validateAPIKeyLimit(v); err != nil {
+			return err
+		}
+	}
+	if req.ExpiresInDays != nil && *req.ExpiresInDays <= 0 {
+		return infraerrors.BadRequest("API_KEY_EXPIRY_INVALID", "expires_in_days must be greater than zero")
+	}
+	return nil
+}
+
+func validateUpdateAPIKeyRequest(req UpdateAPIKeyRequest) error {
+	for _, v := range []*float64{req.Quota, req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
+		if v != nil {
+			if err := validateAPIKeyLimit(*v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // APIKeyService API Key服务
@@ -375,6 +440,34 @@ func (s *APIKeyService) checkAPIKeyRateLimit(ctx context.Context, userID int64) 
 	return nil
 }
 
+// checkAPIKeyCreateLimits 校验创建 API Key 的防滥用限制（对自定义与自动生成的 Key 一视同仁）。
+// 数量上限按未删除的 Key 计；创建次数按固定窗口累计，删除 Key 不返还次数，
+// 以阻断"删除后反复新建"的循环。Redis 出错时与自定义 Key 限流一致，不阻止用户操作。
+func (s *APIKeyService) checkAPIKeyCreateLimits(ctx context.Context, userID int64) error {
+	if s.cfg == nil {
+		return nil
+	}
+	if maxActive := s.cfg.APIKeyCreate.MaxActivePerUser; maxActive > 0 {
+		count, err := s.apiKeyRepo.CountByUserID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("count api keys: %w", err)
+		}
+		if count >= int64(maxActive) {
+			return ErrAPIKeyCountExceeded
+		}
+	}
+	if maxPerHour := s.cfg.APIKeyCreate.MaxPerUserPerHour; maxPerHour > 0 && s.cache != nil {
+		count, err := s.cache.IncrementCreateCount(ctx, userID, apiKeyCreateCountWindow)
+		if err != nil {
+			return nil
+		}
+		if count > int64(maxPerHour) {
+			return ErrAPIKeyCreateLimited
+		}
+	}
+	return nil
+}
+
 // incrementAPIKeyErrorCount 增加用户创建自定义Key的错误计数
 func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID int64) {
 	if s.cache == nil {
@@ -399,6 +492,9 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	if err := validateCreateAPIKeyRequest(req); err != nil {
+		return nil, err
+	}
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -465,6 +561,10 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		if err != nil {
 			return nil, fmt.Errorf("generate key: %w", err)
 		}
+	}
+
+	if err := s.checkAPIKeyCreateLimits(ctx, userID); err != nil {
+		return nil, err
 	}
 
 	// 创建API Key记录
@@ -553,11 +653,7 @@ func paginateAPIKeys(keys []APIKey, params pagination.PaginationParams) []APIKey
 		return []APIKey{}
 	}
 	limit := params.Limit()
-	page := params.Page
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * limit
+	offset := params.Offset()
 	if offset >= len(keys) {
 		return []APIKey{}
 	}
@@ -694,6 +790,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+	if err := validateUpdateAPIKeyRequest(req); err != nil {
+		return nil, err
+	}
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
@@ -718,9 +817,17 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 	}
 
+	// fields 只登记本次请求真正要改的列。quota_used 与 usage_5h/1d/7d 由计费热路径
+	// 原子递增，除非用户显式点了"重置"，否则这里不用快照把它们写回去。
+	var fields APIKeyUpdateFields
+	// 下面若干分支会顺带把 Status 改回 active（配额扩容、清除过期等），
+	// 所以用原始值比对来决定是否写 status，而不是只看 req.Status。
+	originalStatus := apiKey.Status
+
 	// 更新字段
 	if req.Name != nil {
 		apiKey.Name = html.EscapeString(*req.Name)
+		fields.Name = true
 	}
 
 	if req.GroupID != nil {
@@ -740,19 +847,18 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 
 		apiKey.GroupID = req.GroupID
+		fields.GroupID = true
 	}
 
 	if req.Status != nil {
 		apiKey.Status = *req.Status
-		// 如果状态改变，清除Redis缓存
-		if s.cache != nil {
-			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
-		}
+		fields.Status = true
 	}
 
 	// Update quota fields
 	if req.Quota != nil {
 		apiKey.Quota = *req.Quota
+		fields.Quota = true
 		// If quota now has room, or is changed to unlimited, reactivate exhausted keys.
 		if apiKey.Status == StatusAPIKeyQuotaExhausted && (*req.Quota <= 0 || *req.Quota > apiKey.QuotaUsed) {
 			apiKey.Status = StatusActive
@@ -760,6 +866,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if req.ResetQuota != nil && *req.ResetQuota {
 		apiKey.QuotaUsed = 0
+		fields.QuotaUsed = true
 		// If resetting quota and status was quota_exhausted, reactivate
 		if apiKey.Status == StatusAPIKeyQuotaExhausted {
 			apiKey.Status = StatusActive
@@ -767,12 +874,14 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if req.ClearExpiration {
 		apiKey.ExpiresAt = nil
+		fields.ExpiresAt = true
 		// If clearing expiry and status was expired, reactivate
 		if apiKey.Status == StatusAPIKeyExpired {
 			apiKey.Status = StatusActive
 		}
 	} else if req.ExpiresAt != nil {
 		apiKey.ExpiresAt = req.ExpiresAt
+		fields.ExpiresAt = true
 		// If extending expiry and status was expired, reactivate
 		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*req.ExpiresAt) {
 			apiKey.Status = StatusActive
@@ -782,20 +891,25 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 更新 IP 限制（nil 不修改，空数组清空设置）
 	if req.IPWhitelist != nil {
 		apiKey.IPWhitelist = *req.IPWhitelist
+		fields.IPRules = true
 	}
 	if req.IPBlacklist != nil {
 		apiKey.IPBlacklist = *req.IPBlacklist
+		fields.IPRules = true
 	}
 
 	// Update rate limit configuration
 	if req.RateLimit5h != nil {
 		apiKey.RateLimit5h = *req.RateLimit5h
+		fields.RateLimits = true
 	}
 	if req.RateLimit1d != nil {
 		apiKey.RateLimit1d = *req.RateLimit1d
+		fields.RateLimits = true
 	}
 	if req.RateLimit7d != nil {
 		apiKey.RateLimit7d = *req.RateLimit7d
+		fields.RateLimits = true
 	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {
@@ -805,9 +919,15 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.Window5hStart = nil
 		apiKey.Window1dStart = nil
 		apiKey.Window7dStart = nil
+		fields.RateLimitUsage = true
 	}
 
-	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+	// 上面的自动复活分支可能改了 status，这里统一登记。
+	if apiKey.Status != originalStatus {
+		fields.Status = true
+	}
+
+	if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
@@ -840,9 +960,7 @@ func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) erro
 	}
 
 	// 删除成功后再清理缓存,避免"缓存已清但删除失败"的竞态。
-	if s.cache != nil {
-		_ = s.cache.DeleteCreateAttemptCount(ctx, userID)
-	}
+	// 注意:不清零创建相关计数,否则"删除后反复新建"即可绕过创建限流。
 	s.InvalidateAuthCacheByKey(ctx, key)
 	s.lastUsedTouchL1.Delete(id)
 
@@ -980,6 +1098,30 @@ func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword
 	return keys, nil
 }
 
+// GetUserGroupVisibility 返回 user_allowed_groups 授权及有效订阅的分组 ID 集合，
+// 以及该用户是否开启了公开分组限制。开启时公开分组的可见性也要落在该集合内。
+//
+// 与 GetAvailableGroups 的区别：这里保留普通授权分组的「橱窗」语义，不检查
+// 分组是否活跃；有效订阅也授予对应分组的可见性。返回值恒非 nil。
+func (s *APIKeyService) GetUserGroupVisibility(ctx context.Context, userID int64) (map[int64]struct{}, bool, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, false, fmt.Errorf("get user: %w", err)
+	}
+	allowed := make(map[int64]struct{}, len(user.AllowedGroups))
+	for _, id := range user.AllowedGroups {
+		allowed[id] = struct{}{}
+	}
+	subscriptions, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
+	if err != nil {
+		return nil, false, fmt.Errorf("list active subscriptions: %w", err)
+	}
+	for _, sub := range subscriptions {
+		allowed[sub.GroupID] = struct{}{}
+	}
+	return allowed, user.RestrictPublicGroups, nil
+}
+
 // GetUserGroupRates 获取用户的专属分组倍率配置
 // 返回 map[groupID]rateMultiplier
 func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (map[int64]float64, error) {
@@ -1046,7 +1188,9 @@ func (s *APIKeyService) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cos
 	// If quota is set and now exhausted, update status
 	if apiKey.Quota > 0 && newQuotaUsed >= apiKey.Quota {
 		apiKey.Status = StatusAPIKeyQuotaExhausted
-		if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		// 只写 status：这条位于计费热路径，若整行回写会把刚刚原子递增的
+		// quota_used 与限流用量按快照覆盖掉。
+		if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{Status: true}); err != nil {
 			return nil // Don't fail the request
 		}
 		// Invalidate cache so next request sees the new status

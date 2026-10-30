@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,8 +39,8 @@ func TestOpenAIOAuthService_ValidateCodexPersonalAccessToken(t *testing.T) {
 	info, err := svc.ValidateCodexPersonalAccessToken(context.Background(), " at-test-token ", "")
 	require.NoError(t, err)
 	require.Equal(t, "Bearer at-test-token", gotAuthorization)
-	require.Equal(t, "codex_cli_rs", gotOriginator)
-	require.Equal(t, codexCLIUserAgent, gotUserAgent)
+	require.Equal(t, openai.CodexDefaultOriginator, gotOriginator)
+	require.Equal(t, CodexCanonicalUserAgent(), gotUserAgent)
 	require.Equal(t, OpenAIAuthModePersonalAccessToken, info.AuthMode)
 	require.Equal(t, "user@example.com", info.Email)
 	require.Equal(t, "user-123", info.ChatGPTUserID)
@@ -119,4 +120,14 @@ func TestNormalizeOpenAIPersonalAccessTokenCredentialsRemovesOAuthFields(t *test
 	require.Equal(t, true, got["chatgpt_account_is_fedramp"])
 	require.Equal(t, "2026-12-31T00:00:00Z", got["subscription_expires_at"])
 	require.Equal(t, []any{"custom"}, got["openai_usage_channel_fields"])
+}
+
+func TestOpenAICodexSubscriptionSKUsSurviveCredentialBuild(t *testing.T) {
+	svc := &OpenAIOAuthService{}
+	for _, plan := range []string{"prolite", "pro", "promax", "ent26", "enterprise_cbp_automation", "enterprise_cbp_usage_based", "edu_plus", "edu_pro", "future_sku"} {
+		for _, mode := range []string{"", OpenAIAuthModePersonalAccessToken} {
+			creds := svc.BuildAccountCredentials(&OpenAITokenInfo{AccessToken: "fixture", PlanType: plan, AuthMode: mode})
+			require.Equal(t, plan, creds["plan_type"])
+		}
+	}
 }

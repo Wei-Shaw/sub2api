@@ -24,7 +24,7 @@
               v-model="filters.protocol"
               :options="protocolOptions"
               :placeholder="t('admin.proxies.allProtocols')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
           <div class="w-full sm:w-36">
@@ -32,7 +32,7 @@
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.proxies.allStatus')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
 
@@ -513,7 +513,7 @@
             class="input mb-2"
             :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
           />
-          <input v-model="createForm.expires_at" type="date" class="input" />
+          <input v-model="createForm.expires_at" type="date" max="9999-12-31" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
@@ -746,7 +746,7 @@
             class="input mb-2"
             :placeholder="t('admin.proxies.expiryDaysPlaceholder')"
           />
-          <input v-model="editForm.expires_at" type="date" class="input" />
+          <input v-model="editForm.expires_at" type="date" max="9999-12-31" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.fallbackMode') }}</label>
@@ -1221,6 +1221,11 @@ const loadProxies = async () => {
   }
 }
 
+const handleFilterChange = () => {
+  pagination.page = 1
+  loadProxies()
+}
+
 let searchTimeout: ReturnType<typeof setTimeout>
 const handleSearch = () => {
   clearTimeout(searchTimeout)
@@ -1276,6 +1281,7 @@ const handleDataImported = () => {
 }
 
 // Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
+// Host may be a domain, IPv4, or bracketed IPv6 ([2001:db8::1]).
 const parseProxyUrl = (
   line: string
 ): {
@@ -1288,20 +1294,26 @@ const parseProxyUrl = (
   const trimmed = line.trim()
   if (!trimmed) return null
 
-  // Regex to parse proxy URL (supports http, https, socks5, socks5h)
-  const regex = /^(https?|socks5h?):\/\/(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$/i
+  // Regex to parse proxy URL (supports http, https, socks5, socks5h).
+  // Host alternatives: [bracketed-IPv6] | hostname/IPv4 (colon-free, so the
+  // match stops before the final :port).
+  const regex =
+    /^(https?|socks5h?):\/\/(?:([^:@\[\]]+):([^@\[\]]+)@)?(\[[0-9a-f:.]+\]|[^:\[\]]+):(\d+)$/i
   const match = trimmed.match(regex)
 
   if (!match) return null
 
-  const [, protocol, username, password, host, port] = match
+  const [, protocol, username, password, rawHost, port] = match
   const portNum = parseInt(port, 10)
 
   if (portNum < 1 || portNum > 65535) return null
 
+  // Strip brackets from IPv6 literals; the backend re-brackets via net.JoinHostPort.
+  const host = rawHost.replace(/^\[|\]$/g, '').trim()
+
   return {
     protocol: protocol.toLowerCase() as ProxyProtocol,
-    host: host.trim(),
+    host,
     port: portNum,
     username: username?.trim() || '',
     password: password?.trim() || ''
@@ -1449,7 +1461,7 @@ const handleUpdateProxy = async () => {
       protocol: editForm.protocol,
       host: editForm.host.trim(),
       port: editForm.port,
-      username: editForm.username.trim() || null,
+      username: editForm.username.trim(),
       status: editForm.status,
       expires_at: editForm.expires_at ? Math.floor(new Date(editForm.expires_at).getTime() / 1000) : null,
       fallback_mode: editForm.fallback_mode,
@@ -1459,7 +1471,7 @@ const handleUpdateProxy = async () => {
 
     // Only include password if user actually modified the field
     if (editPasswordDirty.value) {
-      updateData.password = editForm.password.trim() || null
+      updateData.password = editForm.password.trim()
     }
 
     await adminAPI.proxies.update(editingProxy.value.id, updateData)
@@ -1779,6 +1791,14 @@ const qualityTargetLabel = (target: string) => {
       return 'Gemini'
     case 'grok':
       return 'Grok'
+    case 'kimi':
+      return 'Kimi'
+    case 'zhipu':
+      return 'Zhipu GLM'
+    case 'deepseek':
+      return 'DeepSeek'
+    case 'minimax':
+      return 'MiniMax'
     default:
       return target
   }

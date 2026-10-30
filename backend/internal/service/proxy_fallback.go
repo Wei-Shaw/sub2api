@@ -27,7 +27,8 @@ func ResolveProxyFallbackTarget(start Proxy, byID map[int64]Proxy, now time.Time
 			if !ok {
 				return nil, false
 			}
-			if !(&p).IsExpired(now) && p.Status != StatusExpired {
+			// Disabled nodes may define a fallback, but cannot be selected as targets.
+			if p.IsActive() && !p.IsExpired(now) {
 				id := p.ID
 				return &id, true
 			}

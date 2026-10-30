@@ -6,7 +6,7 @@ import (
 )
 
 func setOpenAIChatGPTAccountHeaders(headers http.Header, account *Account) {
-	if headers == nil || account == nil || !account.IsOpenAIOAuth() {
+	if headers == nil || account == nil || !account.IsOpenAIOAuthLike() {
 		return
 	}
 	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {

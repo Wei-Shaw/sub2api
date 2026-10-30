@@ -71,6 +71,20 @@ func TestOpenAICompactSSEKeepalive_StopBeforeFirstBeatKeepsWriterUntouched(t *te
 	require.False(t, StopOpenAICompactSSEKeepaliveCommitted(c))
 }
 
+func TestOpenAIAdjustedWrittenSizeExcludesResponsesStreamKeepalive(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, false)
+	n, err := c.Writer.Write([]byte(":\n\n"))
+	require.NoError(t, err)
+	recordOpenAIStreamKeepaliveBytes(c, n)
+
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+
+	_, err = c.Writer.Write([]byte("data: semantic\n\n"))
+	require.NoError(t, err)
+	require.Equal(t, len("data: semantic\n\n"), OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	require.Equal(t, ":\n\ndata: semantic\n\n", rec.Body.String())
+}
+
 // 心跳已提交后，2xx 桥接续写事件而不重复提交响应头。
 func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitAppendsEvents(t *testing.T) {
 	c, rec := newCompactBridgeTestContext(t, true)
@@ -282,6 +296,20 @@ func TestOpenAICompactKeepaliveAdjustedWrittenSize_ExcludesHeartbeatBytes(t *tes
 	require.NoError(t, err)
 	require.Equal(t, len("real-bytes"), OpenAICompactKeepaliveAdjustedWrittenSize(c))
 	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
+}
+
+func TestOpenAIStreamClientOutputStarted_IgnoresCompactKeepaliveBytes(t *testing.T) {
+	c, _ := newCompactBridgeTestContext(t, true)
+	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+	defer stop()
+	waitForKeepaliveBeats()
+
+	require.True(t, c.Writer.Written())
+	require.False(t, openAIStreamClientOutputStarted(c, false), "keepalive comments are not semantic output")
+
+	_, err := c.Writer.Write([]byte("real-output"))
+	require.NoError(t, err)
+	require.True(t, openAIStreamClientOutputStarted(c, false))
 }
 
 // fast policy block 在心跳未提交时保持 403 JSON 原语义。

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -149,6 +150,34 @@ func TestApplyToolsLastCacheBreakpoint_PassesThroughClientTTL(t *testing.T) {
 	require.Equal(t, "1h", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
 }
 
+func TestApplyToolsLastCacheBreakpoint_StripsDeferredToolCacheControl(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"a","custom":{"defer_loading":true},"cache_control":{"type":"ephemeral","ttl":"1h"}},{"name":"b","custom":{"defer_loading":true}}]}`)
+	out := applyToolsLastCacheBreakpoint(body)
+
+	require.False(t, gjson.GetBytes(out, "tools.0.cache_control").Exists())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+}
+
+func TestApplyToolsLastCacheBreakpoint_SkipsDeferredFinalTool(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"a","input_schema":{}},{"name":"b","defer_loading":true}]}`)
+	out := applyToolsLastCacheBreakpoint(body)
+
+	require.Equal(t, "ephemeral", gjson.GetBytes(out, "tools.0.cache_control.type").String())
+	require.Equal(t, "5m", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+}
+
+func TestApplyToolsLastCacheBreakpoint_OnlyLiteralTrueIsDeferred(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"custom-true","custom":{"defer_loading":true},"cache_control":{"type":"ephemeral"}},{"name":"top-level-true","defer_loading":true,"cache_control":{"type":"ephemeral"}},{"name":"false","defer_loading":false,"cache_control":{"type":"ephemeral"}},{"name":"string","defer_loading":"true","cache_control":{"type":"ephemeral"}},{"name":"number","defer_loading":1,"cache_control":{"type":"ephemeral"}},{"name":"object","defer_loading":{},"cache_control":{"type":"ephemeral"}}]}`)
+	out := stripDeferredToolCacheControl(body)
+
+	require.False(t, gjson.GetBytes(out, "tools.0.cache_control").Exists())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+	for idx := 2; idx < 6; idx++ {
+		require.Equal(t, "ephemeral", gjson.GetBytes(out, fmt.Sprintf("tools.%d.cache_control.type", idx)).String())
+	}
+}
+
 func TestStripMessageCacheControl(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}`)
 	out := stripMessageCacheControl(body)
@@ -264,5 +293,68 @@ func TestBuildDynamicToolMap_FakeNameShape(t *testing.T) {
 			head = head[:3]
 		}
 		require.True(t, strings.Contains(fake, head), "fake %q should contain head3 %q of %q", fake, head, name)
+	}
+}
+
+func TestApplyToolNameRewriteToBody_Spans(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"sessions_\"quoted"},{"name":"session_last","defer_loading":true,"cache_control":{"type":"ephemeral"}}],"tool_choice":{"type":"tool","name":"sessions_\"quoted"},"messages":[{"content":[{"type":"tool_use","name":"sessions_\"quoted","input":{"name":"sessions_\"quoted"}},{"type":"tool_use"}]}],"metadata":{"name":"sessions_\"quoted"}}`)
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	for _, path := range []string{"tools.0.name", "tool_choice.name", "messages.0.content.0.name"} {
+		require.Equal(t, `cc_sess_"quoted`, gjson.GetBytes(out, path).String())
+	}
+	require.Equal(t, `sessions_"quoted`, gjson.GetBytes(out, "messages.0.content.0.input.name").String())
+	require.Equal(t, `sessions_"quoted`, gjson.GetBytes(out, "metadata.name").String())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+	require.Equal(t, "5m", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(out, "messages.0.content.1.name").Exists())
+}
+
+func TestApplyToolNameRewriteToBody_DuplicateNames(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"sessions_first","name":"sessions_second"}],"messages":[{"content":[{"type":"tool_use","name":"sessions_first","name":"sessions_second"}]}]}`)
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, 2, strings.Count(string(out), `"name":"cc_sess_first","name":"sessions_second"`))
+}
+
+func TestApplyToolNameRewriteToBody_NonStringReferences(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"123"}],"tool_choice":{"type":"tool","name":123},"messages":[{"content":[{"type":"tool_use","name":123},{"type":"tool_use","name":true}]}]}`)
+	rw := &ToolNameRewrite{Forward: map[string]string{"123": "replacement", "true": "also_replaced"}}
+	out := applyToolNameRewriteToBody(body, rw)
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, "replacement", gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, `"replacement"`, gjson.GetBytes(out, "tool_choice.name").Raw)
+	require.Equal(t, `"replacement"`, gjson.GetBytes(out, "messages.0.content.0.name").Raw)
+	require.Equal(t, `"also_replaced"`, gjson.GetBytes(out, "messages.0.content.1.name").Raw)
+}
+
+func makeLongToolHistory() []byte {
+	var b strings.Builder
+	_, _ = b.WriteString(`{"tools":[{"name":"sessions_list"}],"tool_choice":{"type":"tool","name":"sessions_list"},"messages":[`)
+	for i := 0; i < 1000; i++ {
+		if i > 0 {
+			_ = b.WriteByte(',')
+		}
+		_, _ = b.WriteString(`{"content":[{"type":"tool_use","name":"sessions_list","input":{"name":"sessions_list"}}]}`)
+	}
+	_, _ = b.WriteString(`]}`)
+	return []byte(b.String())
+}
+
+func TestApplyToolNameRewriteToBody_LongHistory(t *testing.T) {
+	body := makeLongToolHistory()
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.999.content.0.name").String())
+	require.Equal(t, "sessions_list", gjson.GetBytes(out, "messages.999.content.0.input.name").String())
+}
+
+func BenchmarkApplyToolNameRewriteToBody_LongHistory(b *testing.B) {
+	body := makeLongToolHistory()
+	rw := buildToolNameRewriteFromBody(body)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	for i := 0; i < b.N; i++ {
+		_ = applyToolNameRewriteToBody(body, rw)
 	}
 }

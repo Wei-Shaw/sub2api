@@ -523,7 +523,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
 	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
+		"max_tokens 作为生成参数应被 count_tokens 过滤剥离")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
@@ -582,7 +583,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
 	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int())
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
+		"count_tokens 请求不得携带生成参数 max_tokens")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
 }
 
@@ -767,6 +769,32 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BuildRequestRejectsInvalidBas
 	require.Error(t, err)
 }
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_StripsDeferredToolCacheControl(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	svc := &GatewayService{cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}}}
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+	body := []byte(`{"tools":[{"name":"deferred","custom":{"defer_loading":true},"cache_control":{"type":"ephemeral"}},{"name":"top-level-deferred","defer_loading":true,"cache_control":{"type":"ephemeral"}},{"name":"ordinary","defer_loading":false,"cache_control":{"type":"ephemeral"}},{"name":"malformed","defer_loading":"true","cache_control":{"type":"ephemeral"}}]}`)
+
+	_, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "k")
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
+	require.False(t, gjson.GetBytes(wireBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.2.cache_control").Exists())
+	require.True(t, gjson.GetBytes(wireBody, "tools.3.cache_control").Exists())
+
+	countReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "k")
+	require.NoError(t, err)
+	countBody, err := io.ReadAll(countReq.Body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(countBody, "tools.0.cache_control").Exists())
+	require.False(t, gjson.GetBytes(countBody, "tools.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.2.cache_control").Exists())
+	require.True(t, gjson.GetBytes(countBody, "tools.3.cache_control").Exists())
+}
+
 func TestGatewayService_AnthropicOAuth_NotAffectedByAPIKeyPassthroughToggle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -798,11 +826,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name               string
-		body               string
-		wantModel          string
-		wantOriginalSystem string
-		wantMetadataUserID string
+		name                       string
+		body                       string
+		wantModel                  string
+		wantOriginalSystem         string
+		wantOriginalSystemCacheTTL string
+		wantMetadataUserID         string
 	}{
 		{
 			name:               "sonnet system array",
@@ -817,11 +846,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			wantOriginalSystem: "x-anthropic-billing-header keep",
 		},
 		{
-			name:               "haiku full mimicry",
-			body:               `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"},"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral"}}],"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
-			wantModel:          "claude-haiku-4-5-20251001",
-			wantOriginalSystem: "Pi project instructions",
-			wantMetadataUserID: "pi-session-metadata",
+			name:                       "haiku full mimicry",
+			body:                       `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"},"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral","ttl":"1h"}}],"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			wantModel:                  "claude-haiku-4-5-20251001",
+			wantOriginalSystem:         "Pi project instructions",
+			wantOriginalSystemCacheTTL: "1h",
+			wantMetadataUserID:         "pi-session-metadata",
 		},
 	}
 
@@ -883,7 +913,7 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 				require.Truef(t, anthropicBetaTokensContains(finalBeta, beta), "missing mimic beta %s", beta)
 			}
 			require.False(t, anthropicBetaTokensContains(finalBeta, "client-only-beta"))
-			for key, value := range claude.DefaultHeaders {
+			for key, value := range claude.DefaultHeaders() {
 				require.Equal(t, value, getHeaderRaw(upstream.lastReq.Header, key), "mimic fingerprint header %s", key)
 			}
 			require.NotEmpty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
@@ -912,6 +942,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			firstMsg := messages.Array()[0]
 			require.Equal(t, "user", firstMsg.Get("role").String())
 			require.Contains(t, firstMsg.Get("content.0.text").String(), tt.wantOriginalSystem)
+			if tt.wantOriginalSystemCacheTTL != "" {
+				require.Equal(t, "ephemeral", firstMsg.Get("content.0.cache_control.type").String())
+				require.Equal(t, tt.wantOriginalSystemCacheTTL, firstMsg.Get("content.0.cache_control.ttl").String())
+			} else {
+				require.False(t, firstMsg.Get("content.0.cache_control").Exists())
+			}
 
 			if tt.wantMetadataUserID != "" {
 				require.Equal(t, tt.wantMetadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
@@ -1199,8 +1235,12 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
 	require.Nil(t, result)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "upstream request failed")
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	// 传输层错误交给 handler failover，service 不得写响应。
+	require.False(t, c.Writer.Written())
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_EmptyResponseBody(t *testing.T) {
@@ -1246,11 +1286,10 @@ func TestExtractAnthropicSSEDataLine(t *testing.T) {
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_MessageStartFallbacks(t *testing.T) {
-	svc := &GatewayService{}
 	usage := &ClaudeUsage{}
 	data := `{"type":"message_start","message":{"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cached_tokens":9,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`
 
-	svc.parseSSEUsagePassthrough(data, usage)
+	parseSSEUsagePassthrough(data, usage)
 
 	require.Equal(t, 12, usage.InputTokens)
 	require.Equal(t, 9, usage.CacheReadInputTokens, "应兼容 cached_tokens 字段")
@@ -1260,47 +1299,43 @@ func TestGatewayService_ParseSSEUsagePassthrough_MessageStartFallbacks(t *testin
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_MessageDeltaSelectiveOverwrite(t *testing.T) {
-	svc := &GatewayService{}
-	usage := &ClaudeUsage{
-		InputTokens:           10,
-		CacheCreation5mTokens: 2,
-		CacheCreation1hTokens: 6,
-	}
-	data := `{"type":"message_delta","usage":{"input_tokens":0,"output_tokens":5,"cache_creation_input_tokens":8,"cache_read_input_tokens":0,"cached_tokens":11,"cache_creation":{"ephemeral_5m_input_tokens":1,"ephemeral_1h_input_tokens":0}}}`
+	usage := &ClaudeUsage{}
+	start := `{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":463184}}}}`
+	parseSSEUsagePassthrough(start, usage)
 
-	svc.parseSSEUsagePassthrough(data, usage)
+	data := `{"type":"message_delta","usage":{"input_tokens":0,"output_tokens":5,"cache_creation_input_tokens":463184,"cache_read_input_tokens":0,"cached_tokens":11,"cache_creation":{"ephemeral_5m_input_tokens":463184,"ephemeral_1h_input_tokens":0}}}`
+
+	parseSSEUsagePassthrough(data, usage)
 
 	require.Equal(t, 10, usage.InputTokens, "message_delta 中 0 值不应覆盖已有 input_tokens")
 	require.Equal(t, 5, usage.OutputTokens)
-	require.Equal(t, 8, usage.CacheCreationInputTokens)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
 	require.Equal(t, 11, usage.CacheReadInputTokens, "cache_read_input_tokens 为空时应回退到 cached_tokens")
-	require.Equal(t, 1, usage.CacheCreation5mTokens)
-	require.Equal(t, 6, usage.CacheCreation1hTokens, "message_delta 中 0 值不应覆盖已有 1h 明细")
+	require.Equal(t, 463184, usage.CacheCreation5mTokens)
+	require.Equal(t, 0, usage.CacheCreation1hTokens)
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_NoopCases(t *testing.T) {
-	svc := &GatewayService{}
 
 	usage := &ClaudeUsage{InputTokens: 3}
-	svc.parseSSEUsagePassthrough("", usage)
+	parseSSEUsagePassthrough("", usage)
 	require.Equal(t, 3, usage.InputTokens)
 
-	svc.parseSSEUsagePassthrough("[DONE]", usage)
+	parseSSEUsagePassthrough("[DONE]", usage)
 	require.Equal(t, 3, usage.InputTokens)
 
-	svc.parseSSEUsagePassthrough("not-json", usage)
+	parseSSEUsagePassthrough("not-json", usage)
 	require.Equal(t, 3, usage.InputTokens)
 
 	// nil usage 不应 panic
-	svc.parseSSEUsagePassthrough(`{"type":"message_start"}`, nil)
+	parseSSEUsagePassthrough(`{"type":"message_start"}`, nil)
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_FallbackFromUsageNode(t *testing.T) {
-	svc := &GatewayService{}
 	usage := &ClaudeUsage{}
 	data := `{"type":"content_block_delta","usage":{"cached_tokens":6,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}}`
 
-	svc.parseSSEUsagePassthrough(data, usage)
+	parseSSEUsagePassthrough(data, usage)
 
 	require.Equal(t, 6, usage.CacheReadInputTokens)
 	require.Equal(t, 3, usage.CacheCreationInputTokens)
@@ -1622,4 +1657,263 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingUpstreamReadErrorAft
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
 	require.Equal(t, 8, result.usage.InputTokens)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_TransportErrorRecordsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	upstream := &anthropicHTTPUpstreamRecorder{err: errors.New("dial tcp timeout")}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:    upstream,
+		deferredService: deferred,
+	}
+
+	ollama := &Account{
+		ID: 601, Name: "ollama-anthropic", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	other := newAnthropicAPIKeyAccountForTest()
+	other.ID = 602
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	require.Error(t, err)
+
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	_, err = svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c2, other, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	require.Error(t, err)
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(601))
+	require.True(t, ok, "Anthropic passthrough transport error on Ollama account must record activity")
+	_, ok = deferred.lastUsedUpdates.Load(int64(602))
+	require.False(t, ok, "non-Ollama Anthropic passthrough transport error must not record Ollama activity")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_ContextCanceledSkipsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	upstream := &anthropicHTTPUpstreamRecorder{err: context.Canceled}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:    upstream,
+		deferredService: deferred,
+	}
+	ollama := &Account{
+		ID: 603, Name: "ollama-canceled", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+
+	require.Error(t, err)
+	_, ok := deferred.lastUsedUpdates.Load(int64(603))
+	require.False(t, ok, "context.Canceled on Anthropic passthrough must not count as Ollama activity")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_Non2xxRecordsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	// 400 is non-retryable / non-failover for default API-key accounts, so it reaches handleErrorResponse.
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`)),
+		},
+	}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:     upstream,
+		deferredService:  deferred,
+		rateLimitService: &RateLimitService{},
+	}
+	ollama := &Account{
+		ID: 604, Name: "ollama-400", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	_, _ = svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(604))
+	require.True(t, ok, "Anthropic passthrough non-2xx on Ollama account must record activity via handleErrorResponse")
+}
+
+func TestOpus55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		for _, field := range []string{`"thinking":{"type":"disabled"}`, `"thinking":{"type":"enabled","budget_tokens":1024}`, `"tool_choice":{"type":"any"}`, `"tool_choice":{"type":"tool","name":"lookup"}`} {
+			for _, count := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				model := "claude-opus-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				if typ == AccountTypeAPIKey {
+					model = "public-opus"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-opus-5-5"}}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + field + `}`)
+				parsed := &ParsedRequest{Model: model, Body: NewRequestBodyRef(body)}
+				svc := &GatewayService{}
+				var err error
+				if count {
+					err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+				} else {
+					_, err = svc.Forward(context.Background(), c, account, parsed)
+				}
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Contains(t, rec.Body.String(), "invalid_request_error")
+			}
+		}
+	}
+}
+
+func TestOpus55ThinkingDefaultPreservesSignedHistory(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"tool_choice":{"type":"none"},"thinking":{"type":"adaptive","display":"omitted"}}`)
+	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "claude-opus-5-5")))
+	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "anthropic/claude-opus-5.5")))
+	withoutThinking, _ := deleteJSONPathBytes(body, "thinking")
+	require.Equal(t, string(withoutThinking), string(FilterThinkingBlocks(withoutThinking, "claude-opus-5-5")))
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-opus-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String())
+	require.False(t, gjson.GetBytes(out, "output_config.effort").Exists(), "omission uses the official medium default")
+	require.Equal(t, "omitted", gjson.GetBytes(out, "thinking.display").String())
+	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
+}
+
+func TestSonnet55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	fields := []string{
+		`"thinking":{"type":"disabled"}`,
+		`"thinking":{"type":"enabled","budget_tokens":1024}`,
+		`"thinking":{"type":"between_tools"},"output_config":{"effort":"xhigh"}`,
+		`"thinking":{"type":"between_tools","display":"summarized"}`,
+		`"tool_choice":{"type":"any"}`,
+		`"tool_choice":{"type":"tool","name":"lookup"}`,
+		`"temperature":0.7`,
+		`"top_p":0.5`,
+		`"top_k":1`,
+	}
+	for _, field := range fields {
+		for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey, AccountTypeBedrock, AccountTypeServiceAccount} {
+			for _, count := range []bool{false, true} {
+				model := "claude-sonnet-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				switch typ {
+				case AccountTypeAPIKey:
+					model = "public-sonnet"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-sonnet-5-5"}}
+				case AccountTypeBedrock:
+					account.Credentials = map[string]any{"aws_region": "eu-west-1"}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + field + `}`)
+				parsed := &ParsedRequest{Model: model, Body: NewRequestBodyRef(body)}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				svc := &GatewayService{}
+				var err error
+				if count {
+					err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+				} else {
+					_, err = svc.Forward(context.Background(), c, account, parsed)
+				}
+				require.Error(t, err, field)
+				require.Equal(t, http.StatusBadRequest, rec.Code, field)
+				require.Contains(t, rec.Body.String(), "invalid_request_error", field)
+			}
+		}
+	}
+}
+
+func TestSonnet55PreservesSignedHistoryAndAcceptsDefaultParameters(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"thinking":{"type":"between_tools"},"output_config":{"effort":"high"},"tool_choice":{"type":"none"},"temperature":1,"top_p":0.99}`)
+	require.NoError(t, validateClaude55Request(body, "anthropic/claude-sonnet-5.5"))
+	require.JSONEq(t, string(body), string(FilterThinkingBlocks(body, "claude-sonnet-5-5")))
+	withoutThinking, _ := deleteJSONPathBytes(body, "thinking")
+	require.JSONEq(t, string(withoutThinking), string(FilterThinkingBlocks(withoutThinking, "claude-sonnet-5-5")))
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-sonnet-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String())
+	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
+}
+
+func TestSonnet55BedrockCCCompatTransformsBeforeValidation(t *testing.T) {
+	groupID := int64(55)
+	channels := &ChannelService{}
+	channels.cache.Store(&channelCache{
+		loadedAt: time.Now(),
+		channelByGroupID: map[int64]*Channel{
+			groupID: {Status: StatusActive, FeaturesConfig: map[string]any{featureKeyBedrockCCCompat: true}},
+		},
+	})
+	svc := &GatewayService{channelService: channels}
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeBedrock,
+		Credentials: map[string]any{"aws_region": "eu-west-1"}}
+	for _, tc := range []struct {
+		name         string
+		thinking     string
+		expectedType string
+		wantErr      bool
+	}{
+		{name: "enabled", thinking: `{"type":"enabled","budget_tokens":2048}`, expectedType: "adaptive"},
+		{name: "disabled", thinking: `{"type":"disabled"}`, expectedType: "between_tools"},
+		{name: "between_tools invalid effort", thinking: `{"type":"between_tools"}`, expectedType: "between_tools", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"claude-sonnet-5-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"thinking":` + tc.thinking + `,"output_config":{"effort":"low"}}`)
+			if tc.wantErr {
+				body = []byte(`{"model":"claude-sonnet-5-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"thinking":` + tc.thinking + `,"output_config":{"effort":"xhigh"}}`)
+			}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			converted := svc.ApplyBedrockCCCompat(c, body, "claude-sonnet-5-5", account, &groupID)
+			require.Equal(t, tc.expectedType, gjson.GetBytes(converted, "thinking.type").String())
+			if tc.name == "enabled" {
+				require.False(t, gjson.GetBytes(converted, "thinking.budget_tokens").Exists())
+			}
+			mapped, ok := ResolveBedrockModelID(account, "claude-sonnet-5-5")
+			require.True(t, ok)
+			err := validateClaude55Request(converted, mapped)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "only low, medium or high effort")
+				return
+			}
+			require.NoError(t, err)
+			prepared, err := PrepareBedrockRequestBodyWithTokens(converted, mapped, nil, false)
+			require.NoError(t, err)
+			require.Equal(t, "low", gjson.GetBytes(prepared, "output_config.effort").String())
+		})
+	}
 }

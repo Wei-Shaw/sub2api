@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	ippkg "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -103,6 +105,87 @@ func TestRateLimiterDifferentIPsIndependent(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, rec3.Code, "第一个 IP 的第二次请求应被限流")
 }
 
+func TestRateLimiterAllow(t *testing.T) {
+	originalRun := rateLimitRun
+	var gotKey string
+	count := int64(0)
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		gotKey = key
+		count++
+		return count, false, nil
+	}
+	t.Cleanup(func() {
+		rateLimitRun = originalRun
+	})
+
+	// PTTL 走真实客户端（不可达地址）→ 失败后 RetryAfter 应回退为完整窗口
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  50 * time.Millisecond,
+		ReadTimeout:  50 * time.Millisecond,
+		WriteTimeout: 50 * time.Millisecond,
+	}))
+
+	res, err := limiter.Allow(context.Background(), "panel:global:user:42", 1, time.Minute)
+	require.NoError(t, err)
+	require.True(t, res.Allowed)
+	require.Equal(t, int64(1), res.Count)
+	require.Zero(t, res.RetryAfter)
+	require.Equal(t, "rate_limit:panel:global:user:42", gotKey)
+
+	res, err = limiter.Allow(context.Background(), "panel:global:user:42", 1, time.Minute)
+	require.NoError(t, err)
+	require.False(t, res.Allowed)
+	require.Equal(t, int64(2), res.Count)
+	require.Equal(t, time.Minute, res.RetryAfter)
+}
+
+func TestRateLimiterHonorsForwardedIPSnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	callCounts := make(map[string]int64)
+	originalRun := rateLimitRun
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		callCounts[key]++
+		return callCounts[key], false, nil
+	}
+	t.Cleanup(func() {
+		rateLimitRun = originalRun
+	})
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+
+	router := gin.New()
+	// 模拟 SessionBindingContext：开启转发 IP 兼容模式快照
+	router.Use(func(c *gin.Context) {
+		ippkg.SetForwardedIPSettings(c, true, nil)
+		c.Next()
+	})
+	router.Use(limiter.Limit("fwd", 1, time.Second))
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	send := func(xff string) int {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		// 所有请求都来自同一个反代地址
+		req.RemoteAddr = "127.0.0.1:5678"
+		req.Header.Set("X-Forwarded-For", xff)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// 反代后两个不同的真实客户端应各自独立计数，不因共享代理地址被合并限流
+	require.Equal(t, http.StatusOK, send("198.51.100.1"))
+	require.Equal(t, http.StatusOK, send("198.51.100.2"))
+	// 同一真实客户端第二次请求应被限流
+	require.Equal(t, http.StatusTooManyRequests, send("198.51.100.1"))
+
+	require.Contains(t, callCounts, "rate_limit:fwd:198.51.100.1")
+	require.Contains(t, callCounts, "rate_limit:fwd:198.51.100.2")
+}
+
 func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -140,4 +223,44 @@ func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	recorder = httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
+}
+
+func TestRateLimitClientKeyAggregatesIPv6Prefix(t *testing.T) {
+	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd", 64))
+	require.Equal(t, "2001:db8:1:2::/64", rateLimitClientKey("2001:db8:1:2::1", 64))
+	require.Equal(t, "2001:db8:1:3::/64", rateLimitClientKey("2001:db8:1:3::1", 64))
+	require.Equal(t, "2001:db8:1:2::1", rateLimitClientKey("2001:db8:1:2::1", 0), "per-address keys stay the default")
+	for _, ip := range []string{"203.0.113.9", "::ffff:203.0.113.9", "not-an-ip", ""} {
+		require.Equal(t, ip, rateLimitClientKey(ip, 64))
+	}
+}
+
+func TestRateLimiterIPv6PrefixSharesOneBudget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	callCounts := make(map[string]int64)
+	originalRun := rateLimitRun
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		callCounts[key]++
+		return callCounts[key], false, nil
+	}
+	t.Cleanup(func() { rateLimitRun = originalRun })
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+	router := gin.New()
+	router.Use(limiter.LimitWithOptions("api", 1, time.Second, RateLimitOptions{IPv6PrefixBits: 64}))
+	router.GET("/test", func(c *gin.Context) { c.Status(http.StatusOK) })
+	for _, tc := range []struct {
+		addr   string
+		status int
+	}{
+		{"[2001:db8::1]:1234", http.StatusOK},
+		{"[2001:db8::2]:1234", http.StatusTooManyRequests}, // same /64, rotated address
+		{"[2001:db8:0:1::1]:1234", http.StatusOK},          // different /64
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = tc.addr
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, tc.status, rec.Code, tc.addr)
+	}
 }

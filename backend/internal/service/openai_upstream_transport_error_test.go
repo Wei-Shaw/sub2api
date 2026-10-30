@@ -11,13 +11,13 @@ import (
 	"testing"
 )
 
-// TestClassifyOpenAITransportError pins which transport-level upstream failures
+// TestClassifyUpstreamTransportError pins which transport-level upstream failures
 // are "persistent" (retrying the same proxy/account is pointless — evict + alert)
 // versus "transient" (a blip — fail over to a healthy account but do not evict).
 //
 // The motivating incident: a SOCKS5 proxy whose credentials expired returned
 // `username/password authentication failed`, yet the account kept being scheduled.
-func TestClassifyOpenAITransportError(t *testing.T) {
+func TestClassifyUpstreamTransportError(t *testing.T) {
 	cases := []struct {
 		name       string
 		err        error
@@ -76,9 +76,9 @@ func TestClassifyOpenAITransportError(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := classifyOpenAITransportError(tc.err).Persistent
+			got := classifyUpstreamTransportError(tc.err).Persistent
 			if got != tc.persistent {
-				t.Fatalf("classifyOpenAITransportError(%q).Persistent = %v, want %v", errString(tc.err), got, tc.persistent)
+				t.Fatalf("classifyUpstreamTransportError(%q).Persistent = %v, want %v", errString(tc.err), got, tc.persistent)
 			}
 		})
 	}
