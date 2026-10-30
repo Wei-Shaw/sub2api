@@ -1160,11 +1160,16 @@ export default {
 	  },
       autoResetCredit: {
 	    title: '自动使用重置卡',
-	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
+	    hint: '仅在实际用量达到阈值或重置卡快到期时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
 	    threshold5h: '5h 自动用卡阈值(%)',
 	    threshold7d: '7d 自动用卡阈值(%)',
 	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。',
+	    expiringTitle: '快到期自动使用',
+	    expiringHint: '当可用的重置卡剩余有效期小于设定时间时，自动使用最早到期的重置卡，避免过期浪费。',
+	    expiringHours: '到期前提前使用时间 (小时)',
+	    expiringHoursHint: '范围为 1–168 小时（最长 7 天），默认 1 小时。',
+	    expiringHoursInvalid: '快到期提前使用时间必须在 1 到 168 小时之间。'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

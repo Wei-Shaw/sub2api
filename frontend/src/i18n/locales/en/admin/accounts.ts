@@ -1057,11 +1057,16 @@ export default {
 	  },
       autoResetCredit: {
 	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+	    hint: 'Uses the earliest-expiring available credit when actual usage reaches a threshold or when a credit is about to expire. Off by default; the account remains paused if no credit is available or reset fails.',
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    expiringTitle: 'Auto-use when expiring soon',
+	    expiringHint: 'Automatically uses the earliest-expiring credit when its remaining validity is less than the specified hours to avoid expiration waste.',
+	    expiringHours: 'Expiring threshold (hours)',
+	    expiringHoursHint: 'Allowed range is 1–168 hours (up to 7 days), default is 1 hour.',
+	    expiringHoursInvalid: 'Expiring threshold hours must be between 1 and 168.'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

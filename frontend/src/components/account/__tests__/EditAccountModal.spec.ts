@@ -1909,6 +1909,35 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  it('支持保存快到期自动使用开关与小时数', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    // 默认即为开启状态且小时数为 1，修改小时数为 36
+    await wrapper.get('[data-testid="auto-reset-credit-expiring-hours"]').setValue('36')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject({
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_expiring_enabled: true,
+      auto_reset_credit_expiring_hours: 36
+    })
+    wrapper.unmount()
+  })
+
+  it('开启快到期自动使用后拒绝超出 1–168 范围的小时数', async () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-expiring-hours"]').setValue('0')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 })
 
 describe('EditAccountModal gemini explicit cache upstream switch', () => {
