@@ -64,6 +64,22 @@ func NormalizePaymentCurrency(raw string) (string, error) {
 	return currency, nil
 }
 
+// CreemDefaultCurrency 是 Creem 实例未配置币种时使用的币种。Creem 商品只支持 USD 和 EUR，
+// 不能沿用全局默认的 CNY。
+const CreemDefaultCurrency = "USD"
+
+// NormalizeCreemCurrency 校验 Creem 实例币种，空值回落到 USD。
+func NormalizeCreemCurrency(raw string) (string, error) {
+	currency := strings.ToUpper(strings.TrimSpace(raw))
+	if currency == "" {
+		return CreemDefaultCurrency, nil
+	}
+	if currency != "USD" && currency != "EUR" {
+		return "", fmt.Errorf("creem currency must be USD or EUR")
+	}
+	return currency, nil
+}
+
 func CurrencyMinorUnit(currency string) int {
 	return paymentCurrencyAmountUnitFor(currency).apiMinorUnit
 }
