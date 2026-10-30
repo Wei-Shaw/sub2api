@@ -39,7 +39,10 @@ api.sub2api.com {
 		lb_try_duration 5s
 		lb_try_interval 250ms
 
-		# 仅从实际 TCP 对端生成转发头，避免透传客户端伪造值。
+		# 仅从实际 TCP 对端生成内置转发头，避免透传客户端伪造值。
+		# 如果配置了 security.forwarded_client_ip_headers，也必须在此删除
+		# 或从可信 TCP 对端重写每个自定义头。
+		header_up -CF-Connecting-IP
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
