@@ -45,6 +45,12 @@ const (
 	OpsStreamErrorKey  = "ops_stream_error"
 	OpsStreamErrorsKey = "ops_stream_errors"
 	OpsStreamTurnKey   = "ops_stream_turn"
+	// OpsDeliveryAuditKey carries the downstream delivery/consumption audit
+	// message (e.g. "consumption=unknown") for a status-only client-closed row.
+	OpsDeliveryAuditKey = "ops_delivery_audit"
+	// OpsResponseWriteMsKey is the time spent writing a buffered GPT response
+	// downstream (audit log only; not persisted).
+	OpsResponseWriteMsKey = "ops_response_write_ms"
 
 	// Client-side configuration denials should remain visible in ops_error_logs,
 	// but should be excluded from SLA/error-rate calculations.

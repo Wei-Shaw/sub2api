@@ -477,7 +477,7 @@ func grokAuditReadBufferedPriors(t *testing.T, account *Account, sse string) (st
 	t.Helper()
 	c, _ := grokAuditContext("/v1/messages")
 	resp := grokAuditHTTPResponse("text/event-stream", sse)
-	response, _, _, prior, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", "req-bound")
+	response, _, _, prior, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", "req-bound", nil)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	return response.Model, prior
