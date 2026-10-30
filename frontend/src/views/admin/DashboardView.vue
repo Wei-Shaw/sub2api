@@ -8,7 +8,7 @@
 
       <template v-else-if="stats">
         <!-- Row 1: Core Stats -->
-        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-card dark:border-dark-700/50 dark:bg-dark-700/50 lg:grid-cols-4">
+        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-gray-200/70 bg-gray-200/70 shadow-card dark:border-dark-800 dark:bg-dark-800 lg:grid-cols-4">
           <!-- Total API Keys -->
           <div class="min-w-0 bg-white p-4 dark:bg-dark-900">
             <div class="flex items-center justify-between gap-2">
@@ -77,7 +77,7 @@
         </div>
 
         <!-- Row 2: Token Stats -->
-        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-card dark:border-dark-700/50 dark:bg-dark-700/50 lg:grid-cols-4">
+        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-gray-200/70 bg-gray-200/70 shadow-card dark:border-dark-800 dark:bg-dark-800 lg:grid-cols-4">
           <!-- Today Tokens -->
           <div class="min-w-0 bg-white p-4 dark:bg-dark-900">
             <div class="flex items-center justify-between gap-2">
