@@ -238,7 +238,7 @@ func projectAccountModelAliases(body []byte, account *Account, group *Group, cod
 		}
 		target, matched := account.ResolveMappedModel(id)
 		raw, available := byID[strings.TrimSpace(target)]
-		if !matched || !available {
+		if (!matched && !account.modelMappingAdmitsUnlisted()) || !available {
 			continue
 		}
 		seen[id] = struct{}{}
