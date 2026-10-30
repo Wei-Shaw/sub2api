@@ -98,6 +98,68 @@ func TestParseKimiUsageTiers(t *testing.T) {
 	require.Equal(t, "2026-08-18T00:00:00Z", tiers[1].ResetAt)
 }
 
+func TestParseKimiUsageTiers_CurrentFormat(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usages": {
+			"limit_5h": {"used_ratio": 0.1234, "reset_time": "2026-08-14T15:00:00Z"},
+			"limit_7d": {"used_ratio": 0.42, "reset_time": "2026-08-18T00:00:00Z"},
+			"limit_month_total": {"used_ratio": 0.6, "reset_time": "2026-09-01T00:00:00Z"},
+			"limit_month_code": {"used_ratio": 0.7, "reset_time": "2026-09-10T00:00:00Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 3)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 12.34, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-08-14T15:00:00Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 42.0, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, "2026-08-18T00:00:00Z", tiers[1].ResetAt)
+	require.Equal(t, "monthly", tiers[2].Window)
+	require.InDelta(t, 70.0, tiers[2].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-10T00:00:00Z", tiers[2].ResetAt)
+
+	// New windows take precedence independently; weekly and monthly remain distinct.
+	combined := parseKimiUsageTiers([]byte(`{
+		"usages": {
+			"limit_5h": {"used_ratio": 0.2},
+			"limit_7d": {"used_ratio": 0.75, "reset_time": "2026-08-18T00:00:00Z"},
+			"limit_month_total": {"used_ratio": 0.5, "reset_time": "2026-09-01T00:00:00Z"}
+		},
+		"limits": [{"detail":{"limit":100,"remaining":1}}],
+		"usage": {"limit":100,"remaining":1}
+	}`))
+	require.Len(t, combined, 3)
+	require.Equal(t, "monthly", combined[2].Window)
+	require.InDelta(t, 75.0, combined[1].UsedPercent, 1e-9)
+	require.InDelta(t, 50.0, combined[2].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-01T00:00:00Z", combined[2].ResetAt)
+
+	mixed := parseKimiUsageTiers([]byte(`{
+		"usages":{"limit_month_total":{"used_ratio":1.1}},
+		"limits":[{"detail":{"limit":100,"remaining":75}}],
+		"usage":{"limit":100,"remaining":60}
+	}`))
+	require.Len(t, mixed, 3)
+	require.InDelta(t, 25.0, mixed[0].UsedPercent, 1e-9)
+	require.InDelta(t, 40.0, mixed[1].UsedPercent, 1e-9)
+	require.InDelta(t, 110.0, mixed[2].UsedPercent, 1e-9)
+
+	codeOnly := parseKimiUsageTiers([]byte(`{"usages":{"limit_month_code":{"used_ratio":0.25,"reset_time":"2026-09-15T00:00:00Z"}}}`))
+	require.Equal(t, []CNQuotaTier{{Window: "monthly", UsedPercent: 25, ResetAt: "2026-09-15T00:00:00Z"}}, codeOnly)
+}
+
+func TestParseKimiUsageTiersRejectsInvalidRatios(t *testing.T) {
+	t.Parallel()
+	tiers := parseKimiUsageTiers([]byte(`{"usages":{
+		"limit_5h":{"used_ratio":null},
+		"limit_7d":{"used_ratio":"not-a-number"},
+		"limit_month_total":{"used_ratio":-0.2}
+	}}`))
+	require.Empty(t, tiers)
+}
+
 // TestParseKimiUsageTiers_LimitZero 不应除零：limit=0 → utilization=0。
 func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	t.Parallel()
@@ -222,12 +284,15 @@ func TestCNQuotaExtraUpdates(t *testing.T) {
 	tiers := []CNQuotaTier{
 		{Window: "5h", UsedPercent: 40, ResetAt: "2026-08-14T15:00:00Z"},
 		{Window: "weekly", UsedPercent: 60, ResetAt: "2026-08-18T00:00:00Z"},
+		{Window: "monthly", UsedPercent: 75, ResetAt: "2026-08-18T00:00:00Z"},
 	}
 	updates := cnQuotaExtraUpdates(PlatformKimi, tiers, now)
 	require.Equal(t, 40.0, updates["kimi_5h_used_percent"])
 	require.Equal(t, "2026-08-14T15:00:00Z", updates["kimi_5h_reset_at"])
 	require.Equal(t, 60.0, updates["kimi_weekly_used_percent"])
 	require.Equal(t, "2026-08-18T00:00:00Z", updates["kimi_weekly_reset_at"])
+	require.Equal(t, 75.0, updates["kimi_monthly_used_percent"])
+	require.Equal(t, "2026-08-18T00:00:00Z", updates["kimi_monthly_reset_at"])
 	require.Equal(t, now.Format(time.RFC3339), updates["kimi_usage_updated_at"])
 }
 
