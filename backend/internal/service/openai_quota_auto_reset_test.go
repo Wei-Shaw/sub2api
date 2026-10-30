@@ -88,6 +88,40 @@ func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T)
 		require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
 	})
 
+	t.Run("无重置卡但有新鲜Credits时继续调度", func(t *testing.T) {
+		extra := cloneOpenAIAutoResetExtra(baseExtra)
+		extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusNoCredit, CheckedAt: now.Format(time.RFC3339), ErrorCode: "NO_RESET_CREDIT",
+		}
+		balance := "62500.0000000000"
+		extra[openaiQuotaCreditsKey] = openAICreditsSnapshot{
+			Credits: &OpenAICredits{HasCredits: true, Balance: &balance}, FetchedAt: now.Unix(),
+		}
+		extra["codex_5h_used_percent"] = 100.0
+		extra["codex_5h_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
+		account := &Account{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.False(t, paused)
+		require.Empty(t, decision.reason)
+	})
+
+	t.Run("过期Credits快照仍然暂停", func(t *testing.T) {
+		extra := cloneOpenAIAutoResetExtra(baseExtra)
+		extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusNoCredit, CheckedAt: now.Format(time.RFC3339), ErrorCode: "NO_RESET_CREDIT",
+		}
+		balance := "62500.0000000000"
+		extra[openaiQuotaCreditsKey] = openAICreditsSnapshot{
+			Credits: &OpenAICredits{HasCredits: true, Balance: &balance}, FetchedAt: now.Add(-9 * time.Hour).Unix(),
+		}
+		extra["codex_5h_used_percent"] = 100.0
+		extra["codex_5h_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
+		account := &Account{ID: 6, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.True(t, paused)
+		require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
+	})
+
 	t.Run("自然窗口重置后清除动态阻塞", func(t *testing.T) {
 		extra := cloneOpenAIAutoResetExtra(baseExtra)
 		extra["codex_5h_used_percent"] = 100.0

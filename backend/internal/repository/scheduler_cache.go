@@ -1337,6 +1337,10 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.OpenAIAutoResetCredit5hThresholdExtraKey,
 		service.OpenAIAutoResetCredit7dThresholdExtraKey,
 		service.OpenAIAutoResetCreditStateExtraKey,
+		// Spendable Codex credits are separate from reset credits. The scheduler
+		// must retain this fresh snapshot to avoid pausing an account after a
+		// confirmed reset-card miss when the upstream can still bill credits.
+		"codex_credits_snapshot",
 		"model_rate_limits",
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,

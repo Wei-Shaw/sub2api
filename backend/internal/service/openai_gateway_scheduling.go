@@ -527,6 +527,41 @@ func grokQuotaSnapshotStaleForPause(snapshot *xai.QuotaSnapshot, now time.Time) 
 	return now.Sub(updatedAt) >= openAICodexAutoPauseStaleAfter
 }
 
+const openAICodexCreditsSchedulingSnapshotMaxAge = 8 * time.Hour
+
+// openAICodexCreditsAvailableAfterResetCreditMiss keeps an account eligible
+// when reset-card redemption is confirmed empty but a fresh spendable Credits
+// snapshot still has balance. Reset credits and spendable Credits are separate.
+func openAICodexCreditsAvailableAfterResetCreditMiss(account *Account, now time.Time) bool {
+	if account == nil || account.Extra == nil {
+		return false
+	}
+	state := openAIAutoResetStateFromExtra(account.Extra)
+	if state == nil || state.Status != OpenAIAutoResetStatusNoCredit || state.AvailableCount > 0 {
+		return false
+	}
+	raw, ok := account.Extra[openaiQuotaCreditsKey]
+	if !ok || raw == nil {
+		return false
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return false
+	}
+	var snapshot openAICreditsSnapshot
+	if err := json.Unmarshal(encoded, &snapshot); err != nil || snapshot.Credits == nil || !snapshot.Credits.HasCredits {
+		return false
+	}
+	if snapshot.Credits.Unlimited {
+		return true
+	}
+	if snapshot.FetchedAt <= 0 || now.Sub(time.Unix(snapshot.FetchedAt, 0)) >= openAICodexCreditsSchedulingSnapshotMaxAge || snapshot.Credits.Balance == nil {
+		return false
+	}
+	balance, err := strconv.ParseFloat(strings.TrimSpace(*snapshot.Credits.Balance), 64)
+	return err == nil && balance > 0
+}
+
 func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) (bool, openAIQuotaAutoPauseDecision) {
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{}
@@ -538,10 +573,16 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		utilization5h, has5h := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 		utilization7d, has7d := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
 		if has5h && utilization5h >= config.Threshold5h {
+			if openAICodexCreditsAvailableAfterResetCreditMiss(account, now) {
+				return false, openAIQuotaAutoPauseDecision{}
+			}
 			notifyOpenAIAutoResetFromScheduler(account.ID)
 			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: "quota_auto_reset_pending_5h"}
 		}
 		if has7d && utilization7d >= config.Threshold7d {
+			if openAICodexCreditsAvailableAfterResetCreditMiss(account, now) {
+				return false, openAIQuotaAutoPauseDecision{}
+			}
 			notifyOpenAIAutoResetFromScheduler(account.ID)
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_pending_7d"}
 		}
@@ -554,6 +595,9 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		if pauseReached5h || pauseReached7d {
 			state := openAIAutoResetStateFromExtra(account.Extra)
 			if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
+				return false, openAIQuotaAutoPauseDecision{}
+			}
+			if openAICodexCreditsAvailableAfterResetCreditMiss(account, now) {
 				return false, openAIQuotaAutoPauseDecision{}
 			}
 			notifyOpenAIAutoResetFromScheduler(account.ID)
