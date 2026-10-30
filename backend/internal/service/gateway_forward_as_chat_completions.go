@@ -315,6 +315,11 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
+		if !streamStatus.sawTerminal {
+			if failoverErr, ok := newAnthropicUpstreamReadFailoverError(c.Request.Context(), c, resp, err); ok {
+				return nil, failoverErr
+			}
+		}
 	}
 
 	streamStatus.readErr = scanner.Err()
@@ -396,7 +401,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
 
 	// Use Anthropic→Responses state machine, then convert Responses→CC
 	anthState := apicompat.NewAnthropicEventToResponsesState()
@@ -529,6 +533,12 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	}
 
 	if failure := stream.failure(); failure != nil {
+		if stream.readErr != nil && !errors.Is(stream.readErr, errAnthropicNativeStreamIdle) &&
+			c.Writer.Size() == writerSizeBeforeStream {
+			if failoverErr, ok := newAnthropicUpstreamReadFailoverError(c.Request.Context(), c, resp, stream.readErr); ok {
+				return nil, failoverErr
+			}
+		}
 		return finishAnthropicCompatStreamFailure(c, writerSizeBeforeStream, failure, resultWithUsage(), func() {
 			writeAnthropicCompatCCStreamFailure(c, failure)
 		})

@@ -114,6 +114,32 @@ func handleStreamReadError(err error, clientDisconnected bool, prefix string) (d
 	return false, false
 }
 
+func antigravityStreamCancellationError(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
+}
+
+func newAntigravityStreamReadFailoverError(err error) *UpstreamFailoverError {
+	message := "upstream stream disconnected"
+	if detail := sanitizeStreamError(err); detail != "" {
+		message += ": " + detail
+	}
+	body, _ := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]string{
+			"type":    "upstream_error",
+			"message": message,
+		},
+	})
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           body,
+		RetryableOnSameAccount: true,
+	}
+}
+
 func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
 	if upstreamResponseModelObserverFromContext(c) == nil {
 		beginUpstreamResponseModelObservation(c)
@@ -220,6 +246,8 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	lastDataAt := time.Now()
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity gemini")
+	clientOutputStarted := false
+	cw.beforeFirstWrite = func() { clientOutputStarted = true }
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -249,6 +277,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity): max_size=%d error=%v", maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
 					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
+				}
+				if !clientOutputStarted {
+					return nil, newAntigravityStreamReadFailoverError(ev.err)
 				}
 				sendErrorEvent("stream_read_error")
 				return nil, ev.err
@@ -427,10 +458,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 				goto returnResponse
 			}
 			if ev.err != nil {
+				if cancellationErr := antigravityStreamCancellationError(ev.err); cancellationErr != nil {
+					return nil, cancellationErr
+				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity non-stream): max_size=%d error=%v", maxLineSize, ev.err)
+					return nil, ev.err
 				}
-				return nil, ev.err
+				return nil, newAntigravityStreamReadFailoverError(ev.err)
 			}
 
 			line := ev.line
@@ -847,10 +882,14 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 				goto returnResponse
 			}
 			if ev.err != nil {
+				if cancellationErr := antigravityStreamCancellationError(ev.err); cancellationErr != nil {
+					return nil, nil, cancellationErr
+				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity claude non-stream): max_size=%d error=%v", maxLineSize, ev.err)
+					return nil, nil, ev.err
 				}
-				return nil, nil, ev.err
+				return nil, nil, newAntigravityStreamReadFailoverError(ev.err)
 			}
 
 			line := ev.line
@@ -1090,6 +1129,8 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	lastDataAt := time.Now()
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity claude")
+	clientOutputStarted := false
+	cw.beforeFirstWrite = func() { clientOutputStarted = true }
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -1139,6 +1180,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity): max_size=%d error=%v", maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
 					return &antigravityStreamResult{usage: convertUsage(nil), firstTokenMs: firstTokenMs}, ev.err
+				}
+				if !clientOutputStarted {
+					return nil, newAntigravityStreamReadFailoverError(ev.err)
 				}
 				sendErrorEvent("stream_read_error")
 				return nil, fmt.Errorf("stream read error: %w", ev.err)

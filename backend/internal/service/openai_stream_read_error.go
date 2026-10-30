@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -56,6 +59,34 @@ func shouldClassifyOpenAIUpstreamStreamReadError(err error, contexts ...context.
 		}
 	}
 	return true
+}
+
+func (s *OpenAIGatewayService) newOpenAIUpstreamReadFailoverError(
+	c *gin.Context,
+	account *Account,
+	err error,
+	responseHeaders http.Header,
+) *UpstreamFailoverError {
+	if account == nil {
+		return nil
+	}
+	var requestCtx context.Context
+	if c != nil && c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
+	if !shouldClassifyOpenAIUpstreamStreamReadError(err, requestCtx) {
+		return nil
+	}
+	_, message := classifyOpenAIUpstreamStreamReadError(err)
+	return s.newOpenAIStreamFailoverError(
+		c,
+		account,
+		false,
+		responseHeaders.Get("x-request-id"),
+		nil,
+		message,
+		responseHeaders,
+	)
 }
 
 // OpenAIUpstreamStreamReadErrorDetails returns the stable, sanitized client

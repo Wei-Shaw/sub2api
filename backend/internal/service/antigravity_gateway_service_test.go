@@ -1760,6 +1760,208 @@ func TestHandleClaudeStreamingResponse_ContextCanceled(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
 
+func TestAntigravityNativeStreamingReadErrorBeforeSemanticOutputTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	readErr := errors.New("read tcp 10.0.0.1:54321->52.1.2.3:443: access_token=[REDACTED]")
+	tests := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "gemini v1beta",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleGeminiStreamingResponse(c, resp, time.Now())
+			},
+		},
+		{
+			name: "claude v1 messages",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}})
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       &streamReadCloser{err: readErr},
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			}
+
+			result, err := tt.run(svc, c, resp)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.Contains(t, ExtractUpstreamErrorMessage(failoverErr.ResponseBody), "upstream stream disconnected")
+			require.NotContains(t, string(failoverErr.ResponseBody), "10.0.0.1")
+			require.NotContains(t, string(failoverErr.ResponseBody), "52.1.2.3")
+			require.NotContains(t, string(failoverErr.ResponseBody), "[REDACTED]")
+			require.Empty(t, recorder.Body.String())
+		})
+	}
+}
+
+func TestAntigravityNativeStreamingReadErrorAfterSemanticOutputDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name    string
+		payload string
+		run     func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name:    "gemini v1beta",
+			payload: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"partial\"}]}}]}\n\n",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleGeminiStreamingResponse(c, resp, time.Now())
+			},
+		},
+		{
+			name:    "claude v1 messages",
+			payload: "data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"partial\"}]}}]}}\n\n",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}})
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body: &streamReadCloser{
+					payload: []byte(tt.payload),
+					err:     io.ErrUnexpectedEOF,
+				},
+				Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+			}
+
+			_, err := tt.run(svc, c, resp)
+
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.NotErrorAs(t, err, &failoverErr)
+			require.Contains(t, recorder.Body.String(), "partial")
+			require.Contains(t, recorder.Body.String(), "event: error")
+		})
+	}
+}
+
+func TestAntigravityNativeStreamingReadErrorAfterKeepaliveDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name          string
+		wantKeepalive string
+		run           func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name:          "gemini v1beta",
+			wantKeepalive: ":\n\n",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleGeminiStreamingResponse(c, resp, time.Now())
+			},
+		},
+		{
+			name:          "claude v1 messages",
+			wantKeepalive: "event: ping",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{
+				MaxLineSize:             defaultMaxLineSize,
+				StreamKeepaliveInterval: 1,
+			}})
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			reader, writer := io.Pipe()
+			t.Cleanup(func() {
+				_ = reader.Close()
+				_ = writer.Close()
+			})
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       reader,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			}
+			go func() {
+				time.Sleep(1100 * time.Millisecond)
+				_ = writer.CloseWithError(io.ErrUnexpectedEOF)
+			}()
+
+			_, err := tt.run(svc, c, resp)
+
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.NotErrorAs(t, err, &failoverErr)
+			require.Contains(t, recorder.Body.String(), tt.wantKeepalive)
+			require.Contains(t, recorder.Body.String(), "event: error")
+		})
+	}
+}
+
+func TestAntigravityNativeBufferedReadErrorBeforeClientOutputTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "gemini v1beta",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleGeminiStreamToNonStreaming(c, resp, time.Now())
+			},
+		},
+		{
+			name: "claude v1 messages",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleClaudeStreamToNonStreaming(c, resp, time.Now(), "claude-sonnet-4-5")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}})
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       &streamReadCloser{err: io.ErrUnexpectedEOF},
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			}
+
+			result, err := tt.run(svc, c, resp)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.Contains(t, ExtractUpstreamErrorMessage(failoverErr.ResponseBody), "unexpected EOF")
+			require.Empty(t, recorder.Body.String())
+		})
+	}
+}
+
 // TestExtractSSEUsage 验证 extractSSEUsage 从 SSE data 行正确提取 usage
 func TestExtractSSEUsage(t *testing.T) {
 	svc := &AntigravityGatewayService{}

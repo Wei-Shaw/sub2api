@@ -140,9 +140,9 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, upstreamModel)
 
 	if clientStream {
-		return s.handleCCStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+		return s.handleCCStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account)
 	}
-	return s.handleCCBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
+	return s.handleCCBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, account)
 }
 
 // handleCCBufferedFromNativeAnthropic reads Anthropic SSE events, assembles the
@@ -155,8 +155,10 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	upstreamModel string,
 	reasoningEffort *string,
 	startTime time.Time,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	account := nativeAnthropicOptionalAccount(accounts)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -172,7 +174,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
 	streamInterval := anthropicNativeStreamInterval(s.cfg)
 	pump := newAnthropicNativeLinePump(scanner, streamInterval, s.cfg)
-	streamStatus := &anthropicCompatStream{body: resp.Body}
+	streamStatus := &anthropicCompatStream{body: resp.Body, maxLineSize: maxLineSize}
 	defer pump.stop()
 
 	logReadErr := func(err error) {
@@ -200,6 +202,9 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 				return onIdle()
 			}
 			logReadErr(rerr)
+			if !streamStatus.sawTerminal && !openAIStreamClientOutputStarted(c, false) && nativeAnthropicReadErrorCanFailover(c, rerr) {
+				return nil, s.newNativeAnthropicReadFailoverError(c, account, resp, rerr)
+			}
 			streamStatus.readErr = rerr
 			break
 		}
@@ -215,6 +220,9 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 				return onIdle()
 			}
 			logReadErr(rerr)
+			if !streamStatus.sawTerminal && !openAIStreamClientOutputStarted(c, false) && nativeAnthropicReadErrorCanFailover(c, rerr) {
+				return nil, s.newNativeAnthropicReadFailoverError(c, account, resp, rerr)
+			}
 			streamStatus.readErr = rerr
 			break
 		}
@@ -270,7 +278,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: claudeUsageToOpenAIUsage(&usage),
 			Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel,
 			UpstreamEndpoint: "/v1/messages", ReasoningEffort: reasoningEffort, Duration: time.Since(startTime),
-		}, failure.err
+		}, classifyNativeAnthropicReadFailure(c, streamStatus, failure)
 	}
 
 	if finalResp == nil {
@@ -326,17 +334,11 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	upstreamModel string,
 	reasoningEffort *string,
 	startTime time.Time,
+	accounts ...*Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+	account := nativeAnthropicOptionalAccount(accounts)
+	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	anthState := apicompat.NewAnthropicEventToResponsesState()
 	anthState.Model = originalModel
@@ -347,6 +349,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	clientOutputStarted := false
+	pendingChunks := make([]string, 0, 8)
+	pendingBytes := 0
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -378,7 +383,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	// scanner.Scan() 永久阻塞（见 anthropic native pump 文件注释）。
 	streamInterval := anthropicNativeStreamInterval(s.cfg)
 	pump := newAnthropicNativeLinePump(scanner, streamInterval, s.cfg)
-	streamStatus := &anthropicCompatStream{body: resp.Body}
+	streamStatus := &anthropicCompatStream{body: resp.Body, maxLineSize: maxLineSize}
 	defer pump.stop()
 
 	logReadErr := func(err error) {
@@ -411,11 +416,44 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			return false
 		}
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+		startsOutput := false
+		for _, choice := range chunk.Choices {
+			if choice.Delta.Content != nil && *choice.Delta.Content != "" ||
+				choice.Delta.Refusal != nil && *choice.Delta.Refusal != "" ||
+				choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" ||
+				choice.Delta.Reasoning != nil && *choice.Delta.Reasoning != "" {
+				startsOutput = true
+				break
+			}
+			for _, toolCall := range choice.Delta.ToolCalls {
+				if toolCall.Function.Name != "" || toolCall.Function.Arguments != "" {
+					startsOutput = true
+					break
+				}
+			}
+		}
+		if !clientOutputStarted {
+			if !startsOutput && pendingBytes+len(out) <= openAIFirstOutputStageMaxBytes {
+				pendingChunks = append(pendingChunks, out)
+				pendingBytes += len(out)
+				return true
+			}
+			writeStreamHeaders()
+			for _, pending := range pendingChunks {
+				if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+					clientDisconnected = true
+					return false
+				}
+			}
+			pendingChunks = pendingChunks[:0]
+			pendingBytes = 0
+			clientOutputStarted = true
+		}
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			clientDisconnected = true
 			return false
 		}
-		return false
+		return true
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
@@ -451,7 +489,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 				writeChunk(chunk)
 			}
 		}
-		if len(responsesEvents) > 0 {
+		if len(responsesEvents) > 0 && clientOutputStarted && !clientDisconnected {
 			c.Writer.Flush()
 		}
 		return false
@@ -464,6 +502,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 				return onIdle()
 			}
 			logReadErr(rerr)
+			if !streamStatus.sawTerminal && !clientDisconnected && !openAIStreamClientOutputStarted(c, clientOutputStarted) && nativeAnthropicReadErrorCanFailover(c, rerr) {
+				return nil, s.newNativeAnthropicReadFailoverError(c, account, resp, rerr)
+			}
 			streamStatus.readErr = rerr
 			break
 		}
@@ -476,8 +517,10 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
 				return onIdle()
 			}
-			// EOF / 读错误：事件行后流终止，进入 finalize。
 			logReadErr(rerr)
+			if !streamStatus.sawTerminal && !clientDisconnected && !openAIStreamClientOutputStarted(c, clientOutputStarted) && nativeAnthropicReadErrorCanFailover(c, rerr) {
+				return nil, s.newNativeAnthropicReadFailoverError(c, account, resp, rerr)
+			}
 			streamStatus.readErr = rerr
 			break
 		}
@@ -508,9 +551,19 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	if failure := streamStatus.failure(); failure != nil {
 		_ = resp.Body.Close()
 		if !clientDisconnected {
+			writeStreamHeaders()
+			for _, pending := range pendingChunks {
+				if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+					clientDisconnected = true
+					break
+				}
+			}
+			pendingChunks = pendingChunks[:0]
+		}
+		if !clientDisconnected {
 			writeAnthropicCompatCCStreamFailure(c, failure)
 		}
-		return resultWithUsage(), failure.err
+		return resultWithUsage(), classifyNativeAnthropicReadFailure(c, streamStatus, failure)
 	}
 
 	if clientDisconnected {
@@ -530,7 +583,19 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		writeChunk(chunk) //nolint:errcheck
 	}
 
-	if !clientDisconnected {
+	if !clientDisconnected && !clientOutputStarted {
+		writeStreamHeaders()
+		for _, pending := range pendingChunks {
+			if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+				clientDisconnected = true
+				break
+			}
+		}
+		pendingChunks = pendingChunks[:0]
+		pendingBytes = 0
+		clientOutputStarted = !clientDisconnected
+	}
+	if !clientDisconnected && clientOutputStarted {
 		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
 		c.Writer.Flush()
 	}

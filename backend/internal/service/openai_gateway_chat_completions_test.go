@@ -632,6 +632,54 @@ func TestHandleChatStreamingResponse_ClassifiesHTTP2ReadError(t *testing.T) {
 	require.NotContains(t, message, "INTERNAL_ERROR")
 }
 
+func TestHandleChatStreamingResponse_FailsOverReadErrorBeforeClientOutput(t *testing.T) {
+	for _, tt := range []struct {
+		name              string
+		keepaliveInterval int
+	}{
+		{name: "sync scanner"},
+		{name: "async scanner", keepaliveInterval: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"x-request-id": []string{"upstream-rid-before-output"},
+				},
+				Body: &openAIChatStreamReadErrorCloser{
+					err: errors.New("stream error: stream ID 7; INTERNAL_ERROR; received from peer"),
+				},
+			}
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{StreamKeepaliveInterval: tt.keepaliveInterval}}}
+
+			_, err := svc.handleChatStreamingResponse(
+				resp,
+				c,
+				&Account{ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI},
+				"gpt-5.6-sol",
+				"gpt-5.6-sol",
+				"gpt-5.6-sol",
+				time.Now(),
+				0,
+			)
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr, "a transport read failure before any client output must reach the account failover loop")
+			require.True(t, failoverErr.ShouldRetryNextAccount(), "available accounts should be tried before returning the stream error")
+			require.False(t, c.Writer.Written(), "a pre-output retry must not commit an error response")
+			require.Contains(t, string(failoverErr.ResponseBody), "Upstream HTTP/2 stream failed")
+			require.NotContains(t, string(failoverErr.ResponseBody), "stream ID 7")
+			require.NotContains(t, string(failoverErr.ResponseBody), "INTERNAL_ERROR")
+		})
+	}
+}
+
 func TestNormalizeResponsesRequestServiceTier(t *testing.T) {
 	t.Parallel()
 

@@ -1571,7 +1571,10 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				}
 			})
 			if err != nil {
-				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
+				if failoverErr, ok := newGeminiNativeReadFailoverError(ctx, c, resp, err); ok {
+					return nil, failoverErr
+				}
+				return nil, fmt.Errorf("read upstream Gemini stream: %w", err)
 			}
 			s.finalizeGeminiSSESignal(c, account, false, requestID, best, stats.dataEvents > 0, stats.fallback)
 			b, _ := json.Marshal(collected)
@@ -2843,6 +2846,9 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if failoverErr, ok := newGeminiNativeReadFailoverError(c.Request.Context(), c, resp, err); ok {
+			return nil, failoverErr
+		}
 		return nil, err
 	}
 
@@ -2879,6 +2885,8 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 }
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, upstreamRequestID string) (*geminiNativeStreamResult, error) {
+	writerSizeBeforeStream := c.Writer.Size()
+	responseCommittedBeforeStream := IsResponseCommitted(c)
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2989,6 +2997,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 			break
 		}
 		if err != nil {
+			if failoverErr, ok := newGeminiNativeReadFailoverError(c.Request.Context(), c, resp, err); ok && !responseCommittedBeforeStream && c.Writer.Size() == writerSizeBeforeStream {
+				return nil, failoverErr
+			}
 			if !geminiStreamAbortedWithBillableOutput(c, err, usage) {
 				return nil, err
 			}

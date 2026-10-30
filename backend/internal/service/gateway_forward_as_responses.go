@@ -475,6 +475,11 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				zap.String("request_id", requestID),
 			)
 		}
+		if !streamStatus.sawTerminal {
+			if failoverErr, ok := newAnthropicUpstreamReadFailoverError(c.Request.Context(), c, resp, err); ok {
+				return nil, failoverErr
+			}
+		}
 	}
 
 	streamStatus.readErr = scanner.Err()
@@ -562,7 +567,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
@@ -652,6 +656,15 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	finalizeStream := func() (*ForwardResult, error) {
 		if failure := stream.failure(); failure != nil {
+			// Before any Responses event has committed the response, a transport
+			// read failure is safe to retry on another upstream account. An idle
+			// timeout and an oversized line are not transport failover signals.
+			if stream.readErr != nil && !errors.Is(stream.readErr, errAnthropicNativeStreamIdle) &&
+				c.Writer.Size() == writerSizeBeforeStream {
+				if failoverErr, ok := newAnthropicUpstreamReadFailoverError(c.Request.Context(), c, resp, stream.readErr); ok {
+					return nil, failoverErr
+				}
+			}
 			return finishAnthropicCompatStreamFailure(c, writerSizeBeforeStream, failure, resultWithUsage(), func() {
 				writeAnthropicCompatResponsesStreamFailure(c, state, clientToolRestorer, failure)
 			})

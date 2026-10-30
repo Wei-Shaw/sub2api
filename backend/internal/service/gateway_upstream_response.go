@@ -279,6 +279,42 @@ func sanitizeStreamError(err error) string {
 	return "upstream connection error"
 }
 
+func newAnthropicUpstreamReadFailoverError(ctx context.Context, c *gin.Context, resp *http.Response, err error) (*UpstreamFailoverError, bool) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrUpstreamResponseBodyTooLarge) || errors.Is(err, bufio.ErrTooLong) {
+		return nil, false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return nil, false
+	}
+	if c != nil {
+		if c.Request != nil && c.Request.Context().Err() != nil {
+			return nil, false
+		}
+		if c.Writer != nil && c.Writer.Written() {
+			return nil, false
+		}
+	}
+
+	responseBody, _ := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]string{
+			"type":    "upstream_disconnected",
+			"message": "upstream stream disconnected: " + sanitizeStreamError(err),
+		},
+	})
+	var responseHeaders http.Header
+	if resp != nil {
+		responseHeaders = resp.Header.Clone()
+	}
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           responseBody,
+		ResponseHeaders:        responseHeaders,
+		RetryableOnSameAccount: true,
+	}, true
+}
+
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
 func ExtractUpstreamErrorMessage(body []byte) string {
@@ -1410,6 +1446,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
+		if failoverErr, ok := newAnthropicUpstreamReadFailoverError(ctx, c, resp, err); ok {
+			return nil, failoverErr
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)

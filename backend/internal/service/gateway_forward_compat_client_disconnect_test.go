@@ -241,27 +241,50 @@ func TestAnthropicCompatStreaming_ReadErrorBeforeTerminalEventFails(t *testing.T
 	}, "\n") + "\n"
 	for name, handle := range compatStreamHandlers() {
 		for _, tc := range []struct {
-			name       string
-			stream     string
-			wantErr    bool
-			wantResult bool
+			name         string
+			stream       string
+			readErr      error
+			wantErr      bool
+			wantResult   bool
+			wantFailover bool
 		}{
-			{name: "after_text", stream: anthropicStreamTruncatedBeforeMessageDelta(), wantErr: true, wantResult: true},
-			{name: "after_message_start", stream: messageStartOnly, wantErr: true, wantResult: true},
-			{name: "before_any_event", stream: "", wantErr: true},
-			{name: "after_stop_reason", stream: anthropicStreamWithoutMessageStop(), wantResult: true},
-			{name: "after_message_stop_without_stop_reason", stream: strings.Replace(anthropicStreamWithMidStreamText(), `"delta":{"stop_reason":"end_turn"}`, `"delta":{}`, 1), wantResult: true},
+			{name: "after_text", stream: anthropicStreamTruncatedBeforeMessageDelta(), readErr: io.ErrUnexpectedEOF, wantErr: true, wantResult: true},
+			{name: "after_message_start", stream: messageStartOnly, readErr: io.ErrUnexpectedEOF, wantErr: true, wantResult: true},
+			{name: "before_any_event", readErr: errors.New("read tcp 10.0.0.1:1234->52.1.2.3:443: stream ID 17; INTERNAL_ERROR"), wantErr: true, wantFailover: true},
+			{name: "after_stop_reason", stream: anthropicStreamWithoutMessageStop(), readErr: io.ErrUnexpectedEOF, wantResult: true},
+			{name: "after_message_stop_without_stop_reason", stream: strings.Replace(anthropicStreamWithMidStreamText(), `"delta":{"stop_reason":"end_turn"}`, `"delta":{}`, 1), readErr: io.ErrUnexpectedEOF, wantResult: true},
 		} {
 			t.Run(name+"/"+tc.name, func(t *testing.T) {
 				gin.SetMode(gin.TestMode)
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
-				body := io.NopCloser(&errAfterReader{data: strings.NewReader(tc.stream), err: io.ErrUnexpectedEOF})
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				body := io.NopCloser(&errAfterReader{data: strings.NewReader(tc.stream), err: tc.readErr})
 
-				result, err := handle(&GatewayService{}, &http.Response{Header: http.Header{}, Body: body}, c)
+				result, err := handle(&GatewayService{}, &http.Response{Header: http.Header{"X-Request-Id": []string{"compat-read-failure"}}, Body: body}, c)
+
+				if tc.wantFailover {
+					var failoverErr *UpstreamFailoverError
+					require.ErrorAs(t, err, &failoverErr)
+					require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+					require.True(t, failoverErr.RetryableOnSameAccount)
+					require.Equal(t, "compat-read-failure", failoverErr.ResponseHeaders.Get("x-request-id"))
+					require.Equal(t, "upstream stream disconnected: upstream connection error", gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())
+					require.NotContains(t, string(failoverErr.ResponseBody), "10.0.0.1")
+					require.NotContains(t, string(failoverErr.ResponseBody), "stream ID 17")
+					require.Nil(t, result)
+					require.False(t, c.Writer.Written())
+					require.Empty(t, rec.Body.String())
+					return
+				}
 
 				if tc.wantErr {
-					require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+					require.Error(t, err)
+					var failoverErr *UpstreamFailoverError
+					require.NotErrorAs(t, err, &failoverErr)
+					if errors.Is(tc.readErr, io.ErrUnexpectedEOF) {
+						require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+					}
 					require.NotErrorIs(t, err, errAnthropicNativeStreamIdle)
 					require.NotContains(t, rec.Body.String(), compatStreamTerminalMarkers[name])
 					require.Contains(t, rec.Body.String(), compatStreamFailureMarkers[name])
@@ -279,6 +302,71 @@ func TestAnthropicCompatStreaming_ReadErrorBeforeTerminalEventFails(t *testing.T
 				require.Equal(t, 20, result.Usage.InputTokens)
 			})
 		}
+	}
+}
+
+func TestAnthropicResponsesStreaming_ReadErrorAfterUpstreamPingFailsOverBeforeSemanticOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := io.NopCloser(&errAfterReader{
+		data: strings.NewReader("event: ping\ndata: {\"type\":\"ping\"}\n\n"),
+		err:  io.ErrUnexpectedEOF,
+	})
+	resp := &http.Response{
+		Header: http.Header{"X-Request-Id": []string{"compat-ping-read-failure"}},
+		Body:   body,
+	}
+
+	result, err := (&GatewayService{}).handleResponsesStreamingResponse(resp, c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Nil(t, result)
+	require.Equal(t, "compat-ping-read-failure", failoverErr.ResponseHeaders.Get("x-request-id"))
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestAnthropicResponsesBuffered_ReadErrorFailsOverBeforeOutput(t *testing.T) {
+	messageStartOnly := strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_disc","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-6","usage":{"input_tokens":20,"output_tokens":1}}}`,
+		``,
+	}, "\n") + "\n"
+	for _, tc := range []struct {
+		name   string
+		stream string
+	}{
+		{name: "before_any_event"},
+		{name: "after_buffered_message_start", stream: messageStartOnly},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			readErr := errors.New("read tcp 10.0.0.1:1234->52.1.2.3:443: stream ID 19; INTERNAL_ERROR")
+			resp := &http.Response{
+				Header: http.Header{"X-Request-Id": []string{"compat-buffered-read-failure"}},
+				Body:   io.NopCloser(&errAfterReader{data: strings.NewReader(tc.stream), err: readErr}),
+			}
+
+			result, err := (&GatewayService{}).handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Nil(t, result)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.Equal(t, "compat-buffered-read-failure", failoverErr.ResponseHeaders.Get("x-request-id"))
+			require.Equal(t, "upstream stream disconnected: upstream connection error", gjson.GetBytes(failoverErr.ResponseBody, "error.message").String())
+			require.NotContains(t, string(failoverErr.ResponseBody), "10.0.0.1")
+			require.NotContains(t, string(failoverErr.ResponseBody), "stream ID 19")
+			require.False(t, c.Writer.Written())
+			require.Empty(t, rec.Body.String())
+		})
 	}
 }
 
