@@ -30,6 +30,9 @@ type upstreamBillingRatesResponse struct {
 //
 // GET /api/v1/admin/accounts/upstream-billing-rates
 func (h *AccountHandler) GetUpstreamBillingRates(c *gin.Context) {
+	if !applyAccountSchedulingPoolFilter(c) {
+		return
+	}
 	if h.adminService == nil {
 		response.Error(c, http.StatusServiceUnavailable, "account service unavailable")
 		return

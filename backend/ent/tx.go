@@ -20,6 +20,14 @@ type Tx struct {
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
+	// AccountSchedulingLease is the client for interacting with the AccountSchedulingLease builders.
+	AccountSchedulingLease *AccountSchedulingLeaseClient
+	// AccountSchedulingMember is the client for interacting with the AccountSchedulingMember builders.
+	AccountSchedulingMember *AccountSchedulingMemberClient
+	// AccountSchedulingPool is the client for interacting with the AccountSchedulingPool builders.
+	AccountSchedulingPool *AccountSchedulingPoolClient
+	// AccountSchedulingSlot is the client for interacting with the AccountSchedulingSlot builders.
+	AccountSchedulingSlot *AccountSchedulingSlotClient
 	// Announcement is the client for interacting with the Announcement builders.
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
@@ -226,6 +234,10 @@ func (tx *Tx) init() {
 	tx.APIKey = NewAPIKeyClient(tx.config)
 	tx.Account = NewAccountClient(tx.config)
 	tx.AccountGroup = NewAccountGroupClient(tx.config)
+	tx.AccountSchedulingLease = NewAccountSchedulingLeaseClient(tx.config)
+	tx.AccountSchedulingMember = NewAccountSchedulingMemberClient(tx.config)
+	tx.AccountSchedulingPool = NewAccountSchedulingPoolClient(tx.config)
+	tx.AccountSchedulingSlot = NewAccountSchedulingSlotClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)

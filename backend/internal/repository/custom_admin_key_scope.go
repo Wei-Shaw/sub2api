@@ -26,7 +26,7 @@ func (r *accountRepository) ScopedAdminList(ctx context.Context, p pagination.Pa
 	if len(alternatives) == 0 {
 		return []service.Account{}, 0, nil
 	}
-	q := r.accountListFilteredQuery(platform, kind, status, search, 0, "").Where(dbaccount.Or(alternatives...))
+	q := r.accountListFilteredQuery(ctx, platform, kind, status, search, 0, "").Where(dbaccount.Or(alternatives...))
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -173,7 +173,7 @@ func (r *accountRepository) ScopedAdminCodexCandidates(ctx context.Context, iden
 			ID          int64
 			Credentials json.RawMessage
 		}
-		err := r.accountListFilteredQuery(service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "").
+		err := r.accountListFilteredQuery(ctx, service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "").
 			Where(dbaccount.Or(scope...), match).Order(dbaccount.ByID(entsql.OrderDesc())).Limit(1).
 			Select(dbaccount.FieldID).Aggregate(func(s *entsql.Selector) string {
 			c := s.C(dbaccount.FieldCredentials)

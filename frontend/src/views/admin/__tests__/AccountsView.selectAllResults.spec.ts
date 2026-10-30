@@ -3,6 +3,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import AccountsView from '../AccountsView.vue'
 
+vi.mock('@/api/admin/accountSchedulingPools', () => ({ accountSchedulingPoolsAPI: { list: vi.fn().mockResolvedValue([]) } }))
+
 const {
   listAccounts,
   listWithEtag,
@@ -96,8 +98,9 @@ const AccountBulkActionsBarStub = {
 }
 
 const AccountTableFiltersStub = {
+  props: ['filters'],
   emits: ['change'],
-  template: '<button data-test="change-filter" @click="$emit(\'change\')">change filter</button>'
+  template: '<div><button data-test="change-filter" @click="$emit(\'change\')">change filter</button><button data-test="set-pool" @click="filters.pool_id = \'7\'; $emit(\'change\')">filter pool</button></div>'
 }
 
 const mountView = () => mount(AccountsView, {
@@ -118,6 +121,7 @@ const mountView = () => mount(AccountsView, {
       AccountBulkActionsBar: AccountBulkActionsBarStub,
       AccountActionMenu: true,
       ImportDataModal: true,
+      AccountSchedulingPoolsModal: true,
       ReAuthAccountModal: true,
       AccountTestModal: true,
       AccountStatsModal: true,
@@ -219,6 +223,8 @@ describe('admin AccountsView select all filtered results', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    await wrapper.get('[data-test="set-pool"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="select-all-results"]').trigger('click')
     await flushPromises()
 
@@ -227,6 +233,7 @@ describe('admin AccountsView select all filtered results', () => {
     expect(wrapper.get('[data-test="all-results-selected"]').text()).toBe('true')
     expect(listAccounts).toHaveBeenCalledWith(1, 1000, expect.objectContaining({
       lite: '1',
+      pool_id: '7',
       include_scheduler_score: '0'
     }))
 

@@ -17,6 +17,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulinglease"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingmember"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingpool"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingslot"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -69,6 +73,14 @@ type Client struct {
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
+	// AccountSchedulingLease is the client for interacting with the AccountSchedulingLease builders.
+	AccountSchedulingLease *AccountSchedulingLeaseClient
+	// AccountSchedulingMember is the client for interacting with the AccountSchedulingMember builders.
+	AccountSchedulingMember *AccountSchedulingMemberClient
+	// AccountSchedulingPool is the client for interacting with the AccountSchedulingPool builders.
+	AccountSchedulingPool *AccountSchedulingPoolClient
+	// AccountSchedulingSlot is the client for interacting with the AccountSchedulingSlot builders.
+	AccountSchedulingSlot *AccountSchedulingSlotClient
 	// Announcement is the client for interacting with the Announcement builders.
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
@@ -155,6 +167,10 @@ func (c *Client) init() {
 	c.APIKey = NewAPIKeyClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
+	c.AccountSchedulingLease = NewAccountSchedulingLeaseClient(c.config)
+	c.AccountSchedulingMember = NewAccountSchedulingMemberClient(c.config)
+	c.AccountSchedulingPool = NewAccountSchedulingPoolClient(c.config)
+	c.AccountSchedulingSlot = NewAccountSchedulingSlotClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
@@ -286,6 +302,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
+		AccountSchedulingLease:        NewAccountSchedulingLeaseClient(cfg),
+		AccountSchedulingMember:       NewAccountSchedulingMemberClient(cfg),
+		AccountSchedulingPool:         NewAccountSchedulingPoolClient(cfg),
+		AccountSchedulingSlot:         NewAccountSchedulingSlotClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
@@ -344,6 +364,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
+		AccountSchedulingLease:        NewAccountSchedulingLeaseClient(cfg),
+		AccountSchedulingMember:       NewAccountSchedulingMemberClient(cfg),
+		AccountSchedulingPool:         NewAccountSchedulingPoolClient(cfg),
+		AccountSchedulingSlot:         NewAccountSchedulingSlotClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
@@ -409,16 +433,17 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.Account, c.AccountGroup, c.AccountSchedulingLease,
+		c.AccountSchedulingMember, c.AccountSchedulingPool, c.AccountSchedulingSlot,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -429,16 +454,17 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.Account, c.AccountGroup, c.AccountSchedulingLease,
+		c.AccountSchedulingMember, c.AccountSchedulingPool, c.AccountSchedulingSlot,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -454,6 +480,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
 		return c.AccountGroup.mutate(ctx, m)
+	case *AccountSchedulingLeaseMutation:
+		return c.AccountSchedulingLease.mutate(ctx, m)
+	case *AccountSchedulingMemberMutation:
+		return c.AccountSchedulingMember.mutate(ctx, m)
+	case *AccountSchedulingPoolMutation:
+		return c.AccountSchedulingPool.mutate(ctx, m)
+	case *AccountSchedulingSlotMutation:
+		return c.AccountSchedulingSlot.mutate(ctx, m)
 	case *AnnouncementMutation:
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
@@ -1058,6 +1092,538 @@ func (c *AccountGroupClient) mutate(ctx context.Context, m *AccountGroupMutation
 		return (&AccountGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AccountGroup mutation op: %q", m.Op())
+	}
+}
+
+// AccountSchedulingLeaseClient is a client for the AccountSchedulingLease schema.
+type AccountSchedulingLeaseClient struct {
+	config
+}
+
+// NewAccountSchedulingLeaseClient returns a client for the AccountSchedulingLease from the given config.
+func NewAccountSchedulingLeaseClient(c config) *AccountSchedulingLeaseClient {
+	return &AccountSchedulingLeaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountschedulinglease.Hooks(f(g(h())))`.
+func (c *AccountSchedulingLeaseClient) Use(hooks ...Hook) {
+	c.hooks.AccountSchedulingLease = append(c.hooks.AccountSchedulingLease, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountschedulinglease.Intercept(f(g(h())))`.
+func (c *AccountSchedulingLeaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountSchedulingLease = append(c.inters.AccountSchedulingLease, interceptors...)
+}
+
+// Create returns a builder for creating a AccountSchedulingLease entity.
+func (c *AccountSchedulingLeaseClient) Create() *AccountSchedulingLeaseCreate {
+	mutation := newAccountSchedulingLeaseMutation(c.config, OpCreate)
+	return &AccountSchedulingLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountSchedulingLease entities.
+func (c *AccountSchedulingLeaseClient) CreateBulk(builders ...*AccountSchedulingLeaseCreate) *AccountSchedulingLeaseCreateBulk {
+	return &AccountSchedulingLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountSchedulingLeaseClient) MapCreateBulk(slice any, setFunc func(*AccountSchedulingLeaseCreate, int)) *AccountSchedulingLeaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountSchedulingLeaseCreateBulk{err: fmt.Errorf("calling to AccountSchedulingLeaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountSchedulingLeaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountSchedulingLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountSchedulingLease.
+func (c *AccountSchedulingLeaseClient) Update() *AccountSchedulingLeaseUpdate {
+	mutation := newAccountSchedulingLeaseMutation(c.config, OpUpdate)
+	return &AccountSchedulingLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountSchedulingLeaseClient) UpdateOne(_m *AccountSchedulingLease) *AccountSchedulingLeaseUpdateOne {
+	mutation := newAccountSchedulingLeaseMutation(c.config, OpUpdateOne, withAccountSchedulingLease(_m))
+	return &AccountSchedulingLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountSchedulingLeaseClient) UpdateOneID(id int64) *AccountSchedulingLeaseUpdateOne {
+	mutation := newAccountSchedulingLeaseMutation(c.config, OpUpdateOne, withAccountSchedulingLeaseID(id))
+	return &AccountSchedulingLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountSchedulingLease.
+func (c *AccountSchedulingLeaseClient) Delete() *AccountSchedulingLeaseDelete {
+	mutation := newAccountSchedulingLeaseMutation(c.config, OpDelete)
+	return &AccountSchedulingLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountSchedulingLeaseClient) DeleteOne(_m *AccountSchedulingLease) *AccountSchedulingLeaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountSchedulingLeaseClient) DeleteOneID(id int64) *AccountSchedulingLeaseDeleteOne {
+	builder := c.Delete().Where(accountschedulinglease.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountSchedulingLeaseDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountSchedulingLease.
+func (c *AccountSchedulingLeaseClient) Query() *AccountSchedulingLeaseQuery {
+	return &AccountSchedulingLeaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountSchedulingLease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountSchedulingLease entity by its id.
+func (c *AccountSchedulingLeaseClient) Get(ctx context.Context, id int64) (*AccountSchedulingLease, error) {
+	return c.Query().Where(accountschedulinglease.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountSchedulingLeaseClient) GetX(ctx context.Context, id int64) *AccountSchedulingLease {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountSchedulingLeaseClient) Hooks() []Hook {
+	return c.hooks.AccountSchedulingLease
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountSchedulingLeaseClient) Interceptors() []Interceptor {
+	return c.inters.AccountSchedulingLease
+}
+
+func (c *AccountSchedulingLeaseClient) mutate(ctx context.Context, m *AccountSchedulingLeaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountSchedulingLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountSchedulingLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountSchedulingLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountSchedulingLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountSchedulingLease mutation op: %q", m.Op())
+	}
+}
+
+// AccountSchedulingMemberClient is a client for the AccountSchedulingMember schema.
+type AccountSchedulingMemberClient struct {
+	config
+}
+
+// NewAccountSchedulingMemberClient returns a client for the AccountSchedulingMember from the given config.
+func NewAccountSchedulingMemberClient(c config) *AccountSchedulingMemberClient {
+	return &AccountSchedulingMemberClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountschedulingmember.Hooks(f(g(h())))`.
+func (c *AccountSchedulingMemberClient) Use(hooks ...Hook) {
+	c.hooks.AccountSchedulingMember = append(c.hooks.AccountSchedulingMember, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountschedulingmember.Intercept(f(g(h())))`.
+func (c *AccountSchedulingMemberClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountSchedulingMember = append(c.inters.AccountSchedulingMember, interceptors...)
+}
+
+// Create returns a builder for creating a AccountSchedulingMember entity.
+func (c *AccountSchedulingMemberClient) Create() *AccountSchedulingMemberCreate {
+	mutation := newAccountSchedulingMemberMutation(c.config, OpCreate)
+	return &AccountSchedulingMemberCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountSchedulingMember entities.
+func (c *AccountSchedulingMemberClient) CreateBulk(builders ...*AccountSchedulingMemberCreate) *AccountSchedulingMemberCreateBulk {
+	return &AccountSchedulingMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountSchedulingMemberClient) MapCreateBulk(slice any, setFunc func(*AccountSchedulingMemberCreate, int)) *AccountSchedulingMemberCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountSchedulingMemberCreateBulk{err: fmt.Errorf("calling to AccountSchedulingMemberClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountSchedulingMemberCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountSchedulingMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountSchedulingMember.
+func (c *AccountSchedulingMemberClient) Update() *AccountSchedulingMemberUpdate {
+	mutation := newAccountSchedulingMemberMutation(c.config, OpUpdate)
+	return &AccountSchedulingMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountSchedulingMemberClient) UpdateOne(_m *AccountSchedulingMember) *AccountSchedulingMemberUpdateOne {
+	mutation := newAccountSchedulingMemberMutation(c.config, OpUpdateOne, withAccountSchedulingMember(_m))
+	return &AccountSchedulingMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountSchedulingMemberClient) UpdateOneID(id int64) *AccountSchedulingMemberUpdateOne {
+	mutation := newAccountSchedulingMemberMutation(c.config, OpUpdateOne, withAccountSchedulingMemberID(id))
+	return &AccountSchedulingMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountSchedulingMember.
+func (c *AccountSchedulingMemberClient) Delete() *AccountSchedulingMemberDelete {
+	mutation := newAccountSchedulingMemberMutation(c.config, OpDelete)
+	return &AccountSchedulingMemberDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountSchedulingMemberClient) DeleteOne(_m *AccountSchedulingMember) *AccountSchedulingMemberDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountSchedulingMemberClient) DeleteOneID(id int64) *AccountSchedulingMemberDeleteOne {
+	builder := c.Delete().Where(accountschedulingmember.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountSchedulingMemberDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountSchedulingMember.
+func (c *AccountSchedulingMemberClient) Query() *AccountSchedulingMemberQuery {
+	return &AccountSchedulingMemberQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountSchedulingMember},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountSchedulingMember entity by its id.
+func (c *AccountSchedulingMemberClient) Get(ctx context.Context, id int64) (*AccountSchedulingMember, error) {
+	return c.Query().Where(accountschedulingmember.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountSchedulingMemberClient) GetX(ctx context.Context, id int64) *AccountSchedulingMember {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountSchedulingMemberClient) Hooks() []Hook {
+	return c.hooks.AccountSchedulingMember
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountSchedulingMemberClient) Interceptors() []Interceptor {
+	return c.inters.AccountSchedulingMember
+}
+
+func (c *AccountSchedulingMemberClient) mutate(ctx context.Context, m *AccountSchedulingMemberMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountSchedulingMemberCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountSchedulingMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountSchedulingMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountSchedulingMemberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountSchedulingMember mutation op: %q", m.Op())
+	}
+}
+
+// AccountSchedulingPoolClient is a client for the AccountSchedulingPool schema.
+type AccountSchedulingPoolClient struct {
+	config
+}
+
+// NewAccountSchedulingPoolClient returns a client for the AccountSchedulingPool from the given config.
+func NewAccountSchedulingPoolClient(c config) *AccountSchedulingPoolClient {
+	return &AccountSchedulingPoolClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountschedulingpool.Hooks(f(g(h())))`.
+func (c *AccountSchedulingPoolClient) Use(hooks ...Hook) {
+	c.hooks.AccountSchedulingPool = append(c.hooks.AccountSchedulingPool, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountschedulingpool.Intercept(f(g(h())))`.
+func (c *AccountSchedulingPoolClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountSchedulingPool = append(c.inters.AccountSchedulingPool, interceptors...)
+}
+
+// Create returns a builder for creating a AccountSchedulingPool entity.
+func (c *AccountSchedulingPoolClient) Create() *AccountSchedulingPoolCreate {
+	mutation := newAccountSchedulingPoolMutation(c.config, OpCreate)
+	return &AccountSchedulingPoolCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountSchedulingPool entities.
+func (c *AccountSchedulingPoolClient) CreateBulk(builders ...*AccountSchedulingPoolCreate) *AccountSchedulingPoolCreateBulk {
+	return &AccountSchedulingPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountSchedulingPoolClient) MapCreateBulk(slice any, setFunc func(*AccountSchedulingPoolCreate, int)) *AccountSchedulingPoolCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountSchedulingPoolCreateBulk{err: fmt.Errorf("calling to AccountSchedulingPoolClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountSchedulingPoolCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountSchedulingPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountSchedulingPool.
+func (c *AccountSchedulingPoolClient) Update() *AccountSchedulingPoolUpdate {
+	mutation := newAccountSchedulingPoolMutation(c.config, OpUpdate)
+	return &AccountSchedulingPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountSchedulingPoolClient) UpdateOne(_m *AccountSchedulingPool) *AccountSchedulingPoolUpdateOne {
+	mutation := newAccountSchedulingPoolMutation(c.config, OpUpdateOne, withAccountSchedulingPool(_m))
+	return &AccountSchedulingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountSchedulingPoolClient) UpdateOneID(id int64) *AccountSchedulingPoolUpdateOne {
+	mutation := newAccountSchedulingPoolMutation(c.config, OpUpdateOne, withAccountSchedulingPoolID(id))
+	return &AccountSchedulingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountSchedulingPool.
+func (c *AccountSchedulingPoolClient) Delete() *AccountSchedulingPoolDelete {
+	mutation := newAccountSchedulingPoolMutation(c.config, OpDelete)
+	return &AccountSchedulingPoolDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountSchedulingPoolClient) DeleteOne(_m *AccountSchedulingPool) *AccountSchedulingPoolDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountSchedulingPoolClient) DeleteOneID(id int64) *AccountSchedulingPoolDeleteOne {
+	builder := c.Delete().Where(accountschedulingpool.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountSchedulingPoolDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountSchedulingPool.
+func (c *AccountSchedulingPoolClient) Query() *AccountSchedulingPoolQuery {
+	return &AccountSchedulingPoolQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountSchedulingPool},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountSchedulingPool entity by its id.
+func (c *AccountSchedulingPoolClient) Get(ctx context.Context, id int64) (*AccountSchedulingPool, error) {
+	return c.Query().Where(accountschedulingpool.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountSchedulingPoolClient) GetX(ctx context.Context, id int64) *AccountSchedulingPool {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountSchedulingPoolClient) Hooks() []Hook {
+	return c.hooks.AccountSchedulingPool
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountSchedulingPoolClient) Interceptors() []Interceptor {
+	return c.inters.AccountSchedulingPool
+}
+
+func (c *AccountSchedulingPoolClient) mutate(ctx context.Context, m *AccountSchedulingPoolMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountSchedulingPoolCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountSchedulingPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountSchedulingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountSchedulingPoolDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountSchedulingPool mutation op: %q", m.Op())
+	}
+}
+
+// AccountSchedulingSlotClient is a client for the AccountSchedulingSlot schema.
+type AccountSchedulingSlotClient struct {
+	config
+}
+
+// NewAccountSchedulingSlotClient returns a client for the AccountSchedulingSlot from the given config.
+func NewAccountSchedulingSlotClient(c config) *AccountSchedulingSlotClient {
+	return &AccountSchedulingSlotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountschedulingslot.Hooks(f(g(h())))`.
+func (c *AccountSchedulingSlotClient) Use(hooks ...Hook) {
+	c.hooks.AccountSchedulingSlot = append(c.hooks.AccountSchedulingSlot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountschedulingslot.Intercept(f(g(h())))`.
+func (c *AccountSchedulingSlotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountSchedulingSlot = append(c.inters.AccountSchedulingSlot, interceptors...)
+}
+
+// Create returns a builder for creating a AccountSchedulingSlot entity.
+func (c *AccountSchedulingSlotClient) Create() *AccountSchedulingSlotCreate {
+	mutation := newAccountSchedulingSlotMutation(c.config, OpCreate)
+	return &AccountSchedulingSlotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountSchedulingSlot entities.
+func (c *AccountSchedulingSlotClient) CreateBulk(builders ...*AccountSchedulingSlotCreate) *AccountSchedulingSlotCreateBulk {
+	return &AccountSchedulingSlotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountSchedulingSlotClient) MapCreateBulk(slice any, setFunc func(*AccountSchedulingSlotCreate, int)) *AccountSchedulingSlotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountSchedulingSlotCreateBulk{err: fmt.Errorf("calling to AccountSchedulingSlotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountSchedulingSlotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountSchedulingSlotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountSchedulingSlot.
+func (c *AccountSchedulingSlotClient) Update() *AccountSchedulingSlotUpdate {
+	mutation := newAccountSchedulingSlotMutation(c.config, OpUpdate)
+	return &AccountSchedulingSlotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountSchedulingSlotClient) UpdateOne(_m *AccountSchedulingSlot) *AccountSchedulingSlotUpdateOne {
+	mutation := newAccountSchedulingSlotMutation(c.config, OpUpdateOne, withAccountSchedulingSlot(_m))
+	return &AccountSchedulingSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountSchedulingSlotClient) UpdateOneID(id int64) *AccountSchedulingSlotUpdateOne {
+	mutation := newAccountSchedulingSlotMutation(c.config, OpUpdateOne, withAccountSchedulingSlotID(id))
+	return &AccountSchedulingSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountSchedulingSlot.
+func (c *AccountSchedulingSlotClient) Delete() *AccountSchedulingSlotDelete {
+	mutation := newAccountSchedulingSlotMutation(c.config, OpDelete)
+	return &AccountSchedulingSlotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountSchedulingSlotClient) DeleteOne(_m *AccountSchedulingSlot) *AccountSchedulingSlotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountSchedulingSlotClient) DeleteOneID(id int64) *AccountSchedulingSlotDeleteOne {
+	builder := c.Delete().Where(accountschedulingslot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountSchedulingSlotDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountSchedulingSlot.
+func (c *AccountSchedulingSlotClient) Query() *AccountSchedulingSlotQuery {
+	return &AccountSchedulingSlotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountSchedulingSlot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountSchedulingSlot entity by its id.
+func (c *AccountSchedulingSlotClient) Get(ctx context.Context, id int64) (*AccountSchedulingSlot, error) {
+	return c.Query().Where(accountschedulingslot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountSchedulingSlotClient) GetX(ctx context.Context, id int64) *AccountSchedulingSlot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountSchedulingSlotClient) Hooks() []Hook {
+	return c.hooks.AccountSchedulingSlot
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountSchedulingSlotClient) Interceptors() []Interceptor {
+	return c.inters.AccountSchedulingSlot
+}
+
+func (c *AccountSchedulingSlotClient) mutate(ctx context.Context, m *AccountSchedulingSlotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountSchedulingSlotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountSchedulingSlotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountSchedulingSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountSchedulingSlotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountSchedulingSlot mutation op: %q", m.Op())
 	}
 }
 
@@ -6841,28 +7407,30 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, AccountSchedulingLease, AccountSchedulingMember,
+		AccountSchedulingPool, AccountSchedulingSlot, Announcement, AnnouncementRead,
+		AuthIdentity, AuthIdentityChannel, BatchImageEvent, BatchImageItem,
+		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, AccountSchedulingLease, AccountSchedulingMember,
+		AccountSchedulingPool, AccountSchedulingSlot, Announcement, AnnouncementRead,
+		AuthIdentity, AuthIdentityChannel, BatchImageEvent, BatchImageItem,
+		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

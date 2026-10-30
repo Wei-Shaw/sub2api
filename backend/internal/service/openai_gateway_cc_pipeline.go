@@ -211,6 +211,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 避免 Gin context 在账号 failover 尝试之间残留旧端点。
 	SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
+	upstreamReq = upstreamReq.WithContext(WithAccountSchedulingInference(upstreamReq.Context()))
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Authorization", "Bearer "+bearerToken)
 	if stream {

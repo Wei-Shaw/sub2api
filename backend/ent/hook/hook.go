@@ -45,6 +45,54 @@ func (f AccountGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountGroupMutation", m)
 }
 
+// The AccountSchedulingLeaseFunc type is an adapter to allow the use of ordinary
+// function as AccountSchedulingLease mutator.
+type AccountSchedulingLeaseFunc func(context.Context, *ent.AccountSchedulingLeaseMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountSchedulingLeaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountSchedulingLeaseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountSchedulingLeaseMutation", m)
+}
+
+// The AccountSchedulingMemberFunc type is an adapter to allow the use of ordinary
+// function as AccountSchedulingMember mutator.
+type AccountSchedulingMemberFunc func(context.Context, *ent.AccountSchedulingMemberMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountSchedulingMemberFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountSchedulingMemberMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountSchedulingMemberMutation", m)
+}
+
+// The AccountSchedulingPoolFunc type is an adapter to allow the use of ordinary
+// function as AccountSchedulingPool mutator.
+type AccountSchedulingPoolFunc func(context.Context, *ent.AccountSchedulingPoolMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountSchedulingPoolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountSchedulingPoolMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountSchedulingPoolMutation", m)
+}
+
+// The AccountSchedulingSlotFunc type is an adapter to allow the use of ordinary
+// function as AccountSchedulingSlot mutator.
+type AccountSchedulingSlotFunc func(context.Context, *ent.AccountSchedulingSlotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountSchedulingSlotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountSchedulingSlotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountSchedulingSlotMutation", m)
+}
+
 // The AnnouncementFunc type is an adapter to allow the use of ordinary
 // function as Announcement mutator.
 type AnnouncementFunc func(context.Context, *ent.AnnouncementMutation) (ent.Value, error)

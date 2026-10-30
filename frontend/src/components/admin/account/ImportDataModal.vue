@@ -75,6 +75,8 @@
           </div>
         </div>
       </div>
+      <AccountImportNaming v-model="naming" :disabled="importing" />
+      <AccountPoolSelector v-if="show" id="import-account-pool" v-model="schedulingPoolId" :disabled="importing" />
     </form>
 
     <template #footer>
@@ -99,6 +101,9 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import AccountPoolSelector from '@/components/account/AccountPoolSelector.vue'
+import AccountImportNaming from '@/components/account/AccountImportNaming.vue'
+import type { AccountImportNaming as ImportNamingRule } from '@/api/admin/accounts'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload } from '@/types'
@@ -119,6 +124,8 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const importing = ref(false)
+const schedulingPoolId = ref<number | null>(null)
+const naming = ref<ImportNamingRule | null>(null)
 const files = ref<File[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
@@ -139,6 +146,8 @@ watch(
   () => props.show,
   (open) => {
     if (open) {
+      schedulingPoolId.value = null
+      naming.value = null
       files.value = []
       dragDepth.value = 0
       hasCreatedData.value = false
@@ -295,7 +304,9 @@ const handleImport = async () => {
 
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
-      skip_default_group_bind: true
+      skip_default_group_bind: true,
+      naming: naming.value ?? undefined,
+      scheduling_pool_id: schedulingPoolId.value ?? undefined
     })
 
     result.value = res

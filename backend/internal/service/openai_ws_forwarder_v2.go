@@ -38,6 +38,32 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
+	actualProxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		actualProxyURL = account.Proxy.URL()
+	}
+	schedulingLease, reused, schedulingErr := AccountSchedulingProvidedLease(ctx, account.ID, actualProxyURL)
+	if schedulingErr != nil {
+		return nil, schedulingErr
+	}
+	if !reused {
+		schedulingLease, schedulingErr = s.AcquireSchedulingPoolLease(ctx, account, actualProxyURL)
+	}
+	if schedulingErr != nil {
+		return nil, schedulingErr
+	}
+	if schedulingLease != nil {
+		if !reused {
+			defer schedulingLease.Release()
+		}
+		guardedContext, guardedCancel := context.WithCancelCause(ctx)
+		stopLeaseWatch := context.AfterFunc(schedulingLease.Context(), func() { guardedCancel(context.Cause(schedulingLease.Context())) })
+		defer func() { stopLeaseWatch(); guardedCancel(nil) }()
+		if schedulingLease.Context().Err() != nil {
+			return nil, ErrAccountSchedulingLeaseLost
+		}
+		ctx = guardedContext
+	}
 	responseModelObserver := &upstreamResponseModelObserver{}
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)

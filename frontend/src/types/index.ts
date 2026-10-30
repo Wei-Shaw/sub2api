@@ -1433,6 +1433,7 @@ export interface WindowStats {
 }
 
 export interface UsageProgress {
+  window_minutes?: number // Actual upstream duration; legacy response keys do not imply 5h/7d.
   utilization: number // Percentage (0-100+, 100 = 100%)
   resets_at: string | null
   remaining_seconds: number

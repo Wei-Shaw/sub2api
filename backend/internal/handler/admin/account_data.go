@@ -73,8 +73,10 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Naming               *service.AccountImportNaming `json:"naming"`
+	SchedulingPoolID     *int64                       `json:"scheduling_pool_id" binding:"omitempty,gt=0"`
+	Data                 DataPayload                  `json:"data"`
+	SkipDefaultGroupBind *bool                        `json:"skip_default_group_bind"`
 }
 
 type DataImportResult struct {
@@ -98,6 +100,9 @@ func buildProxyKey(protocol, host string, port int, username, password string) s
 }
 
 func (h *AccountHandler) ExportData(c *gin.Context) {
+	if !applyAccountSchedulingPoolFilter(c) {
+		return
+	}
 	ctx := c.Request.Context()
 
 	selectedIDs, err := parseAccountIDs(c)
@@ -250,6 +255,31 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+	if req.Naming != nil {
+		if _, err := req.Naming.Name(0); err != nil {
+			return result, err
+		}
+		accounts, err := h.listAccountsFiltered(ctx, "", "", "", "", 0, "", "id", "asc")
+		if err != nil {
+			return result, err
+		}
+		usedNames := make(map[string]bool, len(accounts))
+		for _, account := range accounts {
+			usedNames[account.Name] = true
+		}
+		// Validate the complete naming plan before creating accounts or proxies.
+		for i := range dataPayload.Accounts {
+			name, err := req.Naming.Name(int64(i))
+			if err != nil {
+				return result, err
+			}
+			if usedNames[name] {
+				return result, infraerrors.BadRequest("IMPORT_NAME_CONFLICT", fmt.Sprintf("imported account name %q already exists", name))
+			}
+			usedNames[name] = true
+			dataPayload.Accounts[i].Name = name
+		}
+	}
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -434,6 +464,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		enrichCredentialsFromIDToken(&item)
 
 		accountInput := &service.CreateAccountInput{
+			SchedulingPoolID:     service.AccountImportPoolID(req.SchedulingPoolID, item.Platform, item.Type),
 			Name:                 item.Name,
 			Notes:                item.Notes,
 			Platform:             item.Platform,

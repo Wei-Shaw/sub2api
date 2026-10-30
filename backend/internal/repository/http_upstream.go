@@ -162,9 +162,10 @@ type openAIHTTP2FallbackState struct {
 // 7. 代理变更时清空旧连接池，避免复用错误代理
 // 8. 账号并发数与连接池上限对应（账号隔离策略下）
 type httpUpstreamService struct {
-	cfg     *config.Config                  // 全局配置
-	mu      sync.RWMutex                    // 保护 clients map 的读写锁
-	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	accountSchedulingPools *service.AccountSchedulingPoolService
+	cfg                    *config.Config                  // 全局配置
+	mu                     sync.RWMutex                    // 保护 clients map 的读写锁
+	clients                map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
 	openAIHTTP2Fallbacks sync.Map
 }
@@ -201,6 +202,17 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	guarded, releaseScheduling, schedulingErr := s.beginAccountSchedulingRequest(req, proxyURL, accountID)
+	if schedulingErr != nil {
+		return nil, schedulingErr
+	}
+	req = guarded
+	schedulingTransferred := false
+	defer func() {
+		if !schedulingTransferred {
+			releaseScheduling()
+		}
+	}()
 	applyGrokCLIProxyHeaders(req)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
@@ -232,10 +244,12 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
 	resp.Body = wrapTrackedBody(resp.Body, func() {
+		releaseScheduling()
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
 
+	schedulingTransferred = true
 	return resp, nil
 }
 
@@ -252,6 +266,17 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	guarded, releaseScheduling, schedulingErr := s.beginAccountSchedulingRequest(req, proxyURL, accountID)
+	if schedulingErr != nil {
+		return nil, schedulingErr
+	}
+	req = guarded
+	schedulingTransferred := false
+	defer func() {
+		if !schedulingTransferred {
+			releaseScheduling()
+		}
+	}()
 	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
@@ -289,10 +314,12 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 
 	resp.Body = wrapTrackedBody(resp.Body, func() {
+		releaseScheduling()
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
 
+	schedulingTransferred = true
 	return resp, nil
 }
 

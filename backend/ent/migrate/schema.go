@@ -259,6 +259,89 @@ var (
 			},
 		},
 	}
+	// AccountSchedulingLeasesColumns holds the columns for the "account_scheduling_leases" table.
+	AccountSchedulingLeasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "lease_id", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "identity", Type: field.TypeString, Size: 64},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AccountSchedulingLeasesTable holds the schema information for the "account_scheduling_leases" table.
+	AccountSchedulingLeasesTable = &schema.Table{
+		Name:       "account_scheduling_leases",
+		Columns:    AccountSchedulingLeasesColumns,
+		PrimaryKey: []*schema.Column{AccountSchedulingLeasesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountschedulinglease_identity_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{AccountSchedulingLeasesColumns[4], AccountSchedulingLeasesColumns[5]},
+			},
+		},
+	}
+	// AccountSchedulingMembersColumns holds the columns for the "account_scheduling_members" table.
+	AccountSchedulingMembersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "pool_id", Type: field.TypeInt64},
+		{Name: "position", Type: field.TypeInt64, Default: 0},
+	}
+	// AccountSchedulingMembersTable holds the schema information for the "account_scheduling_members" table.
+	AccountSchedulingMembersTable = &schema.Table{
+		Name:       "account_scheduling_members",
+		Columns:    AccountSchedulingMembersColumns,
+		PrimaryKey: []*schema.Column{AccountSchedulingMembersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountschedulingmember_pool_id_position",
+				Unique:  false,
+				Columns: []*schema.Column{AccountSchedulingMembersColumns[4], AccountSchedulingMembersColumns[5]},
+			},
+		},
+	}
+	// AccountSchedulingPoolsColumns holds the columns for the "account_scheduling_pools" table.
+	AccountSchedulingPoolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+	}
+	// AccountSchedulingPoolsTable holds the schema information for the "account_scheduling_pools" table.
+	AccountSchedulingPoolsTable = &schema.Table{
+		Name:       "account_scheduling_pools",
+		Columns:    AccountSchedulingPoolsColumns,
+		PrimaryKey: []*schema.Column{AccountSchedulingPoolsColumns[0]},
+	}
+	// AccountSchedulingSlotsColumns holds the columns for the "account_scheduling_slots" table.
+	AccountSchedulingSlotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "identity", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "exit_group", Type: field.TypeString, Size: 100},
+		{Name: "state", Type: field.TypeString, Size: 20, Default: "standby"},
+		{Name: "reason", Type: field.TypeString, Size: 100, Default: "ready"},
+		{Name: "queued_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AccountSchedulingSlotsTable holds the schema information for the "account_scheduling_slots" table.
+	AccountSchedulingSlotsTable = &schema.Table{
+		Name:       "account_scheduling_slots",
+		Columns:    AccountSchedulingSlotsColumns,
+		PrimaryKey: []*schema.Column{AccountSchedulingSlotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountschedulingslot_exit_group_state",
+				Unique:  false,
+				Columns: []*schema.Column{AccountSchedulingSlotsColumns[5], AccountSchedulingSlotsColumns[6]},
+			},
+		},
+	}
 	// AnnouncementsColumns holds the columns for the "announcements" table.
 	AnnouncementsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2094,6 +2177,10 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AccountSchedulingLeasesTable,
+		AccountSchedulingMembersTable,
+		AccountSchedulingPoolsTable,
+		AccountSchedulingSlotsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
@@ -2148,6 +2235,18 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	AccountSchedulingLeasesTable.Annotation = &entsql.Annotation{
+		Table: "account_scheduling_leases",
+	}
+	AccountSchedulingMembersTable.Annotation = &entsql.Annotation{
+		Table: "account_scheduling_members",
+	}
+	AccountSchedulingPoolsTable.Annotation = &entsql.Annotation{
+		Table: "account_scheduling_pools",
+	}
+	AccountSchedulingSlotsTable.Annotation = &entsql.Annotation{
+		Table: "account_scheduling_slots",
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",

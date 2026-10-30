@@ -425,17 +425,18 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		SchedulingPoolID: input.SchedulingPoolID,
+		Name:             input.Name,
+		Notes:            normalizeAccountNotes(input.Notes),
+		Platform:         input.Platform,
+		Type:             input.Type,
+		Credentials:      input.Credentials,
+		Extra:            accountExtra,
+		ProxyID:          input.ProxyID,
+		Concurrency:      normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:         input.Priority,
+		Status:           StatusActive,
+		Schedulable:      true,
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -1243,6 +1244,13 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {
 	if filters == nil {
 		return nil, nil
+	}
+	if raw := strings.TrimSpace(filters.SchedulingPool); raw != "" {
+		poolID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || poolID < 0 {
+			return nil, fmt.Errorf("invalid account pool filter")
+		}
+		ctx = WithAccountSchedulingPoolFilter(ctx, &poolID)
 	}
 
 	groupID := int64(0)

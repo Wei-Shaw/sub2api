@@ -608,6 +608,27 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|36|900')
   })
 
+  it('renders the actual 30d duration in the legacy seven_day slot', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: null,
+      seven_day: { utilization: 100, window_minutes: 43200, resets_at: '2099-04-01T00:00:00Z', remaining_seconds: 3600 }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 30001, platform: 'openai', type: 'oauth' }) },
+      global: {
+        stubs: {
+          UsageProgressBar: { props: ['label', 'utilization'], template: '<div>{{ label }}|{{ utilization }}</div>' },
+          OpenAIQuotaResetCell: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('30d|100')
+    expect(wrapper.text()).not.toContain('7d|100')
+    wrapper.unmount()
+  })
+
   it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
     getUsage.mockResolvedValue({
       five_hour: {

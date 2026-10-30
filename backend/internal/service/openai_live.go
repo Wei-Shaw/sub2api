@@ -264,6 +264,9 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	request *LiveCallRequest,
 	attestation string,
 ) (*LiveCallCreated, error) {
+	if err := s.accountSchedulingPools.ValidateLiveAccount(ctx, account.ID, resolveAccountProxyURL(account)); err != nil {
+		return nil, err
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
@@ -279,7 +282,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	if err != nil {
 		return nil, err
 	}
-	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
+	reqCtx := WithAccountSchedulingInference(WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI)))
 	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatGPTLiveCallsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err

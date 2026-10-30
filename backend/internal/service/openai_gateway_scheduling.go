@@ -1508,7 +1508,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 		}
-		return accounts, nil
+		return s.filterAccountSchedulingPools(ctx, accounts)
 	}
 	var accounts []Account
 	var err error
@@ -1526,7 +1526,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 	}
-	return accounts, nil
+	return s.filterAccountSchedulingPools(ctx, accounts)
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
@@ -1714,6 +1714,12 @@ func (s *OpenAIGatewayService) filterOpenAIAccountsBySchedulingThreshold(ctx con
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountBlockedBySchedulingThreshold(ctx context.Context, account *Account) bool {
+	if s != nil && s.accountSchedulingPools != nil && account != nil {
+		allowed, err := s.accountSchedulingPools.Eligible(ctx, account)
+		if err != nil || !allowed {
+			return true
+		}
+	}
 	if s == nil || s.rateLimitService == nil || account == nil {
 		return false
 	}

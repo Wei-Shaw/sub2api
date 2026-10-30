@@ -127,7 +127,7 @@
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
-          label="5h"
+          :label="openAIWindowLabel(usageInfo.five_hour.window_minutes, '5h')"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
@@ -136,7 +136,7 @@
         />
         <UsageProgressBar
           v-if="usageInfo?.seven_day"
-          label="7d"
+          :label="openAIWindowLabel(usageInfo.seven_day.window_minutes, '7d')"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
@@ -704,6 +704,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { openAIWindowLabel } from '@/utils/openAIQuotaWindow'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'

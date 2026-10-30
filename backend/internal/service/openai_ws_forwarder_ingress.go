@@ -83,6 +83,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	poolCtx, poolHooks, releasePool, poolErr := s.withAccountSchedulingWS(ctx, account, hooks)
+	if poolErr != nil {
+		return poolErr
+	}
+	ctx, hooks = poolCtx, poolHooks
+	defer releasePool()
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)

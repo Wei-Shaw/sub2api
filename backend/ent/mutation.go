@@ -14,6 +14,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulinglease"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingmember"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingpool"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingslot"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -67,6 +71,10 @@ const (
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
+	TypeAccountSchedulingLease        = "AccountSchedulingLease"
+	TypeAccountSchedulingMember       = "AccountSchedulingMember"
+	TypeAccountSchedulingPool         = "AccountSchedulingPool"
+	TypeAccountSchedulingSlot         = "AccountSchedulingSlot"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
@@ -5568,6 +5576,2420 @@ func (m *AccountGroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccountGroup edge %s", name)
+}
+
+// AccountSchedulingLeaseMutation represents an operation that mutates the AccountSchedulingLease nodes in the graph.
+type AccountSchedulingLeaseMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	lease_id      *string
+	identity      *string
+	expires_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AccountSchedulingLease, error)
+	predicates    []predicate.AccountSchedulingLease
+}
+
+var _ ent.Mutation = (*AccountSchedulingLeaseMutation)(nil)
+
+// accountschedulingleaseOption allows management of the mutation configuration using functional options.
+type accountschedulingleaseOption func(*AccountSchedulingLeaseMutation)
+
+// newAccountSchedulingLeaseMutation creates new mutation for the AccountSchedulingLease entity.
+func newAccountSchedulingLeaseMutation(c config, op Op, opts ...accountschedulingleaseOption) *AccountSchedulingLeaseMutation {
+	m := &AccountSchedulingLeaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountSchedulingLease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountSchedulingLeaseID sets the ID field of the mutation.
+func withAccountSchedulingLeaseID(id int64) accountschedulingleaseOption {
+	return func(m *AccountSchedulingLeaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountSchedulingLease
+		)
+		m.oldValue = func(ctx context.Context) (*AccountSchedulingLease, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountSchedulingLease.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountSchedulingLease sets the old AccountSchedulingLease of the mutation.
+func withAccountSchedulingLease(node *AccountSchedulingLease) accountschedulingleaseOption {
+	return func(m *AccountSchedulingLeaseMutation) {
+		m.oldValue = func(context.Context) (*AccountSchedulingLease, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountSchedulingLeaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountSchedulingLeaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountSchedulingLeaseMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountSchedulingLeaseMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountSchedulingLease.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountSchedulingLeaseMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountSchedulingLeaseMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountSchedulingLease entity.
+// If the AccountSchedulingLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingLeaseMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountSchedulingLeaseMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountSchedulingLeaseMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountSchedulingLeaseMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountSchedulingLease entity.
+// If the AccountSchedulingLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingLeaseMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountSchedulingLeaseMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetLeaseID sets the "lease_id" field.
+func (m *AccountSchedulingLeaseMutation) SetLeaseID(s string) {
+	m.lease_id = &s
+}
+
+// LeaseID returns the value of the "lease_id" field in the mutation.
+func (m *AccountSchedulingLeaseMutation) LeaseID() (r string, exists bool) {
+	v := m.lease_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseID returns the old "lease_id" field's value of the AccountSchedulingLease entity.
+// If the AccountSchedulingLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingLeaseMutation) OldLeaseID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseID: %w", err)
+	}
+	return oldValue.LeaseID, nil
+}
+
+// ResetLeaseID resets all changes to the "lease_id" field.
+func (m *AccountSchedulingLeaseMutation) ResetLeaseID() {
+	m.lease_id = nil
+}
+
+// SetIdentity sets the "identity" field.
+func (m *AccountSchedulingLeaseMutation) SetIdentity(s string) {
+	m.identity = &s
+}
+
+// Identity returns the value of the "identity" field in the mutation.
+func (m *AccountSchedulingLeaseMutation) Identity() (r string, exists bool) {
+	v := m.identity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdentity returns the old "identity" field's value of the AccountSchedulingLease entity.
+// If the AccountSchedulingLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingLeaseMutation) OldIdentity(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdentity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdentity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdentity: %w", err)
+	}
+	return oldValue.Identity, nil
+}
+
+// ResetIdentity resets all changes to the "identity" field.
+func (m *AccountSchedulingLeaseMutation) ResetIdentity() {
+	m.identity = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *AccountSchedulingLeaseMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *AccountSchedulingLeaseMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the AccountSchedulingLease entity.
+// If the AccountSchedulingLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingLeaseMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *AccountSchedulingLeaseMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// Where appends a list predicates to the AccountSchedulingLeaseMutation builder.
+func (m *AccountSchedulingLeaseMutation) Where(ps ...predicate.AccountSchedulingLease) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountSchedulingLeaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountSchedulingLeaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountSchedulingLease, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountSchedulingLeaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountSchedulingLeaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountSchedulingLease).
+func (m *AccountSchedulingLeaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountSchedulingLeaseMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.created_at != nil {
+		fields = append(fields, accountschedulinglease.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountschedulinglease.FieldUpdatedAt)
+	}
+	if m.lease_id != nil {
+		fields = append(fields, accountschedulinglease.FieldLeaseID)
+	}
+	if m.identity != nil {
+		fields = append(fields, accountschedulinglease.FieldIdentity)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, accountschedulinglease.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountSchedulingLeaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulinglease.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountschedulinglease.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountschedulinglease.FieldLeaseID:
+		return m.LeaseID()
+	case accountschedulinglease.FieldIdentity:
+		return m.Identity()
+	case accountschedulinglease.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountSchedulingLeaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountschedulinglease.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountschedulinglease.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountschedulinglease.FieldLeaseID:
+		return m.OldLeaseID(ctx)
+	case accountschedulinglease.FieldIdentity:
+		return m.OldIdentity(ctx)
+	case accountschedulinglease.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountSchedulingLease field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingLeaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulinglease.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountschedulinglease.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountschedulinglease.FieldLeaseID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseID(v)
+		return nil
+	case accountschedulinglease.FieldIdentity:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdentity(v)
+		return nil
+	case accountschedulinglease.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingLease field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountSchedulingLeaseMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountSchedulingLeaseMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingLeaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown AccountSchedulingLease numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountSchedulingLeaseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountSchedulingLeaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountSchedulingLeaseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingLease nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountSchedulingLeaseMutation) ResetField(name string) error {
+	switch name {
+	case accountschedulinglease.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountschedulinglease.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountschedulinglease.FieldLeaseID:
+		m.ResetLeaseID()
+		return nil
+	case accountschedulinglease.FieldIdentity:
+		m.ResetIdentity()
+		return nil
+	case accountschedulinglease.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingLease field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountSchedulingLeaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountSchedulingLeaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountSchedulingLeaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountSchedulingLeaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountSchedulingLeaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountSchedulingLeaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountSchedulingLeaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingLease unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountSchedulingLeaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingLease edge %s", name)
+}
+
+// AccountSchedulingMemberMutation represents an operation that mutates the AccountSchedulingMember nodes in the graph.
+type AccountSchedulingMemberMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	account_id    *int64
+	addaccount_id *int64
+	pool_id       *int64
+	addpool_id    *int64
+	position      *int64
+	addposition   *int64
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AccountSchedulingMember, error)
+	predicates    []predicate.AccountSchedulingMember
+}
+
+var _ ent.Mutation = (*AccountSchedulingMemberMutation)(nil)
+
+// accountschedulingmemberOption allows management of the mutation configuration using functional options.
+type accountschedulingmemberOption func(*AccountSchedulingMemberMutation)
+
+// newAccountSchedulingMemberMutation creates new mutation for the AccountSchedulingMember entity.
+func newAccountSchedulingMemberMutation(c config, op Op, opts ...accountschedulingmemberOption) *AccountSchedulingMemberMutation {
+	m := &AccountSchedulingMemberMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountSchedulingMember,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountSchedulingMemberID sets the ID field of the mutation.
+func withAccountSchedulingMemberID(id int64) accountschedulingmemberOption {
+	return func(m *AccountSchedulingMemberMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountSchedulingMember
+		)
+		m.oldValue = func(ctx context.Context) (*AccountSchedulingMember, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountSchedulingMember.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountSchedulingMember sets the old AccountSchedulingMember of the mutation.
+func withAccountSchedulingMember(node *AccountSchedulingMember) accountschedulingmemberOption {
+	return func(m *AccountSchedulingMemberMutation) {
+		m.oldValue = func(context.Context) (*AccountSchedulingMember, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountSchedulingMemberMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountSchedulingMemberMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountSchedulingMemberMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountSchedulingMemberMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountSchedulingMember.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountSchedulingMemberMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountSchedulingMemberMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountSchedulingMember entity.
+// If the AccountSchedulingMember object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingMemberMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountSchedulingMemberMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountSchedulingMemberMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountSchedulingMemberMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountSchedulingMember entity.
+// If the AccountSchedulingMember object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingMemberMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountSchedulingMemberMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountSchedulingMemberMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountSchedulingMemberMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountSchedulingMember entity.
+// If the AccountSchedulingMember object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingMemberMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountSchedulingMemberMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountSchedulingMemberMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountSchedulingMemberMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetPoolID sets the "pool_id" field.
+func (m *AccountSchedulingMemberMutation) SetPoolID(i int64) {
+	m.pool_id = &i
+	m.addpool_id = nil
+}
+
+// PoolID returns the value of the "pool_id" field in the mutation.
+func (m *AccountSchedulingMemberMutation) PoolID() (r int64, exists bool) {
+	v := m.pool_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPoolID returns the old "pool_id" field's value of the AccountSchedulingMember entity.
+// If the AccountSchedulingMember object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingMemberMutation) OldPoolID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPoolID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPoolID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPoolID: %w", err)
+	}
+	return oldValue.PoolID, nil
+}
+
+// AddPoolID adds i to the "pool_id" field.
+func (m *AccountSchedulingMemberMutation) AddPoolID(i int64) {
+	if m.addpool_id != nil {
+		*m.addpool_id += i
+	} else {
+		m.addpool_id = &i
+	}
+}
+
+// AddedPoolID returns the value that was added to the "pool_id" field in this mutation.
+func (m *AccountSchedulingMemberMutation) AddedPoolID() (r int64, exists bool) {
+	v := m.addpool_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPoolID resets all changes to the "pool_id" field.
+func (m *AccountSchedulingMemberMutation) ResetPoolID() {
+	m.pool_id = nil
+	m.addpool_id = nil
+}
+
+// SetPosition sets the "position" field.
+func (m *AccountSchedulingMemberMutation) SetPosition(i int64) {
+	m.position = &i
+	m.addposition = nil
+}
+
+// Position returns the value of the "position" field in the mutation.
+func (m *AccountSchedulingMemberMutation) Position() (r int64, exists bool) {
+	v := m.position
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPosition returns the old "position" field's value of the AccountSchedulingMember entity.
+// If the AccountSchedulingMember object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingMemberMutation) OldPosition(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPosition is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPosition requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPosition: %w", err)
+	}
+	return oldValue.Position, nil
+}
+
+// AddPosition adds i to the "position" field.
+func (m *AccountSchedulingMemberMutation) AddPosition(i int64) {
+	if m.addposition != nil {
+		*m.addposition += i
+	} else {
+		m.addposition = &i
+	}
+}
+
+// AddedPosition returns the value that was added to the "position" field in this mutation.
+func (m *AccountSchedulingMemberMutation) AddedPosition() (r int64, exists bool) {
+	v := m.addposition
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPosition resets all changes to the "position" field.
+func (m *AccountSchedulingMemberMutation) ResetPosition() {
+	m.position = nil
+	m.addposition = nil
+}
+
+// Where appends a list predicates to the AccountSchedulingMemberMutation builder.
+func (m *AccountSchedulingMemberMutation) Where(ps ...predicate.AccountSchedulingMember) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountSchedulingMemberMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountSchedulingMemberMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountSchedulingMember, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountSchedulingMemberMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountSchedulingMemberMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountSchedulingMember).
+func (m *AccountSchedulingMemberMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountSchedulingMemberMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.created_at != nil {
+		fields = append(fields, accountschedulingmember.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountschedulingmember.FieldUpdatedAt)
+	}
+	if m.account_id != nil {
+		fields = append(fields, accountschedulingmember.FieldAccountID)
+	}
+	if m.pool_id != nil {
+		fields = append(fields, accountschedulingmember.FieldPoolID)
+	}
+	if m.position != nil {
+		fields = append(fields, accountschedulingmember.FieldPosition)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountSchedulingMemberMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulingmember.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountschedulingmember.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountschedulingmember.FieldAccountID:
+		return m.AccountID()
+	case accountschedulingmember.FieldPoolID:
+		return m.PoolID()
+	case accountschedulingmember.FieldPosition:
+		return m.Position()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountSchedulingMemberMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountschedulingmember.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountschedulingmember.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountschedulingmember.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountschedulingmember.FieldPoolID:
+		return m.OldPoolID(ctx)
+	case accountschedulingmember.FieldPosition:
+		return m.OldPosition(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountSchedulingMember field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingMemberMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulingmember.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountschedulingmember.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountschedulingmember.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountschedulingmember.FieldPoolID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPoolID(v)
+		return nil
+	case accountschedulingmember.FieldPosition:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPosition(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingMember field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountSchedulingMemberMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountschedulingmember.FieldAccountID)
+	}
+	if m.addpool_id != nil {
+		fields = append(fields, accountschedulingmember.FieldPoolID)
+	}
+	if m.addposition != nil {
+		fields = append(fields, accountschedulingmember.FieldPosition)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountSchedulingMemberMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulingmember.FieldAccountID:
+		return m.AddedAccountID()
+	case accountschedulingmember.FieldPoolID:
+		return m.AddedPoolID()
+	case accountschedulingmember.FieldPosition:
+		return m.AddedPosition()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingMemberMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulingmember.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountschedulingmember.FieldPoolID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPoolID(v)
+		return nil
+	case accountschedulingmember.FieldPosition:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPosition(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingMember numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountSchedulingMemberMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountSchedulingMemberMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountSchedulingMemberMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingMember nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountSchedulingMemberMutation) ResetField(name string) error {
+	switch name {
+	case accountschedulingmember.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountschedulingmember.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountschedulingmember.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountschedulingmember.FieldPoolID:
+		m.ResetPoolID()
+		return nil
+	case accountschedulingmember.FieldPosition:
+		m.ResetPosition()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingMember field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountSchedulingMemberMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountSchedulingMemberMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountSchedulingMemberMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountSchedulingMemberMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountSchedulingMemberMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountSchedulingMemberMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountSchedulingMemberMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingMember unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountSchedulingMemberMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingMember edge %s", name)
+}
+
+// AccountSchedulingPoolMutation represents an operation that mutates the AccountSchedulingPool nodes in the graph.
+type AccountSchedulingPoolMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	name          *string
+	enabled       *bool
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AccountSchedulingPool, error)
+	predicates    []predicate.AccountSchedulingPool
+}
+
+var _ ent.Mutation = (*AccountSchedulingPoolMutation)(nil)
+
+// accountschedulingpoolOption allows management of the mutation configuration using functional options.
+type accountschedulingpoolOption func(*AccountSchedulingPoolMutation)
+
+// newAccountSchedulingPoolMutation creates new mutation for the AccountSchedulingPool entity.
+func newAccountSchedulingPoolMutation(c config, op Op, opts ...accountschedulingpoolOption) *AccountSchedulingPoolMutation {
+	m := &AccountSchedulingPoolMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountSchedulingPool,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountSchedulingPoolID sets the ID field of the mutation.
+func withAccountSchedulingPoolID(id int64) accountschedulingpoolOption {
+	return func(m *AccountSchedulingPoolMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountSchedulingPool
+		)
+		m.oldValue = func(ctx context.Context) (*AccountSchedulingPool, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountSchedulingPool.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountSchedulingPool sets the old AccountSchedulingPool of the mutation.
+func withAccountSchedulingPool(node *AccountSchedulingPool) accountschedulingpoolOption {
+	return func(m *AccountSchedulingPoolMutation) {
+		m.oldValue = func(context.Context) (*AccountSchedulingPool, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountSchedulingPoolMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountSchedulingPoolMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountSchedulingPoolMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountSchedulingPoolMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountSchedulingPool.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountSchedulingPoolMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountSchedulingPoolMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountSchedulingPool entity.
+// If the AccountSchedulingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingPoolMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountSchedulingPoolMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountSchedulingPoolMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountSchedulingPoolMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountSchedulingPool entity.
+// If the AccountSchedulingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingPoolMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountSchedulingPoolMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetName sets the "name" field.
+func (m *AccountSchedulingPoolMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *AccountSchedulingPoolMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the AccountSchedulingPool entity.
+// If the AccountSchedulingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingPoolMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *AccountSchedulingPoolMutation) ResetName() {
+	m.name = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *AccountSchedulingPoolMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *AccountSchedulingPoolMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the AccountSchedulingPool entity.
+// If the AccountSchedulingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingPoolMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *AccountSchedulingPoolMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// Where appends a list predicates to the AccountSchedulingPoolMutation builder.
+func (m *AccountSchedulingPoolMutation) Where(ps ...predicate.AccountSchedulingPool) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountSchedulingPoolMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountSchedulingPoolMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountSchedulingPool, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountSchedulingPoolMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountSchedulingPoolMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountSchedulingPool).
+func (m *AccountSchedulingPoolMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountSchedulingPoolMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.created_at != nil {
+		fields = append(fields, accountschedulingpool.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountschedulingpool.FieldUpdatedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, accountschedulingpool.FieldName)
+	}
+	if m.enabled != nil {
+		fields = append(fields, accountschedulingpool.FieldEnabled)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountSchedulingPoolMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulingpool.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountschedulingpool.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountschedulingpool.FieldName:
+		return m.Name()
+	case accountschedulingpool.FieldEnabled:
+		return m.Enabled()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountSchedulingPoolMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountschedulingpool.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountschedulingpool.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountschedulingpool.FieldName:
+		return m.OldName(ctx)
+	case accountschedulingpool.FieldEnabled:
+		return m.OldEnabled(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountSchedulingPool field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingPoolMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulingpool.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountschedulingpool.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountschedulingpool.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case accountschedulingpool.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingPool field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountSchedulingPoolMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountSchedulingPoolMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingPoolMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown AccountSchedulingPool numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountSchedulingPoolMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountSchedulingPoolMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountSchedulingPoolMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingPool nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountSchedulingPoolMutation) ResetField(name string) error {
+	switch name {
+	case accountschedulingpool.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountschedulingpool.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountschedulingpool.FieldName:
+		m.ResetName()
+		return nil
+	case accountschedulingpool.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingPool field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountSchedulingPoolMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountSchedulingPoolMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountSchedulingPoolMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountSchedulingPoolMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountSchedulingPoolMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountSchedulingPoolMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountSchedulingPoolMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingPool unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountSchedulingPoolMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingPool edge %s", name)
+}
+
+// AccountSchedulingSlotMutation represents an operation that mutates the AccountSchedulingSlot nodes in the graph.
+type AccountSchedulingSlotMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	identity      *string
+	account_id    *int64
+	addaccount_id *int64
+	exit_group    *string
+	state         *string
+	reason        *string
+	queued_at     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AccountSchedulingSlot, error)
+	predicates    []predicate.AccountSchedulingSlot
+}
+
+var _ ent.Mutation = (*AccountSchedulingSlotMutation)(nil)
+
+// accountschedulingslotOption allows management of the mutation configuration using functional options.
+type accountschedulingslotOption func(*AccountSchedulingSlotMutation)
+
+// newAccountSchedulingSlotMutation creates new mutation for the AccountSchedulingSlot entity.
+func newAccountSchedulingSlotMutation(c config, op Op, opts ...accountschedulingslotOption) *AccountSchedulingSlotMutation {
+	m := &AccountSchedulingSlotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountSchedulingSlot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountSchedulingSlotID sets the ID field of the mutation.
+func withAccountSchedulingSlotID(id int64) accountschedulingslotOption {
+	return func(m *AccountSchedulingSlotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountSchedulingSlot
+		)
+		m.oldValue = func(ctx context.Context) (*AccountSchedulingSlot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountSchedulingSlot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountSchedulingSlot sets the old AccountSchedulingSlot of the mutation.
+func withAccountSchedulingSlot(node *AccountSchedulingSlot) accountschedulingslotOption {
+	return func(m *AccountSchedulingSlotMutation) {
+		m.oldValue = func(context.Context) (*AccountSchedulingSlot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountSchedulingSlotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountSchedulingSlotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountSchedulingSlotMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountSchedulingSlotMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountSchedulingSlot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountSchedulingSlotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountSchedulingSlotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountSchedulingSlotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountSchedulingSlotMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountSchedulingSlotMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountSchedulingSlotMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetIdentity sets the "identity" field.
+func (m *AccountSchedulingSlotMutation) SetIdentity(s string) {
+	m.identity = &s
+}
+
+// Identity returns the value of the "identity" field in the mutation.
+func (m *AccountSchedulingSlotMutation) Identity() (r string, exists bool) {
+	v := m.identity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdentity returns the old "identity" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldIdentity(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdentity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdentity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdentity: %w", err)
+	}
+	return oldValue.Identity, nil
+}
+
+// ResetIdentity resets all changes to the "identity" field.
+func (m *AccountSchedulingSlotMutation) ResetIdentity() {
+	m.identity = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountSchedulingSlotMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountSchedulingSlotMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountSchedulingSlotMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountSchedulingSlotMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountSchedulingSlotMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetExitGroup sets the "exit_group" field.
+func (m *AccountSchedulingSlotMutation) SetExitGroup(s string) {
+	m.exit_group = &s
+}
+
+// ExitGroup returns the value of the "exit_group" field in the mutation.
+func (m *AccountSchedulingSlotMutation) ExitGroup() (r string, exists bool) {
+	v := m.exit_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExitGroup returns the old "exit_group" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldExitGroup(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExitGroup is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExitGroup requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExitGroup: %w", err)
+	}
+	return oldValue.ExitGroup, nil
+}
+
+// ResetExitGroup resets all changes to the "exit_group" field.
+func (m *AccountSchedulingSlotMutation) ResetExitGroup() {
+	m.exit_group = nil
+}
+
+// SetState sets the "state" field.
+func (m *AccountSchedulingSlotMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *AccountSchedulingSlotMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *AccountSchedulingSlotMutation) ResetState() {
+	m.state = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *AccountSchedulingSlotMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *AccountSchedulingSlotMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *AccountSchedulingSlotMutation) ResetReason() {
+	m.reason = nil
+}
+
+// SetQueuedAt sets the "queued_at" field.
+func (m *AccountSchedulingSlotMutation) SetQueuedAt(t time.Time) {
+	m.queued_at = &t
+}
+
+// QueuedAt returns the value of the "queued_at" field in the mutation.
+func (m *AccountSchedulingSlotMutation) QueuedAt() (r time.Time, exists bool) {
+	v := m.queued_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQueuedAt returns the old "queued_at" field's value of the AccountSchedulingSlot entity.
+// If the AccountSchedulingSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountSchedulingSlotMutation) OldQueuedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQueuedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQueuedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQueuedAt: %w", err)
+	}
+	return oldValue.QueuedAt, nil
+}
+
+// ResetQueuedAt resets all changes to the "queued_at" field.
+func (m *AccountSchedulingSlotMutation) ResetQueuedAt() {
+	m.queued_at = nil
+}
+
+// Where appends a list predicates to the AccountSchedulingSlotMutation builder.
+func (m *AccountSchedulingSlotMutation) Where(ps ...predicate.AccountSchedulingSlot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountSchedulingSlotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountSchedulingSlotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountSchedulingSlot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountSchedulingSlotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountSchedulingSlotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountSchedulingSlot).
+func (m *AccountSchedulingSlotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountSchedulingSlotMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, accountschedulingslot.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountschedulingslot.FieldUpdatedAt)
+	}
+	if m.identity != nil {
+		fields = append(fields, accountschedulingslot.FieldIdentity)
+	}
+	if m.account_id != nil {
+		fields = append(fields, accountschedulingslot.FieldAccountID)
+	}
+	if m.exit_group != nil {
+		fields = append(fields, accountschedulingslot.FieldExitGroup)
+	}
+	if m.state != nil {
+		fields = append(fields, accountschedulingslot.FieldState)
+	}
+	if m.reason != nil {
+		fields = append(fields, accountschedulingslot.FieldReason)
+	}
+	if m.queued_at != nil {
+		fields = append(fields, accountschedulingslot.FieldQueuedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountSchedulingSlotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulingslot.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountschedulingslot.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountschedulingslot.FieldIdentity:
+		return m.Identity()
+	case accountschedulingslot.FieldAccountID:
+		return m.AccountID()
+	case accountschedulingslot.FieldExitGroup:
+		return m.ExitGroup()
+	case accountschedulingslot.FieldState:
+		return m.State()
+	case accountschedulingslot.FieldReason:
+		return m.Reason()
+	case accountschedulingslot.FieldQueuedAt:
+		return m.QueuedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountSchedulingSlotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountschedulingslot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountschedulingslot.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountschedulingslot.FieldIdentity:
+		return m.OldIdentity(ctx)
+	case accountschedulingslot.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountschedulingslot.FieldExitGroup:
+		return m.OldExitGroup(ctx)
+	case accountschedulingslot.FieldState:
+		return m.OldState(ctx)
+	case accountschedulingslot.FieldReason:
+		return m.OldReason(ctx)
+	case accountschedulingslot.FieldQueuedAt:
+		return m.OldQueuedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountSchedulingSlot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingSlotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulingslot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountschedulingslot.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountschedulingslot.FieldIdentity:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdentity(v)
+		return nil
+	case accountschedulingslot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountschedulingslot.FieldExitGroup:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExitGroup(v)
+		return nil
+	case accountschedulingslot.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case accountschedulingslot.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case accountschedulingslot.FieldQueuedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQueuedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingSlot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountSchedulingSlotMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountschedulingslot.FieldAccountID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountSchedulingSlotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountschedulingslot.FieldAccountID:
+		return m.AddedAccountID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountSchedulingSlotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountschedulingslot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingSlot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountSchedulingSlotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountSchedulingSlotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountSchedulingSlotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingSlot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountSchedulingSlotMutation) ResetField(name string) error {
+	switch name {
+	case accountschedulingslot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountschedulingslot.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountschedulingslot.FieldIdentity:
+		m.ResetIdentity()
+		return nil
+	case accountschedulingslot.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountschedulingslot.FieldExitGroup:
+		m.ResetExitGroup()
+		return nil
+	case accountschedulingslot.FieldState:
+		m.ResetState()
+		return nil
+	case accountschedulingslot.FieldReason:
+		m.ResetReason()
+		return nil
+	case accountschedulingslot.FieldQueuedAt:
+		m.ResetQueuedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountSchedulingSlot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountSchedulingSlotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountSchedulingSlotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountSchedulingSlotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountSchedulingSlotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountSchedulingSlotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountSchedulingSlotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountSchedulingSlotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingSlot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountSchedulingSlotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountSchedulingSlot edge %s", name)
 }
 
 // AnnouncementMutation represents an operation that mutates the Announcement nodes in the graph.

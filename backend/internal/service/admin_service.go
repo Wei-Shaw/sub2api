@@ -398,6 +398,7 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
+	SchedulingPoolID   *int64 // Optional management pool, bound atomically when creating the account.
 	ProxyMode          string // 受限写入在验权后选择代理。
 	Name               string
 	Notes              *string
@@ -473,12 +474,13 @@ type BulkUpdateAccountsInput struct {
 }
 
 type BulkUpdateAccountFilters struct {
-	Platform    string
-	Type        string
-	Status      string
-	Group       string
-	Search      string
-	PrivacyMode string
+	SchedulingPool string
+	Platform       string
+	Type           string
+	Status         string
+	Group          string
+	Search         string
+	PrivacyMode    string
 }
 
 // BulkUpdateAccountResult captures the result for a single account update.

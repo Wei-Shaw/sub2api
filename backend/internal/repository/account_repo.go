@@ -22,6 +22,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	dbaccountgroup "github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingmember"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -128,6 +129,33 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.Create(ctx, account)
+	}
+	if account != nil && account.SchedulingPoolID != nil {
+		tx, err := r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		client := r.client
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+		}
+		if _, err := client.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", accountSchedulingLockID); err != nil {
+			return err
+		}
+		if err := createAccountRecord(ctx, client, account); err != nil {
+			return err
+		}
+		if err := createSchedulingPoolMember(ctx, client, account); err != nil {
+			return err
+		}
+		if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+			return err
+		}
+		if tx != nil {
+			return tx.Commit()
+		}
+		return nil
 	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
@@ -410,6 +438,15 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 	}
 	if len(accounts) == 0 {
 		return nil, nil
+	}
+	// CRS updates must preserve local pool management. Keep this lookup narrow:
+	// regular scheduler snapshots do not need to carry pool membership.
+	members, err := r.client.AccountSchedulingMember.Query().Where(accountschedulingmember.AccountIDEQ(m.ID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(members) > 0 {
+		accounts[0].SchedulingPoolID = &members[0].PoolID
 	}
 	return &accounts[0], nil
 }
@@ -1037,8 +1074,20 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
 }
 
-func (r *accountRepository) accountListFilteredQuery(platform, accountType, status, search string, groupID int64, privacyMode string) *dbent.AccountQuery {
+func (r *accountRepository) accountListFilteredQuery(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) *dbent.AccountQuery {
 	q := r.client.Account.Query()
+	if poolID := service.AccountSchedulingPoolFilter(ctx); poolID != nil {
+		q = q.Where(func(selector *entsql.Selector) {
+			members := entsql.Table("account_scheduling_members")
+			subquery := entsql.Select(members.C("account_id")).From(members)
+			if *poolID > 0 {
+				subquery.Where(entsql.EQ(members.C("pool_id"), *poolID))
+				selector.Where(entsql.In(selector.C("id"), subquery))
+			} else {
+				selector.Where(entsql.NotIn(selector.C("id"), subquery))
+			}
+		})
+	}
 
 	if platform != "" {
 		q = q.Where(dbaccount.PlatformEQ(platform))
@@ -1134,7 +1183,7 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 }
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
-	q := r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode)
+	q := r.accountListFilteredQuery(ctx, platform, accountType, status, search, groupID, privacyMode)
 	// Clone before Count so interceptor-appended predicates (SoftDeleteMixin's
 	// deleted_at IS NULL) don't accumulate on the shared builder and pollute the
 	// subsequent list query. Same pattern used in group_repo/promo_code_repo/user_repo
@@ -1164,7 +1213,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 }
 
 func (r *accountRepository) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error) {
-	accounts, err := r.accountListFilteredQuery(platform, accountType, status, search, groupID, privacyMode).All(ctx)
+	accounts, err := r.accountListFilteredQuery(ctx, platform, accountType, status, search, groupID, privacyMode).All(ctx)
 	if err != nil {
 		return nil, err
 	}

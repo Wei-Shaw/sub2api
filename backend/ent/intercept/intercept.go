@@ -10,6 +10,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulinglease"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingmember"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingpool"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingslot"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -185,6 +189,114 @@ func (f TraverseAccountGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AccountGroupQuery", q)
+}
+
+// The AccountSchedulingLeaseFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountSchedulingLeaseFunc func(context.Context, *ent.AccountSchedulingLeaseQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountSchedulingLeaseFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountSchedulingLeaseQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingLeaseQuery", q)
+}
+
+// The TraverseAccountSchedulingLease type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountSchedulingLease func(context.Context, *ent.AccountSchedulingLeaseQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountSchedulingLease) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountSchedulingLease) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountSchedulingLeaseQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingLeaseQuery", q)
+}
+
+// The AccountSchedulingMemberFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountSchedulingMemberFunc func(context.Context, *ent.AccountSchedulingMemberQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountSchedulingMemberFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountSchedulingMemberQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingMemberQuery", q)
+}
+
+// The TraverseAccountSchedulingMember type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountSchedulingMember func(context.Context, *ent.AccountSchedulingMemberQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountSchedulingMember) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountSchedulingMember) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountSchedulingMemberQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingMemberQuery", q)
+}
+
+// The AccountSchedulingPoolFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountSchedulingPoolFunc func(context.Context, *ent.AccountSchedulingPoolQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountSchedulingPoolFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountSchedulingPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingPoolQuery", q)
+}
+
+// The TraverseAccountSchedulingPool type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountSchedulingPool func(context.Context, *ent.AccountSchedulingPoolQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountSchedulingPool) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountSchedulingPool) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountSchedulingPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingPoolQuery", q)
+}
+
+// The AccountSchedulingSlotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountSchedulingSlotFunc func(context.Context, *ent.AccountSchedulingSlotQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountSchedulingSlotFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountSchedulingSlotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingSlotQuery", q)
+}
+
+// The TraverseAccountSchedulingSlot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountSchedulingSlot func(context.Context, *ent.AccountSchedulingSlotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountSchedulingSlot) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountSchedulingSlot) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountSchedulingSlotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountSchedulingSlotQuery", q)
 }
 
 // The AnnouncementFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1168,6 +1280,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AccountQuery, predicate.Account, account.OrderOption]{typ: ent.TypeAccount, tq: q}, nil
 	case *ent.AccountGroupQuery:
 		return &query[*ent.AccountGroupQuery, predicate.AccountGroup, accountgroup.OrderOption]{typ: ent.TypeAccountGroup, tq: q}, nil
+	case *ent.AccountSchedulingLeaseQuery:
+		return &query[*ent.AccountSchedulingLeaseQuery, predicate.AccountSchedulingLease, accountschedulinglease.OrderOption]{typ: ent.TypeAccountSchedulingLease, tq: q}, nil
+	case *ent.AccountSchedulingMemberQuery:
+		return &query[*ent.AccountSchedulingMemberQuery, predicate.AccountSchedulingMember, accountschedulingmember.OrderOption]{typ: ent.TypeAccountSchedulingMember, tq: q}, nil
+	case *ent.AccountSchedulingPoolQuery:
+		return &query[*ent.AccountSchedulingPoolQuery, predicate.AccountSchedulingPool, accountschedulingpool.OrderOption]{typ: ent.TypeAccountSchedulingPool, tq: q}, nil
+	case *ent.AccountSchedulingSlotQuery:
+		return &query[*ent.AccountSchedulingSlotQuery, predicate.AccountSchedulingSlot, accountschedulingslot.OrderOption]{typ: ent.TypeAccountSchedulingSlot, tq: q}, nil
 	case *ent.AnnouncementQuery:
 		return &query[*ent.AnnouncementQuery, predicate.Announcement, announcement.OrderOption]{typ: ent.TypeAnnouncement, tq: q}, nil
 	case *ent.AnnouncementReadQuery:

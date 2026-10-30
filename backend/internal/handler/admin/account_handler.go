@@ -181,12 +181,13 @@ type BulkUpdateAccountsRequest struct {
 }
 
 type BulkUpdateAccountFilters struct {
-	Platform    string `json:"platform"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	Group       string `json:"group"`
-	Search      string `json:"search"`
-	PrivacyMode string `json:"privacy_mode"`
+	SchedulingPool string `json:"pool_id"`
+	Platform       string `json:"platform"`
+	Type           string `json:"type"`
+	Status         string `json:"status"`
+	Group          string `json:"group"`
+	Search         string `json:"search"`
+	PrivacyMode    string `json:"privacy_mode"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -641,6 +642,9 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
+	if !applyAccountSchedulingPoolFilter(c) {
+		return
+	}
 	page, pageSize := response.ParsePagination(c)
 	platform := c.Query("platform")
 	accountType := c.Query("type")
@@ -1277,11 +1281,14 @@ type TestAccountRequest struct {
 }
 
 type SyncFromCRSRequest struct {
-	BaseURL            string   `json:"base_url" binding:"required"`
-	Username           string   `json:"username" binding:"required"`
-	Password           string   `json:"password" binding:"required"`
-	SyncProxies        *bool    `json:"sync_proxies"`
-	SelectedAccountIDs []string `json:"selected_account_ids"`
+	Naming                  *service.AccountImportNaming `json:"naming"`
+	SchedulingPoolID        *int64                       `json:"scheduling_pool_id" binding:"omitempty,gt=0"`
+	PreserveLocalManagement bool                         `json:"preserve_local_management"`
+	BaseURL                 string                       `json:"base_url" binding:"required"`
+	Username                string                       `json:"username" binding:"required"`
+	Password                string                       `json:"password" binding:"required"`
+	SyncProxies             *bool                        `json:"sync_proxies"`
+	SelectedAccountIDs      []string                     `json:"selected_account_ids"`
 }
 
 type PreviewFromCRSRequest struct {
@@ -1359,6 +1366,10 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if _, err := req.Naming.Name(0); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// Default to syncing proxies (can be disabled by explicitly setting false)
 	syncProxies := true
@@ -1367,11 +1378,14 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 	}
 
 	result, err := h.crsSyncService.SyncFromCRS(c.Request.Context(), service.SyncFromCRSInput{
-		BaseURL:            req.BaseURL,
-		Username:           req.Username,
-		Password:           req.Password,
-		SyncProxies:        syncProxies,
-		SelectedAccountIDs: req.SelectedAccountIDs,
+		Naming:                  req.Naming,
+		SchedulingPoolID:        req.SchedulingPoolID,
+		PreserveLocalManagement: req.PreserveLocalManagement,
+		BaseURL:                 req.BaseURL,
+		Username:                req.Username,
+		Password:                req.Password,
+		SyncProxies:             syncProxies,
+		SelectedAccountIDs:      req.SelectedAccountIDs,
 	})
 	if err != nil {
 		// Provide detailed error message for CRS sync failures
@@ -2398,12 +2412,13 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		return nil
 	}
 	return &service.BulkUpdateAccountFilters{
-		Platform:    filters.Platform,
-		Type:        filters.Type,
-		Status:      filters.Status,
-		Group:       filters.Group,
-		Search:      filters.Search,
-		PrivacyMode: filters.PrivacyMode,
+		SchedulingPool: filters.SchedulingPool,
+		Platform:       filters.Platform,
+		Type:           filters.Type,
+		Status:         filters.Status,
+		Group:          filters.Group,
+		Search:         filters.Search,
+		PrivacyMode:    filters.PrivacyMode,
 	}
 }
 

@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :pools="schedulingPools"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -93,6 +94,10 @@
                           <Icon name="sync" size="sm" />
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openSchedulingPools">
+                        <span class="account-tools-menu-icon bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-300"><Icon name="grid" size="sm" /></span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.pools.title') }}</span>
                       </button>
                       <button class="account-tools-menu-item" @click="openImportData">
                         <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -242,6 +247,7 @@
                 </template>
               </HelpTooltip>
               <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span v-if="poolNamesByAccountId.get(row.id)" class="mt-1 self-start rounded bg-teal-50 px-1.5 py-0.5 text-xs text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">{{ poolNamesByAccountId.get(row.id) }}</span>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -463,6 +469,7 @@
     <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <AccountSchedulingPoolsModal :show="showSchedulingPools" :selected-account-ids="selIds" :proxies="proxies" @close="showSchedulingPools = false" @updated="handleSchedulingPoolsUpdated" />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -514,6 +521,8 @@ import AccountTableFilters from '@/components/admin/account/AccountTableFilters.
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
+import AccountSchedulingPoolsModal from '@/components/account/AccountSchedulingPoolsModal.vue'
+import { accountSchedulingPoolsAPI, type AccountSchedulingPool } from '@/api/admin/accountSchedulingPools'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -546,6 +555,15 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const schedulingPools = ref<AccountSchedulingPool[]>([])
+const showSchedulingPools = ref(false)
+const poolNamesByAccountId = computed(() => new Map(schedulingPools.value.flatMap(pool => (pool.members ?? []).map(member => [member.account_id, pool.name] as const))))
+const loadSchedulingPools = async () => {
+  try { schedulingPools.value = await accountSchedulingPoolsAPI.list() }
+  catch { /* The account table remains available when pool metadata cannot load. */ }
+}
+const openSchedulingPools = () => { showAccountToolsDropdown.value = false; showSchedulingPools.value = true }
+const handleSchedulingPoolsUpdated = async () => { await loadSchedulingPools(); reload() }
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []
@@ -1114,6 +1132,7 @@ const {
     type: '',
     privacy_mode: '',
     group: '',
+    pool_id: '',
     search: '',
     lite: '1',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
@@ -1210,6 +1229,7 @@ const buildUpstreamBillingRateFilters = () => {
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
     status: typeof rawParams.status === 'string' ? rawParams.status : '',
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
+    pool_id: typeof rawParams.pool_id === 'string' ? rawParams.pool_id : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: sortState.sort_by,
@@ -2094,6 +2114,7 @@ const buildBulkEditFilterSnapshot = () => {
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
     status: typeof rawParams.status === 'string' ? rawParams.status : '',
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
+    pool_id: typeof rawParams.pool_id === 'string' ? rawParams.pool_id : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
@@ -2171,6 +2192,7 @@ const buildAccountQueryFilters = () => ({
   type: params.type || '',
   status: params.status || '',
   group: params.group || '',
+  pool_id: params.pool_id || '',
   privacy_mode: params.privacy_mode || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
@@ -2178,6 +2200,8 @@ const buildAccountQueryFilters = () => ({
 })
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
+  // Pool membership is filtered by the server and membership changes reload the list.
+  // Pool metadata may be unavailable, so it must not remove otherwise valid rows here.
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
   if (filters.status) {
@@ -2576,6 +2600,7 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
+  loadSchedulingPools()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll()

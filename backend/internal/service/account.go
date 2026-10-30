@@ -22,6 +22,10 @@ import (
 )
 
 type Account struct {
+	// SchedulingPoolID carries membership intent for atomic imports and is
+	// hydrated on CRS lookup to preserve local management during resynchronization.
+	SchedulingPoolID *int64
+
 	ID                      int64
 	Name                    string
 	Notes                   *string

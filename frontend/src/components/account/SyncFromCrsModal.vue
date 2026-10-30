@@ -66,6 +66,13 @@
           />
           {{ t('admin.accounts.syncProxies') }}
         </label>
+      <AccountImportNaming v-model="naming" :disabled="syncing || previewing" />
+        <AccountPoolSelector v-if="show" id="crs-account-pool" v-model="schedulingPoolId" :disabled="syncing || previewing" />
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-300">
+          <input v-model="preserveLocal" type="checkbox" class="rounded border-gray-300" />
+          {{ t('admin.accounts.pools.preserveLocal') }}
+        </label>
+        <p class="text-xs text-gray-500">{{ t('admin.accounts.pools.preserveLocalHint') }}</p>
       </div>
     </form>
 
@@ -244,6 +251,9 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import AccountPoolSelector from '@/components/account/AccountPoolSelector.vue'
+import AccountImportNaming from '@/components/account/AccountImportNaming.vue'
+import type { AccountImportNaming as ImportNamingRule } from '@/api/admin/accounts'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { PreviewFromCRSResult } from '@/api/admin/accounts'
@@ -267,6 +277,9 @@ type Step = 'input' | 'preview' | 'result'
 const currentStep = ref<Step>('input')
 const previewing = ref(false)
 const syncing = ref(false)
+const schedulingPoolId = ref<number | null>(null)
+const naming = ref<ImportNamingRule | null>(null)
+const preserveLocal = ref(true)
 const previewResult = ref<PreviewFromCRSResult | null>(null)
 const selectedIds = ref(new Set<string>())
 const result = ref<Awaited<ReturnType<typeof adminAPI.accounts.syncFromCrs>> | null>(null)
@@ -302,6 +315,9 @@ watch(
       form.username = ''
       form.password = ''
       form.sync_proxies = true
+      schedulingPoolId.value = null
+      naming.value = null
+      preserveLocal.value = true
     }
   }
 )
@@ -375,7 +391,10 @@ const handleSync = async () => {
       username: form.username.trim(),
       password: form.password,
       sync_proxies: form.sync_proxies,
-      selected_account_ids: [...selectedIds.value]
+      selected_account_ids: [...selectedIds.value],
+      naming: naming.value ?? undefined,
+      scheduling_pool_id: schedulingPoolId.value ?? undefined,
+      preserve_local_management: preserveLocal.value
     })
     result.value = res
     currentStep.value = 'result'

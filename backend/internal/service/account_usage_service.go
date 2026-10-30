@@ -146,6 +146,9 @@ type WindowStats struct {
 
 // UsageProgress 使用量进度
 type UsageProgress struct {
+	// WindowMinutes is the upstream duration; the legacy five_hour/seven_day
+	// response keys are slots and may represent other windows, including 30d.
+	WindowMinutes    int          `json:"window_minutes,omitempty"`
 	Utilization      float64      `json:"utilization"`            // 使用率百分比 (0-100+，100表示100%)
 	ResetsAt         *time.Time   `json:"resets_at"`              // 重置时间
 	RemainingSeconds int          `json:"remaining_seconds"`      // 距重置剩余秒数
@@ -1508,10 +1511,13 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	}
 
 	progress := &UsageProgress{Utilization: parseExtraFloat64(usedRaw)}
+	if minutes := parseExtraInt(extra["codex_"+window+"_window_minutes"]); minutes > 0 && minutes <= 366*24*60 {
+		progress.WindowMinutes = minutes
+	}
 	if resetAtRaw, ok := extra[resetAtKey]; ok {
 		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
 			progress.ResetsAt = &resetAt
-			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			progress.RemainingSeconds = int(resetAt.Sub(now).Seconds())
 			if progress.RemainingSeconds < 0 {
 				progress.RemainingSeconds = 0
 			}
@@ -1527,7 +1533,7 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 			}
 			resetAt := base.Add(time.Duration(resetAfterSeconds) * time.Second)
 			progress.ResetsAt = &resetAt
-			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			progress.RemainingSeconds = int(resetAt.Sub(now).Seconds())
 			if progress.RemainingSeconds < 0 {
 				progress.RemainingSeconds = 0
 			}
@@ -1543,8 +1549,13 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 }
 
 func codexWindowStatsStart(progress *UsageProgress, fallbackWindow time.Duration, now time.Time) time.Time {
+	if progress != nil && progress.WindowMinutes > 0 && progress.WindowMinutes <= 366*24*60 {
+		fallbackWindow = time.Duration(progress.WindowMinutes) * time.Minute
+	}
 	if progress != nil && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
-		return progress.ResetsAt.Add(-fallbackWindow)
+		if start := progress.ResetsAt.Add(-fallbackWindow); !start.After(now) {
+			return start
+		}
 	}
 	return now.Add(-fallbackWindow)
 }

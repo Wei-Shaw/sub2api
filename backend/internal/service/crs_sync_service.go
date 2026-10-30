@@ -57,6 +57,9 @@ func guardCRSShadowParentInvariant(ctx context.Context, repo AccountRepository, 
 	if existing == nil {
 		return nil
 	}
+	if existing.SchedulingPoolID != nil && (newPlatform != PlatformOpenAI || newType != AccountTypeOAuth) {
+		return fmt.Errorf("cannot change a pool member away from OpenAI OAuth; remove it from its pool first")
+	}
 	// 目标仍是合法影子父(OpenAI OAuth)→ 放行(常见:OpenAI OAuth 分支重新同步母账号),免去一次查询。
 	if newPlatform == PlatformOpenAI && newType == AccountTypeOAuth {
 		return nil
@@ -72,11 +75,14 @@ func guardCRSShadowParentInvariant(ctx context.Context, repo AccountRepository, 
 }
 
 type SyncFromCRSInput struct {
-	BaseURL            string
-	Username           string
-	Password           string
-	SyncProxies        bool
-	SelectedAccountIDs []string // if non-empty, only create new accounts with these CRS IDs
+	Naming                  *AccountImportNaming
+	SchedulingPoolID        *int64
+	PreserveLocalManagement bool // Keep local names, status and manual scheduling switches on existing accounts.
+	BaseURL                 string
+	Username                string
+	Password                string
+	SyncProxies             bool
+	SelectedAccountIDs      []string // if non-empty, only create new accounts with these CRS IDs
 }
 
 type SyncFromCRSItemResult struct {
@@ -261,6 +267,36 @@ func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, 
 }
 
 func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
+	if _, err := input.Naming.Name(0); err != nil {
+		return nil, err
+	}
+	var namingIndex int64
+	usedNames := make(map[string]bool)
+	if input.Naming != nil {
+		accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, account := range accounts {
+			usedNames[account.Name] = true
+		}
+	}
+	createImportedAccount := func(account *Account) error {
+		account.SchedulingPoolID = AccountImportPoolID(input.SchedulingPoolID, account.Platform, account.Type)
+		if input.Naming != nil {
+			name, err := input.Naming.Name(namingIndex)
+			namingIndex++
+			if err != nil {
+				return err
+			}
+			if usedNames[name] {
+				return fmt.Errorf("imported account name %q already exists", name)
+			}
+			account.Name = name
+			usedNames[name] = true
+		}
+		return s.accountRepo.Create(ctx, account)
+	}
 	exported, err := s.fetchCRSExport(ctx, input.BaseURL, input.Username, input.Password)
 	if err != nil {
 		return nil, err
@@ -390,7 +426,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -403,6 +439,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 					_ = persistAccountCredentials(ctx, s.accountRepo, account, refreshedCreds)
 				}
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -420,7 +457,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 
 		// Update existing
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformAnthropic
 		existing.Type = targetType
 		existing.Credentials = credentials
@@ -429,8 +468,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
-		existing.Status = status
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = status
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -526,13 +567,14 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
 				result.Items = append(result.Items, item)
 				continue
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -549,7 +591,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformAnthropic
 		existing.Type = AccountTypeAPIKey
 		existing.Credentials = credentials
@@ -558,8 +602,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
-		existing.Status = status
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = status
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -681,7 +727,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -692,6 +738,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			if refreshedCreds := s.refreshOAuthToken(ctx, account); refreshedCreds != nil {
 				_ = persistAccountCredentials(ctx, s.accountRepo, account, refreshedCreds)
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -699,7 +746,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeOAuth
 		existing.Credentials = credentials
@@ -708,8 +757,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
-		existing.Status = status
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = status
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -832,13 +883,14 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
 				result.Items = append(result.Items, item)
 				continue
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -856,7 +908,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeAPIKey
 		existing.Credentials = credentials
@@ -865,8 +919,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = concurrency
 		existing.Priority = priority
-		existing.Status = status
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = status
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -962,7 +1018,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -972,6 +1028,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			if refreshedCreds := s.refreshOAuthToken(ctx, account); refreshedCreds != nil {
 				_ = persistAccountCredentials(ctx, s.accountRepo, account, refreshedCreds)
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -988,7 +1045,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformGemini
 		existing.Type = AccountTypeOAuth
 		existing.Credentials = credentials
@@ -997,8 +1056,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = 3
 		existing.Priority = clampPriority(src.Priority)
-		existing.Status = mapCRSStatus(src.IsActive, src.Status)
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = mapCRSStatus(src.IsActive, src.Status)
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
@@ -1092,13 +1153,14 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.accountRepo.Create(ctx, account); err != nil {
+			if err := createImportedAccount(account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
 				result.Items = append(result.Items, item)
 				continue
 			}
+			item.Name = account.Name
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -1115,7 +1177,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 
 		existing.Extra = extra
-		existing.Name = defaultName(src.Name, src.ID)
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Name = defaultName(src.Name, src.ID)
+		}
 		existing.Platform = PlatformGemini
 		existing.Type = AccountTypeAPIKey
 		existing.Credentials = credentials
@@ -1124,8 +1188,10 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		}
 		existing.Concurrency = 3
 		existing.Priority = clampPriority(src.Priority)
-		existing.Status = mapCRSStatus(src.IsActive, src.Status)
-		existing.Schedulable = src.Schedulable
+		if !input.PreserveLocalManagement && existing.SchedulingPoolID == nil {
+			existing.Status = mapCRSStatus(src.IsActive, src.Status)
+			existing.Schedulable = src.Schedulable
+		}
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"

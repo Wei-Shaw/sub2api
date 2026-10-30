@@ -47,6 +47,7 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
+		registerAccountSchedulingPoolRoutes(admin, h)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
@@ -355,6 +356,21 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.DELETE("/:id/rpm-overrides", h.Admin.Group.ClearGroupRPMOverrides)
 		groups.GET("/:id/api-keys", h.Admin.Group.GetGroupAPIKeys)
 	}
+}
+
+func registerAccountSchedulingPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.AccountSchedulingPool == nil {
+		return
+	}
+	pools := admin.Group("/account-scheduling-pools")
+	pools.GET("", h.Admin.AccountSchedulingPool.List)
+	pools.POST("", h.Admin.AccountSchedulingPool.Create)
+	pools.GET("/policy", h.Admin.AccountSchedulingPool.GetPolicy)
+	pools.PUT("/policy", h.Admin.AccountSchedulingPool.UpdatePolicy)
+	pools.GET("/members", h.Admin.AccountSchedulingPool.Members)
+	pools.PUT("/members", h.Admin.AccountSchedulingPool.SetMembers)
+	pools.PUT("/:id", h.Admin.AccountSchedulingPool.Update)
+	pools.DELETE("/:id", h.Admin.AccountSchedulingPool.Delete)
 }
 
 func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {

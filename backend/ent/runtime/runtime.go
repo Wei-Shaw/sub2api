@@ -7,6 +7,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulinglease"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingmember"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingpool"
+	"github.com/Wei-Shaw/sub2api/ent/accountschedulingslot"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -266,6 +270,124 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	accountschedulingleaseMixin := schema.AccountSchedulingLease{}.Mixin()
+	accountschedulingleaseMixinFields0 := accountschedulingleaseMixin[0].Fields()
+	_ = accountschedulingleaseMixinFields0
+	accountschedulingleaseFields := schema.AccountSchedulingLease{}.Fields()
+	_ = accountschedulingleaseFields
+	// accountschedulingleaseDescCreatedAt is the schema descriptor for created_at field.
+	accountschedulingleaseDescCreatedAt := accountschedulingleaseMixinFields0[0].Descriptor()
+	// accountschedulinglease.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountschedulinglease.DefaultCreatedAt = accountschedulingleaseDescCreatedAt.Default.(func() time.Time)
+	// accountschedulingleaseDescUpdatedAt is the schema descriptor for updated_at field.
+	accountschedulingleaseDescUpdatedAt := accountschedulingleaseMixinFields0[1].Descriptor()
+	// accountschedulinglease.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountschedulinglease.DefaultUpdatedAt = accountschedulingleaseDescUpdatedAt.Default.(func() time.Time)
+	// accountschedulinglease.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountschedulinglease.UpdateDefaultUpdatedAt = accountschedulingleaseDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountschedulingleaseDescLeaseID is the schema descriptor for lease_id field.
+	accountschedulingleaseDescLeaseID := accountschedulingleaseFields[0].Descriptor()
+	// accountschedulinglease.LeaseIDValidator is a validator for the "lease_id" field. It is called by the builders before save.
+	accountschedulinglease.LeaseIDValidator = accountschedulingleaseDescLeaseID.Validators[0].(func(string) error)
+	// accountschedulingleaseDescIdentity is the schema descriptor for identity field.
+	accountschedulingleaseDescIdentity := accountschedulingleaseFields[1].Descriptor()
+	// accountschedulinglease.IdentityValidator is a validator for the "identity" field. It is called by the builders before save.
+	accountschedulinglease.IdentityValidator = accountschedulingleaseDescIdentity.Validators[0].(func(string) error)
+	accountschedulingmemberMixin := schema.AccountSchedulingMember{}.Mixin()
+	accountschedulingmemberMixinFields0 := accountschedulingmemberMixin[0].Fields()
+	_ = accountschedulingmemberMixinFields0
+	accountschedulingmemberFields := schema.AccountSchedulingMember{}.Fields()
+	_ = accountschedulingmemberFields
+	// accountschedulingmemberDescCreatedAt is the schema descriptor for created_at field.
+	accountschedulingmemberDescCreatedAt := accountschedulingmemberMixinFields0[0].Descriptor()
+	// accountschedulingmember.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountschedulingmember.DefaultCreatedAt = accountschedulingmemberDescCreatedAt.Default.(func() time.Time)
+	// accountschedulingmemberDescUpdatedAt is the schema descriptor for updated_at field.
+	accountschedulingmemberDescUpdatedAt := accountschedulingmemberMixinFields0[1].Descriptor()
+	// accountschedulingmember.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountschedulingmember.DefaultUpdatedAt = accountschedulingmemberDescUpdatedAt.Default.(func() time.Time)
+	// accountschedulingmember.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountschedulingmember.UpdateDefaultUpdatedAt = accountschedulingmemberDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountschedulingmemberDescPosition is the schema descriptor for position field.
+	accountschedulingmemberDescPosition := accountschedulingmemberFields[2].Descriptor()
+	// accountschedulingmember.DefaultPosition holds the default value on creation for the position field.
+	accountschedulingmember.DefaultPosition = accountschedulingmemberDescPosition.Default.(int64)
+	accountschedulingpoolMixin := schema.AccountSchedulingPool{}.Mixin()
+	accountschedulingpoolMixinFields0 := accountschedulingpoolMixin[0].Fields()
+	_ = accountschedulingpoolMixinFields0
+	accountschedulingpoolFields := schema.AccountSchedulingPool{}.Fields()
+	_ = accountschedulingpoolFields
+	// accountschedulingpoolDescCreatedAt is the schema descriptor for created_at field.
+	accountschedulingpoolDescCreatedAt := accountschedulingpoolMixinFields0[0].Descriptor()
+	// accountschedulingpool.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountschedulingpool.DefaultCreatedAt = accountschedulingpoolDescCreatedAt.Default.(func() time.Time)
+	// accountschedulingpoolDescUpdatedAt is the schema descriptor for updated_at field.
+	accountschedulingpoolDescUpdatedAt := accountschedulingpoolMixinFields0[1].Descriptor()
+	// accountschedulingpool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountschedulingpool.DefaultUpdatedAt = accountschedulingpoolDescUpdatedAt.Default.(func() time.Time)
+	// accountschedulingpool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountschedulingpool.UpdateDefaultUpdatedAt = accountschedulingpoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountschedulingpoolDescName is the schema descriptor for name field.
+	accountschedulingpoolDescName := accountschedulingpoolFields[0].Descriptor()
+	// accountschedulingpool.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	accountschedulingpool.NameValidator = func() func(string) error {
+		validators := accountschedulingpoolDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// accountschedulingpoolDescEnabled is the schema descriptor for enabled field.
+	accountschedulingpoolDescEnabled := accountschedulingpoolFields[1].Descriptor()
+	// accountschedulingpool.DefaultEnabled holds the default value on creation for the enabled field.
+	accountschedulingpool.DefaultEnabled = accountschedulingpoolDescEnabled.Default.(bool)
+	accountschedulingslotMixin := schema.AccountSchedulingSlot{}.Mixin()
+	accountschedulingslotMixinFields0 := accountschedulingslotMixin[0].Fields()
+	_ = accountschedulingslotMixinFields0
+	accountschedulingslotFields := schema.AccountSchedulingSlot{}.Fields()
+	_ = accountschedulingslotFields
+	// accountschedulingslotDescCreatedAt is the schema descriptor for created_at field.
+	accountschedulingslotDescCreatedAt := accountschedulingslotMixinFields0[0].Descriptor()
+	// accountschedulingslot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountschedulingslot.DefaultCreatedAt = accountschedulingslotDescCreatedAt.Default.(func() time.Time)
+	// accountschedulingslotDescUpdatedAt is the schema descriptor for updated_at field.
+	accountschedulingslotDescUpdatedAt := accountschedulingslotMixinFields0[1].Descriptor()
+	// accountschedulingslot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountschedulingslot.DefaultUpdatedAt = accountschedulingslotDescUpdatedAt.Default.(func() time.Time)
+	// accountschedulingslot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountschedulingslot.UpdateDefaultUpdatedAt = accountschedulingslotDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountschedulingslotDescIdentity is the schema descriptor for identity field.
+	accountschedulingslotDescIdentity := accountschedulingslotFields[0].Descriptor()
+	// accountschedulingslot.IdentityValidator is a validator for the "identity" field. It is called by the builders before save.
+	accountschedulingslot.IdentityValidator = accountschedulingslotDescIdentity.Validators[0].(func(string) error)
+	// accountschedulingslotDescExitGroup is the schema descriptor for exit_group field.
+	accountschedulingslotDescExitGroup := accountschedulingslotFields[2].Descriptor()
+	// accountschedulingslot.ExitGroupValidator is a validator for the "exit_group" field. It is called by the builders before save.
+	accountschedulingslot.ExitGroupValidator = accountschedulingslotDescExitGroup.Validators[0].(func(string) error)
+	// accountschedulingslotDescState is the schema descriptor for state field.
+	accountschedulingslotDescState := accountschedulingslotFields[3].Descriptor()
+	// accountschedulingslot.DefaultState holds the default value on creation for the state field.
+	accountschedulingslot.DefaultState = accountschedulingslotDescState.Default.(string)
+	// accountschedulingslot.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	accountschedulingslot.StateValidator = accountschedulingslotDescState.Validators[0].(func(string) error)
+	// accountschedulingslotDescReason is the schema descriptor for reason field.
+	accountschedulingslotDescReason := accountschedulingslotFields[4].Descriptor()
+	// accountschedulingslot.DefaultReason holds the default value on creation for the reason field.
+	accountschedulingslot.DefaultReason = accountschedulingslotDescReason.Default.(string)
+	// accountschedulingslot.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	accountschedulingslot.ReasonValidator = accountschedulingslotDescReason.Validators[0].(func(string) error)
+	// accountschedulingslotDescQueuedAt is the schema descriptor for queued_at field.
+	accountschedulingslotDescQueuedAt := accountschedulingslotFields[5].Descriptor()
+	// accountschedulingslot.DefaultQueuedAt holds the default value on creation for the queued_at field.
+	accountschedulingslot.DefaultQueuedAt = accountschedulingslotDescQueuedAt.Default.(func() time.Time)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.
