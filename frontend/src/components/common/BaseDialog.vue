@@ -11,16 +11,27 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop>
-          <!-- Header -->
-          <div class="modal-header">
+        <div
+          ref="dialogRef"
+          :class="['modal-content', widthClasses]"
+          :style="sheetDragStyle"
+          @click.stop
+        >
+          <!-- Header (doubles as the swipe-down handle on small screens) -->
+          <div
+            class="modal-header"
+            @touchstart.passive="onSheetDragStart"
+            @touchmove.passive="onSheetDragMove"
+            @touchend="onSheetDragEnd"
+            @touchcancel="onSheetDragEnd"
+          >
             <h3 :id="dialogId" class="modal-title">
               {{ title }}
             </h3>
             <button
               v-if="showCloseButton"
               @click="emit('close')"
-              class="-mr-2 rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:ring-offset-2 dark:text-dark-500 dark:hover:bg-dark-700 dark:hover:text-dark-300 dark:focus-visible:ring-offset-dark-900"
+              class="-mr-2 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:ring-offset-2 dark:text-dark-500 dark:hover:bg-dark-700 dark:hover:text-dark-300 dark:focus-visible:ring-offset-dark-900"
               aria-label="Close modal"
             >
               <Icon name="x" size="md" />
@@ -108,6 +119,35 @@ const handleClose = () => {
   if (props.closeOnClickOutside) {
     emit('close')
   }
+}
+
+// 小屏底部抽屉：下拉标题栏关闭，仅在本身可关闭（有关闭按钮）时生效
+const SHEET_BREAKPOINT = 640
+const SHEET_CLOSE_DISTANCE = 96
+const sheetDragOffset = ref(0)
+let sheetDragStartY: number | null = null
+
+const sheetDragStyle = computed(() => {
+  if (sheetDragOffset.value <= 0) return undefined
+  return { transform: `translateY(${sheetDragOffset.value}px)`, transition: 'none' }
+})
+
+const onSheetDragStart = (event: TouchEvent) => {
+  if (!props.showCloseButton || window.innerWidth >= SHEET_BREAKPOINT) return
+  sheetDragStartY = event.touches[0]?.clientY ?? null
+}
+
+const onSheetDragMove = (event: TouchEvent) => {
+  if (sheetDragStartY === null) return
+  sheetDragOffset.value = Math.max(0, (event.touches[0]?.clientY ?? sheetDragStartY) - sheetDragStartY)
+}
+
+const onSheetDragEnd = () => {
+  if (sheetDragStartY === null) return
+  const shouldClose = sheetDragOffset.value > SHEET_CLOSE_DISTANCE
+  sheetDragStartY = null
+  sheetDragOffset.value = 0
+  if (shouldClose) emit('close')
 }
 
 const handleEscape = (event: KeyboardEvent) => {
