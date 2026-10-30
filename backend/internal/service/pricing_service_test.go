@@ -1354,3 +1354,65 @@ func TestBillingService_AntigravityClaude55TierFallbacksUseBaseRates(t *testing.
 		}
 	}
 }
+
+// Coding Plan aliases use the official USD API rates as proxy billing defaults,
+// not as the subscription provider's actual token charges.
+// Source: https://platform.kimi.ai/docs/pricing/chat (2026-10-26).
+func TestKimiK31BundledPricing(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Pricing.FallbackFile = filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json")
+	svc := &PricingService{cfg: cfg}
+	data, _, err := svc.buildPricingData([]byte(`{"unrelated-model":{"input_cost_per_token":0.000001,"output_cost_per_token":0.000002,"mode":"chat","litellm_provider":"test"}}`))
+	require.NoError(t, err)
+	svc.pricingData = data
+	billing := NewBillingService(cfg, svc)
+	for _, tt := range []struct {
+		model                  string
+		input, output, write1h float64
+	}{
+		{"k3.1-pro", 2e-6, 10e-6, 4e-6},
+		{"k3.1-pro-highspeed", 4e-6, 20e-6, 8e-6},
+	} {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := billing.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, 0.2e-6, pricing.CacheReadPricePerToken, 1e-12)
+			require.InDelta(t, tt.input, pricing.CacheCreation5mPrice, 1e-12)
+			require.InDelta(t, tt.write1h, pricing.CacheCreation1hPrice, 1e-12)
+			require.True(t, pricing.SupportsCacheBreakdown)
+			cost, err := billing.CalculateCost(tt.model, UsageTokens{
+				InputTokens: 1000, OutputTokens: 100, CacheReadTokens: 400,
+				CacheCreationTokens: 500, CacheCreation5mTokens: 200, CacheCreation1hTokens: 300,
+			}, 1)
+			require.NoError(t, err)
+			require.InDelta(t, 1200*tt.input+100*tt.output+400*0.2e-6+300*tt.write1h, cost.TotalCost, 1e-12)
+			customInput := 7e-6
+			custom, err := billing.GetModelPricingWithChannel(tt.model, &ChannelModelPricing{InputPrice: &customInput})
+			require.NoError(t, err)
+			require.InDelta(t, customInput, custom.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.write1h, custom.CacheCreation1hPrice, 1e-12)
+			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12)
+		})
+	}
+}
+
+func TestKimiK31RemotePricingOverridesBundledDefaults(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Pricing.FallbackFile = filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json")
+	svc := &PricingService{cfg: cfg}
+	for _, model := range []string{"k3.1-pro", "k3.1-pro-highspeed"} {
+		t.Run(model, func(t *testing.T) {
+			remote, err := json.Marshal(map[string]any{model: map[string]any{
+				"input_cost_per_token": 9e-6, "output_cost_per_token": 19e-6,
+				"litellm_provider": "moonshot", "mode": "chat",
+			}})
+			require.NoError(t, err)
+			data, _, err := svc.buildPricingData(remote)
+			require.NoError(t, err)
+			require.InDelta(t, 9e-6, data[model].InputCostPerToken, 1e-12)
+			require.InDelta(t, 19e-6, data[model].OutputCostPerToken, 1e-12)
+		})
+	}
+}

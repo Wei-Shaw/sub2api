@@ -58,6 +58,17 @@ var openAIOAuthForeignModelPrefixes = []string{
 	"yi-",
 }
 
+// isKimiK31Model matches only the official K3.1 Pro model IDs, including
+// provider-qualified names. Unknown aliases keep their existing behavior.
+func isKimiK31Model(model string) bool {
+	switch strings.ToLower(lastOpenAIModelSegment(model)) {
+	case "k3.1-pro", "k3.1-pro-highspeed":
+		return true
+	default:
+		return false
+	}
+}
+
 // isOpenAIOAuthServableModel 判断「空 model_mapping 的 OpenAI OAuth 账号」能否
 // 服务请求模型。空映射默认仍是「允许」，仅排除明确属于其他厂商家族的模型
 // （deepseek-*/glm-*、以及 Kimi Code 官方 bare ID k3 / k3-256k 等）——这类
@@ -71,7 +82,7 @@ func isOpenAIOAuthServableModel(requestedModel string) bool {
 		return true // 空模型交由上层必填校验处理
 	}
 	// Kimi Code 官方 bare model ID：无厂商前缀，prefix 黑名单挡不住。
-	if model == "k3" || model == "k3-256k" {
+	if model == "k3" || model == "k3-256k" || isKimiK31Model(model) {
 		return false
 	}
 	for _, prefix := range openAIOAuthForeignModelPrefixes {

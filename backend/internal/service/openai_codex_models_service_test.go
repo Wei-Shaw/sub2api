@@ -3881,3 +3881,27 @@ func TestGPT61SolAPIKeyCatalogContextWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCodexModelsManifestKimiK31Reasoning(t *testing.T) {
+	models := []string{"k3.1-pro", "k3.1-pro-highspeed", "kimi/K3.1-PRO", "k3", "k3.1", "k3.1-pro-preview", "custom-alias"}
+	body, err := BuildCodexModelsManifest(models)
+	require.NoError(t, err)
+	var manifest struct {
+		Models []configuredCodexModelDescriptor `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(body, &manifest))
+	require.Len(t, manifest.Models, len(models))
+	for i, model := range manifest.Models {
+		require.Equal(t, models[i], model.Slug)
+		require.NotNil(t, model.DefaultReasoningLevel)
+		if i < 3 {
+			require.Equal(t, "high", *model.DefaultReasoningLevel)
+			require.Equal(t, []string{"low", "high", "max"}, effortsFromConfiguredCodexLevels(model.SupportedReasoningLevels))
+		} else {
+			require.Equal(t, "none", *model.DefaultReasoningLevel)
+			require.Equal(t, []string{"none"}, effortsFromConfiguredCodexLevels(model.SupportedReasoningLevels))
+		}
+		require.Equal(t, int64(configuredCodexFallbackContext), model.ContextWindow)
+		require.Equal(t, []string{"text"}, model.InputModalities)
+	}
+}

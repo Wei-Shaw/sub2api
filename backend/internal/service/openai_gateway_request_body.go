@@ -80,11 +80,20 @@ func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
 	return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
 }
 
+// K3.1 treats none as an explicit unsupported request, not a catalog
+// placeholder. Preserve it after resolving aliases so upstream can reject it.
+func isKimiK31RequestModel(account *Account, model string) bool {
+	if account != nil {
+		model = account.GetMappedModel(model)
+	}
+	return isKimiK31Model(model)
+}
+
 // Codex 0.149.0 needs a single advertised effort to directly select a visible
 // non-reasoning model. Treat that catalog-only "none" value as omission for
 // compatible upstreams, while preserving official OpenAI request semantics.
 func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body []byte) ([]byte, error) {
-	if len(body) == 0 || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
+	if len(body) == 0 || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) || isKimiK31RequestModel(account, gjson.GetBytes(body, "model").String()) {
 		return body, nil
 	}
 
@@ -112,6 +121,9 @@ func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body [
 
 func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body map[string]any) {
 	if body == nil || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
+		return
+	}
+	if model, _ := body["model"].(string); isKimiK31RequestModel(account, model) {
 		return
 	}
 	if effort, ok := body["reasoning_effort"].(string); ok && strings.EqualFold(strings.TrimSpace(effort), "none") {
@@ -2594,7 +2606,7 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 		return true
 	case strings.HasPrefix(normalized, "kimi-"), strings.HasPrefix(normalized, "moonshot-"):
 		return true
-	case normalized == "k3" || strings.HasPrefix(normalized, "k3-"):
+	case normalized == "k3" || strings.HasPrefix(normalized, "k3-") || isKimiK31Model(normalized):
 		return true
 	default:
 		return false
