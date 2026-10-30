@@ -3066,7 +3066,7 @@ type openAICanonicalQuotaWindow struct {
 	reset       bool
 }
 
-// 规范字段优先；历史原始字段复用写入端 Normalize 的窗口分类，不能固定把 primary 当作 7d。
+// 规范字段优先；历史原始字段复用写入端 normalizeCanonical 的窗口分类，不能固定把 primary 当作 7d。
 func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h, window7d openAICanonicalQuotaWindow) {
 	if used, ok := resolveAccountExtraNumber(extra, "codex_5h_used_percent"); ok {
 		window5h = openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, reset: openAIQuotaWindowReset(extra, "5h", now)}
@@ -3091,7 +3091,7 @@ func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h,
 	if minutes := parseExtraInt(extra["codex_secondary_window_minutes"]); minutes > 0 {
 		snapshot.SecondaryWindowMinutes = &minutes
 	}
-	normalized := snapshot.Normalize()
+	normalized := snapshot.normalizeCanonical()
 	if normalized == nil {
 		return window5h, window7d
 	}
