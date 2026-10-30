@@ -1261,6 +1261,14 @@ export default {
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
       },
+      codexConfig: {
+        noDefaultModel: 'Omit the model configuration entry',
+        noDefaultReviewModel: 'Omit the review_model configuration entry',
+        defaultModel: 'Codex Config Preferred Model',
+        defaultModelHint: 'Sets model in the Codex configuration example shown in “Use Key”. This does not change model mapping or request limits.',
+        reviewModel: 'Codex Config Review Model',
+        reviewModelHint: 'Sets review_model in the Codex configuration example shown in “Use Key”.'
+      },
       openaiLive: {
         title: 'OpenAI Live',
         allow: 'Allow Live access',
