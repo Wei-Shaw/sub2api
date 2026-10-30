@@ -26,4 +26,8 @@
 
 ## 敏感数据
 
-插件处理真实 OAuth Authorization 请求头，必须避免将请求头、请求体、代理凭据和上游敏感响应写入日志或诊断消息。UI 配置中不应出现 OAuth Token。
+OpenAI 出站传输插件处理真实 OAuth Authorization 请求头，必须避免将请求头、请求体、代理凭据和上游敏感响应写入日志或诊断消息。UI 配置中不应出现 OAuth Token。
+
+Anthropic 请求补丁 RPC 不接收认证头、Cookie、代理 URL、URL userinfo 或查询串，也不授予 Anthropic 账号凭据目录权限。请求正文仍可能包含用户业务数据，插件不得将其记录、外传或回显到诊断中。进程本身依然不是系统沙箱；这些限制是 RPC 数据边界，不能替代签名信任和系统用户隔离。
+
+宿主拒绝修改认证、Host、代理、连接控制、正文编码和长度等受保护请求头，拒绝改变正文 `model` 与 `stream`，完整校验后才应用补丁。大小、超时和异常行为见[请求补丁契约](request-patch.md)。

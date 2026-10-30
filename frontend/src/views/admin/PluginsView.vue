@@ -15,7 +15,7 @@
             class="mt-3 flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-300"
           >
             <span class="rounded bg-gray-100 px-2 py-1 dark:bg-dark-700">{{
-              t("admin.plugins.onlyOpenAI")
+              t("admin.plugins.supportedCapabilities")
             }}</span>
             <span class="rounded bg-gray-100 px-2 py-1 dark:bg-dark-700">{{
               t("admin.plugins.noAccountCoupling")
@@ -114,6 +114,15 @@
                 {{ plugin.plugin_key
                 }}<span v-if="plugin.author"> · {{ plugin.author }}</span>
               </p>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <span
+                  v-for="capability in plugin.manifest.capabilities"
+                  :key="capability.id"
+                  class="rounded bg-gray-100 px-2 py-1 dark:bg-dark-700"
+                >
+                  {{ capability.platform === 'anthropic' ? t('admin.plugins.anthropicPatch') : t('admin.plugins.openaiTransport') }}
+                </span>
+              </div>
               <p
                 v-if="plugin.description"
                 class="mt-2 text-sm text-gray-600 dark:text-gray-300"
@@ -440,9 +449,9 @@ async function handleFileSelected(event: Event): Promise<void> {
 
 function currentRollout(plugin: PluginInstallation): number {
   return (
-    plugin.bindings.find(
-      (binding) => binding.capability === "openai.oauth.outbound_transport.v1",
-    )?.rollout_percent || 100
+    plugin.bindings.find((binding) => binding.enabled)?.rollout_percent ??
+    plugin.bindings[0]?.rollout_percent ??
+    100
   );
 }
 
