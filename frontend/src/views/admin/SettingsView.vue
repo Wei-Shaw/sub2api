@@ -13223,6 +13223,12 @@ watch(
   margin-bottom: -1rem !important;
 }
 
+@media (max-width: 639.98px) {
+  .settings-save-bar > .btn {
+    flex: 1 1 0%;
+  }
+}
+
 @media (min-width: 768px) {
   .settings-save-bar {
     margin-bottom: -1.5rem !important;
