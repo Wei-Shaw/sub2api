@@ -3,10 +3,11 @@
     <button
       @click="toggleDropdown"
       :disabled="switching"
-      class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+      class="flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
       :title="currentLocale?.name"
+      :aria-label="currentLocale?.name"
     >
-      <span class="text-base">{{ currentLocale?.flag }}</span>
+      <Icon name="globe" size="sm" />
       <span class="hidden sm:inline">{{ currentLocale?.code.toUpperCase() }}</span>
       <Icon
         name="chevronDown"
@@ -32,7 +33,6 @@
               locale.code === currentLocaleCode
           }"
         >
-          <span class="text-base">{{ locale.flag }}</span>
           <span>{{ locale.name }}</span>
           <Icon v-if="locale.code === currentLocaleCode" name="check" size="sm" class="ml-auto text-primary-500" />
         </button>
