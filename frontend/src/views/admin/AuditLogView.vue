@@ -485,7 +485,8 @@ const methodOptions = computed(() => [
 const authMethodOptions = computed(() => [
   { value: '', label: t('admin.audit.filters.all') },
   { value: 'jwt', label: 'JWT' },
-  { value: 'admin_api_key', label: 'Admin API Key' }
+  { value: 'admin_api_key', label: 'Admin API Key' },
+  { value: 'mcp_oauth', label: 'MCP OAuth' }
 ])
 
 const resultOptions = computed(() => [
