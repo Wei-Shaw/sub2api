@@ -64,9 +64,9 @@ func TestParseSSEUsage_DeltaDoesNotOverwriteStartValues(t *testing.T) {
 	svc.parseSSEUsage(`{"type":"message_start","message":{"usage":{"input_tokens":100}}}`, usage)
 	require.Equal(t, 100, usage.InputTokens)
 
-	// 再处理 message_delta（output_tokens > 0, input_tokens = 0）
+	// 再处理只包含 output_tokens 的 message_delta，省略的输入用量应保留。
 	svc.parseSSEUsage(`{"type":"message_delta","usage":{"output_tokens":50}}`, usage)
-	require.Equal(t, 100, usage.InputTokens, "delta 中 input_tokens=0 不应覆盖 start 中的值")
+	require.Equal(t, 100, usage.InputTokens, "delta 中省略 input_tokens 时不应覆盖 start 中的值")
 	require.Equal(t, 50, usage.OutputTokens)
 }
 

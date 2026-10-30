@@ -649,17 +649,17 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	case "message_delta":
 		deltaUsage := parsed.Get("usage")
 		if deltaUsage.Exists() {
-			if v := deltaUsage.Get("input_tokens").Int(); v > 0 {
-				usage.InputTokens = int(v)
+			if v, ok := parseSSEUsageNonNegativeInt(deltaUsage.Get("input_tokens").Value()); ok {
+				usage.InputTokens = v
 			}
 			if v := deltaUsage.Get("output_tokens").Int(); v > 0 {
 				usage.OutputTokens = int(v)
 			}
-			if v := deltaUsage.Get("cache_creation_input_tokens").Int(); v > 0 {
-				usage.CacheCreationInputTokens = int(v)
+			if v, ok := parseSSEUsageNonNegativeInt(deltaUsage.Get("cache_creation_input_tokens").Value()); ok {
+				usage.CacheCreationInputTokens = v
 			}
-			if v := deltaUsage.Get("cache_read_input_tokens").Int(); v > 0 {
-				usage.CacheReadInputTokens = int(v)
+			if v, ok := parseSSEUsageNonNegativeInt(deltaUsage.Get("cache_read_input_tokens").Value()); ok {
+				usage.CacheReadInputTokens = v
 			}
 
 			cc5m := deltaUsage.Get("cache_creation.ephemeral_5m_input_tokens")

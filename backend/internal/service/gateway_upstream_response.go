@@ -1238,7 +1238,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 		}
 
 		patch := &sseUsagePatch{}
-		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok && v > 0 {
+		if v, ok := parseSSEUsageNonNegativeInt(usageObj["input_tokens"]); ok {
 			patch.inputTokens = v
 			patch.hasInputTokens = true
 		}
@@ -1246,11 +1246,11 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.outputTokens = v
 			patch.hasOutputTokens = true
 		}
-		if v, ok := parseSSEUsageInt(usageObj["cache_creation_input_tokens"]); ok && v > 0 {
+		if v, ok := parseSSEUsageNonNegativeInt(usageObj["cache_creation_input_tokens"]); ok {
 			patch.cacheCreationInputTokens = v
 			patch.hasCacheCreationInput = true
 		}
-		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok && v > 0 {
+		if v, ok := parseSSEUsageNonNegativeInt(usageObj["cache_read_input_tokens"]); ok {
 			patch.cacheReadInputTokens = v
 			patch.hasCacheReadInput = true
 		}
@@ -1293,6 +1293,27 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+}
+
+// parseSSEUsageNonNegativeInt keeps negative fractional counters from being
+// truncated to zero before deciding whether a delta can replace earlier usage.
+func parseSSEUsageNonNegativeInt(value any) (int, bool) {
+	switch v := value.(type) {
+	case float64:
+		if v < 0 {
+			return 0, false
+		}
+	case float32:
+		if v < 0 {
+			return 0, false
+		}
+	case json.Number:
+		if f, err := v.Float64(); err == nil && f < 0 {
+			return 0, false
+		}
+	}
+	v, ok := parseSSEUsageInt(value)
+	return v, ok && v >= 0
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
