@@ -298,6 +298,50 @@ describe('user KeysView column settings', () => {
   })
 
   it.each([
+    { platform: null, claudeCodeOnly: false },
+    { platform: 'typesafe' as const, claudeCodeOnly: false },
+    { platform: 'anthropic' as const, claudeCodeOnly: true },
+    { platform: 'openai' as const, claudeCodeOnly: true }
+  ])('hides Magpie import for incompatible groups: %j', async ({ platform, claudeCodeOnly }) => {
+    const key = createApiKey()
+    if (platform) {
+      key.group_id = 1
+      key.group = { platform, claude_code_only: claudeCodeOnly } as ApiKey['group']
+    }
+    listKeys.mockResolvedValue({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = await mountView()
+    expect(wrapper.find('button[title="keys.importToMagpieTitle"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('imports the current key with Messages dispatch set to %s', async (allowMessagesDispatch) => {
+    const key = createApiKey()
+    key.group_id = 1
+    key.group = { platform: 'openai', claude_code_only: false, allow_messages_dispatch: allowMessagesDispatch } as ApiKey['group']
+    listKeys.mockResolvedValue({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://relay.example/sub2api/v1/', site_name: 'Relay' })
+    const wrapper = await mountView()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    try {
+      await wrapper.get('button[title="keys.importToMagpieTitle"]').trigger('click')
+      expect(open).toHaveBeenCalledTimes(1)
+      const [link, target, features] = open.mock.calls[0]
+      const url = new URL(String(link))
+      const params = new URLSearchParams(url.hash.slice(1))
+      expect(url.search).toBe('')
+      expect(params.get('key')).toBe(key.key)
+      expect(params.get('chat')).toBe('https://relay.example/sub2api/v1')
+      expect(params.get('responses')).toBe('https://relay.example/sub2api/v1')
+      expect(params.has('anthropic')).toBe(allowMessagesDispatch)
+      expect(target).toBe('_blank')
+      expect(features).toBe('noopener,noreferrer')
+    } finally {
+      open.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it.each([
     { initialStatus: 'quota_exhausted', status: 'active', formStatus: 'active' },
     { initialStatus: 'inactive', status: 'inactive', formStatus: 'inactive' },
     { initialStatus: 'active', status: 'active', formStatus: 'inactive' },
