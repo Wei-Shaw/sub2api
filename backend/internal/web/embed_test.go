@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -331,7 +332,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Contains(t, w2.Body.String(), `nonce="nonce2"`)
 	})
 
-	t.Run("sets_etag_header", func(t *testing.T) {
+	t.Run("sets_etag_header_without_nonce", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -342,7 +343,6 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Set(middleware.CSPNonceKey, "nonce123")
 
 		server.serveIndexHTML(c)
 
@@ -352,7 +352,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.True(t, strings.HasSuffix(etag, `"`))
 	})
 
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
+	t.Run("returns_304_for_matching_etag_without_nonce", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -362,10 +362,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		// Use a real router for proper 304 handling
 		router := gin.New()
-		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, "test-nonce")
-			c.Next()
-		})
+		router.Use(middleware.SecurityHeaders(config.CSPConfig{Enabled: false}, nil))
 		router.Use(server.Middleware())
 
 		// First request to populate cache and get ETag
@@ -383,6 +380,40 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotModified, w2.Code)
 		assert.Empty(t, w2.Body.String())
+	})
+
+	t.Run("nonce_responses_ignore_cached_etag", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		router := gin.New()
+		router.Use(middleware.SecurityHeaders(config.CSPConfig{Enabled: true}, nil))
+		router.Use(server.Middleware())
+
+		previousNonce := ""
+		for _, path := range []string{"/", "/login", "/keys"} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			if cached := server.cache.Get(); cached != nil {
+				// Browsers may still send the ETag from a pre-fix HTML response.
+				req.Header.Set("If-None-Match", cached.ETag)
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, path)
+			assert.Empty(t, w.Header().Get("ETag"), path)
+			assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"), path)
+			_, after, found := strings.Cut(w.Header().Get("Content-Security-Policy"), "'nonce-")
+			require.True(t, found, "CSP must retain nonce protection")
+			nonce, _, found := strings.Cut(after, "'")
+			require.True(t, found)
+			require.NotEmpty(t, nonce)
+			assert.NotEqual(t, previousNonce, nonce)
+			assert.Contains(t, w.Body.String(), `<script nonce="`+nonce+`">window.__APP_CONFIG__={"test":"value"};</script>`)
+			assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder)
+			previousNonce = nonce
+		}
+		assert.Equal(t, 1, provider.called, "server-side settings cache must still be reused")
 	})
 
 	t.Run("sets_cache_control_header", func(t *testing.T) {
