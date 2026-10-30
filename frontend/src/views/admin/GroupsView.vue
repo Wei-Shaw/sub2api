@@ -6,7 +6,7 @@
           class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
         >
           <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-3 md:basis-0">
             <div class="relative w-full sm:w-64">
               <Icon
                 name="search"

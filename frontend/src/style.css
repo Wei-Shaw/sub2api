@@ -747,6 +747,144 @@
   }
 }
 
+/* ============ 移动端 / 触屏适配 ============ */
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role='button'],
+label,
+summary {
+  touch-action: manipulation;
+}
+
+/* 小屏：对话框改为底部抽屉 */
+@media (max-width: 639.98px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-content {
+    position: relative;
+    width: 100%;
+    max-width: none !important;
+    max-height: calc(100dvh - 2.5rem) !important;
+    border-radius: 1rem 1rem 0 0;
+    border-bottom-width: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    /* 下拉未达到关闭距离时回弹 */
+    transition: transform 200ms ease-out;
+  }
+
+  /* 抽屉把手 */
+  .modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.25rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background-color: rgb(209 213 219);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .dark .modal-content::before {
+    background-color: rgb(71 85 105);
+  }
+
+  .modal-header {
+    padding-top: 1.25rem;
+  }
+
+  .modal-body {
+    overscroll-behavior: contain;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  /* 底部操作按钮撑满，方便拇指点击（按钮常被包在一层容器里） */
+  .modal-footer > div:only-child {
+    display: flex;
+    flex: 1 1 0%;
+    gap: 0.75rem;
+  }
+
+  .modal-footer > .btn,
+  .modal-footer > div:only-child > .btn {
+    flex: 1 1 0%;
+  }
+
+  .modal-enter-from .modal-content,
+  .modal-leave-to .modal-content {
+    transform: translateY(100%);
+    opacity: 1;
+  }
+
+  .modal-enter-active .modal-content {
+    transition: transform 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .modal-leave-active .modal-content {
+    transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* iOS 聚焦字号小于 16px 时会自动放大页面 */
+  .input,
+  .select-trigger,
+  textarea,
+  input[type='text'],
+  input[type='email'],
+  input[type='password'],
+  input[type='number'],
+  input[type='search'],
+  input[type='url'],
+  input[type='tel'] {
+    font-size: 16px;
+  }
+}
+
+/* 触屏：隐藏滚动条（仍可滚动），放大点击区域 */
+@media (hover: none) and (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  html .table-wrapper {
+    scrollbar-width: none !important;
+  }
+
+  html .table-wrapper::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  .btn:not(.btn-sm):not(.btn-icon) {
+    min-height: 2.5rem;
+  }
+
+  .btn-icon {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .input {
+    min-height: 2.5rem;
+  }
+}
+
 @layer utilities {
   /* 文字渐变 */
   .text-gradient {

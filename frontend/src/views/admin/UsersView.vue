@@ -5,7 +5,7 @@
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
           <!-- Left: Search + Active Filters -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-3 md:basis-0">
             <!-- Search Box -->
             <div class="relative w-full md:w-64">
               <Icon
@@ -124,7 +124,7 @@
           </div>
 
           <!-- Right: Actions and Settings -->
-          <div class="flex flex-wrap items-center justify-end gap-2">
+          <div class="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto">
             <!-- Mobile: Secondary buttons (icon only) -->
             <div class="flex items-center gap-2 md:contents">
               <!-- Refresh Button -->

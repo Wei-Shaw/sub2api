@@ -3,7 +3,7 @@
     class="sidebar"
     :class="[
       sidebarCollapsed ? 'w-[72px]' : 'w-64',
-      { '-translate-x-full lg:translate-x-0': !mobileOpen }
+      { '-translate-x-full lg:translate-x-0': !mobileOpen, 'shadow-2xl shadow-gray-900/20 lg:shadow-none': mobileOpen }
     ]"
   >
     <!-- Logo/Brand -->
@@ -181,7 +181,7 @@
   <transition name="fade">
     <div
       v-if="mobileOpen"
-      class="fixed inset-0 z-30 bg-black/50 lg:hidden"
+      class="fixed inset-0 z-30 bg-gray-950/40 backdrop-blur-[2px] lg:hidden"
       @click="closeMobile"
     ></div>
   </transition>
