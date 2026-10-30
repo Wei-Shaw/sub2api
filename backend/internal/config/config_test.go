@@ -867,6 +867,12 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 	}
 
 	wantHosts := []string{
+		"token-plan.cn-beijing.maas.aliyuncs.com",
+		"token-plan.ap-southeast-1.maas.aliyuncs.com",
+		"coding.dashscope.aliyuncs.com",
+		"coding-intl.dashscope.aliyuncs.com",
+		"dashscope.aliyuncs.com",
+		"dashscope-intl.aliyuncs.com",
 		"api.kimi.com",
 		"api.kimi.ai",
 		"api.moonshot.ai",

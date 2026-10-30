@@ -262,6 +262,61 @@
       }
     },
     {
+      "id": "qwen",
+      "display_name": "Qwen / Bailian",
+      "gateway": "openai",
+      "cn_provider": false,
+      "litellm_provider": "dashscope",
+      "multi_protocol": {
+        "default_mode": "token_cn",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "token_cn",
+            "base_urls": {
+              "anthropic": "https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+            }
+          },
+          {
+            "mode": "coding_cn",
+            "base_urls": {
+              "anthropic": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://coding.dashscope.aliyuncs.com/v1"
+            }
+          },
+          {
+            "mode": "coding_sg",
+            "base_urls": {
+              "anthropic": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://coding-intl.dashscope.aliyuncs.com/v1"
+            }
+          },
+          {
+            "mode": "payg_cn",
+            "base_urls": {
+              "anthropic": "https://dashscope.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            }
+          },
+          {
+            "mode": "payg_sg",
+            "base_urls": {
+              "anthropic": "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            }
+          },
+          {
+            "mode": "token_sg",
+            "base_urls": {
+              "anthropic": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic",
+              "chat_completions": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "cline",
       "display_name": "Cline",
       "gateway": "openai",
@@ -293,6 +348,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
+    "qwen",
     "cline"
   ]
 }
