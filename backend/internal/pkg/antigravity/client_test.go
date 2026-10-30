@@ -2012,3 +2012,105 @@ func TestExtractProjectIDFromOnboardResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_RetrieveUserQuotaSummary(t *testing.T) {
+	var gotPath, gotAuth, gotUA string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"groups": [
+				{
+					"displayName": "Gemini Models",
+					"buckets": [
+						{"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.1328875, "resetTime": "2026-10-21T00:29:07Z"},
+						{"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.8336412, "resetTime": "2026-10-16T08:59:40Z"}
+					]
+				},
+				{
+					"displayName": "Claude and GPT models",
+					"buckets": [
+						{"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0, "resetTime": "2026-10-21T00:38:06Z"},
+						{"bucketId": "3p-5h", "window": "5h", "disabled": true, "remainingFraction": 1, "resetTime": "2026-10-16T13:50:47Z"}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), BaseURLs...)
+	t.Cleanup(func() { BaseURLs = oldBaseURLs })
+	BaseURLs = []string{server.URL}
+
+	client, err := NewClient("")
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	summary, raw, err := client.RetrieveUserQuotaSummary(context.Background(), "token-123", "proj-456", 64*1024)
+	if err != nil {
+		t.Fatalf("RetrieveUserQuotaSummary failed: %v", err)
+	}
+	if gotPath != "/v1internal:retrieveUserQuotaSummary" {
+		t.Fatalf("unexpected path: %q", gotPath)
+	}
+	if gotAuth != "Bearer token-123" {
+		t.Fatalf("unexpected Authorization header: %q", gotAuth)
+	}
+	if gotUA != GetUserAgent() {
+		t.Fatalf("unexpected User-Agent: got %q, want %q", gotUA, GetUserAgent())
+	}
+	if len(summary.Groups) != 2 || len(summary.Groups[0].Buckets) != 2 || len(summary.Groups[1].Buckets) != 2 {
+		t.Fatalf("unexpected summary groups: %+v", summary.Groups)
+	}
+	if !summary.Groups[1].Buckets[1].Disabled {
+		t.Fatalf("expected 3p-5h bucket to be marked disabled")
+	}
+	if raw == nil {
+		t.Fatalf("expected raw response map to be non-nil")
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummaryFromURL(t *testing.T) {
+	var gotPath, gotAuth string
+	selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models"}]}`))
+	}))
+	defer selected.Close()
+	summary, raw, err := mustNewClient(t, "").RetrieveUserQuotaSummaryFromURL(context.Background(), selected.URL+"/", "token", "project", 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/v1internal:retrieveUserQuotaSummary" || gotAuth != "Bearer token" || len(summary.Groups) != 1 || raw == nil {
+		t.Fatalf("unexpected summary response or request: %s %s %+v", gotPath, gotAuth, summary)
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummaryFromURL_DoesNotFallbackOrRedirect(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusNotFound, http.StatusTemporaryRedirect, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			fallbackCalls := 0
+			fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fallbackCalls++; _, _ = w.Write([]byte(`{"groups":[]}`)) }))
+			defer fallback.Close()
+			selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", fallback.URL)
+				w.WriteHeader(status)
+			}))
+			defer selected.Close()
+			old := BaseURLs
+			t.Cleanup(func() { BaseURLs = old })
+			BaseURLs = []string{selected.URL, fallback.URL}
+			summary, _, err := mustNewClient(t, "").RetrieveUserQuotaSummaryFromURL(context.Background(), selected.URL, "token", "project", 1024)
+			if err == nil || summary != nil {
+				t.Fatalf("expected selected endpoint error, got %+v, %v", summary, err)
+			}
+			if fallbackCalls != 0 {
+				t.Fatalf("queried another endpoint %d times", fallbackCalls)
+			}
+		})
+	}
+}
