@@ -75,22 +75,22 @@ describe('useModelWhitelist', () => {
   it('antigravity 模型列表包含图片模型兼容项', () => {
     const models = getModelsByPlatform('antigravity')
 
-    expect(models).toContain('gemini-2.5-flash-image')
+    expect(models).not.toContain('gemini-2.5-flash-image')
     expect(models).toContain('gemini-3.1-flash-image')
-    expect(models).toContain('gemini-3-pro-image')
+    expect(models).not.toContain('gemini-3-pro-image')
   })
 
   it('Claude 模型列表包含新发布的 Claude 模型', () => {
     expect(getModelsByPlatform('claude')).toContain('claude-fable-5-1')
-    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5-1')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-fable-5-1')
     expect(getModelsByPlatform('claude')).toContain('claude-fable-5')
-    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-fable-5')
     expect(getModelsByPlatform('claude')).toContain('claude-opus-5-5')
     expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-5-5')
     expect(getModelsByPlatform('claude')).toContain('claude-sonnet-5-5')
     expect(getModelsByPlatform('antigravity')).not.toContain('claude-sonnet-5-5')
     expect(getModelsByPlatform('claude')).toContain('claude-opus-4-8')
-    expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-4-8')
   })
 
   it('Claude Sonnet 5.5 预设使用各平台的官方模型 ID', () => {
@@ -176,13 +176,14 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('antigravity')
 
     expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
-    expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash-lite'))
+    expect(models).not.toContain('gemini-2.5-flash-image')
   })
 
   it('antigravity 模型列表包含 Gemini 3.1 Pro 通用别名', () => {
     const models = getModelsByPlatform('antigravity')
 
-    expect(models).toContain('gemini-3.1-pro')
+    expect(models).toContain('gemini-pro-agent')
+    expect(getPresetMappingsByPlatform('antigravity')).toContainEqual(expect.objectContaining({ from: 'gemini-3.1-pro', to: 'gemini-pro-agent' }))
   })
 
   it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {

@@ -26,7 +26,7 @@ func TestClassifyAntigravity429(t *testing.T) {
 			"error": {
 				"status": "RESOURCE_EXHAUSTED",
 				"details": [
-					{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+					{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 					{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"}
 				]
 			}
@@ -108,7 +108,7 @@ func TestHandleSmartRetry_QuotaExhausted_UsesCreditsAndStoresIndependentState(t 
 		},
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
-				"claude-opus-4-6": "claude-sonnet-4-5",
+				"claude-opus-4-6": "claude-sonnet-4-6",
 			},
 		},
 	}
@@ -171,7 +171,7 @@ func TestHandleSmartRetry_RateLimited_DoesNotUseCredits(t *testing.T) {
 		"error": {
 			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"}
 			]
 		}
@@ -187,7 +187,7 @@ func TestHandleSmartRetry_RateLimited_DoesNotUseCredits(t *testing.T) {
 		account:      account,
 		accessToken:  "token",
 		action:       "generateContent",
-		body:         []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
+		body:         []byte(`{"model":"claude-sonnet-4-6","request":{}}`),
 		httpUpstream: upstream,
 		accountRepo:  repo,
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
@@ -239,7 +239,7 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -254,9 +254,9 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
+		body:           []byte(`{"model":"claude-sonnet-4-6","request":{}}`),
 		httpUpstream:   upstream,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -290,7 +290,7 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -309,8 +309,8 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
-		requestedModel: "claude-sonnet-4-5",
+		body:           []byte(`{"model":"claude-sonnet-4-6","request":{}}`),
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -355,7 +355,7 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -370,10 +370,10 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
+		body:           []byte(`{"model":"claude-sonnet-4-6","request":{}}`),
 		httpUpstream:   upstream,
 		accountRepo:    repo,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -447,7 +447,7 @@ func TestShouldMarkCreditsExhausted(t *testing.T) {
 
 func TestInjectEnabledCreditTypes(t *testing.T) {
 	t.Run("正常 JSON 注入成功", func(t *testing.T) {
-		body := []byte(`{"model":"claude-sonnet-4-5","request":{}}`)
+		body := []byte(`{"model":"claude-sonnet-4-6","request":{}}`)
 		result := injectEnabledCreditTypes(body)
 		require.NotNil(t, result)
 		require.Contains(t, string(result), `"enabledCreditTypes"`)
@@ -503,7 +503,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-5": map[string]any{
+					"claude-sonnet-4-6": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -520,7 +520,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-5": map[string]any{
+					"claude-sonnet-4-6": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -538,7 +538,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 		_, exists := rawLimits[creditsExhaustedKey]
 		require.False(t, exists, "AICredits key 应被删除")
 		// 普通模型限流应保留
-		_, exists = rawLimits["claude-sonnet-4-5"]
+		_, exists = rawLimits["claude-sonnet-4-6"]
 		require.True(t, exists, "普通模型限流应保留")
 	})
 }
