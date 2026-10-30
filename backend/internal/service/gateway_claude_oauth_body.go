@@ -304,7 +304,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 
 	// tool_choice：与 Parrot 对齐，不再无条件删除。
 	// - 客户端传了 {"type":"tool","name":"X"} → 保留结构，name 由
-	//   applyToolNameRewriteToBody 同步映射为假名
+	//   applyToolNameRewriteToBody synchronizes the same MCP-style mapping.
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
 	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
@@ -416,14 +416,14 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 
 	body, _ = normalizeClaudeOAuthRequestBody(body, model, normalizeOpts)
 
-	// Phase D+E+F: messages cache 策略 + 工具名混淆 + tools[-1] 断点
+	// Phase D+E+F: messages cache policy + MCP-style tool names + tools[-1] breakpoint
 	// 对齐 Parrot transform_request 里剩余的字段级改写。顺序有语义约束：
 	//   1) messages cache：仅在配置开启时清除客户端断点并注入代理断点
 	//   2) tool rewrite：最后改 tools[*].name / tool_choice.name 并在 tools[-1]
-	//      上打断点；mapping 存入 gin.Context 供响应侧 bytes.Replace 还原。
+	//      上打断点；mapping 存入 gin.Context 供响应侧按协议字段还原。
 	body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 
-	if rw := buildToolNameRewriteFromBody(body); rw != nil {
+	if rw := s.buildToolNameRewriteFromBody(body); rw != nil {
 		body = applyToolNameRewriteToBody(body, rw)
 		if c != nil {
 			c.Set(toolNameRewriteKey, rw)
