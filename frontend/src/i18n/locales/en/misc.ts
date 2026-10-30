@@ -357,6 +357,12 @@ export default {
       alipaySaveAndScanHint: 'Save the QR code, open Alipay Scan, then select it from your photo album',
     },
     orders: {
+      planName: 'Plan Name',
+      planPrice: 'Plan Price',
+      subscriptionDays: 'Purchased Duration',
+      paymentBaseAmount: 'Payment Before Fees',
+      currencyNotRecorded: 'currency not recorded',
+
       title: 'My Orders',
       empty: 'No orders yet',
       orderId: 'Order ID',
@@ -534,6 +540,9 @@ export default {
       refundEnabled: 'Refund Enabled',
       allowUserRefund: 'Allow User Refund',
       alreadyRefunded: 'Already Refunded',
+      deductSubscription: 'Deduct Subscription Duration',
+      deductSubscriptionHint: 'Deduct the subscription duration recorded on this order',
+      noSubscriptionDeduction: 'Will NOT deduct subscription duration',
       deductBalance: 'Deduct Balance',
       deductBalanceHint: 'Subtract recharged amount from user balance',
       userBalance: 'User Balance',

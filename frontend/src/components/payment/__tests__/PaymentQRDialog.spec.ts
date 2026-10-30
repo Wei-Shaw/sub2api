@@ -12,7 +12,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({
+    useI18n: () => ({ locale: { value: 'en-US' },
       t: (key: string) => key,
     }),
   }
@@ -54,6 +54,8 @@ const paidOrder = {
   out_trade_no: 'sub2_202606250001',
   status: 'COMPLETED',
   order_type: 'subscription',
+    subscription_plan_snapshot: { name: 'Monthly', currency: 'USD' },
+    subscription_days: 30,
   created_at: '2026-06-25T10:00:00Z',
   expires_at: '2099-01-01T10:30:00Z',
   refund_amount: 0,
@@ -73,7 +75,7 @@ describe('PaymentQRDialog currency display', () => {
     vi.useRealTimers()
   })
 
-  it('uses order currency for pay_amount and USD for credited amount', async () => {
+  it('uses order currency for pay_amount and the purchased plan currency for price', async () => {
     const wrapper = mount(PaymentQRDialog, {
       props: {
         show: false,

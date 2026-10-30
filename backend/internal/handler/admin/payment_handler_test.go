@@ -105,3 +105,18 @@ func TestAdminSubscriptionPlansForResponseIncludesCompositeGroupInfo(t *testing.
 		t.Fatalf("expected created_at/updated_at to be preserved, got %v / %v", got[0].CreatedAt, got[0].UpdatedAt)
 	}
 }
+
+func TestAdminPaymentOrderResponsePreservesPurchasedPlanSnapshot(t *testing.T) {
+	days := 30
+	order := &dbent.PaymentOrder{Amount: 100, PayAmount: 672.98, OrderType: "subscription", SubscriptionDays: &days,
+		SubscriptionPlanSnapshot: map[string]string{"name": "Purchased plan", "currency": "USD"},
+		ProviderSnapshot:         map[string]any{"currency": "CNY"}}
+	got := sanitizeAdminPaymentOrderForResponse(order)
+	if got.Currency != "CNY" || got.SubscriptionPlanSnapshot["currency"] != "USD" || got.SubscriptionPlanSnapshot["name"] != "Purchased plan" || *got.SubscriptionDays != 30 {
+		t.Fatalf("purchase metadata or gateway currency changed: %#v", got)
+	}
+	order.SubscriptionPlanSnapshot = nil
+	if sanitizeAdminPaymentOrderForResponse(order).SubscriptionPlanSnapshot != nil {
+		t.Fatal("legacy order must not synthesize a plan snapshot")
+	}
+}

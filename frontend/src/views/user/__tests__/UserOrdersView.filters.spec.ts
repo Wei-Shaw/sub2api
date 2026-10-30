@@ -51,4 +51,21 @@ describe('order status filtering', () => {
     await flushPromises()
     expect(api.getMyOrders).toHaveBeenLastCalledWith({ page: 4, page_size: 20, status: undefined })
   })
+  it('offers self-service refunds only for balance orders, matching the backend contract', async () => {
+    const base = { status: 'COMPLETED', provider_instance_id: 'provider-1', amount: 100, pay_amount: 672.98 }
+    api.getMyOrders.mockResolvedValue({ data: { items: [
+      { ...base, id: 1, order_type: 'balance' },
+      { ...base, id: 2, order_type: 'subscription' },
+    ], total: 2 } })
+    api.getRefundEligibleProviders.mockResolvedValue({ data: { provider_instance_ids: ['provider-1'] } })
+    const wrapper = mount(UserOrdersView, { global: { stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      OrderTable: { props: ['orders'], template: '<div><div v-for="row in orders" :key="row.id" :data-order="row.id"><slot name="actions" :row="row" /></div></div>' },
+      BaseDialog: true, Icon: true, Pagination: true, teleport: true,
+    } } })
+    await flushPromises()
+    expect(wrapper.get('[data-order="1"]').text()).toContain('payment.orders.requestRefund')
+    expect(wrapper.get('[data-order="2"]').text()).not.toContain('payment.orders.requestRefund')
+  })
+
 })
