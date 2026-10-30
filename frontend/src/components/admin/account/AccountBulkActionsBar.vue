@@ -1,5 +1,10 @@
 <template>
-  <div class="mb-4 flex items-center justify-between rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
+  <div
+    class="mb-4 flex items-center justify-between rounded-lg border px-3 py-2.5 transition-colors"
+    :class="selectedIds.length > 0
+      ? 'border-primary-200/70 bg-primary-50/70 dark:border-primary-500/20 dark:bg-primary-500/10'
+      : 'border-gray-200/70 bg-gray-50/80 dark:border-dark-800 dark:bg-dark-900'"
+  >
     <div class="flex flex-wrap items-center gap-2">
       <span v-if="allResultsSelected" class="text-sm font-medium text-primary-900 dark:text-primary-100">
         {{ t('admin.accounts.bulkActions.selectedAll', { count: selectedIds.length }) }}
@@ -7,7 +12,7 @@
       <span v-else-if="selectedIds.length > 0" class="text-sm font-medium text-primary-900 dark:text-primary-100">
         {{ t('admin.accounts.bulkActions.selected', { count: selectedIds.length }) }}
       </span>
-      <span v-else class="text-sm font-medium text-primary-900 dark:text-primary-100">
+      <span v-else class="text-sm font-medium text-gray-700 dark:text-dark-200">
         {{ t('admin.accounts.bulkEdit.title') }}
       </span>
       <template v-if="selectedIds.length > 0">
@@ -52,7 +57,7 @@
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
       </template>
-      <button @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
+      <button @click="$emit('edit-filtered')" class="btn btn-sm" :class="selectedIds.length > 0 ? 'btn-secondary' : 'btn-primary'">
         {{ t('admin.accounts.bulkEdit.submit') }}
       </button>
     </div>
