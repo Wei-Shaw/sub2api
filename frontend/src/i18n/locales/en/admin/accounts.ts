@@ -639,6 +639,20 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        modelAutoSync: {
+          title: 'Automatically sync upstream models',
+          schedule: 'Syncs hourly. After enabling and saving, synchronization is automatically queued.',
+          preservation: 'Adds new upstream models. Only entries created by automatic sync are removed after two consecutive successful syncs no longer find them. Manual models, custom mappings and wildcard mappings are preserved.',
+          retention: 'Failed or empty fetches keep the current configuration. Turning this off also keeps the current models.',
+          unrestrictedHint: 'This account is currently unrestricted. The first successful sync will create a model whitelist.',
+          lastSuccess: 'Last successful sync: ',
+          neverSynced: 'Not yet synced',
+          disabled: 'Automatic sync is off',
+          pending: 'Awaiting the first automatic sync after save',
+          success: 'Last automatic sync succeeded',
+          emptyMapping: 'Automatic sync kept the current models to avoid leaving the account unrestricted',
+          error: 'Last automatic sync failed; the previous configuration was kept'
+        },
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
         oauthPassthrough: 'Auto passthrough (auth only)',

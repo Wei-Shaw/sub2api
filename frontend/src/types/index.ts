@@ -1262,6 +1262,17 @@ export interface GrokModelDiagnostics {
   mappings: GrokModelDiagnosticItem[]
 }
 
+export interface OpenAIModelAutoSyncState {
+  readonly status: 'success' | 'error'
+  readonly error_code?: string
+  readonly last_attempt_at?: string
+  readonly last_success_at?: string
+  readonly next_sync_at?: string
+  readonly managed_models?: string[]
+  readonly missing_models?: string[]
+  readonly excluded_models?: string[]
+}
+
 export interface Account {
   id: number
   name: string
@@ -1283,6 +1294,8 @@ export interface Account {
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    openai_model_auto_sync_enabled?: boolean
+    readonly openai_model_auto_sync?: OpenAIModelAutoSyncState
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]

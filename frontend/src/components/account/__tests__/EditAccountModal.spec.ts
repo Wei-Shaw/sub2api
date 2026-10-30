@@ -336,6 +336,85 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it.each([buildAccount, buildOpenAIOAuthParentAccount])('saves automatic model sync opt-in without changing manual or wildcard mappings', async (build) => {
+    const account = build()
+    account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'custom-model', 'claude-*': 'gpt-5.2' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="openai-model-auto-sync-toggle"]')
+    expect(toggle.element.checked).toBe(false)
+    await toggle.setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.extra.openai_model_auto_sync_enabled).toBe(true)
+    expect(payload.extra).not.toHaveProperty('openai_model_auto_sync')
+    expect(payload.credentials).not.toHaveProperty('openai_model_auto_sync_enabled')
+    expect(payload.credentials.model_mapping).toEqual(account.credentials.model_mapping)
+    wrapper.unmount()
+  })
+
+  it.each([buildAccount, buildOpenAIOAuthParentAccount])('rehydrates automatic sync and retains models when it is turned off', async (build) => {
+    const account = build()
+    account.extra = {
+      unrelated_setting: true,
+      openai_model_auto_sync_enabled: true,
+      openai_model_auto_sync: { status: 'error', last_success_at: '2026-10-28T12:00:00Z', managed_models: ['gpt-5.2'], error_code: 'private details' }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const selector = '[data-testid="openai-model-auto-sync-toggle"]'
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(true)
+    expect(wrapper.get('[data-testid="openai-model-auto-sync-status"]').text()).toBe('admin.accounts.openai.modelAutoSync.error')
+    expect(wrapper.text()).not.toContain('private details')
+    await wrapper.get(selector).setValue(false)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(true)
+    await wrapper.get(selector).setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.extra.openai_model_auto_sync_enabled).toBe(false)
+    expect(payload.extra.unrelated_setting).toBe(true)
+    expect(payload.extra).not.toHaveProperty('openai_model_auto_sync')
+    expect(payload.credentials.model_mapping).toEqual(account.credentials.model_mapping)
+    expect(account.extra.openai_model_auto_sync.status).toBe('error')
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['a credential shadow', buildOpenAISparkShadowAccount],
+    ['an OpenAI setup token', buildOpenAISetupTokenAccount],
+    ['a different platform', () => ({ ...buildAccount(), platform: 'anthropic' })]
+  ])('does not expose or resend automatic sync settings for %s', async (_name, build) => {
+    const account = (build as () => any)()
+    account.extra = {
+      openai_model_auto_sync_enabled: true,
+      openai_model_auto_sync: { status: 'success', managed_models: ['gpt-5.2'] }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="openai-model-auto-sync-toggle"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_model_auto_sync_enabled')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_model_auto_sync')
+    wrapper.unmount()
+  })
+
+  it('warns about an unrestricted model mapping becoming a whitelist after enabling sync', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {}
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="openai-model-auto-sync-toggle"]').setValue(true)
+    expect(wrapper.find('[data-testid="openai-model-auto-sync-whitelist-hint"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }

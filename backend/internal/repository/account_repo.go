@@ -142,6 +142,7 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
+	account.Extra = stripOpenAIModelSyncState(account.Extra)
 
 	builder := client.Account.Create().
 		SetName(account.Name).
@@ -682,7 +683,8 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'opencode_go_usage_auto_refresh',
 			extra -> 'opencode_go_usage_snapshot',
 			extra -> 'grok_observed_models',
-			extra -> 'upstream_model_metadata'
+			extra -> 'upstream_model_metadata',
+			extra -> 'openai_model_auto_sync'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -713,6 +715,7 @@ func lockAndMergeAccountProbeExtra(
 		currentOpenCodeSnapshot        []byte
 		currentGrokObservedModels      []byte
 		currentUpstreamModelMetadata   []byte
+		currentOpenAIModelSyncState    []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -729,6 +732,7 @@ func lockAndMergeAccountProbeExtra(
 		&currentOpenCodeSnapshot,
 		&currentGrokObservedModels,
 		&currentUpstreamModelMetadata,
+		&currentOpenAIModelSyncState,
 	); err != nil {
 		return nil, err
 	}
@@ -844,9 +848,11 @@ func lockAndMergeAccountProbeExtra(
 	}
 	// Grok 目录和能力 metadata 是同步写入的受管状态。普通更新在行锁内采用最新
 	// 数据库值，忽略表单旧值、缺键和注入。来源身份变化不删除已有成功快照。
+	// Model sync ownership also survives credential refresh and disable/re-enable.
 	for key, raw := range map[string][]byte{
-		"grok_observed_models":                currentGrokObservedModels,
-		service.UpstreamModelMetadataExtraKey: currentUpstreamModelMetadata,
+		"grok_observed_models":                   currentGrokObservedModels,
+		service.UpstreamModelMetadataExtraKey:    currentUpstreamModelMetadata,
+		service.OpenAIModelAutoSyncStateExtraKey: currentOpenAIModelSyncState,
 	} {
 		delete(extra, key)
 		value, ok, err := decodeAccountExtraJSON(raw)
@@ -2792,7 +2798,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.UpdateExtra(ctx, id, updates)
 	}
-	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
+	updates = stripOpenAIModelSyncState(stripCodexFingerprintSeedFromExtraUpdate(updates))
 	if len(updates) == 0 {
 		return nil
 	}
@@ -3069,7 +3075,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
+	updates.Extra = stripOpenAIModelSyncState(stripCodexFingerprintSeedFromExtraUpdate(updates.Extra))
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)

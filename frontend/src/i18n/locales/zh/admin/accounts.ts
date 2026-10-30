@@ -757,6 +757,20 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        modelAutoSync: {
+          title: '自动同步上游模型',
+          schedule: '每小时同步一次；开启并保存后，自动加入同步队列。',
+          preservation: '自动添加上游新增模型。仅自动同步创建的条目会在连续两次成功同步均未发现该模型后移除；手动模型、自定义映射和通配符映射均保留。',
+          retention: '获取失败或返回空列表时保留当前配置。关闭后也会保留当前模型。',
+          unrestrictedHint: '当前账号未限制模型；首次同步成功后将建立模型白名单。',
+          lastSuccess: '最近成功同步：',
+          neverSynced: '尚未同步',
+          disabled: '自动同步已关闭',
+          pending: '等待保存后的首次自动同步',
+          success: '最近一次自动同步成功',
+          emptyMapping: '自动同步已保留当前模型，避免清空后变为不限制模型',
+          error: '最近一次自动同步失败，已保留原有配置'
+        },
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',

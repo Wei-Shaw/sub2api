@@ -491,6 +491,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	accountExtra, err = normalizeOpenAIModelAutoSyncExtra(input.Platform, input.Type, false, accountExtra)
+	if err != nil {
+		return nil, err
+	}
 	if err := ValidateUpstreamRequestIDHeaderExtra(accountExtra); err != nil {
 		return nil, err
 	}
@@ -599,6 +603,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			effectiveType = input.Type
 		}
 		normalizedExtra, err = normalizeOpenAIAutoResetCreditExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
+		normalizedExtra, err = normalizeOpenAIModelAutoSyncExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
 		if err != nil {
 			return nil, err
 		}
@@ -935,6 +943,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
+	delete(updates, OpenAIModelAutoSyncStateExtraKey)
+	delete(updates, OpenAIModelAutoSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
@@ -964,6 +974,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
+	delete(input.Extra, OpenAIModelAutoSyncStateExtraKey)
+	delete(input.Extra, OpenAIModelAutoSyncEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)

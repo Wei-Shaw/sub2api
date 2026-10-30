@@ -954,6 +954,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideOpenAICodexVersionSyncService,
+	ProvideOpenAIModelAutoSyncService,
 	ProvideClaudeCodeVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,

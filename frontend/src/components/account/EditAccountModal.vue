@@ -257,6 +257,13 @@
           :data-testid="account.platform === 'grok' ? 'grok-model-settings' : undefined"
         >
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+          <OpenAIModelAutoSyncSettings
+            v-if="supportsOpenAIModelAutoSync"
+            v-model="openAIModelAutoSyncEnabled"
+            :state="account.extra?.openai_model_auto_sync"
+            :unrestricted="isOpenAIModelMappingEmpty"
+            :disabled="submitting"
+          />
 
           <div
             v-if="isOpenAIModelRestrictionDisabled"
@@ -881,6 +888,13 @@
         :data-testid="account.platform === 'grok' ? 'grok-model-settings' : undefined"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <OpenAIModelAutoSyncSettings
+          v-if="supportsOpenAIModelAutoSync"
+          v-model="openAIModelAutoSyncEnabled"
+          :state="account.extra?.openai_model_auto_sync"
+          :unrestricted="isOpenAIModelMappingEmpty"
+          :disabled="submitting"
+        />
 
         <div
           v-if="isOpenAIModelRestrictionDisabled"
@@ -3413,6 +3427,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import OpenAIModelAutoSyncSettings from '@/components/account/OpenAIModelAutoSyncSettings.vue'
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -3523,6 +3538,11 @@ const selectableGroups = computed(() => {
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+const supportsOpenAIModelAutoSync = computed(() =>
+  props.account?.platform === 'openai' &&
+  (props.account.type === 'oauth' || props.account.type === 'apikey') &&
+  !isSparkShadow.value
+)
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -4147,6 +4167,8 @@ const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const openAIModelAutoSyncEnabled = ref(false)
+const isOpenAIModelMappingEmpty = computed(() => !buildModelRestrictionMapping())
 // OpenAI 订阅档位（Plus / Pro 20x / Pro 5x / Business Standard / Business Premium / Free）手动覆盖值,
 // 存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
@@ -4626,6 +4648,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+  openAIModelAutoSyncEnabled.value = supportsOpenAIModelAutoSync.value && extra?.openai_model_auto_sync_enabled === true
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -6388,6 +6411,18 @@ const handleSubmit = async () => {
         delete newExtra.upstream_request_id_header
       }
       updatePayload.extra = newExtra
+    }
+
+    // Auto-sync metadata is server-managed; only the opt-in is editable.
+    if (supportsOpenAIModelAutoSync.value) {
+      const newExtra = { ...((updatePayload.extra as Record<string, unknown>) || props.account.extra || {}) }
+      newExtra.openai_model_auto_sync_enabled = openAIModelAutoSyncEnabled.value
+      updatePayload.extra = newExtra
+    }
+    if (updatePayload.extra) {
+      const newExtra = updatePayload.extra as Record<string, unknown>
+      delete newExtra.openai_model_auto_sync
+      if (!supportsOpenAIModelAutoSync.value) delete newExtra.openai_model_auto_sync_enabled
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

@@ -1592,6 +1592,12 @@
         <!-- Model Restriction Section (Antigravity 已在上层条件排除) -->
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+          <OpenAIModelAutoSyncSettings
+            v-if="supportsOpenAIModelAutoSync"
+            v-model="openAIModelAutoSyncEnabled"
+            :unrestricted="isOpenAIModelMappingEmpty"
+            :disabled="submitting"
+          />
 
           <div
             v-if="isOpenAIModelRestrictionDisabled"
@@ -2490,6 +2496,12 @@
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <OpenAIModelAutoSyncSettings
+          v-if="supportsOpenAIModelAutoSync"
+          v-model="openAIModelAutoSyncEnabled"
+          :unrestricted="isOpenAIModelMappingEmpty"
+          :disabled="submitting"
+        />
 
         <div
           v-if="isOpenAIModelRestrictionDisabled"
@@ -4160,6 +4172,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import OpenAIModelAutoSyncSettings from '@/components/account/OpenAIModelAutoSyncSettings.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -4631,6 +4644,13 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const openAIModelAutoSyncEnabled = ref(false)
+const supportsOpenAIModelAutoSync = computed(() =>
+  form.platform === 'openai' && (form.type === 'oauth' || form.type === 'apikey')
+)
+const isOpenAIModelMappingEmpty = computed(() =>
+  !buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+)
 const upstreamModelsPreviewed = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
@@ -5209,6 +5229,7 @@ watch(
       interceptWarmupRequests.value = false
     }
     if (newPlatform !== 'openai') {
+      openAIModelAutoSyncEnabled.value = false
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -5644,6 +5665,7 @@ const resetForm = () => {
   editResetTimezone.value = null
   modelMappings.value = []
   openAICompactModelMappings.value = []
+  openAIModelAutoSyncEnabled.value = false
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
 
@@ -5741,6 +5763,12 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
+  delete extra.openai_model_auto_sync
+  if (supportsOpenAIModelAutoSync.value) {
+    extra.openai_model_auto_sync_enabled = openAIModelAutoSyncEnabled.value
+  } else {
+    delete extra.openai_model_auto_sync_enabled
+  }
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
