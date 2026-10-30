@@ -310,6 +310,10 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.DELETE("/:id", h.Admin.User.Delete)
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
+		users.POST("/:id/api-keys", h.Admin.APIKey.CreateForUser)
+		users.GET("/:id/api-keys/:key_id", h.Admin.APIKey.GetForUser)
+		users.PUT("/:id/api-keys/:key_id", h.Admin.APIKey.UpdateForUser)
+		users.DELETE("/:id/api-keys/:key_id", h.Admin.APIKey.DeleteForUser)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
 		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
@@ -708,6 +712,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	usage := admin.Group("/usage")
 	{
 		usage.GET("", h.Admin.Usage.List)
+		usage.GET("/incremental", h.Admin.Usage.Incremental)
 		usage.GET("/stats", h.Admin.Usage.Stats)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
