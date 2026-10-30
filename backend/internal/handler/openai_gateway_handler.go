@@ -3928,10 +3928,10 @@ func setOpenAIClientTransportWS(c *gin.Context) {
 }
 
 func ensureOpenAIPoolModeSessionHash(sessionHash string, account *service.Account) string {
-	if sessionHash != "" || account == nil || !account.IsPoolMode() {
+	if sessionHash != "" || account == nil || (!account.IsPoolMode() && !account.IsOpenCodeGo()) {
 		return sessionHash
 	}
-	// 为当前请求生成一次性粘性会话键，确保同账号重试不会重新负载均衡到其他账号。
+	// 池模式与 OpenCode 容量重试都需要一次性粘性会话键，避免无会话请求重试时重新负载均衡到其他账号。
 	return "openai-pool-retry-" + uuid.NewString()
 }
 
