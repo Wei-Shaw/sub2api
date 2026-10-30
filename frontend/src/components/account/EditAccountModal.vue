@@ -2818,27 +2818,16 @@
       >
         <div class="flex items-center justify-between gap-4">
           <div class="min-w-0">
-            <label class="input-label mb-0">{{ t('admin.accounts.autoResetCredit.title') }}</label>
+            <label class="input-label mb-0 cursor-pointer" @click="autoResetCreditEnabled = !autoResetCreditEnabled">{{ t('admin.accounts.autoResetCredit.title') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.autoResetCredit.hint') }}
             </p>
           </div>
-          <button
-            type="button"
+          <Toggle
+            v-model="autoResetCreditEnabled"
             data-testid="auto-reset-credit-enabled"
-            @click="autoResetCreditEnabled = !autoResetCreditEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              autoResetCreditEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                autoResetCreditEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+            :aria-label="t('admin.accounts.autoResetCredit.title')"
+          />
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
@@ -2873,28 +2862,19 @@
         <div class="pt-3 border-t border-gray-100 dark:border-dark-700">
           <div class="flex items-center justify-between gap-4">
             <div class="min-w-0">
-              <label class="input-label mb-0">{{ t('admin.accounts.autoResetCredit.expiringTitle') }}</label>
+              <label class="input-label mb-0 cursor-pointer" @click="autoResetCreditEnabled && (autoResetCreditExpiringEnabled = !autoResetCreditExpiringEnabled)">
+                {{ t('admin.accounts.autoResetCredit.expiringTitle') }}
+              </label>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.autoResetCredit.expiringHint') }}
               </p>
             </div>
-            <button
-              type="button"
+            <Toggle
+              v-model="autoResetCreditExpiringEnabled"
               data-testid="auto-reset-credit-expiring-enabled"
               :disabled="!autoResetCreditEnabled"
-              @click="autoResetCreditExpiringEnabled = !autoResetCreditExpiringEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                !autoResetCreditEnabled ? 'opacity-50 cursor-not-allowed bg-gray-200 dark:bg-dark-600' : (autoResetCreditExpiringEnabled ? 'cursor-pointer bg-primary-600' : 'cursor-pointer bg-gray-200 dark:bg-dark-600')
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  autoResetCreditExpiringEnabled && autoResetCreditEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
+              :aria-label="t('admin.accounts.autoResetCredit.expiringTitle')"
+            />
           </div>
           <div class="mt-3">
             <label class="input-label">{{ t('admin.accounts.autoResetCredit.expiringHours') }}</label>
