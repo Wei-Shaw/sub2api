@@ -481,6 +481,45 @@ gateway:
     # Stats cache for free-tier soft gate. Hot path never waits on DB: misses
     # fail open and refresh in the background. Prefer >= 60s in production.
     free_quota_stats_cache_seconds: 60
+    # Account-level cooldown after a Grok upstream 429. Defaults keep the built-in
+    # behavior: 2m for a bare 429 (no Retry-After / quota-window reset), escalating
+    # 10m -> 30m -> 1h when an OAuth account hits 429 again within an hour of its
+    # previous cooldown ending. Upstream Retry-After and window resets are always
+    # honored; model-capacity 429s and pool-mode accounts never cool the account.
+    # Grok 上游 429 后的账号级冷却。默认值即内置行为：裸 429（无 Retry-After / 额度窗口
+    # reset）冷却 2 分钟；OAuth 账号冷却结束后 1 小时内再次 429 时依次升级为 10m/30m/1h。
+    # 上游 Retry-After 与额度窗口 reset 始终生效；模型容量 429 与池模式账号不冷却账号。
+    #
+    # Common profiles / 常见配置：
+    #   - Small pool or single account / 小号池、单账号：disable_adaptive_backoff: true
+    #     (a bare 429 only ever costs fallback_cooldown_seconds instead of taking the
+    #     whole platform offline for up to 1h / 裸 429 只冷却 fallback，避免整平台停 1 小时)
+    #   - Large free-tier pool / 大量免费号：min_cooldown_seconds: 86400
+    #     (a 429'd account sits out at least 24h even if xAI only sends a short
+    #     Retry-After / 即使上游只给短 Retry-After，也至少休息 24 小时)
+    #   - Manual operations / 人工运维：manual_recovery: true
+    #     (scheduling is switched off on 429; re-enable it in the admin UI to recover /
+    #     429 后自动关闭账号调度，管理员在后台重新打开调度后恢复)
+    rate_limit:
+      # Cooldown for a 429 without Retry-After or quota-window reset (1-604800s)
+      # 无 Retry-After / 额度窗口 reset 的 429 冷却时长（秒）
+      fallback_cooldown_seconds: 120
+      # Never escalate repeated 429s / 关闭重复 429 的冷却升级
+      disable_adaptive_backoff: false
+      # Escalation ladder for repeated OAuth 429s, must be non-decreasing (seconds)
+      # 重复 429 的升级阶梯，须非递减（秒）
+      repeat_cooldown_seconds: 600
+      sustained_cooldown_seconds: 1800
+      max_adaptive_cooldown_seconds: 3600
+      # A 429 later than this after the previous cooldown ended restarts the ladder
+      # 上次冷却结束超过该时长后再 429，从 fallback 重新开始（秒）
+      backoff_quiet_period_seconds: 3600
+      # Floor for every 429 cooldown incl. upstream Retry-After; 0 = no floor (max 30 days)
+      # 所有 429 冷却的下限（含上游 Retry-After），0 = 不设下限（最长 30 天）
+      min_cooldown_seconds: 0
+      # Turn account scheduling off on 429 until an admin re-enables it
+      # 429 后关闭账号调度，直到管理员手动重新打开
+      manual_recovery: false
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
