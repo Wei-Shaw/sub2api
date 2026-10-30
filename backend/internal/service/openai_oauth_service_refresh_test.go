@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +18,8 @@ import (
 
 type openaiOAuthClientRefreshStub struct {
 	refreshCalls int32
+	refreshResp  *openai.TokenResponse
+	refreshErr   error
 }
 
 func (s *openaiOAuthClientRefreshStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
@@ -29,7 +33,64 @@ func (s *openaiOAuthClientRefreshStub) RefreshToken(ctx context.Context, refresh
 
 func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.refreshCalls, 1)
+	if s.refreshResp != nil || s.refreshErr != nil {
+		return s.refreshResp, s.refreshErr
+	}
 	return nil, errors.New("not implemented")
+}
+
+func makeOpenAIIDTokenForTest(t *testing.T, expiresAt time.Time, accountID, organizationID string) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"exp": expiresAt.Unix(),
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": accountID,
+			"organizations": []map[string]any{{
+				"id": organizationID, "is_default": true,
+			}},
+		},
+	})
+	require.NoError(t, err)
+	encode := base64.RawURLEncoding.EncodeToString
+	return encode([]byte(`{"alg":"RS256","typ":"JWT"}`)) + "." + encode(payload) + ".signature"
+}
+
+func TestOpenAIOAuthService_RefreshTokenUsesExpiredIDTokenForAccountMetadata(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{refreshResp: &openai.TokenResponse{
+		AccessToken: "fresh-access-token",
+		IDToken: makeOpenAIIDTokenForTest(
+			t, time.Now().Add(-time.Hour), "chatgpt-account-123", "org-123",
+		),
+		ExpiresIn: 3600,
+	}}
+	svc := NewOpenAIOAuthService(nil, client)
+
+	info, err := svc.RefreshTokenWithClientID(context.Background(), "refresh-token", "", "client-id")
+	require.NoError(t, err)
+	require.Equal(t, "chatgpt-account-123", info.ChatGPTAccountID)
+	require.Equal(t, "org-123", info.OrganizationID)
+
+	credentials := svc.BuildAccountCredentials(info)
+	require.Equal(t, "chatgpt-account-123", credentials["chatgpt_account_id"])
+	require.Equal(t, "org-123", credentials["organization_id"])
+}
+
+func TestOpenAIOAuthService_RefreshTokenFallsBackToAccessTokenForAccountMetadata(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{refreshResp: &openai.TokenResponse{
+		AccessToken: makeOpenAIIDTokenForTest(
+			t, time.Now().Add(time.Hour), "access-account-123", "access-org-123",
+		),
+		IDToken:   "invalid-id-token",
+		ExpiresIn: 3600,
+	}}
+	svc := NewOpenAIOAuthService(nil, client)
+
+	info, err := svc.RefreshTokenWithClientID(context.Background(), "refresh-token", "", "client-id")
+	require.NoError(t, err)
+	require.Equal(t, "access-account-123", info.ChatGPTAccountID)
+
+	credentials := svc.BuildAccountCredentials(info)
+	require.Equal(t, "access-account-123", credentials["chatgpt_account_id"])
 }
 
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {
