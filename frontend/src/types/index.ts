@@ -1295,9 +1295,13 @@ export interface Account {
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
+    auto_reset_credit_expiry_enabled?: boolean
+    auto_reset_credit_expiry_hours?: number
     codex_auto_reset_credit_state?: {
-      status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
+      status?: 'checking' | 'available' | 'resetting' | 'success' | 'not_consumed' | 'no_credit' | 'failed'
       trigger_window?: string
+      trigger_reason?: 'usage_threshold' | 'credit_expiring'
+      credit_expires_at?: string
       available_count?: number
       checked_at?: string
       last_result_at?: string

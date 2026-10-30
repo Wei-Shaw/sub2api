@@ -7,15 +7,16 @@ import {
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, showErrorMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
-  authIsSimpleMode: { value: true }
+  authIsSimpleMode: { value: true },
+  showErrorMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: showErrorMock,
     showSuccess: vi.fn(),
     showInfo: vi.fn()
   })
@@ -1855,6 +1856,7 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
     updateAccountMock.mockReset()
+    showErrorMock.mockReset()
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
   })
 
@@ -1864,11 +1866,17 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect((parent.get('[data-testid="auto-reset-credit-5h-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect((parent.get('[data-testid="auto-reset-credit-7d-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect(parent.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
+    expect(parent.get('[data-testid="auto-reset-credit-expiry-enabled"]').attributes('aria-checked')).toBe('false')
+    const expiryHours = parent.get<HTMLInputElement>('[data-testid="auto-reset-credit-expiry-hours"]')
+    expect(expiryHours.element.value).toBe('1')
+    expect(expiryHours.attributes('disabled')).toBeDefined()
+    expect(expiryHours.attributes('step')).toBe('any')
     parent.unmount()
 
     for (const account of [buildAccount(), buildOpenAISetupTokenAccount(), buildOpenAISparkShadowAccount()]) {
       const wrapper = mountModal(account)
       expect(wrapper.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="auto-reset-credit-expiry-enabled"]').exists()).toBe(false)
       wrapper.unmount()
     }
   })
@@ -1907,6 +1915,95 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     await wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').setValue('0')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([0.025, 0.5])('独立保存 %s 小时并在再次编辑时回填，不要求参与调度或开启用量触发', async (hours) => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.schedulable = false
+    account.extra = {
+      codex_auto_reset_credit_state: {
+        status: 'success',
+        trigger_reason: 'credit_expiring',
+        credit_expires_at: '2099-07-03T04:05:06Z',
+        available_count: 1
+      }
+    }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').trigger('click')
+    expect(wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-hours"]').setValue(String(hours))
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const savedExtra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(savedExtra).toMatchObject({
+      auto_reset_credit_enabled: false,
+      auto_reset_credit_expiry_enabled: true,
+      auto_reset_credit_expiry_hours: hours
+    })
+    expect(savedExtra).not.toHaveProperty('codex_auto_reset_credit_state')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true, account: { ...account, extra: savedExtra } })
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="auto-reset-credit-expiry-hours"]').element.value).toBe(String(hours))
+    wrapper.unmount()
+  })
+
+  it('关闭临期功能保留已配置小时数，并可恢复保存值', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_expiry_enabled: true, auto_reset_credit_expiry_hours: 1.25 }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-hours"]').setValue('2.5')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.get<HTMLInputElement>('[data-testid="auto-reset-credit-expiry-hours"]').element.value).toBe('1.25')
+
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').trigger('click')
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-hours"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      auto_reset_credit_expiry_enabled: false,
+      auto_reset_credit_expiry_hours: 1.25
+    })
+    wrapper.unmount()
+  })
+
+  it.each(['0', '-1', '', 'NaN', 'Infinity'])('开启后拒绝非法提前小时数 %s', async (value) => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-hours"]').setValue(value)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.autoResetCredit.expiryHoursInvalid')
+    wrapper.unmount()
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])('拒绝账号数据中的非有限提前小时数 %s', async (value) => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_expiry_enabled: true, auto_reset_credit_expiry_hours: value }
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.autoResetCredit.expiryHoursInvalid')
+    wrapper.unmount()
+  })
+
+  it('允许关闭输入非法小时数的临期功能，并剥离非法配置', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-hours"]').setValue('0')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      auto_reset_credit_expiry_enabled: false,
+      auto_reset_credit_expiry_hours: 1
+    })
     wrapper.unmount()
   })
 })

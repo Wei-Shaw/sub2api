@@ -592,6 +592,10 @@ export default {
         expirationDetails: '重置次数到期明细',
         noCreditsAvailable: '没有可用的重置次数',
         resetSuccess: '已重置 {windows} 个窗口，次数和账号状态已更新',
+        resetNotConsumed: '无需重置，卡已保留，未消耗重置次数。',
+        resetNotConsumedCacheRefreshFailed: '最新重置次数未能回读，请重新查询次数。',
+        resetNotConsumedAccountRecoveryFailed: '账号状态恢复失败，请手动恢复账号状态。',
+        resetNotConsumedAccountRefreshFailed: '无法加载最新账号显示，请刷新账号列表。',
         resetCacheRefreshFailed: '窗口已重置、账号状态已恢复，但重置次数未能回读，请重新查询次数。',
         resetAccountRecoveryFailed: '窗口已重置，但账号状态恢复失败，请手动恢复账号状态。',
         resetAccountRefreshFailed: '窗口、账号状态和重置次数缓存已更新，但无法加载最新账号显示。',
@@ -601,8 +605,13 @@ export default {
           available: '卡可用',
           resetting: '自动重置中',
           success: '自动重置成功',
+          notConsumed: '无需重置，卡已保留',
           noCredit: '无卡',
           failed: '自动重置失败'
+        },
+        autoTrigger: {
+          usageThreshold: '用量达到阈值',
+          creditExpiring: '重置卡即将到期'
         },
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
@@ -1163,7 +1172,12 @@ export default {
 	    threshold5h: '5h 自动用卡阈值(%)',
 	    threshold7d: '7d 自动用卡阈值(%)',
 	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。',
+	    expiryTitle: '到期前自动使用重置卡',
+	    expiryHint: '卡尚未使用且进入到期前设定小时数时自动尝试一次，不受用量阈值和参与调度影响；上游未执行重置时卡可能保留。默认关闭。',
+	    expiryHours: '提前使用时间（小时）',
+	    expiryHoursHint: '填写大于 0 的小时数，支持小数，默认 1 小时。',
+	    expiryHoursInvalid: '提前使用时间必须是大于 0 的有效小时数。'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

@@ -1061,7 +1061,12 @@ export default {
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    expiryTitle: 'Automatically use reset credits before expiry',
+	    expiryHint: 'Attempts once when an unused credit enters the configured expiry window, regardless of usage thresholds or scheduling participation. The credit may remain if the upstream does not perform a reset. Off by default.',
+	    expiryHours: 'Use before expiry (hours)',
+	    expiryHoursHint: 'Enter a positive number of hours; decimals are supported. Defaults to 1 hour.',
+	    expiryHoursInvalid: 'The expiry lead time must be a valid number of hours greater than 0.'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
@@ -1787,6 +1792,10 @@ export default {
         expirationDetails: 'Reset credit expiration details',
         noCreditsAvailable: 'No reset credits available',
         resetSuccess: 'Reset {windows} window(s); credits and account state updated',
+        resetNotConsumed: 'No reset was needed. The credit was retained and no reset credit was consumed.',
+        resetNotConsumedCacheRefreshFailed: 'The latest reset-credit count could not be read back. Query it again.',
+        resetNotConsumedAccountRecoveryFailed: 'Account state recovery failed. Recover the account state manually.',
+        resetNotConsumedAccountRefreshFailed: 'The latest account display could not be loaded. Refresh the account list.',
         resetCacheRefreshFailed: 'The window was reset and account state recovered, but the reset-credit count could not be read back. Query it again.',
         resetAccountRecoveryFailed: 'The window was reset, but account state recovery failed. Recover the account state manually.',
         resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
@@ -1796,8 +1805,13 @@ export default {
           available: 'Credit available',
           resetting: 'Auto-resetting',
           success: 'Auto-reset succeeded',
+          notConsumed: 'No reset needed; credit retained',
           noCredit: 'No credit',
           failed: 'Auto-reset failed'
+        },
+        autoTrigger: {
+          usageThreshold: 'Usage threshold reached',
+          creditExpiring: 'Reset credit expiring'
         },
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
