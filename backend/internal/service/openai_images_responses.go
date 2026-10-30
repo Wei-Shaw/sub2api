@@ -1806,13 +1806,18 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	direct := usesCodexDirectImages(upstreamModel) && !isOpenAIImagesForceResponses(ctx)
 	beginUpstreamResponseModelObservation(c)
 	SetOpsUpstreamModel(c, upstreamModel)
+	uploadParts := make([]string, 0, len(parsed.Uploads))
+	for _, upload := range parsed.Uploads {
+		uploadParts = append(uploadParts, fmt.Sprintf("%s:%d", upload.ContentType, len(upload.Data)))
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d upload_parts=%v",
 		requestModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
+		uploadParts,
 	)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()

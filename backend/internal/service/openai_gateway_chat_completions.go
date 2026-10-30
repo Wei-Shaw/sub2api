@@ -700,7 +700,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		firstOutput = newOpenAIFirstOutputObserver(resp.Body, startTime)
 		resp.Body = firstOutput
 	}
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, c, "openai chat_completions buffered", requestID, downstreamCtx)
+	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID, downstreamCtx)
 	failedWithUsage := func(failure error) (*OpenAIForwardResult, error) {
 		if account == nil || !account.IsOpenAI() || !openAIUsageHasTokens(&usage) {
 			return nil, failure
@@ -737,6 +737,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	priorModels.apply(observer)
 	observer.Observe(finalResponse.Model, true)
 	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
