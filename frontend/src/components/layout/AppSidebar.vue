@@ -887,15 +887,8 @@ function handleMenuItemClick(itemPath: string) {
     }, 150)
   }
 
-  // Map paths to tour selectors
-  const pathToSelector: Record<string, string> = {
-    '/admin/groups': '#sidebar-group-manage',
-    '/admin/accounts': '#sidebar-channel-manage',
-    '/keys': '[data-tour="sidebar-my-keys"]'
-  }
-
-  const selector = pathToSelector[itemPath]
-  if (selector && onboardingStore.isCurrentStep(selector)) {
+  // 点击引导当前高亮的菜单项时，引导随之前进一步
+  if (onboardingStore.isCurrentStep(`aside.sidebar a[href="${itemPath}"]`)) {
     onboardingStore.nextStep(500)
   }
 }
