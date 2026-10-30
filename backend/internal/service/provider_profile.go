@@ -221,6 +221,22 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformOllama: {
+		Platform:    PlatformOllama,
+		DefaultMode: AccountModePayG,
+		Routing:     ProviderRoutingByInbound,
+		// One API key serves both endpoints: /v1 (OpenAI compatible) and
+		// {base}/v1/messages (Anthropic compatible). There is no native Responses
+		// endpoint, so /v1/responses falls back to Chat Completions.
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultOllamaBaseURL,
+					APIProtocolAnthropic:       DefaultOllamaAnthropicBaseURL,
+				},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。

@@ -52,6 +52,7 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
+	PlatformOllama      = domain.PlatformOllama
 	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -107,6 +108,11 @@ const (
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
 	// Command Code 的 Anthropic 端点为 /provider/v1/messages（Claude 系模型只在此端点提供）。
 	DefaultCommandCodeAnthropicBaseURL = "https://api.commandcode.ai/provider"
+	// Ollama Cloud: the Chat Completions base URL is /v1; the Anthropic base URL
+	// has no /v1 (nativeAnthropicTargetURL appends /v1/messages). There is no
+	// native Responses endpoint; /v1/responses falls back to Chat Completions.
+	DefaultOllamaBaseURL          = "https://ollama.com/v1"
+	DefaultOllamaAnthropicBaseURL = "https://ollama.com"
 )
 
 // IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax），
