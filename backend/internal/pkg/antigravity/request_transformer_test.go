@@ -55,7 +55,7 @@ func TestBuildParts_ThinkingBlockWithoutSignature(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			toolIDToName := make(map[string]string)
-			parts, _, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought)
+			parts, _, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought, false)
 
 			if err != nil {
 				t.Fatalf("buildParts() error = %v", err)
@@ -105,7 +105,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 
 	t.Run("Gemini preserves provided tool_use signature", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -122,7 +122,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 			{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}
 		]`
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(contentNoSig), toolIDToName, true)
+		parts, _, err := buildParts(json.RawMessage(contentNoSig), toolIDToName, true, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -136,7 +136,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 
 	t.Run("Claude model - preserve valid signature for tool_use", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -651,7 +651,7 @@ func TestBuildParts_DocumentBecomesInlineData(t *testing.T) {
 		{"type":"text","text":"read this"},
 		{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}
 	]`
-	parts, stripped, err := buildParts(json.RawMessage(content), map[string]string{}, true)
+	parts, stripped, err := buildParts(json.RawMessage(content), map[string]string{}, true, false)
 	require.NoError(t, err)
 	require.False(t, stripped)
 	require.Len(t, parts, 2)

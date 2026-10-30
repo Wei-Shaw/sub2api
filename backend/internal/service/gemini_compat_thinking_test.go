@@ -258,7 +258,7 @@ func TestConvertClaudeMessagesToGemini_DropsHistoryThinkingBlocks(t *testing.T) 
 		{"role":"assistant","content":[{"type":"thinking","thinking":"ONLY_THOUGHT","signature":""},{"type":"redacted_thinking","data":"opaque"}]},
 		{"role":"user","content":"last"}
 	]}`)
-	out, err := convertClaudeMessagesToGeminiGenerateContent(body)
+	out, err := convertClaudeMessagesToGeminiGenerateContent(body, "gemini-2.5-flash")
 	require.NoError(t, err)
 	require.NotContains(t, string(out), "PRIOR_THOUGHT")
 	require.NotContains(t, string(out), "ONLY_THOUGHT")
