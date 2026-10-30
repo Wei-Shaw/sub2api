@@ -282,6 +282,7 @@ func quoteRechargeBonus(cfg *PaymentConfig, paymentAmount float64, currency stri
 		tiers = cfg.RechargeBonusTiers
 		mode, _ = NormalizeRechargeBonusMode(cfg.RechargeBonusMode)
 	}
+	multiplier = resolveBalanceRechargeMultiplier(multiplier, currency)
 	base := calculateCreditedBalance(paymentAmount, multiplier)
 	quote := rechargeBonusQuote{PayBase: paymentAmount, Credited: base}
 

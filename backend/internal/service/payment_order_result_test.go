@@ -250,6 +250,28 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonCNYPrice(t *testing
 	}
 }
 
+func TestUSDProviderRechargeAndSubscriptionAmounts(t *testing.T) {
+	t.Parallel()
+	for _, providerKey := range []string{payment.TypeAirwallex, payment.TypeStripe} {
+		t.Run(providerKey, func(t *testing.T) {
+			currency := paymentProviderConfigCurrency(providerKey, map[string]string{"currency": "usd"})
+			cfg := &PaymentConfig{BalanceRechargeMultiplier: 0.14, SubscriptionUSDToCNYRate: 7.15}
+			quote := quoteRechargeBonus(cfg, 100, currency)
+			if currency != "USD" || quote.Credited != 100 || quote.PayBase != 100 {
+				t.Fatalf("USD recharge quote = %+v, currency = %q", quote, currency)
+			}
+			for _, orderType := range []string{payment.OrderTypeBalance, payment.OrderTypeSubscription} {
+				for _, feeRate := range []float64{0, 2.5} {
+					_, amount, err := calculateCreateOrderPayAmountForOrderType(100, feeRate, currency, orderType, cfg.SubscriptionUSDToCNYRate)
+					if err != nil || amount != 100+feeRate {
+						t.Fatalf("%s pay amount with fee %v = %v, err = %v", orderType, feeRate, amount, err)
+					}
+				}
+			}
+		})
+	}
+}
+
 // 换算是 opt-in：未配置汇率（rate=0）时，CNY 订阅保持 price 直付的存量行为。
 // 该测试锁住存量部署升级后行为不变的兼容承诺。
 func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDisabled(t *testing.T) {
