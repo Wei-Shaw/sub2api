@@ -333,6 +333,25 @@ func TestPatchGrokResponsesBodyAddsDefaultFunctionParameters(t *testing.T) {
 	require.Equal(t, "9007199254740993", gjson.GetBytes(patched, "tools.0.large_id").Raw)
 }
 
+func TestGrokUpstreamErrorBodyForOpsHonorsConfigAndLimit(t *testing.T) {
+	body := []byte("0123456789")
+
+	for _, tc := range []struct {
+		name string
+		cfg  *config.Config
+		want string
+	}{
+		{name: "disabled", cfg: &config.Config{Gateway: config.GatewayConfig{LogUpstreamErrorBody: false}}, want: ""},
+		{name: "enabled and bounded", cfg: &config.Config{Gateway: config.GatewayConfig{LogUpstreamErrorBody: true, LogUpstreamErrorBodyMaxBytes: 5}}, want: "01234"},
+		{name: "enabled with default limit", cfg: &config.Config{Gateway: config.GatewayConfig{LogUpstreamErrorBody: true}}, want: "0123456789"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &OpenAIGatewayService{cfg: tc.cfg}
+			require.Equal(t, tc.want, svc.grokUpstreamErrorBodyForOps(body))
+		})
+	}
+}
+
 func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 	patched, err := normalizeGrokChatReasoningEffort([]byte(`{"reasoningEffort":"ultra"}`), "grok-4.3")
 	require.NoError(t, err)
