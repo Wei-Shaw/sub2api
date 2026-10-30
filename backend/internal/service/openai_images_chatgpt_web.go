@@ -308,7 +308,7 @@ func writeChatGPTWebImagesResult(c *gin.Context, parsed *OpenAIImagesRequest, re
 		Model: parsed.Model, UpstreamModel: result.WebDriver,
 		UpstreamResponseModel: result.ObservedImageModel,
 		UpstreamEndpoint:      "/backend-api/f/conversation", Duration: time.Since(start),
-		ImageCount: 1, ImageSize: normalizeOpenAIImageSizeTier(size), ImageInputSize: parsed.Size,
+		ImageEndpoint: true, ImageCount: 1, ImageSize: normalizeOpenAIImageSizeTier(size), ImageInputSize: parsed.Size,
 		ImageOutputSize: size, ImageOutputSizes: []string{size}, ImageSizeSource: "decoded",
 	}, nil
 }

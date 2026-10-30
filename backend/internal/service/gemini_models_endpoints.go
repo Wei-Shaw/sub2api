@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
@@ -23,6 +24,47 @@ import (
 // errGeminiModelsUpstreamStatus 在 Vertex 分页读取遇到非 2xx 时中止分页，原始响应由调用方另行保存。
 var errGeminiModelsUpstreamStatus = errors.New("upstream model list returned non-2xx status")
 
+// DeclaredModelIDs 在分组内每个可调度 Gemini 账号都有生效的 model_mapping（含 Google One 的默认映射）时，
+// 返回这些映射键的并集（去重排序，通配符键原样保留）。有账号未配置映射时该账号接受任意模型，返回空，
+// 模型接口由选中账号的上游应答。
+func (s *GeminiMessagesCompatService) DeclaredModelIDs(ctx context.Context, groupID *int64) ([]string, error) {
+	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+	}
+	seen := make(map[string]struct{})
+	for i := range accounts {
+		if accounts[i].Platform != PlatformGemini {
+			continue
+		}
+		mapping := accounts[i].GetModelMapping()
+		if len(mapping) == 0 {
+			return nil, nil
+		}
+		for model := range mapping {
+			seen[model] = struct{}{}
+		}
+	}
+	models := make([]string, 0, len(seen))
+	for model := range seen {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
+// DeclaredModelsCover 判断声明的模型中是否有条目覆盖 model：键末尾的 * 按前缀匹配，
+// 模型别名按请求路径查映射时的规则归一后再比较。
+func DeclaredModelsCover(declared []string, model string) bool {
+	normalized := normalizeRequestedModelForLookup(PlatformGemini, model)
+	for _, pattern := range declared {
+		if matchWildcard(pattern, model) || matchWildcard(pattern, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
 // SelectAccountForModelsEndpoints 为模型列表与模型详情接口选择账号。
 //
 // 优先级：
@@ -35,7 +77,7 @@ var errGeminiModelsUpstreamStatus = errors.New("upstream model list returned non
 //  7. Vertex API Key 账号（列表接口不接受 API Key，只能返回内置列表）
 //
 // Vertex 账号排在所有 AI Studio 兼容账号之后，混合分组始终由 AI Studio 兼容账号应答。
-// 同级账号按 priority、最近使用时间挑选。
+// 同级账号按 priority、最近使用时间挑选。DeclaredModelIDs 非空时模型接口按声明的模型应答，不经过选号。
 func (s *GeminiMessagesCompatService) SelectAccountForModelsEndpoints(ctx context.Context, groupID *int64) (*Account, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
 	if err != nil {

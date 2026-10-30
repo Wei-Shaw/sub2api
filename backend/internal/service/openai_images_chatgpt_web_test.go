@@ -260,3 +260,45 @@ func TestChatGPTWebImagesResultRejectsInvalidImages(t *testing.T) {
 		require.NotContains(t, rec.Body.String(), "b64_json")
 	}
 }
+
+func TestChatGPTWebImagesResultHonorsImageCountBilling(t *testing.T) {
+	var imageBytes bytes.Buffer
+	require.NoError(t, png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 8, 6))))
+
+	for _, groupPricing := range []bool{false, true} {
+		name := "channel_token_pricing"
+		if groupPricing {
+			name = "group_token_pricing"
+		}
+		t.Run(name, func(t *testing.T) {
+			c, rec := webImageTestContext()
+			result, err := writeChatGPTWebImagesResult(c, webImageTestRequest(), chatgptwebimage.Result{
+				Images: []chatgptwebimage.Image{{Bytes: imageBytes.Bytes(), Format: "png"}}, WebDriver: "auto",
+			}, time.Now())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, OpenAIUsage{}, result.Usage)
+
+			groupID := int64(905)
+			resolver := newOpenAITokenImageChannelPricingResolverForTest(t, groupID, result.Model)
+			group := &Group{
+				ID: groupID, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
+				AllowImageGeneration: true, ImageCountBilling: true, ImagePrice1K: f64p(0.4),
+			}
+			if groupPricing {
+				group.ModelPricing = []ChannelModelPricing{{
+					Models: []string{result.Model}, BillingMode: BillingModeToken,
+					InputPrice: f64p(3e-6), OutputPrice: f64p(15e-6),
+				}}
+			}
+			apiKey := &APIKey{ID: 5, GroupID: &groupID, Group: group}
+			svc := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
+			cost, err := svc.calculateOpenAIRecordUsageCost(context.Background(), result, apiKey,
+				[]string{result.Model}, 1, 1, 1, 1, UsageTokens{}, "", nil, false, time.Time{})
+			require.NoError(t, err)
+			require.NotNil(t, cost)
+			require.Equal(t, string(BillingModeImage), cost.BillingMode)
+			require.InDelta(t, 0.4, cost.TotalCost, 1e-12, "web images must be billed by the actual image count, not missing token usage")
+		})
+	}
+}
