@@ -61,6 +61,40 @@ func TestFilterHeadersForceRemoveOverridesReasoningIncluded(t *testing.T) {
 	}
 }
 
+func TestWriteClaudeCodeResponseHeaders(t *testing.T) {
+	src := http.Header{}
+	src.Set("X-Should-Retry", "true")
+	src.Set("Anthropic-Ratelimit-Unified-Status", "allowed")
+	src.Set("Anthropic-Ratelimit-Unified-Reset", "1760000000")
+	src.Set("Anthropic-Organization-Id", "org-upstream")
+	src.Set("Anthropic-Ratelimit-Tokens-Remaining", "100")
+	src.Set("Set-Cookie", "secret=1")
+	filter := CompileHeaderFilter(config.ResponseHeaderConfig{
+		Enabled: true, AdditionalAllowed: []string{"x-should-retry"},
+		ForceRemove: []string{"anthropic-ratelimit-unified-reset"},
+	})
+	dst := FilterHeaders(src, filter)
+	WriteClaudeCodeResponseHeaders(dst, src, filter)
+
+	if got := dst.Values("X-Should-Retry"); len(got) != 1 || got[0] != "true" {
+		t.Fatalf("retry header copied twice or lost: %v", got)
+	}
+	if got := dst.Get("Anthropic-Ratelimit-Unified-Status"); got != "allowed" {
+		t.Fatalf("unified rate limit header lost: %q", got)
+	}
+	for _, key := range []string{"Anthropic-Ratelimit-Unified-Reset", "Anthropic-Organization-Id", "Anthropic-Ratelimit-Tokens-Remaining", "Set-Cookie"} {
+		if dst.Get(key) != "" {
+			t.Fatalf("%s must not be forwarded", key)
+		}
+	}
+
+	nilDst := http.Header{}
+	WriteClaudeCodeResponseHeaders(nilDst, src, nil)
+	if nilDst.Get("X-Should-Retry") != "true" || nilDst.Get("Anthropic-Organization-Id") != "" {
+		t.Fatalf("nil filter must use the default rules: %v", nilDst)
+	}
+}
+
 func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 	src := http.Header{}
 	src.Add("Content-Type", "application/json")
