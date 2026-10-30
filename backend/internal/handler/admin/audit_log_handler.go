@@ -110,13 +110,13 @@ type auditLogClearRequest struct {
 // 安全要求（与需求对齐）：
 //  1. 每次清空都必须现场验证 TOTP 码（不复用 step-up sudo 窗口）
 //  2. 未启用 TOTP 的管理员不允许清空
-//  3. admin API key（机器凭证）不允许清空
+//  3. 机器凭证（admin API key、MCP OAuth 等非浏览器会话）不允许清空
 //  4. 清空完成后同步写入一条留痕记录（操作者、IP、UA、删除行数）
 func (h *AuditLogHandler) Clear(c *gin.Context) {
-	if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
+	if reason, machine := middleware.MachineCredentialReason(c); machine {
 		response.ErrorWithDetails(c, http.StatusForbidden,
-			"Admin API key cannot clear audit logs; a two-factor verified admin session is required",
-			"STEP_UP_ADMIN_API_KEY_FORBIDDEN", nil)
+			"Machine credentials cannot clear audit logs; a two-factor verified admin session is required",
+			reason, nil)
 		return
 	}
 
