@@ -407,6 +407,123 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('-')
   })
 
+  it('GLM Coding Plan 账号挂载时经统一 usage API 渲染 5h/7d 窗口', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 20,
+        resets_at: '2026-03-08T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 5,
+          tokens: 500,
+          cost: 0.05,
+          standard_cost: 0.05,
+          user_cost: 0.05
+        }
+      },
+      seven_day: {
+        utilization: 70,
+        resets_at: '2026-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 42,
+          tokens: 4200,
+          cost: 0.42,
+          standard_cost: 0.42,
+          user_cost: 0.42
+        }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3000,
+          platform: 'zhipu',
+          type: 'apikey',
+          credentials: { account_mode: 'coding', api_key: 'sk-test' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true,
+          ...cnUsageCellStubs
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(3000)
+    expect(wrapper.text()).toContain('5h|20|500')
+    expect(wrapper.text()).toContain('7d|70|4200')
+    // 统一 usage 分支渲染后不再叠加 CN 简化额度单元格，避免同源双份展示。
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+  })
+
+  it('GLM payg 账号不走统一 usage：保持 CN 占位分支', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3001,
+          platform: 'zhipu',
+          type: 'apikey',
+          credentials: { account_mode: 'payg', api_key: 'sk-test' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true,
+          ...cnUsageCellStubs
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('usage-bar')
+  })
+
+  it('GLM Coding Plan 无窗口数据时透出后端错误并保留查询按钮', async () => {
+    getUsage.mockResolvedValue({ error: 'CN_QUOTA_NOT_CODING_PLAN' })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3002,
+          platform: 'zhipu',
+          type: 'apikey',
+          credentials: { account_mode: 'coding', api_key: 'sk-test' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true,
+          ...cnUsageCellStubs
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(3002)
+    expect(wrapper.text()).toContain('CN_QUOTA_NOT_CODING_PLAN')
+    expect(wrapper.find('button').exists()).toBe(true)
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
