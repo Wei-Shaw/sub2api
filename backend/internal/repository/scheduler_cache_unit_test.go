@@ -467,6 +467,14 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 				"checked_at":      checkedAt,
 				"trigger_window":  "7d",
 			},
+			"codex_credits_snapshot": map[string]any{
+				"credits": map[string]any{
+					"has_credits": true,
+					"unlimited":   false,
+					"balance":     "62500.0000000000",
+				},
+				"fetched_at": time.Now().Unix(),
+			},
 		},
 	}
 
@@ -485,6 +493,7 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 	require.Equal(t, service.OpenAIAutoResetStatusAvailable, state["status"])
 	require.EqualValues(t, 3, state["available_count"])
 	require.Equal(t, checkedAt, state["checked_at"])
+	require.Contains(t, cached.Extra, "codex_credits_snapshot")
 }
 
 func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testing.T) {
