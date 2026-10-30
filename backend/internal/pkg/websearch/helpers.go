@@ -12,3 +12,12 @@ func truncateBody(body []byte) string {
 	}
 	return string(body[:errorBodyTruncLen]) + "...(truncated)"
 }
+
+// truncateRunes cuts s to at most n Unicode characters.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
+}
