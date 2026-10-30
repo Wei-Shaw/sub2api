@@ -350,7 +350,10 @@ export default {
         syncCorpEmailTargetHint: 'Defaults to dingtalk_email / DingTalk Corporate Email. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
         syncDeptTarget: 'Attribute key',
         syncDeptTargetHint: 'Defaults to dingtalk_department / DingTalk Department. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
-        syncAttrDisplayName: 'Display name'
+        syncAttrDisplayName: 'Display name',
+        syncDisplayNameAttrName: 'DingTalk Name',
+        syncCorpEmailAttrName: 'DingTalk Corporate Email',
+        syncDeptAttrName: 'DingTalk Department'
       },
       oidc: {
         title: 'OIDC Login',
@@ -1198,6 +1201,20 @@ export default {
           force_priority: 'Force priority'
         }
       },
+      emailOAuth: {
+        title: 'Email OAuth Sign-in',
+        description:
+          'After GitHub or Google email OAuth is enabled, the system reads a verified email, signs in matching users, and auto-registers missing users.',
+        githubDescription: 'GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.',
+        googleDescription: 'Google OAuth client needs openid email profile scopes and the backend callback URL registered in credentials.',
+        googleSetupGuide:
+          'Setup guide: Google Cloud Console → APIs & Services → OAuth consent screen, then Credentials → Create Credentials → OAuth client ID, choose Web application, and add the URL below to Authorized redirect URIs.',
+        secretConfiguredPlaceholder: 'Secret configured. Leave empty to keep the current value.',
+        backendCallbackUrl: 'Backend Callback URL',
+        frontendCallbackUrl: 'Frontend Callback URL',
+        generateAndCopy: 'Generate and copy',
+        redirectUrlSetAndCopied: 'Callback URL set and copied.'
+      },
       wechatConnect: {
         title: 'WeChat Connect',
         description: 'Third-party login configuration for WeChat Open Platform or Official Account / Mini Program.',
@@ -1221,7 +1238,55 @@ export default {
         redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard',
         frontendRedirectUrlLabel: 'Frontend redirect URL',
         frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
-        frontendRedirectUrlHint: 'Usually the frontend route callback path; keep it aligned with the backend.'
+        frontendRedirectUrlHint: 'Usually the frontend route callback path; keep it aligned with the backend.',
+        pcApp: 'PC App',
+        pcAppDescription: 'Desktop browsers sign in through WeChat Open Platform QR login. This can coexist with Official Account or Mobile App.',
+        pcAppId: 'PC App ID',
+        pcAppIdPlaceholder: 'WeChat Open Platform PC App ID',
+        pcAppSecret: 'PC App Secret',
+        pcAppSecretPlaceholder: 'WeChat Open Platform PC App Secret',
+        officialAccount: 'Official Account',
+        officialAccountDescription: 'Only available inside the WeChat browser. It is shown as unavailable outside WeChat.',
+        officialAccountAppId: 'Official Account App ID',
+        officialAccountAppSecret: 'Official Account App Secret',
+        mobileApp: 'Mobile App',
+        mobileAppDescription: 'Native mobile clients start authorization through the WeChat SDK. The web UI does not launch this flow directly.',
+        mobileAppId: 'Mobile App ID',
+        mobileAppSecret: 'Mobile App Secret',
+        unionIdNotice:
+          'When PC App is enabled together with Official Account or Mobile App, they should belong to the same WeChat Open Platform account so UnionID can merge identities reliably.',
+        browserRedirectUrl: 'Browser Redirect URL',
+        browserRedirectUrlHint: 'Used by PC App and Official Account browser callbacks. Native mobile SDK flows do not start from this browser callback directly.',
+        mpMobileConflict: 'Official Account and Mobile App cannot be enabled at the same time.'
+      },
+      loginAgreement: {
+        title: 'Login agreement',
+        description: 'Control whether the login page requires users to accept Markdown policy documents first.',
+        statusEnabled: 'Enabled',
+        statusDisabled: 'Disabled',
+        displayMode: 'Display mode',
+        modeModal: 'Modal',
+        modeCheckbox: 'Checkbox',
+        checkboxModeHint: 'The checkbox appears below the login button and gates all login actions.',
+        modalModeHint: 'The modal opens on the login page and gates all login actions until accepted.',
+        updatedDate: 'Updated date',
+        updatedDateHint: 'Changing the date or content requires fresh consent.',
+        documents: 'Agreement documents',
+        documentsHint: 'Document titles are customizable and content is saved as Markdown.',
+        addDocument: 'Add document',
+        untitledDocument: 'Untitled document',
+        documentTitle: 'Document title',
+        documentTitlePlaceholder: 'Example: Terms of Service',
+        routeSlug: 'Route slug',
+        markdownContent: 'Markdown content',
+        markdownContentPlaceholder: 'Write the final Markdown content here.',
+        defaultTermsTitle: 'Terms of Service',
+        defaultUsagePolicyTitle: 'Usage Policy',
+        defaultSupportedRegionsTitle: 'Supported Countries and Regions',
+        defaultServiceTermsTitle: 'Service-Specific Terms',
+        atLeastOneDocument: 'At least one document is required when login agreement is enabled.',
+        documentTitleRequired: 'Login agreement document title cannot be empty.',
+        duplicateDocumentRoute: 'Login agreement document routes cannot be duplicated: /legal/{id}'
       },
       authSourceDefaults: {
         title: 'Auth Source Defaults',
@@ -1245,6 +1310,15 @@ export default {
           wechat: {
             title: 'WeChat signup',
             description: 'Default quota grants for WeChat signups.'
+          },
+          github: {
+            description: 'Applied on first signup or first bind through a verified GitHub email.'
+          },
+          google: {
+            description: 'Applied on first signup or first bind through a verified Google email.'
+          },
+          dingtalk: {
+            description: 'Applied on first signup or first bind through DingTalk.'
           }
         },
         grantOnFirstBindLabel: 'Grant on first bind',
