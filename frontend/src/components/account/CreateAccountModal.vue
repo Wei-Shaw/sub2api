@@ -174,7 +174,7 @@
             TypeSafe / Jev
           </button>
         </div>
-        <!-- 国产厂商：Kimi / Zhipu GLM / DeepSeek / MiniMax -->
+        <!-- Chinese providers, including BytePlus ModelArk. -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-cn">
           <button
             type="button"
@@ -227,6 +227,20 @@
           >
             <PlatformIcon platform="minimax" size="sm" />
             MiniMax
+          </button>
+          <button
+            type="button"
+            data-testid="platform-button-byteplus"
+            @click="selectCNPlatform('byteplus')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'byteplus'
+                ? 'bg-white text-blue-600 shadow-sm dark:bg-dark-600 dark:text-blue-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="byteplus" size="sm" />
+            BytePlus
           </button>
         </div>
 
@@ -623,12 +637,12 @@
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.payg') }}</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(form.platform === 'byteplus' ? 'admin.accounts.byteplus.accountModeHint' : 'admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
           <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
           <button
-            v-if="form.platform !== 'deepseek'"
+            v-if="providerAccountModes(form.platform).includes('coding')"
             type="button"
             @click="accountMode = 'coding'"
             :class="[
@@ -3581,6 +3595,11 @@
         </div>
       </div>
 
+      <BytePlusCapabilities
+        v-if="form.platform === 'byteplus'"
+        v-model="openAIEndpointCapabilities"
+      />
+
       <!-- OpenAI APIKey Responses API support mode -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'apikey'"
@@ -4163,6 +4182,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import BytePlusCapabilities from '@/components/account/BytePlusCapabilities.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import { applyExplicitCacheUpstreamCredentials, isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
@@ -4254,6 +4274,7 @@ const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefin
 }
 
 const baseUrlHint = computed(() => {
+  if (form.platform === 'byteplus') return t('admin.accounts.byteplus.regionHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
@@ -4506,7 +4527,7 @@ function selectCNPlatform(platform: CnProviderPlatform) {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
-  apiProtocol.value = 'adaptive'
+  apiProtocol.value = platform === 'byteplus' ? 'chat_completions' : 'adaptive'
   // deepseek 无 coding 套餐（profile 仅 payg）；从其他供应商切换来的未知模式回落默认模式。
   accountMode.value = resolveProviderAccountMode(platform, accountMode.value)
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
@@ -5208,10 +5229,15 @@ watch(
     if (newPlatform !== 'anthropic' && newPlatform !== 'antigravity') {
       interceptWarmupRequests.value = false
     }
+    if (newPlatform === 'byteplus') {
+      upstreamBillingAutoProbeEnabled.value = false
+    }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAIEndpointCapabilities.value = newPlatform === 'byteplus'
+        ? ['chat_completions', 'seedance']
+        : ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -6168,6 +6194,7 @@ const handleSubmit = async () => {
       credentials.model_mapping = modelMapping
     }
   }
+  if (form.platform === 'byteplus') applyOpenAIEndpointCapabilities(credentials)
   if (form.platform === 'openai') {
     applyOpenAIEndpointCapabilities(credentials)
     const compactModelMapping = buildOpenAICompactModelMapping()

@@ -17,7 +17,14 @@ import (
 )
 
 func TestSeedanceHandlerLifecycleAndOwnership(t *testing.T) {
-	h, slots, bindings, upstream := newGrokMediaSlotHandler(t, false, false, service.PlatformOpenAI)
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformBytePlus} {
+		t.Run(platform, func(t *testing.T) { testSeedanceHandlerLifecycleAndOwnership(t, platform, false) })
+	}
+	t.Run("composite byteplus", func(t *testing.T) { testSeedanceHandlerLifecycleAndOwnership(t, service.PlatformBytePlus, true) })
+}
+
+func testSeedanceHandlerLifecycleAndOwnership(t *testing.T, platform string, composite bool) {
+	h, slots, bindings, upstream := newGrokMediaSlotHandler(t, false, false, platform)
 	var owner int64
 	upstream.call = func(req *http.Request, id int64) (*http.Response, error) {
 		body := `{"id":"task-ark","status":"queued"}`
@@ -31,12 +38,18 @@ func TestSeedanceHandlerLifecycleAndOwnership(t *testing.T) {
 	newContext := func(method string) (*gin.Context, *httptest.ResponseRecorder) {
 		c, w := grokMediaSlotContext(context.Background(), method == http.MethodPost)
 		key, _ := middleware.GetAPIKeyFromContext(c)
-		key.Group.Platform = service.PlatformOpenAI
+		key.Group.Platform = platform
+		if composite {
+			key.Group.Platform = service.PlatformComposite
+		}
 		body := ""
 		if method == http.MethodPost {
 			body = `{"model":"doubao-seedance","content":[{"type":"text","text":"waves"}]}`
 		}
 		c.Request = httptest.NewRequest(method, "/api/v3/contents/generations/tasks", strings.NewReader(body))
+		if composite && method == http.MethodPost {
+			c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
+		}
 		c.Params = gin.Params{{Key: "task_id", Value: "task-ark"}}
 		return c, w
 	}

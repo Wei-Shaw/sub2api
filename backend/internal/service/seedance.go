@@ -153,3 +153,24 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 	writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
 	return result, nil
 }
+
+// Composite status/delete requests contain no model. Resolve the provider from
+// the authenticated task owner instead of defaulting back to the OpenAI bucket.
+func (s *OpenAIGatewayService) SelectSeedanceVideoRequestAccount(
+	ctx context.Context, groupID *int64, sessionHash string, accountID int64, model, platform string,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	if platform == PlatformComposite {
+		if s == nil || s.accountRepo == nil {
+			return nil, OpenAIAccountScheduleDecision{}, ErrNoAvailableAccounts
+		}
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err != nil || account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilitySeedance) {
+			return nil, OpenAIAccountScheduleDecision{}, ErrNoAvailableAccounts
+		}
+		platform = account.Platform
+	}
+	if platform != PlatformOpenAI && platform != PlatformBytePlus {
+		return nil, OpenAIAccountScheduleDecision{}, ErrNoAvailableAccounts
+	}
+	return s.SelectMediaVideoRequestAccount(ctx, groupID, sessionHash, accountID, model, platform)
+}
