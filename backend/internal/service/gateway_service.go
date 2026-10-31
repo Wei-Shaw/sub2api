@@ -218,7 +218,7 @@ func anthropicStreamEventIsTerminal(eventName, data string) bool {
 }
 
 func cloneStringSlice(src []string) []string {
-	if len(src) == 0 {
+	if src == nil {
 		return nil
 	}
 	dst := make([]string, len(src))
@@ -1452,7 +1452,10 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			continue
 		}
 
-		mapping := acc.GetModelMapping()
+		mapping := acc.modelMappingForListing()
+		// A configured catalog can become empty after platform filtering.
+		// Keep it distinct from nil, which asks callers to use defaults.
+		hasAnyMapping = hasAnyMapping || len(mapping) > 0
 		for model := range mapping {
 			// Accounts pulled in through mixed scheduling only contribute the
 			// models that belong to the listing platform (e.g. an antigravity
@@ -1461,7 +1464,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 				continue
 			}
 			modelSet[model] = struct{}{}
-			hasAnyMapping = true
 		}
 	}
 
