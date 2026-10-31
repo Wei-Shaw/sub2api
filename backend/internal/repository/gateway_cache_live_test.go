@@ -60,3 +60,96 @@ func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, closed)
 }
+
+func TestGatewayCacheLiveCallUpstreamRoutingAcrossInstances(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	writer := NewGatewayCache(client).(service.LiveCallStore)
+	reader := NewGatewayCache(client).(service.LiveCallStore)
+	ctx := context.Background()
+
+	for _, mode := range []string{"device_check", "codex_oauth", "future_unknown_mode"} {
+		t.Run(mode, func(t *testing.T) {
+			record := &service.LiveCallRecord{
+				CallID:            "call_" + mode,
+				CallHash:          HashLiveCallID("call_" + mode),
+				UpstreamAuthMode:  mode,
+				UpstreamSessionID: "session_for_" + mode,
+				Controller:        service.LiveControllerPending,
+				CreatedAt:         time.Now(),
+				ExpiresAt:         time.Now().Add(time.Hour),
+			}
+			require.NoError(t, writer.SaveLiveCall(ctx, record, time.Hour))
+
+			loaded, err := reader.GetLiveCall(ctx, record.CallHash)
+			require.NoError(t, err)
+			// The store preserves the creation-time route; the service decides
+			// whether a mode is supported instead of silently selecting a default.
+			require.Equal(t, record.UpstreamAuthMode, loaded.UpstreamAuthMode)
+			require.Equal(t, record.UpstreamSessionID, loaded.UpstreamSessionID)
+		})
+	}
+}
+
+func TestGatewayCacheLiveCallReadsLegacyRecordWithoutRoutingFields(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	cache := NewGatewayCache(client).(service.LiveCallStore)
+	ctx := context.Background()
+	callHash := HashLiveCallID("legacy_call")
+	key := liveCallKey(callHash)
+	// Write the pre-upgrade Redis shape directly so new serializer defaults
+	// cannot accidentally hide a compatibility regression.
+	require.NoError(t, client.HSet(ctx, key, map[string]any{
+		"call_id":     "legacy_call",
+		"account_id":  11,
+		"api_key_id":  22,
+		"user_id":     33,
+		"controller":  service.LiveControllerPending,
+		"attestation": "legacy-encrypted-attestation",
+	}).Err())
+	require.NoError(t, client.Expire(ctx, key, time.Hour).Err())
+
+	loaded, err := cache.GetLiveCall(ctx, callHash)
+	require.NoError(t, err)
+	require.Equal(t, "legacy_call", loaded.CallID)
+	require.Equal(t, int64(11), loaded.AccountID)
+	require.Equal(t, "legacy-encrypted-attestation", loaded.AttestationCiphertext)
+	require.Empty(t, loaded.UpstreamAuthMode)
+	require.Empty(t, loaded.UpstreamSessionID)
+	// A read must not turn an old record into a new OAuth record or mutate it.
+	hasMode, err := client.HExists(ctx, key, "upstream_auth_mode").Result()
+	require.NoError(t, err)
+	require.False(t, hasMode)
+	hasSession, err := client.HExists(ctx, key, "upstream_session_id").Result()
+	require.NoError(t, err)
+	require.False(t, hasSession)
+}
+
+func TestGatewayCacheLiveCallReplacementClearsUpstreamRouting(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	cache := NewGatewayCache(client).(service.LiveCallStore)
+	ctx := context.Background()
+	record := &service.LiveCallRecord{
+		CallID:            "replacement_call",
+		CallHash:          HashLiveCallID("replacement_call"),
+		UpstreamAuthMode:  "codex_oauth",
+		UpstreamSessionID: "session_to_clear",
+		Controller:        service.LiveControllerPending,
+	}
+	require.NoError(t, cache.SaveLiveCall(ctx, record, time.Hour))
+
+	record.UpstreamAuthMode = ""
+	record.UpstreamSessionID = ""
+	record.AttestationCiphertext = "legacy-encrypted-attestation"
+	require.NoError(t, cache.SaveLiveCall(ctx, record, time.Hour))
+	loaded, err := cache.GetLiveCall(ctx, record.CallHash)
+	require.NoError(t, err)
+	require.Empty(t, loaded.UpstreamAuthMode)
+	require.Empty(t, loaded.UpstreamSessionID)
+	require.Equal(t, record.AttestationCiphertext, loaded.AttestationCiphertext)
+}
