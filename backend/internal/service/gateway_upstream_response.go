@@ -1190,6 +1190,7 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	serverToolUse            *serverToolUsagePatch
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1264,6 +1265,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		patch.serverToolUse = serverToolUsagePatchFromMap(usageObj)
 		return patch
 	}
 
@@ -1293,6 +1295,7 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+	applyServerToolUsagePatch(usage, patch.serverToolUse)
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -1426,6 +1429,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		response.Usage.CacheCreation5mTokens = int(cc5m.Int())
 		response.Usage.CacheCreation1hTokens = int(cc1h.Int())
 	}
+	applyServerToolUsageFromJSON(&response.Usage, gjson.GetBytes(body, "usage"))
 
 	// 兼容 Kimi cached_tokens → cache_read_input_tokens
 	if response.Usage.CacheReadInputTokens == 0 {

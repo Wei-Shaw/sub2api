@@ -662,6 +662,8 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 				usage.CacheReadInputTokens = int(v)
 			}
 
+			applyServerToolUsageFromJSON(usage, deltaUsage)
+
 			cc5m := deltaUsage.Get("cache_creation.ephemeral_5m_input_tokens")
 			cc1h := deltaUsage.Get("cache_creation.ephemeral_1h_input_tokens")
 			if cc5m.Exists() {
@@ -793,6 +795,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 		}
 	}
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
+	applyServerToolUsageFromJSON(usage, usageNode)
 	return usage
 }
 
