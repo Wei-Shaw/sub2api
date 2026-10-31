@@ -130,11 +130,11 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		return nil, false, nil
 	}
 
-	visible, catalog, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+	_, catalog, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("load group configured Codex models: %w", err)
 	}
-	configuredModels := openAIConfiguredCodexModelIDsForGroup(visible, group)
+	configuredModels := openAIConfiguredCodexModelIDsForGroup(catalog, group)
 	if len(configuredModels) == 0 {
 		return nil, false, nil
 	}
@@ -187,13 +187,13 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		return nil
 	}
 
-	visible, accounts, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+	_, accounts, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
 	if err != nil {
 		return fmt.Errorf("load group configured Codex models: %w", err)
 	}
 	var configuredModels []string
 	if !group.CodexModelsManifestConfig.Enabled {
-		configuredModels = openAIConfiguredCodexModelIDsForGroup(visible, group)
+		configuredModels = openAIConfiguredCodexModelIDsForGroup(accounts, group)
 	}
 	body, changed, err := mergeConfiguredCodexModelsManifest(
 		manifest.Body,
@@ -227,14 +227,11 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	return nil
 }
 
-// loadCodexGroupCatalogAccounts separates picker membership from capability
-// intersection. visible accounts are currently schedulable and decide which
-// public aliases appear. catalog accounts are persistently enabled group
-// members; the availability query ignores transient rate-limit, overload, and
-// temporary-unschedulable state so those conditions cannot widen advertised
-// capabilities. Persistently disabled accounts are excluded because routing
-// cannot select them. If the availability query fails, the catalog falls back
-// to the schedulable set so a listing error does not fail the client request.
+// loadCodexGroupCatalogAccounts loads the schedulable fallback and persistent
+// catalog. Catalog accounts determine model membership and capability
+// intersection, so transient scheduling blocks neither remove model metadata
+// nor widen advertised capabilities. Persistently disabled accounts are
+// excluded. If the availability query fails, retain the schedulable fallback.
 func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, groupID int64) (visible []Account, catalog []Account, err error) {
 	if repo == nil {
 		return nil, nil, nil
