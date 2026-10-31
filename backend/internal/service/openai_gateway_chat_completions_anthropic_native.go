@@ -59,7 +59,9 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert request")
+		if !writeChatInputAudioValidationError(c, err) {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert request")
+		}
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 	// Resolve the mapped model before choosing its thinking/tool protocol.
