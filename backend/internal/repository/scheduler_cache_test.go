@@ -171,3 +171,33 @@ func TestSchedulerMetadataAccountPreservesEndpointCapabilities(t *testing.T) {
 		})
 	}
 }
+
+func TestSchedulerMetadataRoundTripKeepsExplicitCapabilityMapAndRedactsTokens(t *testing.T) {
+	account := service.Account{
+		ID:       26,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      "https://ark.example.com",
+			"access_token":  "secret-access-token",
+			"refresh_token": "secret-refresh-token",
+			"openai_capabilities": map[string]any{
+				"chat_completions": true,
+				"embeddings":       false,
+				"seedance":         false,
+			},
+		},
+	}
+
+	_, metadataPayload, err := marshalSchedulerCacheAccount(account)
+	require.NoError(t, err)
+
+	var metadata service.Account
+	require.NoError(t, json.Unmarshal(metadataPayload, &metadata))
+	require.Equal(t, "https://ark.example.com", metadata.GetCredential("base_url"))
+	require.Empty(t, metadata.GetCredential("access_token"))
+	require.Empty(t, metadata.GetCredential("refresh_token"))
+	require.True(t, metadata.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityChatCompletions))
+	require.False(t, metadata.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityEmbeddings))
+	require.False(t, metadata.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilitySeedance))
+}
