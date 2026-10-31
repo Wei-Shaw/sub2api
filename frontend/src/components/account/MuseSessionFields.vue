@@ -27,6 +27,10 @@
         <button type="button" class="btn btn-secondary btn-sm" @click="retryUsers">{{ t('admin.accounts.retry') }}</button>
       </div>
     </div>
+    <MuseConnectCard :owner-id="ownerId" :owner-label="selectedUserLabel" :account-id="accountId"
+      :disabled="ownerLookupError || !knownUsers[ownerId] || importing" @connected="receiveBrowserSession" @invalidated="clearBrowserSession" />
+    <details class="text-sm" data-testid="muse-advanced-import">
+      <summary class="cursor-pointer text-gray-600 dark:text-gray-400">{{ t('admin.accounts.muse.connectAdvanced') }}</summary>
     <div class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="muse-session-import">
       <div>
         <p class="font-medium">{{ t('admin.accounts.muse.session') }}</p>
@@ -48,23 +52,6 @@
         {{ t(fileName ? 'admin.accounts.muse.fileReady' : 'admin.accounts.muse.sessionReady') }} <span v-if="fileName" class="break-all">{{ fileName }}</span>
       </p>
       <p v-else-if="replacement" class="input-hint">{{ t('admin.accounts.muse.savedSession') }}</p>
-      <details class="text-sm" data-testid="muse-export-guide">
-        <summary class="cursor-pointer font-medium text-primary-600 dark:text-primary-400">{{ t('admin.accounts.muse.exportTitle') }}</summary>
-        <div class="mt-3 space-y-3">
-          <p class="input-hint">{{ t('admin.accounts.muse.exportDesktop') }}</p>
-          <!-- Increment the download version when rebuilding the exporter ZIP. -->
-          <a href="/muse-session-exporter.zip?v=2" download class="btn btn-secondary btn-sm inline-flex">
-            {{ t('admin.accounts.muse.downloadExporter') }}
-          </a>
-          <ol class="list-decimal space-y-2 pl-5 text-gray-600 dark:text-gray-300">
-            <li>{{ t('admin.accounts.muse.exportUnzip') }}</li>
-            <li>{{ t('admin.accounts.muse.exportInstall') }} <code class="text-xs">chrome://extensions</code> / <code class="text-xs">edge://extensions</code></li>
-            <li>{{ t('admin.accounts.muse.exportLogin') }} <a href="https://muse.ai/" target="_blank" rel="noopener noreferrer" class="text-primary-600 underline dark:text-primary-400">muse.ai</a></li>
-            <li>{{ t('admin.accounts.muse.exportDownload') }}</li>
-            <li>{{ t('admin.accounts.muse.exportImport') }}</li>
-          </ol>
-        </div>
-      </details>
       <details class="text-sm" data-testid="muse-manual-session">
         <summary class="cursor-pointer text-gray-600 dark:text-gray-300">{{ t('admin.accounts.muse.pasteInstead') }}</summary>
         <label class="input-label mt-3" for="muse-session">{{ t('admin.accounts.muse.pasteLabel') }}</label>
@@ -75,6 +62,7 @@
       <p class="input-hint">{{ t('admin.accounts.muse.exportPrivate') }}</p>
       <p class="input-hint">{{ t('admin.accounts.muse.afterSave') }}</p>
     </div>
+    </details>
   </div>
 </template>
 
@@ -83,6 +71,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Select from '@/components/common/Select.vue'
+import MuseConnectCard from './MuseConnectCard.vue'
 import type { AdminUser } from '@/types'
 import { parseMuseSessionDocument } from './museSession'
 
@@ -207,6 +196,17 @@ function dropFile(event: DragEvent) {
     return
   }
   void importFile(files[0])
+}
+
+function receiveBrowserSession(raw: string) {
+  importSequence++
+  fileError.value = ''
+  fileName.value = ''
+  emit('update:sessionJson', raw)
+}
+
+function clearBrowserSession() {
+  emit('update:sessionJson', '')
 }
 
 function pasteSession(raw: string) {

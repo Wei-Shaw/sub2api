@@ -1,33 +1,43 @@
-# Muse session exporter
+# Muse Connect browser helper
 
-This Chromium extension exports the Muse app HttpOnly session cookies used by the
-reference muse2api projects. It saves a local JSON credential file and sends
-nothing to another server. Its source and MIT attribution are in
-`THIRD_PARTY_NOTICES_MUSE.md`.
+Connect the Muse account already signed in in Chrome/Edge directly to your
+Sub2API account form. No session JSON file is created or moved.
 
-1. Open Chrome/Edge extension management, enable developer mode, and choose
-   **Load unpacked** with this directory.
-2. Sign in to `https://muse.ai/` using the dedicated account assigned to one
-   Sub2API user.
-3. Open the extension and choose **Export session file**.
-4. In the Sub2API Muse account form, choose the existing user by name or email,
-   then click **Choose Muse session file** and select `muse-session.json`.
-   You can also drop the file onto the import area. Pasting JSON is an advanced
-   option; CDP and Playwright cookie-array exports are also accepted.
-5. After saving, reopen the account and choose **Test Muse sign-in**. Sub2API uses the account's
-   configured proxy and updates returned cookies atomically. It does not wake a VM
-   or send a prompt during this check.
+## Connect
 
-Session authentication does not qualify inference, models, or subscription quota.
-Fresh logins can export the three persistent cookies; `/api/session` obtains the
-VM lease cookie during Sub2API's session check.
-Those remain separate verification requirements. The native inference provider
-continues to be disabled until its app transport is qualified.
+1. Install the helper once: unzip the download, open `chrome://extensions` or
+   `edge://extensions`, enable Developer mode and choose **Load unpacked** for
+   the `muse-cookie-export` folder.
+2. Sign in to `https://muse.ai/` in the same browser.
+3. In your HTTPS Sub2API account form, select the owning user and click
+   **Connect Muse**. Open **Sub2API Muse Connect** from the browser toolbar.
+4. Check the displayed Sub2API origin and assigned user, then click
+   **Approve connection**. The session goes directly to that pending form.
+5. Save the account. Sub2API automatically verifies native Muse model access.
+   A saved account stays saved if verification needs to be retried.
 
-The Meta Muse account form includes a downloadable ZIP and numbered setup
-instructions. Unzip it before choosing **Load unpacked**, and select the
-`muse-cookie-export` folder inside. The form's **Choose Muse session file** button reads
-`muse-session.json` locally into the credential field.
+The pending request expires after two minutes and is bound to the tab, exact
+origin, owner, account and a single-use 256-bit nonce. Changing or closing the
+form cancels it. Approvals are never sent to arbitrary URLs or all frames.
 
-After changing exporter files, rebuild the committed download with
-`python3 tools/muse-cookie-export/package.py` from the repository root.
+## Permissions and privacy
+
+- `cookies` with host access restricted to `https://muse.ai/*`, for the four
+  named Muse sign-in cookies. Cookies are read only after approval.
+- `activeTab` and `scripting`, for the Sub2API tab where you explicitly invoke
+  the helper. No permanent access to every website is requested.
+- No network fetch from the helper, download permission, credential URL,
+  local/session storage, analytics or credential logging. The authenticated
+  Sub2API form uses its normal save API after your approval.
+
+Public HTTP destinations are rejected. HTTP localhost/loopback is allowed for
+development. File import and JSON paste remain available under **Advanced** in
+Sub2API for existing exports; this helper does not export session files.
+
+Cookie handling is adapted from MIT-licensed reference Muse integrations; see
+`THIRD_PARTY_NOTICES_MUSE.md`. Native inference, entitlement and reported usage
+still require their separate provider checks; a helper handoff is not an
+inference or subscription claim.
+
+After changing runtime files, rebuild the bundled download from the repository
+root with `python3 tools/muse-cookie-export/package.py`.

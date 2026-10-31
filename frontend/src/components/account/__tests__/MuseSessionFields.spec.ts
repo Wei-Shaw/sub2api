@@ -118,11 +118,14 @@ describe('Muse session setup', () => {
     expect(wrapper.emitted('update:ownerId')).toBeUndefined()
   })
 
-  it('keeps session data under an advanced option and provides the exporter setup guide', () => {
+  it('makes file-free Connect Muse primary and keeps file/JSON import under Advanced', () => {
     const wrapper = mountFields()
     expect(wrapper.get('[data-testid="muse-manual-session"]').attributes('open')).toBeUndefined()
-    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
-    expect(wrapper.findAll('ol li')).toHaveLength(5)
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=3')
+    expect(wrapper.findAll('ol li')).toHaveLength(3)
+    expect(wrapper.get('[data-testid="muse-connect-start"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="muse-advanced-import"]').attributes('open')).toBeUndefined()
+    expect(wrapper.get('input[type="file"]').element.closest('details')?.getAttribute('data-testid')).toBe('muse-advanced-import')
     expect(wrapper.text()).toContain('chrome://extensions')
     expect(wrapper.text()).toContain('edge://extensions')
     expect(wrapper.get('a[href="https://muse.ai/"]').attributes('rel')).toContain('noopener')
