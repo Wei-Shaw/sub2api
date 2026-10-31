@@ -738,7 +738,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 								if closeOpenBlock() {
 									return streamResult(), nil
 								}
-								if openToolIndex >= 0 && openToolName != name {
+								if openToolIndex >= 0 && !geminiFunctionCallContinuesOpenTool(openToolName, seenToolJSON, name) {
 									if closeOpenTool() {
 										return streamResult(), nil
 									}
