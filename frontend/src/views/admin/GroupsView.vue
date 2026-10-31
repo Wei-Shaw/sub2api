@@ -1586,11 +1586,31 @@
             <Toggle
               data-testid="create-force-openai-fast"
               :aria-label="t('admin.groups.openaiFast.force')"
-              v-model="createForm.force_openai_fast"
+              :model-value="createForm.force_openai_fast"
+              @update:model-value="setCreateForceOpenAIFast"
             />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div
+            v-if="createForm.platform === 'composite' && !createForm.force_openai_fast"
+            class="flex items-center justify-between gap-4 mt-4"
+          >
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.allowDowngrade") }}
+            </label>
+            <Toggle
+              data-testid="create-allow-openai-fast-downgrade"
+              :aria-label="t('admin.groups.openaiFast.allowDowngrade')"
+              v-model="createForm.allow_openai_fast_downgrade"
+            />
+          </div>
+          <p
+            v-if="createForm.platform === 'composite' && !createForm.force_openai_fast"
+            class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+          >
+            {{ t("admin.groups.openaiFast.allowDowngradeHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -3250,11 +3270,31 @@
             <Toggle
               data-testid="edit-force-openai-fast"
               :aria-label="t('admin.groups.openaiFast.force')"
-              v-model="editForm.force_openai_fast"
+              :model-value="editForm.force_openai_fast"
+              @update:model-value="setEditForceOpenAIFast"
             />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div
+            v-if="editForm.platform === 'composite' && !editForm.force_openai_fast"
+            class="flex items-center justify-between gap-4 mt-4"
+          >
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.allowDowngrade") }}
+            </label>
+            <Toggle
+              data-testid="edit-allow-openai-fast-downgrade"
+              :aria-label="t('admin.groups.openaiFast.allowDowngrade')"
+              v-model="editForm.allow_openai_fast_downgrade"
+            />
+          </div>
+          <p
+            v-if="editForm.platform === 'composite' && !editForm.force_openai_fast"
+            class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+          >
+            {{ t("admin.groups.openaiFast.allowDowngradeHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -4362,6 +4402,7 @@ import {
 } from "./groupsMessagesDispatch";
 import {
   normalizeGroupOpenAIFast,
+  normalizeGroupOpenAIFastDowngrade,
   supportsGroupOpenAIFast,
 } from "./groupsOpenAIFast";
 import {
@@ -4982,6 +5023,7 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  allow_openai_fast_downgrade: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5349,6 +5391,7 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  allow_openai_fast_downgrade: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5413,6 +5456,16 @@ const editForm = reactive({
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
+
+const setCreateForceOpenAIFast = (enabled: boolean) => {
+  createForm.force_openai_fast = enabled;
+  if (enabled) createForm.allow_openai_fast_downgrade = false;
+};
+
+const setEditForceOpenAIFast = (enabled: boolean) => {
+  editForm.force_openai_fast = enabled;
+  if (enabled) editForm.allow_openai_fast_downgrade = false;
+};
 
 type ImagePricingFormState = {
   platform: GroupPlatform;
@@ -5841,6 +5894,7 @@ const closeCreateModal = () => {
   createForm.video_model_prices = createVideoModelPricesForm();
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
+  createForm.allow_openai_fast_downgrade = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
@@ -5965,6 +6019,11 @@ const handleCreateGroup = async () => {
       ...createGroupForm,
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
+        createForm.force_openai_fast,
+      ),
+      allow_openai_fast_downgrade: normalizeGroupOpenAIFastDowngrade(
+        createForm.platform,
+        createForm.allow_openai_fast_downgrade,
         createForm.force_openai_fast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
@@ -6116,6 +6175,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.allow_openai_fast_downgrade =
+    group.allow_openai_fast_downgrade ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -6251,6 +6312,7 @@ const closeEditModal = () => {
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
+  editForm.allow_openai_fast_downgrade = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -6309,6 +6371,11 @@ const handleUpdateGroup = async () => {
       ...editForm,
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
+        editForm.force_openai_fast,
+      ),
+      allow_openai_fast_downgrade: normalizeGroupOpenAIFastDowngrade(
+        editForm.platform,
+        editForm.allow_openai_fast_downgrade,
         editForm.force_openai_fast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
@@ -6746,6 +6813,12 @@ watch(
     if (!supportsLivePlatform(newVal)) {
       createForm.allow_live = false;
     }
+    createForm.allow_openai_fast_downgrade =
+      normalizeGroupOpenAIFastDowngrade(
+        newVal,
+        createForm.allow_openai_fast_downgrade,
+        createForm.force_openai_fast,
+      );
     if (!isProfitControlPlatform(newVal)) {
       createForm.profit_control_enabled = false;
       createForm.profit_min_margin_percent = 0;
@@ -6804,6 +6877,12 @@ watch(
     if (!supportsLivePlatform(newVal)) {
       editForm.allow_live = false;
     }
+    editForm.allow_openai_fast_downgrade =
+      normalizeGroupOpenAIFastDowngrade(
+        newVal,
+        editForm.allow_openai_fast_downgrade,
+        editForm.force_openai_fast,
+      );
     if (!isProfitControlPlatform(newVal)) {
       editForm.profit_control_enabled = false;
       editForm.profit_min_margin_percent = 0;

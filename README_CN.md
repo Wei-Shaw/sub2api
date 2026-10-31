@@ -248,6 +248,8 @@ Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），�
 
 Codex 的 Fast 入口由客户端模型目录驱动。只有当前模型目录声明了 `additional_speed_tiers: ["fast"]` 和对应的 `service_tiers`，Codex 才会显示 `/fast`。通过 API Key 或自定义模型提供商连接 Sub2API 时，如果模型目录没有这些字段，即使后台配置了 `force_priority`，重启 Codex 后也不会出现 Speed 选项。
 
+Composite 分组可在管理端显式开启 `allow_openai_fast_downgrade`，在选中账号未声明所请求 Fast 档位时移除 `service_tier`；默认关闭。强制 Fast 不允许降级，不支持时明确拒绝。账号模型目录与转发使用相同的能力证据，不因模型名称覆盖上游明确为空的档位声明。详见 [Composite 分组](docs/COMPOSITE_GROUPS.md#openai-fast-capability)。
+
 客户端可在 `~/.codex/config.toml` 中直接指定默认请求级别：
 
 ```toml
