@@ -27,6 +27,9 @@ func TestAnthropicChatStreamAuthoritativeUsage(t *testing.T) {
 				prompt, billableInput, totalInput, output, cached, created int
 			}{
 				{"cache", `,"usage":{"input_tokens":308,"cache_read_input_tokens":241,"cache_creation_input_tokens":17}`, `,"usage":{"output_tokens":49}`, "", true, 566, 308, 566, 49, 241, 17},
+				{"contradictory_cache_creation", `,"usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `,"usage":{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `,"usage":{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, true, 110, 10, 110, 7, 0, 100},
+				{"zero_cache_creation", `,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `,"usage":{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, "", true, 10, 10, 10, 7, 0, 0},
+				{"partial_cache_creation", `,"usage":{"input_tokens":10,"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `,"usage":{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":30}}`, `,"usage":{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":30}}`, true, 60, 10, 60, 7, 0, 50},
 				{"deepseek_partial_cache", "", `,"usage":{"input_tokens":1200,"output_tokens":30,"prompt_cache_hit_tokens":800,"prompt_cache_miss_tokens":400}`, "", true, 1200, 400, 1200, 30, 800, 0},
 				{"openai_partial_cache", "", `,"usage":{"prompt_tokens":1200,"output_tokens":30,"prompt_tokens_details":{"cached_tokens":800}}`, "", true, 1200, 400, 1200, 30, 800, 0},
 				{"repeated_authoritative_cache_bucket", `,"usage":{"input_tokens":1200,"prompt_tokens":1200}`, `,"usage":{"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800}`, `,"usage":{"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800}`, true, 1200, 400, 1200, 30, 800, 0},

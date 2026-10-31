@@ -151,6 +151,25 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 	}
 }
 
+func (usage OpenAIUsage) billingUsageTokens() UsageTokens {
+	tokens := UsageTokens{
+		InputTokens:           max(usage.InputTokens-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0),
+		ImageInputTokens:      max(usage.ImageInputTokens-usage.ImageCacheReadTokens, 0),
+		ImageCacheReadTokens:  usage.ImageCacheReadTokens,
+		OutputTokens:          usage.OutputTokens,
+		CacheCreationTokens:   usage.CacheCreationInputTokens,
+		CacheCreation5mTokens: usage.CacheCreation5mTokens,
+		CacheCreation1hTokens: usage.CacheCreation1hTokens,
+		CacheReadTokens:       usage.CacheReadInputTokens,
+		ImageOutputTokens:     usage.ImageOutputTokens,
+	}
+	if usage.cacheCreationInputTokensPresent && usage.CacheCreationInputTokens == 0 {
+		tokens.CacheCreation5mTokens = 0
+		tokens.CacheCreation1hTokens = 0
+	}
+	return tokens
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -179,21 +198,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
-	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens - result.Usage.CacheCreationInputTokens
-	if actualInputTokens < 0 {
-		actualInputTokens = 0
-	}
-
-	// Calculate cost
-	tokens := UsageTokens{
-		InputTokens:          actualInputTokens,
-		ImageInputTokens:     max(result.Usage.ImageInputTokens-result.Usage.ImageCacheReadTokens, 0),
-		ImageCacheReadTokens: result.Usage.ImageCacheReadTokens,
-		OutputTokens:         result.Usage.OutputTokens,
-		CacheCreationTokens:  result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:      result.Usage.CacheReadInputTokens,
-		ImageOutputTokens:    result.Usage.ImageOutputTokens,
-	}
+	tokens := result.Usage.billingUsageTokens()
+	actualInputTokens := tokens.InputTokens
 
 	// Get rate multiplier
 	multiplier := 1.0
@@ -400,6 +406,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		InputTokens:              actualInputTokens,
 		OutputTokens:             result.Usage.OutputTokens,
 		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
+		CacheCreation5mTokens:    result.Usage.CacheCreation5mTokens,
+		CacheCreation1hTokens:    result.Usage.CacheCreation1hTokens,
 		CacheReadTokens:          result.Usage.CacheReadInputTokens,
 		ImageInputTokens:         result.Usage.ImageInputTokens,
 		ImageOutputTokens:        result.Usage.ImageOutputTokens,

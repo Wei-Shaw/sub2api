@@ -166,12 +166,21 @@ type AnthropicPromptTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitempty"`
 }
 
+// AnthropicCacheCreation holds Anthropic's cache creation TTL breakdown.
+// Pointers preserve the distinction between an omitted field and an explicit
+// zero in streaming usage events.
+type AnthropicCacheCreation struct {
+	Ephemeral5mInputTokens *int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens *int `json:"ephemeral_1h_input_tokens,omitempty"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	InputTokens              int                     `json:"input_tokens"`
+	OutputTokens             int                     `json:"output_tokens"`
+	CacheCreationInputTokens int                     `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int                     `json:"cache_read_input_tokens"`
+	CacheCreation            *AnthropicCacheCreation `json:"cache_creation,omitempty"`
 	// Anthropic-compatible providers can also expose their native OpenAI-style
 	// total/cache fields. Preserve them so callers can normalize provider totals
 	// into Anthropic's mutually-exclusive billing buckets.
@@ -180,6 +189,43 @@ type AnthropicUsage struct {
 	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
 	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
 	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
+
+	// Presence distinguishes explicit zero from missing/null; TTL details remain raw.
+	CacheCreationInputTokensPresent bool `json:"-"`
+}
+
+func (usage *AnthropicUsage) UnmarshalJSON(data []byte) error {
+	type usageAlias AnthropicUsage
+	var decoded struct {
+		usageAlias
+		CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*usage = AnthropicUsage(decoded.usageAlias)
+	if decoded.CacheCreationInputTokens != nil {
+		usage.CacheCreationInputTokens = *decoded.CacheCreationInputTokens
+		usage.CacheCreationInputTokensPresent = true
+	}
+	return nil
+}
+
+func (usage AnthropicUsage) HasCacheCreationInputTokens() bool {
+	return usage.CacheCreationInputTokensPresent || usage.CacheCreationInputTokens != 0
+}
+
+// MarshalJSON preserves aggregate presence and raw TTL details without deriving totals.
+func (usage AnthropicUsage) MarshalJSON() ([]byte, error) {
+	type usageAlias AnthropicUsage
+	var aggregate *int
+	if usage.HasCacheCreationInputTokens() {
+		aggregate = &usage.CacheCreationInputTokens
+	}
+	return json.Marshal(struct {
+		usageAlias
+		CacheCreationInputTokens *int `json:"cache_creation_input_tokens,omitempty"`
+	}{usageAlias: usageAlias(usage), CacheCreationInputTokens: aggregate})
 }
 
 // ---------------------------------------------------------------------------
