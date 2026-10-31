@@ -156,8 +156,8 @@ type UsageProgress struct {
 
 // AntigravityModelQuota Antigravity 单个模型的配额信息
 type AntigravityModelQuota struct {
-	Utilization int    `json:"utilization"` // 使用率 0-100
-	ResetTime   string `json:"reset_time"`  // 重置时间 ISO8601
+	Utilization float64 `json:"utilization"` // 使用率 0-100
+	ResetTime   string  `json:"reset_time"`  // 重置时间 ISO8601
 }
 
 // AntigravityModelDetail Antigravity 单个模型的详细能力信息

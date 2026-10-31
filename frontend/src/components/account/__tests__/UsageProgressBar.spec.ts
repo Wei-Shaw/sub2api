@@ -13,6 +13,28 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('UsageProgressBar', () => {
+  it.each([
+    [0.021136, '0.02%'],
+    [1.983255, '1.98%'],
+    [0.000001, '<0.01%'],
+    [0, '0%'],
+    [100, '100%'],
+  ])('preserves quota utilization %s with precisePercent', (utilization, expected) => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: 'Claude', utilization, color: 'amber', precisePercent: true }
+    })
+    expect(wrapper.text()).toContain(expected)
+    wrapper.unmount()
+  })
+
+  it('keeps default percentage rounding for other usage bars', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: '5h', utilization: 0.021136, color: 'amber' }
+    })
+    expect(wrapper.text()).toContain('0%')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-17T00:00:00Z'))
