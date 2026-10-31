@@ -1,6 +1,8 @@
 <template>
-  <!-- Official BytePlus mark: https://sf-bpcms.bytepluscdn.com/obj/byteplus-public-aiso/portal/assets/favicon.png -->
-  <img v-if="platform === 'byteplus'" :src="byteplusLogo" :class="sizeClass" alt="" aria-hidden="true" />
+  <!-- BytePlus symbol from its official bp-logo-colored.svg; inherit the surrounding icon color. -->
+  <svg v-if="platform === 'byteplus'" :class="sizeClass" viewBox="-1.44 -0.4 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+    <path d="M0.263971 4.61743H3.95956C4.10527 4.61743 4.22353 4.7372 4.22353 4.88477V9.51728C4.22353 9.73543 4.46797 9.86162 4.64272 9.7333L12.2519 4.13407C12.4262 4.00575 12.6711 4.13193 12.6711 4.35009V9.51675C12.6711 9.7349 12.9156 9.86109 13.0903 9.73276L20.6995 4.13354C20.8738 4.00521 21.1187 4.1314 21.1187 4.34955V18.3054C21.1187 18.4529 21.0005 18.5727 20.8548 18.5727H17.1592C17.0135 18.5727 16.8952 18.4529 16.8952 18.3054V13.6729C16.8952 13.4547 16.6508 13.3285 16.476 13.4568L8.86678 19.0561C8.69256 19.1844 8.44759 19.0582 8.44759 18.8401V13.6734C8.44759 13.4552 8.20316 13.3291 8.02841 13.4574L0.419186 19.0566C0.244965 19.1849 0 19.0587 0 18.8406V4.88477C0 4.7372 0.118259 4.61743 0.263971 4.61743Z" />
+  </svg>
   <!-- Claude/Anthropic logo -->
   <svg v-else-if="platform === 'anthropic'" :class="sizeClass" viewBox="0 0 16 16" fill="currentColor">
     <path
@@ -90,7 +92,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import byteplusLogo from '@/assets/brands/byteplus.png'
 import type { GroupPlatform } from '@/types'
 
 interface Props {
