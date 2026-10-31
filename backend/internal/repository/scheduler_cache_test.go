@@ -142,6 +142,7 @@ func TestSchedulerMetadataAccountPreservesEndpointCapabilities(t *testing.T) {
 		{name: "Seedance with blank URL", capabilities: []string{"seedance"}, baseURL: "  "},
 		{name: "embeddings only", capabilities: []string{"embeddings"}, embeddings: true},
 		{name: "chat only", capabilities: []string{"chat_completions"}, chat: true},
+		{name: "explicit disabled endpoints", capabilities: map[string]any{"chat_completions": true, "embeddings": false, "seedance": false}, chat: true},
 		{name: "legacy unrestricted", chat: true, embeddings: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,7 +151,9 @@ func TestSchedulerMetadataAccountPreservesEndpointCapabilities(t *testing.T) {
 				Platform: service.PlatformOpenAI,
 				Type:     service.AccountTypeAPIKey,
 				Credentials: map[string]any{
-					"base_url": tt.baseURL,
+					"base_url":      tt.baseURL,
+					"access_token":  "secret-access-token",
+					"refresh_token": "secret-refresh-token",
 				},
 			}
 			if tt.capabilities != nil {
@@ -160,6 +163,8 @@ func TestSchedulerMetadataAccountPreservesEndpointCapabilities(t *testing.T) {
 			require.NoError(t, err)
 			var metadata service.Account
 			require.NoError(t, json.Unmarshal(payload, &metadata))
+			require.NotContains(t, metadata.Credentials, "access_token")
+			require.NotContains(t, metadata.Credentials, "refresh_token")
 			for capability, want := range map[service.OpenAIEndpointCapability]bool{
 				service.OpenAIEndpointCapabilitySeedance:        tt.seedance,
 				service.OpenAIEndpointCapabilityChatCompletions: tt.chat,
