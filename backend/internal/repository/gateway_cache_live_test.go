@@ -65,8 +65,10 @@ func TestGatewayCacheLiveCallUpstreamRoutingAcrossInstances(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	writer := NewGatewayCache(client).(service.LiveCallStore)
-	reader := NewGatewayCache(client).(service.LiveCallStore)
+	writer, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
+	reader, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
 	ctx := context.Background()
 
 	for _, mode := range []string{"device_check", "codex_oauth", "future_unknown_mode"} {
@@ -96,7 +98,8 @@ func TestGatewayCacheLiveCallReadsLegacyRecordWithoutRoutingFields(t *testing.T)
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	cache := NewGatewayCache(client).(service.LiveCallStore)
+	cache, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
 	ctx := context.Background()
 	callHash := HashLiveCallID("legacy_call")
 	key := liveCallKey(callHash)
@@ -132,7 +135,8 @@ func TestGatewayCacheLiveCallReplacementClearsUpstreamRouting(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	cache := NewGatewayCache(client).(service.LiveCallStore)
+	cache, ok := NewGatewayCache(client).(service.LiveCallStore)
+	require.True(t, ok)
 	ctx := context.Background()
 	record := &service.LiveCallRecord{
 		CallID:            "replacement_call",
