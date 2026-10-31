@@ -109,6 +109,9 @@ func AnthropicToChatCompletionsRequestWithMinOutputTokens(req *AnthropicRequest,
 	out.ReasoningEffort = anthropicReasoningEffort(req)
 
 	parallelToolCalls := true
+	if len(out.ToolChoice) > 0 {
+		parallelToolCalls = anthropicParallelToolCalls(req.ToolChoice)
+	}
 	out.ParallelToolCalls = &parallelToolCalls
 
 	return out, nil
