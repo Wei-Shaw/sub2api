@@ -36,6 +36,17 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	if IsCNProvider(account.Platform) {
+		policyBody, _, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+		if policyErr != nil {
+			if IsReasoningEffortPolicyDenied(policyErr) {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			}
+			return nil, policyErr
+		}
+		body = policyBody
+	}
 
 	// 1. Parse Anthropic request
 	var anthropicReq apicompat.AnthropicRequest
@@ -85,20 +96,29 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions request: %w", err)
 	}
-	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
-		chatBody = normalizedBody
+	if !IsCNProvider(account.Platform) {
+		if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
+			chatBody = normalizedBody
+		}
 	}
-	if account.Platform == PlatformOpenAI {
-		policyBody, changed, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody)
+	if account.Platform == PlatformOpenAI || IsCNProvider(account.Platform) {
+		policyBody, changed, policyErr := applyMessagesConvertedReasoningEffortPolicy(ctx, account, chatBody, upstreamModel)
 		if policyErr != nil {
 			if IsReasoningEffortPolicyDenied(policyErr) {
 				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 				writeAnthropicError(c, http.StatusForbidden, "forbidden_error", policyErr.Error())
+			} else {
+				writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
 			}
 			return nil, policyErr
 		}
 		if changed {
 			chatBody = policyBody
+		}
+	}
+	if IsCNProvider(account.Platform) {
+		if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
+			chatBody = normalizedBody
 		}
 	}
 	// Provider normalization and policy caps can both change the converted effort.
