@@ -146,6 +146,69 @@ func TestForwardAsAnthropic_ConvertedPolicyFinalModelCapabilities(t *testing.T) 
 	}
 }
 
+func TestForwardAsAnthropic_CNResponsesContinuationReasoningPolicyOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, platform := range []string{PlatformKimi, PlatformDeepseek, PlatformMiniMax} {
+		for _, recovery := range []struct {
+			name    string
+			message string
+		}{
+			{name: "missing", message: "previous response not found"},
+			{name: "unsupported", message: "previous_response_id is only supported on Responses WebSocket v2"},
+		} {
+			for _, nextEffort := range []string{"max", ReasoningEffortMappingDeny} {
+				for _, stream := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/high_to_%s/stream=%v", platform, recovery.name, nextEffort, stream), func(t *testing.T) {
+						ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "", []ReasoningEffortMapping{
+							{From: "low", To: "high", MatchType: "exact", Model: "public-alias"},
+							{From: "high", To: nextEffort, MatchType: "exact", Model: "public-alias"},
+						}, "")
+						account := rawGPT56ResponsesAPIKeyAccount("public-alias", "gpt-5.3-codex")
+						account.Platform = platform
+						account.Credentials["api_protocol"] = APIProtocolResponses
+						account.Credentials["api_base_urls"] = map[string]any{APIProtocolResponses: "http://upstream.example"}
+						upstream := &httpUpstreamRecorder{responses: []*http.Response{
+							{
+								StatusCode: http.StatusBadRequest,
+								Header:     http.Header{"Content-Type": []string{"application/json"}},
+								Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"message":%q,"type":"invalid_request_error"}}`, recovery.message))),
+							},
+							openAICompatSSECompletedResponse("resp_recovered", "gpt-5.3-codex"),
+						}}
+						svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+						svc.bindOpenAICompatSessionResponseID(ctx, nil, account, "policy-session", "resp_missing")
+						body := []byte(fmt.Sprintf(`{"model":"public-alias","max_tokens":32,"output_config":{"effort":"low"},"stream":%v,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}]}`, stream))
+						recorder := httptest.NewRecorder()
+						ginContext, _ := gin.CreateTestContext(recorder)
+						ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body))).WithContext(ctx)
+
+						result, err := svc.ForwardAsAnthropic(ctx, ginContext, account, body, "policy-session", "")
+						require.NoError(t, err)
+						require.NotNil(t, result)
+						require.Equal(t, http.StatusOK, recorder.Code)
+						require.Equal(t, stream, result.Stream)
+						require.Len(t, upstream.requests, 2)
+						for requestIndex, sent := range upstream.bodies {
+							require.True(t, strings.HasSuffix(upstream.requests[requestIndex].URL.Path, "/responses"))
+							require.Equal(t, "gpt-5.3-codex", gjson.GetBytes(sent, "model").String())
+							require.Equal(t, "high", gjson.GetBytes(sent, "reasoning.effort").String(), "request %d", requestIndex)
+						}
+						require.Equal(t, "second", gjson.GetBytes(upstream.bodies[0], `input.#(role=="user").content.0.text`).String())
+						require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
+						require.Equal(t, "first", gjson.GetBytes(upstream.bodies[1], `input.#(role=="user").content.0.text`).String())
+						require.Contains(t, string(upstream.bodies[1]), "first")
+						require.Contains(t, string(upstream.bodies[1]), "second")
+						require.NotNil(t, result.ReasoningEffort)
+						require.Equal(t, "high", *result.ReasoningEffort)
+						require.Equal(t, "low", gjson.GetBytes(body, "output_config.effort").String())
+						require.Equal(t, recovery.name == "unsupported", svc.isOpenAICompatSessionContinuationDisabled(ctx, ginContext, account, "policy-session"))
+					})
+				}
+			}
+		}
+	}
+}
+
 func forwardConvertedMessagesPolicy(t *testing.T, ctx context.Context, platform, protocol, model, effort string, stream bool) (*OpenAIForwardResult, *httpUpstreamRecorder, *httptest.ResponseRecorder) {
 	t.Helper()
 	effortJSON := ""
