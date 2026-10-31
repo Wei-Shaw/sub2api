@@ -1855,7 +1855,32 @@ func TestOpus55ResponsesAdaptiveThinkingAndToolChoice(t *testing.T) {
 	old, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: "claude-opus-5", Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "xhigh"}})
 	require.NoError(t, err)
 	require.Equal(t, "max", old.OutputConfig.Effort)
-	require.Equal(t, "enabled", old.Thinking.Type)
+	require.Equal(t, "adaptive", old.Thinking.Type)
+	require.Zero(t, old.Thinking.BudgetTokens)
+}
+
+func TestResponsesToAnthropicAdaptiveOnlyModelsOmitBudgetTokens(t *testing.T) {
+	for _, model := range []string{"claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"} {
+		for _, tc := range []struct{ effort, want string }{{"medium", "medium"}, {"high", "high"}, {"xhigh", "max"}} {
+			out, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: model, Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: tc.effort}})
+			require.NoError(t, err, "%s/%s", model, tc.effort)
+			require.Equal(t, tc.want, out.OutputConfig.Effort, "%s/%s", model, tc.effort)
+			raw, err := json.Marshal(out.Thinking)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"type":"adaptive"}`, string(raw), "%s/%s", model, tc.effort)
+		}
+		low, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: model, Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "low"}})
+		require.NoError(t, err, model)
+		require.Nil(t, low.Thinking, model)
+		require.Equal(t, "low", low.OutputConfig.Effort, model)
+	}
+	// Models that still accept manual extended thinking keep the budget mapping.
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-5"} {
+		out, err := ResponsesToAnthropicRequest(&ResponsesRequest{Model: model, Input: json.RawMessage(`"hello"`), Reasoning: &ResponsesReasoning{Effort: "high"}})
+		require.NoError(t, err, model)
+		require.Equal(t, "enabled", out.Thinking.Type, model)
+		require.Equal(t, 10240, out.Thinking.BudgetTokens, model)
+	}
 }
 
 func TestOpus55SignedThinkingResponsesRoundTrip(t *testing.T) {
