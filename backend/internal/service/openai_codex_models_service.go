@@ -547,6 +547,16 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	return descriptor
 }
 
+// CodexModelContextWindow returns the context windows the Codex models
+// manifest advertises for modelID: family defaults, vendored official
+// descriptors, and the generic fallback for unknown IDs. The plain
+// OpenAI-style /v1/models list reuses these values so both discovery
+// endpoints stay consistent for the same model.
+func CodexModelContextWindow(modelID string) (contextWindow, maxContextWindow int64) {
+	descriptor := newConfiguredCodexModelDescriptor(modelID)
+	return descriptor.ContextWindow, descriptor.MaxContextWindow
+}
+
 func configuredCodexServiceTiersForModel(modelID string) []configuredCodexServiceTier {
 	tiers := make([]configuredCodexServiceTier, 0, 2)
 	if configuredCodexSupportsPriorityServiceTier(modelID) {
