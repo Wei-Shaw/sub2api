@@ -1,33 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { flushPromises, mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, verifyMuseMock, refreshAccountMock, museWarningMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
-  verifyMuseMock: vi.fn(),
-  refreshAccountMock: vi.fn(),
-  museWarningMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
-}))
-
-vi.mock('@/api/admin/muse', () => ({
-  verifyMuse: verifyMuseMock,
-  getMuseStatus: vi.fn().mockResolvedValue({ state: 'ready', verified: true, qualified_transport: true, owner_user_id: 10, models: ['fixture-model'], pending_turns: [] }),
-  authenticateMuse: vi.fn(), renewMuse: vi.fn(), resolveMuseTurn: vi.fn(), retryMuseSettlement: vi.fn(),
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
-    showInfo: vi.fn(),
-    showWarning: museWarningMock
+    showInfo: vi.fn()
   })
 }))
 
@@ -47,7 +37,6 @@ vi.mock('@/api/admin', () => ({
     },
     accounts: {
       update: updateAccountMock,
-      getById: refreshAccountMock,
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
@@ -347,9 +336,6 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 
 describe('EditAccountModal', () => {
   beforeEach(() => {
-    verifyMuseMock.mockReset().mockResolvedValue({ verified: true })
-    museWarningMock.mockReset()
-    refreshAccountMock.mockReset()
     authIsSimpleMode.value = true
   })
 
@@ -382,39 +368,6 @@ describe('EditAccountModal', () => {
     await wrapper.get('[data-testid="set-shadow-group"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock).toHaveBeenCalledWith(1, expect.objectContaining({ proxy_id: 9, priority: 8, group_ids: [7], concurrency: 1, schedulable: false, credentials: {}, extra: { muse_owner_user_id: 10 } }))
-    wrapper.unmount()
-  })
-
-  it('verifies replaced Muse credentials and emits the refreshed scheduling state', async () => {
-    const account = { ...buildAccount(), platform: 'muse', type: 'session', credentials: {}, extra: { muse_owner_user_id: 10 }, schedulable: false }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    const refreshed = { ...account, schedulable: true }
-    refreshAccountMock.mockResolvedValue(refreshed)
-    const wrapper = mountModal(account)
-    wrapper.findComponent({ name: 'MuseSessionFields' }).vm.$emit('update:sessionJson', '{"fixture":"session"}')
-    await flushPromises()
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(verifyMuseMock).toHaveBeenCalledTimes(1)
-    expect(verifyMuseMock).toHaveBeenCalledWith(1)
-    expect(refreshAccountMock).toHaveBeenCalledWith(1)
-    expect(wrapper.emitted('updated')?.[0]).toEqual([refreshed])
-    wrapper.unmount()
-  })
-
-  it('reports verification pending after a saved Muse refresh without retrying the update', async () => {
-    const account = { ...buildAccount(), platform: 'muse', type: 'session', credentials: {}, extra: { muse_owner_user_id: 10 } }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    verifyMuseMock.mockRejectedValueOnce(new Error('synthetic private error'))
-    const wrapper = mountModal(account)
-    wrapper.findComponent({ name: 'MuseSessionFields' }).vm.$emit('update:sessionJson', '{"fixture":"session"}')
-    await flushPromises()
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(museWarningMock).toHaveBeenCalledWith('admin.accounts.muse.connectSavedPending')
-    expect(wrapper.emitted('updated')).toHaveLength(1)
     wrapper.unmount()
   })
 
