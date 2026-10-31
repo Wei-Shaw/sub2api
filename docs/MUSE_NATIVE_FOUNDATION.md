@@ -82,8 +82,13 @@ The MIT-licensed reference projects now share a concrete cookie-authentication p
 The native Go port accepts their `{cookies, expires}` / `cookie_expires` /
 `cookies_exp` documents and CDP/Playwright HttpOnly cookie arrays. It imports
 `hatch_sess`, `hatch_gw`, `hatch_vml`, and `hatch_native_auth_device`, using exact
-Muse cookie-domain checks. `tools/muse-cookie-export` provides a Chromium exporter
-that saves local JSON without sending credentials to a remote collector.
+Muse cookie-domain checks. `tools/muse-cookie-export` provides Muse Connect, a Chromium helper that transfers
+the user-approved session directly to the pending Sub2API form without a session
+file. The destination origin, user, account and two-minute single-use nonce are
+checked before reading cookies and again before delivery. It uses Muse-only
+cookie access and temporary `activeTab`/`scripting` access to the approved tab.
+Saving the account automatically verifies native access; Advanced retains legacy
+file/JSON import. No credentials are placed in URLs or browser storage.
 An authenticated consumer-app bootstrap on 2026-10-06 demonstrated that a fresh
 login initially has the three persistent cookies; `GET /api/session` obtains
 `hatch_vml`. Import therefore accepts a missing VM lease without sending an empty

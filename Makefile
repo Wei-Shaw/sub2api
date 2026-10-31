@@ -14,6 +14,10 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/account/__tests__/CNProviderQuotaCell.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.spec.ts \
 	src/components/account/__tests__/EditAccountModal.spec.ts \
+	src/components/account/__tests__/MuseConnectCard.spec.ts \
+	src/components/account/__tests__/MuseSessionFields.spec.ts \
+	src/components/account/__tests__/museSession.spec.ts \
+	src/components/account/__tests__/MuseStatusPanel.spec.ts \
 	src/components/account/__tests__/credentialsBuilder.spec.ts \
 	src/components/account/__tests__/OpenCodeGoProtocolRulesEditor.spec.ts \
 	src/components/keys/__tests__/BulkEditKeysModal.spec.ts \
@@ -57,3 +61,4 @@ test-frontend:
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
+	@node --test tools/muse-cookie-export/connect.test.mjs
