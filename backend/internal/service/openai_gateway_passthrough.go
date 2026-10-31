@@ -591,6 +591,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
+	body, timezoneErr := s.applyCodexTimezone(ctx, account, body)
+	if timezoneErr != nil {
+		return nil, timezoneErr
+	}
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
 	case AccountTypeOAuth:

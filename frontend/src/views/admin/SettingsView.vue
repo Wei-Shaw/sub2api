@@ -5760,6 +5760,22 @@
                 </p>
               </div>
 
+              <div>
+                <label for="openai-codex-timezone" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.gatewayForwarding.openaiCodexTimezone') }}
+                </label>
+                <Select
+                  id="openai-codex-timezone"
+                  v-model="form.openai_codex_timezone"
+                  :options="codexTimezoneOptions"
+                  searchable
+                  creatable
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.gatewayForwarding.openaiCodexTimezoneHint') }}
+                </p>
+              </div>
+
               <!-- Codex 客户端版本号 -->
               <div>
                 <label
@@ -8975,6 +8991,7 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
+import { getTimezoneOptions } from "@/utils/timezoneOptions";
 import {
   SITE_BILLING_MODES,
   SITE_BILLING_MODE_I18N_KEYS,
@@ -9734,6 +9751,11 @@ function platformQuotaRows(map: DefaultPlatformQuotasMap | undefined): string[] 
   return listPlatformIds().filter((platform) => !!map?.[platform]);
 }
 
+const codexTimezoneOptions = computed(() => [
+  { value: "", label: t("admin.settings.gatewayForwarding.openaiCodexTimezoneClient") },
+  ...getTimezoneOptions(form.openai_codex_timezone),
+]);
+
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
@@ -9986,6 +10008,7 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
+  openai_codex_timezone: "",
   openai_codex_user_agent: "",
   openai_codex_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
@@ -11637,6 +11660,7 @@ async function saveSettings() {
         form.enable_client_dateline_normalization,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
+      openai_codex_timezone: form.openai_codex_timezone?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
       openai_codex_client_version:

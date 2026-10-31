@@ -3524,6 +3524,19 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label" for="create-codex-timezone">{{ t('admin.accounts.openai.codexTimezone') }}</label>
+        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTimezoneDesc') }}</p>
+        <Select
+          id="create-codex-timezone"
+          v-model="codexTimezone"
+          :options="codexTimezoneOptions"
+          data-testid="create-codex-timezone-select"
+          searchable
+          creatable
+        />
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
@@ -4152,6 +4165,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import { getTimezoneOptions } from '@/utils/timezoneOptions'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
@@ -4716,6 +4730,12 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexTimezone = ref('')
+const codexTimezoneOptions = computed(() => [
+  { value: '', label: t('admin.accounts.openai.codexTimezoneInherit') },
+  { value: 'off', label: t('admin.accounts.openai.codexTimezoneClient') },
+  ...getTimezoneOptions(codexTimezone.value),
+])
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -5679,6 +5699,7 @@ const resetForm = () => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  codexTimezone.value = ''
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5779,6 +5800,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_cli_only_allow_app_server = true
   } else {
     delete extra.codex_cli_only_allow_app_server
+  }
+  if (accountCategory.value === 'oauth-based' && codexTimezone.value) {
+    extra.codex_timezone = codexTimezone.value
+  } else {
+    delete extra.codex_timezone
   }
   // 收敛是显式 opt-in：off 即默认值，不落键；device/session/full 必须显式写入，
   // 否则管理员的选择会被当成默认而丢失（#5610）。
