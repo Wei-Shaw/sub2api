@@ -159,6 +159,14 @@
             >
               <Icon name="questionCircle" size="md" />
             </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-test="reset-all-quota-button"
+              @click="showResetAllDialog = true"
+            >
+              {{ t('admin.subscriptions.resetAll.title') }}
+            </button>
             <button @click="showAssignModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.subscriptions.assignSubscription') }}
@@ -757,6 +765,7 @@
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
     />
+    <ResetAllQuotaDialog :show="showResetAllDialog" @close="showResetAllDialog = false" @completed="loadSubscriptions" />
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -849,6 +858,7 @@ import type { SimpleUser } from '@/api/admin/usage'
 import type { SubscriptionBulkAction, SubscriptionBulkActionResult, BulkAssignSubscriptionResult } from '@/api/admin/subscriptions'
 import { useTableSelection } from '@/composables/useTableSelection'
 import BulkSubscriptionActionDialog from '@/components/admin/subscription/BulkSubscriptionActionDialog.vue'
+import ResetAllQuotaDialog from '@/components/admin/subscription/ResetAllQuotaDialog.vue'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1082,6 +1092,7 @@ const pagination = reactive({
 })
 
 const showAssignModal = ref(false)
+const showResetAllDialog = ref(false)
 const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
