@@ -14,8 +14,7 @@ existing OpenAI-compatible text gateway.
    restrictions are saved with the account and preserved by scheduler metadata.
    Automatic upstream billing-rate probing defaults to off for BytePlus.
 4. Create a BytePlus group, bind the account, and configure its allowed models,
-   pricing and spending limits. Seedance creation also requires the group's
-   media-generation permission. Composite groups can explicitly target BytePlus.
+   pricing and spending limits. Enable **Allow Seedance video** in the group for native video tasks. Composite groups can explicitly target BytePlus.
 5. Use Chat Completions for text, or the native Ark task API for Seedance:
    `POST /api/v3/contents/generations/tasks`, then
    `GET /api/v3/contents/generations/tasks/{task_id}` with the same client key.
