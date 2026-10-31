@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -104,8 +103,8 @@ func isResponsesWebSocketRoute(c *gin.Context) bool {
 }
 
 // groupModelAllowlistModelsFromBody 读取请求体并提取客户端模型名，随后把请求体
-// 回填（PrereadBody），保证后续 handler 零拷贝重读。读取失败按现有合成中间件
-// 的方式返回 400/413（返回 false 表示已写出响应并 Abort）。
+// 回填（PrereadBody），保证后续 handler 零拷贝重读。读取失败按共享分类返回
+// 400/408/413/499（返回 false 表示已写出响应并 Abort）。
 //
 // 下游同时存在 gjson（首个、大小写敏感）、encoding/json 绑定（末值、大小写
 // 不敏感）与 multipart 表单（首/末字段）三类解析器，这里返回「任一解析器可能
@@ -113,15 +112,7 @@ func isResponsesWebSocketRoute(c *gin.Context) bool {
 func groupModelAllowlistModelsFromBody(c *gin.Context) ([]string, bool) {
 	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		status := http.StatusBadRequest
-		message := "Failed to read request body"
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
-			status = http.StatusRequestEntityTooLarge
-			message = "Request body is too large"
-		}
-		c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": message}})
-		c.Abort()
+		AbortWithRequestBodyReadFailure(c, "middleware.group_model_allowlist", err)
 		return nil, false
 	}
 	requestmodel.ResetRequestBody(c.Request, body)

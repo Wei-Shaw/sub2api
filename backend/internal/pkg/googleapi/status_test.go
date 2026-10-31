@@ -14,6 +14,7 @@ func TestHTTPStatusToGoogleStatus(t *testing.T) {
 		{http.StatusUnauthorized, "UNAUTHENTICATED"},
 		{http.StatusForbidden, "PERMISSION_DENIED"},
 		{http.StatusNotFound, "NOT_FOUND"},
+		{http.StatusRequestTimeout, "DEADLINE_EXCEEDED"},
 		{http.StatusTooManyRequests, "RESOURCE_EXHAUSTED"},
 		{499, "CANCELLED"},
 		{http.StatusBadGateway, "INTERNAL"},
