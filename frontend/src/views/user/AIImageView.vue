@@ -431,6 +431,15 @@
             <span class="truncate" :title="item.url || item.name">
               {{ item.url ? t('aiImage.hot.fromUrl') : '' }}{{ item.name }}
             </span>
+            <!-- 【2026-10-31】拆解后标出模型判出来的「这张图是怎么展示商品的」，
+                 用户一眼能看出哪张是局部、哪张是整件，也能核对模型有没有判错。 -->
+            <span
+              v-if="shotLabelOf(index + 1)"
+              class="shrink-0 rounded bg-primary-50 px-1.5 text-[10px] text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
+              :data-testid="`hot-shot-${index + 1}`"
+            >
+              {{ shotLabelOf(index + 1) }}
+            </span>
             <button
               type="button"
               class="text-gray-400 hover:text-red-500"
@@ -1214,6 +1223,7 @@ import {
   HOT_LAYOUT_PROMPT,
   HOT_LAYOUT_TEMPERATURE,
   HOT_VISION_TIMEOUT_MS,
+  SHOT_LABELS as HOT_SHOT_LABELS,
   buildHotLayoutCards,
   parseHotLayout,
   type HotLayout,
@@ -1536,6 +1546,22 @@ const extraRefsByRecord = new Map<string, File[]>()
  * 效果差一些但不会报错。
  */
 const hotRefFileByIndex = new Map<number, File>()
+
+/**
+ * 某一张参考图被判成了哪种展示方式（给界面上的小标签用）。
+ *
+ * 【2026-10-31 主人】「由模型去解析图片中商品的展示…判断出来之后依照我自己的产品去生成对应的图片」。
+ * 判断结果必须**可见**：判错了（比如把整件判成局部）用户要能立刻看出来，
+ * 否则只会觉得「这批图又不对」却不知道是哪里开始错的。
+ */
+function shotLabelOf(refIndex: number): string {
+  const layout = hotLayouts.value.find((item) => item.index === refIndex)
+  if (!layout) return ''
+  const label = HOT_SHOT_LABELS[layout.shot] || ''
+  if (!label) return ''
+  const part = (layout.shotPart || '').trim()
+  return part ? `${label}·${part}` : label
+}
 
 /** 从脚本卡片的 key（hot_01_ref3）里取回它对应的参考图序号。 */
 function competitorFileForCard(card: OzonScriptCard): File | null {
