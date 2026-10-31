@@ -1651,6 +1651,9 @@ export default {
       startingTestForAccount: 'Starting test for account: {name}',
       testAccountTypeLabel: 'Account type: {type}',
       selectTestModel: 'Select Test Model',
+      plainAPIKeyTest: 'Plain request (no official client mimicry)',
+      plainAPIKeyTestHint:
+        'Only available for API Key account connectivity tests. Sends a minimal JSON request without official CLI headers or embedded prompts, suitable for verifying the key itself.',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
       imagePromptLabel: 'Image prompt',

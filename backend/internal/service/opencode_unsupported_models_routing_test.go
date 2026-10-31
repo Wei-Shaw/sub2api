@@ -68,7 +68,7 @@ func TestCommandCodeGeminiModelReachesUpstream(t *testing.T) {
 	account := commandCodeTestAccount(107)
 	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNChatTestResponse())
 	c, _ := newTestContext()
-	require.NoError(t, svc.testModelRoutedAccountConnection(c, account, "gemini-3.8-flash", "hi"))
+	require.NoError(t, svc.testModelRoutedAccountConnection(c, account, "gemini-3.8-flash", "hi", false))
 	require.Len(t, upstream.requests, 1)
 }
 
@@ -80,7 +80,7 @@ func TestOpenCodeConnectionTestRejectsMappedUnsupportedModel(t *testing.T) {
 		}}
 	c, _ := newTestContext()
 	c.Request = httptest.NewRequest(http.MethodPost, "/test", nil).WithContext(context.Background())
-	err := (&AccountTestService{}).testModelRoutedAccountConnection(c, account, "public-model", "hi")
+	err := (&AccountTestService{}).testModelRoutedAccountConnection(c, account, "public-model", "hi", false)
 	require.ErrorContains(t, err, "not supported on OpenCode standard gateway")
 	require.ErrorContains(t, err, "jev-1.13")
 }
