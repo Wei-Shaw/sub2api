@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -403,6 +404,15 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	}
 	if account.Platform != platform || !account.IsOpenAICompatible() {
 		return "platform_mismatch"
+	}
+	if account.IsMuse() {
+		userID, _ := ctx.Value(ctxkey.UserID).(int64)
+		if userID <= 0 || MuseOwnerUserID(account.Extra) != userID {
+			return "muse_owner_mismatch"
+		}
+		if requireCompact {
+			return "compact_unsupported"
+		}
 	}
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		if account.IsSchedulable() {
@@ -1504,6 +1514,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if err != nil {
 			return accounts, err
 		}
+		accounts = s.filterMuseAccounts(ctx, accounts)
 		accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
@@ -1522,6 +1533,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
+	accounts = s.filterMuseAccounts(ctx, accounts)
 	accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
@@ -1633,6 +1645,13 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
+	if latest.IsMuse() {
+		candidates := s.filterMuseAccounts(ctx, []Account{*latest})
+		if len(candidates) == 0 {
+			return nil
+		}
+		latest = &candidates[0]
+	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
@@ -1676,6 +1695,13 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	}
 	if err != nil || account == nil {
 		return account, err
+	}
+	if account.IsMuse() {
+		candidates := s.filterMuseAccounts(ctx, []Account{*account})
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+		account = &candidates[0]
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil
@@ -1775,4 +1801,32 @@ func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 	}
+}
+
+func (s *OpenAIGatewayService) filterMuseAccounts(ctx context.Context, accounts []Account) []Account {
+	result := make([]Account, 0, len(accounts))
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	for _, a := range accounts {
+		if a.IsMuse() {
+			// Candidate snapshots intentionally omit credentials, ownership, and
+			// timestamps. Native verification must use the full account snapshot.
+			if s.accountRepo != nil && (a.UpdatedAt.IsZero() || MuseOwnerUserID(a.Extra) <= 0) {
+				fresh, err := s.accountRepo.GetByID(ctx, a.ID)
+				if err != nil || fresh == nil || !fresh.IsMuse() {
+					continue
+				}
+				a = *fresh
+			}
+			if s.muse == nil || !s.muse.Qualified() || MuseOwnerUserID(a.Extra) != userID {
+				continue
+			}
+			p, err := s.muse.verifiedProfile(ctx, &a)
+			if err != nil || p == nil || !p.InferenceAllowed || p.Identity.OwnerUserID != userID || (p.SessionExpiresAt != nil && !time.Now().Before(*p.SessionExpiresAt)) {
+				continue
+			}
+			a.museVerifiedModels = append([]string(nil), p.Capabilities.Models...)
+		}
+		result = append(result, a)
+	}
+	return result
 }
