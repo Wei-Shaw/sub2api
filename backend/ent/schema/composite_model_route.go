@@ -59,6 +59,8 @@ func (CompositeModelRoute) Fields() []ent.Field {
 			MaxLen(200).
 			Default("").
 			Comment("Provider model identifier; empty means public_model."),
+		field.JSON("fallback_targets", []domain.CompositeFallbackTarget{}).
+			Default([]domain.CompositeFallbackTarget{}),
 		field.String("endpoint").
 			MaxLen(50).
 			Default("any").

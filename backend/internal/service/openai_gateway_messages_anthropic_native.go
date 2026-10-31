@@ -116,6 +116,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
+	originalModel = compositeFallbackResponseModel(ctx, originalModel)
 	if clientStream {
 		return s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
 	}
@@ -246,6 +247,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
+		if failover := compositeFallbackPreOutputReadError(ctx, c, err); failover != nil {
+			return nil, failover
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)
@@ -273,6 +277,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	if _, active := CompositeFallbackDecisionFromContext(ctx); active {
+		body = s.replaceModelInResponseBody(body, upstreamModel, originalModel)
+	}
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &OpenAIForwardResult{
@@ -425,6 +432,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !sawTerminalEvent && firstTokenMs == nil && !clientDisconnected {
+					if failover := compositeFallbackPreOutputReadError(ctx, c, io.ErrUnexpectedEOF); failover != nil {
+						return nil, failover
+					}
+				}
 				if !clientDisconnected {
 					flusher.Flush()
 				}
@@ -437,6 +449,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			if ev.err != nil {
 				if sawTerminalEvent {
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
+				}
+				if firstTokenMs == nil && !clientDisconnected && !errors.Is(ev.err, bufio.ErrTooLong) {
+					if failover := compositeFallbackPreOutputReadError(ctx, c, ev.err); failover != nil {
+						return nil, failover
+					}
 				}
 				if clientDisconnected {
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
@@ -475,6 +492,13 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+				if _, active := CompositeFallbackDecisionFromContext(ctx); active {
+					if data, ok := extractAnthropicSSEDataLine(restored); ok && gjson.Get(data, "type").String() == "message_start" {
+						if rewritten, err := sjson.Set(data, "message.model", originalModel); err == nil {
+							restored = "data: " + rewritten
+						}
+					}
+				}
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -504,6 +528,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, upstreamModel, streamInterval)
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, upstreamModel)
+			}
+			if firstTokenMs == nil {
+				if failover := compositeFallbackPreOutputReadError(ctx, c, context.DeadlineExceeded); failover != nil {
+					return nil, failover
+				}
 			}
 			return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
 				fmt.Errorf("stream data interval timeout")

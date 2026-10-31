@@ -70,6 +70,36 @@ the route's upstream model is applied before channel/account mapping. Subsequent
 turns can repeat or omit the public model. Changing it requires reconnecting so
 the gateway can resolve the route and select an account again.
 
+## Guarded HTTP Fallback
+
+An explicit `exact` route can optionally set `fallback_targets` to one backup
+`{ "target_platform": "...", "upstream_model": "..." }`. An empty list preserves
+single-provider routing. `priority` still orders matching routes; it does not
+create a fallback chain. The admin route editor and preview expose the backup.
+
+The initial supported directions are deliberately limited:
+
+- OpenCode Go paid DeepSeek Flash/Pro to official DeepSeek of the same tier.
+- Official MiniMax M2.5/M2.7/M3 to OpenCode Go of the same model.
+
+Free/Zen targets, tier changes, arbitrary provider chains, and prefix routes are
+not supported. Go `deepseek-v4.1-flash` and official Flash have **not** been
+verified to use an identical checkpoint; same-tier fallback is not a guarantee
+of model equivalence.
+
+Fallback applies only to HTTP Messages, Responses, and Chat Completions. It
+excludes WebSocket, Live, media, and requests bound to upstream state (such as
+`previous_response_id`, conversation, or cached content). An unavailable account
+pool or a safe pre-output upstream failure may select the backup once, within
+the existing shared retry budget. Cancellation, request/policy failures, mapping
+restrictions, and semantic output prevent replay; heartbeat-only output does not.
+
+Each target rechecks billing eligibility, platform quota, model mapping, and
+account capabilities. The public model stays client-visible while usage and
+quota attribution follow the actual selected account and concrete platform.
+Configure pricing, quotas, and account protection separately for both targets;
+a backup does not bypass them.
+
 ## Built-In Detection
 
 Composite routing detects common public model IDs and provider-prefixed IDs:

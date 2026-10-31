@@ -5,6 +5,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \
+	src/api/__tests__/admin.groups.composite-routes.spec.ts \
+	src/views/admin/__tests__/GroupsView.compositeFallback.spec.ts \
+	src/views/admin/__tests__/groupsCompositeFallback.spec.ts \
 	src/composables/__tests__/useModelWhitelist.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.transport.spec.ts \

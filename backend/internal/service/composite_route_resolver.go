@@ -113,19 +113,24 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			return decision, fmt.Errorf("list composite routes: %w", err)
 		}
 		if route, ok := matchCompositeRoute(routes, model, endpoint); ok {
+			if err := validateCompositeFallback(normalizeCompositeRouteInput(CompositeRouteInput{PublicModel: route.PublicModel, MatchType: route.MatchType, TargetPlatform: route.TargetPlatform, UpstreamModel: route.UpstreamModel, Endpoint: route.Endpoint, FallbackTargets: route.FallbackTargets})); err != nil {
+				return decision, fmt.Errorf("invalid composite fallback configuration: %w", err)
+			}
 			upstreamModel := strings.TrimSpace(route.UpstreamModel)
 			if upstreamModel == "" {
 				upstreamModel = model
 			}
 			return CompositeRouteDecision{
-				Matched:        true,
-				Source:         CompositeRouteSourceExplicit,
-				GroupID:        groupID,
-				PublicModel:    model,
-				TargetPlatform: route.TargetPlatform,
-				UpstreamModel:  upstreamModel,
-				Endpoint:       endpoint,
-				Route:          &route,
+				Matched:         true,
+				Source:          CompositeRouteSourceExplicit,
+				GroupID:         groupID,
+				PublicModel:     model,
+				TargetPlatform:  route.TargetPlatform,
+				UpstreamModel:   upstreamModel,
+				FallbackTargets: append([]CompositeFallbackTarget{}, route.FallbackTargets...),
+				Reason:          compositeFallbackPreviewReason(route),
+				Endpoint:        endpoint,
+				Route:           &route,
 			}, nil
 		}
 	}
