@@ -449,6 +449,27 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
+	// Codex fingerprint convergence, same as Forward / forwardOpenAIPassthrough. Builders only read
+	// staged IDs; without staging, the bridge sends no account-level session_id, so clients without
+	// prompt_cache_key get random upstream prompt-cache routing and rarely hit the cache.
+	stageCodexFingerprintIDs(c, nil)
+	if account.UsesOpenAICodexProtocol() {
+		var clientHeaders http.Header
+		if c != nil && c.Request != nil {
+			clientHeaders = c.Request.Header
+		}
+		fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+		if fpIDs != nil {
+			fpBody, fpChanged, fpErr := applyCodexFingerprintClientMetadataRaw(body, fpIDs)
+			if fpErr != nil {
+				return nil, fmt.Errorf("apply http bridge codex fingerprint: %w", fpErr)
+			}
+			if fpChanged {
+				body = fpBody
+			}
+		}
+		stageCodexFingerprintIDs(c, fpIDs)
+	}
 	grokIntentSourceBody := append([]byte(nil), body...)
 	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
 	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)
