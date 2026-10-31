@@ -654,4 +654,44 @@ describe('user KeysView column settings', () => {
       expect(optionIds(wrapper)).toHaveLength(12)
     })
   })
+
+  it('opens the CC-Switch client selector with Codex option for composite group keys', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          ...createApiKey(),
+          group_id: 10,
+          group: {
+            id: 10,
+            name: 'Composite Plan',
+            platform: 'composite',
+            rate_multiplier: 1,
+            is_exclusive: false,
+            status: 'active',
+            subscription_type: 'subscription',
+            daily_limit_usd: null,
+            weekly_limit_usd: null,
+            monthly_limit_usd: null,
+            created_at: '2026-03-01T00:00:00Z',
+            updated_at: '2026-03-01T00:00:00Z',
+          },
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      pages: 1,
+    })
+
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'keys.importToCcSwitch').trigger('click')
+    expect(openSpy).not.toHaveBeenCalled()
+
+    await getButtonByText(wrapper, 'keys.ccsClientSelect.codexCli').trigger('click')
+    expect(openSpy).toHaveBeenCalledOnce()
+    expect(openSpy.mock.calls[0][0]).toContain('app=codex')
+    expect(openSpy.mock.calls[0][0]).toContain('model=gpt-5.5')
+    openSpy.mockRestore()
+  })
 })
