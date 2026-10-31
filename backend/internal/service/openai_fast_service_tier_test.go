@@ -233,12 +233,12 @@ func TestOpenAIFastBillingMultiplier_2xAnd25x(t *testing.T) {
 			CacheReadInputTokenCostPriority: 1e-6,
 		},
 		"gpt-5.6-sol": {
-			InputCostPerToken:               5e-6,
-			InputCostPerTokenPriority:       10e-6,
-			OutputCostPerToken:              30e-6,
-			OutputCostPerTokenPriority:      60e-6,
-			CacheReadInputTokenCost:         0.5e-6,
-			CacheReadInputTokenCostPriority: 1e-6,
+			InputCostPerToken:               4e-6,
+			InputCostPerTokenPriority:       8e-6,
+			OutputCostPerToken:              20e-6,
+			OutputCostPerTokenPriority:      40e-6,
+			CacheReadInputTokenCost:         0.4e-6,
+			CacheReadInputTokenCostPriority: 0.8e-6,
 		},
 	}
 	billing := NewBillingService(&config.Config{}, &PricingService{pricingData: catalog})
