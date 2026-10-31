@@ -217,6 +217,23 @@ describe('GroupsView duplicate action', () => {
     vi.restoreAllMocks()
   })
 
+  it('creates a BytePlus group with an explicit native video permission', async () => {
+    vi.mocked(adminAPI.groups.create).mockResolvedValue({ ...sourceGroup, platform: 'byteplus' })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'admin.groups.createGroup')!.trigger('click')
+    wrapper.getComponent('[data-tour="group-form-platform"]').vm.$emit('update:modelValue', 'byteplus')
+    await wrapper.vm.$nextTick()
+    const form = wrapper.get('#create-group-form')
+    expect(form.find('[data-testid="create-byteplus-video-enabled"]').exists()).toBe(true)
+    await form.get('input[type="text"]').setValue('BytePlus native')
+    await form.get('[data-testid="create-byteplus-video-enabled"]').setValue(true)
+    await form.trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.groups.create).toHaveBeenCalledWith(expect.objectContaining({ platform: 'byteplus', allow_image_generation: true }))
+    wrapper.unmount()
+  })
+
   it('duplicates the selected group, reports success, and refreshes the list', async () => {
     const wrapper = mountView()
     await flushPromises()

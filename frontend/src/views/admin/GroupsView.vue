@@ -889,6 +889,15 @@
           </div>
         </div>
 
+        <div v-if="createForm.platform === 'byteplus'" class="border-t pt-4" data-testid="create-byteplus-video-permission">
+          <label class="input-label">{{ t("admin.groups.seedance.title") }}</label>
+          <label class="mt-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="createForm.allow_image_generation" type="checkbox" data-testid="create-byteplus-video-enabled" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            {{ t("admin.groups.seedance.allow") }}
+          </label>
+          <p class="input-hint">{{ t("admin.groups.seedance.description") }}</p>
+        </div>
+
         <!-- 图片生成计费配置 -->
         <div
           v-if="supportsImagePricingPlatform(createForm.platform)"
@@ -2541,6 +2550,15 @@
               </p>
             </div>
           </div>
+        </div>
+
+        <div v-if="editForm.platform === 'byteplus'" class="border-t pt-4" data-testid="edit-byteplus-video-permission">
+          <label class="input-label">{{ t("admin.groups.seedance.title") }}</label>
+          <label class="mt-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="editForm.allow_image_generation" type="checkbox" data-testid="edit-byteplus-video-enabled" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            {{ t("admin.groups.seedance.allow") }}
+          </label>
+          <p class="input-hint">{{ t("admin.groups.seedance.description") }}</p>
         </div>
 
         <!-- 图片生成计费配置 -->

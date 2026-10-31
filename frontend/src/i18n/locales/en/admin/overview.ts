@@ -847,6 +847,7 @@ export default {
 
     // Groups
     groups: {
+      seedance: { title: 'Seedance video', allow: 'Allow Seedance video', description: 'Permit native video tasks. Configure per-token model pricing below.' },
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',
