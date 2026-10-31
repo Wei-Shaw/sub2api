@@ -324,8 +324,8 @@
               </div>
             </div>
 
-            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
-            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+            <!-- Web Search Emulation (platform whitelist, hidden when global disabled) -->
+            <div v-if="WEB_SEARCH_EMULATION_PLATFORMS.has(section.platform) && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -659,6 +659,20 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 // Web Search global enabled state (loaded once on mount)
+// Platforms that support the account-level Web Search emulation toggle
+// (must stay in sync with the backend account-level whitelist in
+// backend/internal/service/account.go webSearchEmulationPlatformEnabled).
+// Both the rendering and the submit path use this set, so a platform added to
+// the backend whitelist automatically becomes configurable here.
+const WEB_SEARCH_EMULATION_PLATFORMS: ReadonlySet<string> = new Set([
+  'anthropic',
+  'openai',
+  'command_code',
+  'opencode_go',
+  'minimax',
+  'zhipu',
+])
+
 const webSearchGlobalEnabled = ref(false)
 async function loadWebSearchGlobalState() {
   try {
@@ -865,6 +879,7 @@ function addPricingEntry(sectionIdx: number) {
     output_price: null,
     cache_write_price: null,
     cache_write_1h_price: null,
+    cache_write_12h_price: null,
     cache_read_price: null,
     fast_multiplier: null,
     flex_multiplier: null,
@@ -904,6 +919,7 @@ async function syncLatestModels(sectionIdx: number) {
       output_price: null,
       cache_write_price: null,
       cache_write_1h_price: null,
+      cache_write_12h_price: null,
       cache_read_price: null,
       fast_multiplier: null,
       flex_multiplier: null,
@@ -974,6 +990,7 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     output_price: null,
     cache_write_price: null,
     cache_write_1h_price: null,
+    cache_write_12h_price: null,
     cache_read_price: null,
     image_input_price: null,
     image_output_price: null,
@@ -1092,6 +1109,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
             cache_write_1h_price: mTokToPerToken(p.cache_write_1h_price),
+            cache_write_12h_price: mTokToPerToken(p.cache_write_12h_price),
             cache_read_price: mTokToPerToken(p.cache_read_price),
             reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(p.reasoning_effort_multipliers),
             image_input_price: mTokToPerToken(p.image_input_price),
@@ -1136,6 +1154,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
         cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
+        cache_write_12h_price: mTokToPerToken(entry.cache_write_12h_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
         flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
@@ -1150,15 +1169,13 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   }
   const uniqueGroupIds = Array.from(new Set(group_ids))
 
-  // Collect web_search_emulation (only anthropic platform supports it)
-  // Always write the key so that disabling in the UI correctly sets platform to false,
-  // rather than leaving a stale true value from the cloned features_config.
+  // Collect web_search_emulation（whitelist platforms only: the UI is the single
+  // source of truth, so every whitelisted section is written explicitly — false
+  // included — to avoid leaving a stale `true` behind for disabled sections）.
   const wsEmulation: Record<string, boolean> = {}
   for (const section of form.platforms) {
-    if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
-      wsEmulation[section.platform] = !!section.web_search_emulation
-    }
+    if (!WEB_SEARCH_EMULATION_PLATFORMS.has(section.platform)) continue
+    wsEmulation[section.platform] = section.enabled ? !!section.web_search_emulation : false
   }
   if (Object.keys(wsEmulation).length > 0) {
     featuresConfig.web_search_emulation = wsEmulation
@@ -1239,6 +1256,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_write_1h_price: perTokenToMTok(p.cache_write_1h_price),
+        cache_write_12h_price: perTokenToMTok(p.cache_write_12h_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
         fast_multiplier: p.fast_multiplier,
         flex_multiplier: p.flex_multiplier,
@@ -1433,6 +1451,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_write_1h_price: perTokenToMTok(p.cache_write_1h_price),
+        cache_write_12h_price: perTokenToMTok(p.cache_write_12h_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
         reasoning_effort_multipliers: p.reasoning_effort_multipliers ? { ...p.reasoning_effort_multipliers } : null,
         image_input_price: perTokenToMTok(p.image_input_price),

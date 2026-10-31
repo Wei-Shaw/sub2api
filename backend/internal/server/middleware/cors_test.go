@@ -108,11 +108,108 @@ func TestCORS_AllowedOrigin_HasAllowHeaders(t *testing.T) {
 			assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"),
 				"允许的 origin 应收到 Allow-Methods")
 			assert.Contains(t, w.Header().Get("Access-Control-Expose-Headers"), "Server-Timing")
+			assert.Contains(t, w.Header().Get("Access-Control-Expose-Headers"), "WWW-Authenticate")
 			assert.Equal(t, "86400", w.Header().Get("Access-Control-Max-Age"),
 				"允许的 origin 应收到 Max-Age=86400")
 			assert.Equal(t, "https://allowed.example.com", w.Header().Get("Access-Control-Allow-Origin"),
 				"允许的 origin 应收到 Allow-Origin")
 		})
+	}
+}
+
+func TestCORSPublicMCPOAuthEndpoints(t *testing.T) {
+	endpoints := []struct{ path, method string }{
+		{"/.well-known/oauth-protected-resource/api/v1/mcp", http.MethodGet},
+		{"/.well-known/oauth-protected-resource", http.MethodGet},
+		{"/.well-known/oauth-authorization-server", http.MethodGet},
+		{"/api/v1/mcp/oauth/register", http.MethodPost},
+		{"/api/v1/mcp/oauth/token", http.MethodPost},
+		{"/api/v1/mcp/oauth/revoke", http.MethodPost},
+	}
+	for _, allowedOrigins := range [][]string{nil, {"https://console.example.com"}, {"*"}} {
+		middleware := CORS(config.CORSConfig{AllowedOrigins: allowedOrigins, AllowCredentials: true})
+		for _, endpoint := range endpoints {
+			for _, origin := range []string{"https://client.example.com", "https://console.example.com"} {
+				for _, method := range []string{endpoint.method, http.MethodOptions} {
+					t.Run(endpoint.path+"/"+method+"/"+origin, func(t *testing.T) {
+						w := httptest.NewRecorder()
+						// Public OAuth responses must never inherit credentialed CORS.
+						w.Header().Set("Access-Control-Allow-Credentials", "true")
+						c, _ := gin.CreateTestContext(w)
+						c.Request = httptest.NewRequest(method, endpoint.path, nil)
+						c.Request.Header.Set("Origin", origin)
+						if method == http.MethodOptions {
+							c.Request.Header.Set("Access-Control-Request-Method", endpoint.method)
+							c.Request.Header.Set("Access-Control-Request-Headers", "content-type")
+						}
+
+						middleware(c)
+
+						assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+						assert.Empty(t, w.Header().Get("Access-Control-Allow-Credentials"))
+						assert.Equal(t, "Content-Type", w.Header().Get("Access-Control-Allow-Headers"))
+						assert.Equal(t, endpoint.method+", OPTIONS", w.Header().Get("Access-Control-Allow-Methods"))
+						if method == http.MethodOptions {
+							assert.Equal(t, http.StatusNoContent, w.Code)
+							assert.True(t, c.IsAborted())
+						} else {
+							assert.False(t, c.IsAborted())
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestCORSPublicMCPOAuthExceptionDoesNotCoverOtherPaths(t *testing.T) {
+	for _, path := range []string{
+		"/api/v1/mcp", "/api/v1/mcp/oauth/authorize", "/api/v1/mcp/oauth/consent",
+		"/api/v1/user/mcp/grants", "/api/v1/user/profile", "/settings/mcp",
+		"/api/v1/mcp/oauth/token/", "/api/v1/mcp/oauth/token-extra", "/api/v1/mcp/oauth/%74oken",
+		"/.well-known/oauth-protected-resource/other", "/.well-known/oauth-authorization-server/",
+	} {
+		t.Run(path, func(t *testing.T) {
+			middleware := CORS(config.CORSConfig{AllowedOrigins: []string{"https://console.example.com"}, AllowCredentials: true})
+			for _, origin := range []string{"https://client.example.com", "https://console.example.com"} {
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request = httptest.NewRequest(http.MethodOptions, path, nil)
+				c.Request.Header.Set("Origin", origin)
+				c.Request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+				middleware(c)
+
+				if origin == "https://console.example.com" {
+					assert.Equal(t, http.StatusNoContent, w.Code)
+					assert.Equal(t, origin, w.Header().Get("Access-Control-Allow-Origin"))
+					assert.Equal(t, "true", w.Header().Get("Access-Control-Allow-Credentials"))
+				} else {
+					assert.Equal(t, http.StatusForbidden, w.Code)
+					assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"))
+					assert.Empty(t, w.Header().Get("Access-Control-Allow-Credentials"))
+				}
+			}
+		})
+	}
+}
+
+func TestCORSPublicMCPOAuthPreflightRejectsUnsupportedMethods(t *testing.T) {
+	for _, tc := range []struct{ path, method string }{
+		{"/.well-known/oauth-protected-resource/api/v1/mcp", http.MethodPost},
+		{"/api/v1/mcp/oauth/token", http.MethodDelete},
+	} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodOptions, tc.path, nil)
+		c.Request.Header.Set("Origin", "https://client.example.com")
+		c.Request.Header.Set("Access-Control-Request-Method", tc.method)
+
+		CORS(config.CORSConfig{AllowCredentials: true})(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"))
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Credentials"))
 	}
 }
 
