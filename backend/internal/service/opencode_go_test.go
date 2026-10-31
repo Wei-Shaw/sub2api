@@ -12,6 +12,9 @@ func TestOpenCodeGoDefaultProtocolRules(t *testing.T) {
 		model string
 		want  string
 	}{
+		{"claude-haiku-5-5", APIProtocolAnthropic},
+		{"gpt-6-luna", APIProtocolResponses},
+		{"minimax-m3.1-flash-free", APIProtocolChatCompletions},
 		{"grok-4.6", APIProtocolResponses},
 		{"opencode-go/gpt-5.6-luna", APIProtocolResponses},
 		{"muse-spark-1.3-contributor", APIProtocolResponses},
@@ -43,6 +46,17 @@ func TestOpenCodeGoModelRoutedProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolChatCompletions, pinned.resolveModelRoutedProtocol("minimax-m3"))
 
 	empty := &Account{Platform: PlatformOpenCodeGo}
+	for model, want := range map[string]string{
+		"claude-haiku-5-5":        APIProtocolAnthropic,
+		"minimax-m3.1-flash-free": APIProtocolChatCompletions,
+		"minimax-m3":              APIProtocolAnthropic,
+		"qwen3.8-max":             APIProtocolAnthropic,
+		"gpt-6-luna":              APIProtocolResponses,
+		"glm-5.3":                 APIProtocolChatCompletions,
+	} {
+		require.Equal(t, want, empty.resolveModelRoutedProtocol(model), model)
+		require.Equal(t, want, empty.resolveModelRoutedProtocolFor(model, APIProtocolChatCompletions, nil), model)
+	}
 	require.Equal(t, APIProtocolResponses, empty.resolveModelRoutedProtocol("gpt-5.6-luna"))
 	require.Equal(t, AccountModeGo, empty.GetOpenCodeAccountMode())
 	require.True(t, empty.IsOpenCodeGoPlan())
@@ -68,6 +82,8 @@ func TestOpenCodeGoModelRoutedProtocolUsesAccountRules(t *testing.T) {
 		Credentials: map[string]any{
 			"api_protocol": APIProtocolAdaptive,
 			protocolRulesCredentialKey: []any{
+				map[string]any{"pattern": "claude-*", "protocol": APIProtocolResponses},
+				map[string]any{"pattern": "minimax-*", "protocol": APIProtocolAnthropic},
 				map[string]any{"pattern": "grok-*", "protocol": APIProtocolChatCompletions},
 				map[string]any{"pattern": "deepseek-v4-flash", "protocol": APIProtocolResponses},
 				map[string]any{"pattern": "qwen*", "protocol": APIProtocolAnthropic},
@@ -75,10 +91,12 @@ func TestOpenCodeGoModelRoutedProtocolUsesAccountRules(t *testing.T) {
 		},
 	}
 	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("grok-4.6"))
+	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("claude-haiku-5-5"))
+	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("minimax-m3.1-flash-free"))
 	require.Equal(t, APIProtocolResponses, account.resolveModelRoutedProtocol("deepseek-v4-flash"))
 	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("qwen3.8-max"))
 	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("glm-5.3"))
-	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("minimax-m3"))
 }
 
 func TestOpenCodeGoModelRoutedProtocolEmptyRulesAreAllChatCompletions(t *testing.T) {
@@ -91,6 +109,7 @@ func TestOpenCodeGoModelRoutedProtocolEmptyRulesAreAllChatCompletions(t *testing
 	}
 	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("grok-4.6"))
 	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("minimax-m3"))
+	require.Equal(t, APIProtocolChatCompletions, account.resolveModelRoutedProtocol("claude-haiku-5-5"))
 }
 
 func TestOpenCodeGoModelRoutedProtocolFirstMatchWins(t *testing.T) {
