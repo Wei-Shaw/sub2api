@@ -1326,3 +1326,20 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# Optional local Batch API; ordinary gateway billing and limits apply.
+# Files storage in this feature accepts batch JSONL inputs only.
+# See docs/OPENAI_BATCHES.md for quotas, leases, retention, and limitations.
+openai_async:
+  enabled: false
+  max_file_bytes: 33554432
+  user_temporary_storage_bytes: 805306368 # 768 MiB, included in user_storage_bytes
+  user_storage_bytes: 1073741824
+  file_ttl_seconds: 2592000
+  max_batch_requests: 1000
+  max_active_batches: 5
+  max_line_bytes: 1048576
+  max_output_bytes: 134217728
+  max_response_bytes: 8388608
+  worker_concurrency: 2
+  request_timeout_seconds: 300

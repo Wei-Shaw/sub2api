@@ -176,6 +176,19 @@ func RegisterGatewayRoutes(
 		}
 	}
 
+	// Resource management routes do not select an upstream model. Batch item
+	// execution re-enters the normal /v1 gateway, including every policy check.
+	async := r.Group("/v1", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth))
+	async.POST("/files", h.OpenAIAsync.Upload)
+	async.GET("/files", h.OpenAIAsync.ListFiles)
+	async.GET("/files/:file_id", h.OpenAIAsync.GetFile)
+	async.GET("/files/:file_id/content", h.OpenAIAsync.FileContent)
+	async.DELETE("/files/:file_id", h.OpenAIAsync.DeleteFile)
+	async.POST("/batches", h.OpenAIAsync.CreateBatch)
+	async.GET("/batches", h.OpenAIAsync.ListBatches)
+	async.GET("/batches/:batch_id", h.OpenAIAsync.GetBatch)
+	async.POST("/batches/:batch_id/cancel", h.OpenAIAsync.CancelBatch)
+
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
