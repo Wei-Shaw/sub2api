@@ -19,6 +19,7 @@ type userRepoStubForListUsers struct {
 	listWithFiltersParams pagination.PaginationParams
 	lastUsedByUserID      map[int64]*time.Time
 	lastUsedErr           error
+	lastUsedLookup        func(context.Context) error
 }
 
 func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
@@ -35,7 +36,12 @@ func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pag
 	}, nil
 }
 
-func (s *userRepoStubForListUsers) GetLatestUsedAtByUserIDs(_ context.Context, userIDs []int64) (map[int64]*time.Time, error) {
+func (s *userRepoStubForListUsers) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
+	if s.lastUsedLookup != nil {
+		if err := s.lastUsedLookup(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if s.lastUsedErr != nil {
 		return nil, s.lastUsedErr
 	}
