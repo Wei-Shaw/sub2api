@@ -844,6 +844,7 @@ export default {
 
     // Groups Management
     groups: {
+      seedance: { title: 'Seedance 视频', allow: '允许 Seedance 视频', description: '允许原生视频任务。请在下方配置模型的每 Token 价格。' },
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
       searchGroups: '搜索分组...',

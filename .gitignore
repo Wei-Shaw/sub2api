@@ -135,6 +135,7 @@ vite.config.js
 docs/*
 !docs/admin-api-keys.md
 !docs/mcp.md
+!docs/byteplus.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

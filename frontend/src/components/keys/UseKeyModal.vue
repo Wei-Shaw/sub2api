@@ -1318,6 +1318,7 @@ function generateRoutedCodexFiles(
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
     minimax: 'MiniMax-M3',
+    byteplus: 'dola-seed-2-1-turbo-260628',
     opencode_go: 'glm-5.3',
     composite: 'gpt-5.5'
   }
@@ -1333,6 +1334,7 @@ function generateRoutedCodexFiles(
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
+    byteplus: 'BytePlus',
     opencode_go: 'OpenCode',
     typesafe: 'TypeSafe / Jev',
     command_code: 'Command Code',

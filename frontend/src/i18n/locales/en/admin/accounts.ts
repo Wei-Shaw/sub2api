@@ -1,5 +1,6 @@
 export default {
     accounts: {
+      byteplus: { accountModeHint: 'Uses ModelArk resource packs or pay-as-you-go billing. Configure provider limits in BytePlus.', textCapability: 'Seed and text models', videoCapability: 'Seedance video', regionHint: 'Use a ModelArk API key from the same region as the endpoint. Model availability varies by region. Seed uses text APIs; Seedance uses the native video task API.' },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

@@ -259,7 +259,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
-export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'byteplus'
 
 /** adaptive 按入站协议（或按模型规则）选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
@@ -268,7 +268,7 @@ export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 const NATIVE_API_PROTOCOLS: CnNativeApiProtocol[] = ['chat_completions', 'anthropic', 'responses']
 
 export function isCNProviderPlatform(platform: string): platform is CnProviderPlatform {
-  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
+  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'byteplus'
 }
 
 /** 平台是否为多协议 API Key 供应商（平台清单中带 profile）。 */
@@ -462,6 +462,12 @@ export interface CnBaseUrlPreset {
 
 /** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
 export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> = {
+  byteplus: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'BytePlus AP', url: 'https://ark.ap-southeast.bytepluses.com/api/v3' },
+    { mode: 'payg', protocol: 'responses', label: 'BytePlus AP Responses', url: 'https://ark.ap-southeast.bytepluses.com/api/v3' },
+    { mode: 'payg', protocol: 'chat_completions', label: 'BytePlus EU', url: 'https://ark.eu-west.bytepluses.com/api/v3' },
+    { mode: 'payg', protocol: 'responses', label: 'BytePlus EU Responses', url: 'https://ark.eu-west.bytepluses.com/api/v3' }
+  ],
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
