@@ -15,7 +15,10 @@ import (
 //  3. 模型定价文件（LiteLLM）中上游模型的默认价格
 //  4. nil → 走默认公式（total_cost × account_rate_multiplier）
 //
-// upstreamModel 是最终发往上游的模型 ID。
+// ruleModels 是规则匹配的候选模型名，按优先级排列：计费基准模型在前，再依次回退到本次请求涉及的
+// 其它名字（渠道映射名、原始请求名、上游模型、请求模型）。一条规则配了其中任一名字即命中；
+// 候选顺序只在同一条规则同时配了多个名字时决定取哪条定价。
+// pricingModel 是优先级 3 取价的模型：最终发往上游的模型，为空时已回退为请求模型，成本口径不跟随计费基准。
 // totalCost 是本次请求的客户计费（倍率前），用于优先级 2。
 // serviceTier 是最终参与用户计费的 OpenAI 服务层级，用于优先级 3。
 // pricingAt 与本次客户计费使用同一时刻，避免跨峰谷请求的成本与售价错位。
@@ -28,7 +31,8 @@ func resolveAccountStatsCost(
 	billingService *BillingService,
 	accountID int64,
 	groupID int64,
-	upstreamModel string,
+	ruleModels []string,
+	pricingModel string,
 	tokens UsageTokens,
 	requestCount int,
 	totalCost float64,
@@ -41,7 +45,7 @@ func resolveAccountStatsCost(
 	if len(reasoningEfforts) > 0 {
 		reasoningEffort = reasoningEfforts[0]
 	}
-	if channelService == nil || upstreamModel == "" {
+	if channelService == nil || (len(ruleModels) == 0 && pricingModel == "") {
 		return nil
 	}
 	channel, err := channelService.GetChannelForGroup(ctx, groupID)
@@ -52,7 +56,7 @@ func resolveAccountStatsCost(
 	platform := channelService.GetGroupPlatform(ctx, groupID)
 
 	// 优先级 1：自定义规则（始终尝试）
-	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount, reasoningEffort); cost != nil {
+	if cost := tryCustomRules(channel, accountID, groupID, platform, ruleModels, tokens, requestCount, reasoningEffort); cost != nil {
 		return cost
 	}
 
@@ -66,8 +70,8 @@ func resolveAccountStatsCost(
 	}
 
 	// 优先级 3：模型定价文件（LiteLLM）默认价格
-	if billingService != nil {
-		return tryModelFilePricing(billingService, upstreamModel, tokens, serviceTier, pricingAt, longContextPricingEnabled, reasoningEffort)
+	if billingService != nil && pricingModel != "" {
+		return tryModelFilePricing(billingService, pricingModel, tokens, serviceTier, pricingAt, longContextPricingEnabled, reasoningEffort)
 	}
 
 	return nil
@@ -105,21 +109,26 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 }
 
 // tryCustomRules 遍历自定义规则，按数组顺序先命中为准。
+// models 是请求的候选模型名（计费基准优先）：一条规则配了其中任一名字即命中；
+// 同一条规则同时配了多个候选名时按候选顺序取定价，精确匹配始终先于通配符。
 func tryCustomRules(
 	channel *Channel, accountID, groupID int64,
-	platform, model string, tokens UsageTokens, requestCount int,
+	platform string, models []string, tokens UsageTokens, requestCount int,
 	reasoningEfforts ...string,
 ) *float64 {
 	reasoningEffort := ""
 	if len(reasoningEfforts) > 0 {
 		reasoningEffort = reasoningEfforts[0]
 	}
-	modelLower := strings.ToLower(model)
+	modelsLower := make([]string, 0, len(models))
+	for _, model := range models {
+		modelsLower = append(modelsLower, strings.ToLower(model))
+	}
 	for _, rule := range channel.AccountStatsPricingRules {
 		if !matchAccountStatsRule(&rule, accountID, groupID) {
 			continue
 		}
-		pricing := findPricingForModel(rule.Pricing, platform, modelLower)
+		pricing := findPricingForModels(rule.Pricing, platform, modelsLower)
 		if pricing == nil {
 			continue // 规则匹配但模型不在规则定价中，继续下一条
 		}
@@ -152,10 +161,24 @@ func matchAccountStatsRule(rule *AccountStatsPricingRule, accountID, groupID int
 	return false
 }
 
-// findPricingForModel 在定价列表中查找匹配的模型定价。
-// 先精确匹配，再通配符匹配（按配置顺序，先匹配先使用）。
-func findPricingForModel(pricingList []ChannelModelPricing, platform, modelLower string) *ChannelModelPricing {
-	// 精确匹配优先
+// findPricingForModels 按候选顺序在定价列表中查找：先对全部候选做精确匹配，再做通配符匹配，
+// 保证精确条目始终优先于通配条目，候选顺序只在同一级别内生效。
+func findPricingForModels(pricingList []ChannelModelPricing, platform string, modelsLower []string) *ChannelModelPricing {
+	for _, modelLower := range modelsLower {
+		if p := findExactPricing(pricingList, platform, modelLower); p != nil {
+			return p
+		}
+	}
+	for _, modelLower := range modelsLower {
+		if p := findWildcardPricing(pricingList, platform, modelLower); p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
+// findExactPricing 精确匹配模型名（按配置顺序，先匹配先使用）。
+func findExactPricing(pricingList []ChannelModelPricing, platform, modelLower string) *ChannelModelPricing {
 	for i := range pricingList {
 		p := &pricingList[i]
 		if !isPlatformMatch(platform, p.Platform) {
@@ -167,7 +190,11 @@ func findPricingForModel(pricingList []ChannelModelPricing, platform, modelLower
 			}
 		}
 	}
-	// 通配符匹配：按配置顺序，先匹配先使用
+	return nil
+}
+
+// findWildcardPricing 按末尾 * 做前缀匹配（按配置顺序，先匹配先使用）。
+func findWildcardPricing(pricingList []ChannelModelPricing, platform, modelLower string) *ChannelModelPricing {
 	for i := range pricingList {
 		p := &pricingList[i]
 		if !isPlatformMatch(platform, p.Platform) {
@@ -260,24 +287,52 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 	return &cost
 }
 
-// applyAccountStatsCost resolves the account stats cost for a usage log entry.
-// It resolves the upstream model (falling back to the requested model) and calls
-// the 4-level priority chain via resolveAccountStatsCost.
+// accountStatsRuleModels 组装规则匹配候选：计费基准候选在前，其后依次回退到给定的名字。
+// 大小写不敏感去重并去空；顺序只在同一条规则同时配了多个候选名时决定取哪条定价。
+func accountStatsRuleModels(billingModels []string, fallbacks ...string) []string {
+	out := make([]string, 0, len(billingModels)+len(fallbacks))
+	seen := make(map[string]struct{}, len(billingModels)+len(fallbacks))
+	add := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			return
+		}
+		key := strings.ToLower(model)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, model)
+	}
+	for _, model := range billingModels {
+		add(model)
+	}
+	for _, model := range fallbacks {
+		add(model)
+	}
+	return out
+}
+
+// applyAccountStatsCost 为一条用量记录解析账号统计成本，并调用 resolveAccountStatsCost 的四级优先链。
+// billingModels 是客户计费侧的模型名候选（计费基准模型优先），规则匹配先用它们，
+// 再回退到上游模型与请求模型；优先级 3 仍按上游模型取价，上游为空时回退请求模型。
 func applyAccountStatsCost(
 	ctx context.Context,
 	usageLog *UsageLog,
 	cs *ChannelService, bs *BillingService,
 	accountID int64, groupID int64,
+	billingModels []string,
 	upstreamModel, requestedModel string,
 	tokens UsageTokens,
 	totalCost float64,
 	pricingAt time.Time,
 	longContextPricingEnabled bool,
 ) {
-	model := upstreamModel
-	if model == "" {
-		model = requestedModel
+	pricingModel := upstreamModel
+	if pricingModel == "" {
+		pricingModel = requestedModel
 	}
+	ruleModels := accountStatsRuleModels(billingModels, upstreamModel, requestedModel)
 	requestCount := 1
 	if usageLog != nil && usageLog.ImageCount > 0 {
 		requestCount = usageLog.ImageCount
@@ -291,7 +346,7 @@ func applyAccountStatsCost(
 		reasoningEffort = *usageLog.ReasoningEffort
 	}
 	usageLog.AccountStatsCost = resolveAccountStatsCost(
-		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost, serviceTier, pricingAt, longContextPricingEnabled, reasoningEffort,
+		ctx, cs, bs, accountID, groupID, ruleModels, pricingModel, tokens, requestCount, totalCost, serviceTier, pricingAt, longContextPricingEnabled, reasoningEffort,
 	)
 }
 

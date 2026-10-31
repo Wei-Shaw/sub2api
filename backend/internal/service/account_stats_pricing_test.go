@@ -55,7 +55,7 @@ func TestMatchAccountStatsRule_BothConfigured_NeitherMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// findPricingForModel
+// findPricingForModels
 // ---------------------------------------------------------------------------
 
 func TestFindPricingForModel(t *testing.T) {
@@ -171,7 +171,7 @@ func TestFindPricingForModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := findPricingForModel(tt.list, tt.platform, tt.model)
+			result := findPricingForModels(tt.list, tt.platform, []string{tt.model})
 			if tt.wantNil {
 				require.Nil(t, result)
 				return
@@ -381,7 +381,7 @@ func TestTryCustomRules_FirstMatchWins(t *testing.T) {
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	result := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	result := tryCustomRules(channel, 999, 1, "", []string{"claude-opus-4"}, tokens, 1)
 	require.NotNil(t, result)
 	// 应使用第一条规则的价格：100*0.01 + 50*0.02 = 2.0
 	require.InDelta(t, 2.0, *result, 1e-12)
@@ -405,7 +405,7 @@ func TestTryCustomRules_SkipsNonMatchingRules(t *testing.T) {
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	result := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	result := tryCustomRules(channel, 999, 1, "", []string{"claude-opus-4"}, tokens, 1)
 	require.NotNil(t, result)
 	// 跳过规则1（账号不匹配），使用规则2：100*0.05 = 5.0
 	require.InDelta(t, 5.0, *result, 1e-12)
@@ -423,7 +423,7 @@ func TestTryCustomRules_NoMatch_ReturnsNil(t *testing.T) {
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	result := tryCustomRules(channel, 999, 2, "", "claude-opus-4", tokens, 1)
+	result := tryCustomRules(channel, 999, 2, "", []string{"claude-opus-4"}, tokens, 1)
 	require.Nil(t, result) // 账号和分组都不匹配
 }
 
@@ -445,9 +445,54 @@ func TestTryCustomRules_RuleMatchesButModelNot_ContinuesToNext(t *testing.T) {
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	result := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	result := tryCustomRules(channel, 999, 1, "", []string{"claude-opus-4"}, tokens, 1)
 	require.NotNil(t, result)
 	require.InDelta(t, 5.0, *result, 1e-12) // 使用规则2
+}
+
+// 两条规则分别配了上游名与请求名：仍按规则数组顺序先命中，候选顺序不越过规则顺序。
+func TestTryCustomRules_RuleOrderBeatsCandidateOrder(t *testing.T) {
+	channel := &Channel{
+		AccountStatsPricingRules: []AccountStatsPricingRule{
+			{
+				GroupIDs: []int64{1},
+				Pricing:  []ChannelModelPricing{{Models: []string{"claude-opus-5-a"}, InputPrice: testPtrFloat64(0.5)}},
+			},
+			{
+				GroupIDs: []int64{1},
+				Pricing:  []ChannelModelPricing{{Models: []string{"claude-opus-5"}, InputPrice: testPtrFloat64(0.1)}},
+			},
+		},
+	}
+	result := tryCustomRules(channel, 999, 1, "", []string{"claude-opus-5", "claude-opus-5-a"}, UsageTokens{InputTokens: 100}, 1)
+	require.NotNil(t, result)
+	require.InDelta(t, 50.0, *result, 1e-12)
+}
+
+// 同一条规则同时配了请求名与上游名时，按候选顺序取定价。
+func TestFindPricingForModels_CandidateOrderDecidesWithinRule(t *testing.T) {
+	list := []ChannelModelPricing{
+		{ID: 1, Models: []string{"claude-opus-5-a"}, InputPrice: testPtrFloat64(0.5)},
+		{ID: 2, Models: []string{"claude-opus-5"}, InputPrice: testPtrFloat64(0.1)},
+	}
+	got := findPricingForModels(list, "", []string{"claude-opus-5", "claude-opus-5-a"})
+	require.NotNil(t, got)
+	require.Equal(t, int64(2), got.ID)
+
+	got = findPricingForModels(list, "", []string{"claude-opus-5-a", "claude-opus-5"})
+	require.NotNil(t, got)
+	require.Equal(t, int64(1), got.ID)
+}
+
+// 精确条目优先于通配条目，即使通配条目命中的是排在前面的候选。
+func TestFindPricingForModels_ExactBeatsWildcardAcrossCandidates(t *testing.T) {
+	list := []ChannelModelPricing{
+		{ID: 1, Models: []string{"claude-*"}, InputPrice: testPtrFloat64(0.5)},
+		{ID: 2, Models: []string{"claude-opus-5-a"}, InputPrice: testPtrFloat64(0.1)},
+	}
+	got := findPricingForModels(list, "", []string{"claude-opus-5", "claude-opus-5-a"})
+	require.NotNil(t, got)
+	require.Equal(t, int64(2), got.ID)
 }
 
 // ---------------------------------------------------------------------------
@@ -738,7 +783,7 @@ func TestResolveAccountStatsCost_DeepSeekPricingPriority(t *testing.T) {
 				groupID = 99
 			}
 			cost := resolveAccountStatsCost(context.Background(), cs, newTestBillingService(),
-				1, groupID, "deepseek-v4-flash", UsageTokens{InputTokens: 1000}, 1, 0.75, "", peak, true)
+				1, groupID, []string{"deepseek-v4-flash"}, "deepseek-v4-flash", UsageTokens{InputTokens: 1000}, 1, 0.75, "", peak, true)
 			if tt.noChannel {
 				require.Nil(t, cost)
 				return
@@ -758,7 +803,7 @@ func TestResolveAccountStatsCost_NilChannelService(t *testing.T) {
 		context.Background(),
 		nil, // channelService is nil
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 1, "claude-sonnet-4",
+		1, 1, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true,
 	)
 	require.Nil(t, result)
@@ -774,7 +819,7 @@ func TestResolveAccountStatsCost_EmptyUpstreamModel(t *testing.T) {
 		context.Background(),
 		cs,
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 1, "", // empty upstream model
+		1, 1, nil, "", // empty upstream model
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true,
 	)
 	require.Nil(t, result)
@@ -791,7 +836,7 @@ func TestResolveAccountStatsCost_GetChannelForGroupReturnsNil(t *testing.T) {
 		context.Background(),
 		cs,
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 99, "claude-sonnet-4", // groupID 99 has no channel
+		1, 99, []string{"claude-sonnet-4"}, "claude-sonnet-4", // groupID 99 has no channel
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true,
 	)
 	require.Nil(t, result)
@@ -822,7 +867,7 @@ func TestResolveAccountStatsCost_HitsCustomRule(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil, // billingService not needed when custom rule hits
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		tokens, 1, 999.0, "priority", time.Time{}, true, // 自定义账号价格不叠加服务层级倍率
 	)
 	require.NotNil(t, result)
@@ -844,7 +889,7 @@ func TestResolveAccountStatsCost_ApplyPricingToAccountStats_UsesTotalCost(t *tes
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		tokens, 1, 0.75, "priority", time.Time{}, true, // 已完成用户计费，不再重复应用服务层级倍率
 	)
 	require.NotNil(t, result)
@@ -862,7 +907,7 @@ func TestResolveAccountStatsCost_ApplyPricingToAccountStats_ZeroTotalCost_Return
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		UsageTokens{}, 1, 0.0, "", time.Time{}, true, // totalCost = 0
 	)
 	require.Nil(t, result)
@@ -889,7 +934,7 @@ func TestResolveAccountStatsCost_FallsBackToLiteLLM(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		tokens, 1, 999.0, "", time.Time{}, true, // totalCost ignored
 	)
 	require.NotNil(t, result)
@@ -909,7 +954,7 @@ func TestResolveAccountStatsCost_FallbackHonorsAnthropicFast(t *testing.T) {
 
 	result := resolveAccountStatsCost(
 		context.Background(), cs, bs,
-		1, 10, "claude-opus-5",
+		1, 10, []string{"claude-opus-5"}, "claude-opus-5",
 		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000},
 		1, 0, "fast", time.Time{}, true,
 	)
@@ -929,7 +974,7 @@ func TestResolveAccountStatsCost_Gemini36FlashTierUsesFallbackPricing(t *testing
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "gemini-3.6-flash-low",
+		1, 10, []string{"gemini-3.6-flash-low"}, "gemini-3.6-flash-low",
 		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}, 1, 0, "", time.Time{}, true,
 	)
 	require.NotNil(t, result)
@@ -953,7 +998,7 @@ func TestResolveAccountStatsCost_AllMiss_ReturnsNil(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "totally-unknown-model",
+		1, 10, []string{"totally-unknown-model"}, "totally-unknown-model",
 		tokens, 1, 0.0, "", time.Time{}, true,
 	)
 	require.Nil(t, result)
@@ -970,7 +1015,7 @@ func TestResolveAccountStatsCost_NilBillingService_SkipsLiteLLM(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil, // billingService is nil
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		UsageTokens{InputTokens: 100}, 1, 0.0, "", time.Time{}, true,
 	)
 	require.Nil(t, result)
@@ -1003,12 +1048,71 @@ func TestResolveAccountStatsCost_CustomRulePriorityOverApplyPricing(t *testing.T
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, []string{"claude-sonnet-4"}, "claude-sonnet-4",
 		tokens, 1, 99.0, "", time.Time{}, true, // totalCost = 99.0 (would be used if ApplyPricing wins)
 	)
 	require.NotNil(t, result)
 	// Custom rule: 100*0.05 = 5.0 (NOT 99.0 from totalCost)
 	require.InDelta(t, 5.0, *result, 1e-12)
+}
+
+// 规则按请求模型名配置、账号映射后的上游名带后缀：候选含计费基准名即命中规则价，不落模型文件价。
+// 只按上游名匹配时规则不命中、回落模型文件价，即修复前的行为。
+func TestResolveAccountStatsCost_RuleMatchesBillingModelWhenUpstreamMapped(t *testing.T) {
+	channel := &Channel{
+		ID:     1,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{10},
+			Pricing:  []ChannelModelPricing{{Models: []string{"claude-opus-5"}, InputPrice: testPtrFloat64(0.001)}},
+		}},
+	}
+	cs := newTestChannelServiceForStats(t, channel, 10, PlatformAnthropic)
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-opus-5": {InputPricePerToken: 1e-5},
+	})
+	tokens := UsageTokens{InputTokens: 1000}
+
+	got := resolveAccountStatsCost(context.Background(), cs, bs, 1, 10,
+		[]string{"claude-opus-5", "claude-opus-5-a"}, "claude-opus-5-a",
+		tokens, 1, 0, "", time.Time{}, true)
+	require.NotNil(t, got)
+	require.InDelta(t, 1.0, *got, 1e-12)
+
+	got = resolveAccountStatsCost(context.Background(), cs, bs, 1, 10,
+		[]string{"claude-opus-5-a"}, "claude-opus-5-a",
+		tokens, 1, 0, "", time.Time{}, true)
+	require.NotNil(t, got)
+	require.InDelta(t, 0.01, *got, 1e-12)
+}
+
+// 优先级 3 只按 pricingModel 取模型文件价，不跟随规则候选的顺序。
+func TestResolveAccountStatsCost_ModelFilePricingUsesPricingModelNotCandidates(t *testing.T) {
+	cs := newTestChannelServiceForStats(t, &Channel{ID: 1, Status: StatusActive}, 10, PlatformAnthropic)
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {InputPricePerToken: 0.001},
+		"claude-opus-5":   {InputPricePerToken: 0.002},
+	})
+
+	got := resolveAccountStatsCost(context.Background(), cs, bs, 1, 10,
+		[]string{"claude-sonnet-4", "claude-opus-5"}, "claude-opus-5",
+		UsageTokens{InputTokens: 100}, 1, 0, "", time.Time{}, true)
+	require.NotNil(t, got)
+	require.InDelta(t, 0.2, *got, 1e-12)
+}
+
+// 上游模型为空时，规则候选与优先级 3 取价都回退到请求模型，与拆参数前的行为一致。
+func TestApplyAccountStatsCost_EmptyUpstreamFallsBackToRequestedModel(t *testing.T) {
+	cs := newTestChannelServiceForStats(t, &Channel{ID: 1, Status: StatusActive}, 10, PlatformAnthropic)
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {InputPricePerToken: 0.001},
+	})
+	usageLog := &UsageLog{}
+
+	applyAccountStatsCost(context.Background(), usageLog, cs, bs, 1, 10, nil, "", "claude-sonnet-4",
+		UsageTokens{InputTokens: 100}, 0, time.Time{}, true)
+	require.NotNil(t, usageLog.AccountStatsCost)
+	require.InDelta(t, 0.1, *usageLog.AccountStatsCost, 1e-12)
 }
 
 func TestApplyAccountStatsCost_UsesUsageLogServiceTier(t *testing.T) {
@@ -1031,7 +1135,7 @@ func TestApplyAccountStatsCost_UsesUsageLogServiceTier(t *testing.T) {
 
 	applyAccountStatsCost(
 		context.Background(), usageLog, cs, bs,
-		1, 10, "gpt-5.6-sol", "gpt-5.6-sol",
+		1, 10, nil, "gpt-5.6-sol", "gpt-5.6-sol",
 		UsageTokens{InputTokens: 100, OutputTokens: 50}, 999, time.Time{}, true,
 	)
 
@@ -1080,7 +1184,7 @@ func TestApplyAccountStatsCost_LongContextFollowsAccountGate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			usageLog := &UsageLog{ServiceTier: &tt.tier}
 			applyAccountStatsCost(context.Background(), usageLog, cs, bs,
-				1, 10, "gpt-5.6-sol", "gpt-5.6-sol", tokens, 999, time.Time{},
+				1, 10, nil, "gpt-5.6-sol", "gpt-5.6-sol", tokens, 999, time.Time{},
 				accountStatsLongContextPricingEnabled(tt.gate))
 			require.NotNil(t, usageLog.AccountStatsCost)
 			require.InDelta(t, tt.wantCost, *usageLog.AccountStatsCost, 1e-12)
@@ -1135,6 +1239,123 @@ func TestOpenAIGatewayServiceRecordUsage_AccountStatsLongContextFollowsAccountGa
 			require.InDelta(t, tt.wantAccountCost, *usageRepo.lastLog.AccountStatsCost, 1e-10)
 		})
 	}
+}
+
+// Anthropic 路径：response_model 采纳后，账号统计规则按采纳的响应模型匹配，而不是基线计费模型。
+func TestGatewayServiceRecordUsage_AccountStatsRuleFollowsAdoptedResponseModel(t *testing.T) {
+	groupID := int64(1)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	cheaper, pricier, _, _ := orderedResponseBillingModels(t, svc.billingService, tokens, anthropicCheapFixtureModel, anthropicPriceyFixtureModel)
+	svc.channelService = newTestChannelServiceForStats(t, &Channel{
+		ID:     1,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{groupID},
+			Pricing:  []ChannelModelPricing{{Models: []string{cheaper}, InputPrice: testPtrFloat64(0.001), OutputPrice: testPtrFloat64(0.002)}},
+		}},
+	}, groupID, PlatformAnthropic)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:             "gateway_account_stats_follows_response_model",
+			Usage:                 ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                 pricier,
+			UpstreamResponseModel: cheaper,
+			Duration:              time.Second,
+		},
+		APIKey:  &APIKey{ID: 501, Quota: 100, GroupID: i64p(groupID), Group: &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 1}},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701, Platform: PlatformAnthropic},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      pricier,
+			ChannelMappedModel: pricier,
+			BillingModelSource: BillingModelSourceResponse,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	// 规则只配了响应模型：100*0.001 + 50*0.002 = 0.2
+	require.InDelta(t, 0.2, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+}
+
+// Anthropic 路径：渠道映射改写了请求体模型名时，按客户原始请求名配置的规则仍能命中。
+func TestGatewayServiceRecordUsage_AccountStatsRuleMatchesOriginalModelWhenChannelMapped(t *testing.T) {
+	groupID := int64(1)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.channelService = newTestChannelServiceForStats(t, &Channel{
+		ID:     1,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{groupID},
+			Pricing:  []ChannelModelPricing{{Models: []string{"my-claude-alias"}, InputPrice: testPtrFloat64(0.001)}},
+		}},
+	}, groupID, PlatformAnthropic)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_account_stats_original_model_rule",
+			Usage:     ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:     anthropicCheapFixtureModel,
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 502, Quota: 100, GroupID: i64p(groupID), Group: &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 1}},
+		User:    &User{ID: 602},
+		Account: &Account{ID: 702, Platform: PlatformAnthropic},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      "my-claude-alias",
+			ChannelMappedModel: anthropicCheapFixtureModel,
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	// 规则只配了原始请求名的输入价：100*0.001 = 0.1
+	require.InDelta(t, 0.1, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+}
+
+// OpenAI 路径：账号映射改写了上游名，按请求名配置的规则仍通过计费模型候选命中。
+func TestOpenAIGatewayServiceRecordUsage_AccountStatsRuleMatchesRequestedModelWhenUpstreamMapped(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	swapInOpenAILadderCatalog(t, svc)
+	svc.channelService = newTestChannelServiceForStats(t, &Channel{
+		ID:     1,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{1},
+			Pricing:  []ChannelModelPricing{{Models: []string{"gpt-5.4-2026-03-05"}, InputPrice: testPtrFloat64(0.001)}},
+		}},
+	}, 1, PlatformOpenAI)
+	apiKey := openAIRecordUsageAPIKeyWithGroup(svc, 1016, false)
+	apiKey.GroupID = i64p(1)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_account_stats_requested_model_rule",
+			Usage:         OpenAIUsage{InputTokens: 1000, OutputTokens: 10},
+			Model:         "gpt-5.4-2026-03-05",
+			UpstreamModel: "gpt-5.4-2026-03-05-custom",
+			Duration:      time.Second,
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 2016},
+		Account: &Account{ID: 3016, Platform: PlatformOpenAI},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	// 规则只配了输入价：1000*0.001 = 1.0
+	require.InDelta(t, 1.0, *usageRepo.lastLog.AccountStatsCost, 1e-12)
 }
 
 // ---------------------------------------------------------------------------
