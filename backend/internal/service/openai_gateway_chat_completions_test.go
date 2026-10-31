@@ -742,6 +742,97 @@ func TestForwardAsChatCompletions_UnknownModelWithoutMessagesDispatchKeepsReques
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestValidateChatCompletionsTokenLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name: "no limits",
+			body: `{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}]}`,
+		},
+		{
+			name:    "negative max_tokens",
+			body:    `{"model":"gpt-5.4","max_tokens":-1,"messages":[{"role":"user","content":"hi"}]}`,
+			wantErr: "max_tokens must be greater than or equal to 0",
+		},
+		{
+			name:    "negative max_completion_tokens",
+			body:    `{"model":"gpt-5.4","max_completion_tokens":-1,"messages":[{"role":"user","content":"hi"}]}`,
+			wantErr: "max_completion_tokens must be greater than or equal to 0",
+		},
+		{
+			name: "max_completion_tokens takes precedence over max_tokens",
+			body: `{"model":"gpt-5.4","max_tokens":-1,"max_completion_tokens":64,"messages":[{"role":"user","content":"hi"}]}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateChatCompletionsTokenLimits([]byte(tc.body))
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestForwardAsChatCompletions_RejectsNegativeTokenLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		body        string
+		wantMessage string
+	}{
+		{
+			name:        "negative max_tokens",
+			body:        `{"model":"gpt-5.4","max_tokens":-1,"messages":[{"role":"user","content":"hi"}],"stream":false}`,
+			wantMessage: "max_tokens must be greater than or equal to 0",
+		},
+		{
+			name:        "negative max_completion_tokens",
+			body:        `{"model":"gpt-5.4","max_completion_tokens":-1,"messages":[{"role":"user","content":"hi"}],"stream":false}`,
+			wantMessage: "max_completion_tokens must be greater than or equal to 0",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(tc.body)))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"unexpected upstream call"}}`)),
+				},
+			}
+			svc := &OpenAIGatewayService{
+				cfg:          structuredInputRetryTestConfig(),
+				httpUpstream: upstream,
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, structuredInputRetryTestAccount(), []byte(tc.body), "", "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Contains(t, rec.Body.String(), tc.wantMessage)
+			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
 func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
