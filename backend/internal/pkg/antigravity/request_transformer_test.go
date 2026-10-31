@@ -702,7 +702,8 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 			{
 				Role: "assistant",
 				Content: json.RawMessage(`[
-					{"type":"tool_use","id":"toolu_img_1","name":"read_image","input":{"path":"colors.png"}}
+					{"type":"tool_use","id":"toolu_img_1","name":"read_image","input":{"path":"colors.png"}},
+					{"type":"tool_use","id":"toolu_img_2","name":"read_image","input":{"path":"photo.jpg"}}
 				]`),
 			},
 			{
@@ -718,7 +719,7 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 					},
 					{
 						"type":"tool_result",
-						"tool_use_id":"toolu_img_1",
+						"tool_use_id":"toolu_img_2",
 						"content":[
 							{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"d29ybGQ="}}
 						]
@@ -743,15 +744,45 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 	require.Equal(t, "toolu_img_1", userParts[0].FunctionResponse.ID)
 	require.Equal(t, "loaded colors.png", userParts[0].FunctionResponse.Response["result"])
 
-	require.NotNil(t, userParts[1].InlineData)
-	require.Equal(t, "image/png", userParts[1].InlineData.MimeType)
-	require.Equal(t, "aGVsbG8=", userParts[1].InlineData.Data)
+	require.NotNil(t, userParts[1].FunctionResponse)
+	require.Equal(t, "read_image", userParts[1].FunctionResponse.Name)
+	require.Equal(t, "toolu_img_2", userParts[1].FunctionResponse.ID)
+	require.Equal(t, "Command executed successfully.", userParts[1].FunctionResponse.Response["result"])
 
-	require.NotNil(t, userParts[2].FunctionResponse)
-	require.Equal(t, "read_image", userParts[2].FunctionResponse.Name)
-	require.Equal(t, "Command executed successfully.", userParts[2].FunctionResponse.Response["result"])
+	require.NotNil(t, userParts[2].InlineData)
+	require.Equal(t, "image/png", userParts[2].InlineData.MimeType)
+	require.Equal(t, "aGVsbG8=", userParts[2].InlineData.Data)
 
 	require.NotNil(t, userParts[3].InlineData)
 	require.Equal(t, "image/jpeg", userParts[3].InlineData.MimeType)
 	require.Equal(t, "d29ybGQ=", userParts[3].InlineData.Data)
+}
+
+func TestBuildParts_ParallelToolResultsBeforeOtherParts(t *testing.T) {
+	for _, model := range []string{"claude-opus-5-5", "gemini-4-argon"} {
+		t.Run(model, func(t *testing.T) {
+			content := json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"image-1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]},
+				{"type":"text","text":"Keep every result and attachment."},
+				{"type":"tool_result","tool_use_id":"text-2","is_error":true,"content":"Read failed"},
+				{"type":"tool_result","tool_use_id":"image-3","content":[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"d29ybGQ="}},{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}]}
+			]`)
+			names := map[string]string{"image-1": "Read", "text-2": "Bash", "image-3": "Read"}
+			parts, stripped, err := buildParts(content, names, strings.HasPrefix(model, "gemini-"))
+			require.NoError(t, err)
+			require.False(t, stripped)
+			require.Len(t, parts, 7)
+			for i, id := range []string{"image-1", "text-2", "image-3"} {
+				require.NotNil(t, parts[i].FunctionResponse)
+				require.Equal(t, id, parts[i].FunctionResponse.ID)
+				require.Equal(t, names[id], parts[i].FunctionResponse.Name)
+			}
+			require.Equal(t, "Read failed", parts[1].FunctionResponse.Response["result"])
+			require.Equal(t, "aGVsbG8=", parts[3].InlineData.Data)
+			require.Equal(t, "Keep every result and attachment.", parts[4].Text)
+			require.Equal(t, "d29ybGQ=", parts[5].InlineData.Data)
+			require.Equal(t, "application/pdf", parts[6].InlineData.MimeType)
+			require.Equal(t, "JVBERi0=", parts[6].InlineData.Data)
+		})
+	}
 }
