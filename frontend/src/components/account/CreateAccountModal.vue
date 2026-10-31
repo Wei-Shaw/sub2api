@@ -5873,15 +5873,51 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 
+const withAccountQuotaExtra = (type: AccountType, extra?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  let finalExtra = extra
+  if (supportsAccountQuota(type)) {
+    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+      quotaExtra.quota_limit = editQuotaLimit.value
+    }
+    if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
+      quotaExtra.quota_daily_limit = editQuotaDailyLimit.value
+    }
+    if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
+      quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+    }
+    // Quota reset mode config
+    if (editDailyResetMode.value === 'fixed') {
+      quotaExtra.quota_daily_reset_mode = 'fixed'
+      quotaExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0
+    }
+    if (editWeeklyResetMode.value === 'fixed') {
+      quotaExtra.quota_weekly_reset_mode = 'fixed'
+      quotaExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1
+      quotaExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0
+    }
+    if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
+      quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+    }
+    // Quota notify config
+    writeQuotaNotifyToExtra(quotaExtra, 'create')
+    if (Object.keys(quotaExtra).length > 0) {
+      finalExtra = quotaExtra
+    }
+  }
+  return finalExtra
+}
+
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  const request = { ...payload, extra: withAccountQuotaExtra(payload.type, payload.extra) }
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
-    await submitCreateAccount(payload)
+    await submitCreateAccount(request)
   })
   if (!canContinue) {
     return
   }
-  await submitCreateAccount(payload)
+  await submitCreateAccount(request)
 }
 
 // Handle mixed channel warning confirmation
@@ -6310,38 +6346,7 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
-  // Inject quota limits for apikey/bedrock/service_account accounts
-  let finalExtra = withUpstreamRequestIdHeader(extra)
-  if (supportsAccountQuota(type)) {
-    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
-    if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
-      quotaExtra.quota_limit = editQuotaLimit.value
-    }
-    if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
-      quotaExtra.quota_daily_limit = editQuotaDailyLimit.value
-    }
-    if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
-      quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
-    }
-    // Quota reset mode config
-    if (editDailyResetMode.value === 'fixed') {
-      quotaExtra.quota_daily_reset_mode = 'fixed'
-      quotaExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0
-    }
-    if (editWeeklyResetMode.value === 'fixed') {
-      quotaExtra.quota_weekly_reset_mode = 'fixed'
-      quotaExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1
-      quotaExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0
-    }
-    if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
-      quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
-    }
-    // Quota notify config
-    writeQuotaNotifyToExtra(quotaExtra, 'create')
-    if (Object.keys(quotaExtra).length > 0) {
-      finalExtra = quotaExtra
-    }
-  }
+  const finalExtra = withUpstreamRequestIdHeader(extra)
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)

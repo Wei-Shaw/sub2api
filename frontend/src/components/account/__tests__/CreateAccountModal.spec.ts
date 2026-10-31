@@ -667,13 +667,15 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const wrapper = mountModal()
     await wrapper.get('[data-testid="platform-button-byteplus"]').trigger('click')
     expect(wrapper.find('[data-testid="byteplus-capabilities"]').exists()).toBe(true)
+    wrapper.getComponent({ name: 'QuotaLimitCard' }).vm.$emit('update:totalLimit', 0.75)
+    await wrapper.vm.$nextTick()
     await wrapper.get('form#create-account-form input[type="text"]').setValue('BytePlus')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('test-byteplus-key')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
-      platform: 'byteplus', type: 'apikey', credentials: {
+      platform: 'byteplus', type: 'apikey', extra: { quota_limit: 0.75 }, credentials: {
         base_url: 'https://ark.ap-southeast.bytepluses.com/api/v3',
         api_key: 'test-byteplus-key', account_mode: 'payg', api_protocol: 'chat_completions',
         openai_capabilities: ['chat_completions', 'seedance']
