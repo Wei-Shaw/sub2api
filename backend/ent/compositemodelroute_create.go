@@ -71,6 +71,34 @@ func (_c *CompositeModelRouteCreate) SetGroupID(v int64) *CompositeModelRouteCre
 	return _c
 }
 
+// SetTargetGroupID sets the "target_group_id" field.
+func (_c *CompositeModelRouteCreate) SetTargetGroupID(v int64) *CompositeModelRouteCreate {
+	_c.mutation.SetTargetGroupID(v)
+	return _c
+}
+
+// SetNillableTargetGroupID sets the "target_group_id" field if the given value is not nil.
+func (_c *CompositeModelRouteCreate) SetNillableTargetGroupID(v *int64) *CompositeModelRouteCreate {
+	if v != nil {
+		_c.SetTargetGroupID(*v)
+	}
+	return _c
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (_c *CompositeModelRouteCreate) SetTargetAccountID(v int64) *CompositeModelRouteCreate {
+	_c.mutation.SetTargetAccountID(v)
+	return _c
+}
+
+// SetNillableTargetAccountID sets the "target_account_id" field if the given value is not nil.
+func (_c *CompositeModelRouteCreate) SetNillableTargetAccountID(v *int64) *CompositeModelRouteCreate {
+	if v != nil {
+		_c.SetTargetAccountID(*v)
+	}
+	return _c
+}
+
 // SetPublicModel sets the "public_model" field.
 func (_c *CompositeModelRouteCreate) SetPublicModel(v string) *CompositeModelRouteCreate {
 	_c.mutation.SetPublicModel(v)
@@ -357,6 +385,14 @@ func (_c *CompositeModelRouteCreate) createSpec() (*CompositeModelRoute, *sqlgra
 		_spec.SetField(compositemodelroute.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
 	}
+	if value, ok := _c.mutation.TargetGroupID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetGroupID, field.TypeInt64, value)
+		_node.TargetGroupID = &value
+	}
+	if value, ok := _c.mutation.TargetAccountID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetAccountID, field.TypeInt64, value)
+		_node.TargetAccountID = &value
+	}
 	if value, ok := _c.mutation.PublicModel(); ok {
 		_spec.SetField(compositemodelroute.FieldPublicModel, field.TypeString, value)
 		_node.PublicModel = value
@@ -497,6 +533,54 @@ func (u *CompositeModelRouteUpsert) SetGroupID(v int64) *CompositeModelRouteUpse
 // UpdateGroupID sets the "group_id" field to the value that was provided on create.
 func (u *CompositeModelRouteUpsert) UpdateGroupID() *CompositeModelRouteUpsert {
 	u.SetExcluded(compositemodelroute.FieldGroupID)
+	return u
+}
+
+// SetTargetGroupID sets the "target_group_id" field.
+func (u *CompositeModelRouteUpsert) SetTargetGroupID(v int64) *CompositeModelRouteUpsert {
+	u.Set(compositemodelroute.FieldTargetGroupID, v)
+	return u
+}
+
+// UpdateTargetGroupID sets the "target_group_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsert) UpdateTargetGroupID() *CompositeModelRouteUpsert {
+	u.SetExcluded(compositemodelroute.FieldTargetGroupID)
+	return u
+}
+
+// AddTargetGroupID adds v to the "target_group_id" field.
+func (u *CompositeModelRouteUpsert) AddTargetGroupID(v int64) *CompositeModelRouteUpsert {
+	u.Add(compositemodelroute.FieldTargetGroupID, v)
+	return u
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (u *CompositeModelRouteUpsert) ClearTargetGroupID() *CompositeModelRouteUpsert {
+	u.SetNull(compositemodelroute.FieldTargetGroupID)
+	return u
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (u *CompositeModelRouteUpsert) SetTargetAccountID(v int64) *CompositeModelRouteUpsert {
+	u.Set(compositemodelroute.FieldTargetAccountID, v)
+	return u
+}
+
+// UpdateTargetAccountID sets the "target_account_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsert) UpdateTargetAccountID() *CompositeModelRouteUpsert {
+	u.SetExcluded(compositemodelroute.FieldTargetAccountID)
+	return u
+}
+
+// AddTargetAccountID adds v to the "target_account_id" field.
+func (u *CompositeModelRouteUpsert) AddTargetAccountID(v int64) *CompositeModelRouteUpsert {
+	u.Add(compositemodelroute.FieldTargetAccountID, v)
+	return u
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (u *CompositeModelRouteUpsert) ClearTargetAccountID() *CompositeModelRouteUpsert {
+	u.SetNull(compositemodelroute.FieldTargetAccountID)
 	return u
 }
 
@@ -699,6 +783,62 @@ func (u *CompositeModelRouteUpsertOne) SetGroupID(v int64) *CompositeModelRouteU
 func (u *CompositeModelRouteUpsertOne) UpdateGroupID() *CompositeModelRouteUpsertOne {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetTargetGroupID sets the "target_group_id" field.
+func (u *CompositeModelRouteUpsertOne) SetTargetGroupID(v int64) *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetTargetGroupID(v)
+	})
+}
+
+// AddTargetGroupID adds v to the "target_group_id" field.
+func (u *CompositeModelRouteUpsertOne) AddTargetGroupID(v int64) *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.AddTargetGroupID(v)
+	})
+}
+
+// UpdateTargetGroupID sets the "target_group_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertOne) UpdateTargetGroupID() *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateTargetGroupID()
+	})
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (u *CompositeModelRouteUpsertOne) ClearTargetGroupID() *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.ClearTargetGroupID()
+	})
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (u *CompositeModelRouteUpsertOne) SetTargetAccountID(v int64) *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetTargetAccountID(v)
+	})
+}
+
+// AddTargetAccountID adds v to the "target_account_id" field.
+func (u *CompositeModelRouteUpsertOne) AddTargetAccountID(v int64) *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.AddTargetAccountID(v)
+	})
+}
+
+// UpdateTargetAccountID sets the "target_account_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertOne) UpdateTargetAccountID() *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateTargetAccountID()
+	})
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (u *CompositeModelRouteUpsertOne) ClearTargetAccountID() *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.ClearTargetAccountID()
 	})
 }
 
@@ -1085,6 +1225,62 @@ func (u *CompositeModelRouteUpsertBulk) SetGroupID(v int64) *CompositeModelRoute
 func (u *CompositeModelRouteUpsertBulk) UpdateGroupID() *CompositeModelRouteUpsertBulk {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetTargetGroupID sets the "target_group_id" field.
+func (u *CompositeModelRouteUpsertBulk) SetTargetGroupID(v int64) *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetTargetGroupID(v)
+	})
+}
+
+// AddTargetGroupID adds v to the "target_group_id" field.
+func (u *CompositeModelRouteUpsertBulk) AddTargetGroupID(v int64) *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.AddTargetGroupID(v)
+	})
+}
+
+// UpdateTargetGroupID sets the "target_group_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertBulk) UpdateTargetGroupID() *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateTargetGroupID()
+	})
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (u *CompositeModelRouteUpsertBulk) ClearTargetGroupID() *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.ClearTargetGroupID()
+	})
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (u *CompositeModelRouteUpsertBulk) SetTargetAccountID(v int64) *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetTargetAccountID(v)
+	})
+}
+
+// AddTargetAccountID adds v to the "target_account_id" field.
+func (u *CompositeModelRouteUpsertBulk) AddTargetAccountID(v int64) *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.AddTargetAccountID(v)
+	})
+}
+
+// UpdateTargetAccountID sets the "target_account_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertBulk) UpdateTargetAccountID() *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateTargetAccountID()
+	})
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (u *CompositeModelRouteUpsertBulk) ClearTargetAccountID() *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.ClearTargetAccountID()
 	})
 }
 

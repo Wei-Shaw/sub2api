@@ -46,6 +46,8 @@ func (r *compositeModelRouteRepository) Create(ctx context.Context, route *servi
 		SetPublicModel(route.PublicModel).
 		SetMatchType(route.MatchType).
 		SetTargetPlatform(route.TargetPlatform).
+		SetNillableTargetGroupID(route.TargetGroupID).
+		SetNillableTargetAccountID(route.TargetAccountID).
 		SetUpstreamModel(route.UpstreamModel).
 		SetEndpoint(route.Endpoint).
 		SetPriority(route.Priority).
@@ -63,7 +65,7 @@ func (r *compositeModelRouteRepository) Update(ctx context.Context, route *servi
 	if route == nil {
 		return service.ErrCompositeRouteNotFound
 	}
-	updated, err := clientFromContext(ctx, r.client).CompositeModelRoute.UpdateOneID(route.ID).
+	update := clientFromContext(ctx, r.client).CompositeModelRoute.UpdateOneID(route.ID).
 		SetPublicModel(route.PublicModel).
 		SetMatchType(route.MatchType).
 		SetTargetPlatform(route.TargetPlatform).
@@ -72,7 +74,14 @@ func (r *compositeModelRouteRepository) Update(ctx context.Context, route *servi
 		SetPriority(route.Priority).
 		SetEnabled(route.Enabled).
 		SetNotes(route.Notes).
-		Save(ctx)
+		ClearTargetGroupID().ClearTargetAccountID()
+	if route.TargetGroupID != nil {
+		update.SetTargetGroupID(*route.TargetGroupID)
+	}
+	if route.TargetAccountID != nil {
+		update.SetTargetAccountID(*route.TargetAccountID)
+	}
+	updated, err := update.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrCompositeRouteNotFound, service.ErrCompositeRouteExists)
 	}
@@ -97,17 +106,27 @@ func compositeModelRouteEntityToService(row *dbent.CompositeModelRoute) *service
 		return nil
 	}
 	return &service.CompositeModelRoute{
-		ID:             row.ID,
-		GroupID:        row.GroupID,
-		PublicModel:    row.PublicModel,
-		MatchType:      row.MatchType,
-		TargetPlatform: row.TargetPlatform,
-		UpstreamModel:  row.UpstreamModel,
-		Endpoint:       row.Endpoint,
-		Priority:       row.Priority,
-		Enabled:        row.Enabled,
-		Notes:          derefString(row.Notes),
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		ID:              row.ID,
+		GroupID:         row.GroupID,
+		PublicModel:     row.PublicModel,
+		MatchType:       row.MatchType,
+		TargetPlatform:  row.TargetPlatform,
+		TargetGroupID:   cloneCompositeRouteID(row.TargetGroupID),
+		TargetAccountID: cloneCompositeRouteID(row.TargetAccountID),
+		UpstreamModel:   row.UpstreamModel,
+		Endpoint:        row.Endpoint,
+		Priority:        row.Priority,
+		Enabled:         row.Enabled,
+		Notes:           derefString(row.Notes),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
 	}
+}
+
+func cloneCompositeRouteID(id *int64) *int64 {
+	if id == nil {
+		return nil
+	}
+	value := *id
+	return &value
 }

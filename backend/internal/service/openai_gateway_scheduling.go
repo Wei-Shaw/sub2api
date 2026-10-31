@@ -387,6 +387,9 @@ func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context
 }
 
 func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) string {
+	if !CompositeRouteAccountAllowed(ctx, account) {
+		return "composite_route_destination_mismatch"
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if account == nil {
 		return "account_nil"
@@ -903,6 +906,12 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 // selectAccountForModelWithExclusionsStickyHit 与 selectAccountForModelWithExclusions 相同，
 // 另返回账号是否来自粘性会话命中。
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, error) {
+	if !CompositeRouteSourceGroupMatches(ctx, groupID) {
+		return nil, false, ErrNoAvailableAccounts
+	}
+	if err := ValidateCompositeRouteScope(ctx, s.compositeRouteGroupRepository(), s.accountRepo); err != nil {
+		return nil, false, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -997,7 +1006,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
-	if account == nil || !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
+	if account == nil || !s.openAIAccountMatchesSchedulingGroup(ctx, account, groupID) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1136,6 +1145,12 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+	if !CompositeRouteSourceGroupMatches(ctx, groupID) {
+		return nil, ErrNoAvailableAccounts
+	}
+	if err := ValidateCompositeRouteScope(ctx, s.compositeRouteGroupRepository(), s.accountRepo); err != nil {
+		return nil, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -1219,7 +1234,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
+					} else if !s.openAIAccountMatchesSchedulingGroup(ctx, account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1497,7 +1512,21 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	return nil, ErrNoAvailableAccounts
 }
 
+func (s *OpenAIGatewayService) compositeRouteGroupRepository() GroupRepository {
+	if s == nil || s.schedulerSnapshot == nil {
+		return nil
+	}
+	return s.schedulerSnapshot.groupRepo
+}
+
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
+	if accounts, handled, err := ListCompositeRouteScopedAccounts(ctx, s.compositeRouteGroupRepository(), s.accountRepo, platform); handled {
+		accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
+		if platform == PlatformGrok {
+			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
+		}
+		return accounts, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
@@ -1609,8 +1638,13 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if account == nil {
 		return nil
 	}
+	if HasCompositeRouteDestination(ctx) {
+		if err := ValidateCompositeRouteScope(ctx, s.compositeRouteGroupRepository(), s.accountRepo); err != nil {
+			return nil
+		}
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
-	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+	if !HasCompositeRouteDestination(ctx) && (s.schedulerSnapshot == nil || s.accountRepo == nil) {
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !account.IsPrivacySet() {
 			return nil
 		}
@@ -1633,7 +1667,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
-	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
+	if !s.openAIAccountMatchesSchedulingGroup(ctx, latest, groupID) {
 		return nil
 	}
 	if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !latest.IsPrivacySet() {
@@ -1657,7 +1691,10 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	return latest
 }
 
-func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Account, groupID *int64) bool {
+func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(ctx context.Context, account *Account, groupID *int64) bool {
+	if HasCompositeRouteDestination(ctx) {
+		return CompositeRouteAccountAllowed(ctx, account)
+	}
 	if s != nil && s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		return account != nil
 	}
@@ -1665,6 +1702,22 @@ func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Acco
 }
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if HasCompositeRouteDestination(ctx) {
+		if err := ValidateCompositeRouteScope(ctx, s.compositeRouteGroupRepository(), s.accountRepo); err != nil {
+			return nil, err
+		}
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err != nil || !CompositeRouteAccountAllowed(ctx, account) {
+			return nil, err
+		}
+		if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
+			return nil, nil
+		}
+		if account.IsGrok() && len(s.filterGrokFreeQuotaAccountsForOpenAI(ctx, []Account{*account})) == 0 {
+			return nil, nil
+		}
+		return account, nil
+	}
 	var (
 		account *Account
 		err     error
@@ -1721,6 +1774,19 @@ func (s *OpenAIGatewayService) isOpenAIAccountBlockedBySchedulingThreshold(ctx c
 }
 
 func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if HasCompositeRouteDestination(ctx) {
+		if account == nil {
+			return nil, ErrNoAvailableAccounts
+		}
+		fresh, err := s.getSchedulableAccount(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if fresh == nil || !fresh.IsSchedulable() {
+			return nil, ErrNoAvailableAccounts
+		}
+		return fresh, nil
+	}
 	if account == nil || s.schedulerSnapshot == nil {
 		return account, nil
 	}

@@ -75,6 +75,16 @@ func GroupID(v int64) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldEQ(FieldGroupID, v))
 }
 
+// TargetGroupID applies equality check predicate on the "target_group_id" field. It's identical to TargetGroupIDEQ.
+func TargetGroupID(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldTargetGroupID, v))
+}
+
+// TargetAccountID applies equality check predicate on the "target_account_id" field. It's identical to TargetAccountIDEQ.
+func TargetAccountID(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldTargetAccountID, v))
+}
+
 // PublicModel applies equality check predicate on the "public_model" field. It's identical to PublicModelEQ.
 func PublicModel(v string) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldEQ(FieldPublicModel, v))
@@ -263,6 +273,106 @@ func GroupIDIn(vs ...int64) predicate.CompositeModelRoute {
 // GroupIDNotIn applies the NotIn predicate on the "group_id" field.
 func GroupIDNotIn(vs ...int64) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// TargetGroupIDEQ applies the EQ predicate on the "target_group_id" field.
+func TargetGroupIDEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDNEQ applies the NEQ predicate on the "target_group_id" field.
+func TargetGroupIDNEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNEQ(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDIn applies the In predicate on the "target_group_id" field.
+func TargetGroupIDIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldIn(FieldTargetGroupID, vs...))
+}
+
+// TargetGroupIDNotIn applies the NotIn predicate on the "target_group_id" field.
+func TargetGroupIDNotIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNotIn(FieldTargetGroupID, vs...))
+}
+
+// TargetGroupIDGT applies the GT predicate on the "target_group_id" field.
+func TargetGroupIDGT(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldGT(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDGTE applies the GTE predicate on the "target_group_id" field.
+func TargetGroupIDGTE(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldGTE(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDLT applies the LT predicate on the "target_group_id" field.
+func TargetGroupIDLT(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldLT(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDLTE applies the LTE predicate on the "target_group_id" field.
+func TargetGroupIDLTE(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldLTE(FieldTargetGroupID, v))
+}
+
+// TargetGroupIDIsNil applies the IsNil predicate on the "target_group_id" field.
+func TargetGroupIDIsNil() predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldIsNull(FieldTargetGroupID))
+}
+
+// TargetGroupIDNotNil applies the NotNil predicate on the "target_group_id" field.
+func TargetGroupIDNotNil() predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNotNull(FieldTargetGroupID))
+}
+
+// TargetAccountIDEQ applies the EQ predicate on the "target_account_id" field.
+func TargetAccountIDEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDNEQ applies the NEQ predicate on the "target_account_id" field.
+func TargetAccountIDNEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNEQ(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDIn applies the In predicate on the "target_account_id" field.
+func TargetAccountIDIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldIn(FieldTargetAccountID, vs...))
+}
+
+// TargetAccountIDNotIn applies the NotIn predicate on the "target_account_id" field.
+func TargetAccountIDNotIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNotIn(FieldTargetAccountID, vs...))
+}
+
+// TargetAccountIDGT applies the GT predicate on the "target_account_id" field.
+func TargetAccountIDGT(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldGT(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDGTE applies the GTE predicate on the "target_account_id" field.
+func TargetAccountIDGTE(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldGTE(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDLT applies the LT predicate on the "target_account_id" field.
+func TargetAccountIDLT(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldLT(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDLTE applies the LTE predicate on the "target_account_id" field.
+func TargetAccountIDLTE(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldLTE(FieldTargetAccountID, v))
+}
+
+// TargetAccountIDIsNil applies the IsNil predicate on the "target_account_id" field.
+func TargetAccountIDIsNil() predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldIsNull(FieldTargetAccountID))
+}
+
+// TargetAccountIDNotNil applies the NotNil predicate on the "target_account_id" field.
+func TargetAccountIDNotNil() predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNotNull(FieldTargetAccountID))
 }
 
 // PublicModelEQ applies the EQ predicate on the "public_model" field.

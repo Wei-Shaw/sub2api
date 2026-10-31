@@ -161,6 +161,9 @@ func (s *adminServiceImpl) CreateCompositeRoute(ctx context.Context, groupID int
 	if err != nil {
 		return nil, err
 	}
+	if err := validateCompositeRouteDestination(ctx, s.groupRepo, s.accountRepo, *route); err != nil {
+		return nil, err
+	}
 	if err := s.compositeRouteRepo.Create(ctx, route); err != nil {
 		return nil, err
 	}
@@ -184,6 +187,9 @@ func (s *adminServiceImpl) UpdateCompositeRoute(ctx context.Context, groupID, ro
 	}
 	route, err := compositeRouteFromInput(groupID, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateCompositeRouteDestination(ctx, s.groupRepo, s.accountRepo, *route); err != nil {
 		return nil, err
 	}
 	route.ID = routeID
@@ -226,6 +232,15 @@ func (s *adminServiceImpl) PreviewCompositeRoute(ctx context.Context, groupID in
 	if err != nil {
 		return nil, err
 	}
+	if decision.Matched && (decision.TargetGroupID != nil || decision.TargetAccountID != nil) {
+		route := CompositeModelRoute{
+			GroupID: groupID, TargetPlatform: decision.TargetPlatform,
+			TargetGroupID: decision.TargetGroupID, TargetAccountID: decision.TargetAccountID,
+		}
+		if err := validateCompositeRouteDestination(ctx, s.groupRepo, s.accountRepo, route); err != nil {
+			return nil, err
+		}
+	}
 	return &decision, nil
 }
 
@@ -255,6 +270,9 @@ func (s *adminServiceImpl) compositeRouteBelongsToGroup(ctx context.Context, gro
 
 func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
 	input = normalizeCompositeRouteInput(input)
+	if err := validateCompositeRouteDestinationIDs(groupID, input.TargetGroupID, input.TargetAccountID); err != nil {
+		return nil, err
+	}
 	if input.PublicModel == "" {
 		return nil, fmt.Errorf("public_model is required")
 	}
@@ -265,15 +283,17 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 		input.Priority = 100
 	}
 	return &CompositeModelRoute{
-		GroupID:        groupID,
-		PublicModel:    input.PublicModel,
-		MatchType:      input.MatchType,
-		TargetPlatform: input.TargetPlatform,
-		UpstreamModel:  input.UpstreamModel,
-		Endpoint:       input.Endpoint,
-		Priority:       input.Priority,
-		Enabled:        input.Enabled,
-		Notes:          input.Notes,
+		GroupID:         groupID,
+		PublicModel:     input.PublicModel,
+		MatchType:       input.MatchType,
+		TargetPlatform:  input.TargetPlatform,
+		TargetGroupID:   cloneCompositeRouteID(input.TargetGroupID),
+		TargetAccountID: cloneCompositeRouteID(input.TargetAccountID),
+		UpstreamModel:   input.UpstreamModel,
+		Endpoint:        input.Endpoint,
+		Priority:        input.Priority,
+		Enabled:         input.Enabled,
+		Notes:           input.Notes,
 	}, nil
 }
 

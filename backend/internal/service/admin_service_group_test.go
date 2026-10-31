@@ -2350,3 +2350,139 @@ func TestAdminService_CreateGroup_CodexModelsManifestConfigDisabledAccepted(t *t
 	require.Equal(t, []int64{1, 2}, group.CodexModelsManifestConfig.AccountIDs)
 	require.False(t, repo.created.CodexModelsManifestConfig.Enabled)
 }
+
+func TestAdminService_CompositeRouteDestinationValidation(t *testing.T) {
+	groupID, accountID := int64(20), int64(31)
+	for _, tc := range []struct {
+		name                       string
+		targetGroup, targetAccount *int64
+		group                      *Group
+		account                    *Account
+		wantError                  string
+	}{
+		{name: "legacy pool"},
+		{name: "group grant", targetGroup: &groupID, group: &Group{ID: 20, Platform: PlatformOpenAI, Status: StatusActive}},
+		{name: "account outside source membership", targetAccount: &accountID, account: &Account{ID: 31, Platform: PlatformOpenAI, GroupIDs: []int64{99}}},
+		{name: "mutually exclusive", targetGroup: &groupID, targetAccount: &accountID, wantError: "mutually exclusive"},
+		{name: "missing group", targetGroup: &groupID, wantError: "unavailable"},
+		{name: "missing account", targetAccount: &accountID, wantError: "unavailable"},
+		{name: "inactive group", targetGroup: &groupID, group: &Group{ID: 20, Platform: PlatformOpenAI, Status: "inactive"}, wantError: "active, concrete"},
+		{name: "nested mix", targetGroup: &groupID, group: &Group{ID: 20, Platform: PlatformComposite, Status: StatusActive}, wantError: "active, concrete"},
+		{name: "foreign group platform", targetGroup: &groupID, group: &Group{ID: 20, Platform: PlatformGemini, Status: StatusActive}, wantError: "target_platform"},
+		{name: "foreign account platform", targetAccount: &accountID, account: &Account{ID: 31, Platform: PlatformGemini}, wantError: "target_platform"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			groups := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{7: {ID: 7, Platform: PlatformComposite}}}
+			if tc.group != nil {
+				groups.getByIDByID[20] = tc.group
+			}
+			accounts := &accountRepoStubForBulkUpdate{getByIDAccounts: map[int64]*Account{}}
+			if tc.account != nil {
+				accounts.getByIDAccounts[31] = tc.account
+			}
+			routes := &compositeRouteRepoStubForAdmin{nextID: 10}
+			svc := &adminServiceImpl{groupRepo: groups, accountRepo: accounts, compositeRouteRepo: routes}
+			result, err := svc.CreateCompositeRoute(context.Background(), 7, CompositeRouteInput{PublicModel: "alias", TargetPlatform: PlatformOpenAI, TargetGroupID: tc.targetGroup, TargetAccountID: tc.targetAccount, Enabled: true})
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+				require.Equal(t, "INVALID_COMPOSITE_ROUTE_DESTINATION", infraerrors.Reason(err))
+				require.Nil(t, routes.created)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.targetGroup, result.TargetGroupID)
+			require.Equal(t, tc.targetAccount, result.TargetAccountID)
+		})
+	}
+	for _, invalid := range []int64{0, -1, 7} {
+		_, err := compositeRouteFromInput(7, CompositeRouteInput{PublicModel: "alias", TargetPlatform: PlatformOpenAI, TargetGroupID: &invalid})
+		require.Error(t, err)
+	}
+}
+
+func TestAdminService_PreviewCompositeRouteValidatesDestination(t *testing.T) {
+	groupID, accountID := int64(20), int64(31)
+	for _, tc := range []struct {
+		name                       string
+		targetGroup, targetAccount *int64
+		group                      *Group
+		account                    *Account
+		wantError                  bool
+	}{
+		{name: "legacy pool"},
+		{name: "available group", targetGroup: &groupID, group: &Group{ID: groupID, Platform: PlatformOpenAI, Status: StatusActive}},
+		{name: "available account", targetAccount: &accountID, account: &Account{ID: accountID, Platform: PlatformOpenAI}},
+		{name: "missing group", targetGroup: &groupID, wantError: true},
+		{name: "missing account", targetAccount: &accountID, wantError: true},
+		{name: "inactive group", targetGroup: &groupID, group: &Group{ID: groupID, Platform: PlatformOpenAI, Status: StatusDisabled}, wantError: true},
+		{name: "wrong group platform", targetGroup: &groupID, group: &Group{ID: groupID, Platform: PlatformGemini, Status: StatusActive}, wantError: true},
+		{name: "nested composite group", targetGroup: &groupID, group: &Group{ID: groupID, Platform: PlatformComposite, Status: StatusActive}, wantError: true},
+		{name: "wrong account platform", targetAccount: &accountID, account: &Account{ID: accountID, Platform: PlatformGemini}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			groups := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{7: {ID: 7, Platform: PlatformComposite}}}
+			if tc.group != nil {
+				groups.getByIDByID[groupID] = tc.group
+			}
+			accounts := &accountRepoStubForBulkUpdate{getByIDAccounts: map[int64]*Account{}}
+			if tc.account != nil {
+				accounts.getByIDAccounts[accountID] = tc.account
+			}
+			routes := &compositeRouteRepoStubForAdmin{routes: []CompositeModelRoute{{
+				ID: 10, GroupID: 7, PublicModel: "alias", TargetPlatform: PlatformOpenAI,
+				TargetGroupID: tc.targetGroup, TargetAccountID: tc.targetAccount, Enabled: true,
+			}}}
+			svc := &adminServiceImpl{
+				groupRepo: groups, accountRepo: accounts, compositeRouteRepo: routes,
+				compositeResolver: NewCompositeRouteResolver(routes),
+			}
+			preview := func() (*CompositeRouteDecision, error) {
+				return svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{Model: "alias"})
+			}
+			decision, err := preview()
+			if tc.wantError {
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+				require.Equal(t, "INVALID_COMPOSITE_ROUTE_DESTINATION", infraerrors.Reason(err))
+				require.Nil(t, decision, "unavailable destinations must not return matched=true")
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, decision.Matched)
+			require.Equal(t, tc.targetGroup, decision.TargetGroupID)
+			require.Equal(t, tc.targetAccount, decision.TargetAccountID)
+			// Availability must be checked again even after routes enter the cache.
+			if tc.targetGroup != nil {
+				tc.group.Status = StatusDisabled
+			} else if tc.targetAccount != nil {
+				delete(accounts.getByIDAccounts, accountID)
+			} else {
+				return
+			}
+			decision, err = preview()
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Nil(t, decision)
+		})
+	}
+}
+
+func TestAdminService_CompositeRoutePUTClearsDestinationAndPreviewReturnsPin(t *testing.T) {
+	pin := int64(31)
+	groups := &groupRepoStubForAdmin{getByID: &Group{ID: 7, Platform: PlatformComposite}}
+	routes := &compositeRouteRepoStubForAdmin{routes: []CompositeModelRoute{{ID: 10, GroupID: 7, PublicModel: "alias", TargetPlatform: PlatformOpenAI, TargetAccountID: &pin, Enabled: true}}}
+	accounts := &accountRepoStubForBulkUpdate{getByIDAccounts: map[int64]*Account{pin: {ID: pin, Platform: PlatformOpenAI}}}
+	svc := &adminServiceImpl{groupRepo: groups, accountRepo: accounts, compositeRouteRepo: routes}
+	preview, err := svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{Model: "alias"})
+	require.NoError(t, err)
+	require.Equal(t, &pin, preview.TargetAccountID)
+	require.Nil(t, preview.TargetGroupID)
+	*preview.TargetAccountID = 999
+	require.Equal(t, int64(31), *routes.routes[0].TargetAccountID, "preview must not alias repository-owned pointers")
+	result, err := svc.UpdateCompositeRoute(context.Background(), 7, 10, CompositeRouteInput{PublicModel: "alias", TargetPlatform: PlatformOpenAI, Enabled: true})
+	require.NoError(t, err)
+	require.Nil(t, result.TargetAccountID)
+	require.Nil(t, result.TargetGroupID)
+	require.Nil(t, routes.updated.TargetAccountID)
+}

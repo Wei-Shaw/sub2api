@@ -26,6 +26,10 @@ type CompositeModelRoute struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID int64 `json:"group_id,omitempty"`
+	// TargetGroupID holds the value of the "target_group_id" field.
+	TargetGroupID *int64 `json:"target_group_id,omitempty"`
+	// TargetAccountID holds the value of the "target_account_id" field.
+	TargetAccountID *int64 `json:"target_account_id,omitempty"`
 	// Client-facing model identifier or prefix.
 	PublicModel string `json:"public_model,omitempty"`
 	// exact or prefix.
@@ -75,7 +79,7 @@ func (*CompositeModelRoute) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case compositemodelroute.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case compositemodelroute.FieldID, compositemodelroute.FieldGroupID, compositemodelroute.FieldPriority:
+		case compositemodelroute.FieldID, compositemodelroute.FieldGroupID, compositemodelroute.FieldTargetGroupID, compositemodelroute.FieldTargetAccountID, compositemodelroute.FieldPriority:
 			values[i] = new(sql.NullInt64)
 		case compositemodelroute.FieldPublicModel, compositemodelroute.FieldMatchType, compositemodelroute.FieldTargetPlatform, compositemodelroute.FieldUpstreamModel, compositemodelroute.FieldEndpoint, compositemodelroute.FieldNotes:
 			values[i] = new(sql.NullString)
@@ -126,6 +130,20 @@ func (_m *CompositeModelRoute) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field group_id", values[i])
 			} else if value.Valid {
 				_m.GroupID = value.Int64
+			}
+		case compositemodelroute.FieldTargetGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field target_group_id", values[i])
+			} else if value.Valid {
+				_m.TargetGroupID = new(int64)
+				*_m.TargetGroupID = value.Int64
+			}
+		case compositemodelroute.FieldTargetAccountID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field target_account_id", values[i])
+			} else if value.Valid {
+				_m.TargetAccountID = new(int64)
+				*_m.TargetAccountID = value.Int64
 			}
 		case compositemodelroute.FieldPublicModel:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -230,6 +248,16 @@ func (_m *CompositeModelRoute) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("group_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))
+	builder.WriteString(", ")
+	if v := _m.TargetGroupID; v != nil {
+		builder.WriteString("target_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.TargetAccountID; v != nil {
+		builder.WriteString("target_account_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("public_model=")
 	builder.WriteString(_m.PublicModel)

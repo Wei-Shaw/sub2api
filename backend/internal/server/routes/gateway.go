@@ -595,7 +595,20 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 				return
 			}
 			if decision.Matched {
-				c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+				// Async video lookups have no model to resolve a destination again.
+				// Until owner bindings carry that grant, reject cross-group/account
+				// creation rather than accepting a job its caller cannot retrieve.
+				path := c.Request.URL.Path
+				if (decision.TargetGroupID != nil || decision.TargetAccountID != nil) &&
+					(path == "/videos" || path == "/v1/videos" || strings.HasPrefix(path, "/videos/") || strings.HasPrefix(path, "/v1/videos/")) {
+					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{
+						"type":    "invalid_request_error",
+						"code":    "composite_async_destination_unsupported",
+						"message": "Explicit composite group/account destinations are not supported for asynchronous video requests",
+					}})
+					return
+				}
+				service.SetCompositeRouteDecision(c, decision)
 				if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
 					if _, modelPath := requestmodel.JSONModelPathForRoute(routePath, body); modelPath != "" {
 						if rewritten, rewriteErr := sjson.SetBytes(body, modelPath, upstreamModel); rewriteErr == nil {
@@ -626,7 +639,7 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 					return
 				}
 				if decision.Matched {
-					c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+					service.SetCompositeRouteDecision(c, decision)
 				}
 			}
 			if _, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context()); !resolved {

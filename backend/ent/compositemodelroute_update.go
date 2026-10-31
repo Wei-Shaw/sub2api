@@ -69,6 +69,60 @@ func (_u *CompositeModelRouteUpdate) SetNillableGroupID(v *int64) *CompositeMode
 	return _u
 }
 
+// SetTargetGroupID sets the "target_group_id" field.
+func (_u *CompositeModelRouteUpdate) SetTargetGroupID(v int64) *CompositeModelRouteUpdate {
+	_u.mutation.ResetTargetGroupID()
+	_u.mutation.SetTargetGroupID(v)
+	return _u
+}
+
+// SetNillableTargetGroupID sets the "target_group_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdate) SetNillableTargetGroupID(v *int64) *CompositeModelRouteUpdate {
+	if v != nil {
+		_u.SetTargetGroupID(*v)
+	}
+	return _u
+}
+
+// AddTargetGroupID adds value to the "target_group_id" field.
+func (_u *CompositeModelRouteUpdate) AddTargetGroupID(v int64) *CompositeModelRouteUpdate {
+	_u.mutation.AddTargetGroupID(v)
+	return _u
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (_u *CompositeModelRouteUpdate) ClearTargetGroupID() *CompositeModelRouteUpdate {
+	_u.mutation.ClearTargetGroupID()
+	return _u
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (_u *CompositeModelRouteUpdate) SetTargetAccountID(v int64) *CompositeModelRouteUpdate {
+	_u.mutation.ResetTargetAccountID()
+	_u.mutation.SetTargetAccountID(v)
+	return _u
+}
+
+// SetNillableTargetAccountID sets the "target_account_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdate) SetNillableTargetAccountID(v *int64) *CompositeModelRouteUpdate {
+	if v != nil {
+		_u.SetTargetAccountID(*v)
+	}
+	return _u
+}
+
+// AddTargetAccountID adds value to the "target_account_id" field.
+func (_u *CompositeModelRouteUpdate) AddTargetAccountID(v int64) *CompositeModelRouteUpdate {
+	_u.mutation.AddTargetAccountID(v)
+	return _u
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (_u *CompositeModelRouteUpdate) ClearTargetAccountID() *CompositeModelRouteUpdate {
+	_u.mutation.ClearTargetAccountID()
+	return _u
+}
+
 // SetPublicModel sets the "public_model" field.
 func (_u *CompositeModelRouteUpdate) SetPublicModel(v string) *CompositeModelRouteUpdate {
 	_u.mutation.SetPublicModel(v)
@@ -306,6 +360,24 @@ func (_u *CompositeModelRouteUpdate) sqlSave(ctx context.Context) (_node int, er
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(compositemodelroute.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.TargetGroupID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTargetGroupID(); ok {
+		_spec.AddField(compositemodelroute.FieldTargetGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.TargetGroupIDCleared() {
+		_spec.ClearField(compositemodelroute.FieldTargetGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.TargetAccountID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTargetAccountID(); ok {
+		_spec.AddField(compositemodelroute.FieldTargetAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.TargetAccountIDCleared() {
+		_spec.ClearField(compositemodelroute.FieldTargetAccountID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.PublicModel(); ok {
 		_spec.SetField(compositemodelroute.FieldPublicModel, field.TypeString, value)
 	}
@@ -422,6 +494,60 @@ func (_u *CompositeModelRouteUpdateOne) SetNillableGroupID(v *int64) *CompositeM
 	if v != nil {
 		_u.SetGroupID(*v)
 	}
+	return _u
+}
+
+// SetTargetGroupID sets the "target_group_id" field.
+func (_u *CompositeModelRouteUpdateOne) SetTargetGroupID(v int64) *CompositeModelRouteUpdateOne {
+	_u.mutation.ResetTargetGroupID()
+	_u.mutation.SetTargetGroupID(v)
+	return _u
+}
+
+// SetNillableTargetGroupID sets the "target_group_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdateOne) SetNillableTargetGroupID(v *int64) *CompositeModelRouteUpdateOne {
+	if v != nil {
+		_u.SetTargetGroupID(*v)
+	}
+	return _u
+}
+
+// AddTargetGroupID adds value to the "target_group_id" field.
+func (_u *CompositeModelRouteUpdateOne) AddTargetGroupID(v int64) *CompositeModelRouteUpdateOne {
+	_u.mutation.AddTargetGroupID(v)
+	return _u
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (_u *CompositeModelRouteUpdateOne) ClearTargetGroupID() *CompositeModelRouteUpdateOne {
+	_u.mutation.ClearTargetGroupID()
+	return _u
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (_u *CompositeModelRouteUpdateOne) SetTargetAccountID(v int64) *CompositeModelRouteUpdateOne {
+	_u.mutation.ResetTargetAccountID()
+	_u.mutation.SetTargetAccountID(v)
+	return _u
+}
+
+// SetNillableTargetAccountID sets the "target_account_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdateOne) SetNillableTargetAccountID(v *int64) *CompositeModelRouteUpdateOne {
+	if v != nil {
+		_u.SetTargetAccountID(*v)
+	}
+	return _u
+}
+
+// AddTargetAccountID adds value to the "target_account_id" field.
+func (_u *CompositeModelRouteUpdateOne) AddTargetAccountID(v int64) *CompositeModelRouteUpdateOne {
+	_u.mutation.AddTargetAccountID(v)
+	return _u
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (_u *CompositeModelRouteUpdateOne) ClearTargetAccountID() *CompositeModelRouteUpdateOne {
+	_u.mutation.ClearTargetAccountID()
 	return _u
 }
 
@@ -691,6 +817,24 @@ func (_u *CompositeModelRouteUpdateOne) sqlSave(ctx context.Context) (_node *Com
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(compositemodelroute.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.TargetGroupID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTargetGroupID(); ok {
+		_spec.AddField(compositemodelroute.FieldTargetGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.TargetGroupIDCleared() {
+		_spec.ClearField(compositemodelroute.FieldTargetGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.TargetAccountID(); ok {
+		_spec.SetField(compositemodelroute.FieldTargetAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTargetAccountID(); ok {
+		_spec.AddField(compositemodelroute.FieldTargetAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.TargetAccountIDCleared() {
+		_spec.ClearField(compositemodelroute.FieldTargetAccountID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.PublicModel(); ok {
 		_spec.SetField(compositemodelroute.FieldPublicModel, field.TypeString, value)
