@@ -201,7 +201,7 @@ export default {
         defaultVideoPrice: 'Default video price per second (fallback when no tier matches)',
         platformConfig: 'Platform Configuration',
         webSearchEmulation: 'Web Search Emulation',
-        webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
+        webSearchEmulationHint: '⚠️ When enabled, accounts of the matching platforms in this channel will intercept web_search requests. Use with caution.',
         webSearchEmulationGlobalDisabled: 'Please enable the global switch first in Settings → Gateway → Web Search Emulation',
         codexImageGenerationBridge: 'Codex Image Generation Bridge',
         codexImageGenerationBridgeHint: 'When enabled, only non-Responses Lite Codex /responses text requests in OpenAI groups receive the hosted image_generation tool. The bridge does not inject tools for Responses Lite; local image_gen handling follows the client and account policy. Leave this off unless routed accounts support image generation.',
