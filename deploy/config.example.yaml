@@ -50,6 +50,11 @@ server:
   # Applies to all requests, especially important for h2c first request memory protection
   # 适用于所有请求，对 h2c 第一请求的内存保护尤为重要
   max_request_body_size: 268435456
+  # Fail a request body read when no body bytes arrive for this many seconds (408).
+  # Does not limit total upload time: large bodies that keep arriving are unaffected. 0 disables.
+  # 请求体读取空闲超时（秒）：持续这么久没有收到任何请求体数据即失败（408）。
+  # 不限制总上传时长，持续有数据到达的大请求体不受影响；0 表示关闭。
+  request_body_idle_timeout: 60
   # HTTP/2 Cleartext (h2c) configuration
   # HTTP/2 Cleartext (h2c) 配置
   h2c:

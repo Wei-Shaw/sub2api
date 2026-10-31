@@ -11,6 +11,11 @@ terminate healthy long generations and streams.
 - `server.read_header_timeout: 10` bounds slow-header attacks. It does not
   limit request processing or response streaming.
 - `server.max_request_body_size: 268435456` is the absolute 256 MiB safety net.
+- `server.request_body_idle_timeout: 60` fails a request body read with 408
+  when no body bytes arrive for 60 seconds. It does not limit the total upload
+  time, so large bodies that keep arriving are unaffected; `0` disables it. It
+  also bounds the drain net/http performs on an unread HTTP/1 body before
+  sending an early error response.
 - `gateway.max_body_size: 268435456` remains available to multimodal, Gemini,
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
