@@ -13,7 +13,6 @@ const {
   previewUpstreamGroup,
   syncUpstreamModelsMock,
   showWarningMock,
-  verifyMuseMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
   authIsSimpleMode,
@@ -23,13 +22,10 @@ const {
   previewUpstreamGroup: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
   showWarningMock: vi.fn(),
-  verifyMuseMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
 }))
-
-vi.mock('@/api/admin/muse', () => ({ verifyMuse: verifyMuseMock }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -211,7 +207,7 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
-  it('places Meta Muse at the end of the first provider row with a monochrome mark and file-free connection', async () => {
+  it('places Meta Muse at the end of the first provider row with a monochrome mark and export instructions', async () => {
     const wrapper = mountModal([], true)
     const firstRow = wrapper.get('[data-tour="account-form-platform"]')
     const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
@@ -223,7 +219,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(muse.find('img').exists()).toBe(false)
     await muse.trigger('click')
     expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
-    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=3')
+    expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
   })
   beforeEach(() => {
     authIsSimpleMode.value = true
@@ -231,7 +227,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
     showWarningMock.mockReset()
-    verifyMuseMock.mockReset().mockResolvedValue({ verified: true })
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -300,42 +295,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload.extra.openai_passthrough).toBe(true)
     expect(payload.extra.openai_passthrough_model_filter).toBe(true)
     expect(payload.credentials.model_mapping).toEqual({ 'qwen3.8-max': 'qwen3.8-max' })
-    wrapper.unmount()
-  })
-
-  it('automatically verifies a newly saved Muse connection once', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'Meta Muse')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Muse connection')
-    const fields = wrapper.findComponent({ name: 'MuseSessionFields' })
-    fields.vm.$emit('update:ownerId', 10)
-    fields.vm.$emit('update:sessionJson', JSON.stringify({ cookies: { hatch_sess: 'fixture' } }))
-    await flushPromises()
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(createAccountMock).toHaveBeenCalledTimes(1)
-    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({ platform: 'muse', type: 'session', extra: { muse_owner_user_id: 10 } })
-    expect(verifyMuseMock).toHaveBeenCalledTimes(1)
-    expect(verifyMuseMock).toHaveBeenCalledWith(42)
-    expect(wrapper.emitted('created')).toHaveLength(1)
-    wrapper.unmount()
-  })
-
-  it('keeps a saved Muse account saved when verification fails, without creating it twice', async () => {
-    verifyMuseMock.mockRejectedValueOnce(new Error('synthetic private verification error'))
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'Meta Muse')
-    await wrapper.get('form#create-account-form input[type="text"]').setValue('Muse connection')
-    const fields = wrapper.findComponent({ name: 'MuseSessionFields' })
-    fields.vm.$emit('update:ownerId', 10)
-    fields.vm.$emit('update:sessionJson', '{"fixture":"session"}')
-    await flushPromises()
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(createAccountMock).toHaveBeenCalledTimes(1)
-    expect(verifyMuseMock).toHaveBeenCalledTimes(1)
-    expect(showWarningMock).toHaveBeenCalledWith('admin.accounts.muse.connectSavedPending')
-    expect(wrapper.emitted('created')).toHaveLength(1)
     wrapper.unmount()
   })
 
