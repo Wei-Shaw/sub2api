@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Muse Connect</title>
-<style>body{width:340px;margin:0;padding:20px;font:14px/1.5 system-ui,sans-serif;color:#172033;background:#fff}h1{font-size:19px;margin:0 0 10px}p{margin:10px 0}.destination{border:1px solid #d8dee8;background:#f6f8fb;border-radius:8px;padding:12px;overflow-wrap:anywhere}.label{font-size:12px;color:#526070}button{width:100%;padding:10px;border:0;border-radius:7px;background:#176e64;color:white;font:600 14px system-ui;cursor:pointer}button:disabled{opacity:.5;cursor:default}a{color:#176e64}#status{font-size:13px}</style></head>
-<body><h1>Connect Muse</h1><p>Share your signed-in Muse session with this Sub2API account only.</p>
-<div id="destination" class="destination" hidden><div class="label">Sub2API destination</div><strong id="origin"></strong><div class="label">Assigned user</div><span id="owner"></span></div>
-<p id="instructions">Open your Sub2API Muse account form and click Connect Muse, then open this helper here.</p>
-<button id="connect" type="button" disabled>Approve connection</button>
-<p id="status" role="status"></p><p><a href="https://muse.ai/" target="_blank" rel="noopener noreferrer">Sign in to Muse</a></p>
-<script type="module" src="popup.js"></script></body></html>
+<head><meta charset="utf-8"><title>Muse session export</title></head>
+<body>
+<h1>Muse session export</h1>
+<p>Sign in to muse.ai, then save a session file for your Sub2API Muse account.</p>
+<button id="export" type="button">Export session file</button>
+<p id="status" role="status"></p>
+<script src="popup.js"></script>
+</body>
+</html>
