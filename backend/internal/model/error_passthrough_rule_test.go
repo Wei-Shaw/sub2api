@@ -17,6 +17,7 @@ func TestAllPlatformsIncludesEveryConcretePlatform(t *testing.T) {
 		"zhipu",
 		"deepseek",
 		"minimax",
+		"byteplus",
 		"opencode_go",
 		"typesafe",
 		"command_code",

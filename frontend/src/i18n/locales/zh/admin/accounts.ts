@@ -1,5 +1,6 @@
 export default {
     accounts: {
+      byteplus: { accountModeHint: '使用 ModelArk 资源包或按量计费。请在 BytePlus 设置供应商额度限制。', textCapability: 'Seed 与文本模型', videoCapability: 'Seedance 视频', regionHint: '请使用与端点相同区域的 ModelArk API 密钥。模型可用性因区域而异。Seed 使用文本 API；Seedance 使用原生视频任务 API。' },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
