@@ -80,3 +80,37 @@ describe('UserBalanceHistoryModal request ordering', () => {
     expect(wrapper.find('svg.animate-spin').exists()).toBe(false)
   })
 })
+
+describe('UserBalanceHistoryModal bot-sales credits', () => {
+  it('shows full order and linked payment with a dedicated filter', async () => {
+    mocks.getUserBalanceHistory.mockResolvedValue({
+      items: [{ id: -1000000000326, code: 'BS_1793192965095', type: 'bot_sales_balance', value: 110,
+        used_at: '2026-10-28T13:10:02Z', external_order_item_id: '2898', payment_order_id: 1075 }],
+      total: 1, total_recharged: 110
+    })
+    const wrapper = await openDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('redeem.balanceAddedBotSales')
+    expect(wrapper.text()).toContain('BS_1793192965095')
+    expect(wrapper.text()).toContain('2898')
+    expect(wrapper.text()).toContain('1075')
+    expect(wrapper.text()).toContain('+$110.00')
+    wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'bot_sales_balance')
+    wrapper.findComponent({ name: 'Select' }).vm.$emit('change')
+    await flushPromises()
+    expect(mocks.getUserBalanceHistory).toHaveBeenCalledWith(1, 1, 15, 'bot_sales_balance')
+  })
+
+  it('shows old fulfillment without inventing a payment order', async () => {
+    mocks.getUserBalanceHistory.mockResolvedValueOnce({
+      items: [{ id: -1000000000001, code: 'BS_LEGACY', type: 'bot_sales_balance', value: 10,
+        used_at: '2026-08-22T10:00:00Z', external_order_item_id: 'old-item' }],
+      total: 1, total_recharged: 10
+    })
+    const wrapper = await openDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('BS_LEGACY')
+    expect(wrapper.text()).toContain('old-item')
+    expect(wrapper.text()).not.toContain('admin.users.botSalesPaymentOrder')
+  })
+})

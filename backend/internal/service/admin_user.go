@@ -696,7 +696,8 @@ func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, 
 	}, nil
 }
 
-// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
+// GetUserBalanceHistory returns paginated balance/concurrency change records in fixed newest-first order.
+// The endpoint does not accept caller-controlled sorting.
 func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
 	if codeType == RedeemTypeAffiliateBalance {
@@ -704,7 +705,7 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+		totalRecharged, err := s.totalRechargedWithBotSales(ctx, userID)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -714,6 +715,17 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	if codeType == "" {
 		return s.getAllUserBalanceHistory(ctx, userID, params)
 	}
+	if codeType == RedeemTypeBotSalesBalance {
+		codes, total, err := s.listBotSalesBalanceHistory(ctx, userID, params)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		totalRecharged, err := s.totalRechargedWithBotSales(ctx, userID)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		return codes, total, totalRecharged, nil
+	}
 
 	codes, result, err := s.redeemCodeRepo.ListByUserPaginated(ctx, userID, params, codeType)
 	if err != nil {
@@ -721,7 +733,7 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	}
 	total := result.Total
 	// Aggregate total recharged amount (only once, regardless of type filter)
-	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	totalRecharged, err := s.totalRechargedWithBotSales(ctx, userID)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -742,13 +754,17 @@ func (s *adminServiceImpl) getAllUserBalanceHistory(ctx context.Context, userID 
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	codes := mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, params)
-
-	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	botSalesCodes, botSalesTotal, err := s.listBotSalesBalanceHistoryForMerge(ctx, userID, needed)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	return codes, redeemTotal + affiliateTotal, totalRecharged, nil
+	codes := mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, botSalesCodes, params)
+
+	totalRecharged, err := s.totalRechargedWithBotSales(ctx, userID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return codes, redeemTotal + affiliateTotal + botSalesTotal, totalRecharged, nil
 }
 
 func (s *adminServiceImpl) listRedeemBalanceHistoryForMerge(ctx context.Context, userID int64, needed int) ([]RedeemCode, int64, error) {
@@ -885,8 +901,9 @@ WHERE user_id = $1
 	return total.Int64, nil
 }
 
-func mergeBalanceHistoryCodes(redeemCodes, affiliateCodes []RedeemCode, params pagination.PaginationParams) []RedeemCode {
+func mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, botSalesCodes []RedeemCode, params pagination.PaginationParams) []RedeemCode {
 	combined := append(append([]RedeemCode{}, redeemCodes...), affiliateCodes...)
+	combined = append(combined, botSalesCodes...)
 	sort.SliceStable(combined, func(i, j int) bool {
 		return redeemCodeHistoryTime(combined[i]).After(redeemCodeHistoryTime(combined[j]))
 	})

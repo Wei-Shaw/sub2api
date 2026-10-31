@@ -94,7 +94,7 @@
       <div v-else class="max-h-[28rem] space-y-3 overflow-y-auto">
         <div
           v-for="item in history"
-          :key="item.id"
+          :key="`${item.type}-${item.id}`"
           class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800"
         >
           <div class="flex items-start justify-between">
@@ -120,6 +120,17 @@
                 >
                   {{ item.notes.length > 60 ? item.notes.substring(0, 55) + '...' : item.notes }}
                 </p>
+                <template v-if="item.type === 'bot_sales_balance'">
+                  <p class="mt-0.5 break-all text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('admin.users.botSalesOrder') }}: {{ item.code }}
+                  </p>
+                  <p v-if="item.external_order_item_id" class="text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('admin.users.botSalesOrderItem') }}: {{ item.external_order_item_id }}
+                  </p>
+                  <p v-if="item.payment_order_id" class="text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('admin.users.botSalesPaymentOrder') }}: #{{ item.payment_order_id }}
+                  </p>
+                </template>
                 <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-500">
                   {{ formatDateTime(item.used_at || item.created_at) }}
                 </p>
@@ -137,7 +148,7 @@
                 {{ t('redeem.adminAdjustment') }}
               </p>
               <p
-                v-else
+                v-else-if="item.type !== 'bot_sales_balance'"
                 class="font-mono text-xs text-gray-400 dark:text-dark-500"
               >
                 {{ item.code.slice(0, 8) }}...
@@ -203,6 +214,7 @@ const typeOptions = computed(() => [
   { value: '', label: t('admin.users.allTypes') },
   { value: 'balance', label: t('admin.users.typeBalance') },
   { value: 'affiliate_balance', label: t('admin.users.typeAffiliateBalance') },
+  { value: 'bot_sales_balance', label: t('admin.users.typeBotSalesBalance') },
   { value: 'admin_balance', label: t('admin.users.typeAdminBalance') },
   { value: 'concurrency', label: t('admin.users.typeConcurrency') },
   { value: 'admin_concurrency', label: t('admin.users.typeAdminConcurrency') },
@@ -246,7 +258,7 @@ const loadHistory = async (page: number) => {
 const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency'
 
 // Helper: check if balance type (includes admin_balance)
-const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance' || type === 'affiliate_balance'
+const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance' || type === 'affiliate_balance' || type === 'bot_sales_balance'
 
 // Helper: check if subscription type
 const isSubscriptionType = (type: string) => type === 'subscription'
@@ -304,6 +316,8 @@ const getItemTitle = (item: BalanceHistoryItem) => {
       return t('redeem.balanceAddedRedeem')
     case 'affiliate_balance':
       return t('redeem.balanceAddedAffiliate')
+    case 'bot_sales_balance':
+      return t('redeem.balanceAddedBotSales')
     case 'admin_balance':
       return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
     case 'concurrency':

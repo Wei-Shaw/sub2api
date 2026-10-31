@@ -7,8 +7,37 @@ import (
 	"testing/fstest"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBundledBotSalesPaymentOrderMigrationIsInRunnerSequence(t *testing.T) {
+	const migration = "local/232_bot_sales_payment_order_link.sql"
+	files, err := listMigrationFiles(migrations.FS)
+	require.NoError(t, err)
+	require.Contains(t, files, migration)
+
+	content, err := migrations.FS.ReadFile(migration)
+	require.NoError(t, err)
+	require.Contains(t, string(content), "ADD COLUMN IF NOT EXISTS payment_order_id")
+
+	index := -1
+	for i, file := range files {
+		if file == migration {
+			index = i
+			break
+		}
+	}
+	laterIndex := -1
+	for i, file := range files {
+		if file == "242_group_i18n.sql" {
+			laterIndex = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, laterIndex, 0)
+	require.Less(t, index, laterIndex, "the local schema migration must precede later migrations in the startup sequence")
+}
 
 func TestListMigrationFiles_MergesRootAndLocalByBasename(t *testing.T) {
 	fsys := fstest.MapFS{

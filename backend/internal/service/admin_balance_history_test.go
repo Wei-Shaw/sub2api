@@ -48,7 +48,7 @@ func TestMergeBalanceHistoryCodesIncludesAffiliateTransfersByDefault(t *testing.
 		},
 	}
 
-	got := mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, pagination.PaginationParams{
+	got := mergeBalanceHistoryCodes(redeemCodes, affiliateCodes, nil, pagination.PaginationParams{
 		Page:     1,
 		PageSize: 2,
 	})
@@ -77,6 +77,7 @@ func TestMergeBalanceHistoryCodesPaginatesAfterCombiningSources(t *testing.T) {
 			{ID: -3, Type: RedeemTypeAffiliateBalance, UsedBy: &usedBy, UsedAt: at(3), CreatedAt: *at(3)},
 			{ID: -4, Type: RedeemTypeAffiliateBalance, UsedBy: &usedBy, UsedAt: at(1), CreatedAt: *at(1)},
 		},
+		nil,
 		pagination.PaginationParams{Page: 2, PageSize: 2},
 	)
 

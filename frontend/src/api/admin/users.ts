@@ -294,6 +294,8 @@ export interface BalanceHistoryItem {
   group_id: number | null
   validity_days: number
   notes: string
+  external_order_item_id?: string
+  payment_order_id?: number
   user?: { id: number; email: string } | null
   group?: { id: number; name: string } | null
 }
@@ -308,7 +310,7 @@ export interface BalanceHistoryResponse extends PaginatedResponse<BalanceHistory
  * @param id - User ID
  * @param page - Page number
  * @param pageSize - Items per page
- * @param type - Optional type filter (balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription)
+ * @param type - Optional type filter (balance, affiliate_balance, bot_sales_balance, admin_balance, concurrency, admin_concurrency, subscription)
  * @returns Paginated balance history with total_recharged
  */
 export async function getUserBalanceHistory(

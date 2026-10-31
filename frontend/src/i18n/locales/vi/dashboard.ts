@@ -621,6 +621,7 @@ redeem: {
   subscriptionRefreshFailed: 'Đổi mã thành công, nhưng làm mới trạng thái đăng ký thất bại.',
   pleaseEnterCode: 'Vui lòng nhập mã đổi',
   balanceAddedAffiliate: 'Số dư đã cộng (Chuyển affiliate)',
+  balanceAddedBotSales: 'Số dư đã cộng (Bot-sales)',
   },
 
   // Profile

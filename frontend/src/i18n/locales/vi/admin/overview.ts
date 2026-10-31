@@ -756,6 +756,10 @@ export default mergeLocaleMessages(
       dragToReorder: 'Kéo thả để sắp xếp'
     },
     typeAffiliateBalance: 'Số dư (Chuyển affiliate)',
+    typeBotSalesBalance: 'Số dư (nạp qua Bot-sales)',
+    botSalesOrder: 'Đơn Bot-sales',
+    botSalesOrderItem: 'Mục đơn hàng',
+    botSalesPaymentOrder: 'Đơn thanh toán',
     platformQuota: {
       menuItem: 'Hạn mức nền tảng',
       title: 'Hạn mức nền tảng',
