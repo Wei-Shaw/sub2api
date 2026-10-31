@@ -121,6 +121,19 @@ cors:
   allow_credentials: true
 
 # =============================================================================
+# MCP OAuth Configuration / MCP OAuth 配置
+# =============================================================================
+mcp:
+  # Canonical public MCP endpoint, e.g. https://example.com/api/v1/mcp.
+  # 固定的 MCP 对外地址，例如 https://example.com/api/v1/mcp。
+  # Leave empty to keep the management MCP and its OAuth endpoints disabled (default).
+  # 留空则关闭 MCP 及其 OAuth 接口（默认），不会回落到前端地址或请求中的 Host。
+  # HTTPS is required except localhost/loopback development; site-root /api/v1/mcp path, no trailing slash.
+  # 除 localhost/回环 IP 开发环境外必须使用 HTTPS；路径固定为站点根下的 /api/v1/mcp，末尾不加斜杠。
+  # Environment / 环境变量: MCP_PUBLIC_URL
+  public_url: ""
+
+# =============================================================================
 # Security Configuration
 # 安全配置
 # =============================================================================

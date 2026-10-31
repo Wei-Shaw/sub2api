@@ -121,6 +121,90 @@ func cnProviderResponseIndicatesInsufficientBalance(body []byte) bool {
 		strings.Contains(s, "no enough balance")
 }
 
+// cnFrequencyLimitQuotaGuardPercent 是「频率型 429」降级前必须通过的额度护栏：
+// 快照里任一窗口用量达到该百分比，就不再按频控处理，仍冷却到窗口重置点。
+// 快照最多滞后一个额度探测周期（默认 10 分钟），因此真实耗尽在极端情况下可能
+// 被短暂降级成秒级冷却；5 秒后重试仍会拿到 429，下一轮探测刷新快照后自动纠正。
+const cnFrequencyLimitQuotaGuardPercent = 90
+
+// cnFrequencyLimitMarkers 是「请求频率/速率限制」类 429 的文案特征（小写比较）。
+// 智谱实测文案：「您的账户已达到速率限制，请您控制请求频率」。
+var cnFrequencyLimitMarkers = []string{
+	"速率限制",
+	"请求频率",
+	"访问频率",
+	"请求过于频繁",
+	"请求太频繁",
+	"too many requests",
+	"rate limit exceeded",
+	"rate_limit_exceeded",
+	"ratelimit exceeded",
+}
+
+// cnQuotaExhaustionMarkers 是额度耗尽类文案；命中任一即认为 429 与额度有关，
+// 绝不降级为短冷却（宁可多停调，也不要把真耗尽当成限频反复重试）。
+var cnQuotaExhaustionMarkers = []string{
+	"额度",
+	"已用尽",
+	"用完",
+	"quota",
+	"usage limit",
+	"insufficient",
+	"balance",
+}
+
+// cnProviderResponseIndicatesFrequencyLimit 通过响应体文案识别「请求频率/速率
+// 限制」类 429 —— 它与滚动窗口的额度消耗无关，重试即可能成功，不该按额度
+// 耗尽冷却到窗口结束。命中频控文案且不含任何额度类文案才算频控。
+func cnProviderResponseIndicatesFrequencyLimit(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	s := strings.ToLower(string(body))
+	matched := false
+	for _, marker := range cnFrequencyLimitMarkers {
+		if strings.Contains(s, marker) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+	for _, marker := range cnQuotaExhaustionMarkers {
+		if strings.Contains(s, marker) {
+			return false
+		}
+	}
+	return true
+}
+
+// cnProviderQuotaSnapshotNearExhausted 判断 Coding Plan 账号的滚动窗口用量快照
+// 是否已接近耗尽（任一窗口 >= percent）。快照完全缺失（额度探测还没跑过或
+// 解析失败）时返回 true：此时无法证明 429 与额度无关，保守沿用窗口冷却。
+func cnProviderQuotaSnapshotNearExhausted(account *Account, percent float64) bool {
+	if account == nil || len(account.Extra) == 0 {
+		return true
+	}
+	provider := account.Platform
+	suffixes := []string{cnExtraSuffix5hUsed, cnExtraSuffixWeeklyUsed}
+	if cnQuotaHasMonthlyWindow(provider) {
+		suffixes = append(suffixes, cnExtraSuffixMonthlyUsed)
+	}
+	seen := false
+	for _, suffix := range suffixes {
+		raw, ok := account.Extra[cnExtraKey(provider, suffix)]
+		if !ok {
+			continue
+		}
+		seen = true
+		if schedulingPercentValue(raw) >= percent {
+			return true
+		}
+	}
+	return !seen
+}
+
 // handleCNProviderInsufficientBalance 把余额不足标记为可恢复的临时停调：
 // 写入 balance_low 快照 + SetTempUnschedulable 一个余额检测周期，
 // 由周期任务在余额恢复后清除。返回前已通知调度阻塞。
@@ -288,7 +372,22 @@ func (s *RateLimitService) applyCNProviderReactive429(
 		s.handleCNProviderInsufficientBalance(ctx, account, extractUpstreamErrorMessage(responseBody))
 		return true
 	}
-	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
+	// 2) 频率型 429（"速率限制"/"请求频率"）：与滚动窗口额度无关，交给默认 429
+	// 兜底使用秒级冷却（管理端可配，默认 5s）。否则一次并发突发会把账号冷却到
+	// 5h 窗口结束（实测 1.5~4.8 小时），把「限频」误伤成「额度耗尽」。
+	// 护栏：快照显示窗口用量已接近耗尽时不降级，仍按窗口冷却（见
+	// cnProviderQuotaSnapshotNearExhausted）。
+	if account.IsCodingPlan() &&
+		cnProviderResponseIndicatesFrequencyLimit(responseBody) &&
+		!cnProviderQuotaSnapshotNearExhausted(account, cnFrequencyLimitQuotaGuardPercent) {
+		slog.Info("cn_coding_plan_frequency_429",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"handling", "short_429_cooldown",
+		)
+		return false
+	}
+	// 3) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
 	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
 	if account.IsCodingPlan() &&
 		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {

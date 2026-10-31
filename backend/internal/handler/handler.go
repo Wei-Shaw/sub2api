@@ -50,6 +50,7 @@ type Handlers struct {
 	OpenAIAsync      *OpenAIAsyncHandler
 	Auth             *AuthHandler
 	User             *UserHandler
+	MCPOAuth         *MCPOAuthHandler
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
 	Redeem           *RedeemHandler
