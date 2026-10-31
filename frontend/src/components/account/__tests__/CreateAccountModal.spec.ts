@@ -204,7 +204,7 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
-  it('places Meta Muse at the end of the first provider row with its app icon and export instructions', async () => {
+  it('places Meta Muse at the end of the first provider row with a monochrome mark and export instructions', async () => {
     const wrapper = mountModal([], true)
     const firstRow = wrapper.get('[data-tour="account-form-platform"]')
     const muse = firstRow.findAll('button').find(button => button.text().includes('Meta Muse'))!
@@ -212,7 +212,8 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(firstRow.findAll('button').map(button => button.text())).toEqual([
       'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok', 'TypeSafe / Jev', 'Meta Muse',
     ])
-    expect(muse.get('img').attributes('src')).toContain('muse.png')
+    expect(muse.get('svg').attributes('fill')).toBe('currentColor')
+    expect(muse.find('img').exists()).toBe(false)
     await muse.trigger('click')
     expect(wrapper.get('[data-testid="muse-export-guide"]').exists()).toBe(true)
     expect(wrapper.get('a[download]').attributes('href')).toBe('/muse-session-exporter.zip?v=2')
