@@ -13,6 +13,26 @@ export function buildMuseSession(ownerId: number, raw: string, replacement = fal
   const credentials: Record<string, unknown> = {}
   if (raw.trim()) {
     credentials.muse_session = parseMuseSessionDocument(raw)
-  } else if (!replacement) throw new Error('Import a Muse session file to continue')
+  } else if (!replacement) throw new Error('Connect Muse or import session data to continue')
   return { credentials, extra: { muse_owner_user_id: ownerId } }
+}
+
+
+// The direct helper handoff is deliberately narrower than the advanced legacy
+// importer: only the four Muse auth cookies and their expiries can cross it.
+export function parseMuseConnectSession(raw: string) {
+  const bundle = parseMuseSessionDocument(raw) as Record<string, unknown>
+  const allowed = ['hatch_sess', 'hatch_gw', 'hatch_vml', 'hatch_native_auth_device']
+  const cookies = bundle.cookies
+  if (Object.keys(bundle).some(k => k !== 'cookies' && k !== 'expires') || !cookies || typeof cookies !== 'object' || Array.isArray(cookies)) throw new Error('Invalid Muse connection')
+  const values = cookies as Record<string, unknown>
+  if (Object.keys(values).some(k => !allowed.includes(k)) || allowed.some(k => k !== 'hatch_vml' && !values[k]) ||
+      Object.values(values).some(v => typeof v !== 'string' || !v || v.length > 16 * 1024 || Array.from(v).some(c => c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127 || c === ';'))) throw new Error('Invalid Muse connection')
+  if (bundle.expires !== undefined) {
+    if (!bundle.expires || typeof bundle.expires !== 'object' || Array.isArray(bundle.expires)) throw new Error('Invalid Muse connection')
+    for (const [key, value] of Object.entries(bundle.expires)) {
+      if (!allowed.includes(key) || typeof value !== 'number' || !Number.isSafeInteger(value) || value * 1000 <= Date.now()) throw new Error('Expired Muse connection')
+    }
+  }
+  return bundle
 }

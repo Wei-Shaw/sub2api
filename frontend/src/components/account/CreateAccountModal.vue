@@ -4121,6 +4121,7 @@
 <script setup lang="ts">
 import MuseSessionFields from './MuseSessionFields.vue'
 import { buildMuseSession } from './museSession'
+import { verifyMuse } from '@/api/admin/muse'
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -5956,10 +5957,16 @@ const handleSubmit = async () => {
     submitting.value = true
     try {
       const session = buildMuseSession(museOwnerId.value, museSessionJson.value)
-      await adminAPI.accounts.create({ name: form.name.trim(), notes: form.notes || undefined,
+      const created = await adminAPI.accounts.create({ name: form.name.trim(), notes: form.notes || undefined,
         platform: 'muse', type: 'session', credentials: session.credentials, extra: session.extra,
         concurrency: 1, priority: form.priority, proxy_id: form.proxy_id ?? undefined, group_ids: form.group_ids })
-      appStore.showSuccess(t('admin.accounts.muse.setupNote'))
+      try {
+        const status = await verifyMuse(created.id)
+        if (!status.verified) throw new Error('verification pending')
+        appStore.showSuccess(t('admin.accounts.muse.connectVerified'))
+      } catch {
+        appStore.showWarning(t('admin.accounts.muse.connectSavedPending'))
+      }
       museSessionJson.value = ''; emit('created'); handleClose()
     } catch (error: unknown) { appStore.showError(error instanceof Error ? error.message : t('admin.accounts.failedToCreate')) }
     finally { submitting.value = false }

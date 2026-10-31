@@ -3384,6 +3384,7 @@
 import MuseSessionFields from './MuseSessionFields.vue'
 import MuseStatusPanel from './MuseStatusPanel.vue'
 import { buildMuseSession } from './museSession'
+import { verifyMuse } from '@/api/admin/muse'
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -5609,7 +5610,19 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   try {
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
     updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
-    appStore.showSuccess(t('admin.accounts.accountUpdated'))
+    if (props.account?.platform === 'muse' && (updatePayload.credentials as Record<string, unknown> | undefined)?.muse_session) {
+      try {
+        const status = await verifyMuse(accountID)
+        if (!status.verified) throw new Error('verification pending')
+        // Verification can change scheduling; patch the table with the fresh DTO.
+        try { updatedAccount = await adminAPI.accounts.getById(accountID) } catch { /* keep the saved DTO if refresh is unavailable */ }
+        appStore.showSuccess(t('admin.accounts.muse.connectVerified'))
+      } catch {
+        appStore.showWarning(t('admin.accounts.muse.connectSavedPending'))
+      }
+    } else {
+      appStore.showSuccess(t('admin.accounts.accountUpdated'))
+    }
     emit('updated', updatedAccount)
     handleClose()
   } catch (error: any) {
