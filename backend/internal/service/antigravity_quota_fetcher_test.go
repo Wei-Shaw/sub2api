@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -441,6 +442,214 @@ func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {
 	require.Contains(t, forbiddenErr.Error(), "403")
 }
 
+func TestFetchQuota_Success_BothEndpoints(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "fetchAvailableModels") {
+			_, _ = w.Write([]byte(`{
+				"models": {
+					"claude-sonnet-4-6": {
+						"displayName": "Claude Sonnet 4.6",
+						"quotaInfo": {
+							"remainingFraction": 0.8,
+							"resetTime": "2026-03-08T12:00:00Z"
+						}
+					}
+				}
+			}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "retrieveUserQuotaSummary") {
+			_, _ = w.Write([]byte(`{
+				"buckets": [
+					{
+						"bucketId": "gemini-3.8-flash",
+						"displayName": "Gemini 3.8 Flash",
+						"remainingFraction": 0.9,
+						"resetTime": "2026-03-08T15:00:00Z"
+					}
+				]
+			}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "loadCodeAssist") {
+			_, _ = w.Write([]byte(`{"currentTier":{"id":"g1-pro-tier"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{server.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{}
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+	res, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+		},
+	}, "")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.UsageInfo)
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["claude-sonnet-4-6"])
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["gemini-3.8-flash"])
+	require.Equal(t, "PRO", res.UsageInfo.SubscriptionTier)
+	// gemini-3.8-flash has priority in FiveHour
+	require.NotNil(t, res.UsageInfo.FiveHour)
+	require.InDelta(t, 10.0, res.UsageInfo.FiveHour.Utilization, 0.01)
+}
+
+func TestFetchQuota_Fallback_WhenQuotaSummaryFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "fetchAvailableModels") {
+			_, _ = w.Write([]byte(`{
+				"models": {
+					"claude-sonnet-4-6": {
+						"displayName": "Claude Sonnet 4.6",
+						"quotaInfo": {
+							"remainingFraction": 0.8,
+							"resetTime": "2026-03-08T12:00:00Z"
+						}
+					}
+				}
+			}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "retrieveUserQuotaSummary") {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"message":"internal error with sensitive token ya29.xyz"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{server.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{}
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+	res, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+		},
+	}, "")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.UsageInfo)
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["claude-sonnet-4-6"])
+	require.Nil(t, res.UsageInfo.AntigravityQuotaSummary)
+	require.InDelta(t, 20.0, res.UsageInfo.FiveHour.Utilization, 0.01)
+}
+
+func TestFetchQuota_Fallback_WhenFetchAvailableModelsFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "fetchAvailableModels") {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"bad gateway"}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "retrieveUserQuotaSummary") {
+			_, _ = w.Write([]byte(`{
+				"buckets": [
+					{
+						"bucketId": "gemini-3.8-flash",
+						"displayName": "Gemini 3.8 Flash",
+						"remainingFraction": 0.85,
+						"resetTime": "2026-03-08T15:00:00Z"
+					}
+				]
+			}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{server.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{}
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+	res, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+		},
+	}, "")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.UsageInfo)
+	require.NotNil(t, res.UsageInfo.AntigravityQuota["gemini-3.8-flash"])
+	require.Equal(t, 15, res.UsageInfo.AntigravityQuota["gemini-3.8-flash"].Utilization)
+	require.NotNil(t, res.UsageInfo.FiveHour)
+	require.InDelta(t, 15.0, res.UsageInfo.FiveHour.Utilization, 0.01)
+}
+
+func TestFetchQuota_Fails_WhenBothEndpointsFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+	}))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{server.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{}
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+	res, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+		},
+	}, "")
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.Contains(t, err.Error(), "antigravity quota fetch failed")
+}
+
 // ---------------------------------------------------------------------------
 // classifyForbiddenType
 // ---------------------------------------------------------------------------
@@ -554,4 +763,109 @@ func TestExtractValidationURL(t *testing.T) {
 			require.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
+	fetcher := &AntigravityQuotaFetcher{}
+
+	modelsResp := &antigravity.FetchAvailableModelsResponse{
+		Models: map[string]antigravity.ModelInfo{
+			"claude-sonnet-4-6": {
+				QuotaInfo: &antigravity.ModelQuotaInfo{
+					RemainingFraction: 0.8,
+					ResetTime:         "2026-03-08T12:00:00Z",
+				},
+				DisplayName: "Claude Sonnet 4.6",
+			},
+		},
+	}
+
+	quotaSummary := &antigravity.RetrieveUserQuotaSummaryResponse{
+		Buckets: []antigravity.QuotaSummaryBucket{
+			{
+				BucketID:          "gemini-3.8-flash",
+				DisplayName:       "Gemini 3.8 Flash",
+				RemainingFraction: 0.85,
+				ResetTime:         "2026-03-08T18:00:00Z",
+			},
+			{
+				BucketID:          "disabled-model",
+				DisplayName:       "Disabled Model",
+				Disabled:          true,
+				RemainingFraction: 0.0,
+			},
+			{
+				BucketID:          "",
+				DisplayName:       "Only-DisplayName-Model",
+				RemainingFraction: 0.5,
+				ResetTime:         "2026-03-08T20:00:00Z",
+			},
+		},
+		Groups: []antigravity.QuotaSummaryGroup{
+			{
+				DisplayName: "Gemini Group",
+				Buckets: []antigravity.QuotaSummaryBucket{
+					{
+						BucketID:          "gemini-3.8-flash-high",
+						DisplayName:       "Gemini 3.8 Flash (High)",
+						RemainingFraction: 0.60,
+						ResetTime:         "2026-03-08T19:00:00Z",
+					},
+				},
+			},
+		},
+	}
+
+	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO", nil, quotaSummary)
+
+	require.NotNil(t, info.AntigravityQuotaSummary)
+	require.Len(t, info.AntigravityQuotaSummary.Buckets, 3)
+	require.Len(t, info.AntigravityQuotaSummary.Groups, 1)
+
+	// Buckets should populate AntigravityQuota by BucketID primarily (not duplicating with DisplayName)
+	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash"])
+	require.Equal(t, 15, info.AntigravityQuota["gemini-3.8-flash"].Utilization)
+	require.Equal(t, "2026-03-08T18:00:00Z", info.AntigravityQuota["gemini-3.8-flash"].ResetTime)
+
+	// DisplayName should not be added as a duplicate key when BucketID exists
+	require.Nil(t, info.AntigravityQuota["Gemini 3.8 Flash"])
+
+	// Disabled bucket should be skipped
+	require.Nil(t, info.AntigravityQuota["disabled-model"])
+
+	// Buckets without BucketID stay in the summary only; AntigravityQuota is keyed by model name
+	require.Nil(t, info.AntigravityQuota["Only-DisplayName-Model"])
+
+	// Group buckets should also populate
+	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash-high"])
+	require.Equal(t, 40, info.AntigravityQuota["gemini-3.8-flash-high"].Utilization)
+
+	// FiveHour fallback should pick gemini-3.8-flash (15% utilization) over claude-sonnet-4-6 (20% utilization)
+	require.NotNil(t, info.FiveHour)
+	require.InDelta(t, 15.0, info.FiveHour.Utilization, 0.01)
+}
+
+func TestHasUsableQuotaSummary(t *testing.T) {
+	require.False(t, hasUsableQuotaSummary(nil))
+	require.False(t, hasUsableQuotaSummary(&antigravity.RetrieveUserQuotaSummaryResponse{}))
+	require.True(t, hasUsableQuotaSummary(&antigravity.RetrieveUserQuotaSummaryResponse{
+		Groups: []antigravity.QuotaSummaryGroup{{Buckets: []antigravity.QuotaSummaryBucket{{BucketID: "gemini-3.8-flash"}}}},
+	}))
+}
+
+func TestNewSafeAntigravityFetchErrorRedactsResponseBodies(t *testing.T) {
+	err := newSafeAntigravityFetchError(
+		errors.New(`fetchAvailableModels 失败 (HTTP 500): {"error":{"message":"access_token=secret-token"}}`),
+		errors.New(`retrieveUserQuotaSummary 失败 (HTTP 502): bearer ya29.secret-token`),
+	)
+	require.NotContains(t, err.Error(), "secret-token")
+	require.NotContains(t, err.Error(), "ya29.secret-token")
+	require.Contains(t, err.Error(), "HTTP 500")
+	require.Contains(t, err.Error(), "HTTP 502")
+}
+
+func TestQuotaUtilizationClamps(t *testing.T) {
+	require.Equal(t, 0, quotaUtilization(1.5))
+	require.Equal(t, 100, quotaUtilization(-0.5))
+	require.Equal(t, 25, quotaUtilization(0.75))
 }
