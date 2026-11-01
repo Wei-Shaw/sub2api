@@ -2752,3 +2752,16 @@ func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMaxCapacityShedSameAccountRetries(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.Gateway.MaxCapacityShedSameAccountRetries)
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_MAX_CAPACITY_SHED_SAME_ACCOUNT_RETRIES", "1")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, 1, cfg.Gateway.MaxCapacityShedSameAccountRetries)
+}

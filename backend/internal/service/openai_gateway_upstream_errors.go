@@ -459,7 +459,20 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	// 容量降载与账号相关：同一账号连续过载时，换号往往比在原账号上反复重试更快恢复。
+	// gateway.max_capacity_shed_same_account_retries > 0 时收紧容量降载的同号重试次数
+	// （与账号自身 pool_mode_retry_count 取小），用完即换号；默认 0 保持原有行为。
+	if limit := s.capacityShedSameAccountRetries(); limit > 0 && failoverErr.IsOpenAICapacityShed() {
+		failoverErr.SameAccountRetryMax = limit
+	}
 	return failoverErr
+}
+
+func (s *OpenAIGatewayService) capacityShedSameAccountRetries() int {
+	if s == nil || s.cfg == nil {
+		return 0
+	}
+	return s.cfg.Gateway.MaxCapacityShedSameAccountRetries
 }
 
 const (
