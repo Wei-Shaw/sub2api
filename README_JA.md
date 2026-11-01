@@ -31,6 +31,17 @@
 
 > [こちらに掲載しませんか？](mailto:support@sub2api.org)
 
+<details open>
+<summary>クリックで折りたたむ</summary>
+
+<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+
+**[WandAPI](https://wandapi.ai/r/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
+
+**無料トライアルクレジット**：[専用リンク](https://wandapi.ai/r/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
+
+---
+
 <table>
 
 <tr>
@@ -163,7 +174,19 @@
 <td>🔑 AI アカウント高価買取｜Gemini · Claude · GPT｜メイン・サブアカウントすべて買取、チャネル問わず歓迎｜従量制での支払いに対応｜大手の一次リソースを求めています、KEY は私が用意します。<br>WeChat：Liuyou-zawd｜Telegram：<a href="https://t.me/AACC8888888">AACC8888888</a></td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/NiuProxy.jpg" alt="NiuProxy" width="150"></a></td>
+<td><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">NiuProxy</a> は、Web スクレイピング、AI エージェント、自動化、データ収集向けに、手頃な価格のグローバルプロキシソリューションを提供します。住宅プロキシは $0.35/GB から、190 以上の国と地域をカバーし、柔軟なプランと HTTP(S)/SOCKS5 に対応しています。<br>🎁 コード PAY2 でチャージが 10% オフ！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
+<td><a href="https://soleapi.com/r/sub2api">SoleAPI</a> 様、本プロジェクトへのご支援ありがとうございます！SoleAPI は開発者と企業向けの AI モデルゲートウェイです。1 つの API キーで Claude、GPT、Gemini をはじめとする 30 以上の主要モデルを利用できます。OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex、Cursor や既存の SDK も Base URL を変更するだけで動作します。リクエストはレイテンシと上流の稼働状況に応じてリアルタイムにルーティングされ、ミリ秒単位でバックアップチャネルへ自動フェイルオーバーします。サービス可用性は 99.99%、24 時間 365 日の技術サポートも提供しています。すべての呼び出しは 1 つの請求書にまとめられ、リクエストごとの token 数と費用の内訳をいつでも確認できます。本プロジェクトの<a href="https://soleapi.com/r/sub2api">紹介リンク</a>から登録すると無料トライアルクレジットを受け取れ、友人を招待してチャージしてもらうと継続的にキャッシュバックを獲得できます！</td>
+</tr>
+
 </table>
+
+</details>
 
 ## 概要
 

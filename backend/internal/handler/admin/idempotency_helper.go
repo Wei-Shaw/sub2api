@@ -115,6 +115,18 @@ func executeAdminIdempotentJSONWithMode(
 	mode idempotencyStoreUnavailableMode,
 	execute func(context.Context) (any, error),
 ) {
+	executeAdminIdempotentJSONWithProjection(c, scope, payload, ttl, executionTimeout, mode, execute, nil)
+}
+
+// executeAdminIdempotentJSONWithResponse 在实际执行及缓存重放之后统一约束响应。
+func executeAdminIdempotentJSONWithResponse(c *gin.Context, scope string, payload any, ttl time.Duration, execute func(context.Context) (any, error), present func(any) any) {
+	executeAdminIdempotentJSONWithProjection(c, scope, payload, ttl, 0, idempotencyStoreUnavailableFailClose, execute, present)
+}
+
+func executeAdminIdempotentJSONWithProjection(c *gin.Context, scope string, payload any, ttl time.Duration, executionTimeout time.Duration, mode idempotencyStoreUnavailableMode, execute func(context.Context) (any, error), present func(any) any) {
+	if present == nil {
+		present = func(data any) any { return data }
+	}
 	result, err := executeAdminIdempotentWithTimeout(c, scope, payload, ttl, executionTimeout, execute)
 	if err != nil {
 		if infraerrors.Code(err) == infraerrors.Code(service.ErrIdempotencyStoreUnavail) {
@@ -131,7 +143,7 @@ func executeAdminIdempotentJSONWithMode(
 					return
 				}
 				c.Header("X-Idempotency-Degraded", "store-unavailable")
-				response.Success(c, data)
+				response.Success(c, present(data))
 				return
 			}
 		}
@@ -144,5 +156,5 @@ func executeAdminIdempotentJSONWithMode(
 	if result != nil && result.Replayed {
 		c.Header("X-Idempotency-Replayed", "true")
 	}
-	response.Success(c, result.Data)
+	response.Success(c, present(result.Data))
 }

@@ -32,6 +32,17 @@
 
 > [想出现在这里？](mailto:support@sub2api.org)
 
+<details open>
+<summary>点击折叠</summary>
+
+<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
+
+**[WandAPI](https://wandapi.ai/r/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
+
+**免费试用额度**：通过[专属链接](https://wandapi.ai/r/sub2api)注册，即可领取免费试用额度。
+
+---
+
 <table>
 
 <tr>
@@ -164,7 +175,19 @@
 <td>🔑 高价收 AI 账号｜Gemini · Claude · GPT｜大小号通收，各种渠道都要｜支持按量跑付｜寻一手大厂资源，我上 KEY 。<br>微信：Liuyou-zawd｜TG：<a href="https://t.me/AACC8888888">AACC8888888</a></td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/NiuProxy.jpg" alt="NiuProxy" width="150"></a></td>
+<td><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">NiuProxy</a> 为网页抓取、AI 智能体、自动化和数据采集提供高性价比的全球代理解决方案。住宅代理低至 $0.35/GB，覆盖 190+ 个国家和地区，套餐灵活，支持 HTTP(S)/SOCKS5 协议。<br>🎁 使用优惠码 PAY2 充值立享 9 折优惠！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
+<td>感谢 <a href="https://soleapi.com/r/sub2api">SoleAPI</a> 对本项目的支持！SoleAPI 是面向开发者与企业的 AI 模型网关：一个 API Key 即可调用 Claude、GPT、Gemini 等 30+ 主流模型。原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex、Cursor 及现有 SDK 只需修改 Base URL 即可接入。请求按延迟与上游健康度实时路由，毫秒级自动切换至备用通道，服务可用性达 99.99%，并提供 7×24 小时技术支持。所有调用统一账单结算，每次请求的 token 与费用明细随时可查。通过本项目的<a href="https://soleapi.com/r/sub2api">推荐链接</a>注册即可获得免费试用额度，邀请好友充值还可持续获得返现！</td>
+</tr>
+
 </table>
+
+</details>
 
 ## 项目概述
 
