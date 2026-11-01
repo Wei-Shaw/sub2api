@@ -299,11 +299,25 @@ func (r *schedulerOutboxRepository) Claim(ctx context.Context, workerID string, 
 		leaseSeconds = 300
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		WITH candidates AS (
+		WITH busy AS (
+			-- Accounts whose events are currently owned by another consumer. Their
+			-- later events must wait: claiming them in parallel lets a second consumer
+			-- finish event N+1 before event N and reorders one account's changes.
+			-- Rows claimed by this worker are excluded, because this worker handles
+			-- its own claims strictly in id order.
+			SELECT DISTINCT account_id
+			FROM scheduler_outbox
+			WHERE account_id IS NOT NULL
+			  AND claimed_by IS NOT NULL
+			  AND claimed_by <> $1
+			  AND claimed_at IS NOT NULL
+			  AND claimed_at >= NOW() - ($3 * INTERVAL '1 second')
+		), candidates AS (
 			SELECT id
 			FROM scheduler_outbox
 			WHERE (available_at IS NULL OR available_at <= NOW())
 			  AND (claimed_at IS NULL OR claimed_at < NOW() - ($3 * INTERVAL '1 second'))
+			  AND (account_id IS NULL OR account_id NOT IN (SELECT account_id FROM busy))
 			ORDER BY id ASC
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
