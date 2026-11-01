@@ -124,10 +124,20 @@
           default-sort-order="asc"
           @sort="handleSort"
         >
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{
-              value
-            }}</span>
+          <template #cell-name="{ value, row }">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span
+                v-if="supportsGroupOpenAIFast(row.platform) && groupOpenAIServiceTier(row) !== 'client'"
+                :title="t(row.force_openai_ultrafast ? 'admin.groups.openaiFast.forceUltrafast' : 'admin.groups.openaiFast.force')"
+                :class="[
+                  'inline-flex rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap',
+                  row.force_openai_ultrafast
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+                ]"
+              >{{ row.force_openai_ultrafast ? 'Ultrafast' : 'Fast' }}</span>
+            </div>
           </template>
 
           <template #cell-id="{ value }">
@@ -1579,19 +1589,15 @@
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             {{ t("admin.groups.openaiFast.title") }}
           </h4>
-          <div class="flex items-center justify-between gap-4">
-            <label class="text-sm text-gray-600 dark:text-gray-400">
-              {{ t("admin.groups.openaiFast.force") }}
-            </label>
-            <Toggle
-              data-testid="create-force-openai-fast"
-              :aria-label="t('admin.groups.openaiFast.force')"
-              v-model="createForm.force_openai_fast"
+          <div class="space-y-2">
+            <div class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.openaiFast.policy") }}</div>
+            <GroupServiceTierSelector
+              data-testid="create-openai-service-tier"
+              :model-value="groupOpenAIServiceTier(createForm)"
+              :disabled="submitting"
+              @update:model-value="setGroupOpenAIServiceTier(createForm, $event)"
             />
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {{ t("admin.groups.openaiFast.hint") }}
-          </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
               {{ t("admin.groups.openaiFast.free") }}
@@ -3243,19 +3249,15 @@
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             {{ t("admin.groups.openaiFast.title") }}
           </h4>
-          <div class="flex items-center justify-between gap-4">
-            <label class="text-sm text-gray-600 dark:text-gray-400">
-              {{ t("admin.groups.openaiFast.force") }}
-            </label>
-            <Toggle
-              data-testid="edit-force-openai-fast"
-              :aria-label="t('admin.groups.openaiFast.force')"
-              v-model="editForm.force_openai_fast"
+          <div class="space-y-2">
+            <div class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.openaiFast.policy") }}</div>
+            <GroupServiceTierSelector
+              data-testid="edit-openai-service-tier"
+              :model-value="groupOpenAIServiceTier(editForm)"
+              :disabled="submitting"
+              @update:model-value="setGroupOpenAIServiceTier(editForm, $event)"
             />
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {{ t("admin.groups.openaiFast.hint") }}
-          </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
               {{ t("admin.groups.openaiFast.free") }}
@@ -4334,6 +4336,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import GroupServiceTierSelector from "@/components/admin/group/GroupServiceTierSelector.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -4363,6 +4366,8 @@ import {
 import {
   normalizeGroupOpenAIFast,
   supportsGroupOpenAIFast,
+  groupOpenAIServiceTier,
+  setGroupOpenAIServiceTier,
 } from "./groupsOpenAIFast";
 import {
   addCustomModelAllowlistItem,
@@ -4982,6 +4987,7 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  force_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5349,6 +5355,7 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  force_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5841,6 +5848,7 @@ const closeCreateModal = () => {
   createForm.video_model_prices = createVideoModelPricesForm();
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
+  createForm.force_openai_ultrafast = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
@@ -5966,6 +5974,10 @@ const handleCreateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_fast,
+      ),
+      force_openai_ultrafast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.force_openai_ultrafast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
@@ -6116,6 +6128,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.force_openai_ultrafast = group.force_openai_ultrafast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -6251,6 +6264,7 @@ const closeEditModal = () => {
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
+  editForm.force_openai_ultrafast = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -6310,6 +6324,10 @@ const handleUpdateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_fast,
+      ),
+      force_openai_ultrafast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.force_openai_ultrafast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
