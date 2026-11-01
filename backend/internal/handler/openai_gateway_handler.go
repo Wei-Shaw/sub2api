@@ -642,6 +642,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	firstOutputTimeoutSwitchCount := 0
+	capacityShedAttempts := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -909,6 +910,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					if capacityShedAttemptsExhausted(failoverErr, &capacityShedAttempts, h.maxCapacityShedAttempts()) {
+						reqLog.Warn("openai.capacity_shed_attempts_exhausted",
+							zap.Int64("account_id", account.ID),
+							zap.Int("attempts", capacityShedAttempts),
+						)
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1291,6 +1300,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	capacityShedAttempts := 0
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
@@ -1477,6 +1487,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					if capacityShedAttemptsExhausted(failoverErr, &capacityShedAttempts, h.maxCapacityShedAttempts()) {
+						reqLog.Warn("openai_messages.capacity_shed_attempts_exhausted",
+							zap.Int64("account_id", account.ID),
+							zap.Int("attempts", capacityShedAttempts),
+						)
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -2713,6 +2731,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	capacityShedAttempts := 0
 	wsAttemptMessage := append([]byte(nil), firstMessage...)
 	waitForWSSameAccountRetry := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
 		if account == nil || failoverErr == nil || failoverErr.StatusCode != http.StatusTooManyRequests || failoverErr.SameAccountRetryDeadline.IsZero() {
@@ -2746,6 +2765,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		releaseAccountSlot()
 		if !failoverErr.ShouldRetryNextAccount() {
+			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
+			return false
+		}
+		if capacityShedAttemptsExhausted(failoverErr, &capacityShedAttempts, h.maxCapacityShedAttempts()) {
+			reqLog.Warn("openai.websocket_capacity_shed_attempts_exhausted",
+				zap.Int64("account_id", account.ID),
+				zap.Int("attempts", capacityShedAttempts),
+			)
 			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
 			return false
 		}
@@ -3879,6 +3906,14 @@ func openAIRequestAllowsFailoverReplay(c *gin.Context) bool {
 		return false
 	}
 	return !failoverClientGone(c)
+}
+
+// maxCapacityShedAttempts 返回单次请求的容量降载总尝试上限；未配置时返回 0（不限）。
+func (h *OpenAIGatewayHandler) maxCapacityShedAttempts() int {
+	if h == nil || h.cfg == nil {
+		return 0
+	}
+	return h.cfg.Gateway.MaxCapacityShedAttempts
 }
 
 func openAIFirstOutputFailoverExhausted(failoverErr *service.UpstreamFailoverError, switchCount *int) bool {

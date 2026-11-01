@@ -121,6 +121,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	defer inflightDone()
 
 	profitVetoCount := 0
+	capacityShedAttempts := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
@@ -234,6 +235,14 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
 					)
+					return
+				}
+				if capacityShedAttemptsExhausted(failoverErr, &capacityShedAttempts, h.maxCapacityShedAttempts()) {
+					reqLog.Warn("openai_embeddings.capacity_shed_attempts_exhausted",
+						zap.Int64("account_id", account.ID),
+						zap.Int("attempts", capacityShedAttempts),
+					)
+					h.handleFailoverExhausted(c, failoverErr, false)
 					return
 				}
 				h.gatewayService.RecordOpenAIAccountSwitch()
