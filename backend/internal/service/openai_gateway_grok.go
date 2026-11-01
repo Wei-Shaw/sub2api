@@ -249,18 +249,20 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	}
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(patchedBody, originalModel)
 	result := &OpenAIForwardResult{
-		RequestID:       firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-		UpstreamHeaders: resp.Header,
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           originalModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		ResponseHeaders: resp.Header.Clone(),
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:                     firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+		UpstreamHeaders:               resp.Header,
+		ResponseID:                    responseID,
+		Usage:                         *usage,
+		Model:                         originalModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ReasoningEffort:               reasoningEffort,
+		Stream:                        reqStream,
+		OpenAIWSMode:                  false,
+		ResponseHeaders:               resp.Header.Clone(),
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  firstTokenMs,
 	}
 	// Propagate search/image counters from the shared Responses handler — without
 	// this, stream/JSON counting runs but search_price_per_1k / image bills never apply.

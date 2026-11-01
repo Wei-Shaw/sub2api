@@ -31,6 +31,17 @@ Please read the following carefully before using this project:
 
 > [Want to appear here?](mailto:support@sub2api.org)
 
+<details open>
+<summary>Click to collapse</summary>
+
+<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+
+**[WandAPI](https://wandapi.ai/r/sub2api)** — an enterprise-grade, stable AI model API gateway built by a core contributor to this project. One API key gives you access to Claude, GPT, Gemini and other leading models, natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex and your existing SDKs work by simply changing the Base URL. Real-time routing by latency and upstream health with millisecond-level automatic failover keeps requests online, backed by 99.99% service availability. Pay as you go, with per-request token and cost breakdowns.
+
+**Free trial credits**: sign up via [this exclusive link](https://wandapi.ai/r/sub2api) to claim free trial credits.
+
+---
+
 <table>
 
 <tr>
@@ -156,7 +167,24 @@ Please read the following carefully before using this project:
 <td>Thanks to <a href="https://x.com/chenju_ai">Chenju</a> for sponsoring this project! This is probably the only ad slot in this section that doesn't ask you to sign up for anything. Good open-source projects deserve to be paid for, so Chenju is chipping in a gift and raising a glass to the author. Find <a href="https://x.com/chenju_ai">Chenju</a> on X to chat about API relays, upstream providers, or just shoot the breeze.</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://t.me/AACC8888888"><img src="assets/partners/logos/ooko.ai.png" alt="ooko.ai" width="150"></a></td>
+<td>🔑 Buying AI accounts at top prices | Gemini · Claude · GPT | Main and alt accounts all welcome, any channel wanted | Pay-per-usage supported | Seeking first-hand resources from major providers, I'll bring the KEY.<br>WeChat: Liuyou-zawd | Telegram: <a href="https://t.me/AACC8888888">AACC8888888</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/NiuProxy.jpg" alt="NiuProxy" width="150"></a></td>
+<td><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">NiuProxy</a> provides affordable global proxy solutions for web scraping, AI agents, automation, and data collection. With residential proxies starting at $0.35/GB across 190+ countries and regions, NiuProxy offers flexible plans and HTTP(S)/SOCKS5 support.<br>🎁 Use code PAY2 for 10% OFF your recharge!</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
+<td>Thanks to <a href="https://soleapi.com/r/sub2api">SoleAPI</a> for supporting this project! SoleAPI is an AI model gateway for developers and enterprises: one API key gives you access to 30+ leading models including Claude, GPT and Gemini. It is natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex, Cursor and your existing SDKs work by simply changing the Base URL. Requests are routed in real time by latency and upstream health, with millisecond-level automatic failover to backup channels, 99.99% service availability and 24/7 technical support. Every call lands on a single bill with per-request token and cost breakdowns you can inspect at any time. Sign up through this project's <a href="https://soleapi.com/r/sub2api">referral link</a> to receive free trial credits, and earn ongoing cashback by inviting friends who top up!</td>
+</tr>
+
 </table>
+
+</details>
 
 ## Overview
 
