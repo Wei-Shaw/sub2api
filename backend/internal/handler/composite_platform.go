@@ -142,6 +142,17 @@ func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.
 	return service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings, overLimit)
 }
 
+func applyOpenAIChatCompletionsReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool, error) {
+	updated, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body)
+	if err != nil || c == nil || c.Request == nil {
+		return updated, changed, err
+	}
+	if maxEffort, _, overLimit, ok := openAIReasoningEffortPolicyForRequest(c, apiKey); ok {
+		c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, nil, overLimit))
+	}
+	return updated, changed, nil
+}
+
 func respondOpenAIReasoningEffortPolicyError(c *gin.Context, err error, write func(*gin.Context, int, string, string)) {
 	if c == nil || err == nil || write == nil {
 		return

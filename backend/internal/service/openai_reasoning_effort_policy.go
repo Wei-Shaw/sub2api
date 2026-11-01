@@ -458,6 +458,29 @@ func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byt
 	return ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, policy.mappings, policy.overLimit)
 }
 
+func applyFinalOpenAIReasoningEffortCeiling(ctx context.Context, body []byte, upstreamModel string) ([]byte, bool, error) {
+	if ctx == nil {
+		return body, false, nil
+	}
+	policy, bound := ctx.Value(openAIReasoningEffortPolicyContextKey{}).(openAIReasoningEffortPolicy)
+	if !bound || (policy.maxEffort == "" && len(policy.mappings) == 0) {
+		return body, false, nil
+	}
+	capped, changed, err := ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, nil, policy.overLimit)
+	if err != nil {
+		return body, false, err
+	}
+	glmModel := strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "glm-")
+	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
+		effort := gjson.GetBytes(capped, path).String()
+		if glmModel && effort != "" && effort != "high" && effort != "max" && (!isGLM53Model(upstreamModel) || effort != "low") {
+			return body, false, fmt.Errorf("%s does not support capped reasoning effort %q: %w", upstreamModel, effort,
+				&ReasoningEffortOverLimitError{Requested: gjson.GetBytes(body, path).String(), Max: NormalizeMaxReasoningEffort(policy.maxEffort)})
+		}
+	}
+	return capped, changed, nil
+}
+
 // applyMessagesConvertedReasoningEffortPolicy validates the final outbound effort.
 // CN mappings already ran on the original Messages model/effort before conversion;
 // only recheck the ceiling here, since conversion/provider normalization may raise
@@ -484,16 +507,9 @@ func applyMessagesConvertedReasoningEffortPolicy(ctx context.Context, account *A
 					updated, changed = normalized, true
 				}
 			}
-			capped, cappedChanged, capErr := ApplyOpenAIReasoningEffortPolicy(updated, policy.maxEffort, nil, policy.overLimit)
+			capped, cappedChanged, capErr := applyFinalOpenAIReasoningEffortCeiling(ctx, updated, upstreamModel)
 			if capErr != nil {
 				return body, false, capErr
-			}
-			for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
-				effort := gjson.GetBytes(capped, path).String()
-				if glmModel && effort != "" && effort != "high" && effort != "max" && (!isGLM53Model(upstreamModel) || effort != "low") {
-					return body, false, fmt.Errorf("%s does not support capped reasoning effort %q: %w", upstreamModel, effort,
-						&ReasoningEffortOverLimitError{Requested: gjson.GetBytes(updated, path).String(), Max: NormalizeMaxReasoningEffort(policy.maxEffort)})
-				}
 			}
 			updated, changed = capped, changed || cappedChanged
 		}

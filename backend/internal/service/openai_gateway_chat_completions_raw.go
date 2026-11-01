@@ -204,6 +204,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
+	if cappedBody, changed, policyErr := applyFinalOpenAIReasoningEffortCeiling(ctx, upstreamBody, upstreamModel); policyErr != nil {
+		if IsReasoningEffortPolicyDenied(policyErr) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeChatCompletionsError(c, http.StatusForbidden, "permission_error", policyErr.Error())
+		}
+		return nil, policyErr
+	} else if changed {
+		upstreamBody = cappedBody
+	}
 	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
 	customUA := account.GetOpenAIUserAgent()
 	if customUA == "" && account.IsGrokOAuth() {
