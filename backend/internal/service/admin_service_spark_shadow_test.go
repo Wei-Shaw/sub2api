@@ -390,7 +390,12 @@ func TestPersistOpenAICodexSnapshot_SkipsShadow(t *testing.T) {
 	t.Run("shadow_skipped", func(t *testing.T) {
 		spy := &updateExtraSpyRepo{sparkShadowRepoStub: newSparkShadowRepoStub()}
 		s := &RateLimitService{accountRepo: spy}
-		shadow := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ParentAccountID: &parentID}
+		shadow := &Account{
+			Platform:        PlatformOpenAI,
+			Type:            AccountTypeOAuth,
+			ParentAccountID: &parentID,
+			QuotaDimension:  QuotaDimensionSpark,
+		}
 		s.persistOpenAICodexSnapshot(context.Background(), shadow, headers)
 		require.False(t, spy.updateExtraCalled, "影子不应写 codex_* 头快照")
 	})

@@ -82,6 +82,8 @@ export default {
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
       notesHint: 'Notes are optional',
+      shadowParent: 'Linked parent account',
+      shadowParentHint: 'A copied shadow account can be re-linked to another parent, not necessarily the account it was copied from.',
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',

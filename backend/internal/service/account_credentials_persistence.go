@@ -37,6 +37,14 @@ var sparkShadowAllowedCredentialKeys = map[string]struct{}{
 	"compact_model_mapping": {},
 }
 
+var linkedAccountAllowedCredentialKeys = map[string]struct{}{
+	"model_mapping":              {},
+	"compact_model_mapping":      {},
+	credKeyHeaderOverrideEnabled: {},
+	credKeyHeaderOverrides:       {},
+	"openai_capabilities":        {},
+}
+
 func isAllowedSparkShadowCredentialsUpdate(credentials map[string]any) bool {
 	if credentials == nil {
 		return true
@@ -55,6 +63,31 @@ func sanitizeSparkShadowCredentials(credentials map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(sparkShadowAllowedCredentialKeys))
 	for key := range sparkShadowAllowedCredentialKeys {
+		if value, ok := credentials[key]; ok && value != nil {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func isAllowedLinkedAccountCredentialsUpdate(credentials map[string]any) bool {
+	if credentials == nil {
+		return true
+	}
+	for key := range credentials {
+		if _, ok := linkedAccountAllowedCredentialKeys[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeLinkedAccountCredentials(credentials map[string]any) map[string]any {
+	if len(credentials) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(linkedAccountAllowedCredentialKeys))
+	for key := range linkedAccountAllowedCredentialKeys {
 		if value, ok := credentials[key]; ok && value != nil {
 			out[key] = value
 		}
