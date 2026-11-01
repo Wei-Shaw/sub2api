@@ -20,9 +20,9 @@ type WebSearchEmulationConfig struct {
 	Providers []WebSearchProviderConfig `json:"providers"`
 }
 
-// WebSearchProviderConfig describes a single search provider (Brave or Tavily).
+// WebSearchProviderConfig describes a single search provider (Brave, Tavily or Outcrawl).
 type WebSearchProviderConfig struct {
-	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily
+	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily | Outcrawl
 	APIKey           string `json:"api_key,omitempty"`       // secret — omitted in API responses
 	APIKeyConfigured bool   `json:"api_key_configured"`      // read-only mask
 	QuotaLimit       *int64 `json:"quota_limit"`             // nil = unlimited, >0 = limited
@@ -37,8 +37,9 @@ type WebSearchProviderConfig struct {
 const maxWebSearchProviders = 10
 
 var validProviderTypes = map[string]bool{
-	websearch.ProviderTypeBrave:  true,
-	websearch.ProviderTypeTavily: true,
+	websearch.ProviderTypeBrave:    true,
+	websearch.ProviderTypeTavily:   true,
+	websearch.ProviderTypeOutcrawl: true,
 }
 
 func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
