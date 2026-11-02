@@ -1119,7 +1119,7 @@ export default {
       },
       betaPolicy: {
         title: 'Beta Policy',
-        description: 'How to handle Beta features when forwarding Anthropic API requests. Applies to Anthropic /v1/messages and /v1/messages/count_tokens paths.',
+        description: 'How to handle Beta features for Anthropic groups on Messages/count_tokens and Chat/Responses compatibility paths.',
         action: 'Action',
         actionPass: 'Pass (transparent)',
         actionFilter: 'Filter (remove)',
