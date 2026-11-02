@@ -865,7 +865,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		}
 		if err != nil {
 			if nativeDisconnect {
+				// 断开前已观测到的用量照常入账；响应未提交时标记 499。
 				submitUsage(result, true)
+				failoverClientGone(c)
 				return
 			}
 			var failoverErr *service.UpstreamFailoverError

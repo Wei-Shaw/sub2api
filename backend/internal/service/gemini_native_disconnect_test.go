@@ -159,10 +159,9 @@ func TestGeminiNativeStream_ReadErrorReturnsObservedUsage(t *testing.T) {
 
 	result, err := svc.ForwardNative(c.Request.Context(), c, account, "gemini-2.5-flash", "streamGenerateContent", true, body)
 
+	// 客户端在线时上游读错：与 #8168 一致按上游错误处理，不按部分用量计费。
 	require.ErrorContains(t, err, "upstream reset")
-	require.NotNil(t, result)
-	require.Equal(t, 5, result.Usage.InputTokens)
-	require.Equal(t, 3, result.Usage.OutputTokens)
+	require.Nil(t, result)
 }
 
 func TestGeminiNativeCountTokens_ClientCancelStillCancelsUpstream(t *testing.T) {

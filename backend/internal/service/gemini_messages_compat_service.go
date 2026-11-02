@@ -2942,13 +2942,19 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 		s.markGeminiEmptyResponse(c, account, false, upstreamRequestID)
 	}
 
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	// 客户端已断开时不再写响应，但仍按上游响应体计费。
+	clientConnected := c.Request == nil || c.Request.Context().Err() == nil
+	if clientConnected {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	c.Data(resp.StatusCode, contentType, respBody)
+	if clientConnected {
+		c.Data(resp.StatusCode, contentType, respBody)
+	}
 
 	if u := extractGeminiUsage(respBody); u != nil {
 		return u, nil
@@ -2967,20 +2973,23 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ====================================================")
 	}
 
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	}
+	nativeClientConnected := c.Request == nil || c.Request.Context().Err() == nil
+	if nativeClientConnected {
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
 
-	c.Status(resp.StatusCode)
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
+		c.Status(resp.StatusCode)
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
 
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "text/event-stream; charset=utf-8"
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "text/event-stream; charset=utf-8"
+		}
+		c.Header("Content-Type", contentType)
 	}
-	c.Header("Content-Type", contentType)
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -3013,12 +3022,15 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 		}
 		clientDisconnect = true
 	}
-	writeDownstream := func(write func()) bool {
+	writeDownstream := func(write func() error) bool {
 		if clientDisconnect || downstreamCtx.Err() != nil {
 			markClientDisconnected()
 			return false
 		}
-		write()
+		if err := write(); err != nil {
+			markClientDisconnected()
+			return false
+		}
 		return true
 	}
 
@@ -3031,11 +3043,13 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				// Keepalive / done markers
 				if payload == "" || payload == "[DONE]" {
-					if writeDownstream(func() {
-						_, _ = io.WriteString(c.Writer, line)
+					writeDownstream(func() error {
+						if _, err := io.WriteString(c.Writer, line); err != nil {
+							return err
+						}
 						flusher.Flush()
-					}) {
-					}
+						return nil
+					})
 				} else {
 					var rawToWrite string
 					rawToWrite = payload
@@ -3071,24 +3085,32 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						firstTokenMs = &ms
 					}
 
-					writeDownstream(func() {
+					writeDownstream(func() error {
 						if isOAuth {
 							// SSE format requires double newline (\n\n) to separate events
-							_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+							if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite); err != nil {
+								return err
+							}
 						} else {
 							// Pass-through for AI Studio responses.
-							_, _ = io.WriteString(c.Writer, line)
+							if _, err := io.WriteString(c.Writer, line); err != nil {
+								return err
+							}
 						}
 						flusher.Flush()
+						return nil
 					})
 				}
 			} else {
 				if !sawDataEvent {
 					fallback.AddLine(trimmed)
 				}
-				writeDownstream(func() {
-					_, _ = io.WriteString(c.Writer, line)
+				writeDownstream(func() error {
+					if _, err := io.WriteString(c.Writer, line); err != nil {
+						return err
+					}
 					flusher.Flush()
+					return nil
 				})
 			}
 		}
@@ -3102,6 +3124,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during native stream (account=%d), billing collected usage: %v", account.ID, err)
 				break
 			}
+			// 客户端仍在时上游读错按上游错误处理，不按部分用量计费。
 			return nil, err
 		}
 	}

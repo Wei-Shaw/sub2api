@@ -521,7 +521,8 @@ func TestGeminiChatCompletionsStream_DrainTimeoutReturnsObservedUsage(t *testing
 
 	select {
 	case got := <-done:
-		require.ErrorIs(t, got.err, ErrGeminiClientDisconnected)
+		// 断开前已观测到用量：按已收集用量收尾，不向上层报错。
+		require.NoError(t, got.err)
 		require.NotNil(t, got.result)
 		require.True(t, got.result.ClientDisconnect)
 		require.Equal(t, 5, got.result.Usage.InputTokens)

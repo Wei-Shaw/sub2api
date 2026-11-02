@@ -895,20 +895,26 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 			if downstreamCtx.Err() != nil {
 				markClientDisconnected()
 			}
+			if clientDisconnect && usageObserved {
+				// 断开前已观测到用量：按已收集用量正常收尾，不向上层报错。
+				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during chat completions stream, billing collected usage: %v", err)
+				return streamResult(), nil
+			}
 			streamErr := fmt.Errorf("stream read error: %w", err)
 			if clientDisconnect {
 				streamErr = fmt.Errorf("%w: %w", ErrGeminiClientDisconnected, streamErr)
-				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during chat completions stream, billing collected usage: %v", err)
 			}
-			if !clientDisconnect && !usageObserved {
-				return nil, streamErr
+			if usageObserved {
+				// 已观测到用量：把部分结果交回上层，由上层决定入账口径。
+				return &geminiStreamResult{
+					usage:            &usage,
+					firstTokenMs:     firstTokenMs,
+					usageObserved:    usageObserved,
+					clientDisconnect: clientDisconnect,
+					finished:         finishReason != "",
+				}, streamErr
 			}
-			return &geminiStreamResult{
-				usage:            &usage,
-				firstTokenMs:     firstTokenMs,
-				usageObserved:    usageObserved,
-				clientDisconnect: clientDisconnect,
-			}, streamErr
+			return nil, streamErr
 		}
 	}
 
