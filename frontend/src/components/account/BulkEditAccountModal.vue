@@ -1033,6 +1033,13 @@
       </div>
 
       <!-- OpenAI API Key endpoint capabilities -->
+      <div v-if="allOpenAIDecisionsAccounts" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label"><input v-model="enableOpenAIDecisionsProtocol" type="checkbox" data-testid="enable-openai-decisions-protocol" /> {{ t('admin.accounts.openai.decisionsProtocol') }}</label>
+        <select v-model="openAIDecisionsProtocol" :disabled="!enableOpenAIDecisionsProtocol" data-testid="openai-decisions-protocol" class="input">
+          <option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.openai.decisionsProtocolDesc') }}</p>
+      </div>
       <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between gap-4">
           <div class="flex-1">
@@ -1697,9 +1704,13 @@ const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const openAIDecisionsProtocol = ref<'openai' | 'openrouter'>('openai')
+const enableOpenAIDecisionsProtocol = ref(false)
+const allOpenAIDecisionsAccounts = computed(() => targetSelectedPlatforms.value.length === 1 && targetSelectedPlatforms.value[0] === 'openai' && targetSelectedTypes.value.length > 0 && targetSelectedTypes.value.every(type => type === 'apikey' || type === 'upstream'))
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
-  'embeddings'
+  'embeddings',
+  'decisions'
 ])
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -1788,6 +1799,7 @@ const openAIEndpointCapabilityOptions = computed<
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'decisions', label: 'Decisions' },
   { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
@@ -1798,9 +1810,9 @@ const openAIResponsesModeApplicable = computed(
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'decisions', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings', 'decisions'] as OpenAIEndpointCapability[]
 }
 
 const toggleOpenAIEndpointCapability = (
@@ -1996,9 +2008,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
   }
 
+  if (enableOpenAIDecisionsProtocol.value && allOpenAIDecisionsAccounts.value) {
+    credentials.openai_decisions_protocol = openAIDecisionsProtocol.value
+    credentialsChanged = true
+  }
   if (applyOpenAIEndpointCapabilities) {
     credentials.openai_capabilities =
-      openAIEndpointCapabilities.value.length === 2 && !openAIEndpointCapabilities.value.includes('seedance')
+      openAIEndpointCapabilities.value.length === 3 && ['chat_completions', 'embeddings', 'decisions'].every(value => openAIEndpointCapabilities.value.includes(value as OpenAIEndpointCapability))
         ? null
         : [...openAIEndpointCapabilities.value]
     credentialsChanged = true
@@ -2208,6 +2224,7 @@ const handleSubmit = async () => {
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
     (enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value) ||
     (enableOpenAIResponsesMode.value && allOpenAIAPIKey.value) ||
+    (enableOpenAIDecisionsProtocol.value && allOpenAIDecisionsAccounts.value) ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
@@ -2370,6 +2387,8 @@ watch(
       enableOpenAILongContextBilling.value = false
       enableOpenAIEndpointCapabilities.value = false
       enableOpenAIResponsesMode.value = false
+      enableOpenAIDecisionsProtocol.value = false
+      openAIDecisionsProtocol.value = 'openai'
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableUpstreamBillingAutoProbe.value = false
@@ -2386,7 +2405,7 @@ watch(
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings', 'decisions']
       openAIResponsesMode.value = 'auto'
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []
