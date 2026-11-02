@@ -329,6 +329,24 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsStrictResponsesCapability(t *testing.T) {
+	account := service.Account{
+		ID:       420,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Extra: map[string]any{
+			service.OpenAIResponsesForwardModeExtraKey: string(service.OpenAIResponsesForwardModeStrictRaw),
+			"unused_large_field":                       "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, string(service.OpenAIResponsesForwardModeStrictRaw), got.Extra[service.OpenAIResponsesForwardModeExtraKey])
+	require.True(t, got.IsOpenAIStrictResponsesPassthroughEnabled())
+	require.Nil(t, got.Extra["unused_large_field"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 	t.Run("explicit override", func(t *testing.T) {
 		account := service.Account{

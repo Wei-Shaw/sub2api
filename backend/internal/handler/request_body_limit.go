@@ -33,6 +33,18 @@ func readLenientJSONRequestBodyWithPrealloc(req *http.Request, cfg *config.Confi
 	return pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(req, gatewayMaxBodySize(cfg))
 }
 
+func readLenientJSONRequestBodyWithOriginal(req *http.Request, cfg *config.Config) (normalized []byte, original []byte, err error) {
+	original, err = pkghttputil.ReadRequestBodyWithPrealloc(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	normalized, err = pkghttputil.NormalizeLenientJSONRequestBody(original, gatewayMaxBodySize(cfg))
+	if err != nil {
+		return nil, nil, err
+	}
+	return normalized, original, nil
+}
+
 func gatewayMaxBodySize(cfg *config.Config) int64 {
 	if cfg == nil {
 		return 0
