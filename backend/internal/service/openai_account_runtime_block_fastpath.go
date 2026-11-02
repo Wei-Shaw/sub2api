@@ -104,6 +104,24 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// Capacity shedding describes this request, not account health. Keep the
 	// account schedulable while the request-local retry budget handles recovery.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		// Capacity shedding is request scoped, but repeated failures for the same
+		// account/model should temporarily lower that pair's scheduling priority.
+		// Keep OAuth accounts in this model-level cooldown too; the production pool
+		// is predominantly OAuth and otherwise the same failing account is selected
+		// again immediately after a failover.
+		if len(canonicalModel) > 0 && (account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) {
+			decision := s.recordOpenAIAccountModelTransientFailure(account, canonicalModel[0], time.Now())
+			if decision.FailureStreak > 0 {
+				slog.Warn("openai_model_transient_state",
+					"account_id", account.ID,
+					"model", openAIAccountModelTransientModel(canonicalModel[0]),
+					"failure_streak", decision.FailureStreak,
+					"cooldown_ms", decision.Cooldown.Milliseconds(),
+					"block_scope", "account_model",
+					"capacity_shed", true,
+				)
+			}
+		}
 		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -184,7 +202,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// same-account retry budget. Recording the generic account+model transient
 	// cooldown here would block the next approved retry before that budget is used.
 	poolModeRetryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
-	if !shouldDisable && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+	if !shouldDisable && account.Platform == PlatformOpenAI &&
+		(account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) &&
 		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) && !poolModeRetryable {
 		model := ""
 		if len(canonicalModel) > 0 {
@@ -549,6 +568,27 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
+type openAIModelTransientBlockBypassContextKey struct{}
+
+// WithOpenAIModelTransientBlockBypass marks a request whose account selection
+// may ignore the account+model transient cooldown. The cooldown is a routing
+// preference, while account-level bans, rate limits, and quota pauses remain
+// enforced.
+func WithOpenAIModelTransientBlockBypass(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIModelTransientBlockBypassContextKey{}, true)
+}
+
+func openAIModelTransientBlockBypassed(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	bypass, _ := ctx.Value(openAIModelTransientBlockBypassContextKey{}).(bool)
+	return bypass
+}
+
 // isOpenAIAccountRequestRuntimeBlocked treats persisted cooldown fields on the
 // scheduling Account as source of truth. When TempUnschedulableUntil,
 // RateLimitResetAt, and OverloadUntil are all inactive, a stale local account
@@ -556,6 +596,10 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // are left alone. This is fail-open if a DB write failed or the snapshot has
 // not caught up yet: empty cooldown fields drop the local account-level block.
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
+	return s.isOpenAIAccountRequestRuntimeBlockedWithContext(context.Background(), account, requestedModel)
+}
+
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlockedWithContext(ctx context.Context, account *Account, requestedModel string) bool {
 	if s == nil {
 		return false
 	}
@@ -565,6 +609,9 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 			return true
 		}
 		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+	}
+	if openAIModelTransientBlockBypassed(ctx) {
+		return false
 	}
 	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
 }

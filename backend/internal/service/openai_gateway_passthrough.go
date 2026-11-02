@@ -1662,7 +1662,12 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 			return statusCode, false
 		}
 		fallthrough
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusTooManyRequests, 529,
+		http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
+		if statusCode == http.StatusBadGateway && !isOpenAITransientStreamTerminalFailure(payload, message) {
+			return statusCode, false
+		}
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
@@ -1681,6 +1686,12 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	default:
 		return statusCode, false
 	}
+}
+
+func isOpenAITransientStreamTerminalFailure(payload []byte, message string) bool {
+	return isOpenAIRequestScopedCapacityShed(message, payload) ||
+		isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) ||
+		openAIStreamErrorEventShouldFailover(payload, message)
 }
 
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
