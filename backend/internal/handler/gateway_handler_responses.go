@@ -342,6 +342,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		if err != nil {
+			var betaBlockedErr *service.BetaBlockedError
+			if errors.As(err, &betaBlockedErr) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", betaBlockedErr.Message)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
@@ -404,7 +410,9 @@ func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastEr
 		statusCode = lastErr.StatusCode
 	}
 	status, code, message := statusCode, "server_error", "All available accounts exhausted"
-	if lastErr != nil && lastErr.IsCredentialFailure() {
+	if lastErr.IsAnthropicFastCreditsRequired() {
+		status, code, message = http.StatusTooManyRequests, "rate_limit_error", lastErr.ClientMessage
+	} else if lastErr != nil && lastErr.IsCredentialFailure() {
 		status, message = credentialFailoverClientResponse(lastErr)
 	} else if lastErr != nil && lastErr.IsOpenAICapacityShed() && strings.TrimSpace(lastErr.ClientMessage) != "" {
 		status = lastErr.ClientStatusCode

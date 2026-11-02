@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -50,10 +51,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if err := checkAnthropicMessagesCredential(account); err != nil {
 		return nil, nil, err
 	}
+	policy := s.requestBetaPolicy(ctx, c, account, modelID, body)
+	var err error
+	body, err = policy.applyBody(body)
+	if err != nil {
+		return nil, nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
-		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
-		return req, body, err
+		return s.buildUpstreamRequestAnthropicVertex(withBetaPolicy(ctx, account, policy), c, account, body, token, modelID, reqStream)
 	}
 
 	// 确定目标URL
@@ -137,8 +143,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	//      被 Anthropic 判 third-party）
 	//   4) NewRequest（body 至此最终敲定）
 	//   5) 透传白名单 / fingerprint / mimic header / 写入 finalBeta
-	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
-	effectiveDropSet := mergeDropSets(policyFilterSet)
+	effectiveDropSet := mergeDropSets(policy.filterSet)
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalAnthropicBeta(
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
 	)
@@ -148,6 +153,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		finalBetaHeader, finalBetaShouldSet = beta, true
 	}
+	finalBetaHeader = policy.filterFastHeader(finalBetaHeader)
 	finalBetaHeader = filterSonnet55ToolsetBeta(finalBetaHeader, body, modelID)
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
@@ -233,6 +239,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
 	account.ApplyHeaderOverrides(req.Header)
+	policy.filterFastRequestHeader(req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
@@ -317,10 +324,15 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	token string,
 	modelID string,
 	reqStream bool,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
+	policy := s.requestBetaPolicy(ctx, c, account, modelID, body)
+	body, err := policy.applyBody(body)
+	if err != nil {
+		return nil, nil, err
+	}
 	vertexBody, err := buildVertexAnthropicRequestBody(body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 计算最终 outgoing anthropic-beta。Vertex AI 的 Anthropic 端点只接受一小撮
@@ -332,11 +344,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	// 剥离其余 token，使该路径与 Anthropic 直连 / Bedrock 路径行为一致。
 	clientBeta := ""
 	if c != nil && c.Request != nil {
-		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
-	}
-	policy := s.evaluateBetaPolicy(ctx, clientBeta, account, modelID)
-	if policy.blockErr != nil {
-		return nil, policy.blockErr
+		clientBeta = anthropicBetaHeader(c.Request.Header)
 	}
 	finalBeta := filterSonnet55ToolsetBeta(filterVertexBetaTokens(clientBeta, mergeDropSets(policy.filterSet)), vertexBody, modelID)
 
@@ -347,11 +355,11 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	}
 	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(vertexBody))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if c != nil && c.Request != nil {
@@ -389,7 +397,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		"stream":     strconv.FormatBool(reqStream),
 	})
 
-	return req, nil
+	return req, vertexBody, nil
 }
 
 // getBetaHeader 处理anthropic-beta header
@@ -483,7 +491,7 @@ func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) strin
 }
 
 func filterSonnet55ToolsetBetaHeader(headers http.Header, body []byte, modelID string) {
-	header := getHeaderRaw(headers, "anthropic-beta")
+	header := anthropicBetaHeader(headers)
 	filtered := filterSonnet55ToolsetBeta(header, body, modelID)
 	if filtered == header {
 		return
@@ -584,7 +592,7 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 	defer func() { beta = filterSonnet55ToolsetBeta(beta, body, modelID) }()
 	clientBeta := ""
 	if clientHeaders != nil {
-		clientBeta = getHeaderRaw(clientHeaders, "anthropic-beta")
+		clientBeta = anthropicBetaHeader(clientHeaders)
 	}
 
 	if tokenType == "oauth" {
@@ -594,6 +602,7 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 			// still take precedence. Missing companion tokens are not inferred.
 			var incomingBetas []string
 			for _, token := range []string{
+				claude.BetaFastMode,
 				claude.BetaStructuredOutputs,
 				claude.BetaMidConversationToolChanges,
 				claude.BetaInlineTools,
@@ -643,7 +652,7 @@ func (s *GatewayService) computeFinalCountTokensAnthropicBeta(
 	defer func() { beta = filterSonnet55ToolsetBeta(beta, body, modelID) }()
 	clientBeta := ""
 	if clientHeaders != nil {
-		clientBeta = getHeaderRaw(clientHeaders, "anthropic-beta")
+		clientBeta = anthropicBetaHeader(clientHeaders)
 	}
 
 	if tokenType == "oauth" {
@@ -709,7 +718,8 @@ func stripBetaTokensWithSet(header string, drop map[string]struct{}) string {
 	return strings.Join(out, ",")
 }
 
-// BetaBlockedError indicates a request was blocked by a beta policy rule.
+// BetaBlockedError indicates a request was rejected by capability policy or
+// ambiguous capability input that cannot be safely evaluated.
 type BetaBlockedError struct {
 	Message string
 }
@@ -718,12 +728,40 @@ func (e *BetaBlockedError) Error() string { return e.Message }
 
 // betaPolicyResult holds the evaluated result of beta policy rules for a single request.
 type betaPolicyResult struct {
-	blockErr  *BetaBlockedError   // non-nil if a block rule matched
+	blockErr  *BetaBlockedError   // non-nil for a policy or ambiguous-input rejection
 	filterSet map[string]struct{} // tokens to filter (may be nil)
 }
 
+// hasDuplicateAnthropicSpeed checks only the top-level decoded key. Opaque
+// messages, tool arguments and schemas must not be subject to this restriction.
+// Reject even with no rule: first-key and last-key JSON parsers must agree on
+// the capability sent upstream and the resulting billing tier.
+func hasDuplicateAnthropicSpeed(body []byte) bool {
+	seen, duplicate := false, false
+	gjson.ParseBytes(body).ForEach(func(key, _ gjson.Result) bool {
+		if key.Str == "speed" {
+			duplicate = seen
+			seen = true
+		}
+		return !duplicate
+	})
+	return duplicate
+}
+
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
-func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
+func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string, body []byte) betaPolicyResult {
+	// Validate before reusing an attempt decision or rewriting the body.
+	if hasDuplicateAnthropicSpeed(body) {
+		return betaPolicyResult{blockErr: &BetaBlockedError{Message: "duplicate top-level speed fields are not allowed"}}
+	}
+	if attempt, ok := ctx.Value(betaPolicyContextKey{}).(betaPolicyAttempt); ok && attempt.account == account {
+		return attempt.result
+	}
+	// Fast is also a body capability: GA models do not require its beta header.
+	// Only synthesize a policy input; never add an upstream beta implicitly.
+	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "speed").String()), "fast") {
+		betaHeader = mergeAnthropicBeta([]string{claude.BetaFastMode}, betaHeader)
+	}
 	if s.settingService == nil {
 		return betaPolicyResult{}
 	}
@@ -777,22 +815,59 @@ func mergeDropSets(policySet map[string]struct{}, extra ...string) map[string]st
 	return m
 }
 
-// betaPolicyFilterSetKey is the gin.Context key for caching the policy filter set within a request.
-const betaPolicyFilterSetKey = "betaPolicyFilterSet"
+// Policy decisions belong to one account attempt, not the shared gin context.
+// Forward binds the decision before model rewriting; builders reuse that model
+// whitelist decision during retries. Direct builders evaluate their own inputs.
+type betaPolicyContextKey struct{}
+type betaPolicyAttempt struct {
+	account *Account
+	result  betaPolicyResult
+}
 
-// getBetaPolicyFilterSet returns the beta policy filter set, using the gin context cache if available.
-// In the /v1/messages path, Forward() evaluates the policy first and caches the result;
-// buildUpstreamRequest reuses it (zero extra DB calls). In the count_tokens path, this
-// evaluates on demand (one DB call).
-func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Context, account *Account, model string) map[string]struct{} {
-	if c != nil {
-		if v, ok := c.Get(betaPolicyFilterSetKey); ok {
-			if fs, ok := v.(map[string]struct{}); ok {
-				return fs
-			}
+func withBetaPolicy(ctx context.Context, account *Account, policy betaPolicyResult) context.Context {
+	return context.WithValue(ctx, betaPolicyContextKey{}, betaPolicyAttempt{account: account, result: policy})
+}
+
+func (s *GatewayService) requestBetaPolicy(ctx context.Context, c *gin.Context, account *Account, model string, body []byte) betaPolicyResult {
+	beta := ""
+	if c != nil && c.Request != nil {
+		beta = anthropicBetaHeader(c.Request.Header)
+	}
+	return s.evaluateBetaPolicy(ctx, beta, account, model, body)
+}
+
+// applyBody applies explicit policy filters, independently of beta availability.
+// In particular, missing a Fast beta is NOT evidence that speed=fast is invalid.
+// The returned bytes are attempt-local; input bytes and policy maps are immutable.
+func (p betaPolicyResult) applyBody(body []byte) ([]byte, error) {
+	if p.blockErr != nil {
+		return nil, p.blockErr
+	}
+	if _, filtered := p.filterSet[claude.BetaFastMode]; filtered &&
+		strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "speed").String()), "fast") {
+		return sjson.DeleteBytes(body, "speed")
+	}
+	return body, nil
+}
+
+// Fast filters also win over an account's header override, so it cannot restore
+// the capability after the body has been filtered. Other override semantics stay
+// unchanged.
+func (p betaPolicyResult) filterFastHeader(header string) string {
+	if _, filtered := p.filterSet[claude.BetaFastMode]; filtered {
+		return stripBetaTokens(header, []string{claude.BetaFastMode})
+	}
+	return header
+}
+
+func (p betaPolicyResult) filterFastRequestHeader(header http.Header) {
+	beta := anthropicBetaHeader(header)
+	if filtered := p.filterFastHeader(beta); filtered != beta {
+		deleteHeaderAllForms(header, "anthropic-beta")
+		if filtered != "" {
+			setHeaderRaw(header, "anthropic-beta", filtered)
 		}
 	}
-	return s.evaluateBetaPolicy(ctx, "", account, model).filterSet
 }
 
 // betaPolicyScopeMatches checks whether a rule's scope matches the current account type.
@@ -884,7 +959,7 @@ func (s *GatewayService) resolveBedrockBetaTokensForRequest(
 	modelID string,
 ) ([]string, error) {
 	// 1. 对原始 header 中的 beta token 做 block 检查（快速失败）
-	policy := s.evaluateBetaPolicy(ctx, betaHeader, account, modelID)
+	policy := s.evaluateBetaPolicy(ctx, betaHeader, account, modelID, body)
 	if policy.blockErr != nil {
 		return nil, policy.blockErr
 	}

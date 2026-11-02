@@ -54,14 +54,15 @@ func TestBuildUpstreamRequestStructuredOutputsBeta(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 			c.Request.Header.Set("anthropic-beta", beta+",custom-beta")
-			if filtered {
-				c.Set(betaPolicyFilterSetKey, map[string]struct{}{beta: {}})
-			}
 			account := &Account{ID: 701, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
 				Credentials: map[string]any{"access_token": "test-token"}, Status: StatusActive, Schedulable: true}
 			body := []byte(`{"model":"claude-sonnet-5","max_tokens":1024,"output_format":{"type":"json_schema","schema":{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}},"messages":[{"role":"user","content":"Return JSON"}]}`)
 			svc := &GatewayService{cfg: &config.Config{}}
-			req, _, err := svc.buildUpstreamRequest(context.Background(), c, account, body,
+			ctx := context.Background()
+			if filtered {
+				ctx = withBetaPolicy(ctx, account, betaPolicyResult{filterSet: map[string]struct{}{beta: {}}})
+			}
+			req, _, err := svc.buildUpstreamRequest(ctx, c, account, body,
 				"test-token", "oauth", "claude-sonnet-5", false, true)
 			require.NoError(t, err)
 			out := readUpstreamBodyForTest(t, req)

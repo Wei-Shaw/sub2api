@@ -33,11 +33,10 @@ func (s *GatewayService) ApplyBedrockCCCompat(c *gin.Context, body []byte, model
 	body = sanitizeBedrockToolUseIDs(body)
 	body = sanitizeBedrockCCBetaTokens(body, model)
 	// 过滤 HTTP header 中的 anthropic-beta，只保留 Bedrock 支持的 token
-	if betaHeader := c.GetHeader("anthropic-beta"); betaHeader != "" {
+	if betaHeader := anthropicBetaHeader(c.Request.Header); betaHeader != "" {
+		deleteHeaderAllForms(c.Request.Header, "anthropic-beta")
 		if filtered := ResolveBedrockBetaTokens(betaHeader, body, model); len(filtered) > 0 {
 			c.Request.Header.Set("anthropic-beta", strings.Join(filtered, ", "))
-		} else {
-			c.Request.Header.Del("anthropic-beta")
 		}
 	}
 	return body
@@ -78,8 +77,15 @@ func (s *GatewayService) forwardBedrock(
 
 	betaHeader := ""
 	if c != nil && c.Request != nil {
-		betaHeader = c.GetHeader("anthropic-beta")
+		betaHeader = anthropicBetaHeader(c.Request.Header)
 	}
+
+	policy := s.requestBetaPolicy(ctx, c, account, mappedModel, body)
+	body, err := policy.applyBody(body)
+	if err != nil {
+		return nil, err
+	}
+	ctx = withBetaPolicy(ctx, account, policy)
 
 	// 准备请求体（注入 anthropic_version/anthropic_beta，移除 Bedrock 不支持的字段，清理 cache_control）
 	betaTokens, err := s.resolveBedrockBetaTokensForRequest(ctx, account, betaHeader, body, mappedModel)

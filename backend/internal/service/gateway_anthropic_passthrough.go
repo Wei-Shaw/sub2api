@@ -120,6 +120,11 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			})
 		}
 
+		if rejection := s.anthropicFastResponseRejection(ctx, c, account, resp); rejection != nil {
+			_ = resp.Body.Close()
+			return nil, rejection
+		}
+
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
@@ -299,6 +304,11 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, []byte, error) {
+	policy := s.requestBetaPolicy(ctx, c, account, gjson.GetBytes(body, "model").String(), body)
+	body, err := policy.applyBody(body)
+	if err != nil {
+		return nil, nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	targetURL := claudeAPIURL
 	baseURL := getAnthropicGatewayBaseURL(account)
@@ -315,12 +325,13 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	// header 忘记带 beta token”的客户端 bug 在透传场景下让上游 400。
 	clientBeta := ""
 	if c != nil && c.Request != nil {
-		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+		clientBeta = anthropicBetaHeader(c.Request.Header)
 	}
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
 	}
+	clientBeta = stripBetaTokensWithSet(clientBeta, policy.filterSet)
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
@@ -365,6 +376,11 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
+	// Passthrough keeps its original beta behavior except explicit policy filters.
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if clientBeta != "" {
+		setHeaderRaw(req.Header, "anthropic-beta", clientBeta)
+	}
 	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 
 	return req, body, nil

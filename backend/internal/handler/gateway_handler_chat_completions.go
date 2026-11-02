@@ -360,6 +360,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		if err != nil {
+			var betaBlockedErr *service.BetaBlockedError
+			if errors.As(err, &betaBlockedErr) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", betaBlockedErr.Message)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
@@ -413,6 +419,14 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+	if lastErr.IsAnthropicFastCreditsRequired() {
+		if streamStarted {
+			h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", lastErr.ClientMessage, true)
+		} else {
+			h.chatCompletionsErrorResponse(c, http.StatusTooManyRequests, "rate_limit_error", lastErr.ClientMessage)
+		}
+		return
+	}
 	if streamStarted {
 		return
 	}

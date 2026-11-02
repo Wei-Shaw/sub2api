@@ -1113,7 +1113,7 @@ export default {
       },
       betaPolicy: {
         title: 'Beta 策略',
-        description: '配置转发 Anthropic API 请求时如何处理 Beta 特性。仅适用于 /v1/messages 接口。',
+        description: '配置转发 Anthropic API 请求时如何处理 Beta 特性。适用于 Anthropic /v1/messages 和 /v1/messages/count_tokens 路径。',
         action: '处理方式',
         actionPass: '透传（不处理）',
         actionFilter: '过滤（移除）',

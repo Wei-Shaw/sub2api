@@ -166,6 +166,9 @@ func (s *GatewayService) ForwardAsResponses(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
+		if rejection := s.anthropicFastRejection(ctx, c, account, resp.StatusCode, resp.Header, respBody); rejection != nil {
+			return nil, rejection
+		}
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),

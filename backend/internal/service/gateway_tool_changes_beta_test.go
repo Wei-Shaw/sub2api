@@ -37,14 +37,12 @@ func TestBuildUpstreamRequestToolChangeBetas(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 			c.Request.Header.Set("anthropic-beta", tc.header+",unrelated-beta")
-			if tc.drop != nil {
-				c.Set(betaPolicyFilterSetKey, tc.drop)
-			}
 			account := &Account{ID: 701, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
 				Credentials: map[string]any{"access_token": "test-token"}, Status: StatusActive, Schedulable: true}
 			body := []byte(`{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":[{"type":"tool_addition","tool":{"type":"tool_reference","tool_name":"lookup"}},{"type":"text","text":"Use lookup"}]}]}`)
 			svc := &GatewayService{cfg: &config.Config{}}
-			req, _, err := svc.buildUpstreamRequest(context.Background(), c, account, body,
+			ctx := withBetaPolicy(context.Background(), account, betaPolicyResult{filterSet: tc.drop})
+			req, _, err := svc.buildUpstreamRequest(ctx, c, account, body,
 				"test-token", "oauth", "claude-opus-5-5", false, true)
 			require.NoError(t, err)
 			out := readUpstreamBodyForTest(t, req)

@@ -1955,6 +1955,9 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 
 	// 使用默认的错误映射
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
+	if failoverErr.IsAnthropicFastCreditsRequired() {
+		errMsg = failoverErr.ClientMessage
+	}
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
 
@@ -2241,7 +2244,12 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		var betaBlocked *service.BetaBlockedError
+		if errors.As(err, &betaBlocked) {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+		} else {
+			reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		}
 		// 错误响应已在 ForwardCountTokens 中处理
 		// 上游未服务该会话，立即释放选号时注册的会话槽（客户端可能已断开，用独立 ctx）
 		h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionHash)

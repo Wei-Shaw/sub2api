@@ -110,9 +110,21 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 	}
-	// Anthropic Fast is requested with speed=fast rather than OpenAI's
-	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
-	// partial-stream results all use the same billing and usage-log path.
+	// Bind policy to this attempt before routing to passthrough or native builders.
+	// Keep the client-requested model for native whitelist semantics. Vertex also
+	// checks client-model blocks here, but retains its independent provider-model
+	// block/filter decision in the builder. Bedrock evaluates its provider model.
+	if account != nil && account.Platform == PlatformAnthropic && !account.IsBedrock() {
+		policy := s.requestBetaPolicy(ctx, c, account, parsed.Model, parsed.Body.Bytes())
+		if policy.blockErr != nil {
+			return nil, policy.blockErr
+		}
+		if account.Type != AccountTypeServiceAccount {
+			ctx = withBetaPolicy(ctx, account, policy)
+		}
+	}
+	// The accepted wire body, including policy filtering, owns the billing tier.
+	// ReplaceBody refreshes Speed for native and passthrough success/partial usage.
 	defer func() {
 		if result != nil {
 			if tier := anthropicSpeedServiceTier(account, parsed.Speed, anthropicSpeedModel(parsed, result)); tier != nil {
@@ -149,20 +161,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	if account != nil && account.IsBedrock() {
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
-	}
-
-	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
-	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
-	if account.Platform == PlatformAnthropic && c != nil {
-		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, parsed.Model)
-		if policy.blockErr != nil {
-			return nil, policy.blockErr
-		}
-		filterSet := policy.filterSet
-		if filterSet == nil {
-			filterSet = map[string]struct{}{}
-		}
-		c.Set(betaPolicyFilterSetKey, filterSet)
 	}
 
 	body := parsed.Body.Bytes()
@@ -407,6 +405,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 			})
+		}
+
+		if rejection := s.anthropicFastResponseRejection(ctx, c, account, resp); rejection != nil {
+			_ = resp.Body.Close()
+			return nil, rejection
 		}
 
 		// 优先检测thinking block签名错误（400）并重试一次
@@ -677,6 +680,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, errors.New("upstream request failed: empty response")
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// Rectification retries can also receive a Fast entitlement rejection.
+	if rejection := s.anthropicFastResponseRejection(ctx, c, account, resp); rejection != nil {
+		return nil, rejection
+	}
 
 	// 处理重试耗尽的情况
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
@@ -1022,6 +1030,9 @@ func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, 
 // 处理并触发账号侧副作用，其余按 403；同时登记 stream_error 运维记录。
 func (s *GatewayService) sseStreamErrorEventFailover(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, rawData, model string, outputStarted bool) *UpstreamFailoverError {
 	body := []byte(rawData)
+	if rejection := s.anthropicFastRejection(ctx, c, account, http.StatusTooManyRequests, resp.Header, body); rejection != nil {
+		return rejection
+	}
 	semanticStatus := http.StatusForbidden
 	if !outputStarted && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
 		semanticStatus = 529
