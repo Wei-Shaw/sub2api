@@ -1893,9 +1893,13 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 
 func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, request openAIModelsRequest, fetch func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error)) <-chan singleflight.Result {
 	return s.openAIModelsCache.refresh.DoChan(cacheKey, func() (any, error) {
+		cached, state := s.openAIModelsCache.get(cacheKey, time.Now())
+		// 调用方读缓存之后、进入 singleflight 之前，上一轮刷新可能已写入新鲜结果：直接复用，不重复请求上游。
+		if state == openAIModelsCacheFresh {
+			return cached, nil
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), codexModelsManifestRequestTimeout)
 		defer cancel()
-		cached, _ := s.openAIModelsCache.get(cacheKey, time.Now())
 		ifNoneMatch := ""
 		if cached != nil {
 			ifNoneMatch = cached.upstreamETag
