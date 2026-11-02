@@ -173,6 +173,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(ccPricingCtx)
+	// 与 WS 同规则：显式会话标识才有续聊资格，内容回退哈希是共享绑定，不得插到续聊等待者前面。
+	c.Request = c.Request.WithContext(service.WithOpenAIAdmissionOptions(
+		c.Request.Context(),
+		service.OpenAIAdmissionOptions{ContinuationEligible: promptCacheKey != ""},
+	))
 
 	for {
 		if failoverClientGone(c) {

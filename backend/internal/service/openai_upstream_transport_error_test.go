@@ -11,6 +11,12 @@ import (
 	"testing"
 )
 
+type openAITransportTimeoutErr struct{}
+
+func (openAITransportTimeoutErr) Error() string   { return "i/o timeout" }
+func (openAITransportTimeoutErr) Timeout() bool   { return true }
+func (openAITransportTimeoutErr) Temporary() bool { return true }
+
 // TestClassifyUpstreamTransportError pins which transport-level upstream failures
 // are "persistent" (retrying the same proxy/account is pointless — evict + alert)
 // versus "transient" (a blip — fail over to a healthy account but do not evict).

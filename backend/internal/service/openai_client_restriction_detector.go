@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -13,6 +14,10 @@ import (
 // 仅当拒绝原因不是「可解析版本但越界」（VersionTooLow/VersionTooHigh）时使用：
 // 未命中官方/黑名单/缺指纹/版本无法识别都沿用这句（避免向伪装客户端泄露门控细节）。
 const CodexOfficialClientsOnlyMessage = "This account only allows Codex official clients"
+
+// ErrCodexClientRestricted 是 codex_cli_only 拒绝时返回的错误，HTTP 与 WS 入口共用；
+// WS 入口作为关闭错误的原因携带，供 handler 识别。
+var ErrCodexClientRestricted = errors.New("codex_cli_only restriction: only codex official clients are allowed")
 
 const (
 	// CodexClientRestrictionReasonDisabled 表示账号未开启 codex_cli_only。

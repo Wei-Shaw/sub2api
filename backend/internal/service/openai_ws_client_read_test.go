@@ -22,6 +22,7 @@ func TestReadOpenAIWSClientMessage_ControlCloseFrames(t *testing.T) {
 		cancelCause   error
 		wantStatus    coderws.StatusCode
 		wantReason    string
+		readAhead     bool
 	}{
 		{
 			name:          "inter-turn idle sends normal close",
@@ -45,6 +46,17 @@ func TestReadOpenAIWSClientMessage_ControlCloseFrames(t *testing.T) {
 			wantStatus:  coderws.StatusTryAgainLater,
 			wantReason:  "websocket ingress capacity lease lost; please reconnect",
 		},
+		{
+			name: "read ahead idle close", readAhead: true,
+			timeout: 25 * time.Millisecond, timeoutStatus: coderws.StatusNormalClosure,
+			timeoutReason: "websocket idle timeout", wantStatus: coderws.StatusNormalClosure,
+			wantReason: "websocket idle timeout",
+		},
+		{
+			name: "read ahead lease loss", readAhead: true,
+			cancelCause: ErrOpenAIWSIngressLeaseLost, wantStatus: coderws.StatusTryAgainLater,
+			wantReason: "websocket ingress capacity lease lost; please reconnect",
+		},
 	}
 
 	for _, tt := range tests {
@@ -60,9 +72,15 @@ func TestReadOpenAIWSClientMessage_ControlCloseFrames(t *testing.T) {
 					return
 				}
 				defer func() { _ = conn.CloseNow() }()
+				readCtx := controlCtx
+				if tt.readAhead {
+					var cleanup func()
+					readCtx, cleanup = BeginOpenAIWSClientReadAhead(readCtx, conn)
+					defer cleanup()
+				}
 				close(readStarted)
 				_, _, err = ReadOpenAIWSClientMessage(
-					controlCtx,
+					readCtx,
 					conn,
 					tt.timeout,
 					tt.timeoutStatus,
@@ -100,6 +118,69 @@ func TestReadOpenAIWSClientMessage_ControlCloseFrames(t *testing.T) {
 				t.Fatal("server read goroutine did not exit after close handshake")
 			}
 		})
+	}
+}
+
+func TestOpenAIWSClientReadAhead_PreservesFramesAndCanRestart(t *testing.T) {
+	buffered := make(chan struct{})
+	readNext := make(chan struct{})
+	watchingAgain := make(chan struct{})
+	finished := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(finished)
+		conn, err := coderws.Accept(w, r, nil)
+		require.NoError(t, err)
+		defer func() { _ = conn.CloseNow() }()
+		ctx, cleanup := BeginOpenAIWSClientReadAhead(r.Context(), conn)
+		defer cleanup()
+		pending, ok := ctx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead)
+		require.True(t, ok)
+		reusedCtx, reusedCleanup := BeginOpenAIWSClientReadAhead(ctx, conn)
+		defer reusedCleanup()
+		require.Same(t, ctx, reusedCtx)
+		<-pending.done
+		close(buffered)
+		<-readNext
+		for _, want := range []string{"first", "second"} {
+			messageType, payload, readErr := ReadOpenAIWSClientMessage(ctx, conn, time.Second, coderws.StatusPolicyViolation, "test timeout")
+			require.NoError(t, readErr)
+			require.Equal(t, coderws.MessageText, messageType)
+			require.Equal(t, want, string(payload))
+		}
+		nextCtx, nextCleanup := BeginOpenAIWSClientReadAhead(ctx, conn)
+		defer nextCleanup()
+		require.NotSame(t, pending, nextCtx.Value(openAIWSClientReadAheadKey{}))
+		close(watchingAgain)
+		select {
+		case <-nextCtx.Done():
+		case <-time.After(time.Second):
+			t.Error("client disconnect did not cancel handshake recovery")
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	require.NoError(t, err)
+	defer func() { _ = conn.CloseNow() }()
+	require.NoError(t, conn.Write(ctx, coderws.MessageText, []byte("first")))
+	select {
+	case <-buffered:
+	case <-ctx.Done():
+		t.Fatal("early frame was not buffered")
+	}
+	close(readNext)
+	require.NoError(t, conn.Write(ctx, coderws.MessageText, []byte("second")))
+	select {
+	case <-watchingAgain:
+	case <-ctx.Done():
+		t.Fatal("reader did not hand over both frames")
+	}
+	_ = conn.CloseNow()
+	select {
+	case <-finished:
+	case <-ctx.Done():
+		t.Fatal("read ahead did not exit after disconnect")
 	}
 }
 

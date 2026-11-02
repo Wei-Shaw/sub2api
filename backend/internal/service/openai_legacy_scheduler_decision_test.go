@@ -263,3 +263,121 @@ func TestLegacySchedulerDecision_PreviousResponseRouting(t *testing.T) {
 		require.True(t, decision.StickyPreviousHit)
 	})
 }
+
+func TestLegacySchedulerDecision_StickyPlanUsesContinuationCounter(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	ctx := context.Background()
+	groupID := int64(38100)
+	svc := newLegacySchedulerDecisionTestService(newLegacySchedulerDecisionTestAccounts(groupID, true), true, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{38102: false, 38101: true},
+		waitCounts:     map[int64]int{38102: 999},
+		contWaitCounts: map[int64]int{38102: 0},
+	})
+	sessionHash := "legacy-sticky-cont-counter"
+	require.NoError(t, svc.setStickySessionAccountID(ctx, &groupID, sessionHash, 38102, time.Hour))
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", sessionHash, "gpt-5.1", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired, "旧键上 999 个等待者不再把续聊挤成溢出")
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, int64(38102), selection.WaitPlan.AccountID)
+	require.Equal(t, AccountWaitClassContinuation, selection.WaitPlan.Class)
+	require.True(t, decision.StickySessionHit)
+}
+
+func TestLegacySchedulerDecision_LoadLayerSkipsContinuationWaiters(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	ctx := context.Background()
+	groupID := int64(38100)
+	svc := newLegacySchedulerDecisionTestService(newLegacySchedulerDecisionTestAccounts(groupID, true), true, schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			38101: {AccountID: 38101, LoadRate: 0, ContinuationWaiting: 1},
+			38102: {AccountID: 38102, LoadRate: 0},
+		},
+	})
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", "", "gpt-5.1", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	releaseLegacySchedulerDecisionSelection(selection)
+	require.Equal(t, int64(38102), selection.Account.ID, "优先级更高但有续聊等待者的账号对新会话不可见")
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+}
+
+func TestLegacySchedulerDecision_IneligibleSessionYieldsOnStickyAccount(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	groupID := int64(38100)
+	var acquired []int64
+	svc := newLegacySchedulerDecisionTestService(newLegacySchedulerDecisionTestAccounts(groupID, true), true, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{38102: true, 38101: true},
+		contWaitCounts: map[int64]int{38102: 1},
+		acquiredIDs:    &acquired,
+	})
+	ctx := WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: false})
+	sessionHash := "legacy-sticky-fallback-hash"
+	require.NoError(t, svc.setStickySessionAccountID(ctx, &groupID, sessionHash, 38102, time.Hour))
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", sessionHash, "gpt-5.1", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotContains(t, acquired, int64(38102))
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+	require.Equal(t, svc.cfg.Gateway.Scheduling.FallbackWaitTimeout, selection.WaitPlan.Timeout, "不合格请求即使命中绑定也按新会话的超时与名额")
+	require.Equal(t, svc.cfg.Gateway.Scheduling.FallbackMaxWaiting, selection.WaitPlan.MaxWaiting)
+}
+
+func TestLegacySchedulerDecision_PriorityLRUNewSessionYieldsToContinuationWaiters(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	ctx := context.Background()
+	groupID := int64(38100)
+	var acquired []int64
+	svc := newLegacySchedulerDecisionTestService(newLegacySchedulerDecisionTestAccounts(groupID, true), false, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{38101: true, 38102: true},
+		contWaitCounts: map[int64]int{38101: 1},
+		acquiredIDs:    &acquired,
+	})
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", "", "gpt-5.1", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotContains(t, acquired, int64(38101), "关闭负载批量时未命中绑定的新会话也不得越过续聊等待者抢槽")
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+}
+
+func TestLegacySchedulerDecision_StickySpilloverReportsPreservedBinding(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	ctx := context.Background()
+	groupID := int64(38100)
+	svc := newLegacySchedulerDecisionTestService(newLegacySchedulerDecisionTestAccounts(groupID, true), true, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{38102: false, 38101: true},
+		contWaitCounts: map[int64]int{38102: 3},
+	})
+	sessionHash := "legacy-sticky-spillover"
+	require.NoError(t, svc.setStickySessionAccountID(ctx, &groupID, sessionHash, 38102, time.Hour))
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", sessionHash, "gpt-5.1", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	releaseLegacySchedulerDecisionSelection(selection)
+	require.Equal(t, int64(38101), selection.Account.ID, "续聊队列满时溢出到负载层")
+	require.True(t, decision.StickyBindingPreserved, "溢出保留绑定，准入后不得改写")
+}

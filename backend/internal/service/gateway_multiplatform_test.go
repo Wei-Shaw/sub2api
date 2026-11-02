@@ -2120,6 +2120,10 @@ func (m *mockConcurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID
 	return nil
 }
 
+func (m *mockConcurrencyCache) RefreshAccountSlot(ctx context.Context, accountID int64, requestID string) (bool, error) {
+	return true, nil
+}
+
 func (m *mockConcurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
 	return 0, nil
 }
@@ -2146,6 +2150,18 @@ func (m *mockConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accou
 			return count, nil
 		}
 	}
+	return 0, nil
+}
+
+func (m *mockConcurrencyCache) IncrementAccountContinuationWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+	return true, nil
+}
+
+func (m *mockConcurrencyCache) DecrementAccountContinuationWaitCount(ctx context.Context, accountID int64) error {
+	return nil
+}
+
+func (m *mockConcurrencyCache) GetAccountContinuationWaitingCount(ctx context.Context, accountID int64) (int, error) {
 	return 0, nil
 }
 

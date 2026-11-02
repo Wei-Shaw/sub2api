@@ -120,6 +120,9 @@ func (f *fakeConcurrencyCache) AcquireAccountSlot(context.Context, int64, int, s
 	return true, nil
 }
 func (f *fakeConcurrencyCache) ReleaseAccountSlot(context.Context, int64, string) error { return nil }
+func (f *fakeConcurrencyCache) RefreshAccountSlot(context.Context, int64, string) (bool, error) {
+	return true, nil
+}
 func (f *fakeConcurrencyCache) GetAccountConcurrency(context.Context, int64) (int, error) {
 	return 0, nil
 }
@@ -128,6 +131,15 @@ func (f *fakeConcurrencyCache) IncrementAccountWaitCount(context.Context, int64,
 }
 func (f *fakeConcurrencyCache) DecrementAccountWaitCount(context.Context, int64) error { return nil }
 func (f *fakeConcurrencyCache) GetAccountWaitingCount(context.Context, int64) (int, error) {
+	return 0, nil
+}
+func (f *fakeConcurrencyCache) IncrementAccountContinuationWaitCount(context.Context, int64, int) (bool, error) {
+	return true, nil
+}
+func (f *fakeConcurrencyCache) DecrementAccountContinuationWaitCount(context.Context, int64) error {
+	return nil
+}
+func (f *fakeConcurrencyCache) GetAccountContinuationWaitingCount(context.Context, int64) (int, error) {
 	return 0, nil
 }
 func (f *fakeConcurrencyCache) AcquireUserSlot(context.Context, int64, int, string) (bool, error) {

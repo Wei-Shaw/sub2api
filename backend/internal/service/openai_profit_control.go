@@ -340,30 +340,77 @@ func (s *OpenAIGatewayService) ProfitControlVetoLatest(ctx context.Context, sele
 // bindOpenAIStickySessionDuringSelection preserves the official eager binding
 // behavior for requests without a profit gate. Profit-controlled requests bind
 // only after the terminal post-slot check, so an account rejected after a rate
-// refresh cannot become the new sticky target.
+// refresh cannot become the new sticky target. Callers that bind after admission
+// themselves (DeferStickyBinding) skip the eager write as well.
 func (s *OpenAIGatewayService) bindOpenAIStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if gatewayProfitControlGateActive(ctx) || preserveOpenAIGuardianParentBinding(ctx, sessionHash) {
+	if gatewayProfitControlGateActive(ctx) || preserveOpenAIGuardianParentBinding(ctx, sessionHash) || openAIAdmissionOptionsFromContext(ctx).DeferStickyBinding {
 		return nil
 	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 
+// StickyBindPolicy 决定准入后如何处理已有的异账号绑定。
+type StickyBindPolicy int
+
+const (
+	// StickyBindPolicyLegacy 沿用旧行为：无利润门时覆盖，有门时不覆盖异账号绑定。HTTP 路径全部用它。
+	StickyBindPolicyLegacy StickyBindPolicy = iota
+	// StickyBindPolicyPreserve 已有异账号绑定一律不改写，不看利润门。WS 的利润否决重选、队满溢出、健康逃逸用它，
+	// 溢出与逃逸只影响本连接，不迁移会话。
+	StickyBindPolicyPreserve
+	// StickyBindPolicyMigrate 一律覆盖，不看利润门。WS failover 换号且新账号过终检后用它，
+	// 否则配了利润控制的分组里连接换到了新账号而绑定留在故障账号。
+	StickyBindPolicyMigrate
+)
+
+func (p StickyBindPolicy) String() string {
+	switch p {
+	case StickyBindPolicyLegacy:
+		return "legacy"
+	case StickyBindPolicyPreserve:
+		return "preserve"
+	case StickyBindPolicyMigrate:
+		return "migrate"
+	default:
+		return fmt.Sprintf("%d", int(p))
+	}
+}
+
 // BindStickySessionAfterProfitAdmission records the terminally admitted
-// account. Without a profit gate it preserves the pre-existing eager binding
-// behavior at the handler bind points. With a gate it never overwrites a
-// different binding that already exists, so a temporarily ineligible account
-// remains sticky and becomes eligible again automatically after its rate
-// recovers.
+// account with the legacy policy. See BindStickySessionAfterAdmissionWithPolicy.
 func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	return s.BindStickySessionAfterAdmissionWithPolicy(ctx, groupID, sessionHash, accountID, StickyBindPolicyLegacy)
+}
+
+// BindStickySessionAfterAdmissionWithPolicy records the terminally admitted
+// account under the given policy. Without a profit gate under the Legacy
+// policy it preserves the pre-existing eager binding behavior at the handler
+// bind points. With a gate under Legacy it never overwrites a different
+// binding that already exists, so a temporarily ineligible account remains
+// sticky and becomes eligible again automatically after its rate recovers.
+// Preserve never overwrites a different existing binding regardless of the
+// gate; Migrate always overwrites regardless of the gate. All three respect
+// guardian parent-thread binding preservation.
+func (s *OpenAIGatewayService) BindStickySessionAfterAdmissionWithPolicy(ctx context.Context, groupID *int64, sessionHash string, accountID int64, policy StickyBindPolicy) error {
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}
 	if preserveOpenAIGuardianParentBinding(ctx, sessionHash) {
 		return nil
 	}
+	switch policy {
+	case StickyBindPolicyMigrate:
+		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+	case StickyBindPolicyPreserve:
+		return s.bindStickySessionUnlessBoundElsewhere(ctx, groupID, sessionHash, accountID)
+	}
 	if !gatewayProfitControlGateActive(ctx) {
 		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 	}
+	return s.bindStickySessionUnlessBoundElsewhere(ctx, groupID, sessionHash, accountID)
+}
+
+func (s *OpenAIGatewayService) bindStickySessionUnlessBoundElsewhere(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	existingAccountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
 	if err != nil && !errors.Is(err, ErrStickySessionNotFound) {
 		slog.Warn("profit_control_sticky_binding_read_failed", "group_id", derefGroupID(groupID), "account_id", accountID, "error", err)

@@ -91,19 +91,27 @@ type OpenAIAccountScheduleRequest struct {
 	// RequireCompact is only for legacy /responses/compact capability filtering
 	// and compact_model_mapping; native remote compaction v2 leaves it false.
 	RequireCompact bool
-	ExcludedIDs    map[int64]struct{}
+	// ContinuationEligible 决定粘性与 previous_response 准入类别，由账号连续准入规则仲裁。
+	// 直接构造请求时必须显式置位，零值按不合格处理。
+	ContinuationEligible bool
+	// StickyFullWaits 为真时粘性账号满槽不逃逸，见 selectBySessionHash。
+	StickyFullWaits bool
+	ExcludedIDs     map[int64]struct{}
 }
 
 type OpenAIAccountScheduleDecision struct {
-	Layer               string
-	StickyPreviousHit   bool
-	StickySessionHit    bool
-	CandidateCount      int
-	TopK                int
-	LatencyMs           int64
-	LoadSkew            float64
-	SelectedAccountID   int64
-	SelectedAccountType string
+	Layer             string
+	StickyPreviousHit bool
+	StickySessionHit  bool
+	// StickyBindingPreserved 为真表示本次选号保留了已有绑定（健康逃逸、队满溢出、
+	// guardian 父线程回退），准入后不得把绑定改写到选中的账号上。
+	StickyBindingPreserved bool
+	CandidateCount         int
+	TopK                   int
+	LatencyMs              int64
+	LoadSkew               float64
+	SelectedAccountID      int64
+	SelectedAccountType    string
 }
 
 type OpenAIAccountSchedulerMetricsSnapshot struct {
@@ -446,6 +454,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		if selection != nil && selection.Account != nil {
 			decision.Layer = openAIAccountScheduleLayerGuardianParent
 			decision.StickySessionHit = true
+			decision.StickyBindingPreserved = true
 			decision.SelectedAccountID = selection.Account.ID
 			decision.SelectedAccountType = selection.Account.Type
 			return selection, decision, nil
@@ -466,6 +475,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if escapedSticky {
 			req.PreserveStickyBinding = true
+			decision.StickyBindingPreserved = true
 		}
 	}
 
@@ -571,7 +581,13 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		)
 		return nil, true, nil
 	}
-	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	// N=0 保留续聊优先的前置判断；N>0 交给原子准入决定当前轮到哪类请求。
+	yieldToContinuation := openAITieredAdmissionApplies(account.Platform) && s.service.OpenAIContinuationBurstLimit() == 0 && !req.ContinuationEligible && s.service.hasContinuationWaiters(ctx, accountID)
+	var result *AcquireResult
+	var acquireErr error
+	if !yieldToContinuation {
+		result, acquireErr = s.service.tryAcquireAccountSlotForAdmission(ctx, account, req.ContinuationEligible)
+	}
 	if acquireErr != nil && req.DisableStickyEscape {
 		return nil, false, acquireErr
 	}
@@ -583,13 +599,32 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
+			ReuseFunc:   result.ReuseFunc,
 		}), false, nil
 	}
+	stickyFull := yieldToContinuation || (acquireErr == nil && result != nil && !result.Acquired)
 
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
+	if s.service.concurrencyService != nil && stickyFull && req.StickyFullWaits && openAITieredAdmissionApplies(account.Platform) {
+		// WS 续聊：满槽不逃逸，排在原账号保缓存；达到粘性分流阈值或队列容量则保留绑定溢出到负载层，
+		// 与非高级路径的 stickySpillover 一致，避免 handler 入队失败直接 1013。
+		// 分流判断与入队容量独立；不合格请求沿用旧键与兜底参数。
+		// 任务属主锁定（DisableStickyEscape）不得溢出，返回原账号计划，由 handler 检查续聊容量。
+		if !s.service.stickyWaitQueueHasRoom(ctx, account, req.ContinuationEligible) && !req.DisableStickyEscape {
+			slog.Info("sticky_full_wait_queue_full",
+				"account_id", accountID,
+				"continuation_eligible", req.ContinuationEligible,
+			)
+			return nil, true, nil
+		}
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+			Account:  account,
+			WaitPlan: stickyWaitPlanFor(cfg, account, req.ContinuationEligible),
+		}), false, nil
+	}
 	if s.service.concurrencyService != nil {
-		if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired {
+		if escapeCfg.enabled && !req.DisableStickyEscape && stickyFull {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
 			slog.Info("sticky_escape_triggered",
 				"account_id", accountID,
@@ -600,13 +635,8 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			return nil, true, nil
 		}
 		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-			Account: account,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      accountID,
-				MaxConcurrency: account.Concurrency,
-				Timeout:        cfg.StickySessionWaitTimeout,
-				MaxWaiting:     cfg.StickySessionMaxWaiting,
-			},
+			Account:  account,
+			WaitPlan: stickyWaitPlanFor(cfg, account, req.ContinuationEligible),
 		}), false, nil
 	}
 	return nil, false, nil
@@ -1185,12 +1215,13 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 		if candidate.account == nil {
 			continue
 		}
-		if candidate.loadKnown && candidate.account.Concurrency > 0 &&
-			candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency {
+		if candidate.loadKnown && candidate.loadInfo != nil &&
+			((candidate.account.Concurrency > 0 && candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency) ||
+				(openAITieredAdmissionApplies(candidate.account.Platform) && s.service.OpenAIContinuationBurstLimit() == 0 && candidate.loadInfo.ContinuationWaiting > 0)) {
 			continue
 		}
 
-		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account.ID, candidate.account.Concurrency, budget)
+		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account, budget)
 		if !attempted {
 			break
 		}
@@ -1223,7 +1254,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 
 		if fresh.Concurrency != candidate.account.Concurrency {
 			release(result)
-			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh.ID, fresh.Concurrency, budget)
+			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh, budget)
 			if !attempted {
 				continue
 			}
@@ -1241,6 +1272,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			Account:     fresh,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
+			ReuseFunc:   result.ReuseFunc,
 		}), compactBlocked, nil
 	}
 	return nil, compactBlocked, nil
@@ -1248,14 +1280,13 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 
 func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAIAccountSlot(
 	ctx context.Context,
-	accountID int64,
-	maxConcurrency int,
+	account *Account,
 	budget *openAISelectionProbeBudget,
 ) (*AcquireResult, bool, error) {
-	if s.service.concurrencyService != nil && maxConcurrency > 0 && !budget.recordAcquire(accountID) {
+	if s.service.concurrencyService != nil && account.Concurrency > 0 && !budget.recordAcquire(account.ID) {
 		return nil, false, nil
 	}
-	result, err := s.service.tryAcquireAccountSlot(ctx, accountID, maxConcurrency)
+	result, err := s.service.tryAcquireAccountSlot(ctx, account)
 	return result, true, err
 }
 
@@ -1266,6 +1297,8 @@ func (s *defaultOpenAIAccountScheduler) consumeOpenAISelectionDBRecheck(budget *
 	return budget.recordRecheck()
 }
 
+// tryFallbackToWeightedSticky 是 sticky-weighted 子模式的回退：它不经过 selectBySessionHash，
+// 本轮不应用 StickyFullWaits（满槽仍按负载层逃逸），只按请求的续聊资格给等待计划。
 func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -1320,7 +1353,13 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 			isGrokModelQuotaBlocked(account.ID, upstreamModel, now) {
 			continue
 		}
-		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		// 与 selectBySessionHash 使用相同的准入类别与连续次数限额。
+		yieldToContinuation := openAITieredAdmissionApplies(account.Platform) && s.service.OpenAIContinuationBurstLimit() == 0 && !req.ContinuationEligible && s.service.hasContinuationWaiters(ctx, account.ID)
+		var result *AcquireResult
+		var acquireErr error
+		if !yieldToContinuation {
+			result, acquireErr = s.service.tryAcquireAccountSlotForAdmission(ctx, account, req.ContinuationEligible)
+		}
 		if acquireErr != nil {
 			return nil, acquireErr
 		}
@@ -1332,18 +1371,13 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 				Account:     account,
 				Acquired:    true,
 				ReleaseFunc: result.ReleaseFunc,
+				ReuseFunc:   result.ReuseFunc,
 			}), nil
 		}
 		if s.service.concurrencyService != nil {
-			cfg := s.service.schedulingConfig()
 			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-				Account: account,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.StickySessionWaitTimeout,
-					MaxWaiting:     cfg.StickySessionMaxWaiting,
-				},
+				Account:  account,
+				WaitPlan: stickyWaitPlanFor(s.service.schedulingConfig(), account, req.ContinuationEligible),
 			}), nil
 		}
 	}
@@ -1729,6 +1763,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					MaxConcurrency: fresh.Concurrency,
 					Timeout:        cfg.FallbackWaitTimeout,
 					MaxWaiting:     cfg.FallbackMaxWaiting,
+					Class:          openAIFallbackWaitClass(fresh.Platform),
 				},
 			}), candidateCount, topK, loadSkew, nil
 		}
@@ -2235,6 +2270,7 @@ func applyLegacySelectionDecision(decision *OpenAIAccountScheduleDecision, selec
 	}
 	decision.SelectedAccountID = selection.Account.ID
 	decision.SelectedAccountType = selection.Account.Type
+	decision.StickyBindingPreserved = selection.stickyBindingPreserved
 	if selection.stickySessionHit {
 		decision.Layer = openAIAccountScheduleLayerSessionSticky
 		decision.StickySessionHit = true
@@ -2351,6 +2387,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				SessionHash:             sessionHash,
 				StickyAccountID:         guardianParentAccountID,
 				PreserveStickyBinding:   true,
+				ContinuationEligible:    true,
 				RequestedModel:          requestedModel,
 				RequiredTransport:       requiredTransport,
 				RequiredCapability:      requiredCapability,
@@ -2365,6 +2402,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 			if selection != nil && selection.Account != nil {
 				decision.Layer = openAIAccountScheduleLayerGuardianParent
 				decision.StickySessionHit = true
+				decision.StickyBindingPreserved = true
 				decision.SelectedAccountID = selection.Account.ID
 				decision.SelectedAccountType = selection.Account.Type
 				return selection, decision, nil
@@ -2448,7 +2486,8 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
-	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+	admission := openAIAdmissionOptionsFromContext(ctx)
+	selection, scheduleDecision, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
 		Platform:                platform,
 		SessionHash:             sessionHash,
@@ -2467,8 +2506,11 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequiredCapability:      requiredCapability,
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
+		ContinuationEligible:    admission.ContinuationEligible,
+		StickyFullWaits:         admission.StickyFullWaits,
 		ExcludedIDs:             excludedIDs,
 	})
+	return markStickyBindingPreserved(selection, scheduleDecision.StickyBindingPreserved), scheduleDecision, err
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

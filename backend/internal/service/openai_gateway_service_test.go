@@ -254,6 +254,7 @@ type stubConcurrencyCache struct {
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
 	waitCounts      map[int64]int
+	contWaitCounts  map[int64]int
 	skipDefaultLoad bool
 }
 
@@ -730,6 +731,15 @@ func TestOpenAIGatewayService_GenerateSessionHash_EmptyBodyStillEmpty(t *testing
 func (c stubConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
 	if c.waitCounts != nil {
 		if count, ok := c.waitCounts[accountID]; ok {
+			return count, nil
+		}
+	}
+	return 0, nil
+}
+
+func (c stubConcurrencyCache) GetAccountContinuationWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if c.contWaitCounts != nil {
+		if count, ok := c.contWaitCounts[accountID]; ok {
 			return count, nil
 		}
 	}
@@ -1269,7 +1279,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyCapacitySpilloverKeepsBindin
 	}
 	concurrencyCache := stubConcurrencyCache{
 		acquireResults: map[int64]bool{1: false, 2: true},
-		waitCounts:     map[int64]int{1: 1},
+		contWaitCounts: map[int64]int{1: 1},
 		loadMap: map[int64]*AccountLoadInfo{
 			1: {AccountID: 1, LoadRate: 100},
 			2: {AccountID: 2, LoadRate: 10},

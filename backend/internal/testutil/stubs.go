@@ -27,6 +27,9 @@ func (c StubConcurrencyCache) AcquireAccountSlot(_ context.Context, _ int64, _ i
 func (c StubConcurrencyCache) ReleaseAccountSlot(_ context.Context, _ int64, _ string) error {
 	return nil
 }
+func (c StubConcurrencyCache) RefreshAccountSlot(_ context.Context, _ int64, _ string) (bool, error) {
+	return true, nil
+}
 func (c StubConcurrencyCache) GetAccountConcurrency(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
@@ -37,6 +40,15 @@ func (c StubConcurrencyCache) DecrementAccountWaitCount(_ context.Context, _ int
 	return nil
 }
 func (c StubConcurrencyCache) GetAccountWaitingCount(_ context.Context, _ int64) (int, error) {
+	return 0, nil
+}
+func (c StubConcurrencyCache) IncrementAccountContinuationWaitCount(_ context.Context, _ int64, _ int) (bool, error) {
+	return true, nil
+}
+func (c StubConcurrencyCache) DecrementAccountContinuationWaitCount(_ context.Context, _ int64) error {
+	return nil
+}
+func (c StubConcurrencyCache) GetAccountContinuationWaitingCount(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
 func (c StubConcurrencyCache) AcquireUserSlot(_ context.Context, _ int64, _ int, _ string) (bool, error) {

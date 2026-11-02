@@ -15,7 +15,7 @@ import (
 )
 
 // openAITransportErrorTempUnschedDuration is how long an account is temporarily
-// unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
+// unscheduled after the first persistent transport failure.
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
 
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
@@ -35,11 +35,12 @@ type upstreamTransportErrorClass struct {
 	Persistent bool
 }
 
-// persistentUpstreamTransportErrorMarkers are substrings (matched case-insensitively
-// against the raw transport error) that indicate a durable proxy/network fault.
-// Matched signals are intentionally specific failure *reasons*, not the operation
-// (e.g. we match "connection refused", not "proxyconnect") so that a transient
-// failure of the same operation (a proxy timeout) is NOT misclassified as durable.
+// persistentUpstreamTransportErrorMarkers are
+// substrings (matched case-insensitively against the raw transport error) that
+// indicate a durable proxy/network fault. Matched signals are intentionally specific
+// failure *reasons*, not the operation (e.g. we match "connection refused", not
+// "proxyconnect") so that a transient failure of the same operation (a proxy
+// timeout) is NOT misclassified as durable.
 var persistentUpstreamTransportErrorMarkers = []string{
 	"authentication failed",         // SOCKS5 RFC1929 / proxy credentials rejected (expired account)
 	"proxy authentication required", // HTTP proxy 407
@@ -103,9 +104,8 @@ func isClientCanceledTransportError(ctx context.Context, err error) bool {
 // (Do/DoWithTLS returned a non-HTTP error: proxy/DNS/TCP/TLS). It:
 //  1. records the failure in Ops error logs (status 0, kind=request_error),
 //     except when the client disconnected (see isClientCanceledTransportError);
-//  2. for durable faults (expired/rejected proxy creds, dead proxy, DNS/routing)
-//     temporarily unschedules the account (DB + in-memory) and logs a stable
-//     warn event that alert rules can key on;
+//  2. immediately unschedules persistent proxy/DNS/routing faults for 10 minutes
+//     (DB + in-memory); transient errors only fail over without a cooldown;
 //  3. returns an error that is *UpstreamFailoverError (so the handler fails over
 //     to a healthy account) for all non-canceled errors, or a plain error for
 //     context.Canceled (client gone — no failover, no eviction).
@@ -161,8 +161,8 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 }
 
 // tempUnscheduleOpenAITransportError marks an account temporarily unschedulable
-// after a durable transport failure, both persistently (DB, survives restart)
-// and in-memory (immediate scheduler effect before the DB/account cache propagates).
+// for 10 minutes after a durable transport failure, both persistently (DB, survives
+// restart) and in-memory (immediate scheduler effect before the DB/account cache propagates).
 //
 // Log semantics:
 //   - "openai.account_temp_unscheduled_transport" — emitted ONLY after a

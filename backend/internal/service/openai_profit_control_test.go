@@ -260,6 +260,13 @@ func TestProfitControlSchedulerFiltersCandidates(t *testing.T) {
 	})
 }
 
+func TestStickyBindPolicyString(t *testing.T) {
+	require.Equal(t, "legacy", StickyBindPolicyLegacy.String())
+	require.Equal(t, "preserve", StickyBindPolicyPreserve.String())
+	require.Equal(t, "migrate", StickyBindPolicyMigrate.String())
+	require.Equal(t, "7", StickyBindPolicy(7).String())
+}
+
 func TestValidateProfitControlConfig(t *testing.T) {
 	require.NoError(t, ValidateProfitControlConfig(PlatformAnthropic, false, 0, 0))
 	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformGrok, PlatformAntigravity} {
