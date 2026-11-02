@@ -508,7 +508,7 @@ func (s *PricingService) customPricingFilesFingerprint() string {
 	for _, path := range []string{s.cfg.Pricing.FallbackFile, s.cfg.Pricing.OverrideFile} {
 		var body []byte
 		if p := strings.TrimSpace(path); p != "" {
-			body, _ = os.ReadFile(p)
+			body, _ = os.ReadFile(p) // #nosec G703 -- Path is pricing.fallback_file or pricing.override_file from trusted administrator startup config/env, never request or remote data.
 		}
 		var size [8]byte
 		binary.BigEndian.PutUint64(size[:], uint64(len(body)))
@@ -643,9 +643,9 @@ func (s *PricingService) downloadPricingData() error {
 
 	// 保存到本地文件
 	pricingFile := s.getPricingFilePath()
-	if err := os.WriteFile(pricingFile, body, 0644); err != nil {
+	if err := os.WriteFile(pricingFile, body, 0644); err != nil { // #nosec G703 -- Path is the fixed model_pricing.json basename under administrator-configured pricing.data_dir; remote data supplies only file contents.
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to save file: %v", err)
-	} else if err := os.Remove(s.fallbackPricingMarkerPath()); err != nil && !os.IsNotExist(err) {
+	} else if err := os.Remove(s.fallbackPricingMarkerPath()); err != nil && !os.IsNotExist(err) { // #nosec G703 -- Path is the fixed model_pricing.json.fallback.sha256 basename under administrator-configured pricing.data_dir, never request or remote data.
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to clear fallback cache marker: %v", err)
 	}
 
@@ -656,7 +656,7 @@ func (s *PricingService) downloadPricingData() error {
 		syncHash = remoteHash
 	}
 	hashFile := s.getHashFilePath()
-	if err := os.WriteFile(hashFile, []byte(syncHash+"\n"), 0644); err != nil {
+	if err := os.WriteFile(hashFile, []byte(syncHash+"\n"), 0644); err != nil { // #nosec G703 -- Fixed hash basename under administrator-configured pricing.data_dir; remote hash supplies contents only.
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to save hash: %v", err)
 	}
 
@@ -982,7 +982,7 @@ func (s *PricingService) loadPricingOverrideEntries() map[string]json.RawMessage
 	if path == "" {
 		return nil
 	}
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G703 -- Path comes only from administrator-configured pricing.override_file, not request data.
 	if err != nil {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Warning: override merge skipped: %v", err)
 		return nil
@@ -1133,7 +1133,7 @@ func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelP
 	if s == nil || s.cfg == nil || strings.TrimSpace(s.cfg.Pricing.FallbackFile) == "" {
 		return data
 	}
-	fallbackBody, err := os.ReadFile(s.cfg.Pricing.FallbackFile)
+	fallbackBody, err := os.ReadFile(s.cfg.Pricing.FallbackFile) // #nosec G703 -- Path comes only from administrator-configured pricing.fallback_file, not request data.
 	if err != nil {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Fallback merge skipped: %v", err)
 		return data
