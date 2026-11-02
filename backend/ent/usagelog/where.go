@@ -280,6 +280,11 @@ func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
 }
 
+// ResponseOutcome applies equality check predicate on the "response_outcome" field. It's identical to ResponseOutcomeEQ.
+func ResponseOutcome(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldResponseOutcome, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
@@ -2458,6 +2463,81 @@ func CacheTTLOverriddenEQ(v bool) predicate.UsageLog {
 // CacheTTLOverriddenNEQ applies the NEQ predicate on the "cache_ttl_overridden" field.
 func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
+}
+
+// ResponseOutcomeEQ applies the EQ predicate on the "response_outcome" field.
+func ResponseOutcomeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeNEQ applies the NEQ predicate on the "response_outcome" field.
+func ResponseOutcomeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeIn applies the In predicate on the "response_outcome" field.
+func ResponseOutcomeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldResponseOutcome, vs...))
+}
+
+// ResponseOutcomeNotIn applies the NotIn predicate on the "response_outcome" field.
+func ResponseOutcomeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldResponseOutcome, vs...))
+}
+
+// ResponseOutcomeGT applies the GT predicate on the "response_outcome" field.
+func ResponseOutcomeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeGTE applies the GTE predicate on the "response_outcome" field.
+func ResponseOutcomeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeLT applies the LT predicate on the "response_outcome" field.
+func ResponseOutcomeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeLTE applies the LTE predicate on the "response_outcome" field.
+func ResponseOutcomeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeContains applies the Contains predicate on the "response_outcome" field.
+func ResponseOutcomeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeHasPrefix applies the HasPrefix predicate on the "response_outcome" field.
+func ResponseOutcomeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeHasSuffix applies the HasSuffix predicate on the "response_outcome" field.
+func ResponseOutcomeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeIsNil applies the IsNil predicate on the "response_outcome" field.
+func ResponseOutcomeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldResponseOutcome))
+}
+
+// ResponseOutcomeNotNil applies the NotNil predicate on the "response_outcome" field.
+func ResponseOutcomeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldResponseOutcome))
+}
+
+// ResponseOutcomeEqualFold applies the EqualFold predicate on the "response_outcome" field.
+func ResponseOutcomeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldResponseOutcome, v))
+}
+
+// ResponseOutcomeContainsFold applies the ContainsFold predicate on the "response_outcome" field.
+func ResponseOutcomeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldResponseOutcome, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

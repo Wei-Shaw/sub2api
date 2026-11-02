@@ -579,7 +579,12 @@ func TestOpenAIResponseFlush_ClientDisconnectStillDrainsUsage(t *testing.T) {
 
 	result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(first+terminal)), config.GatewayConfig{})
 
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.Equal(t, 7, result.usage.InputTokens)
 	require.Equal(t, 5, result.usage.OutputTokens)

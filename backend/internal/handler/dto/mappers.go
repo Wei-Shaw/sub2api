@@ -722,6 +722,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		Stream:                    stream,
 		OpenAIWSMode:              openAIWSMode,
 		NativeCompactionV2:        l.NativeCompactionV2,
+		ResponseOutcome:           l.ResponseOutcome,
 		DurationMs:                l.DurationMs,
 		FirstTokenMs:              l.FirstTokenMs,
 		ImageCount:                l.ImageCount,

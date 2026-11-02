@@ -243,3 +243,14 @@ func buildRequestTypeFilterConditionWithAlias(startArgIndex int, requestType int
 		return fmt.Sprintf("%srequest_type = $%d", prefix, startArgIndex), []any{requestTypeArg}
 	}
 }
+
+// usageLogResponseDeliveredUL counts a usage row as a request success only for
+// legacy NULL outcomes and response_written. Failed outcomes (client_cancelled,
+// write_failed, upstream_failed) still carry confirmed tokens/cost, so callers
+// must apply it via aggregate FILTER on success counts/latency, never as a WHERE
+// on monetary or token aggregates.
+const usageLogResponseDeliveredUL = "(ul.response_outcome IS NULL OR ul.response_outcome = 'response_written')"
+
+// usageLogResponseDelivered is usageLogResponseDeliveredUL for unaliased
+// usage_logs queries.
+const usageLogResponseDelivered = "(response_outcome IS NULL OR response_outcome = 'response_written')"

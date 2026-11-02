@@ -212,6 +212,42 @@ func TestOpenAIStreamingPassthroughBareErrorTerminatesBeforeDone(t *testing.T) {
 	require.Zero(t, result.usage.OutputTokens)
 }
 
+func TestOpenAIStreamingPassthroughSynthesizedFailureWriteErrorKeepsObservedUsage(t *testing.T) {
+	upstream := `data: {"type":"response.created","response":{"id":"resp_delivery","created_at":1700000000,"status":"in_progress","output":[]}}` + "\n\n" +
+		`data: {"type":"error","error":{"code":"content_policy","message":"request blocked by policy"},"usage":{"input_tokens":6,"output_tokens":0,"total_tokens":6}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	reader, writer := io.Pipe()
+	body := &closeTrackingPipeBody{PipeReader: reader, closed: make(chan struct{})}
+	defer func() { _ = body.Close() }()
+	defer func() { _ = writer.Close() }()
+	go func() {
+		_, _ = io.WriteString(writer, upstream)
+		_ = writer.Close()
+	}()
+
+	// 前导事件及空行写入成功，合成的 response.failed 写入时断连。
+	result, recorder, downstream, err := runPassthroughFlushTest(t, body, 2)
+
+	delivery, ok := AsOpenAIDeliveryError(err)
+	require.True(t, ok, "got %v", err)
+	require.Equal(t, ResponseOutcomeWriteFailed, delivery.Outcome)
+	var failover *UpstreamFailoverError
+	require.False(t, errors.As(err, &failover))
+	require.NotNil(t, result)
+	require.Equal(t, 6, result.usage.InputTokens)
+	require.Zero(t, result.usage.OutputTokens)
+	require.Equal(t, 2, downstream.successfulWrites)
+	require.Equal(t, 1, downstream.failedWrites)
+	require.Empty(t, downstream.flushBodyLengths)
+	require.Contains(t, recorder.Body.String(), `"created_at":1700000000`)
+	require.NotContains(t, recorder.Body.String(), `"type":"response.failed"`)
+	select {
+	case <-body.closed:
+	default:
+		t.Fatal("下游写入失败后必须关闭上游响应体")
+	}
+}
+
 func TestOpenAIStreamingPassthroughBareErrorDrainsAuthoritativeFailedUsage(t *testing.T) {
 	errorEvent := "event: error\n" +
 		`data: {"type":"error","error":{"code":"content_policy","message":"request blocked by policy"}}` + "\n\n"
@@ -261,7 +297,12 @@ func TestOpenAIStreamingPassthroughClientDisconnectStillDrainsTerminalUsage(t *t
 		2,
 	)
 
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.Equal(t, firstOutput, recorder.Body.String())
 	require.Equal(t, []int{len(firstOutput)}, writer.flushBodyLengths)
@@ -305,7 +346,7 @@ func TestOpenAIStreamingPassthroughNamespaceRestoreErrorFlushesWrittenResidualOn
 	require.Equal(t, []int{len(writtenPrefix)}, writer.flushBodyLengths)
 }
 
-func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushAndStillDrainsUsage(t *testing.T) {
+func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushOrInventUsage(t *testing.T) {
 	writtenDataLine := `data: {"type":"response.output_text.delta","delta":"partial"}` + "\n"
 	terminalEvent := `data: {"type":"response.completed","response":{"id":"resp_blank_failure","usage":{"input_tokens":13,"output_tokens":5,"total_tokens":18}}}` + "\n\n"
 
@@ -315,12 +356,17 @@ func TestOpenAIStreamingPassthroughBlankWriteFailureDoesNotFlushAndStillDrainsUs
 		1,
 	)
 
-	require.NoError(t, err)
+	// Confirmed consumption does not mean the response reached the client.
+	var deliveryErr *OpenAIDeliveryError
+	require.ErrorAs(t, err, &deliveryErr)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
 	require.NotNil(t, result)
 	require.Equal(t, writtenDataLine, recorder.Body.String())
 	require.Empty(t, writer.flushBodyLengths)
 	require.Equal(t, 1, writer.successfulWrites)
 	require.Equal(t, 1, writer.failedWrites)
-	require.Equal(t, 13, result.usage.InputTokens)
-	require.Equal(t, 5, result.usage.OutputTokens)
+	require.Zero(t, result.usage.InputTokens, "terminal usage was not observed before cancellation")
+	require.Zero(t, result.usage.OutputTokens, "terminal usage was not observed before cancellation")
 }
