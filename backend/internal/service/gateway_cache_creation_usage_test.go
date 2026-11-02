@@ -124,6 +124,114 @@ func TestAnthropicCacheCreationSnapshots(t *testing.T) {
 	}
 }
 
+func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name      string
+		start     string
+		delta     string
+		aggregate int
+		ttl5m     int
+		ttl1h     int
+		cacheCost float64
+	}{
+		{"5m start aggregate grows", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_5m_input_tokens":3000}`, `{"cache_creation_input_tokens":11000}`, 11000, 3000, 0, 22},
+		{"1h start remainder defaults to 5m", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":11000}`, 11000, 0, 3000, 28},
+		{"mixed start remainder defaults to 5m", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_5m_input_tokens":1000,"ephemeral_1h_input_tokens":2000}`, `{"cache_creation_input_tokens":11000}`, 11000, 1000, 2000, 26},
+		{"zero start aggregate grows", `"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}`, `{"cache_creation_input_tokens":11000}`, 11000, 0, 0, 22},
+		{"unchanged aggregate", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":3000}`, 3000, 0, 3000, 12},
+		{"explicit zero suppresses retained detail", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":0}`, 0, 0, 3000, 0},
+		{"oversized detail ratio capped", `"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, `{"cache_creation_input_tokens":100}`, 100, 50, 200, 0.36},
+	} {
+		for _, route := range []string{"standard", "passthrough", "responses", "buffered responses", "chat", "buffered chat"} {
+			for _, terminal := range []string{"stop", "eof"} {
+				t.Run(test.name+"/"+route+"/"+terminal, func(t *testing.T) {
+					payload := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_cache\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4\",\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":2," + test.start + "}}}\n\n"
+					for range 2 {
+						payload += "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":" + test.delta + "}\n\n"
+					}
+					payload += "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"cache_creation_input_tokens\":null,\"cache_creation\":{\"ephemeral_5m_input_tokens\":null,\"ephemeral_1h_input_tokens\":null},\"output_tokens\":2}}\n\n"
+					if terminal == "stop" {
+						for range 2 {
+							payload += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+						}
+					}
+					recorder := httptest.NewRecorder()
+					ctx, _ := gin.CreateTestContext(recorder)
+					ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+					response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(payload))}
+					service := &GatewayService{cfg: &config.Config{}, rateLimitService: &RateLimitService{}}
+					var result *ForwardResult
+					var err error
+					switch route {
+					case "standard", "passthrough":
+						var streamed *streamingResult
+						if route == "standard" {
+							streamed, err = service.handleStreamingResponse(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4", "claude-sonnet-4", false)
+						} else {
+							streamed, err = service.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4")
+							require.Equal(t, payload, recorder.Body.String())
+						}
+						require.NotNil(t, streamed)
+						result = &ForwardResult{RequestID: "cache_creation", Model: "claude-sonnet-4", Usage: *streamed.usage, Duration: time.Second}
+					case "responses":
+						result, err = service.handleResponsesStreamingResponse(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+					case "buffered responses":
+						result, err = service.handleResponsesBufferedStreamingResponse(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+					case "chat":
+						result, err = service.handleCCStreamingFromAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
+					case "buffered chat":
+						result, err = service.handleCCBufferedFromAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
+					}
+					if terminal == "eof" && (route == "standard" || route == "passthrough") {
+						require.ErrorContains(t, err, "missing terminal event")
+					} else {
+						require.NoError(t, err)
+					}
+					require.NotNil(t, result)
+					require.Equal(t, 10, result.Usage.InputTokens)
+					require.Equal(t, 2, result.Usage.OutputTokens)
+					require.Equal(t, test.aggregate, result.Usage.CacheCreationInputTokens)
+					require.True(t, result.Usage.cacheCreationInputTokensPresent)
+					require.Equal(t, test.ttl5m, result.Usage.CacheCreation5mTokens)
+					require.Equal(t, test.ttl1h, result.Usage.CacheCreation1hTokens)
+					if route != "standard" && route != "passthrough" {
+						var usage gjson.Result
+						if strings.HasPrefix(route, "buffered") {
+							usage = gjson.Get(recorder.Body.String(), "usage")
+						} else {
+							count := 0
+							for _, line := range strings.Split(recorder.Body.String(), "\n") {
+								if !strings.HasPrefix(line, "data: ") {
+									continue
+								}
+								data := strings.TrimPrefix(line, "data: ")
+								if route == "responses" && gjson.Get(data, "type").String() == "response.completed" {
+									usage = gjson.Get(data, "response.usage")
+									count++
+								} else if route == "chat" && gjson.Get(data, "usage").Exists() {
+									usage = gjson.Get(data, "usage")
+									count++
+								}
+							}
+							require.Equal(t, 1, count)
+						}
+						require.True(t, usage.Exists())
+						if strings.HasSuffix(route, "chat") {
+							require.EqualValues(t, 10+test.aggregate, usage.Get("prompt_tokens").Int())
+							require.EqualValues(t, test.aggregate, usage.Get("prompt_tokens_details.cache_creation_tokens").Int())
+						} else {
+							require.EqualValues(t, 10+test.aggregate, usage.Get("input_tokens").Int())
+							require.EqualValues(t, test.aggregate, usage.Get("cache_creation_input_tokens").Int())
+						}
+					}
+					assertAnthropicCacheCreationResultCosts(t, result, test.cacheCost)
+				})
+			}
+		}
+	}
+}
+
 func assertAnthropicCacheCreationRecordCosts(t *testing.T, usage ClaudeUsage, wantCacheCost float64) {
 	t.Helper()
 	usage.InputTokens = 10
@@ -133,9 +241,16 @@ func assertAnthropicCacheCreationRecordCosts(t *testing.T, usage ClaudeUsage, wa
 
 func assertAnthropicCacheCreationResultCosts(t *testing.T, result *ForwardResult, wantCacheCost float64) {
 	t.Helper()
+	assertAnthropicCacheCreationOverrideCosts(t, result, wantCacheCost, &Account{ID: 701, Platform: PlatformAnthropic}, nil, false)
+}
+
+func assertAnthropicCacheCreationOverrideCosts(t *testing.T, result *ForwardResult, wantCacheCost float64, account *Account, settings *SettingService, wantOverridden bool) {
+	t.Helper()
 	for _, customStats := range []bool{false, true} {
 		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-		svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+		billingRepo := &openAIRecordUsageBillingRepoStub{}
+		svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+		svc.settingService = settings
 		svc.billingService = newTestBillingServiceWithPrices(map[string]*ModelPricing{
 			"claude-sonnet-4": {
 				InputPricePerToken: 0.001, OutputPricePerToken: 0.002,
@@ -162,12 +277,18 @@ func assertAnthropicCacheCreationResultCosts(t *testing.T, result *ForwardResult
 		require.NoError(t, svc.RecordUsage(context.Background(), &RecordUsageInput{
 			Result: result,
 			APIKey: &APIKey{ID: 501, GroupID: &groupID, Group: &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 0.5}},
-			User:   &User{ID: 601}, Account: &Account{ID: 701, Platform: PlatformAnthropic},
+			User:   &User{ID: 601}, Account: account,
 		}))
 		require.NotNil(t, usageRepo.lastLog)
+		require.Equal(t, wantOverridden, usageRepo.lastLog.CacheTTLOverridden)
+		require.Equal(t, result.Usage.CacheCreationInputTokens, usageRepo.lastLog.CacheCreationTokens)
+		require.Equal(t, result.Usage.CacheCreation5mTokens, usageRepo.lastLog.CacheCreation5mTokens)
+		require.Equal(t, result.Usage.CacheCreation1hTokens, usageRepo.lastLog.CacheCreation1hTokens)
 		require.InDelta(t, wantCacheCost, usageRepo.lastLog.CacheCreationCost, 1e-12)
 		require.InDelta(t, 0.014+wantCacheCost, usageRepo.lastLog.TotalCost, 1e-12)
 		require.InDelta(t, (0.014+wantCacheCost)*0.5, usageRepo.lastLog.ActualCost, 1e-12)
+		require.Equal(t, 1, billingRepo.calls)
+		require.InDelta(t, (0.014+wantCacheCost)*0.5, billingRepo.lastCmd.BalanceCost, 1e-12)
 		require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
 		require.InDelta(t, (0.014+wantCacheCost)*statsMultiplier, *usageRepo.lastLog.AccountStatsCost, 1e-12)
 	}
