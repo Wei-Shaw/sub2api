@@ -1057,11 +1057,20 @@ export default {
 	  },
       autoResetCredit: {
 	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
-	    threshold5h: '5h auto-reset threshold (%)',
-	    threshold7d: '7d auto-reset threshold (%)',
-	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    hint: 'Uses the earliest-expiring available credit when any enabled condition is met. Off by default; existing quota-pause rules still apply when no credit is available or reset fails.',
+	    threshold5h: '5h usage threshold (%)',
+	    threshold7d: '7d usage threshold (%)',
+	    thresholdHint: 'Only enabled windows can trigger a reset. Enter 0.1–100; both default to 100. Disabling a trigger does not disable quota-based pausing.',
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    enableExpiry: 'Use before the reset credit expires',
+	    expiryLeadTime: 'Time before expiry',
+	    expiryUnit: 'Unit',
+	    minutes: 'Minutes',
+	    hours: 'Hours',
+	    days: 'Days',
+	    expiryHint: 'Consumes a credit within the expiry lead time, even with zero usage. Checked every minute while the service is running; not an exact-time guarantee. Enter a whole number from 1 minute to 365 days. This trigger is off by default.',
+	    expiryInvalid: 'Enter a positive whole-number lead time from 1 minute to 365 days.',
+	    expiryTrigger: 'Expiring soon'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {

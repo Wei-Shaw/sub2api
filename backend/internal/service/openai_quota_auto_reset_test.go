@@ -143,18 +143,20 @@ func TestSelectOpenAIAutoResetCandidate_FailsClosed(t *testing.T) {
 		{ID: "later", ExpiresAt: "2026-09-02T00:00:00Z"},
 		{ID: "earlier", ExpiresAt: "2026-09-01T00:00:00Z"},
 	}
-	selected, err := selectOpenAIAutoResetCandidate(candidates, 2, nil, "cycle-a")
+	now := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	selected, err := selectOpenAIAutoResetCandidate(candidates, 2, nil, "cycle-a", now)
 	require.NoError(t, err)
 	require.Equal(t, "earlier", selected.ID)
 
 	_, err = selectOpenAIAutoResetCandidate([]openAIAutoResetCreditCandidate{
 		{ExpiresAt: "2026-09-01T00:00:00Z"},
-	}, 1, nil, "cycle-a")
+	}, 1, nil, "cycle-a", now)
 	require.Error(t, err)
 
 	_, err = selectOpenAIAutoResetCandidate(candidates, 2, &OpenAIAutoResetCreditState{
+		Status:           OpenAIAutoResetStatusFailed,
 		AttemptCycleHash: "cycle-a", AttemptCreditHash: shortOpenAIAutoResetHash("missing"),
-	}, "cycle-a")
+	}, "cycle-a", now)
 	require.Error(t, err, "模糊结果后原卡消失时不得切换下一张卡")
 }
 
@@ -221,10 +223,14 @@ type autoResetTestQuota struct {
 	failFirst    bool
 	queryCalls   atomic.Int32
 	queryErr     error
+	queryHook    func()
 }
 
 func (q *autoResetTestQuota) QueryUsage(context.Context, int64) (*OpenAIQuotaUsage, error) {
 	q.queryCalls.Add(1)
+	if q.queryHook != nil {
+		q.queryHook()
+	}
 	if q.queryErr != nil {
 		return nil, q.queryErr
 	}
