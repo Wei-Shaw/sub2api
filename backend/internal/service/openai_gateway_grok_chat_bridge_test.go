@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -203,6 +204,26 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			name:   "small max tokens falls back because conversion clamps it",
 			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"max_tokens":32}`,
 			reason: "unsafe_max_tokens",
+		},
+		{
+			name:   "presence penalty stays ineligible so raw sanitizing cannot widen the bridge",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"presence_penalty":0}`,
+			reason: "unknown_field_presence_penalty",
+		},
+		{
+			name:   "camel presence penalty stays ineligible",
+			body:   `{"model":"grok","messages":[{"role":"user","content":"hi"}],"presencePenalty":0}`,
+			reason: "unknown_field_presencePenalty",
+		},
+		{
+			name:   "system message name stays ineligible",
+			body:   `{"model":"grok","messages":[{"role":"system","name":"rules","content":"concise"},{"role":"user","content":"hi"}]}`,
+			reason: "unsafe_message_field_name",
+		},
+		{
+			name:   "user message name stays ineligible",
+			body:   `{"model":"grok","messages":[{"role":"user","name":"alice","content":"hi"}]}`,
+			reason: "unsafe_message_field_name",
 		},
 	}
 
@@ -691,6 +712,71 @@ func TestForwardGrokRawChatErrorRecordsActualEndpoint(t *testing.T) {
 	require.Nil(t, result)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatRawEndpoint, GetActualOpenAIUpstreamEndpoint(c))
+}
+
+func TestForwardGrokChatViaResponsesErrorEventRecordsUpstreamBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `{"error":{"message":"rate limited ` + strings.Repeat("x", 64) + `"}}`
+	const maxBytes = 12
+	truncatedBody := upstreamBody[:maxBytes]
+
+	tests := []struct {
+		name    string
+		enabled bool
+		want    string
+	}{
+		{name: "flag on records truncated body", enabled: true, want: truncatedBody},
+		{name: "flag off records no body", enabled: false, want: ""},
+	}
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+			c.Set("api_key", &APIKey{ID: int64(7701 + index)})
+
+			account := grokChatBridgeTestAccount(int64(7701 + index))
+			repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+				accountsByID: map[int64]*Account{account.ID: account},
+			}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type":   []string{"application/json"},
+					"Retry-After":    []string{"45"},
+					"Xai-Request-Id": []string{"rid-bridge-body"},
+				},
+				Body: io.NopCloser(strings.NewReader(upstreamBody)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg: &config.Config{Gateway: config.GatewayConfig{
+					LogUpstreamErrorBody:         tt.enabled,
+					LogUpstreamErrorBodyMaxBytes: maxBytes,
+				}},
+				httpUpstream:      upstream,
+				grokTokenProvider: NewGrokTokenProvider(repo, nil),
+				accountRepo:       repo,
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+			require.Equal(t, grokChatResponsesEndpoint, GetActualOpenAIUpstreamEndpoint(c))
+
+			raw, ok := c.Get(OpsUpstreamErrorsKey)
+			require.True(t, ok)
+			events, ok := raw.([]*OpsUpstreamErrorEvent)
+			require.True(t, ok)
+			require.Len(t, events, 1)
+			require.Equal(t, "rid-bridge-body", events[0].UpstreamRequestID)
+			require.Equal(t, tt.want, events[0].UpstreamResponseBody)
+			require.Greater(t, len(upstreamBody), maxBytes)
+		})
+	}
 }
 
 func grokChatBridgeTestAccount(id int64) *Account {

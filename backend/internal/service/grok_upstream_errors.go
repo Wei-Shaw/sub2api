@@ -33,7 +33,13 @@ func isGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
 		}
 	}
 
-	return grokContentPolicyMessage(string(responseBody))
+	if grokContentPolicyMessage(string(responseBody)) {
+		return true
+	}
+	// xAI also returns permission-denied for an explicit request refusal.
+	// Match only structured message/error text (or a non-JSON body). A refusal
+	// sentence parked in unknown metadata must not hide an account error.
+	return grokExplicitRequestRefusal(responseBody)
 }
 
 func grokStructuredAccountAccessMarker(value any) bool {
@@ -184,8 +190,71 @@ func grokContentPolicyMessage(value string) bool {
 	return false
 }
 
+func grokExplicitRequestRefusal(responseBody []byte) bool {
+	for _, candidate := range grokExplicitRequestRefusalStringCandidates(responseBody) {
+		if grokExplicitRequestRefusalMessage(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+// grokExplicitRequestRefusalStringCandidates reads only real JSON strings.
+// Object message/detail/error.message values must not be stringified: gjson's
+// Raw JSON would let an apology sentence in unknown metadata hide a permission
+// denial. Decoder matching keeps grokStructuredErrorMessageCandidates.
+func grokExplicitRequestRefusalStringCandidates(body []byte) []string {
+	candidates := make([]string, 0, 4)
+	appendString := func(result gjson.Result) {
+		if result.Type != gjson.String {
+			return
+		}
+		value := strings.TrimSpace(result.String())
+		if value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	appendString(gjson.GetBytes(body, "error.message"))
+	appendString(gjson.GetBytes(body, "error.error"))
+	appendString(gjson.GetBytes(body, "error"))
+	appendString(gjson.GetBytes(body, "message"))
+	appendString(gjson.GetBytes(body, "detail"))
+	if len(body) > 0 && !json.Valid(body) {
+		if plaintext := strings.TrimSpace(string(body)); plaintext != "" {
+			candidates = append(candidates, plaintext)
+		}
+	}
+	return candidates
+}
+
+func grokExplicitRequestRefusalMessage(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+	normalized = strings.ReplaceAll(normalized, "\u2019", "'")
+	normalized = strings.ReplaceAll(normalized, "\u2018", "'")
+	for _, phrase := range []string{
+		"i'm sorry, i can't help with that request",
+		"i'm sorry, i cannot help with that request",
+	} {
+		if strings.Contains(normalized, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 func grokContentPolicyClientMessage(responseBody []byte) string {
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	if message == "" {
+		for _, candidate := range grokExplicitRequestRefusalStringCandidates(responseBody) {
+			message = sanitizeUpstreamErrorMessage(strings.TrimSpace(candidate))
+			if message != "" {
+				break
+			}
+		}
+	}
 	if message == "" {
 		return "Request blocked by upstream content policy"
 	}
