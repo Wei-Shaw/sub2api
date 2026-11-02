@@ -225,6 +225,109 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionRequire
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionRequiresSessionAffinity(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	groupID := int64(91011)
+	owner := Account{
+		ID:          71070,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    100,
+		GroupIDs:    []int64{groupID},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+	preferred := Account{
+		ID:          71071,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		GroupIDs:    []int64{groupID},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+	newService := func(cache *schedulerTestGatewayCache, accounts []Account) *OpenAIGatewayService {
+		cfg := &config.Config{}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+		cfg.Gateway.OpenAIWS.LBTopK = 1
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+		return &OpenAIGatewayService{
+			accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+			cache:              cache,
+			cfg:                cfg,
+			rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "true"),
+			concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		}
+	}
+
+	newSelection := func(t *testing.T, ctx context.Context, svc *OpenAIGatewayService) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+		t.Helper()
+		return svc.SelectAccountWithSchedulerForCapability(
+			ctx,
+			&groupID,
+			"",
+			"native-compaction-session",
+			"gpt-5.6-sol",
+			nil,
+			OpenAIUpstreamTransportAny,
+			OpenAIEndpointCapabilityResponses,
+			false,
+			false,
+			false,
+		)
+	}
+
+	t.Run("ordinary_responses_can_use_weighted_selection", func(t *testing.T) {
+		cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
+			"openai:native-compaction-session": owner.ID,
+		}}
+		selection, decision, err := newSelection(t, context.Background(), newService(cache, []Account{owner, preferred}))
+		require.NoError(t, err)
+		require.NotNil(t, selection)
+		require.Equal(t, preferred.ID, selection.Account.ID)
+		require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+	})
+
+	t.Run("native_compaction_keeps_existing_owner", func(t *testing.T) {
+		cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
+			"openai:native-compaction-session": owner.ID,
+		}}
+		ctx := withOpenAINativeCompactionAffinity(context.Background())
+		selection, decision, err := newSelection(t, ctx, newService(cache, []Account{owner, preferred}))
+		require.NoError(t, err)
+		require.NotNil(t, selection)
+		require.Equal(t, owner.ID, selection.Account.ID)
+		require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+		require.True(t, decision.StickySessionHit)
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+	})
+
+	t.Run("unavailable_owner_does_not_delete_binding_or_switch", func(t *testing.T) {
+		cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
+			"openai:native-compaction-session": owner.ID,
+		}}
+		unavailableOwner := owner
+		unavailableOwner.Schedulable = false
+		ctx := withOpenAINativeCompactionAffinity(context.Background())
+		selection, _, err := newSelection(t, ctx, newService(cache, []Account{unavailableOwner, preferred}))
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		require.Nil(t, selection)
+		require.Equal(t, owner.ID, cache.sessionBindings["openai:native-compaction-session"])
+		require.Empty(t, cache.deletedSessions)
+	})
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyCompactionKeepsCompactEligibility(t *testing.T) {
 	for _, advanced := range []bool{false, true} {
 		t.Run(map[bool]string{false: "legacy_scheduler", true: "advanced_scheduler"}[advanced], func(t *testing.T) {

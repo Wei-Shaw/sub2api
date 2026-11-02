@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -15,10 +16,34 @@ const openAINativeCompactionV2Key = "openai_native_compaction_v2"
 
 const openAIRemoteCompactionV2Feature = "remote_compaction_v2"
 
+type openAINativeCompactionAffinityContextKey struct{}
+
+// withOpenAINativeCompactionAffinity marks the request context as carrying
+// account-bound native compaction state. The scheduler uses this marker to
+// keep an existing session owner hard-bound even when weighted sticky
+// scheduling is enabled for ordinary Responses traffic.
+func withOpenAINativeCompactionAffinity(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAINativeCompactionAffinityContextKey{}, true)
+}
+
+func openAINativeCompactionAffinityFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	marked, _ := ctx.Value(openAINativeCompactionAffinityContextKey{}).(bool)
+	return marked
+}
+
 // MarkOpenAINativeCompactionV2 由 handler 在识别出原生 v2 压缩请求时调用。
 func MarkOpenAINativeCompactionV2(c *gin.Context) {
 	if c != nil {
 		c.Set(openAINativeCompactionV2Key, true)
+		if c.Request != nil {
+			c.Request = c.Request.WithContext(withOpenAINativeCompactionAffinity(c.Request.Context()))
+		}
 	}
 }
 

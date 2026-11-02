@@ -3,6 +3,7 @@
 package service
 
 import (
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,16 @@ func TestIsOpenAINativeCompactionV2ReadsOnlyRequestMarker(t *testing.T) {
 	MarkOpenAINativeCompactionV2(c)
 	require.True(t, IsOpenAINativeCompactionV2(c))
 	require.False(t, IsOpenAINativeCompactionV2(nil))
+}
+
+func TestMarkOpenAINativeCompactionV2AddsSchedulerAffinityMarker(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/responses", nil)
+	require.False(t, openAINativeCompactionAffinityFromContext(c.Request.Context()))
+
+	MarkOpenAINativeCompactionV2(c)
+
+	require.True(t, openAINativeCompactionAffinityFromContext(c.Request.Context()))
 }
 
 func TestHasCompactionTriggerInInput_DetectsCompactSignal(t *testing.T) {

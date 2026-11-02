@@ -77,6 +77,10 @@ type OpenAIAccountScheduleRequest struct {
 	StickyWeighted          bool
 	SubscriptionPriority    bool
 	PreserveStickyBinding   bool
+	// RequireSessionAffinity keeps an existing session owner hard-bound. It is
+	// reserved for request types whose opaque continuation state is account-bound
+	// and cannot be replayed on another upstream account.
+	RequireSessionAffinity bool
 	// DisableStickyEscape keeps task-owner lookups on their account even when
 	// generic sticky health or concurrency heuristics would prefer another.
 	DisableStickyEscape     bool
@@ -392,6 +396,12 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		decision.LatencyMs = time.Since(start).Milliseconds()
 		s.metrics.recordSelect(decision)
 	}()
+	if req.RequireSessionAffinity {
+		// Account-bound state must not escape based on transient health metrics or
+		// concurrency pressure. The existing wait-plan path still allows the
+		// owner account to recover without replaying the state elsewhere.
+		req.DisableStickyEscape = true
+	}
 
 	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
 	if previousResponseID != "" && NormalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
@@ -452,7 +462,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
-	if !req.StickyWeighted {
+	if !req.StickyWeighted || req.RequireSessionAffinity {
 		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
@@ -466,6 +476,13 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if escapedSticky {
 			req.PreserveStickyBinding = true
+		}
+		if req.RequireSessionAffinity && req.StickyAccountID > 0 {
+			return nil, decision, noAvailableOpenAISelectionError(
+				req.RequestedModel,
+				false,
+				"session_affinity_required",
+			)
 		}
 	}
 
@@ -503,7 +520,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 
 	accountID := req.StickyAccountID
 	clearBinding := func() {
-		if !req.PreserveStickyBinding {
+		if !req.PreserveStickyBinding && !req.RequireSessionAffinity {
 			_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		}
 	}
@@ -2442,6 +2459,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		}
 	}
 	stickyWeighted := s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
+	requireSessionAffinity := openAINativeCompactionAffinityFromContext(ctx)
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
 	stickyPreviousAccountID := int64(0)
 	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
@@ -2458,6 +2476,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		StickyWeighted:          stickyWeighted,
 		SubscriptionPriority:    subscriptionPriority,
 		PreserveStickyBinding:   preserveGuardianParentBinding,
+		RequireSessionAffinity:  requireSessionAffinity,
 		RequirePrivacySet:       s.openAIGroupRequiresPrivacySet(ctx, groupID),
 		PreviousResponseID:      previousResponseID,
 		PreviousResponseCanMove: previousResponseCanMove,
