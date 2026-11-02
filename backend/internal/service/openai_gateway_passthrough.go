@@ -1411,9 +1411,29 @@ var openAIStreamErrorStatusPaths = []string{
 	"status",
 }
 
+// A billing/quota failure can arrive inside an HTTP 200 stream (sometimes with
+// an embedded 429). Treat it like the existing HTTP 402 account policy, not a
+// transient rate limit. Only trust structured error fields: request errors can
+// echo arbitrary input in their messages.
+func isOpenAIQuotaExhaustedError(payload []byte) bool {
+	if !gjson.ValidBytes(payload) {
+		return false
+	}
+	for _, path := range []string{"response.error.code", "error.code", "code", "response.error.type", "error.type", "type"} {
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, path).String())) {
+		case "credit_balance_exhausted", "insufficient_quota":
+			return true
+		}
+	}
+	return false
+}
+
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
+	}
+	if isOpenAIQuotaExhaustedError(payload) {
+		return http.StatusPaymentRequired
 	}
 
 	code := openAIStreamFailedEventErrorCode(payload)
@@ -1452,7 +1472,7 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 	}
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
 	switch semanticStatus {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return semanticStatus
 	case http.StatusServiceUnavailable:
 		if isOpenAIUpstreamCapacityShedEvent(payload) {
@@ -1583,9 +1603,9 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 		return openAIStream403AccountFailure(payload, message)
 	}
 	// A response.failed event is transported over HTTP 200. Prefer its semantic
-	// rate-limit status over a generic/invalid_request error type so it can enter
-	// the same 429 retry policy as a regular upstream HTTP response.
-	if semanticStatus == http.StatusTooManyRequests {
+	// billing/rate-limit status over a generic/invalid_request error type so it
+	// uses the same account policy as a regular upstream HTTP response.
+	if semanticStatus == http.StatusPaymentRequired || semanticStatus == http.StatusTooManyRequests {
 		return true
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
@@ -1633,7 +1653,7 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	switch openAIStreamFailedEventSemanticStatus(payload, message) {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusTooManyRequests, 529:
 		return true
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
@@ -1662,7 +1682,7 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 			return statusCode, false
 		}
 		fallthrough
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusTooManyRequests, 529:
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
@@ -1685,6 +1705,11 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
 	if account == nil {
+		return false
+	}
+	// Explicit account balance exhaustion cannot recover through a same-account
+	// retry, even when a pool's custom retry status list includes 402.
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey && isOpenAIQuotaExhaustedError(payload) {
 		return false
 	}
 	// 容量降载是请求级信号，不是账号级故障：上游只是让本次请求稍后再试。
