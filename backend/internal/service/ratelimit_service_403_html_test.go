@@ -104,8 +104,8 @@ func TestHandleUpstreamError_OpenAIHTML403RepeatedNeverEscalates(t *testing.T) {
 	h.requireNoAccountPenalty(t)
 }
 
-func TestHandleUpstreamError_OpenAICloudflare1010DoesNotPenalizeAccount(t *testing.T) {
-	for _, platform := range []string{PlatformOpenAI, PlatformOpenCodeGo} {
+func TestHandleUpstreamError_Cloudflare1010DoesNotPenalizeAccount(t *testing.T) {
+	for _, platform := range []string{PlatformOpenAI, PlatformOpenCodeGo, PlatformAnthropic, PlatformGemini, PlatformAntigravity} {
 		t.Run(platform, func(t *testing.T) {
 			repo := &rateLimitAccountRepoStub{}
 			counter := &countingOpenAI403CounterCache{
@@ -128,6 +128,67 @@ func TestHandleUpstreamError_OpenAICloudflare1010DoesNotPenalizeAccount(t *testi
 			require.Empty(t, blocker.accounts)
 		})
 	}
+}
+
+func TestHandleUpstreamError_Cloudflare1010JSONDoesNotPenalizeAccount(t *testing.T) {
+	for _, body := range []string{
+		`{"cloudflare_error":true,"error_code":1010,"error_name":"browser_signature_banned","detail":"blocked"}`,
+		`{"error_name":"browser_signature_banned","detail":"blocked by Cloudflare"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			repo := &rateLimitAccountRepoStub{}
+			counter := &countingOpenAI403CounterCache{
+				openAI403CounterCacheStub: openAI403CounterCacheStub{counts: []int64{openAI403DisableThreshold}},
+			}
+			svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+			svc.SetOpenAI403CounterCache(counter)
+			account := &Account{ID: 602, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+			require.False(t, svc.HandleUpstreamError(
+				context.Background(), account, http.StatusForbidden, http.Header{}, []byte(body),
+			))
+			require.Equal(t, 0, counter.increments)
+			require.Equal(t, 0, repo.setErrorCalls)
+			require.Equal(t, 0, repo.tempCalls)
+		})
+	}
+}
+
+func TestIsCloudflareBotBlockResponseOnlyMatches1010(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"plain text", "error code: 1010", true},
+		{"root numeric JSON code", `{"cloudflare_error":true,"code":1010}`, true},
+		{"nested string JSON code", `{"errors":[{"cloudflare_error":true,"code":"1010"}]}`, true},
+		{"cloudflare error code", `{"cloudflare_error":true,"error_code":1010}`, true},
+		{"browser signature name", `{"error_name":"browser_signature_banned"}`, true},
+		{"different JSON code", `{"code":403,"message":"forbidden"}`, false},
+		{"unrelated code 1010", `{"error":{"code":1010,"message":"account banned"}}`, false},
+		{"message mentions 1010", `{"message":"error code: 1010"}`, false},
+		{"malformed JSON", `{"code":1010`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isCloudflareBotBlockResponse([]byte(tc.body)))
+		})
+	}
+}
+
+func TestHandleUpstreamError_AnthropicGenuine403StillPenalizes(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 603, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+	require.True(t, svc.HandleUpstreamError(
+		context.Background(), account, http.StatusForbidden, http.Header{},
+		[]byte(`{"error":{"type":"permission_error","message":"invalid API key"}}`),
+	))
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Contains(t, repo.lastErrorMsg, "invalid API key")
 }
 
 // 对照不变式：真正的结构化 JSON 403 是账号级证据，处罚链路必须原样保留。
