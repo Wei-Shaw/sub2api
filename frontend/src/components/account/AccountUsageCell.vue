@@ -42,7 +42,7 @@
         </div>
         <!-- 5h Window -->
         <UsageProgressBar
-          v-if="usageInfo.five_hour"
+          v-if="usageInfo.five_hour && (usageInfo.five_hour.resets_at || usageInfo.five_hour.utilization > 0)"
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
