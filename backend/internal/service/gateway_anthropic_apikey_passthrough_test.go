@@ -1917,3 +1917,67 @@ func TestSonnet55BedrockCCCompatTransformsBeforeValidation(t *testing.T) {
 		})
 	}
 }
+
+// A client can persist a historical assistant thinking block whose signature is
+// missing or empty (for example a stream that was cut before signature_delta
+// arrived). Anthropic-strict upstreams validate that signature on every replayed
+// turn, so such a block makes every later request fail with 500
+// "`signature` is required in `thinking` block" — a body problem that no retry
+// or account failover can clear. The passthrough branch must drop those blocks
+// before forwarding, exactly like the normal forward path does.
+func TestGatewayService_AnthropicAPIKeyPassthrough_StripsInvalidHistoricalThinkingBlocks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const bodyWithEmptySignature = `{"model":"%s","max_tokens":64,"thinking":{"type":"enabled","budget_tokens":1024},"messages":[` +
+		`{"role":"user","content":[{"type":"text","text":"hi"}]},` +
+		`{"role":"assistant","content":[{"type":"thinking","thinking":"truncated","signature":""},{"type":"text","text":"ok"}]},` +
+		`{"role":"user","content":[{"type":"text","text":"go on"}]}]}`
+
+	tests := []struct {
+		name             string
+		model            string
+		wantThinkingKept bool
+	}{
+		{name: "anthropic-strict strips invalid block", model: "claude-opus-5-5", wantThinkingKept: false},
+		{name: "passback-required keeps block untouched", model: "deepseek-v4-pro", wantThinkingKept: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+			upstream := &anthropicHTTPUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","usage":{"input_tokens":1,"output_tokens":1}}`)),
+				},
+			}
+			svc := &GatewayService{
+				cfg:              &config.Config{},
+				httpUpstream:     upstream,
+				rateLimitService: &RateLimitService{},
+			}
+
+			body := []byte(strings.Replace(bodyWithEmptySignature, "%s", tt.model, 1))
+			_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), body, tt.model, tt.model, false, time.Now())
+			require.NoError(t, err)
+
+			blocks := gjson.GetBytes(upstream.lastBody, "messages.1.content").Array()
+			hasThinking := false
+			hasText := false
+			for _, block := range blocks {
+				switch block.Get("type").String() {
+				case "thinking":
+					hasThinking = true
+				case "text":
+					hasText = true
+				}
+			}
+			require.Equal(t, tt.wantThinkingKept, hasThinking, "thinking block handling must follow the upstream thinking protocol")
+			require.True(t, hasText, "non-thinking blocks must survive the filter")
+		})
+	}
+}
