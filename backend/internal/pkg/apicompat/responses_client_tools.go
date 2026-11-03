@@ -99,6 +99,9 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 			copy := copyClientTool(tool)
 			copy["type"] = "function"
 			copy["parameters"] = json.RawMessage(customToolInputSchema)
+			if description, ok := customToolDescriptionWithGrammar(tool); ok {
+				copy["description"] = description
+			}
 			delete(copy, "format")
 			adapter.CustomTools[name] = true
 			lowered = append(lowered, copy)
@@ -206,6 +209,32 @@ func AdaptResponsesClientToolsWithInheritedMapping(
 		changed = true
 	}
 	return inherited, changed, nil
+}
+
+// customToolDescriptionWithGrammar keeps a custom tool's grammar visible after
+// lowering. Function-only upstreams cannot enforce the grammar, so without it
+// models that do not already know the input language (for example Gemini with
+// Codex apply_patch) guess another format and every call fails client-side.
+func customToolDescriptionWithGrammar(tool map[string]any) (string, bool) {
+	format, ok := tool["format"].(map[string]any)
+	if !ok || strings.TrimSpace(stringValue(format["type"])) != "grammar" {
+		return "", false
+	}
+	definition := strings.TrimSpace(stringValue(format["definition"]))
+	if definition == "" {
+		return "", false
+	}
+	syntax := strings.TrimSpace(stringValue(format["syntax"]))
+	if syntax == "" {
+		syntax = "grammar"
+	}
+	var b strings.Builder
+	if description := strings.TrimSpace(stringValue(tool["description"])); description != "" {
+		b.WriteString(description)
+		b.WriteString("\n\n")
+	}
+	fmt.Fprintf(&b, "The `input` argument is the raw tool input (not JSON) and must match this %s grammar:\n```\n%s\n```", syntax, definition)
+	return b.String(), true
 }
 
 func copyClientTool(tool map[string]any) map[string]any {
