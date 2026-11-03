@@ -194,18 +194,43 @@ func openAIImageSizeVetoReason(ctx context.Context, account *Account) (bool, str
 	return true, openAIImageSizeTierUnsupportedReason
 }
 
-// openAIImageSizeSpilloverKeepsStickyBinding 报告本轮是否保留会话已有的粘性绑定：较早轮次已只拿到
-// 排队结果时，本轮选中的账号只是临时溢出，不改写已有绑定；会话尚无绑定时照常绑定。
-func (s *OpenAIGatewayService) openAIImageSizeSpilloverKeepsStickyBinding(ctx context.Context, groupID *int64, sessionHash string) bool {
-	if ctx == nil || strings.TrimSpace(sessionHash) == "" {
+// openAIImageSizeRoutingUsesPreference 报告 ctx 记录的生图尺寸是否按偏好层级逐层选号（未传、auto 或无法识别的尺寸）。
+func openAIImageSizeRoutingUsesPreference(ctx context.Context) bool {
+	size, ok := openAIImageSizeRoutingFromContext(ctx)
+	if !ok {
+		return false
+	}
+	_, explicit := ClassifyImageBillingTier(size)
+	return !explicit
+}
+
+// openAIImageSizeSpilloverPass 报告本轮是否在较早轮次只拿到排队结果之后进行。这些轮次选号时不写会话粘性绑定，
+// 抢到槽位后由 bindOpenAIImageSizeSpilloverAccount 处理绑定。
+func openAIImageSizeSpilloverPass(ctx context.Context) bool {
+	if ctx == nil {
 		return false
 	}
 	pass, _ := ctx.Value(openAIImageSizePassCtxKey{}).(*openAIImageSizePass)
-	if pass == nil || len(pass.queuedIDs) == 0 {
-		return false
+	return pass != nil && len(pass.queuedIDs) > 0
+}
+
+// bindOpenAIImageSizeSpilloverAccount 处理溢出轮次抢到槽位的选号结果的会话粘性绑定：会话仍绑定在首轮选号前的
+// 账号 initialAccountID 上时保留该绑定，溢出选中的账号只服务本次请求；首轮选号前没有绑定，或绑定已在选号过程中
+// 被清除、改写时，绑定选中的账号。选号结果带利润门时由 handler 在终检通过后绑定，会话保留守护父账号绑定时不改写，
+// 这两种情况这里都不绑定。
+func (s *OpenAIGatewayService) bindOpenAIImageSizeSpilloverAccount(ctx context.Context, groupID *int64, sessionHash string, initialAccountID int64, selection *AccountSelectionResult) {
+	if strings.TrimSpace(sessionHash) == "" || selection == nil || selection.Account == nil || selection.Account.ID <= 0 {
+		return
 	}
-	accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
-	return err == nil && accountID > 0
+	if selection.ProfitGateActive() || preserveOpenAIGuardianParentBinding(ctx, sessionHash) {
+		return
+	}
+	if initialAccountID > 0 {
+		if current, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && current == initialAccountID {
+			return
+		}
+	}
+	_ = s.BindStickySession(ctx, groupID, sessionHash, selection.Account.ID)
 }
 
 type openAIAccountSelectFunc func(ctx context.Context) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error)

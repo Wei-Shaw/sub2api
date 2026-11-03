@@ -283,9 +283,6 @@ func TestSelectAccountWithSchedulerForImages_SpilloverToRestrictedAccountKeepsSt
 
 func TestSelectAccountWithSchedulerForImages_SpilloverWithoutBindingBindsServedAccount(t *testing.T) {
 	for _, mode := range openAIImageSizeSchedulerModes {
-		if !mode.loadBatch {
-			continue
-		}
 		t.Run(mode.name, func(t *testing.T) {
 			groupID := int64(93012)
 			sessionHash := "image-size-spillover-unbound"
@@ -308,6 +305,74 @@ func TestSelectAccountWithSchedulerForImages_SpilloverWithoutBindingBindsServedA
 			require.NoError(t, err)
 			require.Equal(t, int64(81142), selection.Account.ID)
 			require.Equal(t, int64(81142), cache.sessionBindings["openai:"+sessionHash])
+		})
+	}
+}
+
+func TestSelectAccountWithSchedulerForImages_SpilloverReplacesClearedStaleBinding(t *testing.T) {
+	for _, mode := range openAIImageSizeSchedulerModes {
+		t.Run(mode.name, func(t *testing.T) {
+			groupID := int64(93014)
+			sessionHash := "image-size-spillover-stale"
+			accounts := []Account{
+				newOpenAIImageSizeTestAccount(81161, 0),
+				newOpenAIImageSizeTestAccount(81162, 9, "4K"),
+				newOpenAIImageSizeTestAccount(81163, 0),
+			}
+			accounts[2].Schedulable = false
+			for i := range accounts {
+				accounts[i].GroupIDs = []int64{groupID}
+			}
+			cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:" + sessionHash: 81163}}
+			concurrency := schedulerTestConcurrencyCache{
+				acquireResults: map[int64]bool{81161: false},
+				waitCounts:     map[int64]int{81161: 3},
+				loadMap:        map[int64]*AccountLoadInfo{81161: {AccountID: 81161, LoadRate: 100, WaitingCount: 3}},
+			}
+			svc := newOpenAIImageSizeSchedulerTestService(mode, accounts, cache, concurrency)
+
+			selection, err := selectOpenAIImageSizeTestAccount(t, svc, groupID, sessionHash, "")
+			require.NoError(t, err)
+			require.Equal(t, int64(81162), selection.Account.ID)
+			require.True(t, selection.Acquired)
+			require.Equal(t, int64(81162), cache.sessionBindings["openai:"+sessionHash], "a binding that is no longer usable is replaced by the served account")
+		})
+	}
+}
+
+func TestSelectAccountWithSchedulerForImages_AllPassesQueuedKeepBindingOnReturnedAccount(t *testing.T) {
+	for _, mode := range openAIImageSizeSchedulerModes {
+		t.Run(mode.name, func(t *testing.T) {
+			groupID := int64(93015)
+			sessionHash := "image-size-all-queued"
+			accounts := []Account{
+				newOpenAIImageSizeTestAccount(81171, 0),
+				newOpenAIImageSizeTestAccount(81172, 9, "4K"),
+			}
+			for i := range accounts {
+				accounts[i].GroupIDs = []int64{groupID}
+			}
+			cache := &schedulerTestGatewayCache{}
+			concurrency := schedulerTestConcurrencyCache{
+				acquireResults: map[int64]bool{81171: false, 81172: false},
+				waitCounts:     map[int64]int{81171: 3, 81172: 3},
+				loadMap: map[int64]*AccountLoadInfo{
+					81171: {AccountID: 81171, LoadRate: 100, WaitingCount: 3},
+					81172: {AccountID: 81172, LoadRate: 100, WaitingCount: 3},
+				},
+			}
+			svc := newOpenAIImageSizeSchedulerTestService(mode, accounts, cache, concurrency)
+
+			selection, err := selectOpenAIImageSizeTestAccount(t, svc, groupID, sessionHash, "")
+			require.NoError(t, err)
+			require.Equal(t, int64(81171), selection.Account.ID)
+			require.NotNil(t, selection.WaitPlan)
+			bound, ok := cache.sessionBindings["openai:"+sessionHash]
+			if mode.loadBatch {
+				require.False(t, ok, "a queued selection does not bind the session")
+			} else {
+				require.Equal(t, int64(81171), bound, "eager sequential binding stays on the returned queued account")
+			}
 		})
 	}
 }
@@ -367,6 +432,38 @@ func TestSelectAccountWithSchedulerForImages_StickyAccountUnderSizeRouting(t *te
 			selection, err = selectOpenAIImageSizeTestAccount(t, svc, groupID, sessionHash, "3840x2160")
 			require.NoError(t, err)
 			require.Equal(t, int64(81071), selection.Account.ID, "explicit 4K leaves a 1K/2K-only sticky account")
+		})
+	}
+}
+
+func TestSelectAccountWithSchedulerForImages_BusyStickyAccountMatchesUnroutedSelection(t *testing.T) {
+	for _, mode := range openAIImageSizeSchedulerModes {
+		t.Run(mode.name, func(t *testing.T) {
+			groupID := int64(93013)
+			sessionHash := "image-size-busy-sticky"
+			selectWith := func(ctx context.Context) (int64, bool) {
+				accounts := []Account{
+					newOpenAIImageSizeTestAccount(81151, 0),
+					newOpenAIImageSizeTestAccount(81152, 9, "4K"),
+				}
+				for i := range accounts {
+					accounts[i].GroupIDs = []int64{groupID}
+				}
+				cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:" + sessionHash: 81151}}
+				concurrency := schedulerTestConcurrencyCache{
+					acquireResults: map[int64]bool{81151: false},
+					loadMap:        map[int64]*AccountLoadInfo{81151: {AccountID: 81151, LoadRate: 100}},
+				}
+				svc := newOpenAIImageSizeSchedulerTestService(mode, accounts, cache, concurrency)
+				selection, _, err := svc.SelectAccountWithSchedulerForImages(ctx, &groupID, sessionHash, "gpt-image-2", nil, OpenAIImagesCapabilityNative)
+				require.NoError(t, err)
+				require.NotNil(t, selection.Account)
+				return selection.Account.ID, selection.Acquired
+			}
+			routedID, routedAcquired := selectWith(WithOpenAIImageSizeRouting(context.Background(), ""))
+			unroutedID, unroutedAcquired := selectWith(context.Background())
+			require.Equal(t, unroutedID, routedID, "a busy sticky account is waited on or escaped exactly as without size routing")
+			require.Equal(t, unroutedAcquired, routedAcquired)
 		})
 	}
 }
