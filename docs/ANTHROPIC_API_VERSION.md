@@ -13,8 +13,8 @@ Version selection, in priority order:
 
 This is a protocol version, not a model selection. It does not enable beta
 features; those still require their corresponding `anthropic-beta` tokens.
-Bedrock and Vertex retain their provider-specific version formats. Other
-providers' Anthropic-compatible endpoints retain their existing default.
+Bedrock and Vertex retain their provider-specific version formats. Accounts on
+other provider platforms retain their existing default.
 
 ## Migrating requests
 
