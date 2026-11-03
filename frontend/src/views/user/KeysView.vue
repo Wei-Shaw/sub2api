@@ -50,6 +50,21 @@
       <template #actions>
         <div class="flex justify-end gap-3">
           <button
+            @click="openResetQuotaAllDialog"
+            :disabled="loading || resettingQuotaAll"
+            class="btn btn-secondary"
+            :title="t('keys.resetAllQuotaHint')"
+            data-test="reset-quota-all"
+          >
+            <Icon
+              name="refresh"
+              size="md"
+              class="mr-1.5"
+              :class="resettingQuotaAll ? 'animate-spin' : ''"
+            />
+            <span class="hidden sm:inline">{{ t('keys.resetAllQuota') }}</span>
+          </button>
+          <button
             @click="loadApiKeys"
             :disabled="loading"
             class="btn btn-secondary"
@@ -1045,6 +1060,52 @@
       @cancel="showDeleteDialog = false"
     />
 
+    <!-- Reset All Quota (bulk) Dialog -->
+    <BaseDialog
+      :show="showResetQuotaAllDialog"
+      :title="t('keys.resetAllQuotaTitle')"
+      width="normal"
+      :close-on-escape="!resettingQuotaAll"
+      :show-close-button="!resettingQuotaAll"
+      @close="showResetQuotaAllDialog = false"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('keys.resetAllQuotaConfirmMessage') }}
+        </p>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('keys.resetAllQuotaScopeHint') }}
+        </p>
+        <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            v-model="resetQuotaAllIncludeRateLimit"
+            type="checkbox"
+            class="checkbox mt-0.5"
+            :disabled="resettingQuotaAll"
+            data-test="reset-quota-all-include-rate-limit"
+          />
+          <span>{{ t('keys.resetAllQuotaIncludeRateLimit') }}</span>
+        </label>
+      </div>
+      <template #footer>
+        <button
+          class="btn btn-secondary"
+          :disabled="resettingQuotaAll"
+          @click="showResetQuotaAllDialog = false"
+        >
+          {{ t('common.cancel') }}
+        </button>
+        <button
+          class="btn btn-primary"
+          :disabled="resettingQuotaAll"
+          data-test="reset-quota-all-confirm"
+          @click="resetQuotaAllKeys"
+        >
+          {{ t('keys.reset') }}
+        </button>
+      </template>
+    </BaseDialog>
+
     <!-- Reset Quota Confirmation Dialog -->
     <ConfirmDialog
       :show="showResetQuotaDialog"
@@ -1401,6 +1462,10 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
+// 一键重置当前账号下所有"设置了额度限制"的 Key
+const showResetQuotaAllDialog = ref(false)
+const resettingQuotaAll = ref(false)
+const resetQuotaAllIncludeRateLimit = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
@@ -1975,6 +2040,37 @@ const resetQuotaUsed = async () => {
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
     appStore.showError(errorMsg)
+  }
+}
+
+// 打开"一键重置全部额度"确认弹窗
+const openResetQuotaAllDialog = () => {
+  resetQuotaAllIncludeRateLimit.value = false
+  showResetQuotaAllDialog.value = true
+}
+
+// 一键重置当前账号下所有设置了额度限制（quota > 0）的 API Key 的已用额度
+const resetQuotaAllKeys = async () => {
+  if (resettingQuotaAll.value) return
+  resettingQuotaAll.value = true
+  try {
+    const result = await keysAPI.resetQuotaAll(resetQuotaAllIncludeRateLimit.value)
+    showResetQuotaAllDialog.value = false
+    if (result.matched === 0) {
+      appStore.showInfo(t('keys.resetAllQuotaEmpty'))
+    } else if (result.failed > 0) {
+      appStore.showWarning(
+        t('keys.resetAllQuotaPartial', { reset: result.reset, failed: result.failed })
+      )
+    } else {
+      appStore.showSuccess(t('keys.resetAllQuotaSuccess', { count: result.reset }))
+    }
+    await loadApiKeys()
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
+    appStore.showError(errorMsg)
+  } finally {
+    resettingQuotaAll.value = false
   }
 }
 

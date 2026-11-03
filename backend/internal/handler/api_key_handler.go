@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -62,6 +63,12 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+}
+
+// ResetQuotaAllRequest represents the bulk quota reset request payload
+type ResetQuotaAllRequest struct {
+	// IncludeRateLimitUsage 为 true 时同时重置 5h/1d/7d 限速用量
+	IncludeRateLimitUsage bool `json:"include_rate_limit_usage"`
 }
 
 func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
@@ -315,6 +322,33 @@ func (h *APIKeyHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "API key deleted successfully"})
+}
+
+// ResetQuotaAll 重置当前登录账号下所有"设置了额度限制"的 API Key 的已用额度
+// POST /api/v1/keys/reset-quota
+func (h *APIKeyHandler) ResetQuotaAll(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	var req ResetQuotaAllRequest
+	// 允许空 body：一键重置只需要默认行为（仅重置已用额度）
+	if c.Request != nil && c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+	}
+
+	result, err := h.apiKeyService.ResetQuotaUsageAll(c.Request.Context(), subject.UserID, req.IncludeRateLimitUsage)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
 }
 
 // GetAvailableGroups 获取用户可以绑定的分组列表
