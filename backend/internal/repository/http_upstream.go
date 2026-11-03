@@ -1061,6 +1061,11 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
 	if profile == service.HTTPUpstreamProfileLongStream {
+		// The OpenAI HTTP/2 switch must cover every OpenAI streaming profile.
+		// LongStream predates the switch and used to bypass it unconditionally.
+		if !s.resolveOpenAIHTTP2Settings().enabled {
+			return upstreamProtocolModeOpenAIH1
+		}
 		return upstreamProtocolModeLongStreamH2
 	}
 	if profile == service.HTTPUpstreamProfileGrok {
