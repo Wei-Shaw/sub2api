@@ -376,7 +376,7 @@ func TestNormalizeClaudeOAuthRequestBody_HaikuShortModelStillNormalizesToDatedID
 func TestNormalizeClaudeOAuthRequestBody_SkipsTemperatureTopUpWithTopPOnLockedModels(t *testing.T) {
 	for _, model := range []string{"claude-haiku-5-5", "claude-sonnet-5-5"} {
 		body := []byte(`{"model":"` + model + `","top_p":0.99,"messages":[]}`)
-		out, _ := normalizeClaudeOAuthRequestBody(body, model, claudeOAuthNormalizeOptions{})
+		out, _ := normalizeClaudeOAuthRequestBody(body, model, claudeOAuthNormalizeOptions{apiVersion: claude.LegacyAPIVersion})
 		require.False(t, gjson.GetBytes(out, "temperature").Exists(),
 			"model %s with top_p must not gain temperature", model)
 		require.Equal(t, 0.99, gjson.GetBytes(out, "top_p").Float())
@@ -385,7 +385,7 @@ func TestNormalizeClaudeOAuthRequestBody_SkipsTemperatureTopUpWithTopPOnLockedMo
 
 func TestNormalizeClaudeOAuthRequestBody_StillTopsUpTemperatureWithoutTopP(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-5-5","messages":[]}`)
-	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-haiku-5-5", claudeOAuthNormalizeOptions{})
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-haiku-5-5", claudeOAuthNormalizeOptions{apiVersion: claude.LegacyAPIVersion})
 	require.Equal(t, int64(1), gjson.GetBytes(out, "temperature").Int(),
 		"无 top_p 时 temperature:1 补齐保持不变")
 }

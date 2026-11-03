@@ -1,6 +1,13 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
+// DefaultAPIVersion is the default protocol version for the Claude API.
+// LegacyAPIVersion remains available for clients that need sampling parameters.
+const (
+	DefaultAPIVersion = "2026-10-21"
+	LegacyAPIVersion  = "2023-06-01"
+)
+
 // Claude Code 客户端相关常量
 
 // Beta header 常量

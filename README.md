@@ -738,6 +738,13 @@ go generate ./cmd/server
 
 ---
 
+## Claude API Version
+
+Anthropic accounts default to API version `2026-10-21`. Remove `temperature`,
+`top_p`, and `top_k` when using this version; clients that need them can explicitly
+select `2023-06-01`. See the [version and migration guide](docs/ANTHROPIC_API_VERSION.md)
+for OAuth, token counting, and account override behavior.
+
 ## Simple Mode
 
 Simple Mode is designed for individual developers or internal teams who want quick access without full SaaS features.

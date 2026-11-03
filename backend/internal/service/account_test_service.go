@@ -564,6 +564,10 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	apiVersion := resolveAnthropicAPIVersion(nil, account)
+	if apiVersion == claude.DefaultAPIVersion {
+		delete(payload, "temperature")
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -576,7 +580,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-version", apiVersion)
 
 	// Apply Claude Code client headers
 	for key, value := range claude.DefaultHeaders() {

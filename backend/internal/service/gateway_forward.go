@@ -226,7 +226,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 
-		normalizeOpts := claudeOAuthNormalizeOptions{}
+		normalizeOpts := claudeOAuthNormalizeOptions{apiVersion: resolveAnthropicAPIVersion(c, account)}
 		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {

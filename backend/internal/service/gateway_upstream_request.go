@@ -200,9 +200,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")
 	}
-	if getHeaderRaw(req.Header, "anthropic-version") == "" {
-		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
-	}
+	setHeaderRaw(req.Header, "anthropic-version", resolveAnthropicAPIVersion(c, account))
 	if tokenType == "oauth" {
 		applyClaudeOAuthHeaderDefaults(req)
 	}
