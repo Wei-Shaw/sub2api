@@ -151,18 +151,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	if account != nil && account.UsesOpenAICodexProtocol() {
-		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
-			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
-			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-			logOpenAIPassthroughInstructionsRejected(ctx, c, account, reqModel, rejectReason, body)
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": gin.H{
-					"type":    "forbidden_error",
-					"message": rejectMsg,
-				},
-			})
-			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
-		}
 		if isOpenAICodexModel(reqModel) && !gjson.GetBytes(body, "instructions").Exists() {
 			nextBody, setErr := sjson.SetBytes(body, "instructions", defaultCodexSynthInstructions(reqModel))
 			if setErr != nil {
@@ -376,6 +364,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		SetOpsUpstreamModel(c, actualModel)
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		syncOpenAIResponsesInstructionsEcho(c, body)
 		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 		releaseUpstreamCtx()
 		if buildErr != nil {
@@ -551,37 +540,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.BillingModel = imageBillingModel
 	}
 	return forwardResult, nil
-}
-
-func logOpenAIPassthroughInstructionsRejected(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	reqModel string,
-	rejectReason string,
-	body []byte,
-) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	accountID := int64(0)
-	accountName := ""
-	accountType := ""
-	if account != nil {
-		accountID = account.ID
-		accountName = strings.TrimSpace(account.Name)
-		accountType = strings.TrimSpace(string(account.Type))
-	}
-	fields := []zap.Field{
-		zap.String("component", "service.openai_gateway"),
-		zap.Int64("account_id", accountID),
-		zap.String("account_name", accountName),
-		zap.String("account_type", accountType),
-		zap.String("request_model", strings.TrimSpace(reqModel)),
-		zap.String("reject_reason", strings.TrimSpace(rejectReason)),
-	}
-	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, body)
-	logger.FromContext(ctx).With(fields...).Warn("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions")
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
@@ -2066,6 +2024,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					return resultWithUsage(), fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
 				}
 				restoredData = restoreCodexToolNamesFromSSEContext(c, restoredData, rawEventType)
+				restoredData = restoreOpenAIResponsesInstructionsEchoInEvent(c, restoredData)
 				if !bytes.Equal(restoredData, dataBytes) {
 					dataBytes = restoredData
 					trimmedData = strings.TrimSpace(string(restoredData))
@@ -2378,6 +2337,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
 	}
 	body = restoreCodexToolNamesFromContext(c, body)
+	body = restoreOpenAIResponsesInstructionsEchoInResponse(c, body)
 	body, err = restoreOpenAIResponsesClientToolPayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
@@ -2445,11 +2405,12 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
-		body = restoredBody
+		body = restoreOpenAIResponsesInstructionsEchoInResponse(c, restoredBody)
 	} else {
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
+		bodyText = restoreOpenAIResponsesInstructionsEchoInSSEBody(c, bodyText)
 		body = []byte(bodyText)
 	}
 
