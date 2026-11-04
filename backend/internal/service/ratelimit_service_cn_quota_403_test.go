@@ -103,9 +103,9 @@ func TestHandleUpstreamError_KimiConcurrencyLimit403StillUsesConcurrencyPath(t *
 
 	require.True(t, shouldDisable)
 	require.Equal(t, 0, repo.setErrorCalls)
-	require.Equal(t, 0, repo.rateLimitedCalls, "concurrency-limit message must keep its dedicated path")
-	require.Equal(t, 1, repo.tempCalls)
-	require.Contains(t, repo.lastTempReason, cnConcurrencyLimitReasonPrefix)
+	require.Equal(t, 1, repo.rateLimitedCalls, "concurrency-limit message must keep its dedicated path")
+	require.Equal(t, 0, repo.tempCalls)
+	require.WithinDuration(t, time.Now().Add(5*time.Second), repo.lastRateLimitedAt, time.Second)
 }
 
 func TestHandleUpstreamError_KimiGeneric403StillEscalates(t *testing.T) {
