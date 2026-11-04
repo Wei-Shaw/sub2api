@@ -61,6 +61,50 @@ func WithRequestBodyMemoryScope(ctx context.Context) (context.Context, func()) {
 	return context.WithValue(ctx, bodyMemoryReservationKey{}, r), r.release
 }
 
+// DetachRequestBodyMemory opens a reservation on the request's budget for work
+// that keeps request-derived buffers after the handler returns, such as an
+// accepted asynchronous task. It takes over up to n bytes the request already
+// holds for the retained body and reserves only the remainder, so the body is
+// never charged twice; reservations made through the returned ctx accumulate on
+// it. The handler's release does not affect it, so the caller owns release and
+// must call it when the work ends. Without a request budget in ctx it is a no-op.
+func DetachRequestBodyMemory(ctx context.Context, n int64) (context.Context, func(), error) {
+	parent, _ := ctx.Value(bodyMemoryReservationKey{}).(*bodyMemoryReservation)
+	if parent == nil {
+		return ctx, func() {}, nil
+	}
+	detached, release := WithRequestBodyMemoryScope(ctx)
+	r, _ := detached.Value(bodyMemoryReservationKey{}).(*bodyMemoryReservation)
+	parent.mu.Lock()
+	moved := int64(0)
+	if !parent.closed && !r.closed {
+		moved = min(max(n, 0), parent.bytes)
+		parent.bytes -= moved
+	}
+	parent.mu.Unlock()
+	r.mu.Lock()
+	r.bytes += moved
+	r.mu.Unlock()
+	if err := reserveRequestBodyMemory(detached, n-moved); err != nil {
+		// Hand the body back: the handler still owns it until it returns.
+		r.mu.Lock()
+		r.bytes -= moved
+		r.mu.Unlock()
+		parent.mu.Lock()
+		if parent.closed {
+			parent.budget.mu.Lock()
+			parent.budget.used -= moved
+			parent.budget.mu.Unlock()
+		} else {
+			parent.bytes += moved
+		}
+		parent.mu.Unlock()
+		release()
+		return ctx, func() {}, err
+	}
+	return detached, release, nil
+}
+
 func (r *bodyMemoryReservation) release() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

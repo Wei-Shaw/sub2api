@@ -481,3 +481,84 @@ func TestReleaseRequestBodyMemoryCapsAtOwnReservation(t *testing.T) {
 		t.Fatalf("release after close changed the budget: used=%d", budget.used)
 	}
 }
+
+func TestDetachRequestBodyMemoryOutlivesHandlerRelease(t *testing.T) {
+	budget := NewBodyMemoryBudget(100)
+	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
+	detached, releaseDetached, err := DetachRequestBodyMemory(ctx, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release() // The handler returns while the detached work still runs.
+	if budget.used != 40 {
+		t.Fatalf("detached body must stay reserved: %d", budget.used)
+	}
+	if err := ReserveRequestBodyMemory(detached, 30); err != nil {
+		t.Fatalf("detached work must keep reserving after handler release: %v", err)
+	}
+	if err := ReserveRequestBodyMemory(detached, 31); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("detached reservations still share the budget: %v", err)
+	}
+	releaseDetached()
+	releaseDetached()
+	if budget.used != 0 {
+		t.Fatalf("leaked reservations: %d", budget.used)
+	}
+}
+
+func TestDetachRequestBodyMemoryTakesOverTheRequestCharge(t *testing.T) {
+	budget := NewBodyMemoryBudget(100)
+	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
+	if err := ReserveRequestBodyMemory(ctx, 70); err != nil {
+		t.Fatal(err)
+	}
+	// The retained body is already charged to the request, so detaching it must
+	// not need a second copy's worth of capacity.
+	_, releaseDetached, err := DetachRequestBodyMemory(ctx, 60)
+	if err != nil {
+		t.Fatalf("detach charged the body twice: %v", err)
+	}
+	if budget.used != 70 {
+		t.Fatalf("detach changed the shared usage: %d", budget.used)
+	}
+	release()
+	if budget.used != 60 {
+		t.Fatalf("handler release must leave only the detached body: %d", budget.used)
+	}
+	releaseDetached()
+	if budget.used != 0 {
+		t.Fatalf("leaked reservations: %d", budget.used)
+	}
+
+	ctx, release = WithRequestBodyMemoryBudget(context.Background(), budget)
+	if err := ReserveRequestBodyMemory(ctx, 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := DetachRequestBodyMemory(ctx, 101); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("want capacity error, got %v", err)
+	}
+	if budget.used != 50 {
+		t.Fatalf("failed detach must return the body to the request: %d", budget.used)
+	}
+	release()
+	if budget.used != 0 {
+		t.Fatalf("failed detach leaked reservations: %d", budget.used)
+	}
+}
+
+func TestDetachRequestBodyMemoryRejectsWhenBudgetExhausted(t *testing.T) {
+	budget := NewBodyMemoryBudget(100)
+	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
+	defer release()
+	if _, _, err := DetachRequestBodyMemory(ctx, 101); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("want capacity error, got %v", err)
+	}
+	if budget.used != 0 {
+		t.Fatalf("failed detach consumed budget: %d", budget.used)
+	}
+	if got, releaseNoop, err := DetachRequestBodyMemory(context.Background(), 101); err != nil || got == nil {
+		t.Fatalf("without a budget detach is a no-op: %v", err)
+	} else {
+		releaseNoop()
+	}
+}
