@@ -35,11 +35,11 @@
 <details open>
 <summary>点击折叠</summary>
 
-<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
 
-**[WandAPI](https://wandapi.ai/r/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
+**[WandAPI](https://wandapi.com/go/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
 
-**免费试用额度**：通过[专属链接](https://wandapi.ai/r/sub2api)注册，即可领取免费试用额度。
+**免费试用额度**：通过[专属链接](https://wandapi.com/go/sub2api)注册，即可领取免费试用额度。
 
 ---
 

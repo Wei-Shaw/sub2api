@@ -34,11 +34,11 @@
 <details open>
 <summary>クリックで折りたたむ</summary>
 
-<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
 
-**[WandAPI](https://wandapi.ai/r/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
+**[WandAPI](https://wandapi.com/go/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
 
-**無料トライアルクレジット**：[専用リンク](https://wandapi.ai/r/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
+**無料トライアルクレジット**：[専用リンク](https://wandapi.com/go/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
 
 ---
 
