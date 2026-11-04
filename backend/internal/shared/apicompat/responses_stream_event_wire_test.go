@@ -147,6 +147,36 @@ func TestWire_SequenceNumberPresentAtZero(t *testing.T) {
 	require.EqualValues(t, 0, delta["sequence_number"])
 }
 
+func TestWire_TextEventsKeepExactEmptyFieldContracts(t *testing.T) {
+	for _, tc := range []struct {
+		typeName, want string
+	}{
+		{"response.output_text.delta", `{"content_index":0,"delta":"","output_index":0,"sequence_number":0,"type":"response.output_text.delta"}`},
+		{"response.output_text.done", `{"content_index":0,"output_index":0,"sequence_number":0,"text":"","type":"response.output_text.done"}`},
+		{"response.reasoning_summary_text.delta", `{"delta":"","output_index":0,"sequence_number":0,"summary_index":0,"type":"response.reasoning_summary_text.delta"}`},
+		{"response.reasoning_summary_text.done", `{"output_index":0,"sequence_number":0,"summary_index":0,"text":"","type":"response.reasoning_summary_text.done"}`},
+		{"response.function_call_arguments.delta", `{"delta":"","output_index":0,"sequence_number":0,"type":"response.function_call_arguments.delta"}`},
+		{"response.function_call_arguments.done", `{"arguments":"","output_index":0,"sequence_number":0,"type":"response.function_call_arguments.done"}`},
+		{"response.custom_tool_call_input.delta", `{"delta":"","output_index":0,"sequence_number":0,"type":"response.custom_tool_call_input.delta"}`},
+		{"response.custom_tool_call_input.done", `{"input":"","output_index":0,"sequence_number":0,"type":"response.custom_tool_call_input.done"}`},
+	} {
+		t.Run(tc.typeName, func(t *testing.T) {
+			wire, err := json.Marshal(ResponsesStreamEvent{Type: tc.typeName})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(wire))
+		})
+	}
+}
+
+func TestWire_TextEventsKeepIdentitiesAndJSONEscaping(t *testing.T) {
+	wire, err := json.Marshal(ResponsesStreamEvent{
+		Type: "response.function_call_arguments.delta", SequenceNumber: 17, OutputIndex: 3,
+		ItemID: "item_1", CallID: "call_1", Name: "lookup", Delta: "你好🙂\n<>&\u2028\xff",
+	})
+	require.NoError(t, err)
+	require.Equal(t, `{"call_id":"call_1","delta":"你好🙂\n\u003c\u003e\u0026\u2028\ufffd","item_id":"item_1","name":"lookup","output_index":3,"sequence_number":17,"type":"response.function_call_arguments.delta"}`, string(wire))
+}
+
 func TestResponsesOutputUnmarshal_ToolSearchObjectArguments(t *testing.T) {
 	var item ResponsesOutput
 	require.NoError(t, json.Unmarshal([]byte(`{

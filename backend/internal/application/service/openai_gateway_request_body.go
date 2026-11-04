@@ -885,6 +885,9 @@ func (v openAIRequestView) ApplyPatches() ([]byte, error) {
 	if v.patchesDisabled || len(v.patches) == 0 {
 		return nil, errors.New("openai request patches disabled")
 	}
+	if body, applied, err := applyOpenAIRequestSetPatches(v.body, v.patches); applied {
+		return body, err
+	}
 	body := v.body
 	for _, patch := range v.patches {
 		var err error

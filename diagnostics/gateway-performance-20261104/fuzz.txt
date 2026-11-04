@@ -1,0 +1,2 @@
+github.com/Wei-Shaw/sub2api/ent: /usr/local/go/pkg/tool/linux_arm64/compile: signal: killed
+FAIL	github.com/Wei-Shaw/sub2api/internal/application/service [build failed]

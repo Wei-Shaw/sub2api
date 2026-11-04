@@ -1,0 +1,47 @@
+2026/11/04 03:25:27 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkOpenAIResponses_LargeInputRawPatch/4MB-2         	     206	   1735314 ns/op	2417.80 MB/s	 4203800 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/4MB-2         	     205	   1704614 ns/op	2461.35 MB/s	 4203800 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/4MB-2         	     210	   1718327 ns/op	2441.70 MB/s	 4203800 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/8MB-2         	     100	   3568675 ns/op	2350.91 MB/s	 8398104 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/8MB-2         	     100	   3546157 ns/op	2365.84 MB/s	 8398104 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/8MB-2         	     100	   3537033 ns/op	2371.94 MB/s	 8398104 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/16MB-2        	      48	   7597976 ns/op	2208.24 MB/s	16786713 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/16MB-2        	      50	   7885643 ns/op	2127.68 MB/s	16786713 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/16MB-2        	      49	   7565273 ns/op	2217.79 MB/s	16786713 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/32MB-2        	      25	  15031217 ns/op	2232.40 MB/s	33563930 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/32MB-2        	      25	  15389810 ns/op	2180.38 MB/s	33563929 B/op	      24 allocs/op
+BenchmarkOpenAIResponses_LargeInputRawPatch/32MB-2        	      25	  15379908 ns/op	2181.79 MB/s	33563929 B/op	      24 allocs/op
+BenchmarkOpenAIWSHeaderPreparation-2                      	     513	    695116 ns/op	  330106 B/op	     261 allocs/op
+BenchmarkOpenAIWSHeaderPreparation-2                      	     516	    693749 ns/op	  335066 B/op	     261 allocs/op
+BenchmarkOpenAIWSHeaderPreparation-2                      	     516	    695438 ns/op	  333386 B/op	     261 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	6.487s
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/shared/apicompat
+BenchmarkAnthropicFragmentAccumulation/text-2         	    2205	    136361 ns/op	1922.43 MB/s	 1239763 B/op	     291 allocs/op
+BenchmarkAnthropicFragmentAccumulation/text-2         	    2829	    139927 ns/op	1873.44 MB/s	 1239760 B/op	     291 allocs/op
+BenchmarkAnthropicFragmentAccumulation/text-2         	    2662	    163825 ns/op	1600.14 MB/s	 1239761 B/op	     291 allocs/op
+BenchmarkAnthropicFragmentAccumulation/tool_use-2     	    2101	    164498 ns/op	1593.60 MB/s	 1238755 B/op	     287 allocs/op
+BenchmarkAnthropicFragmentAccumulation/tool_use-2     	    1998	    176756 ns/op	1483.08 MB/s	 1238757 B/op	     287 allocs/op
+BenchmarkAnthropicFragmentAccumulation/tool_use-2     	    2337	    197931 ns/op	1324.42 MB/s	 1238755 B/op	     287 allocs/op
+BenchmarkAnthropicFragmentAccumulation/thinking-2     	    1980	    181815 ns/op	1441.82 MB/s	 1238785 B/op	     288 allocs/op
+BenchmarkAnthropicFragmentAccumulation/thinking-2     	    3128	    190107 ns/op	1378.93 MB/s	 1238784 B/op	     288 allocs/op
+BenchmarkAnthropicFragmentAccumulation/thinking-2     	    2614	    174973 ns/op	1498.20 MB/s	 1238784 B/op	     288 allocs/op
+BenchmarkResponsesStreamEventWire/response.output_text.delta-2         	  461006	       795.8 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.output_text.delta-2         	  462910	       823.9 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.output_text.delta-2         	  465765	       793.7 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.reasoning_summary_text.delta-2         	  455325	       796.2 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.reasoning_summary_text.delta-2         	  454830	       831.0 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.reasoning_summary_text.delta-2         	  453490	       809.2 ns/op	     624 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.function_call_arguments.delta-2        	  402324	       912.8 ns/op	     704 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.function_call_arguments.delta-2        	  396517	       938.1 ns/op	     704 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.function_call_arguments.delta-2        	  373664	       921.5 ns/op	     704 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.custom_tool_call_input.done-2          	  419833	       894.3 ns/op	     672 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.custom_tool_call_input.done-2          	  411386	       899.2 ns/op	     672 B/op	       4 allocs/op
+BenchmarkResponsesStreamEventWire/response.custom_tool_call_input.done-2          	  414022	       887.0 ns/op	     672 B/op	       4 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	9.159s

@@ -105,6 +105,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [前端架构优化计划](FRONTEND_ARCHITECTURE_OPTIMIZATION_PLAN.md) | Feature owner 收口、DTO、Query/Action、依赖门禁与分阶段迁移路线 |
+| [网关性能优化与 Rust 评估](GATEWAY_PERFORMANCE_OPTIMIZATION_CN.md) | JSON/WS/SSE 热路径优化、Rust 候选边界与 Docker 对照证据 |
 
 处于方案或交付阶段的功能记录在 `openspec/changes/`。使用这些文档前，应同时核对实现和测试，不能把 proposal 当作当前运行事实。
 
