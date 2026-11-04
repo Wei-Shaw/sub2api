@@ -2739,3 +2739,14 @@ func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAnthropicImageGuard(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Gateway.AnthropicImageGuardEnabled)
+	t.Setenv("GATEWAY_ANTHROPIC_IMAGE_GUARD_ENABLED", "true")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.AnthropicImageGuardEnabled)
+}

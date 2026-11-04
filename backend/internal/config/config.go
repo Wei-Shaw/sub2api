@@ -1030,6 +1030,8 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// AnthropicImageGuardEnabled validates inline images and bounds their longest edge before forwarding.
+	AnthropicImageGuardEnabled bool `mapstructure:"anthropic_image_guard_enabled"`
 	// MinOutputTokens is the minimum max_output_tokens used when
 	// converting Chat Completions or Anthropic requests to Responses.
 	MinOutputTokens int `mapstructure:"min_output_tokens"`
@@ -2493,6 +2495,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.anthropic_image_guard_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
