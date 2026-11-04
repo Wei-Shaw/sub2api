@@ -471,6 +471,11 @@ describe('AccountUsageCell', () => {
             { window: '5h', utilization: 0, resets_at: null },
             { window: 'weekly', utilization: 10, resets_at: '2026-11-11T15:52:48Z' }
           ]
+        },
+        {
+          key: 'gemini-argon-wtu',
+          name: 'Gemini 4 Argon',
+          windows: [{ window: 'weekly', utilization: 20, resets_at: '2026-11-11T17:11:15Z' }]
         }
       ]
     })
@@ -497,7 +502,9 @@ describe('AccountUsageCell', () => {
       'admin.accounts.usageWindow.antigravityGemini5h|60|2026-11-04T20:52:48Z',
       'admin.accounts.usageWindow.antigravityGeminiWeekly|25|2026-11-11T15:52:48Z',
       'admin.accounts.usageWindow.antigravityOther5h|0|',
-      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z'
+      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z',
+      // Pro plans' separate Argon quota is its own row, not a second Claude/GPT week.
+      'admin.accounts.usageWindow.antigravityArgonWeekly|20|2026-11-11T17:11:15Z'
     ])
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
