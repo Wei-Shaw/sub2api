@@ -41,23 +41,43 @@ func WithRequestBodyMemoryBudget(ctx context.Context, budget *BodyMemoryBudget) 
 		return ctx, func() {}
 	}
 	r := &bodyMemoryReservation{budget: budget}
-	return context.WithValue(ctx, bodyMemoryReservationKey{}, r), func() {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		if r.closed {
-			return
-		}
-		r.closed = true
-		budget.mu.Lock()
-		budget.used -= r.bytes
-		budget.mu.Unlock()
-		r.bytes = 0
+	return context.WithValue(ctx, bodyMemoryReservationKey{}, r), r.release
+}
+
+// WithRequestBodyMemoryScope opens a nested reservation on the request's budget
+// for representations that die before the handler returns, such as one upstream
+// attempt's rewritten body. Release returns only the scope's bytes and is
+// idempotent. Without a request budget in ctx it is a no-op; a scope opened after
+// the request released its budget rejects every reservation.
+func WithRequestBodyMemoryScope(ctx context.Context) (context.Context, func()) {
+	parent, _ := ctx.Value(bodyMemoryReservationKey{}).(*bodyMemoryReservation)
+	if parent == nil {
+		return ctx, func() {}
 	}
+	parent.mu.Lock()
+	closed := parent.closed
+	parent.mu.Unlock()
+	r := &bodyMemoryReservation{budget: parent.budget, closed: closed}
+	return context.WithValue(ctx, bodyMemoryReservationKey{}, r), r.release
+}
+
+func (r *bodyMemoryReservation) release() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
+	r.closed = true
+	r.budget.mu.Lock()
+	r.budget.used -= r.bytes
+	r.budget.mu.Unlock()
+	r.bytes = 0
 }
 
 // ReserveRequestBodyMemory reserves n bytes before allocating another buffered
 // representation of the request body. The reservation shares the ingress budget
-// and is retained until the handler's release function runs. Without a budget in
+// and is retained until the release function of the handler, or of the innermost
+// WithRequestBodyMemoryScope in ctx, runs. Without a budget in
 // ctx it is a no-op. Callers must propagate exhaustion instead of allocating
 // through an unbudgeted fallback. Unlike ingress reads, it ignores ctx
 // cancellation: callers that keep working after a client disconnect own that
@@ -93,6 +113,13 @@ func reserveBodyMemory(ctx context.Context, n int64) error {
 	return nil
 }
 
+// ReleaseRequestBodyMemory returns up to n bytes previously reserved through ctx,
+// for a representation that was never allocated or came out smaller than its
+// reservation. It never refunds another request's or scope's bytes.
+func ReleaseRequestBodyMemory(ctx context.Context, n int64) {
+	releaseRequestBodyMemory(ctx, n)
+}
+
 // releaseRequestBodyMemory refunds storage that a helper no longer owns. Each
 // allocation must be released once, or left for the handler's final cleanup.
 // Cleanup may race with a cancelled read, so a closed reservation is a no-op.
@@ -106,6 +133,7 @@ func releaseRequestBodyMemory(ctx context.Context, n int64) {
 	if r.closed {
 		return
 	}
+	n = min(n, r.bytes)
 	r.budget.mu.Lock()
 	r.budget.used -= n
 	r.budget.mu.Unlock()

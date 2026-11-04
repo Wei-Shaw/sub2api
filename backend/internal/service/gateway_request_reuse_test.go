@@ -51,7 +51,7 @@ func TestGatewayRequestBodyReuse_RestoresDerivedStateAndIsolatesAttempts(t *test
 }
 
 func TestGatewayRequestBodyReuse_InvalidatesReplacedAndUnparsedBodies(t *testing.T) {
-	for _, mode := range []string{"manual", "replace-ref", "replace-storage", "protocol"} {
+	for _, mode := range []string{"manual", "replace-ref", "replace-storage", "mutate-in-place", "protocol"} {
 		t.Run(mode, func(t *testing.T) {
 			body := []byte(`{"model":"old","system":"system","messages":[1],"contents":[2]}`)
 			parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
@@ -66,6 +66,9 @@ func TestGatewayRequestBodyReuse_InvalidatesReplacedAndUnparsedBodies(t *testing
 				parsed.Body.Replace(nil)
 				copy(body, bytes.Replace(body, []byte(`"old"`), []byte(`"new"`), 1))
 				parsed.Body.Replace(body)
+			case "mutate-in-place":
+				// Violates the borrowing contract; the fingerprint still forces a reparse.
+				copy(body, bytes.Replace(body, []byte(`"old"`), []byte(`"new"`), 1))
 			case "protocol":
 				parsed.protocol = domain.PlatformGemini
 			}
@@ -73,7 +76,7 @@ func TestGatewayRequestBodyReuse_InvalidatesReplacedAndUnparsedBodies(t *testing
 			require.NoError(t, err)
 			require.NoError(t, parsed.ReplaceBody(body))
 			for _, actual := range []*ParsedRequest{parsed, clone} {
-				if mode == "replace-storage" {
+				if mode == "replace-storage" || mode == "mutate-in-place" {
 					require.Equal(t, "new", actual.Model)
 				} else {
 					require.Equal(t, "old", actual.Model)

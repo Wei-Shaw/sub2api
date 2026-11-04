@@ -1172,6 +1172,23 @@ func (v *openAIRequestView) DisablePatches() {
 	v.patches = nil
 }
 
+// MovePatchesTo replays pending raw patches onto reqBody, decoded from the same
+// unpatched body, when they cannot be applied as raw edits. Later edits must go
+// to reqBody directly, so patching is disabled afterwards.
+func (v *openAIRequestView) MovePatchesTo(reqBody map[string]any) {
+	if v == nil {
+		return
+	}
+	for _, patch := range v.patches {
+		if patch.delete {
+			deleteOpenAIRequestMapPath(reqBody, patch.path)
+		} else {
+			setOpenAIRequestMapPath(reqBody, patch.path, patch.value)
+		}
+	}
+	v.DisablePatches()
+}
+
 func (v openAIRequestView) HasPatches() bool {
 	return !v.patchesDisabled && len(v.patches) > 0
 }
@@ -1180,6 +1197,30 @@ func (v openAIRequestView) ApplyPatches(ctx context.Context) ([]byte, error) {
 	if v.patchesDisabled || len(v.patches) == 0 {
 		return nil, errors.New("openai request patches disabled")
 	}
+	// Every strategy materializes one full output. Reserve the input size before
+	// editing so an exhausted budget rejects without wasted work, then settle the
+	// reservation to the exact output length.
+	reserved := int64(len(v.body))
+	if err := httputil.ReserveRequestBodyMemory(ctx, reserved); err != nil {
+		return nil, err
+	}
+	out, err := v.materializePatches()
+	if err != nil {
+		httputil.ReleaseRequestBodyMemory(ctx, reserved)
+		return nil, err
+	}
+	if extra := int64(len(out)) - reserved; extra > 0 {
+		if err := httputil.ReserveRequestBodyMemory(ctx, extra); err != nil {
+			httputil.ReleaseRequestBodyMemory(ctx, reserved)
+			return nil, err
+		}
+	} else {
+		httputil.ReleaseRequestBodyMemory(ctx, -extra)
+	}
+	return out, nil
+}
+
+func (v openAIRequestView) materializePatches() ([]byte, error) {
 	// A single edit already needs only one output buffer. Keep sjson's exact
 	// behavior for it and for inputs outside ojson's compatibility contract.
 	if len(v.patches) == 1 || !v.canBatchPatches() {
@@ -1197,11 +1238,10 @@ func (v openAIRequestView) ApplyPatches(ctx context.Context) ([]byte, error) {
 			err = doc.Set(patch.path, patch.value)
 		}
 		if err != nil {
-			return nil, err
+			// Doc rejects some edits sjson accepts (e.g. a key under an array).
+			// Only scalar values reach here, so retrying runs no marshaler twice.
+			return v.applyPatchesSequential()
 		}
-	}
-	if err := httputil.ReserveRequestBodyMemory(ctx, int64(doc.Len())); err != nil {
-		return nil, err
 	}
 	return doc.Bytes(), nil
 }
@@ -1225,51 +1265,33 @@ func (v openAIRequestView) canBatchPatches() bool {
 				return false
 			}
 		}
-		// Production paths are host-owned identifiers. Queries, array indices,
-		// modifiers and non-ASCII keys retain the existing sjson semantics.
-		start := true
-		depth := 1
-		for i := 0; i < len(patch.path); i++ {
-			c := patch.path[i]
-			if c == '.' && !start {
-				depth++
-				if depth > 4 {
-					return false
-				}
-				start = true
-				continue
-			}
-			if c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') &&
-				(start || c < '0' || c > '9') {
+		if !isOpenAIBatchPatchPath(patch.path) {
+			return false
+		}
+	}
+	for _, ancestor := range v.patches {
+		for _, patch := range v.patches {
+			// An ancestor edit can replace the checked object or expose a second
+			// duplicate key. Keep those batches on the existing path.
+			if len(patch.path) > len(ancestor.path) && patch.path[len(ancestor.path)] == '.' &&
+				strings.HasPrefix(patch.path, ancestor.path) {
 				return false
 			}
-			start = false
-		}
-		if start {
-			return false
 		}
 	}
 	body := bytes.TrimSpace(v.body)
 	if len(body) == 0 || body[0] != '{' {
 		return false
 	}
-	// Reuse the existing borrowed raw view rather than copying the body into a
-	// string. The scans below do not retain results or materialize member maps.
-	root := ojson.Parse(parseRawJSONView(body).Raw)
+	// Borrow the body rather than copying it into a string. The scans below do
+	// not retain results or materialize member maps.
+	root := ojson.Parse(openAIWSPayloadStringView(body))
 	for _, patch := range v.patches {
 		for i := 0; i < len(patch.path); i++ {
 			if patch.path[i] != '.' {
 				continue
 			}
-			prefix := patch.path[:i]
-			for _, other := range v.patches {
-				// An ancestor edit can replace the checked object or expose a
-				// second duplicate key. Keep those batches on the existing path.
-				if other.path == prefix {
-					return false
-				}
-			}
-			parent := root.Get(prefix)
+			parent := root.Get(patch.path[:i])
 			// sjson edits inside string parents differently. Inspect only the
 			// original raw input: Doc.Get can copy an already edited container.
 			if parent.Type == ojson.String || !openAIRequestPatchObjectIsSmall(parent) {
@@ -1280,6 +1302,31 @@ func (v openAIRequestView) canBatchPatches() bool {
 	// Reject unsuitable shapes before paying for full validation. Only a valid
 	// document reaches Doc; both borrowed readers tolerate malformed input.
 	return openAIRequestPatchObjectIsSmall(root) && ojson.ValidBytes(body)
+}
+
+// isOpenAIBatchPatchPath narrows isSimpleOpenAIRequestPatchPath to what ojson
+// and sjson address identically. Production paths are host-owned identifiers;
+// queries, array indices, modifiers and non-ASCII keys retain sjson semantics.
+func isOpenAIBatchPatchPath(path string) bool {
+	start := true
+	depth := 1
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		if c == '.' && !start {
+			depth++
+			if depth > 4 {
+				return false
+			}
+			start = true
+			continue
+		}
+		if c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+			(start || c < '0' || c > '9') {
+			return false
+		}
+		start = false
+	}
+	return !start
 }
 
 func openAIRequestPatchObjectIsSmall(value ojson.Result) bool {

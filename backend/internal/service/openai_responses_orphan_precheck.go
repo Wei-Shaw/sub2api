@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"encoding/json"
-	"unsafe"
 
 	"github.com/tidwall/gjson"
 )
@@ -15,7 +14,7 @@ import (
 func openAIResponsesInputMayNeedOrphanCleanup(body []byte) bool {
 	// Use Get directly: Parse(...).Get(...) differs from GetBytes on malformed
 	// prefixes, where the old gate can still find an input and invoke the decoder.
-	input := gjson.Get(unsafe.String(unsafe.SliceData(body), len(body)), "input")
+	input := gjson.Get(openAIWSPayloadStringView(body), "input")
 	if !input.IsArray() {
 		return false
 	}

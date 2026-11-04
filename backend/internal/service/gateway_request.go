@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"math"
 	"regexp"
 	"sort"
@@ -95,6 +96,9 @@ func (b *RequestBodyRef) Replace(data []byte) {
 	b.parsed = nil
 }
 
+// gatewayRequestBodySeed keys body fingerprints for this process only.
+var gatewayRequestBodySeed = maphash.MakeSeed()
+
 // gatewayRequestBodyState is an immutable snapshot of a successful parse. It
 // owns scalar strings and stores only offsets for large fields, so sharing it
 // between attempts cannot retain an old request body or mutable request state.
@@ -104,6 +108,7 @@ type gatewayRequestBodyState struct {
 	maxTokens                                  int
 	protocol                                   string
 	systemRange, messagesRange, inputRange     jsonRange
+	fingerprint                                uint64
 }
 
 func (p *ParsedRequest) saveBodyState() {
@@ -111,6 +116,7 @@ func (p *ParsedRequest) saveBodyState() {
 		model: p.Model, metadataUserID: p.MetadataUserID, outputEffort: p.OutputEffort, speed: p.Speed,
 		stream: p.Stream, hasSystem: p.HasSystem, thinkingEnabled: p.ThinkingEnabled, maxTokens: p.MaxTokens,
 		protocol: p.protocol, systemRange: p.systemRange, messagesRange: p.messagesRange, inputRange: p.inputRange,
+		fingerprint: maphash.Bytes(gatewayRequestBodySeed, p.Body.Bytes()),
 	}
 }
 
@@ -126,9 +132,11 @@ func (p *ParsedRequest) reusableBodyState(data []byte) *gatewayRequestBodyState 
 		return nil
 	}
 	current := p.Body.Bytes()
-	// Identity is safe only together with the successful-parse snapshot and the
-	// immutable borrowing contract. Replace always invalidates the snapshot.
-	if len(data) == 0 || len(data) != len(current) || &data[0] != &current[0] {
+	// Identity alone would trust the immutable borrowing contract. The content
+	// fingerprint also catches in-place edits of shared storage, which then
+	// reparse as before; it costs one hash pass instead of a full parse.
+	if len(data) == 0 || len(data) != len(current) || &data[0] != &current[0] ||
+		maphash.Bytes(gatewayRequestBodySeed, data) != p.Body.parsed.fingerprint {
 		return nil
 	}
 	return p.Body.parsed

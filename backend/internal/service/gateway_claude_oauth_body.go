@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropicfp"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -996,7 +995,7 @@ type cacheControlPath struct {
 func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, messagePaths []string, toolPaths []string, systemPaths []string) {
 	// Borrow only during this synchronous scan. Returned paths/logs own their
 	// strings; no result may retain the request body after this function returns.
-	view := unsafe.String(unsafe.SliceData(body), len(body))
+	view := openAIWSPayloadStringView(body)
 	system := gjson.Get(view, "system")
 	if system.IsArray() {
 		sysIndex := 0

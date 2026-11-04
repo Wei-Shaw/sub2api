@@ -356,6 +356,14 @@ func TestOpenAIRequestPatches_CompatibilityFallback(t *testing.T) {
 			},
 		},
 		{
+			name: "key under array parent",
+			body: `{"model":"old","reasoning":[1]}`,
+			patches: []openAIRequestPatch{
+				{path: "model", value: "mapped"},
+				{path: "reasoning.effort", value: "none"},
+			},
+		},
+		{
 			name: "invalid UTF-8 path",
 			body: `{"model":"old","metadata":{}}`,
 			patches: []openAIRequestPatch{
@@ -408,36 +416,118 @@ func TestOpenAIRequestPatches_ReserveOutputUntilRequestRelease(t *testing.T) {
 
 func TestOpenAIRequestPatches_RejectUnavailableOutputBudget(t *testing.T) {
 	body := []byte(`{"model":"old","reasoning":{"effort":"low"},"input":[]}`)
-	patches := []openAIRequestPatch{{path: "model", value: "mapped"}, {path: "reasoning.effort", value: "none"}}
-	want, err := applyOpenAIRequestPatchesSequential(body, patches)
-	require.NoError(t, err)
-	for _, scenario := range []string{"exhausted", "closed", "canceled and closed"} {
-		t.Run(scenario, func(t *testing.T) {
-			limit := int64(len(want))
-			if scenario == "exhausted" {
-				limit--
-			}
-			budget := httputil.NewBodyMemoryBudget(limit)
-			parent, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
-			ctx, release := httputil.WithRequestBodyMemoryBudget(parent, budget)
+	for _, tt := range []struct {
+		name    string
+		patches []openAIRequestPatch
+	}{
+		{name: "batched", patches: []openAIRequestPatch{{path: "model", value: "mapped"}, {path: "reasoning.effort", value: "none"}}},
+		{name: "single", patches: []openAIRequestPatch{{path: "model", value: "mapped"}}},
+		{name: "sequential", patches: []openAIRequestPatch{{path: "model", value: "mapped"}, {path: "metadata", value: map[string]any{"k": "v"}}}},
+	} {
+		want, err := applyOpenAIRequestPatchesSequential(body, tt.patches)
+		require.NoError(t, err)
+		for _, scenario := range []string{"exhausted", "below input", "closed", "canceled and closed"} {
+			t.Run(tt.name+"/"+scenario, func(t *testing.T) {
+				limit := int64(len(want))
+				switch scenario {
+				case "exhausted":
+					limit--
+				case "below input":
+					// Rejected by the up-front input-size reservation, before editing.
+					limit = int64(len(body)) - 1
+				}
+				budget := httputil.NewBodyMemoryBudget(limit)
+				parent, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
+				ctx, release := httputil.WithRequestBodyMemoryBudget(parent, budget)
+				t.Cleanup(release)
+				switch scenario {
+				case "closed":
+					release()
+				case "canceled and closed":
+					cancel()
+					release()
+				}
+				view := requestViewWithPatches(body, tt.patches)
+				got, err := view.ApplyPatches(ctx)
+				require.ErrorIs(t, err, httputil.ErrRequestBodyMemoryBudget)
+				require.Nil(t, got)
+				probe, releaseProbe := httputil.WithRequestBodyMemoryBudget(context.Background(), budget)
+				t.Cleanup(releaseProbe)
+				require.NoError(t, httputil.ReserveRequestBodyMemory(probe, limit), "failed materialization must not consume the shared budget")
+			})
+		}
+		t.Run(tt.name+"/exact", func(t *testing.T) {
+			budget := httputil.NewBodyMemoryBudget(int64(len(want)))
+			ctx, release := httputil.WithRequestBodyMemoryBudget(context.Background(), budget)
 			t.Cleanup(release)
-			wantErr := httputil.ErrRequestBodyMemoryBudget
-			switch scenario {
-			case "closed":
-				release()
-			case "canceled and closed":
-				cancel()
-				release()
-			}
-			view := requestViewWithPatches(body, patches)
-			got, err := view.ApplyPatches(ctx)
-			require.ErrorIs(t, err, wantErr)
-			require.Nil(t, got)
+			got, err := requestViewWithPatches(body, tt.patches).ApplyPatches(ctx)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
 			probe, releaseProbe := httputil.WithRequestBodyMemoryBudget(context.Background(), budget)
 			t.Cleanup(releaseProbe)
-			require.NoError(t, httputil.ReserveRequestBodyMemory(probe, limit), "failed materialization must not consume the shared budget")
+			require.ErrorIs(t, httputil.ReserveRequestBodyMemory(probe, 1), httputil.ErrRequestBodyMemoryBudget, "the reservation must settle to the exact output")
 		})
+	}
+}
+
+func TestOpenAIRequestPatches_MovePatchesToDecodedBody(t *testing.T) {
+	body := []byte(`{"model":"old","reasoning":[1],"previous_response_id":"resp_1"}`)
+	view := requestViewWithPatches(body, []openAIRequestPatch{
+		{path: "model", value: "mapped"},
+		{path: "reasoning.effort", value: "none"},
+		{path: "previous_response_id", delete: true},
+	})
+	_, err := view.ApplyPatches(context.Background())
+	require.Error(t, err, "raw edits cannot set a key under an array")
+	decoded, err := view.Decode(nil)
+	require.NoError(t, err)
+	view.MovePatchesTo(decoded)
+	require.False(t, view.HasPatches())
+	out, err := json.Marshal(decoded)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"mapped","reasoning":{"effort":"none"}}`, string(out))
+	require.Equal(t, `{"model":"old","reasoning":[1],"previous_response_id":"resp_1"}`, string(body))
+}
+
+func TestOpenAIRequestPatches_ForwardReleasesPatchedBodyWhenAttemptEnds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5","stream":false,"reasoning":{"effort":"minimal"},"max_tokens":1024,"input":[{"type":"message","content":"hi"}]}`)
+	const limit = 1 << 20
+	budget := httputil.NewBodyMemoryBudget(limit)
+	ctx, release := httputil.WithRequestBodyMemoryBudget(context.Background(), budget)
+	t.Cleanup(release)
+	for attempt := range 3 {
+		upstream := &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+			},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = false
+		svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+		account := &Account{
+			ID:          int64(attempt + 1),
+			Name:        "openai-apikey",
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Concurrency: 1,
+			Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://example.com"},
+			Extra:       map[string]any{"use_responses_api": true},
+		}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil).WithContext(ctx)
+		SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+		_, err := svc.Forward(ctx, c, account, body)
+		require.NoError(t, err)
+		require.NotNil(t, upstream.lastReq)
+		// Failover attempts must not accumulate rewritten bodies until the handler returns.
+		probe, releaseProbe := httputil.WithRequestBodyMemoryBudget(context.Background(), budget)
+		require.NoError(t, httputil.ReserveRequestBodyMemory(probe, limit), "attempt %d retained its patched body", attempt)
+		releaseProbe()
 	}
 }
 
