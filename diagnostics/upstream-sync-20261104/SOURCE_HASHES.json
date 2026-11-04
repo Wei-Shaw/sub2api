@@ -11,7 +11,7 @@
   "backend/internal/application/service/openai_gateway_response_handling.go": "3e1b2e12b773af202b6aff71000a44d86f9ab1c8cc731ed8873a70bba5b38fce",
   "backend/internal/application/service/openai_gateway_scheduling.go": "e4c86aec7d83810cde1cfc66fb966a13b9249065df51d38a3c96458bb60c5f57",
   "backend/internal/application/service/openai_grok_agent_message.go": "556ef4aec5b80309522a65bc971a7cdbc40489de9e4581da8bd0b71d59940191",
-  "backend/internal/application/service/openai_image_size_routing.go": "ca05c29cd4f6b5232bb36c2cb6e7a6b6c05423777678945306bd36cc2eeec45f",
+  "backend/internal/application/service/openai_image_size_routing.go": "29d6cd5ee6b7b99b507b42c4361ccab435ac2d7ab35919a3ad2863732951b4e6",
   "backend/internal/application/service/openai_image_size_routing_test.go": "8d61095ebeaa56e9ad6a4a6c9e8f76dd2539765e15f56286231d4b4468414286",
   "backend/internal/application/service/openai_passthrough_normalization_test.go": "085f40ce584c0dc2ec78d0860f676138f57feccf56d6525c1cda6930a8ee441d",
   "backend/internal/application/service/openai_responses_instructions_echo.go": "6b38e89c95cc1a3342fc60c529cca02d7b0717c117d715773aff8ffbf0ab41bf",

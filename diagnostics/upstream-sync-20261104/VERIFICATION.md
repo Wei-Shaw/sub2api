@@ -70,3 +70,5 @@ GOMEMLIMIT=1400MiB、GOGC=50、CGO_ENABLED=0、GOFLAGS=-p=1；禁网，其他验
 
 Git 祖先关闭使用保留当前实现树的 `ours` merge。合并后必须验证冻结上游 SHA 已是 main 的祖先，
 并确认 compare 的 `behind_by=0`。该登记不会把 #8319/#8476 和 #8006/#8369 暂缓能力标记为已实现。
+
+PR 首轮 Go lint 发现位掩码替代后残留的未使用排序 helper，已删除；没有改变运行分支，并补跑图片调度回归。

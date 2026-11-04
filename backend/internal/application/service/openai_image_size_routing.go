@@ -170,23 +170,8 @@ func (p *openAIImageSizePass) noteLaterRank(rank int) {
 	}
 }
 
-// openAIImageSizePreferenceRanks 是未指定尺寸请求的选号层级数，见 openAIImageSizePreferenceRank。
+// openAIImageSizePreferenceRanks 是未指定尺寸请求的不限、4K、2K、1K 四级偏好。
 const openAIImageSizePreferenceRanks = 4
-
-// openAIImageSizePreferenceRank 返回账号在未指定尺寸请求中的偏好层级：
-// 不限档位为 0，允许 4K 为 1，允许 2K（不含 4K）为 2，仅 1K 为 3。
-func openAIImageSizePreferenceRank(tiers []string) int {
-	switch {
-	case tiers == nil:
-		return 0
-	case slices.Contains(tiers, ImageBillingSize4K):
-		return 1
-	case slices.Contains(tiers, ImageBillingSize2K):
-		return 2
-	default:
-		return 3
-	}
-}
 
 // openAIImageSizeVetoReason 判定账号是否被当前选号轮次的尺寸档位约束排除。
 func openAIImageSizeVetoReason(ctx context.Context, account *Account) (bool, string) {
