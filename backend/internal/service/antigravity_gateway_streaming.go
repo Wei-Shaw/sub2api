@@ -86,6 +86,8 @@ func (cw *antigravityClientWriter) Fprintf(format string, args ...any) bool {
 
 func (cw *antigravityClientWriter) Disconnected() bool { return cw.disconnected }
 
+func (cw *antigravityClientWriter) Written() bool { return cw.w.Written() }
+
 func (cw *antigravityClientWriter) prepareFirstWrite() {
 	if cw.beforeFirstWrite == nil {
 		return
@@ -98,6 +100,20 @@ func (cw *antigravityClientWriter) prepareFirstWrite() {
 func (cw *antigravityClientWriter) markDisconnected() {
 	cw.disconnected = true
 	logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during streaming (%s), continuing to drain upstream for billing", cw.prefix)
+}
+
+func antigravityAbnormalStreamFailoverError(reason string) *UpstreamFailoverError {
+	logger.LegacyPrintf("service.antigravity_gateway", "Antigravity stream ended abnormally (%s), triggering failover", reason)
+	failoverErr := &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           []byte(`{"error":"abnormal stream response from upstream"}`),
+		RetryableOnSameAccount: true,
+	}
+	if reason == "malformed_function_call" {
+		failoverErr.RequestScopedTransient = true
+		failoverErr.NextAccountAction = NextAccountStop
+	}
+	return failoverErr
 }
 
 // handleStreamReadError 处理上游读取错误的通用逻辑。
@@ -1065,14 +1081,26 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			return
 		}
 		errorEventSent = true
-		_, _ = fmt.Fprintf(c.Writer, "event: error\ndata: {\"error\":\"%s\"}\n\n", reason)
-		flusher.Flush()
+		cw.Fprintf("event: error\ndata: {\"error\":%q}\n\n", reason)
+		if cw.Written() {
+			MarkResponseCommitted(c)
+		}
 	}
 
 	// finishUsage 是获取 processor 最终 usage 的辅助函数
 	finishUsage := func() *ClaudeUsage {
 		_, agUsage := processor.Finish()
 		return convertUsage(agUsage)
+	}
+	finishAbnormal := func(reason string, agUsage *antigravity.ClaudeUsage) (*antigravityStreamResult, error) {
+		if cw.Disconnected() {
+			return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+		}
+		if !cw.Written() {
+			return nil, antigravityAbnormalStreamFailoverError(reason)
+		}
+		sendErrorEvent(reason)
+		return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs}, fmt.Errorf("antigravity Claude stream ended abnormally: %s", reason)
 	}
 
 	for {
@@ -1081,6 +1109,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			if !ok {
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()
+				if reason := processor.AbnormalReason(); reason != "" {
+					return finishAbnormal(reason, agUsage)
+				}
 				if len(finalEvents) > 0 {
 					cw.Write(finalEvents)
 				} else if !processor.MessageStartSent() && !cw.Disconnected() {
@@ -1113,6 +1144,11 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 
 			// 处理 SSE 行，转换为 Claude 格式
 			claudeEvents := processor.ProcessLine(strings.TrimRight(ev.line, "\r\n"))
+			abnormalReason := processor.AbnormalReason()
+			if abnormalReason != "" && !cw.Written() && !processor.HasContent() {
+				_, agUsage := processor.Finish()
+				return finishAbnormal(abnormalReason, agUsage)
+			}
 			if len(claudeEvents) > 0 {
 				if firstTokenMs == nil {
 					ms := int(time.Since(startTime).Milliseconds())
@@ -1120,7 +1156,6 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				}
 				cw.Write(claudeEvents)
 			}
-
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {

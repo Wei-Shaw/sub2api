@@ -558,6 +558,186 @@ func TestAntigravityCompatEmptyStreamTriggersFailover(t *testing.T) {
 	}
 }
 
+func TestAntigravityCompatAbnormalEndAfterWriteSendsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	paths := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "chat completions",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+			},
+		},
+		{
+			name: "responses",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high")
+			},
+		},
+	}
+	cases := []struct {
+		name    string
+		payload string
+		reason  string
+	}{
+		{
+			name:    "malformed function call after thinking",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}`,
+			reason:  "malformed_function_call",
+		},
+		{
+			name:    "unexpected tool call after text",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"UNEXPECTED_TOOL_CALL"}]}}`,
+			reason:  "unexpected_tool_call",
+		},
+		{
+			name:    "too many tool calls after text",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"TOO_MANY_TOOL_CALLS"}]}}`,
+			reason:  "too_many_tool_calls",
+		},
+		{
+			name:    "thinking only with STOP",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]},"finishReason":"STOP"}]}}`,
+			reason:  "thinking_only_response",
+		},
+		{
+			name:    "thinking only without finish reason",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]}}]}}`,
+			reason:  "upstream_stream_truncated",
+		},
+	}
+
+	for _, path := range paths {
+		for _, tc := range cases {
+			t.Run(path.name+"/"+tc.name, func(t *testing.T) {
+				svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+				c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body: io.NopCloser(strings.NewReader("data: " + tc.payload + "\n\n" +
+						`data: {"response":{"usageMetadata":{"promptTokenCount":123,"candidatesTokenCount":7}}}` + "\n\n")),
+				}
+
+				result, err := path.run(svc, c, resp)
+
+				require.Error(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, 123, result.usage.InputTokens)
+				require.Equal(t, 7, result.usage.OutputTokens)
+				var failoverErr *UpstreamFailoverError
+				require.NotErrorAs(t, err, &failoverErr)
+				require.True(t, IsResponseCommitted(c))
+				body := recorder.Body.String()
+				require.Contains(t, body, tc.reason)
+				require.NotContains(t, body, "[DONE]")
+				require.NotContains(t, body, `"finish_reason":"stop"`)
+				require.NotContains(t, body, "response.completed")
+			})
+		}
+	}
+}
+
+func TestAntigravityCompatAbnormalEndBeforeWriteTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	paths := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "chat completions",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+			},
+		},
+		{
+			name: "responses",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high")
+			},
+		},
+	}
+
+	for _, path := range paths {
+		t.Run(path.name, func(t *testing.T) {
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(
+					`data: {"response":{"candidates":[{"content":{"parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n",
+				)),
+			}
+
+			result, err := path.run(svc, c, resp)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.True(t, failoverErr.RequestScopedTransient)
+			require.Equal(t, NextAccountStop, failoverErr.NextAccountAction)
+			require.Empty(t, recorder.Body.String())
+			require.False(t, c.Writer.Written())
+			require.False(t, IsResponseCommitted(c))
+		})
+	}
+}
+
+func TestAntigravityCompatTextWithoutFinishReasonStillCompletes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	paths := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "chat completions",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+			},
+		},
+		{
+			name: "responses",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high")
+			},
+		},
+	}
+
+	for _, path := range paths {
+		t.Run(path.name, func(t *testing.T) {
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(
+					`data: {"response":{"candidates":[{"content":{"parts":[{"text":"answer"}]}}]}}` + "\n\n",
+				)),
+			}
+
+			result, err := path.run(svc, c, resp)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			body := recorder.Body.String()
+			require.Contains(t, body, "answer")
+			require.NotContains(t, body, "event: error")
+			if path.name == "chat completions" {
+				require.Contains(t, body, "data: [DONE]")
+			} else {
+				require.Contains(t, body, "response.completed")
+			}
+		})
+	}
+}
+
 func TestAntigravityCompatUsageOnlyStreamTriggersFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -30,6 +30,8 @@ type StreamingProcessor struct {
 	usedTool          bool
 	pendingSignature  string
 	trailingSignature string
+	finishReason      string
+	abnormalReason    string
 	originalModel     string
 	webSearchQueries  []string
 	groundingChunks   []GeminiGroundingChunk
@@ -41,6 +43,8 @@ type StreamingProcessor struct {
 	cacheReadTokens   int
 	imageOutputTokens int
 	hasContent        bool
+	hasVisibleOutput  bool
+	hasThinking       bool
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -118,6 +122,9 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 		p.cacheReadTokens = cached
 		p.imageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
 	}
+	if p.abnormalReason != "" {
+		return nil
+	}
 
 	// 处理 parts
 	if len(geminiResp.Candidates) > 0 && geminiResp.Candidates[0].Content != nil {
@@ -133,7 +140,8 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	// 检查是否结束
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
-		if finishReason == "MALFORMED_FUNCTION_CALL" {
+		normalizedFinishReason := strings.ToUpper(strings.TrimSpace(finishReason))
+		if normalizedFinishReason == "MALFORMED_FUNCTION_CALL" {
 			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
 			if geminiResp.Candidates[0].Content != nil {
 				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
@@ -141,8 +149,15 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 				}
 			}
 		}
-		if finishReason != "" {
-			_, _ = result.Write(p.emitFinish(finishReason))
+		if normalizedFinishReason != "" {
+			p.finishReason = normalizedFinishReason
+			if abnormalReason := antigravityAbnormalFinishReason(normalizedFinishReason); abnormalReason != "" {
+				p.abnormalReason = abnormalReason
+			} else if normalizedFinishReason == "STOP" && p.hasThinking && !p.hasVisibleOutput {
+				p.abnormalReason = "thinking_only_response"
+			} else {
+				_, _ = result.Write(p.emitFinish(finishReason))
+			}
 		}
 	}
 
@@ -163,7 +178,13 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 	if !p.messageStartSent {
 		return nil, usage
 	}
-
+	if p.abnormalReason != "" {
+		return nil, usage
+	}
+	if p.finishReason == "" && !p.hasVisibleOutput {
+		p.abnormalReason = "upstream_stream_truncated"
+		return nil, usage
+	}
 	var result bytes.Buffer
 	if !p.messageStopSent {
 		_, _ = result.Write(p.emitFinish(""))
@@ -177,9 +198,23 @@ func (p *StreamingProcessor) MessageStartSent() bool {
 	return p.messageStartSent
 }
 
+// AbnormalReason reports why the stream cannot be completed as a successful response.
+func (p *StreamingProcessor) AbnormalReason() string {
+	return p.abnormalReason
+}
+
 // HasContent reports whether any substantive text, thinking, or tool calls were emitted.
 func (p *StreamingProcessor) HasContent() bool {
 	return p.hasContent
+}
+
+func antigravityAbnormalFinishReason(reason string) string {
+	switch reason {
+	case "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS":
+		return strings.ToLower(reason)
+	default:
+		return ""
+	}
 }
 
 // emitMessageStart 发送 message_start 事件
@@ -305,6 +340,7 @@ func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 
 	if text != "" {
 		p.hasContent = true
+		p.hasThinking = true
 		_, _ = result.Write(p.emitDelta("thinking_delta", map[string]any{
 			"thinking": text,
 		}))
@@ -329,6 +365,7 @@ func (p *StreamingProcessor) processText(text, signature string) []byte {
 		}
 		return nil
 	}
+	p.hasVisibleOutput = true
 
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
@@ -373,6 +410,7 @@ func (p *StreamingProcessor) processFunctionCall(fc *GeminiFunctionCall, signatu
 
 	p.usedTool = true
 	p.hasContent = true
+	p.hasVisibleOutput = true
 
 	toolID := fc.ID
 	if toolID == "" {

@@ -1736,6 +1736,98 @@ func TestHandleClaudeStreamingResponse_EmptyStream(t *testing.T) {
 	require.NotContains(t, body, "event: message_delta")
 }
 
+func TestHandleClaudeStreamingResponse_AbnormalEndSendsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name    string
+		payload string
+		reason  string
+	}{
+		{
+			name:    "malformed function call",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}`,
+			reason:  "malformed_function_call",
+		},
+		{
+			name:    "unexpected tool call after text",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"UNEXPECTED_TOOL_CALL"}]}}`,
+			reason:  "unexpected_tool_call",
+		},
+		{
+			name:    "too many tool calls after text",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"TOO_MANY_TOOL_CALLS"}]}}`,
+			reason:  "too_many_tool_calls",
+		},
+		{
+			name:    "thinking only with STOP",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]},"finishReason":"STOP"}]}}`,
+			reason:  "thinking_only_response",
+		},
+		{
+			name:    "thinking only without finish reason",
+			payload: `{"response":{"candidates":[{"content":{"parts":[{"text":"planning","thought":true}]}}]}}`,
+			reason:  "upstream_stream_truncated",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}})
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader("data: " + tc.payload + "\n\n" +
+					`data: {"response":{"usageMetadata":{"promptTokenCount":123,"candidatesTokenCount":7}}}` + "\n\n")),
+			}
+
+			result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "gemini-3.1-pro")
+
+			require.Error(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, 123, result.usage.InputTokens)
+			require.Equal(t, 7, result.usage.OutputTokens)
+			var failoverErr *UpstreamFailoverError
+			require.NotErrorAs(t, err, &failoverErr)
+			require.True(t, IsResponseCommitted(c))
+			body := rec.Body.String()
+			require.Contains(t, body, "event: error")
+			require.Contains(t, body, tc.reason)
+			require.NotContains(t, body, "event: message_delta")
+			require.NotContains(t, body, "event: message_stop")
+		})
+	}
+}
+
+func TestHandleClaudeStreamingResponse_AbnormalEndBeforeWriteTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}})
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"response":{"candidates":[{"content":{"parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n",
+		)),
+	}
+
+	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "gemini-3.1-pro")
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, NextAccountStop, failoverErr.NextAccountAction)
+	require.Empty(t, rec.Body.String())
+	require.False(t, c.Writer.Written())
+	require.False(t, IsResponseCommitted(c))
+}
+
 // TestHandleClaudeStreamingResponse_ContextCanceled
 // 验证：context 取消时不注入错误事件
 func TestHandleClaudeStreamingResponse_ContextCanceled(t *testing.T) {
