@@ -696,6 +696,7 @@ describe("admin SettingsView payment visible method controls", () => {
       enabled: true,
       thinking_signature_enabled: true,
       thinking_budget_enabled: true,
+      max_tokens_enabled: true,
       apikey_signature_enabled: false,
       apikey_signature_patterns: [],
     });
@@ -1791,6 +1792,7 @@ describe("admin SettingsView wechat connect controls", () => {
       enabled: true,
       thinking_signature_enabled: true,
       thinking_budget_enabled: true,
+      max_tokens_enabled: true,
       apikey_signature_enabled: false,
       apikey_signature_patterns: [],
     });

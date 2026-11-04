@@ -630,6 +630,20 @@
                     <Toggle v-model="rectifierForm.thinking_budget_enabled" />
                   </div>
 
+                  <!-- Max Tokens Rectifier -->
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{ t("admin.settings.rectifier.maxTokens") }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.rectifier.maxTokensHint") }}
+                      </p>
+                    </div>
+                    <Toggle v-model="rectifierForm.max_tokens_enabled" />
+                  </div>
+
                   <!-- API Key Signature Rectifier -->
                   <div class="flex items-center justify-between">
                     <div>
@@ -9215,6 +9229,7 @@ const rectifierForm = reactive({
   enabled: true,
   thinking_signature_enabled: true,
   thinking_budget_enabled: true,
+  max_tokens_enabled: true,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
 });
@@ -12302,6 +12317,7 @@ async function saveRectifierSettings() {
       enabled: rectifierForm.enabled,
       thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
       thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
+      max_tokens_enabled: rectifierForm.max_tokens_enabled,
       apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",

@@ -881,7 +881,8 @@ func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSe
 		return DefaultRectifierSettings(), nil
 	}
 
-	var settings RectifierSettings
+	// 在默认值上解码：旧版本保存的 JSON 缺少后加字段（如 max_tokens_enabled）时沿用默认值
+	settings := *DefaultRectifierSettings()
 	if err := json.Unmarshal([]byte(value), &settings); err != nil {
 		return DefaultRectifierSettings(), nil
 	}
@@ -919,6 +920,15 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 		return true // fail-open: 查询失败时默认启用
 	}
 	return settings.Enabled && settings.ThinkingBudgetEnabled
+}
+
+// IsMaxTokensRectifierEnabled 判断 max_tokens 整流是否启用（总开关 && max_tokens 子开关）
+func (s *SettingService) IsMaxTokensRectifierEnabled(ctx context.Context) bool {
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return true // fail-open: 查询失败时默认启用
+	}
+	return settings.Enabled && settings.MaxTokensEnabled
 }
 
 // GetBetaPolicySettings 获取 Beta 策略配置

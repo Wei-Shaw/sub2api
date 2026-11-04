@@ -611,6 +611,59 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					}
 				}
 
+				// 继续检查 max_tokens 超出模型/非流式上限
+				if maxTokensLimit, ok := parseMaxTokensLimitError(errMsg); ok && s.settingService.IsMaxTokensRectifierEnabled(ctx) {
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						ProxyID:            opsUpstreamProxyID(account),
+						ProxyName:          opsUpstreamProxyName(account),
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+						Kind:               "max_tokens_limit_error",
+						Message:            errMsg,
+						Detail: func() string {
+							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+							}
+							return ""
+						}(),
+					})
+
+					rectifiedBody, applied := RectifyMaxTokens(body, maxTokensLimit)
+					if applied && time.Since(retryStart) < maxRetryElapsed {
+						logger.LegacyPrintf("service.gateway", "Account %d: detected max_tokens limit error, retrying with rectified max_tokens (max_tokens=%d->%d, budget_tokens=%d->%d)",
+							account.ID,
+							gjson.GetBytes(body, "max_tokens").Int(), gjson.GetBytes(rectifiedBody, "max_tokens").Int(),
+							gjson.GetBytes(body, "thinking.budget_tokens").Int(), gjson.GetBytes(rectifiedBody, "thinking.budget_tokens").Int())
+						maxTokensRetryCtx, releaseMaxTokensRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+						maxTokensRetryReq, maxTokensWireBody, buildErr := s.buildUpstreamRequest(maxTokensRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+						releaseMaxTokensRetryCtx()
+						if buildErr == nil {
+							maxTokensRetryResp, retryErr := s.httpUpstream.DoWithTLS(maxTokensRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							if retryErr == nil {
+								if maxTokensRetryResp.StatusCode < 400 {
+									lastWireBody = maxTokensWireBody
+									if err := replaceBody(maxTokensWireBody); err != nil {
+										_ = maxTokensRetryResp.Body.Close()
+										return nil, err
+									}
+								}
+								resp = maxTokensRetryResp
+								break
+							}
+							if maxTokensRetryResp != nil && maxTokensRetryResp.Body != nil {
+								_ = maxTokensRetryResp.Body.Close()
+							}
+							logger.LegacyPrintf("service.gateway", "Account %d: max_tokens rectifier retry failed: %v", account.ID, retryErr)
+						} else {
+							logger.LegacyPrintf("service.gateway", "Account %d: max_tokens rectifier retry build failed: %v", account.ID, buildErr)
+						}
+					}
+				}
+
 				resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			}
 		}

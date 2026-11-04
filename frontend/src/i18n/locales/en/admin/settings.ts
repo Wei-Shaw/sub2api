@@ -1106,6 +1106,8 @@ export default {
         thinkingSignatureHint: 'Automatically strip signatures and retry when upstream returns thinking block signature validation errors',
         thinkingBudget: 'Thinking Budget Rectifier',
         thinkingBudgetHint: 'Automatically set budget to 32000 and retry when upstream returns budget_tokens constraint error (≥1024)',
+        maxTokens: 'Max Tokens Rectifier',
+        maxTokensHint: 'Automatically lower max_tokens to the allowed maximum and retry when upstream rejects it as above the model output limit or the non-streaming limit (budget_tokens is lowered too when needed)',
         apikeySignature: 'API Key Signature Rectifier',
         apikeySignatureHint:
           'Automatically strip signatures and retry when API Key accounts receive signature-related errors (built-in patterns always apply)',
