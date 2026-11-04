@@ -1,11 +1,74 @@
 package service
 
 import (
+	"bytes"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func legacyOpenAIWSEventEnvelope(message []byte) (string, string, gjson.Result) {
+	if len(message) == 0 {
+		return "", "", gjson.Result{}
+	}
+	values := gjson.GetManyBytes(message, "type", "response.id", "id", "response")
+	id := strings.TrimSpace(values[1].String())
+	if id == "" {
+		id = strings.TrimSpace(values[2].String())
+	}
+	return strings.TrimSpace(values[0].String()), id, values[3]
+}
+
+func TestOpenAIWSEventEnvelopeRetainedStringsOwnTheirBytes(t *testing.T) {
+	body := []byte(`{"type":"response.completed","response":{"id":"resp_borrowed","output":[]}}`)
+	eventType, responseID, _ := parseOpenAIWSEventEnvelope(body)
+	for i := range body {
+		body[i] = 'x'
+	}
+	require.Equal(t, "response.completed", eventType)
+	require.Equal(t, "resp_borrowed", responseID)
+}
+
+func FuzzOpenAIWSEventEnvelope(f *testing.F) {
+	for _, payload := range []string{
+		`{"type":"response.completed","response":{"id":"resp_a"}}`,
+		`{"id":"root","response":{"id":" "},"type":"response.created"}`,
+		`{"response":{"id":"resp_a"},"response":{"id":"resp_b"},"type":" event "}`,
+		`{"type":"response.delta","response":null}`, `{"type":"x"}tail`, `not json`,
+	} {
+		f.Add(payload)
+	}
+	f.Fuzz(func(t *testing.T, payload string) {
+		if len(payload) > 64<<10 {
+			return
+		}
+		body := []byte(payload)
+		wantType, wantID, wantResponse := legacyOpenAIWSEventEnvelope(body)
+		gotType, gotID, gotResponse := parseOpenAIWSEventEnvelope(body)
+		require.Equal(t, wantType, gotType)
+		require.Equal(t, wantID, gotID)
+		require.Equal(t, wantResponse.Raw, gotResponse.Raw)
+		require.Equal(t, wantResponse.Type, gotResponse.Type)
+		require.Equal(t, wantResponse.Index, gotResponse.Index)
+		for i := range body {
+			body[i] = 'x'
+		}
+		require.Equal(t, wantType, gotType)
+		require.Equal(t, wantID, gotID)
+	})
+}
+
+func TestOpenAIWSEventEnvelopeLargeResponseIsReadOnly(t *testing.T) {
+	body := []byte(`{"type":"response.completed","response":{"id":"resp_large","text":"` + strings.Repeat("x", 1<<20) + `"}}`)
+	original := bytes.Clone(body)
+	_, id, response := parseOpenAIWSEventEnvelope(body)
+	require.Equal(t, "resp_large", id)
+	require.Equal(t, 1<<20, len(response.Get("text").String()))
+	require.Equal(t, original, body)
+}
 
 func TestParseOpenAIWSEventEnvelope(t *testing.T) {
 	eventType, responseID, response := parseOpenAIWSEventEnvelope([]byte(`{"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.1"}}`))

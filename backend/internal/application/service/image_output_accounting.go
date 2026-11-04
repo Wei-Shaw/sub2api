@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -72,35 +73,50 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	if c == nil || len(body) == 0 || !gjson.ValidBytes(body) {
 		return
 	}
-	c.addDataArray(gjson.GetBytes(body, "data"))
-	c.addOutputArray(gjson.GetBytes(body, "output"))
-	c.addOutputArray(gjson.GetBytes(body, "response.output"))
-	c.addReportedImageCount(body)
+	root := projectOpenAIImageAccounting(parseRawJSONView(body))
+	root = restoreImageAccountingDuplicatePaths(root)
+	response := projectOpenAIImageAccounting(root.response)
+	response = restoreImageAccountingDuplicatePaths(response)
+	if root.duplicate {
+		response.output = root.object.Get("response.output")
+	}
+	c.addDataArray(root.data)
+	c.addOutputArray(root.output)
+	c.addOutputArray(response.output)
+	c.addReportedImageCount(root, response)
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
-	if c == nil || len(data) == 0 || strings.TrimSpace(string(data)) == "[DONE]" || !gjson.ValidBytes(data) {
+	if c == nil || len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) || !gjson.ValidBytes(data) {
 		return
 	}
-	root := gjson.ParseBytes(data)
-	c.addDataArray(root.Get("data"))
-	c.addReportedImageCount(data)
-	eventType := strings.TrimSpace(root.Get("type").String())
+	// Borrow the immutable payload only during this call. Projection visits each
+	// object once, without copying or scanning large text once per usage path.
+	root := projectOpenAIImageAccounting(parseRawJSONView(data))
+	root = restoreImageAccountingDuplicatePaths(root)
+	response := projectOpenAIImageAccounting(root.response)
+	response = restoreImageAccountingDuplicatePaths(response)
+	if root.duplicate {
+		response.output = root.object.Get("response.output")
+	}
+	c.addDataArray(root.data)
+	c.addReportedImageCount(root, response)
+	eventType := strings.TrimSpace(root.eventType.String())
 	switch eventType {
 	case "response.output_item.done":
-		c.addImageOutputItem(root.Get("item"))
+		c.addImageOutputItem(root.item)
 	case "response.completed", "response.done":
-		c.addOutputArray(root.Get("response.output"))
+		c.addOutputArray(response.output)
 	case "image_generation.completed":
-		if item := root.Get("item"); item.Exists() {
+		if item := root.item; item.Exists() {
 			c.addImageOutputItem(item)
 			return
 		}
-		if output := root.Get("output"); output.Exists() {
+		if output := root.output; output.Exists() {
 			c.addImageOutputItem(output)
 			return
 		}
-		c.addImageOutputItem(root)
+		c.addImageOutputItem(parseRawJSONView(data))
 	}
 }
 
@@ -129,7 +145,7 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 		}
 		imageCount++
 		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
-			sizes = append(sizes, size)
+			sizes = append(sizes, strings.Clone(size))
 		}
 	}
 	if imageCount > c.maxDataCount {
@@ -140,11 +156,11 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 	}
 }
 
-func (c *openAIImageOutputCounter) addReportedImageCount(body []byte) {
+func (c *openAIImageOutputCounter) addReportedImageCount(root, response openAIImageAccountingView) {
 	if c == nil {
 		return
 	}
-	if count := countOpenAIImageUsageFromJSONBytes(body); count > c.reportedCount {
+	if count := countOpenAIImageUsageFromViews(root, response); count > c.reportedCount {
 		c.reportedCount = count
 	}
 }
@@ -193,14 +209,16 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	size := strings.TrimSpace(item.Get("size").String())
 	if _, exists := c.seen[key]; exists {
 		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
-			c.seenSizes[key] = size
+			c.seenSizes[strings.Clone(key)] = strings.Clone(size)
 		}
 		return
 	}
+	// The projection borrows the read buffer; retain only independent metadata.
+	key = strings.Clone(key)
 	c.seen[key] = struct{}{}
 	c.seenOrder = append(c.seenOrder, key)
 	if size != "" {
-		c.seenSizes[key] = size
+		c.seenSizes[key] = strings.Clone(size)
 	}
 	c.count++
 }
@@ -224,22 +242,13 @@ func countOpenAIImageUsageFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0
 	}
-	count := 0
-	for _, path := range []string{
-		"usage.images",
-		"response.usage.images",
-		"data.usage.images",
-		"data.response.usage.images",
-		"tool_usage.image_gen.images",
-		"response.tool_usage.image_gen.images",
-		"data.tool_usage.image_gen.images",
-		"data.response.tool_usage.image_gen.images",
-	} {
-		if candidate := int(gjson.GetBytes(body, path).Int()); candidate > count {
-			count = candidate
-		}
+	root := projectOpenAIImageAccounting(parseRawJSONView(body))
+	root = restoreImageAccountingDuplicatePaths(root)
+	response := restoreImageAccountingDuplicatePaths(projectOpenAIImageAccounting(root.response))
+	if root.duplicate {
+		response.output = root.object.Get("response.output")
 	}
-	return count
+	return countOpenAIImageUsageFromViews(root, response)
 }
 
 func collectOpenAIResponseImageOutputSizesFromJSONBytes(body []byte) []string {

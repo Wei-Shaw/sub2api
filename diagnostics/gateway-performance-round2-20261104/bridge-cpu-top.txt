@@ -1,0 +1,24 @@
+File: bridge-round2.test
+Build ID: f280e7000353bb7059ac8858b5cefabf29895a78
+Type: cpu
+Time: 2026-11-04 04:21:17 UTC
+Duration: 3.29s, Total samples = 2.97s (90.31%)
+Showing nodes accounting for 2.39s, 80.47% of 2.97s total
+Dropped 84 nodes (cum <= 0.01s)
+Showing top 15 nodes out of 116
+      flat  flat%   sum%        cum   cum%
+     1.36s 45.79% 45.79%      1.36s 45.79%  runtime.memmove
+     0.16s  5.39% 51.18%      0.16s  5.39%  runtime.madvise
+     0.15s  5.05% 56.23%      0.29s  9.76%  encoding/json.checkValid
+     0.14s  4.71% 60.94%      0.14s  4.71%  encoding/json.stateInString
+     0.10s  3.37% 64.31%      0.12s  4.04%  runtime.typePointers.next
+     0.09s  3.03% 67.34%      0.25s  8.42%  runtime.scanObject
+     0.09s  3.03% 70.37%      0.16s  5.39%  runtime.scanblock
+     0.07s  2.36% 72.73%      0.07s  2.36%  runtime.futex
+     0.07s  2.36% 75.08%      0.07s  2.36%  runtime.tgkill
+     0.05s  1.68% 76.77%      0.08s  2.69%  runtime.tryDeferToSpanScan
+     0.03s  1.01% 77.78%      0.05s  1.68%  runtime.findObject
+     0.02s  0.67% 78.45%      0.02s  0.67%  runtime.(*mspan).countAlloc
+     0.02s  0.67% 79.12%      0.06s  2.02%  runtime.(*unwinder).next
+     0.02s  0.67% 79.80%      0.02s  0.67%  runtime.alignDown (inline)
+     0.02s  0.67% 80.47%      0.02s  0.67%  runtime.getGCMask (inline)

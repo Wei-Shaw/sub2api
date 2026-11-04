@@ -1,0 +1,20 @@
+File: tokens-round2.test
+Build ID: 44ce7e9ad3534924fdebeb353b4ee2178fc857da
+Type: alloc_space
+Time: 2026-11-04 04:21:33 UTC
+Showing nodes accounting for 2.49GB, 99.08% of 2.52GB total
+Dropped 87 nodes (cum <= 0.01GB)
+Showing top 12 nodes out of 23
+      flat  flat%   sum%        cum   cum%
+    2.03GB 80.54% 80.54%     2.03GB 80.54%  github.com/dlclark/regexp2/v2.newMatch (inline)
+    0.19GB  7.43% 87.98%     0.19GB  7.43%  github.com/dlclark/regexp2/v2.(*Match).tidy
+    0.16GB  6.49% 94.47%     0.16GB  6.49%  github.com/dlclark/regexp2/v2.(*Regexp).getRunesAndStart
+    0.07GB  2.97% 97.44%     0.07GB  2.97%  github.com/dlclark/regexp2/v2.(*Capture).String (inline)
+    0.04GB  1.64% 99.08%     0.04GB  1.64%  encoding/json.(*decodeState).literalStore
+         0     0% 99.08%     0.04GB  1.64%  encoding/json.(*decodeState).unmarshal
+         0     0% 99.08%     0.04GB  1.64%  encoding/json.(*decodeState).value
+         0     0% 99.08%     0.04GB  1.64%  encoding/json.Unmarshal
+         0     0% 99.08%     0.01GB   0.5%  github.com/Wei-Shaw/sub2api/internal/application/service.BenchmarkRound2Tokenizer
+         0     0% 99.08%     2.49GB 99.08%  github.com/Wei-Shaw/sub2api/internal/application/service.BenchmarkRound2Tokenizer.func1
+         0     0% 99.08%     2.49GB 99.08%  github.com/Wei-Shaw/sub2api/internal/application/service.estimateOpenAIInputTokens
+         0     0% 99.08%     2.49GB 99.08%  github.com/Wei-Shaw/sub2api/internal/application/service.estimateOpenAIInputTokensForInput

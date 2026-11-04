@@ -9,3 +9,5 @@ Chat 兼容桥的 `EffectiveResponsesTools` 同时处理 additional_tools 和完
 `reasoning_usage.go` 统一读取上游 reasoning/thoughts 计数，区分未报告与明确的 0，供管理员用量日志使用；它不改变输出 token 总量或计费。
 
 `anthropic_to_responses_response.go` 使用请求内 builder 线性累积文本、参数和未签名思考；`responses_stream_text_wire.go` 为高频 delta/done 提供固定字段结构，保留空字符串、零 index 和原 wire 顺序。性能及兼容验证见 [网关性能优化](../../../../docs/GATEWAY_PERFORMANCE_OPTIMIZATION_CN.md)。
+
+`chatcompletions_tool_arguments.go` 按工具 index 累积 Chat→Responses 参数；单片参数直接保留，后续分片才创建 builder。它与 Anthropic 流共享 `stream_fragments.go`，保留既有快照和终止参数校验。

@@ -1,0 +1,7 @@
+2026/11/04 04:21:24 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkRound2ImageAccounting/text_delta/1024KiB-2         	     476	   5107365 ns/op	 205.32 MB/s	 2113632 B/op	       4 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	2.964s

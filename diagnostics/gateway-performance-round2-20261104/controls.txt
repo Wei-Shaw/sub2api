@@ -1,0 +1,77 @@
+2026/11/04 04:19:48 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkOpenAIResponses_LargeInputMeta/4MB-2        	     210	    839418 ns/op	4998.28 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/4MB-2        	     218	    842799 ns/op	4978.23 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/4MB-2        	     214	    868945 ns/op	4828.44 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/8MB-2        	      92	   2900045 ns/op	2892.93 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/8MB-2        	     100	   1652976 ns/op	5075.48 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/8MB-2        	     100	   1679024 ns/op	4996.74 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/16MB-2       	      51	   3326974 ns/op	5043.07 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/16MB-2       	      51	   3284274 ns/op	5108.64 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/16MB-2       	      52	   3247991 ns/op	5165.70 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/32MB-2       	      26	   6653790 ns/op	5043.10 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/32MB-2       	      26	   6573242 ns/op	5104.89 MB/s	      24 B/op	       1 allocs/op
+BenchmarkOpenAIResponses_LargeInputMeta/32MB-2       	      26	   7372208 ns/op	4551.65 MB/s	      24 B/op	       1 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/ChatCompletions-2         	     526	    330593 ns/op	2776.05 MB/s	    2288 B/op	      49 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/ChatCompletions-2         	     549	    327196 ns/op	2804.87 MB/s	    2288 B/op	      49 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/ChatCompletions-2         	     544	    328739 ns/op	2791.70 MB/s	    2288 B/op	      49 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/Responses-2               	     548	    324644 ns/op	2826.85 MB/s	    1752 B/op	      42 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/Responses-2               	     552	    328431 ns/op	2794.26 MB/s	    1752 B/op	      42 allocs/op
+BenchmarkDeriveOpenAIContentSessionSeedLargeBody/Responses-2               	     556	    324156 ns/op	2831.10 MB/s	    1752 B/op	      42 allocs/op
+BenchmarkOpenAIWSTokenEventClassification-2                                	50848648	         3.620 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSTokenEventClassification-2                                	50935587	         3.665 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSTokenEventClassification-2                                	50738169	         3.555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/1MiB-2             	     234	    766295 ns/op	1368.50 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/1MiB-2             	     229	    983309 ns/op	1066.48 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/1MiB-2             	     234	    765831 ns/op	1369.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/1MiB-2            	     235	    776610 ns/op	1350.37 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/1MiB-2            	     231	    769032 ns/op	1363.68 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/1MiB-2            	     232	    779771 ns/op	1344.90 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/1MiB-2             	     232	    771474 ns/op	1359.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/1MiB-2             	     232	    771260 ns/op	1359.77 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/1MiB-2             	     234	    765573 ns/op	1369.87 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/1MiB-2            	     160	   1109524 ns/op	 945.21 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/1MiB-2            	     160	   1116046 ns/op	 939.69 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/1MiB-2            	     157	   1173536 ns/op	 893.66 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/1MiB-2             	     164	   1073001 ns/op	 977.39 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/1MiB-2             	     169	   1117641 ns/op	 938.35 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/1MiB-2             	     164	   1065733 ns/op	 984.05 MB/s	 2113856 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/8MiB-2             	      28	   6101754 ns/op	1374.80 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/8MiB-2             	      28	   6102080 ns/op	1374.73 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/8MiB-2             	      28	   6105442 ns/op	1373.97 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/8MiB-2            	      28	   6107949 ns/op	1373.41 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/8MiB-2            	      28	   6162162 ns/op	1361.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/8MiB-2            	      28	   6147973 ns/op	1364.47 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/8MiB-2             	      27	   6108258 ns/op	1373.35 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/8MiB-2             	      28	   6112310 ns/op	1372.44 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/8MiB-2             	      28	   6114754 ns/op	1371.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/8MiB-2            	      20	   8568754 ns/op	 979.00 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/8MiB-2            	      21	   9462060 ns/op	 886.57 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/8MiB-2            	      21	   8491615 ns/op	 987.89 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/8MiB-2             	      20	   8533294 ns/op	 983.06 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/8MiB-2             	      21	   8554143 ns/op	 980.67 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/8MiB-2             	      21	  10715956 ns/op	 782.83 MB/s	16793920 B/op	       7 allocs/op
+BenchmarkRound2IntegritySnapshot/2KiB/unconditional_clone-2                	  586315	       302.4 ns/op	6772.33 MB/s	    2048 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/2KiB/unconditional_clone-2                	  532228	       302.9 ns/op	6761.49 MB/s	    2048 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/2KiB/unconditional_clone-2                	  542904	       305.6 ns/op	6701.28 MB/s	    2048 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/1024KiB/unconditional_clone-2             	    1732	     91227 ns/op	11494.11 MB/s	 1048576 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/1024KiB/unconditional_clone-2             	    1896	    103642 ns/op	10117.29 MB/s	 1048576 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/1024KiB/unconditional_clone-2             	    1790	     97653 ns/op	10737.81 MB/s	 1048576 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/16384KiB/unconditional_clone-2            	     188	    817395 ns/op	20525.24 MB/s	16777216 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/16384KiB/unconditional_clone-2            	     200	    845379 ns/op	19845.80 MB/s	16777216 B/op	       1 allocs/op
+BenchmarkRound2IntegritySnapshot/16384KiB/unconditional_clone-2            	     232	    939428 ns/op	17858.97 MB/s	16777216 B/op	       1 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	14.226s
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/shared/apicompat
+BenchmarkResponsesCustomInputStream/4096-2         	    5640	     29442 ns/op	 139.53 MB/s	   32288 B/op	     273 allocs/op
+BenchmarkResponsesCustomInputStream/4096-2         	    5964	     29954 ns/op	 137.14 MB/s	   32288 B/op	     273 allocs/op
+BenchmarkResponsesCustomInputStream/4096-2         	    6799	     28341 ns/op	 144.95 MB/s	   32288 B/op	     273 allocs/op
+BenchmarkResponsesCustomInputStream/1048576-2      	      22	   8328405 ns/op	 125.91 MB/s	10222659 B/op	   65574 allocs/op
+BenchmarkResponsesCustomInputStream/1048576-2      	      25	   7968308 ns/op	 131.59 MB/s	10222650 B/op	   65574 allocs/op
+BenchmarkResponsesCustomInputStream/1048576-2      	      21	   8032313 ns/op	 130.55 MB/s	10222640 B/op	   65574 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	1.131s

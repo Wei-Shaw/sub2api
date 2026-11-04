@@ -1,0 +1,24 @@
+File: tokens-round2.test
+Build ID: 44ce7e9ad3534924fdebeb353b4ee2178fc857da
+Type: cpu
+Time: 2026-11-04 04:21:30 UTC
+Duration: 2.17s, Total samples = 2540ms (116.81%)
+Showing nodes accounting for 1600ms, 62.99% of 2540ms total
+Dropped 82 nodes (cum <= 12.70ms)
+Showing top 15 nodes out of 100
+      flat  flat%   sum%        cum   cum%
+     240ms  9.45%  9.45%      240ms  9.45%  unicode.is16
+     200ms  7.87% 17.32%      740ms 29.13%  github.com/tiktoken-go/tokenizer/codec.splitRegexp_2_Execute
+     160ms  6.30% 23.62%      620ms 24.41%  runtime.mallocgc
+     160ms  6.30% 29.92%      300ms 11.81%  runtime.slicerunetostring
+     150ms  5.91% 35.83%      390ms 15.35%  unicode.Is
+     130ms  5.12% 40.94%      260ms 10.24%  runtime.scanObject
+      90ms  3.54% 44.49%      480ms 18.90%  unicode.In (inline)
+      80ms  3.15% 47.64%       80ms  3.15%  runtime.encoderune
+      70ms  2.76% 50.39%      290ms 11.42%  runtime.mallocgcSmallScanNoHeader
+      60ms  2.36% 52.76%       70ms  2.76%  github.com/dlclark/regexp2/v2.(*Regexp).getRunesAndStart
+      60ms  2.36% 55.12%       70ms  2.76%  runtime.(*mspan).writeHeapBitsSmall
+      60ms  2.36% 57.48%      330ms 12.99%  runtime.makeslice
+      60ms  2.36% 59.84%       60ms  2.36%  runtime.memclrNoHeapPointers
+      40ms  1.57% 61.42%       40ms  1.57%  encoding/json.stateInString
+      40ms  1.57% 62.99%       40ms  1.57%  encoding/json.unquoteBytes

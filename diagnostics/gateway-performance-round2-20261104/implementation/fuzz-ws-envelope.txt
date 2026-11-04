@@ -1,0 +1,9 @@
+2026/11/04 07:14:46 Timezone initialized: UTC (UTC offset: +00:00)
+fuzz: elapsed: 0s, gathering baseline coverage: 0/143 completed
+fuzz: elapsed: 3s, gathering baseline coverage: 116/143 completed
+fuzz: elapsed: 4s, gathering baseline coverage: 143/143 completed, now fuzzing with 2 workers
+fuzz: elapsed: 6s, execs: 6422 (2102/sec), new interesting: 7 (total: 150)
+fuzz: elapsed: 9s, execs: 12073 (1883/sec), new interesting: 15 (total: 158)
+fuzz: elapsed: 9s, execs: 12073 (0/sec), new interesting: 15 (total: 158)
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	9.039s

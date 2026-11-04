@@ -555,9 +555,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	for {
 		var message []byte
 		var readErr error
+		messageValid := false
 		if len(pendingJSONDocuments) > 0 {
 			message = pendingJSONDocuments[0]
 			pendingJSONDocuments = pendingJSONDocuments[1:]
+			// Queued documents were decoded and validated by the classifier.
+			messageValid = true
 		} else {
 			readCtx := ctx
 			var cancelRead context.CancelFunc
@@ -583,7 +586,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				)
 			}
 			if readErr == nil {
-				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
+				documents, repaired, valid := prepareOpenAIWSJSONDocuments(message)
+				messageValid = valid
+				if repaired {
 					logOpenAIWSModeInfo(
 						"concatenated_json_repaired account_id=%d conn_id=%s documents=%d bytes=%d",
 						account.ID,
@@ -593,10 +598,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					)
 					message = documents[0]
 					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
+					messageValid = true
 				}
 			}
 		}
-		if readErr == nil && !json.Valid(message) {
+		if readErr == nil && !messageValid {
 			eventType, _, _ := parseOpenAIWSEventEnvelope(message)
 			if eventType == "" {
 				eventType = "unknown"

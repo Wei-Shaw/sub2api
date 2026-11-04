@@ -1,0 +1,1 @@
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/server/routes	0.035s

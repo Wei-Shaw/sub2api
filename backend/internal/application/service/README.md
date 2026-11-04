@@ -71,6 +71,8 @@
 
 JSON patch、WS 握手快照复用及流式编解码的性能边界与 Docker 对照见 [网关性能优化](../../../../docs/GATEWAY_PERFORMANCE_OPTIMIZATION_CN.md)。
 
+`openai_request_integrity_observe.go` 在诊断准入后捕获原始请求快照；`image_output_accounting_view.go` 为图片计数提供局部只读投影，并在重复字段时保留原路径查询语义。WS JSON 修复/校验状态由 `openai_sse_json_documents.go` 管理，envelope 的持久身份字符串独立保存。
+
 单个功能按 `types/plan/request/forward/response/billing/runtime` 职责拆文件，不按“公共 helper”堆积。新增功能若不需要访问本包大量私有状态，应建立 `modules/<domain>` 并通过接口接入。
 
 本包禁止导入 `internal/infrastructure/repository`；例外只能在 lint 配置中显式记录并附迁移原因。

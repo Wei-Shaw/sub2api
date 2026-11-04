@@ -1449,9 +1449,10 @@ type ChatCompletionsToResponsesStreamState struct {
 	Reasoning strings.Builder
 
 	// Tool-call lifecycle, keyed by the upstream tool_call index.
-	ToolCalls       map[int]*ChatToolCall
-	ToolItemIDs     map[int]string
-	ToolOutputIndex map[int]int
+	ToolCalls           map[int]*ChatToolCall
+	ToolItemIDs         map[int]string
+	ToolOutputIndex     map[int]int
+	toolArgumentBuffers map[int]*strings.Builder
 
 	// CustomTools 是客户端请求中 custom/freeform 工具的名字集合（见
 	// CustomToolNames）。命中的调用按 custom_tool_call 生命周期下发，codex 才能
@@ -1617,10 +1618,8 @@ func ChatCompletionsChunkToResponsesEvents(
 				copyCall.Type = "function"
 				// Arguments are accumulated by the shared block below so the
 				// emitted delta and the stored value stay in sync. Some upstreams
-				// (e.g. GLM/Zhipu) pack id+name+arguments into the first tool_call
-				// chunk; without this reset the first chunk's arguments would be
-				// counted twice (once from this copy, once from the += below),
-				// producing a doubled, invalid JSON like {"a":1}{"a":1}.
+				// (e.g. GLM/Zhipu) pack id+name+arguments into the first chunk.
+				// Reset so the accumulator below does not duplicate that chunk.
 				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
 				stored = &copyCall
@@ -1636,7 +1635,7 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 			events = append(events, announceChatToolItem(state, idx, stored, false)...)
 			if toolCall.Function.Arguments != "" {
-				stored.Function.Arguments += toolCall.Function.Arguments
+				appendChatToolArguments(state, idx, stored, toolCall.Function.Arguments)
 				// Wait for a late name before selecting the custom or function
 				// lifecycle. Custom input is decoded as fragments arrive;
 				// tool_search arguments remain attached to output_item.done.

@@ -1,0 +1,272 @@
+{
+  "probes.txt": {
+    "aggregation": "median of three samples",
+    "benchmarks": {
+      "BenchmarkRound2WSEnvelope/1KiB/current": {
+        "ns_op": 1000.0,
+        "bytes_op": 1640.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2WSEnvelope/1KiB/view_probe": {
+        "ns_op": 498.1,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2WSEnvelope/256KiB/current": {
+        "ns_op": 117497.0,
+        "bytes_op": 270696.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2WSEnvelope/256KiB/view_probe": {
+        "ns_op": 46496.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2WSEnvelope/1024KiB/current": {
+        "ns_op": 418555.0,
+        "bytes_op": 1057128.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2WSEnvelope/1024KiB/view_probe": {
+        "ns_op": 181392.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2WSEnvelope/8192KiB/current": {
+        "ns_op": 3396756.0,
+        "bytes_op": 8397160.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2WSEnvelope/8192KiB/view_probe": {
+        "ns_op": 1441247.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2WSValidation/1KiB/current_two_validations": {
+        "ns_op": 4716.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2WSValidation/1KiB/reused_validity_probe": {
+        "ns_op": 2365.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2WSValidation/256KiB/current_two_validations": {
+        "ns_op": 983582.0,
+        "bytes_op": 1.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2WSValidation/256KiB/reused_validity_probe": {
+        "ns_op": 504501.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2WSValidation/1024KiB/current_two_validations": {
+        "ns_op": 4031178.0,
+        "bytes_op": 4.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2WSValidation/1024KiB/reused_validity_probe": {
+        "ns_op": 1999604.0,
+        "bytes_op": 3.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkRound2ImageAccounting/text_delta/2KiB": {
+        "ns_op": 11062.0,
+        "bytes_op": 4704.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2ImageAccounting/text_terminal/2KiB": {
+        "ns_op": 9469.0,
+        "bytes_op": 4704.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2ImageAccounting/text_delta/256KiB": {
+        "ns_op": 1337010.0,
+        "bytes_op": 540768.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2ImageAccounting/text_terminal/256KiB": {
+        "ns_op": 920791.0,
+        "bytes_op": 540768.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2ImageAccounting/text_delta/1024KiB": {
+        "ns_op": 5357932.0,
+        "bytes_op": 2113632.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2ImageAccounting/text_terminal/1024KiB": {
+        "ns_op": 3672197.0,
+        "bytes_op": 2113632.0,
+        "allocs_op": 4.0
+      },
+      "BenchmarkRound2UsageExtraction/1KiB": {
+        "ns_op": 4013.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2UsageExtraction/256KiB": {
+        "ns_op": 375312.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2UsageExtraction/1024KiB": {
+        "ns_op": 1500226.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "BenchmarkRound2Tokenizer/fallback_full/64KiB": {
+        "ns_op": 3445727.0,
+        "bytes_op": 4084910.0,
+        "allocs_op": 81607.0
+      },
+      "BenchmarkRound2Tokenizer/codec_count_only/64KiB": {
+        "ns_op": 2996299.0,
+        "bytes_op": 4008510.0,
+        "allocs_op": 81584.0
+      },
+      "BenchmarkRound2Tokenizer/fallback_full/1024KiB": {
+        "ns_op": 54770969.0,
+        "bytes_op": 65180636.0,
+        "allocs_op": 1305783.0
+      },
+      "BenchmarkRound2Tokenizer/codec_count_only/1024KiB": {
+        "ns_op": 50305500.0,
+        "bytes_op": 64105680.0,
+        "allocs_op": 1305764.0
+      },
+      "BenchmarkRound2ChatToolArguments/64KiB": {
+        "ns_op": 435142.0,
+        "bytes_op": 2368544.0,
+        "allocs_op": 290.0
+      },
+      "BenchmarkRound2ChatToolArguments/256KiB": {
+        "ns_op": 5791122.0,
+        "bytes_op": 34885774.0,
+        "allocs_op": 1060.0
+      },
+      "BenchmarkRound2ChatToolArguments/1024KiB": {
+        "ns_op": 75554056.0,
+        "bytes_op": 542441608.0,
+        "allocs_op": 4132.0
+      }
+    }
+  },
+  "controls.txt": {
+    "aggregation": "median of three samples",
+    "benchmarks": {
+      "BenchmarkOpenAIResponses_LargeInputMeta/4MB": {
+        "ns_op": 842799.0,
+        "bytes_op": 24.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkOpenAIResponses_LargeInputMeta/8MB": {
+        "ns_op": 1679024.0,
+        "bytes_op": 24.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkOpenAIResponses_LargeInputMeta/16MB": {
+        "ns_op": 3284274.0,
+        "bytes_op": 24.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkOpenAIResponses_LargeInputMeta/32MB": {
+        "ns_op": 6653790.0,
+        "bytes_op": 24.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkDeriveOpenAIContentSessionSeedLargeBody/ChatCompletions": {
+        "ns_op": 328739.0,
+        "bytes_op": 2288.0,
+        "allocs_op": 49.0
+      },
+      "BenchmarkDeriveOpenAIContentSessionSeedLargeBody/Responses": {
+        "ns_op": 324644.0,
+        "bytes_op": 1752.0,
+        "allocs_op": 42.0
+      },
+      "BenchmarkOpenAIWSTokenEventClassification": {
+        "ns_op": 3.62,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/1MiB": {
+        "ns_op": 766295.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/1MiB": {
+        "ns_op": 776610.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/1MiB": {
+        "ns_op": 771260.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/1MiB": {
+        "ns_op": 1116046.0,
+        "bytes_op": 2113856.0,
+        "allocs_op": 7.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/1MiB": {
+        "ns_op": 1073001.0,
+        "bytes_op": 2113856.0,
+        "allocs_op": 7.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/tools_only/8MiB": {
+        "ns_op": 6102080.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/nested_only/8MiB": {
+        "ns_op": 6147973.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/keep_calls/8MiB": {
+        "ns_op": 6112310.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/strip_first/8MiB": {
+        "ns_op": 8568754.0,
+        "bytes_op": 16793920.0,
+        "allocs_op": 7.0
+      },
+      "BenchmarkStripOpenAIResponsesInputNamespaces/strip_last/8MiB": {
+        "ns_op": 8554143.0,
+        "bytes_op": 16793920.0,
+        "allocs_op": 7.0
+      },
+      "BenchmarkRound2IntegritySnapshot/2KiB/unconditional_clone": {
+        "ns_op": 302.9,
+        "bytes_op": 2048.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkRound2IntegritySnapshot/1024KiB/unconditional_clone": {
+        "ns_op": 97653.0,
+        "bytes_op": 1048576.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkRound2IntegritySnapshot/16384KiB/unconditional_clone": {
+        "ns_op": 845379.0,
+        "bytes_op": 16777216.0,
+        "allocs_op": 1.0
+      },
+      "BenchmarkResponsesCustomInputStream/4096": {
+        "ns_op": 29442.0,
+        "bytes_op": 32288.0,
+        "allocs_op": 273.0
+      },
+      "BenchmarkResponsesCustomInputStream/1048576": {
+        "ns_op": 8032313.0,
+        "bytes_op": 10222650.0,
+        "allocs_op": 65574.0
+      }
+    }
+  }
+}
