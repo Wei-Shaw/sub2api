@@ -584,7 +584,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			// input_text 是信封（消息类型、任务名、发送者），正文放在 encrypted_content 片段里
 			// （自定义 provider 下为明文）。chat 上游没有对应条目，按原顺序拼成一条 user 消息，
 			// 否则子智能体收不到任务却仍返回 200。
-			text := agentMessageText(item["content"])
+			text := AgentMessageText(item["content"])
 			if text == "" {
 				pendingReasoning = ""
 				continue
@@ -653,8 +653,9 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	return messages, mediaByCallID, nil
 }
 
-// agentMessageText 按原顺序拼接 agent_message 里 input_text 与 encrypted_content 片段的文本。
-func agentMessageText(raw json.RawMessage) string {
+// AgentMessageText concatenates agent_message text and plaintext encrypted_content
+// parts in their original order without attempting to decrypt their contents.
+func AgentMessageText(raw json.RawMessage) string {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
