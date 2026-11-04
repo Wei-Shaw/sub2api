@@ -55,10 +55,25 @@ func WithRequestBodyMemoryBudget(ctx context.Context, budget *BodyMemoryBudget) 
 	}
 }
 
+// ReserveRequestBodyMemory reserves n bytes before allocating another buffered
+// representation of the request body. The reservation shares the ingress budget
+// and is retained until the handler's release function runs. Without a budget in
+// ctx it is a no-op. Callers must propagate exhaustion instead of allocating
+// through an unbudgeted fallback. Unlike ingress reads, it ignores ctx
+// cancellation: callers that keep working after a client disconnect own that
+// policy.
+func ReserveRequestBodyMemory(ctx context.Context, n int64) error {
+	return reserveBodyMemory(ctx, n)
+}
+
 func reserveRequestBodyMemory(ctx context.Context, n int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	return reserveBodyMemory(ctx, n)
+}
+
+func reserveBodyMemory(ctx context.Context, n int64) error {
 	r, _ := ctx.Value(bodyMemoryReservationKey{}).(*bodyMemoryReservation)
 	if r == nil || n <= 0 {
 		return nil

@@ -37,6 +37,57 @@ func TestRequestBodyMemoryBudgetSharedUntilRelease(t *testing.T) {
 	}
 }
 
+func TestReserveRequestBodyMemorySharesIngressBudgetAndRelease(t *testing.T) {
+	budget := NewBodyMemoryBudget(100)
+	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
+	defer release()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(strings.Repeat("x", 20))).WithContext(ctx)
+	if _, err := ReadRequestBodyWithPrealloc(req); err != nil {
+		t.Fatal(err)
+	}
+	// The ingress reader reserves the body and one byte for overflow detection.
+	if err := ReserveRequestBodyMemory(ctx, 79); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReserveRequestBodyMemory(ctx, 1); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("rewrite bypassed the ingress reservation: %v", err)
+	}
+	ctx2, release2 := WithRequestBodyMemoryBudget(context.Background(), budget)
+	defer release2()
+	if err := ReserveRequestBodyMemory(ctx2, 1); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("parallel request bypassed shared capacity: %v", err)
+	}
+	release()
+	release()
+	if err := ReserveRequestBodyMemory(ctx2, 100); err != nil {
+		t.Fatalf("failed reservation or cleanup leaked capacity: %v", err)
+	}
+	release2()
+	if err := ReserveRequestBodyMemory(ctx, 1); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+		t.Fatalf("closed request accepted a new reservation: %v", err)
+	}
+	if budget.used != 0 {
+		t.Fatalf("leaked reservations: %d", budget.used)
+	}
+}
+
+func TestReserveRequestBodyMemoryWithoutBudgetOrAllocation(t *testing.T) {
+	if err := ReserveRequestBodyMemory(context.Background(), 1<<30); err != nil {
+		t.Fatal(err)
+	}
+	budget := NewBodyMemoryBudget(1)
+	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
+	defer release()
+	for _, size := range []int64{0, -1} {
+		if err := ReserveRequestBodyMemory(ctx, size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if budget.used != 0 {
+		t.Fatalf("non-positive allocation consumed budget: %d", budget.used)
+	}
+}
+
 func TestRequestBodyMemoryBudgetUnknownLengthAndConcurrency(t *testing.T) {
 	budget := NewBodyMemoryBudget(4096)
 	ctx, release := WithRequestBodyMemoryBudget(context.Background(), budget)
