@@ -168,3 +168,21 @@ func TestScopedAdminKeyPanelRateLimitPreservesUnrestrictedAdminWrites(t *testing
 		})
 	}
 }
+
+func TestAdminFullAccessRetainsPerKeyRateLimit(t *testing.T) {
+	allower := &fakePanelAllower{}
+	limiter := &PanelRateLimiter{limiter: allower, settingService: newPanelRateLimitTestService(t, `{"enabled":true,"user_rpm":1,"heavy_rpm":1,"exempt_admin":true}`)}
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 9})
+		c.Set(string(ContextKeyUserRole), service.RoleAdmin)
+		c.Request = c.Request.WithContext(adminaccess.WithPrincipal(c.Request.Context(), &adminaccess.Principal{KeyID: "full", Policy: adminaccess.Policy{FullAccess: true}}))
+	}, limiter.Global())
+	r.GET("/full", func(c *gin.Context) { c.Status(204) })
+	for _, want := range []int{204, 429} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/full", nil))
+		require.Equal(t, want, w.Code)
+	}
+	require.Equal(t, int64(2), allower.counts["panel:global:admin-key:full"])
+}
