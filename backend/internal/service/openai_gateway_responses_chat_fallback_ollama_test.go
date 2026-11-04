@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,7 @@ func runOllamaResponsesChatFallback(t *testing.T, account *Account, body []byte,
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
-	result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, body)
+	result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, body, time.Now())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	return rec, upstream

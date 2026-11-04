@@ -180,6 +180,29 @@ func TestGeminiForwardNative_StreamPromptBlockedMarksContentPolicy(t *testing.T)
 	require.Empty(t, upstreamErrorEventsFromContext(t, c))
 }
 
+// Vertex 拦截 prompt 时 usageMetadata 可能只带 cachedContentTokenCount、缺 promptTokenCount：
+// input 下限为 0，缓存命中照上游所报计入 cache_read。
+func TestGeminiForwardNative_StreamPromptBlockedWithOnlyCachedTokensKeepsInputNonNegative(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := `data: {"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"},"usageMetadata":{"cachedContentTokenCount":12980,"totalTokenCount":0,"trafficType":"ON_DEMAND"},"modelVersion":"gemini-3.5-flash-lite"}
+
+`
+	svc := newGeminiSignalService("text/event-stream", body)
+	c, rec := newGeminiNativeTestContext(t)
+
+	result, err := svc.ForwardNative(context.Background(), c, geminiSignalTestAccount(),
+		"gemini-3.5-flash-lite", "streamGenerateContent", true, geminiSignalTestRequest())
+	require.NoError(t, err)
+	require.Equal(t, body, rec.Body.String())
+	require.Equal(t, 0, result.Usage.InputTokens)
+	require.Equal(t, 12980, result.Usage.CacheReadInputTokens)
+	require.Equal(t, 0, result.Usage.OutputTokens)
+
+	streamErrs := GetOpsStreamErrors(c)
+	require.Len(t, streamErrs, 1)
+	require.Equal(t, "PROHIBITED_CONTENT", streamErrs[0].Code)
+}
+
 func TestGeminiForwardNative_EmptyStreamMarksUpstreamFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := newGeminiSignalService("text/event-stream", "")

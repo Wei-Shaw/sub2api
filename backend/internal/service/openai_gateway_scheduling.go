@@ -353,14 +353,17 @@ func openAISchedulingPlatformMatchesAccount(ctx context.Context, account *Accoun
 // 的等价保留）。该例外仅在池成员资格已另行验证的「选号期」生效；构池/ownership
 // 谓词 CompositeAccountClaimsModel 保持严格——passthrough 不得据此在构建候选池
 // 时 claim 所有模型。
-func openAISchedulingModelSupported(ctx context.Context, account *Account, requestedModel string) bool {
+//
+// requireCompact 透传给上游 supportsOpenAIRequestModel：GPT-5.5 退役判定按
+// compact 语义解析公开别名投影后的上游模型名。
+func openAISchedulingModelSupported(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
 	if account == nil || requestedModel == "" {
 		return true
 	}
 	if openAICompositePoolActive(ctx) {
 		return CompositeAccountMeetsClaimTier(ctx, account, requestedModel) || account.IsOpenAIPassthroughEnabled()
 	}
-	return account.IsModelSupported(requestedModel)
+	return supportsOpenAIRequestModel(account, requestedModel, requireCompact)
 }
 
 // noAvailableOpenAISelectionError builds the standard "no account available" error
@@ -500,7 +503,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if requestedModel != "" && !openAISchedulingModelSupported(ctx, account, requestedModel) {
+	if requestedModel != "" && !openAISchedulingModelSupported(ctx, account, requestedModel, requireCompact) {
 		return "model_not_supported"
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {

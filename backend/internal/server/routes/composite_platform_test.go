@@ -185,6 +185,64 @@ func TestCompositeTargetPlatformMiddlewareRewritesNestedLiveModel(t *testing.T) 
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
+// Scenario: 回归 —— openai OAuth 与 deepseek API Key 同时映射 gpt-6-astra 时，
+// 请求必须在路由层被拒绝，不能落到默认 Anthropic handler 后再按模型名猜平台。
+// 仅 API Key 的跨平台歧义保持原行为（放行且不解析平台）。
+func TestCompositeTargetPlatformMiddlewareRejectsOnlyOAuthAmbiguousOwnership(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name         string
+		oauthClaimed bool
+		wantStatus   int
+	}{
+		{name: "oauth claimant", oauthClaimed: true, wantStatus: http.StatusBadRequest},
+		{name: "apikey only", oauthClaimed: false, wantStatus: http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := service.NewCompositeRouteResolver(nil)
+			resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (service.CompositeModelOwnership, error) {
+				if tc.oauthClaimed {
+					// 遗留 Ambiguous 形态（无候选池）：含 OpenAI 网关族 OAuth 声明方时
+					// 入口必须拒绝，不能落到默认 Anthropic handler 后再按模型名猜平台。
+					return service.CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: true}, nil
+				}
+				// composite 归属模型下 API Key 跨平台歧义是稳定候选池（Matched=true +
+				// CandidatePlatforms），由统一 OpenAI 兼容选择器解析平台，入口放行且
+				// 不在此解析单平台。
+				return service.CompositeModelOwnership{
+					Matched:            true,
+					CandidatePlatforms: []string{service.PlatformDeepseek, service.PlatformOpenAI},
+				}, nil
+			})
+			router := gin.New()
+			router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+				groupID := int64(8)
+				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+					GroupID: &groupID,
+					Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+				})
+				c.Next()
+			})))
+			router.Use(compositeTargetPlatformMiddleware(resolver))
+			router.POST("/v1/responses", func(c *gin.Context) {
+				_, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+				require.False(t, resolved)
+				c.Status(http.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-6-astra"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tc.wantStatus, w.Code)
+			if tc.oauthClaimed {
+				require.Contains(t, w.Body.String(), "explicit composite route")
+			}
+		})
+	}
+}
+
 func TestCompositeRequestModelFromMultipartLiveSession(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

@@ -109,6 +109,42 @@ func TestCanonicalizeReturnURLStripsSmuggledTradeStatus(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeReturnURLRejectsNonPlainHostAndUserinfo(t *testing.T) {
+	t.Parallel()
+
+	badHost := "a&b=c.example.com"
+	cases := []struct {
+		name    string
+		raw     string
+		srcHost string
+		srcURL  string
+	}{
+		{"host matched via referer", "https://" + badHost + "/payment/result", "app.example.com", "https://" + badHost + "/purchase"},
+		{"host matched via request host", "https://" + badHost + "/payment/result", badHost, ""},
+		{"userinfo", "https://a&b=c@app.example.com/payment/result", "app.example.com", ""},
+	}
+	for _, tc := range cases {
+		if got, err := CanonicalizeReturnURL(tc.raw, tc.srcHost, tc.srcURL); err == nil {
+			t.Fatalf("%s: CanonicalizeReturnURL accepted %q", tc.name, got)
+		}
+	}
+}
+
+func TestCanonicalizeReturnURLAllowsIPAndPortHosts(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"http://127.0.0.1:3000/payment/result",
+		"http://[::1]:8080/payment/result",
+		"https://pay_site-1.example.com/payment/result",
+	} {
+		parsed, _ := url.Parse(raw)
+		if _, err := CanonicalizeReturnURL(raw, parsed.Host, ""); err != nil {
+			t.Fatalf("CanonicalizeReturnURL(%q) returned error: %v", raw, err)
+		}
+	}
+}
+
 func TestCanonicalizeReturnURLRejectsRelativeURL(t *testing.T) {
 	t.Parallel()
 

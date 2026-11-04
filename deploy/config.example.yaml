@@ -121,6 +121,19 @@ cors:
   allow_credentials: true
 
 # =============================================================================
+# MCP OAuth Configuration / MCP OAuth 配置
+# =============================================================================
+mcp:
+  # Canonical public MCP endpoint, e.g. https://example.com/api/v1/mcp.
+  # 固定的 MCP 对外地址，例如 https://example.com/api/v1/mcp。
+  # Leave empty to keep the management MCP and its OAuth endpoints disabled (default).
+  # 留空则关闭 MCP 及其 OAuth 接口（默认），不会回落到前端地址或请求中的 Host。
+  # HTTPS is required except localhost/loopback development; site-root /api/v1/mcp path, no trailing slash.
+  # 除 localhost/回环 IP 开发环境外必须使用 HTTPS；路径固定为站点根下的 /api/v1/mcp，末尾不加斜杠。
+  # Environment / 环境变量: MCP_PUBLIC_URL
+  public_url: ""
+
+# =============================================================================
 # Security Configuration
 # 安全配置
 # =============================================================================
@@ -217,6 +230,9 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Minimum max_output_tokens when converting Chat Completions or Anthropic requests to Responses (minimum 16, default 128)
+  # Chat Completions 或 Anthropic 请求转换为 Responses 时的最小 max_output_tokens（最小 16，默认 128）
+  min_output_tokens: 128
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
@@ -253,6 +269,9 @@ gateway:
   # Enable Gemini upstream response header debug logs (default: false)
   # 是否开启 Gemini 上游响应头调试日志（默认 false）
   gemini_debug_response_headers: false
+  # Maximum TTL (seconds) a Gemini explicit context cache may be created or extended to (default: 86400)
+  # Gemini 显式上下文缓存单次可设置的最长有效期（秒，默认 86400）；存储费在创建/延长请求中一次性收取
+  gemini_cached_content_max_ttl_seconds: 86400
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)
@@ -318,6 +337,8 @@ gateway:
   # OpenAI /responses/compact 上游模型（默认 gpt-5.5）。
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
+  # GPT-5.5 is API-only after its ChatGPT Codex retirement; subscription
+  # requests skip this retired fallback and keep their selected model.
   openai_compact_model: "gpt-5.5"
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
@@ -1102,6 +1123,14 @@ pricing:
   # 覆盖补丁文件（可选，优先级最高）：条目按字段浅合并覆盖目录/回退数据，
   # 字段值为 null 表示删除该字段。模型名须与目录键完全一致。
   # 修改后在下一次哈希检查时按内容哈希自动重载，无需重启。
+  # Gemini explicit context caching storage price (USD per token per hour) comes
+  # from the field cache_storage_cost_per_token_per_hour here, e.g.
+  # {"gemini-3.8-flash": {"cache_storage_cost_per_token_per_hour": 0.0000005}};
+  # without it, built-in official prices apply (released models first, then the
+  # Pro / Flash series rate). Models with no price at all reject POST /v1beta/cachedContents.
+  # Gemini 显式缓存存储单价（每 token 每小时，USD）优先取这里的 cache_storage_cost_per_token_per_hour 字段，
+  # 未配置时使用内置官方价（先按已发布型号，再按 Pro / Flash 系列兜底）；两者都没有的模型拒绝创建缓存。
+  # 目录中不存在的模型条目还须同时提供 input_cost_per_token / output_cost_per_token。
   # override_file: "./data/model_pricing_overrides.json"
   # Update interval in hours
   # 更新间隔（小时）

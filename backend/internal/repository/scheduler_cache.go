@@ -5,13 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -27,6 +32,12 @@ const (
 	schedulerRetiredPrefix         = "sched:retired:"
 	schedulerSnapshotPrefix        = "sched:"
 	schedulerLockPrefix            = "sched:lock:"
+	// 账号精简记录（sched:meta:<id>）的修订号：全局修订号与按平台划分的修订号（前缀后接平台名）。
+	// 改写精简记录后写入所涉平台的修订号；删除记录、改写平台为空或平台发生变化的记录、写入出错时写入全局修订号。
+	// 取值都是新的随机串，读侧只比较是否相等，键丢失后重建也不会与旧取值相同；
+	// Redis 回滚恢复出缓存记录过的旧取值时，由最长复用时长兜底。
+	schedulerAccountMetaRevisionKey            = "sched:meta:rev"
+	schedulerAccountMetaPlatformRevisionPrefix = "sched:meta:rev:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -35,6 +46,16 @@ const (
 	// snapshotGraceTTLSeconds 旧快照过期的宽限期（秒）。
 	// 替代立即 DEL，让正在读取旧版本的 reader 有足够时间完成 ZRANGE。
 	snapshotGraceTTLSeconds = 60
+
+	// schedulerSnapshotCacheMaxAge 是进程内快照缓存条目的最长复用时长，
+	// 限定了未推进修订号的精简记录改写在本进程的最长可见延迟，与 outbox_lag_rebuild_seconds 默认 10 秒的陈旧容忍度相同。
+	schedulerSnapshotCacheMaxAge = 10 * time.Second
+	// schedulerSnapshotCacheEvictAge：写入条目时，加载时间早于该时长的其它条目一并清除，
+	// 已退休分组的条目不会长期驻留。
+	schedulerSnapshotCacheEvictAge = 10 * schedulerSnapshotCacheMaxAge
+
+	schedulerAccountMetaRevisionBytes        = 16
+	schedulerAccountMetaRevisionWriteTimeout = 3 * time.Second
 )
 
 const (
@@ -223,6 +244,28 @@ type schedulerCache struct {
 	rdb            *redis.Client
 	mgetChunkSize  int
 	writeChunkSize int
+
+	// now 是进程内快照缓存判定条目年龄的时钟。
+	now func() time.Time
+
+	snapshotMu      sync.RWMutex
+	snapshotEntries map[string]*schedulerSnapshotEntry
+
+	// globalRevisionPending 与 globalRevisionWriting 合并写入出错后的后台全局修订号写入，见 scheduleGlobalAccountMetaRevision。
+	globalRevisionPending atomic.Bool
+	globalRevisionWriting atomic.Bool
+}
+
+// schedulerSnapshotEntry 是一个 bucket 的已解码快照。
+// revisions 依次是全局修订号与该 bucket 成员可能涉及的各平台修订号（见 schedulerSnapshotTagKeys）。
+// accounts 是按快照顺序排列的母本，发布后只读，指针不外泄；
+// 每次读取都按值复制出本次请求独占的副本再套用 last_used。
+type schedulerSnapshotEntry struct {
+	active       string
+	revisions    []string
+	loadedAt     time.Time
+	accounts     []*service.Account
+	lastUsedKeys []string
 }
 
 func NewSchedulerCache(rdb *redis.Client) service.SchedulerCache {
@@ -237,42 +280,67 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 		writeChunkSize = defaultSchedulerSnapshotWriteChunkSize
 	}
 	return &schedulerCache{
-		rdb:            rdb,
-		mgetChunkSize:  mgetChunkSize,
-		writeChunkSize: writeChunkSize,
+		rdb:             rdb,
+		mgetChunkSize:   mgetChunkSize,
+		writeChunkSize:  writeChunkSize,
+		now:             time.Now,
+		snapshotEntries: make(map[string]*schedulerSnapshotEntry),
 	}
 }
 
+// GetSnapshot 读取 bucket 的激活快照。解码后的精简记录按 bucket 常驻进程内存，
+// 只有 ready、active 版本、全局修订号与该 bucket 所涉平台的修订号都与 Redis 一致且未超过最长复用时长时才复用；
+// 否则重新从 Redis 加载。last_used 每次都从 Redis 读取。
+// 返回的账号对象由本次调用独占，可以修改其顶层字段；map、切片底层数组与指针指向的值与其它调用共享，不得原地修改。
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
+	bucketKey := bucket.String()
+	tagKeys := schedulerSnapshotTagKeys(bucket)
+	tags, err := c.rdb.MGet(ctx, tagKeys...).Result()
 	if err != nil {
 		return nil, false, err
 	}
-	if readyVal != "1" {
-		return nil, false, nil
+	if len(tags) != len(tagKeys) {
+		return nil, false, fmt.Errorf("unexpected scheduler snapshot tag count: got %d, want %d", len(tags), len(tagKeys))
 	}
-
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
-	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
+	readyVal, err := schedulerCacheOptionalString(tags[0])
 	if err != nil {
 		return nil, false, err
 	}
+	activeVal, err := schedulerCacheOptionalString(tags[1])
+	if err != nil {
+		return nil, false, err
+	}
+	// 修订号缺失（nil）按空字符串比较：它是一个独立取值，不会与任何写入过的随机修订号相等。
+	revisions := make([]string, 0, len(tags)-2)
+	for _, tag := range tags[2:] {
+		revision, err := schedulerCacheOptionalString(tag)
+		if err != nil {
+			return nil, false, err
+		}
+		revisions = append(revisions, revision)
+	}
+	if readyVal != "1" || activeVal == "" {
+		c.dropSnapshotEntry(bucketKey)
+		return nil, false, nil
+	}
 
-	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
-	ids, err := c.rdb.ZRange(ctx, snapshotKey, 0, -1).Result()
+	now := c.now()
+	if entry := c.lookupSnapshotEntry(bucketKey); entry != nil && entry.matches(activeVal, revisions, now) {
+		accounts, err := c.snapshotAccountsFromEntry(ctx, entry)
+		if err != nil {
+			return nil, false, err
+		}
+		return accounts, true, nil
+	}
+
+	ids, err := c.rdb.ZRange(ctx, schedulerSnapshotKey(bucket, activeVal), 0, -1).Result()
 	if err != nil {
 		return nil, false, err
 	}
 	if len(ids) == 0 {
 		// 空快照视为缓存未命中，触发数据库回退查询
 		// 这解决了新分组创建后立即绑定账号时的竞态条件问题
+		c.dropSnapshotEntry(bucketKey)
 		return nil, false, nil
 	}
 
@@ -286,27 +354,141 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 	if err != nil {
 		return nil, false, err
 	}
-	lastUsedValues, err := c.mgetChunked(ctx, lastUsedKeys)
-	if err != nil {
-		return nil, false, err
-	}
 
-	accounts := make([]*service.Account, 0, len(values))
-	for i, val := range values {
+	masters := make([]*service.Account, 0, len(values))
+	for _, val := range values {
 		if val == nil {
+			c.dropSnapshotEntry(bucketKey)
 			return nil, false, nil
 		}
 		account, err := decodeCachedAccount(val)
 		if err != nil {
 			return nil, false, err
 		}
-		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
-			return nil, false, err
-		}
-		accounts = append(accounts, account)
+		masters = append(masters, account)
+	}
+	// 母本发布进缓存前由本 goroutine 完成预处理，发布后只读。
+	for _, master := range masters {
+		master.PrepareSharedSnapshot()
 	}
 
+	// 条目记录的是加载前读到的 (active, 修订号) 与当时的时钟：精简记录读取晚于这组取值，
+	// 之后若再有改写，修订号或 active 必然不同，或在最长复用时长后过期。
+	entry := &schedulerSnapshotEntry{
+		active:       activeVal,
+		revisions:    revisions,
+		loadedAt:     now,
+		accounts:     masters,
+		lastUsedKeys: lastUsedKeys,
+	}
+	c.storeSnapshotEntry(bucketKey, entry)
+
+	accounts, err := c.snapshotAccountsFromEntry(ctx, entry)
+	if err != nil {
+		return nil, false, err
+	}
 	return accounts, true, nil
+}
+
+func (e *schedulerSnapshotEntry) matches(active string, revisions []string, now time.Time) bool {
+	if e.active != active || !slices.Equal(e.revisions, revisions) {
+		return false
+	}
+	age := now.Sub(e.loadedAt)
+	return age >= 0 && age < schedulerSnapshotCacheMaxAge
+}
+
+// snapshotAccountsFromEntry 读取最新 last_used，并为本次调用一次性分配一组母本副本。
+func (c *schedulerCache) snapshotAccountsFromEntry(ctx context.Context, entry *schedulerSnapshotEntry) ([]*service.Account, error) {
+	lastUsedValues, err := c.mgetChunked(ctx, entry.lastUsedKeys)
+	if err != nil {
+		return nil, err
+	}
+	if len(lastUsedValues) != len(entry.accounts) {
+		return nil, fmt.Errorf("unexpected scheduler last_used value count: got %d, want %d", len(lastUsedValues), len(entry.accounts))
+	}
+	slab := make([]service.Account, len(entry.accounts))
+	accounts := make([]*service.Account, len(entry.accounts))
+	for i, master := range entry.accounts {
+		slab[i] = *master
+		account := &slab[i]
+		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
+			return nil, err
+		}
+		accounts[i] = account
+	}
+	return accounts, nil
+}
+
+func (c *schedulerCache) lookupSnapshotEntry(bucketKey string) *schedulerSnapshotEntry {
+	c.snapshotMu.RLock()
+	defer c.snapshotMu.RUnlock()
+	return c.snapshotEntries[bucketKey]
+}
+
+// storeSnapshotEntry 写入条目，并清除加载时间早于 schedulerSnapshotCacheEvictAge 的其它条目。
+// 已有条目的加载时间晚于新条目时保留已有条目：它基于更晚读到的 (active, 修订号)。
+func (c *schedulerCache) storeSnapshotEntry(bucketKey string, entry *schedulerSnapshotEntry) {
+	c.snapshotMu.Lock()
+	defer c.snapshotMu.Unlock()
+	if current := c.snapshotEntries[bucketKey]; current == nil || !current.loadedAt.After(entry.loadedAt) {
+		c.snapshotEntries[bucketKey] = entry
+	}
+	for key, other := range c.snapshotEntries {
+		if key != bucketKey && entry.loadedAt.Sub(other.loadedAt) > schedulerSnapshotCacheEvictAge {
+			delete(c.snapshotEntries, key)
+		}
+	}
+}
+
+func (c *schedulerCache) dropSnapshotEntry(bucketKey string) {
+	c.snapshotMu.RLock()
+	_, ok := c.snapshotEntries[bucketKey]
+	c.snapshotMu.RUnlock()
+	if !ok {
+		return
+	}
+	c.snapshotMu.Lock()
+	delete(c.snapshotEntries, bucketKey)
+	c.snapshotMu.Unlock()
+}
+
+// schedulerSnapshotTagKeys 返回 GetSnapshot 一次读取的键：ready、active、全局修订号、bucket 平台的修订号，
+// mixed 模式再加 antigravity 平台的修订号。按平台判定失效依赖 bucket 成员只取自 bucket 平台
+// （mixed 模式另含开启混合调度的 antigravity 账号）；账号平台发生变化时，写入方另行写入全局修订号。
+func schedulerSnapshotTagKeys(bucket service.SchedulerBucket) []string {
+	keys := make([]string, 0, 5)
+	keys = append(keys,
+		schedulerBucketKey(schedulerReadyPrefix, bucket),
+		schedulerBucketKey(schedulerActivePrefix, bucket),
+		schedulerAccountMetaRevisionKey,
+		schedulerAccountMetaRevisionKeyForPlatform(bucket.Platform),
+	)
+	if bucket.Mode == service.SchedulerModeMixed && bucket.Platform != service.PlatformAntigravity {
+		keys = append(keys, schedulerAccountMetaRevisionKeyForPlatform(service.PlatformAntigravity))
+	}
+	return keys
+}
+
+// schedulerAccountMetaRevisionKeyForPlatform 返回平台修订号的键；平台为空时返回全局修订号的键。
+func schedulerAccountMetaRevisionKeyForPlatform(platform string) string {
+	if platform == "" {
+		return schedulerAccountMetaRevisionKey
+	}
+	return schedulerAccountMetaPlatformRevisionPrefix + platform
+}
+
+func schedulerCacheOptionalString(value any) (string, error) {
+	switch typed := value.(type) {
+	case nil:
+		return "", nil
+	case string:
+		return typed, nil
+	case []byte:
+		return string(typed), nil
+	default:
+		return "", fmt.Errorf("unexpected scheduler cache value type: %T", value)
+	}
 }
 
 func (c *schedulerCache) CaptureBucketWriteToken(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
@@ -604,7 +786,13 @@ func (c *schedulerCache) DeleteAccount(ctx context.Context, accountID int64) err
 		return nil
 	}
 	id := strconv.FormatInt(accountID, 10)
-	return c.rdb.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerLastUsedKey(id)).Err()
+	// 删除精简记录与推进全局修订号在同一个 MULTI 中原子执行：读到删除结果的读者也读到新修订号，
+	// 进程内快照缓存不会给出已删除的账号。
+	pipe := c.rdb.TxPipeline()
+	pipe.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerLastUsedKey(id))
+	pipe.Set(ctx, schedulerAccountMetaRevisionKey, newSchedulerAccountMetaRevision(), 0)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -614,6 +802,7 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 
 	pipe := c.rdb.Pipeline()
 	queued := 0
+	metaDeleted := false
 	keys := make([]string, 0, schedulerLastUsedUpdateChunkSize*2)
 	args := make([]any, 0, schedulerLastUsedUpdateChunkSize)
 	queueBatch := func() {
@@ -638,6 +827,7 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 			idText := strconv.FormatInt(id, 10)
 			pipe.Del(ctx, schedulerAccountKey(idText), schedulerAccountMetaKey(idText), schedulerLastUsedKey(idText))
 			queued++
+			metaDeleted = true
 			continue
 		}
 		idText := strconv.FormatInt(id, 10)
@@ -650,6 +840,10 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 	queueBatch()
 	if queued == 0 {
 		return nil
+	}
+	if metaDeleted {
+		// 被删账号的平台未知，全局修订号排在同一 pipeline 的 DEL 之后。
+		pipe.Set(ctx, schedulerAccountMetaRevisionKey, newSchedulerAccountMetaRevision(), 0)
 	}
 	_, err := pipe.Exec(ctx)
 	return err
@@ -776,21 +970,53 @@ func decodeCachedAccount(val any) (*service.Account, error) {
 	return &account, nil
 }
 
+// writeAccountIDs 分块写入整账号与精简记录，返回成功编码并写入的有序账号 ID。
+// 每块在追加下一个账号前才执行，最后一块总是非空；所涉平台的修订号追加在最后一块末尾，
+// 与最后一批精简记录同一次往返发出，且排在全部精简记录写入之后。
+// 精简记录用 SET ... GET 写入并取回旧值：旧值的平台与新平台不同时，旧平台 bucket 中可能仍缓存着该账号，
+// 全部写入完成后另行写入全局修订号。该检测尽力而为（客户端在 pipeline 内部重试时取回的可能已是本次写入的值），
+// 漏检由进程内快照缓存的最长复用时长兜底。
+// 任一块执行出错时，此前已执行的块与出错的块都可能已有精简记录生效，返回时启动后台写入全局修订号。
 func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service.Account) ([]int64, error) {
 	if len(accounts) == 0 {
 		return nil, nil
 	}
 
+	type metaWrite struct {
+		platform string
+		previous *redis.StatusCmd
+	}
 	pipe := c.rdb.Pipeline()
 	accountIDs := make([]int64, 0, len(accounts))
+	platforms := make([]string, 0, 1)
+	writes := make([]metaWrite, 0, min(len(accounts), c.writeChunkSize))
 	pending := 0
-	flush := func() error {
-		if pending == 0 {
-			return nil
+	execFailed := false
+	platformChanged := false
+	defer func() {
+		if execFailed {
+			c.scheduleGlobalAccountMetaRevision(ctx)
 		}
-		if _, err := pipe.Exec(ctx); err != nil {
+	}()
+	exec := func() error {
+		cmds, err := pipe.Exec(ctx)
+		if err != nil && !errors.Is(err, redis.Nil) {
+			execFailed = true
 			return err
 		}
+		// SET ... GET 在键原本不存在时返回 redis.Nil，不算失败；其余命令的错误逐条检查。
+		for _, cmd := range cmds {
+			if cmdErr := cmd.Err(); cmdErr != nil && !errors.Is(cmdErr, redis.Nil) {
+				execFailed = true
+				return cmdErr
+			}
+		}
+		for _, write := range writes {
+			if schedulerMetaPlatformChanged(write.previous, write.platform) {
+				platformChanged = true
+			}
+		}
+		writes = writes[:0]
 		pipe = c.rdb.Pipeline()
 		pending = 0
 		return nil
@@ -805,25 +1031,91 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 			)
 			continue
 		}
-
-		id := strconv.FormatInt(account.ID, 10)
-		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
-		pipe.Set(ctx, schedulerAccountMetaKey(id), metaPayload, 0)
-		// Keep the hot LastUsedAt side key untouched: a lagging snapshot rebuild
-		// must not overwrite a newer scheduler update.
-		accountIDs = append(accountIDs, account.ID)
-		pending++
 		if pending >= c.writeChunkSize {
-			if err := flush(); err != nil {
+			if err := exec(); err != nil {
 				return nil, err
 			}
 		}
+
+		id := strconv.FormatInt(account.ID, 10)
+		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
+		writes = append(writes, metaWrite{
+			platform: account.Platform,
+			previous: pipe.SetArgs(ctx, schedulerAccountMetaKey(id), metaPayload, redis.SetArgs{Get: true}),
+		})
+		// Keep the hot LastUsedAt side key untouched: a lagging snapshot rebuild
+		// must not overwrite a newer scheduler update.
+		accountIDs = append(accountIDs, account.ID)
+		if !slices.Contains(platforms, account.Platform) {
+			platforms = append(platforms, account.Platform)
+		}
+		pending++
 	}
 
-	if err := flush(); err != nil {
+	if pending == 0 {
+		return accountIDs, nil
+	}
+	for _, platform := range platforms {
+		pipe.Set(ctx, schedulerAccountMetaRevisionKeyForPlatform(platform), newSchedulerAccountMetaRevision(), 0)
+	}
+	if err := exec(); err != nil {
 		return nil, err
 	}
+	if platformChanged {
+		c.advanceGlobalAccountMetaRevision(ctx)
+	}
 	return accountIDs, nil
+}
+
+// schedulerMetaPlatformChanged 判断 SET ... GET 取回的旧精简记录是否属于另一个平台；
+// 旧值不是合法 JSON 或缺少字符串类型的顶层 Platform 时按已变化处理。
+func schedulerMetaPlatformChanged(previous *redis.StatusCmd, platform string) bool {
+	raw, err := previous.Result()
+	if err != nil {
+		return false
+	}
+	if !gjson.Valid(raw) {
+		return true
+	}
+	old := gjson.Get(raw, "Platform")
+	return old.Type != gjson.String || old.Str != platform
+}
+
+// scheduleGlobalAccountMetaRevision 在后台写入全局修订号，不阻塞调用方。
+// 同一时刻至多一个后台写入：写入前先清除待写标记，写完后标记再次被置位就再写一轮，
+// 因此每次调用之后都至少还有一次完整的写入发生在它之后。
+func (c *schedulerCache) scheduleGlobalAccountMetaRevision(ctx context.Context) {
+	c.globalRevisionPending.Store(true)
+	if !c.globalRevisionWriting.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		for {
+			c.globalRevisionPending.Store(false)
+			c.advanceGlobalAccountMetaRevision(ctx)
+			c.globalRevisionWriting.Store(false)
+			if !c.globalRevisionPending.Load() || !c.globalRevisionWriting.CompareAndSwap(false, true) {
+				return
+			}
+		}
+	}()
+}
+
+// advanceGlobalAccountMetaRevision 单独写入新的全局修订号，使所有 bucket 的进程内快照失效。
+// 不受调用方取消影响；失败只记录日志，由进程内快照缓存的最长复用时长兜底。
+func (c *schedulerCache) advanceGlobalAccountMetaRevision(ctx context.Context) {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), schedulerAccountMetaRevisionWriteTimeout)
+	defer cancel()
+	if err := c.rdb.Set(writeCtx, schedulerAccountMetaRevisionKey, newSchedulerAccountMetaRevision(), 0).Err(); err != nil {
+		slog.Warn("scheduler cache failed to advance account metadata revision", "error", err)
+	}
+}
+
+func newSchedulerAccountMetaRevision() string {
+	raw := make([]byte, schedulerAccountMetaRevisionBytes)
+	// crypto/rand.Read 读取失败时直接终止进程，不会返回错误。
+	_, _ = rand.Read(raw)
+	return hex.EncodeToString(raw)
 }
 
 func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, error) {
@@ -956,7 +1248,11 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	}
 	// Candidate-list admission evaluates the account override before hydrating
 	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold"}
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold",
+		// Gemini 显式缓存的候选过滤（GeminiExplicitCacheExclusions）读本投影判定账号是否支持显式缓存：
+		// 官方地址、Vertex 认证方式与上游网关的显式缓存声明。缺这几个键时只能按类型粗筛，
+		// 不支持的账号要逐个选中后才被剔除。
+		"base_url", "auth_mode", service.GeminiExplicitCacheUpstreamCredentialKey, service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {

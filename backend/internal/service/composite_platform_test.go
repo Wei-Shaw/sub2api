@@ -119,6 +119,50 @@ func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatform
 	require.Equal(t, []string{PlatformDeepseek, PlatformOpenAI}, ambiguous.CandidatePlatforms)
 }
 
+// Scenario: 只有 OpenAI 网关族的 OAuth 声明方会被标记（API Key 上游可能兼容多协议，
+// Anthropic / Antigravity 的 OAuth 在默认 Anthropic handler 中可正常转发）
+func TestResolveCompositeModelOwnershipFlagsOpenAIGatewayOAuthClaimants(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "gpt-6-astra"}}},
+			{ID: 2, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "deepseek-v4-pro", "apikey-only": "deepseek-v4-pro"}}},
+			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"apikey-only": "gpt-5"}}},
+			// Antigravity 账号创建时会把默认映射（含 claude-*）写入 model_mapping。
+			{ID: 4, Platform: PlatformAntigravity, Type: AccountTypeOAuth, Credentials: map[string]any{"model_mapping": map[string]any{"claude-opus-4-8": "claude-opus-4-8"}}},
+			{ID: 5, Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Credentials: map[string]any{"model_mapping": map[string]any{"claude-opus-4-8": "claude-opus-4-8"}}},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	// composite 归属模型下跨平台声明返回稳定候选池（去重升序）而非裸 Ambiguous；
+	// 只有 OpenAI 网关族的 OAuth 声明方会被标记 OpenAIGatewayOAuthClaimed。
+	withOAuth, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-6-astra")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{
+		Matched:                   true,
+		CandidatePlatforms:        []string{PlatformDeepseek, PlatformOpenAI},
+		RequiredClaimStrength:     CompositeClaimExplicit,
+		OpenAIGatewayOAuthClaimed: true,
+	}, withOAuth)
+
+	apiKeyOnly, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "apikey-only")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{
+		Matched:               true,
+		CandidatePlatforms:    []string{PlatformDeepseek, PlatformOpenAI},
+		RequiredClaimStrength: CompositeClaimExplicit,
+	}, apiKeyOnly)
+
+	anthropicFamily, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "claude-opus-4-8")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{
+		Matched:               true,
+		CandidatePlatforms:    []string{PlatformAnthropic, PlatformAntigravity},
+		RequiredClaimStrength: CompositeClaimExplicit,
+	}, anthropicFamily)
+}
+
 func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
 	groupID := int64(7)
 	repo := &compositeOwnershipAccountRepo{

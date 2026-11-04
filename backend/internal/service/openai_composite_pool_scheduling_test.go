@@ -426,15 +426,15 @@ func TestOpenAICompositePool_ClaimsPredicateGatesPoolMembership(t *testing.T) {
 
 	// 官方 deepseek 空 mapping：native detector 命中 → 可 claim。
 	// 使用受支持的 DeepSeek 模型名（空 mapping native claim 受官方白名单约束）。
-	require.True(t, openAISchedulingModelSupported(poolCtx, &deepseekAccount, "deepseek-flash"))
+	require.True(t, openAISchedulingModelSupported(poolCtx, &deepseekAccount, "deepseek-flash", false))
 	// 无关平台空 mapping：不得凭 IsModelSupported 的 allow-all 冒领。
-	require.False(t, openAISchedulingModelSupported(poolCtx, &kimiAccount, "deepseek-chat"))
+	require.False(t, openAISchedulingModelSupported(poolCtx, &kimiAccount, "deepseek-chat", false))
 	require.True(t, kimiAccount.IsModelSupported("deepseek-chat"), "旧语义 allow-all 仍成立，池路径必须改用 claims 谓词")
 	// opencode_go：显式 mapping 命中可入池，空/未命中不入。
-	require.True(t, openAISchedulingModelSupported(poolCtx, &opencodeMapped, "my-model"))
-	require.False(t, openAISchedulingModelSupported(poolCtx, &opencodeMapped, "deepseek-chat"))
+	require.True(t, openAISchedulingModelSupported(poolCtx, &opencodeMapped, "my-model", false))
+	require.False(t, openAISchedulingModelSupported(poolCtx, &opencodeMapped, "deepseek-chat", false))
 	// 非 pool 请求保持 IsModelSupported 原语义。
-	require.True(t, openAISchedulingModelSupported(context.Background(), &kimiAccount, "deepseek-chat"))
+	require.True(t, openAISchedulingModelSupported(context.Background(), &kimiAccount, "deepseek-chat", false))
 
 	// 资格检查命名否决点。
 	reason := openAICompatibleAccountEligibilityFailureReason(poolCtx, &kimiAccount, PlatformOpenAI, "deepseek-chat", false, "")

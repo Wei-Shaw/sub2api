@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -18,7 +19,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// anthropicMessagesForeignOAuthReason 标记账号凭据与 Anthropic Messages 协议不匹配。
+const anthropicMessagesForeignOAuthReason = GatewayFailureReason("anthropic_messages_foreign_oauth")
+
+// anthropicMessagesCredentialAllowed 判断账号凭据能否经 Anthropic Messages 协议
+// 出站。OAuth / setup-token 只对签发它的供应商有效（ChatGPT token 只认
+// chatgpt.com），送错协议既泄露凭据，上游 401 还会被误记到账号头上；
+// API Key 不受限：其上游可能同时兼容多种协议格式。
+func anthropicMessagesCredentialAllowed(account *Account) bool {
+	if !account.IsOAuth() {
+		return true
+	}
+	spec, ok := domain.LookupPlatform(account.Platform)
+	return ok && spec.Gateway == domain.PlatformGatewayAnthropic
+}
+
+// checkAnthropicMessagesCredential 在发出任何上游请求前拦截不匹配的凭据。返回的
+// failover 错误只让 handler 换下一个账号：没有上游响应，也就不触发任何账号处罚。
+func checkAnthropicMessagesCredential(account *Account) error {
+	if anthropicMessagesCredentialAllowed(account) {
+		return nil
+	}
+	return &UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway,
+		Reason:     anthropicMessagesForeignOAuthReason,
+	}
+}
+
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, []byte, error) {
+	if err := checkAnthropicMessagesCredential(account); err != nil {
+		return nil, nil, err
+	}
 	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body, modelID); err != nil {
 		return nil, nil, err
 	}
@@ -33,10 +64,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// 拼 {base}/v1/messages，不带 ?beta=true（第三方端点不接受该参数，与 OpenAI 族
 	// nativeAnthropicTargetURL 对齐）；classic anthropic 账号保持
 	// GetBaseURL()+"/v1/messages?beta=true" 现状。认证 / max_tokens clamp 与本次
-	// 实际选用的 base 同源（anthropicUpstreamBaseForAuth）。
+	// 实际选用的 base 同源（getAnthropicGatewayBaseURL）。
 	targetURL := claudeAPIURL
-	anthropicBase := anthropicUpstreamBaseForAuth(account)
+	baseURL := ""
 	if account.Type == AccountTypeAPIKey {
+		baseURL = getAnthropicGatewayBaseURL(account)
 		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages")
 		if err != nil {
 			return nil, nil, err
@@ -132,9 +164,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// Ollama Cloud DeepSeek 出站 max_tokens clamp：判定与上方 targetURL 的
-	// base 取值同源（GetAnthropicProtocolBaseURL / GetBaseURL 协议化解析），仅
-	// 实际上游为 ollama.com 且映射后出站模型为 DeepSeek 系时压到 cap，详见 helper 注释。
-	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, anthropicBase, body)
+	// base 取值同源，仅实际上游为 ollama.com 且映射后出站模型
+	// 为 DeepSeek 系时压到 cap，详见 helper 注释。
+	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, baseURL, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -146,8 +178,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 	} else {
 		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
-		// targetURL 的协议化 base 取值），其余保持 extra/default 行为。
-		setAnthropicAPIKeyAuthHeader(req.Header, account, token, anthropicBase)
+		// targetURL 的 base 取值），其余保持 extra/default 行为。
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token, baseURL)
 	}
 
 	// 白名单透传 headers
@@ -237,6 +269,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	SetOpsUpstreamRequestTarget(c, req, modelID)
 
 	return req, body, nil
+}
+
+func getAnthropicGatewayBaseURL(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if baseURL := account.GetAnthropicProtocolBaseURL(); baseURL != "" {
+		return baseURL
+	}
+	return account.GetBaseURL()
 }
 
 // vertexSupportedBetaTokens 是 Vertex AI 的 Anthropic 端点接受的 anthropic-beta
@@ -436,11 +478,13 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 
 // The legacy streaming beta is incompatible with the stable computer and
 // browser toolsets. The per-tool eager_input_streaming field remains available.
+// Applies to Sonnet 5.5 and Haiku 5.5, which share the computer_toolset_20260801
+// / browser_toolset_20260801 toolsets (Haiku 5.5 migration guide).
 func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) string {
 	if at := strings.IndexByte(modelID, '@'); at >= 0 {
 		modelID = modelID[:at] // Vertex's dated model ID
 	}
-	if !claude.IsSonnet55(modelID) {
+	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
 	for _, tool := range gjson.GetBytes(body, "tools").Array() {
@@ -1000,19 +1044,6 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
-}
-
-// anthropicUpstreamBaseForAuth 返回账号本次实际选用的 Anthropic 上游 base（与出站
-// URL 组装、认证强制 Bearer 判定、max_tokens clamp 判定同源）：CN/多协议账号
-// （api_protocol=anthropic/adaptive）取 GetAnthropicProtocolBaseURL（含
-// api_base_urls.anthropic 与供应商×模式默认端点），classic anthropic / 官方默认
-// 账号取 GetBaseURL（OAuth 等无 base 语义时为空串）。认证与 clamp 必须使用本
-// 返回值而非各自再取 base，保证与真实出站 URL 判定一致。
-func anthropicUpstreamBaseForAuth(account *Account) string {
-	if base := strings.TrimSpace(account.GetAnthropicProtocolBaseURL()); base != "" {
-		return base
-	}
-	return account.GetBaseURL()
 }
 
 // anthropicUpstreamTargetURL 组装 Anthropic 上游端点（path 以 "/" 开头，如
