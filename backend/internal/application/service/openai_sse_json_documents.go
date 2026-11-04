@@ -21,6 +21,24 @@ func splitOpenAIConcatenatedJSONDocuments(payload []byte) ([][]byte, bool) {
 	return documents, repaired
 }
 
+// WS accepts large valid single frames even when they exceed the repair limit.
+// A repaired result contains independently decoded, valid documents. Reuse that
+// proof for the first document and its queued siblings in the forwarding loop.
+func prepareOpenAIWSJSONDocuments(payload []byte) (documents [][]byte, repaired, valid bool) {
+	documents, repaired, valid = classifyOpenAIConcatenatedJSONDocuments(payload)
+	if valid {
+		// Classification validates the broadly trimmed payload. A length check
+		// against JSON-only trimming proves its outer bytes were also JSON ws,
+		// without rescanning the document (form-feed and NBSP must still fail).
+		valid = len(bytes.Trim(payload, " \t\r\n")) == len(bytes.TrimSpace(payload))
+	} else if !repaired && len(payload) > maxOpenAIConcatenatedJSONBytes {
+		// The repair classifier skips oversized payloads, but WS historically
+		// accepted any single frame that passes strict JSON validation.
+		valid = json.Valid(payload)
+	}
+	return documents, repaired, valid || repaired
+}
+
 func classifyOpenAIConcatenatedJSONDocuments(payload []byte) (documents [][]byte, repaired, valid bool) {
 	payload = bytes.TrimSpace(payload)
 	if len(payload) == 0 || len(payload) > maxOpenAIConcatenatedJSONBytes {

@@ -1,0 +1,11 @@
+File: bridge-round2.test
+Build ID: f280e7000353bb7059ac8858b5cefabf29895a78
+Type: alloc_space
+Time: 2026-11-04 04:21:20 UTC
+Showing nodes accounting for 15.17GB, 100% of 15.18GB total
+Dropped 21 nodes (cum <= 0.08GB)
+      flat  flat%   sum%        cum   cum%
+   15.15GB 99.81% 99.81%    15.15GB 99.82%  github.com/Wei-Shaw/sub2api/internal/shared/apicompat.ChatCompletionsChunkToResponsesEvents
+    0.02GB  0.14%   100%    15.17GB   100%  github.com/Wei-Shaw/sub2api/internal/shared/apicompat.BenchmarkRound2ChatToolArguments.func1
+         0     0%   100%    15.13GB 99.71%  testing.(*B).launch
+         0     0%   100%    15.18GB   100%  testing.(*B).runN

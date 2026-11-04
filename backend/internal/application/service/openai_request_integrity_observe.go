@@ -34,6 +34,16 @@ func (s *OpenAIGatewayService) openAIRequestIntegrityObserveEnabled(ctx context.
 	return s.openAIAdvancedSchedulerRuntimeSettings(ctx).requestIntegrityObserveEnabled
 }
 
+// Capture before timezone/compatibility transforms, but only for requests the
+// observer can inspect. Admission reuses the existing cached runtime setting.
+func (s *OpenAIGatewayService) captureOpenAIRequestIntegritySnapshot(ctx context.Context, account *Account, body []byte) []byte {
+	if account == nil || !account.IsOpenAIOAuth() || len(body) == 0 ||
+		len(body) > openAIRequestIntegrityMaxObservedBytes || !s.openAIRequestIntegrityObserveEnabled(ctx) {
+		return nil
+	}
+	return bytes.Clone(body)
+}
+
 func decodeOpenAIIntegrityBody(raw []byte) (map[string]any, error) {
 	var value map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -154,7 +164,7 @@ func openAIRequestIntegrityDifferences(original, forwarded []byte) ([]string, er
 }
 
 func (s *OpenAIGatewayService) observeOpenAIRequestIntegrity(ctx context.Context, c *gin.Context, account *Account, original, forwarded []byte, transport string) {
-	if account == nil || !account.IsOpenAIOAuth() || !s.openAIRequestIntegrityObserveEnabled(ctx) ||
+	if len(original) == 0 || account == nil || !account.IsOpenAIOAuth() || !s.openAIRequestIntegrityObserveEnabled(ctx) ||
 		len(original) > openAIRequestIntegrityMaxObservedBytes || len(forwarded) > openAIRequestIntegrityMaxObservedBytes ||
 		bytes.Equal(original, forwarded) {
 		return

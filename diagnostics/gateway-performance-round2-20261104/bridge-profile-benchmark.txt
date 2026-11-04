@@ -1,0 +1,6 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/shared/apicompat
+BenchmarkRound2ChatToolArguments/256KiB-2         	     364	   7199962 ns/op	  36.41 MB/s	34885779 B/op	    1060 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	3.294s

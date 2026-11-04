@@ -1,0 +1,6 @@
+{
+  "Replace": {
+    "/src/backend/internal/application/service/zz_round2_perf_probe_test.go": "/src/diagnostics/gateway-performance-round2-20261104/probes/service_probe_test.go",
+    "/src/backend/internal/shared/apicompat/zz_round2_perf_probe_test.go": "/src/diagnostics/gateway-performance-round2-20261104/probes/bridge_probe_test.go"
+  }
+}

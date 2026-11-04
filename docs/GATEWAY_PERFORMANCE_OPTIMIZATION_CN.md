@@ -51,3 +51,7 @@
 优先试验边界清晰的 JSON/SSE codec，而不是迁移 HTTP/TLS、计费和账号调度。Go 当前发布链路使用 `CGO_ENABLED=0`；FFI 会增加构建/交叉编译维护成本，sidecar 会增加进程通信和故障处理成本。Rust 原型需计入输入/输出复制及 FFI/IPC 开销，并验证 HTTP/WS、流式/非流式、工具续链、签名思考、未知字段、整数精度、错误及断流用量。
 
 只有在优化后的 Go 基线仍占据显著 CPU、且 Rust 原型在代表性负载下改善整体 CPU 或尾延迟时再合入。当前证据不包含 Rust 实现的对照，不能承诺换语言后的倍数收益。
+
+## 第二轮调查
+
+合并 PR #177 后的下一批候选、实施改动与新 Docker profile 见 [第二轮性能调查](../diagnostics/gateway-performance-round2-20261104/REPORT.md)。诊断快照准入、Chat→Responses 工具参数线性累积、图片计数及 WS 校验/解析复用已落地；完整 tokenizer 仍作为有条件的 Rust 原型候选。

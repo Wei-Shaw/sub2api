@@ -1,0 +1,48 @@
+2026/11/04 07:53:40 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/1MiB-2         	230369896	         1.554 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/1MiB-2         	228574512	         1.548 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/1MiB-2         	233089542	         1.569 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/16MiB-2        	235425486	         1.528 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/16MiB-2        	236655076	         1.528 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/16MiB-2        	232335446	         1.525 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/1MiB-2          	 7267612	        48.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/1MiB-2          	 7349200	        48.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/1MiB-2          	 7498248	        47.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/16MiB-2         	184766079	         1.951 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/16MiB-2         	181695445	         1.969 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/16MiB-2         	173136958	         1.988 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/1MiB-2          	233351239	         1.547 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/1MiB-2          	235278034	         1.546 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/1MiB-2          	219829987	         1.629 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/16MiB-2         	226934438	         1.707 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/16MiB-2         	235689435	         1.532 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/16MiB-2         	232239646	         1.536 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/1MiB-2           	    4113	     88607 ns/op	 1048576 B/op	       1 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/1MiB-2           	    4298	     87174 ns/op	 1048576 B/op	       1 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/1MiB-2           	    3391	    101653 ns/op	 1048576 B/op	       1 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/16MiB-2          	100000000	         4.723 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/16MiB-2          	160816710	         2.166 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/16MiB-2          	183351668	         1.950 ns/op	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_false-2                            	   90346	      3869 ns/op	 277.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_false-2                            	   93230	      3835 ns/op	 279.54 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_false-2                            	   93783	      3834 ns/op	 279.61 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_true-2                             	  186000	      1971 ns/op	 543.99 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_true-2                             	  181866	      1937 ns/op	 553.51 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1KiB/reuse_true-2                             	  186957	      1920 ns/op	 558.25 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_false-2                          	     391	    930460 ns/op	 281.79 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_false-2                          	     392	    917292 ns/op	 285.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_false-2                          	     392	    917778 ns/op	 285.68 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_true-2                           	     783	    460026 ns/op	 569.95 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_true-2                           	     784	    460164 ns/op	 569.78 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/256KiB/reuse_true-2                           	     784	    460198 ns/op	 569.74 MB/s	       0 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_false-2                         	      96	   3679293 ns/op	 285.01 MB/s	       2 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_false-2                         	      96	   3671342 ns/op	 285.62 MB/s	       2 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_false-2                         	      97	   3663947 ns/op	 286.20 MB/s	       3 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_true-2                          	     195	   1840753 ns/op	 569.67 MB/s	       1 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_true-2                          	     195	   1839291 ns/op	 570.12 MB/s	       1 B/op	       0 allocs/op
+BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_true-2                          	     195	   1838908 ns/op	 570.24 MB/s	       1 B/op	       0 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	19.872s

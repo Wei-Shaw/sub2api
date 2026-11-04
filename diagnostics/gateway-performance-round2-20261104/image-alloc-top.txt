@@ -1,0 +1,17 @@
+File: images-round2.test
+Build ID: 44ce7e9ad3534924fdebeb353b4ee2178fc857da
+Type: alloc_space
+Time: 2026-11-04 04:21:27 UTC
+Showing nodes accounting for 1159.24MB, 98.57% of 1176.05MB total
+Dropped 99 nodes (cum <= 5.88MB)
+      flat  flat%   sum%        cum   cum%
+  582.53MB 49.53% 49.53%   582.53MB 49.53%  github.com/tidwall/gjson.ParseBytes (inline)
+  576.71MB 49.04% 98.57%  1159.24MB 98.57%  github.com/Wei-Shaw/sub2api/internal/application/service.(*openAIImageOutputCounter).AddSSEData
+         0     0% 98.57%     7.07MB   0.6%  github.com/Wei-Shaw/sub2api/internal/application/service.BenchmarkRound2ImageAccounting
+         0     0% 98.57%  1159.24MB 98.57%  github.com/Wei-Shaw/sub2api/internal/application/service.BenchmarkRound2ImageAccounting.func1
+         0     0% 98.57%     7.51MB  0.64%  runtime.doInit (inline)
+         0     0% 98.57%     7.51MB  0.64%  runtime.doInit1
+         0     0% 98.57%     8.67MB  0.74%  runtime.main
+         0     0% 98.57%  1156.92MB 98.37%  testing.(*B).launch
+         0     0% 98.57%     9.39MB   0.8%  testing.(*B).run1.func1
+         0     0% 98.57%  1166.31MB 99.17%  testing.(*B).runN

@@ -1,0 +1,424 @@
+{
+  "aggregation": "median of three samples",
+  "baseline": "../probes.txt",
+  "optimized": "../probes-final-source.txt",
+  "results": [
+    {
+      "benchmark": "BenchmarkRound2WSEnvelope/1KiB/current",
+      "baseline": {
+        "ns_op": 1000.0,
+        "bytes_op": 1640.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 405.4,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 59.46,
+      "bytes_reduction_pct": 97.56
+    },
+    {
+      "benchmark": "BenchmarkRound2WSEnvelope/256KiB/current",
+      "baseline": {
+        "ns_op": 117497.0,
+        "bytes_op": 270696.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 45035.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 61.67,
+      "bytes_reduction_pct": 99.99
+    },
+    {
+      "benchmark": "BenchmarkRound2WSEnvelope/1024KiB/current",
+      "baseline": {
+        "ns_op": 418555.0,
+        "bytes_op": 1057128.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 176347.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 57.87,
+      "bytes_reduction_pct": 100.0
+    },
+    {
+      "benchmark": "BenchmarkRound2WSEnvelope/8192KiB/current",
+      "baseline": {
+        "ns_op": 3396756.0,
+        "bytes_op": 8397160.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 1416089.0,
+        "bytes_op": 40.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 58.31,
+      "bytes_reduction_pct": 100.0
+    },
+    {
+      "benchmark": "BenchmarkRound2WSValidation/1KiB/current_two_validations",
+      "baseline": {
+        "ns_op": 4716.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "optimized": {
+        "ns_op": 4682.0,
+        "bytes_op": 0.0,
+        "allocs_op": 0.0
+      },
+      "time_reduction_pct": 0.72,
+      "bytes_reduction_pct": null
+    },
+    {
+      "benchmark": "BenchmarkRound2WSValidation/256KiB/current_two_validations",
+      "baseline": {
+        "ns_op": 983582.0,
+        "bytes_op": 1.0,
+        "allocs_op": 0.0
+      },
+      "optimized": {
+        "ns_op": 914554.0,
+        "bytes_op": 1.0,
+        "allocs_op": 0.0
+      },
+      "time_reduction_pct": 7.02,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2WSValidation/1024KiB/current_two_validations",
+      "baseline": {
+        "ns_op": 4031178.0,
+        "bytes_op": 4.0,
+        "allocs_op": 0.0
+      },
+      "optimized": {
+        "ns_op": 3649640.0,
+        "bytes_op": 4.0,
+        "allocs_op": 0.0
+      },
+      "time_reduction_pct": 9.46,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_delta/2KiB",
+      "baseline": {
+        "ns_op": 11062.0,
+        "bytes_op": 4704.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 2858.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 74.16,
+      "bytes_reduction_pct": 97.96
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_terminal/2KiB",
+      "baseline": {
+        "ns_op": 9469.0,
+        "bytes_op": 4704.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 3711.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 60.81,
+      "bytes_reduction_pct": 97.96
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_delta/256KiB",
+      "baseline": {
+        "ns_op": 1337010.0,
+        "bytes_op": 540768.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 249480.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 81.34,
+      "bytes_reduction_pct": 99.98
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_terminal/256KiB",
+      "baseline": {
+        "ns_op": 920791.0,
+        "bytes_op": 540768.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 297183.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 67.73,
+      "bytes_reduction_pct": 99.98
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_delta/1024KiB",
+      "baseline": {
+        "ns_op": 5357932.0,
+        "bytes_op": 2113632.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 1001937.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 81.3,
+      "bytes_reduction_pct": 100.0
+    },
+    {
+      "benchmark": "BenchmarkRound2ImageAccounting/text_terminal/1024KiB",
+      "baseline": {
+        "ns_op": 3672197.0,
+        "bytes_op": 2113632.0,
+        "allocs_op": 4.0
+      },
+      "optimized": {
+        "ns_op": 1146308.0,
+        "bytes_op": 96.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 68.78,
+      "bytes_reduction_pct": 100.0
+    },
+    {
+      "benchmark": "BenchmarkRound2UsageExtraction/1KiB",
+      "baseline": {
+        "ns_op": 4013.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "optimized": {
+        "ns_op": 3586.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 10.64,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2UsageExtraction/256KiB",
+      "baseline": {
+        "ns_op": 375312.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "optimized": {
+        "ns_op": 332673.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 11.36,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2UsageExtraction/1024KiB",
+      "baseline": {
+        "ns_op": 1500226.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "optimized": {
+        "ns_op": 1318623.0,
+        "bytes_op": 112.0,
+        "allocs_op": 2.0
+      },
+      "time_reduction_pct": 12.11,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2Tokenizer/fallback_full/64KiB",
+      "baseline": {
+        "ns_op": 3445727.0,
+        "bytes_op": 4084910.0,
+        "allocs_op": 81607.0
+      },
+      "optimized": {
+        "ns_op": 3006309.0,
+        "bytes_op": 4084838.0,
+        "allocs_op": 81606.0
+      },
+      "time_reduction_pct": 12.75,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2Tokenizer/codec_count_only/64KiB",
+      "baseline": {
+        "ns_op": 2996299.0,
+        "bytes_op": 4008510.0,
+        "allocs_op": 81584.0
+      },
+      "optimized": {
+        "ns_op": 2781541.0,
+        "bytes_op": 4008451.0,
+        "allocs_op": 81584.0
+      },
+      "time_reduction_pct": 7.17,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2Tokenizer/fallback_full/1024KiB",
+      "baseline": {
+        "ns_op": 54770969.0,
+        "bytes_op": 65180636.0,
+        "allocs_op": 1305783.0
+      },
+      "optimized": {
+        "ns_op": 48156542.0,
+        "bytes_op": 65180227.0,
+        "allocs_op": 1305780.0
+      },
+      "time_reduction_pct": 12.08,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2Tokenizer/codec_count_only/1024KiB",
+      "baseline": {
+        "ns_op": 50305500.0,
+        "bytes_op": 64105680.0,
+        "allocs_op": 1305764.0
+      },
+      "optimized": {
+        "ns_op": 44717383.0,
+        "bytes_op": 64104432.0,
+        "allocs_op": 1305758.0
+      },
+      "time_reduction_pct": 11.11,
+      "bytes_reduction_pct": 0.0
+    },
+    {
+      "benchmark": "BenchmarkRound2ChatToolArguments/64KiB",
+      "baseline": {
+        "ns_op": 435142.0,
+        "bytes_op": 2368544.0,
+        "allocs_op": 290.0
+      },
+      "optimized": {
+        "ns_op": 157199.0,
+        "bytes_op": 311631.0,
+        "allocs_op": 239.0
+      },
+      "time_reduction_pct": 63.87,
+      "bytes_reduction_pct": 86.84
+    },
+    {
+      "benchmark": "BenchmarkRound2ChatToolArguments/256KiB",
+      "baseline": {
+        "ns_op": 5791122.0,
+        "bytes_op": 34885774.0,
+        "allocs_op": 1060.0
+      },
+      "optimized": {
+        "ns_op": 680110.0,
+        "bytes_op": 1289679.0,
+        "allocs_op": 821.0
+      },
+      "time_reduction_pct": 88.26,
+      "bytes_reduction_pct": 96.3
+    },
+    {
+      "benchmark": "BenchmarkRound2ChatToolArguments/1024KiB",
+      "baseline": {
+        "ns_op": 75554056.0,
+        "bytes_op": 542441608.0,
+        "allocs_op": 4132.0
+      },
+      "optimized": {
+        "ns_op": 2845887.0,
+        "bytes_op": 5652103.0,
+        "allocs_op": 3133.0
+      },
+      "time_reduction_pct": 96.23,
+      "bytes_reduction_pct": 98.96
+    }
+  ],
+  "production_admission_validation": {
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/1MiB": {
+      "ns_op": 1.554,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/apikey/16MiB": {
+      "ns_op": 1.528,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/1MiB": {
+      "ns_op": 48.01,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_false/oauth/16MiB": {
+      "ns_op": 1.969,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/1MiB": {
+      "ns_op": 1.547,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/apikey/16MiB": {
+      "ns_op": 1.536,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/1MiB": {
+      "ns_op": 88607.0,
+      "bytes_op": 1048576.0,
+      "allocs_op": 1.0
+    },
+    "BenchmarkOpenAIIntegritySnapshotAdmission/enabled_true/oauth/16MiB": {
+      "ns_op": 2.166,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/1KiB/reuse_false": {
+      "ns_op": 3835.0,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/1KiB/reuse_true": {
+      "ns_op": 1937.0,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/256KiB/reuse_false": {
+      "ns_op": 917778.0,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/256KiB/reuse_true": {
+      "ns_op": 460164.0,
+      "bytes_op": 0.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_false": {
+      "ns_op": 3671342.0,
+      "bytes_op": 2.0,
+      "allocs_op": 0.0
+    },
+    "BenchmarkOpenAIWSJSONValidation/1024KiB/reuse_true": {
+      "ns_op": 1839291.0,
+      "bytes_op": 1.0,
+      "allocs_op": 0.0
+    }
+  }
+}

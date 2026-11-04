@@ -1,0 +1,7 @@
+2026/11/04 04:21:30 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkRound2Tokenizer/fallback_full/1024KiB-2         	      40	  52410178 ns/op	  20.38 MB/s	65181028 B/op	 1305785 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	2.195s

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/shared/logger"
 	coderws "github.com/coder/websocket"
@@ -193,14 +194,16 @@ func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID st
 	if len(message) == 0 {
 		return "", "", gjson.Result{}
 	}
-	values := gjson.GetManyBytes(message, "type", "response.id", "id", "response")
-	eventType = strings.TrimSpace(values[0].String())
-	if id := strings.TrimSpace(values[1].String()); id != "" {
-		responseID = id
-	} else {
-		responseID = strings.TrimSpace(values[2].String())
+	// Only response borrows message for synchronous consumption. Retained type
+	// and ID strings own their bytes, including when a reader reuses its buffer.
+	view := unsafe.String(unsafe.SliceData(message), len(message))
+	eventType = strings.Clone(strings.TrimSpace(gjson.Get(view, "type").String()))
+	responseID = strings.TrimSpace(gjson.Get(view, "response.id").String())
+	if responseID == "" {
+		responseID = strings.TrimSpace(gjson.Get(view, "id").String())
 	}
-	return eventType, responseID, values[3]
+	responseID = strings.Clone(responseID)
+	return eventType, responseID, gjson.Get(view, "response")
 }
 
 func openAIWSMessageLikelyContainsToolCalls(message []byte) bool {

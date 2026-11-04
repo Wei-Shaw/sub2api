@@ -407,7 +407,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
-		state.TextAccum = appendAnthropicStreamFragment(&state.textBuffer, state.TextAccum, evt.Delta.Text)
+		state.TextAccum = appendStreamFragment(&state.textBuffer, state.TextAccum, evt.Delta.Text)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			ContentIndex: state.ContentIndex,
@@ -426,7 +426,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 				state.thinkingOverflow = true
 			}
 		} else {
-			state.CurrentSummary = appendAnthropicStreamFragment(&state.summaryBuffer, state.CurrentSummary, evt.Delta.Thinking)
+			state.CurrentSummary = appendStreamFragment(&state.summaryBuffer, state.CurrentSummary, evt.Delta.Thinking)
 		}
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
@@ -440,7 +440,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 			return nil
 		}
 		state.PendingToolInput = ""
-		state.CurrentArgs = appendAnthropicStreamFragment(&state.argsBuffer, state.CurrentArgs, evt.Delta.PartialJSON)
+		state.CurrentArgs = appendStreamFragment(&state.argsBuffer, state.CurrentArgs, evt.Delta.PartialJSON)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
 			Delta:       evt.Delta.PartialJSON,
@@ -644,19 +644,6 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment
 		Item:        &item,
 	})}
-}
-
-// Keep the public string snapshots while accumulating fragments amortized
-// linearly. Reset releases the builder without overwriting strings already
-// attached to done/terminal events. A caller-supplied initial value is retained.
-func appendAnthropicStreamFragment(buffer *strings.Builder, current, fragment string) string {
-	if buffer.String() != current {
-		buffer.Reset()
-		buffer.Grow(len(current) + len(fragment))
-		_, _ = buffer.WriteString(current)
-	}
-	_, _ = buffer.WriteString(fragment)
-	return buffer.String()
 }
 
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {

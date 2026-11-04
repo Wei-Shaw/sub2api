@@ -1,0 +1,24 @@
+File: images-round2.test
+Build ID: 44ce7e9ad3534924fdebeb353b4ee2178fc857da
+Type: cpu
+Time: 2026-11-04 04:21:24 UTC
+Duration: 2.95s, Total samples = 3.15s (106.93%)
+Showing nodes accounting for 3.02s, 95.87% of 3.15s total
+Dropped 40 nodes (cum <= 0.02s)
+Showing top 15 nodes out of 34
+      flat  flat%   sum%        cum   cum%
+     2.01s 63.81% 63.81%      2.01s 63.81%  github.com/tidwall/gjson.parseString
+     0.82s 26.03% 89.84%      0.83s 26.35%  github.com/tidwall/gjson.validstring
+     0.06s  1.90% 91.75%      0.06s  1.90%  runtime.memmove
+     0.06s  1.90% 93.65%      0.10s  3.17%  runtime.scanObject
+     0.05s  1.59% 95.24%      0.07s  2.22%  runtime.scanObjectsSmall
+     0.02s  0.63% 95.87%      0.03s  0.95%  runtime.findObject
+         0     0% 95.87%      2.92s 92.70%  github.com/Wei-Shaw/sub2api/internal/application/service.(*openAIImageOutputCounter).AddSSEData
+         0     0% 95.87%      2.20s 69.84%  github.com/Wei-Shaw/sub2api/internal/application/service.(*openAIImageOutputCounter).addReportedImageCount (inline)
+         0     0% 95.87%      2.92s 92.70%  github.com/Wei-Shaw/sub2api/internal/application/service.BenchmarkRound2ImageAccounting.func1
+         0     0% 95.87%      2.20s 69.84%  github.com/Wei-Shaw/sub2api/internal/application/service.countOpenAIImageUsageFromJSONBytes
+         0     0% 95.87%      2.02s 64.13%  github.com/tidwall/gjson.Get
+         0     0% 95.87%      1.72s 54.60%  github.com/tidwall/gjson.GetBytes (inline)
+         0     0% 95.87%      0.04s  1.27%  github.com/tidwall/gjson.ParseBytes (inline)
+         0     0% 95.87%      0.30s  9.52%  github.com/tidwall/gjson.Result.Get
+         0     0% 95.87%      0.83s 26.35%  github.com/tidwall/gjson.ValidBytes (inline)

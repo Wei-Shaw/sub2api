@@ -1,0 +1,101 @@
+2026/11/04 04:16:54 Timezone initialized: UTC (UTC offset: +00:00)
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/application/service
+BenchmarkRound2WSEnvelope/1KiB/current-2         	  224472	      1091 ns/op	1163.66 MB/s	    1640 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1KiB/current-2         	  230091	       995.9 ns/op	1275.26 MB/s	    1640 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1KiB/current-2         	  230535	      1000 ns/op	1269.97 MB/s	    1640 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1KiB/view_probe-2      	  483817	       498.1 ns/op	2549.88 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/1KiB/view_probe-2      	  487713	       498.8 ns/op	2546.30 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/1KiB/view_probe-2      	  483094	       495.4 ns/op	2563.60 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/current-2       	    1940	    117678 ns/op	2229.72 MB/s	  270696 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/current-2       	    1982	    116213 ns/op	2257.83 MB/s	  270696 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/current-2       	    1986	    117497 ns/op	2233.17 MB/s	  270696 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/view_probe-2    	    5188	     46496 ns/op	5643.23 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/view_probe-2    	    5185	     46470 ns/op	5646.41 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/256KiB/view_probe-2    	    5193	     46822 ns/op	5603.94 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/current-2      	     561	    417971 ns/op	2509.32 MB/s	 1057128 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/current-2      	     526	    424991 ns/op	2467.87 MB/s	 1057128 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/current-2      	     565	    418555 ns/op	2505.81 MB/s	 1057128 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/view_probe-2   	    1171	    187025 ns/op	5607.92 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/view_probe-2   	    1333	    180863 ns/op	5798.99 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/1024KiB/view_probe-2   	    1305	    181392 ns/op	5782.07 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/current-2      	      68	   3353126 ns/op	2501.80 MB/s	 8397160 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/current-2      	      72	   3396756 ns/op	2469.67 MB/s	 8397160 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/current-2      	      70	   3900504 ns/op	2150.71 MB/s	 8397160 B/op	       4 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/view_probe-2   	     130	   1748419 ns/op	4797.97 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/view_probe-2   	     165	   1441247 ns/op	5820.55 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSEnvelope/8192KiB/view_probe-2   	     165	   1439902 ns/op	5825.99 MB/s	      40 B/op	       2 allocs/op
+BenchmarkRound2WSValidation/1KiB/current_two_validations-2         	   50986	      4716 ns/op	 269.27 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1KiB/current_two_validations-2         	   51025	      4702 ns/op	 270.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1KiB/current_two_validations-2         	   50904	      4735 ns/op	 268.19 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1KiB/reused_validity_probe-2           	  100604	      2378 ns/op	 534.00 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1KiB/reused_validity_probe-2           	  101152	      2365 ns/op	 536.94 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1KiB/reused_validity_probe-2           	  101559	      2356 ns/op	 539.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/current_two_validations-2       	     260	    921600 ns/op	 284.71 MB/s	       1 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/current_two_validations-2       	     256	    992512 ns/op	 264.37 MB/s	       1 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/current_two_validations-2       	     241	    983582 ns/op	 266.77 MB/s	       1 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/reused_validity_probe-2         	     480	    501125 ns/op	 523.60 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/reused_validity_probe-2         	     481	    509561 ns/op	 514.93 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/256KiB/reused_validity_probe-2         	     481	    504501 ns/op	 520.10 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/current_two_validations-2      	      61	   4044809 ns/op	 259.30 MB/s	       4 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/current_two_validations-2      	      61	   4031178 ns/op	 260.18 MB/s	       7 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/current_two_validations-2      	      57	   4021701 ns/op	 260.79 MB/s	       4 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/reused_validity_probe-2        	     100	   2005177 ns/op	 523.06 MB/s	       4 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/reused_validity_probe-2        	     121	   1999604 ns/op	 524.51 MB/s	       2 B/op	       0 allocs/op
+BenchmarkRound2WSValidation/1024KiB/reused_validity_probe-2        	     120	   1986165 ns/op	 528.06 MB/s	       3 B/op	       0 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/2KiB-2                   	   21016	     11204 ns/op	 187.07 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/2KiB-2                   	   20928	     11062 ns/op	 189.47 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/2KiB-2                   	   20054	     10939 ns/op	 191.61 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/2KiB-2                	   25238	      9453 ns/op	 242.67 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/2KiB-2                	   24991	      9469 ns/op	 242.28 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/2KiB-2                	   25330	      9472 ns/op	 242.18 MB/s	    4704 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/256KiB-2                 	     176	   1351350 ns/op	 194.02 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/256KiB-2                 	     176	   1337010 ns/op	 196.10 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/256KiB-2                 	     176	   1316630 ns/op	 199.14 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/256KiB-2              	     254	    932374 ns/op	 281.42 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/256KiB-2              	     260	    920791 ns/op	 284.96 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/256KiB-2              	     259	    916293 ns/op	 286.36 MB/s	  540768 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/1024KiB-2                	      46	   5357932 ns/op	 195.71 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/1024KiB-2                	      44	   5297134 ns/op	 197.96 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_delta/1024KiB-2                	      43	   5421656 ns/op	 193.41 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/1024KiB-2             	      64	   3672197 ns/op	 285.61 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/1024KiB-2             	      63	   3723974 ns/op	 281.64 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2ImageAccounting/text_terminal/1024KiB-2             	      64	   3667847 ns/op	 285.95 MB/s	 2113632 B/op	       4 allocs/op
+BenchmarkRound2UsageExtraction/1KiB-2                              	   60746	      3926 ns/op	 323.50 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/1KiB-2                              	   62409	      4046 ns/op	 313.90 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/1KiB-2                              	   59180	      4013 ns/op	 316.46 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/256KiB-2                            	     649	    371442 ns/op	 706.41 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/256KiB-2                            	     645	    380151 ns/op	 690.23 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/256KiB-2                            	     638	    375312 ns/op	 699.13 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/1024KiB-2                           	     158	   1505499 ns/op	 696.66 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/1024KiB-2                           	     159	   1474175 ns/op	 711.46 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2UsageExtraction/1024KiB-2                           	     160	   1500226 ns/op	 699.11 MB/s	     112 B/op	       2 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/64KiB-2                     	      62	   3453893 ns/op	  19.32 MB/s	 4084910 B/op	   81607 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/64KiB-2                     	      70	   3445727 ns/op	  19.37 MB/s	 4084888 B/op	   81607 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/64KiB-2                     	      70	   3358570 ns/op	  19.87 MB/s	 4084913 B/op	   81607 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/64KiB-2                  	      79	   3135881 ns/op	  21.28 MB/s	 4008506 B/op	   81584 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/64KiB-2                  	      82	   2996299 ns/op	  22.28 MB/s	 4008521 B/op	   81584 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/64KiB-2                  	      86	   2967632 ns/op	  22.49 MB/s	 4008510 B/op	   81584 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/1024KiB-2                   	       4	  54770969 ns/op	  19.51 MB/s	65180456 B/op	 1305781 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/1024KiB-2                   	       4	  54599844 ns/op	  19.57 MB/s	65180636 B/op	 1305783 allocs/op
+BenchmarkRound2Tokenizer/fallback_full/1024KiB-2                   	       4	  68823084 ns/op	  15.52 MB/s	65181628 B/op	 1305786 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/1024KiB-2                	       4	  50686010 ns/op	  21.08 MB/s	64105680 B/op	 1305765 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/1024KiB-2                	       5	  47490692 ns/op	  22.50 MB/s	64105872 B/op	 1305764 allocs/op
+BenchmarkRound2Tokenizer/codec_count_only/1024KiB-2                	       4	  50305500 ns/op	  21.24 MB/s	64105028 B/op	 1305762 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	25.224s
+goos: linux
+goarch: arm64
+pkg: github.com/Wei-Shaw/sub2api/internal/shared/apicompat
+BenchmarkRound2ChatToolArguments/64KiB-2         	     495	    412512 ns/op	 158.90 MB/s	 2368583 B/op	     290 allocs/op
+BenchmarkRound2ChatToolArguments/64KiB-2         	     692	    435142 ns/op	 150.64 MB/s	 2368544 B/op	     290 allocs/op
+BenchmarkRound2ChatToolArguments/64KiB-2         	     444	    503915 ns/op	 130.08 MB/s	 2368531 B/op	     290 allocs/op
+BenchmarkRound2ChatToolArguments/256KiB-2        	      36	   5852204 ns/op	  44.80 MB/s	34885786 B/op	    1060 allocs/op
+BenchmarkRound2ChatToolArguments/256KiB-2        	      67	   5653871 ns/op	  46.37 MB/s	34885774 B/op	    1060 allocs/op
+BenchmarkRound2ChatToolArguments/256KiB-2        	      51	   5791122 ns/op	  45.27 MB/s	34885768 B/op	    1060 allocs/op
+BenchmarkRound2ChatToolArguments/1024KiB-2       	       3	  67349167 ns/op	  15.57 MB/s	542441608 B/op	    4132 allocs/op
+BenchmarkRound2ChatToolArguments/1024KiB-2       	       3	  76001931 ns/op	  13.80 MB/s	542441608 B/op	    4132 allocs/op
+BenchmarkRound2ChatToolArguments/1024KiB-2       	       3	  75554056 ns/op	  13.88 MB/s	542441608 B/op	    4132 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	3.279s
