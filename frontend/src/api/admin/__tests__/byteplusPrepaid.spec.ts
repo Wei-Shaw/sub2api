@@ -8,6 +8,14 @@ const reply = <T>(data: T) => ({ data, status: 200, statusText: 'OK', headers: {
 beforeEach(() => vi.resetAllMocks())
 
 describe('prepaid funding API', () => {
+  it('keeps cached status and explicit provider query separate, allowing the server deadline to finish', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(reply({ configured: false }))
+    vi.mocked(apiClient.post).mockResolvedValue(reply({ configured: false }))
+    await funding.providerStatus(11)
+    await funding.queryProvider(11)
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/accounts/11/byteplus-prepaid/provider-status')
+    expect(apiClient.post).toHaveBeenCalledWith('/admin/accounts/11/byteplus-prepaid/provider-query', undefined, { timeout: 45000 })
+  })
   it('keeps decimal balances as strings in the authenticated admin request', async () => {
     const input = { pack_id: 'fixture-pack', model: 'dreamina-seedance-2-5-260628', remaining_tokens: '1234567.015625', expires_at: '2030-01-01T00:00:00Z', confirmed: true }
     vi.mocked(apiClient.post).mockResolvedValue(reply({ pool: null }))

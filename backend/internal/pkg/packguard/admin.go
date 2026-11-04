@@ -95,7 +95,15 @@ type Pool struct {
 	Reason         string     `json:"reason"`
 	ReconcileAfter *time.Time `json:"reconcile_after"`
 }
+type ModelStatus struct {
+	Model      string     `json:"model"`
+	Spendable  string     `json:"spendable_tokens"`
+	Held       string     `json:"held_tokens"`
+	NextExpiry *time.Time `json:"next_expiry"`
+}
 type Grant struct {
+	VerifiedAt        time.Time `json:"verified_at"`
+	EligibilityReason string    `json:"eligibility_reason"`
 	ID                string    `json:"id"`
 	Model             string    `json:"model"`
 	Capacity          string    `json:"capacity_tokens"`
@@ -118,14 +126,16 @@ type HeldJob struct {
 	ValidUntil time.Time `json:"valid_until"`
 }
 type Status struct {
-	Pool              *Pool     `json:"pool"`
-	CredentialMatches bool      `json:"credential_matches"`
-	Policies          []Policy  `json:"policies"`
-	Grants            []Grant   `json:"grants"`
-	Jobs              []HeldJob `json:"jobs"`
-	OpenJobs          int64     `json:"open_jobs"`
-	BoundAccounts     int64     `json:"bound_accounts"`
-	Credentials       int64     `json:"credentials"`
+	ObservedAt        time.Time     `json:"observed_at"`
+	Models            []ModelStatus `json:"models"`
+	Pool              *Pool         `json:"pool"`
+	CredentialMatches bool          `json:"credential_matches"`
+	Policies          []Policy      `json:"policies"`
+	Grants            []Grant       `json:"grants"`
+	Jobs              []HeldJob     `json:"jobs"`
+	OpenJobs          int64         `json:"open_jobs"`
+	BoundAccounts     int64         `json:"bound_accounts"`
+	Credentials       int64         `json:"credentials"`
 }
 
 func (s *Store) Pools(ctx context.Context) ([]Pool, error) {
@@ -146,12 +156,20 @@ func (s *Store) Pools(ctx context.Context) ([]Pool, error) {
 }
 
 func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) (*Status, error) {
-	st := &Status{Policies: []Policy{}, Grants: []Grant{}, Jobs: []HeldJob{}}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	st := &Status{Models: []ModelStatus{}, Policies: []Policy{}, Grants: []Grant{}, Jobs: []HeldJob{}}
 	if base == QualifiedAPIBase {
 		st.Policies = Policies()
 	}
+	if err = tx.QueryRowContext(ctx, `SELECT transaction_timestamp()`).Scan(&st.ObservedAt); err != nil {
+		return nil, err
+	}
 	p := &Pool{}
-	err := s.DB.QueryRowContext(ctx, `SELECT s.id,s.name,s.api_base,s.enforced,s.frozen,s.safety_lock,s.frozen_reason,s.reconcile_after
+	err = tx.QueryRowContext(ctx, `SELECT s.id,s.name,s.api_base,s.enforced,s.frozen,s.safety_lock,s.frozen_reason,s.reconcile_after
  FROM byteplus_pack_scopes s WHERE s.id=(SELECT scope_id FROM byteplus_pack_bindings WHERE account_id=$1)
  OR s.id=(SELECT scope_id FROM byteplus_pack_credentials WHERE credential_hash=$2)
  ORDER BY CASE WHEN s.enforced THEN 0 ELSE 1 END,CASE WHEN s.id=(SELECT scope_id FROM byteplus_pack_bindings WHERE account_id=$1) THEN 0 ELSE 1 END LIMIT 1`, accountID, hash).
@@ -167,7 +185,7 @@ func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) 
 	if canonical, e := NormalizeBase(p.APIBase); e == nil {
 		p.APIBase = canonical
 	}
-	if err = s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM byteplus_pack_credentials WHERE scope_id=$1 AND credential_hash=$2),
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM byteplus_pack_credentials WHERE scope_id=$1 AND credential_hash=$2),
  (SELECT count(*) FROM byteplus_pack_bindings WHERE scope_id=$1),
  (SELECT count(*) FROM byteplus_pack_credentials WHERE scope_id=$1),
  (SELECT count(*) FROM byteplus_pack_reservations WHERE scope_id=$1 AND state IN ('reserved','pending','uncertain'))`, p.ID, hash).
@@ -175,11 +193,8 @@ func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) 
 		return nil, err
 	}
 	st.CredentialMatches = st.CredentialMatches && p.APIBase == base
-	var now time.Time
-	if err = s.DB.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
-		return nil, err
-	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,model,capacity_units,spent_units,reserved_units,expires_at,verified_at FROM byteplus_pack_grants WHERE scope_id=$1 ORDER BY expires_at,id`, p.ID)
+	now := st.ObservedAt
+	rows, err := tx.QueryContext(ctx, `SELECT id,model,capacity_units,spent_units,reserved_units,expires_at,verified_at FROM byteplus_pack_grants WHERE scope_id=$1 ORDER BY expires_at,id`, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +213,8 @@ func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) 
 		policy, known := policyFor(g.Model)
 		g.Eligible = p.APIBase == QualifiedAPIBase && known && capacity > spent+reserved && !g.ExpiresAt.Before(now.Add(time.Duration(policy.MinimumValiditySeconds)*time.Second))
 		g.NeedsVerification = p.ReconcileAfter != nil && verified.Before(*p.ReconcileAfter) && g.ExpiresAt.After(now) && capacity > spent
+		g.VerifiedAt = verified
+		g.EligibilityReason = grantReason(st, g, known, now)
 		st.Grants = append(st.Grants, g)
 	}
 	err = rows.Err()
@@ -205,12 +222,12 @@ func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err = s.DB.QueryContext(ctx, `SELECT id,model,state,task_id,reserved_units,actual_units,created_at,valid_until
+	rows, err = tx.QueryContext(ctx, `SELECT id,model,state,task_id,reserved_units,actual_units,created_at,valid_until
  FROM byteplus_pack_reservations WHERE scope_id=$1 ORDER BY CASE WHEN state IN ('reserved','pending','uncertain') THEN 0 ELSE 1 END,created_at DESC LIMIT 100`, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+
 	for rows.Next() {
 		var j HeldJob
 		var reserved int64
@@ -229,7 +246,16 @@ func (s *Store) Status(ctx context.Context, accountID int64, hash, base string) 
 		}
 		st.Jobs = append(st.Jobs, j)
 	}
-	return st, rows.Err()
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	st.Models = summarizeGrants(st)
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 func (s *Store) Enroll(ctx context.Context, accountID int64, hash, base, name, poolID string) error {
@@ -536,4 +562,60 @@ func (s *Store) Task(ctx context.Context, poolID, id string) (string, error) {
 		return "", ErrInvalid
 	}
 	return task.String, nil
+}
+
+// Reasons describe local admission funding, not provider account credit.
+func grantReason(st *Status, g Grant, known bool, now time.Time) string {
+	switch {
+	case st.Pool.APIBase != QualifiedAPIBase || !known:
+		return "unsupported"
+	case !st.CredentialMatches:
+		return "credential_mismatch"
+	case !g.ExpiresAt.After(now):
+		return "expired"
+	case g.Available == "0":
+		return "exhausted"
+	case g.NeedsVerification:
+		return "verification_required"
+	case !st.Pool.Enforced:
+		return "enforcement_off"
+	case st.Pool.SafetyLock:
+		return "safety_locked"
+	case st.Pool.Frozen:
+		return "paused"
+	case !g.Eligible:
+		return "too_close_to_expiry"
+	default:
+		return "eligible"
+	}
+}
+func summarizeGrants(st *Status) []ModelStatus {
+	out := []ModelStatus{}
+	for _, p := range st.Policies {
+		available, held := new(big.Int), new(big.Int)
+		var expiry *time.Time
+		for _, g := range st.Grants {
+			if g.Model != p.Model {
+				continue
+			}
+			n, _ := parseTokens(g.Reserved, true)
+			held.Add(held, big.NewInt(n))
+			if g.EligibilityReason != "eligible" {
+				continue
+			}
+			n, _ = parseTokens(g.Available, true)
+			available.Add(available, big.NewInt(n))
+			if expiry == nil || g.ExpiresAt.Before(*expiry) {
+				t := g.ExpiresAt
+				expiry = &t
+			}
+		}
+		out = append(out, ModelStatus{Model: p.Model, Spendable: formatBigUnits(available), Held: formatBigUnits(held), NextExpiry: expiry})
+	}
+	return out
+}
+
+func formatBigUnits(units *big.Int) string {
+	text := new(big.Rat).SetFrac(units, big.NewInt(UnitsPerToken)).FloatString(6)
+	return strings.TrimRight(strings.TrimRight(text, "0"), ".")
 }
