@@ -111,6 +111,7 @@ func (s *ConcurrencyCacheSuite) TestLiveLease_CountsTowardRegularAccountAndUserL
 		userID,
 		1,
 		apiKeyID,
+		0,
 		"live-integration",
 		false,
 	)
@@ -489,10 +490,9 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), []string{"keep-2"}, userMembers)
 
-	// API Key 槽位（stats-only）不在启动清理范围内，靠分数裁剪与 key TTL 自愈。
 	apiKeyMembers, err := s.rdb.ZRange(s.ctx, apiKeyKey, 0, -1).Result()
 	require.NoError(s.T(), err)
-	require.ElementsMatch(s.T(), []string{"keep-3", "oldproc-3"}, apiKeyMembers)
+	require.Equal(s.T(), []string{"keep-3"}, apiKeyMembers)
 
 	_, err = s.rdb.Get(s.ctx, userWaitKey).Result()
 	require.True(s.T(), errors.Is(err, redis.Nil))
@@ -505,6 +505,77 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots() {
 	require.Equal(s.T(), []string{"oldproc-unindexed"}, unindexedMembers)
 	_, err = s.rdb.Get(s.ctx, unindexedAccountWaitKey).Result()
 	require.NoError(s.T(), err)
+}
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_APIKeyZSets() {
+	require.NoError(s.T(), s.rdb.Set(s.ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
+
+	apiKeyID := int64(904)
+	emptyAPIKeyID := int64(905)
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	nowMilliseconds := now * 1000
+
+	regularKey := apiKeySlotKey(apiKeyID)
+	liveKey := liveAPIKeySlotKey(apiKeyID)
+	waitingKey := apiKeyWaitKey(apiKeyID)
+	closedKey := apiKeyWaitClosedKey(apiKeyID)
+	fenceKey := liveTransferFenceKey(apiKeyID)
+	ingressKey := openAIWSIngressLeaseKey(apiKeyID)
+	emptyKey := apiKeySlotKey(emptyAPIKeyID)
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, regularKey,
+		redis.Z{Score: float64(now - 1), Member: "old-regular"},
+		redis.Z{Score: float64(now), Member: "keep-regular"},
+		redis.Z{Score: float64(now - int64(s.rawCache.slotTTLSeconds) - 1), Member: "keep-expired-regular"},
+	).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, regularKey, testSlotTTL).Err())
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, liveKey,
+		redis.Z{Score: float64(now - 1), Member: "old-live"},
+		redis.Z{Score: float64(now), Member: "keep-live"},
+		redis.Z{Score: float64(now - liveLeaseTTLSeconds - 1), Member: "keep-expired-live"},
+	).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, liveKey, time.Duration(liveLeaseTTLSeconds)*time.Second).Err())
+
+	for _, key := range []string{waitingKey, closedKey, fenceKey} {
+		require.NoError(s.T(), s.rdb.ZAdd(s.ctx, key,
+			redis.Z{Score: float64(nowMilliseconds + 60_000), Member: "old-" + key},
+			redis.Z{Score: float64(nowMilliseconds + 60_000), Member: "keep-" + key},
+			redis.Z{Score: float64(nowMilliseconds - 1), Member: "keep-expired-" + key},
+		).Err())
+		require.NoError(s.T(), s.rdb.Expire(s.ctx, key, time.Minute).Err())
+	}
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, ingressKey,
+		redis.Z{Score: float64(now - 1), Member: "old-ingress"},
+		redis.Z{Score: float64(now), Member: "keep-ingress"},
+		redis.Z{Score: float64(now - openAIWSIngressLeaseTTLSeconds - 1), Member: "keep-expired-ingress"},
+	).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, ingressKey, time.Duration(openAIWSIngressLeaseTTLSeconds)*time.Second).Err())
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, emptyKey,
+		redis.Z{Score: float64(now), Member: "old-only"},
+	).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, emptyKey, testSlotTTL).Err())
+
+	require.NoError(s.T(), s.cache.CleanupStaleProcessSlots(s.ctx, "keep-"))
+
+	assertOnlyMember := func(key, member string) {
+		members, err := s.rdb.ZRange(s.ctx, key, 0, -1).Result()
+		require.NoError(s.T(), err)
+		require.Equal(s.T(), []string{member}, members, "unexpected members in %s", key)
+	}
+	assertOnlyMember(regularKey, "keep-regular")
+	assertOnlyMember(liveKey, "keep-live")
+	assertOnlyMember(waitingKey, "keep-"+waitingKey)
+	assertOnlyMember(closedKey, "keep-"+closedKey)
+	assertOnlyMember(fenceKey, "keep-"+fenceKey)
+	assertOnlyMember(ingressKey, "keep-ingress")
+
+	exists, err := s.rdb.Exists(s.ctx, emptyKey).Result()
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), exists, "an API-key ZSET emptied by startup cleanup must be deleted")
 }
 
 func (s *ConcurrencyCacheSuite) TestGetAccountConcurrency_Missing() {
