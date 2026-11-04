@@ -1,5 +1,5 @@
 <template>
-  <div class="min-w-[220px] max-w-xl space-y-2 text-xs" data-testid="byteplus-usage">
+  <div class="w-80 min-w-[220px] max-w-xl whitespace-normal break-words space-y-2 text-xs" data-testid="byteplus-usage">
     <div class="flex flex-wrap items-center gap-2">
       <span class="font-medium">{{ tt('localTitle') }}</span>
       <button type="button" class="text-primary-600 hover:underline disabled:opacity-50" :disabled="loading" @click="refresh">{{ tt('localRefresh') }}</button>
