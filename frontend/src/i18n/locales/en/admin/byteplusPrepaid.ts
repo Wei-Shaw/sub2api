@@ -1,5 +1,9 @@
 export default {
   byteplusPrepaid: {
+    "comparisonUnmatched": "No matching local pack. Provider observations have not been credited.",
+    "comparisonLocal": "Local record ({model}): {remaining} tokens including {held} held.",
+    "comparisonStates": {"matches": "Recorded remainder and expiry agree at the displayed observation times. This does not establish spendable capacity.", "different": "Provider and local records differ. Review billing-posting delays and unsettled work before verifying funding.", "unverifiedUnit": "Matching local pack found, but the provider unit needs verification; amounts were not compared."},
+
     amountLimit: 'Amount restriction',
     usageLimit: 'Usage restriction',
 
