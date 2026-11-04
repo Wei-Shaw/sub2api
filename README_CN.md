@@ -66,8 +66,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>感谢 AIGoCode 赞助了本项目！AIGoCode 是一站式集成 Claude Code、Codex 以及最新 Gemini 模型的综合平台，为您提供稳定、高效、高性价比的 AI 编程服务。平台提供灵活的订阅方案，零封号风险，免 VPN 直连，响应极速。AIGoCode 为 sub2api 用户准备了专属福利：通过<a href="https://api.aigocode.dev/invite/SUB2API">此链接</a>注册，首次充值可额外获得 10% 赠送额度！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>感谢 AIGoCode 赞助了本项目！订阅制 AI 编程平台，不只按token 算钱。一个账号包月畅用 Claude Code、Codex、Gemini，国内直连、响应快。通过<a href="https://api.aigocode.dev/invite/SUB2API">此链接</a>订阅额外送 10% 额度！</td>
 </tr>
 
 <tr>

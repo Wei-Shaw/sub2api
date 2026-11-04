@@ -65,8 +65,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://api.aigocode.dev/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>AIGoCode のご支援に感謝します！トークン従量課金だけではない、サブスクリプション型の AI コーディングプラットフォームです。1 つのアカウント・月額プランで Claude Code、Codex、Gemini を使い放題。中国本土から直接接続でき、レスポンスも高速です。<a href="https://api.aigocode.dev/invite/SUB2API">こちらのリンク</a>から購読すると、10% の追加クレジットをプレゼント！</td>
 </tr>
 
 <tr>
