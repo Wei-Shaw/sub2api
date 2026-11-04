@@ -641,20 +641,32 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("解析 Gemini 请求失败: %w", err)
 	}
 
+	identityFound := false
+	systemChanged := false
 	// 检查现有 systemInstruction 是否已包含身份提示词
 	if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
 		if parts, ok := sysInst["parts"].([]any); ok {
 			for _, part := range parts {
 				if partMap, ok := part.(map[string]any); ok {
 					if text, ok := partMap["text"].(string); ok {
-						if strings.Contains(text, "You are Antigravity") {
-							// 已包含身份提示词，直接返回原始请求
-							return body, nil
+						neutral := antigravity.NeutralizeSystemIdentity(text)
+						if neutral != text {
+							partMap["text"] = neutral
+							systemChanged = true
+						}
+						if strings.Contains(neutral, "You are Antigravity") {
+							identityFound = true
 						}
 					}
 				}
 			}
 		}
+	}
+	if identityFound {
+		if systemChanged {
+			return json.Marshal(request)
+		}
+		return body, nil
 	}
 
 	// 获取默认身份提示词
