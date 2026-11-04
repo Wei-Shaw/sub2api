@@ -36,6 +36,7 @@ type UpdateSettingsRequest struct {
 	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
 	StepUpEnabled                       *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"` // 审计日志保留天数
+	AdminLoginEmailCodeEnabled          *bool                        `json:"admin_login_email_code_enabled"`
 	LoginAgreementEnabled               bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                       `json:"login_agreement_updated_at"`
@@ -524,6 +525,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
+	}
+	adminLoginEmailCodeEnabled := previousSettings.AdminLoginEmailCodeEnabled
+	if req.AdminLoginEmailCodeEnabled != nil {
+		adminLoginEmailCodeEnabled = *req.AdminLoginEmailCodeEnabled
 	}
 	passkeyEnabled := previousSettings.PasskeyEnabled
 	if req.PasskeyEnabled != nil {
@@ -1538,6 +1543,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasskeyEnabled:                      passkeyEnabled,
 		SessionBindingEnabled:               sessionBindingEnabled,
 		StepUpEnabled:                       stepUpEnabled,
+		AdminLoginEmailCodeEnabled:          adminLoginEmailCodeEnabled,
 		AuditLogRetentionDays:               req.AuditLogRetentionDays,
 		LoginAgreementEnabled:               req.LoginAgreementEnabled,
 		LoginAgreementMode:                  loginAgreementMode,
@@ -2207,6 +2213,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasskeyRPOrigins:                                       passkeyRPOrigins,
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
+		AdminLoginEmailCodeEnabled:                             updatedSettings.AdminLoginEmailCodeEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,

@@ -66,6 +66,12 @@ type TotpLoginSession struct {
 	Email            string
 	TokenExpiry      time.Time
 	PendingOAuthBind *PendingOAuthBindLoginSession `json:"pending_oauth_bind,omitempty"`
+	// EmailCode marks a session that can be completed with an emailed code
+	// (admin password login, see /auth/login/email-code).
+	EmailCode bool `json:"email_code,omitempty"`
+	// AllowTotp lets an email-code session alternatively be completed via
+	// /auth/login/2fa (admins with TOTP enabled may choose either method).
+	AllowTotp bool `json:"allow_totp,omitempty"`
 }
 
 type PendingOAuthBindLoginSession struct {
@@ -94,6 +100,9 @@ const (
 	totpAttemptsTTL = 15 * time.Minute
 	maxTotpAttempts = 5
 	totpIssuer      = "Sub2API"
+	// emailCodeLoginTTL matches the email verification code lifetime so the
+	// admin has enough time to receive the email.
+	emailCodeLoginTTL = verifyCodeTTL
 )
 
 // TotpService handles TOTP operations
@@ -423,6 +432,30 @@ func (s *TotpService) HasStepUpGrant(ctx context.Context, userID int64, sessionK
 // CreateLoginSession creates a temporary login session for 2FA
 func (s *TotpService) CreateLoginSession(ctx context.Context, userID int64, email string) (string, error) {
 	return s.createLoginSession(ctx, userID, email, nil)
+}
+
+// CreateEmailCodeLoginSession creates a temporary login session that must be
+// completed with an emailed verification code. When allowTotp is true the
+// session may alternatively be completed with a TOTP code.
+func (s *TotpService) CreateEmailCodeLoginSession(ctx context.Context, userID int64, email string, allowTotp bool) (string, error) {
+	tempToken, err := generateRandomToken(32)
+	if err != nil {
+		return "", fmt.Errorf("generate temp token: %w", err)
+	}
+
+	session := &TotpLoginSession{
+		UserID:      userID,
+		Email:       email,
+		TokenExpiry: time.Now().Add(emailCodeLoginTTL),
+		EmailCode:   true,
+		AllowTotp:   allowTotp,
+	}
+
+	if err := s.cache.SetLoginSession(ctx, tempToken, session, emailCodeLoginTTL); err != nil {
+		return "", fmt.Errorf("store login session: %w", err)
+	}
+
+	return tempToken, nil
 }
 
 // CreatePendingOAuthBindLoginSession creates a temporary 2FA session that will
