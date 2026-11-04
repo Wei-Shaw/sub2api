@@ -1503,7 +1503,7 @@ func normalizeOpenAIResponsesCompatibilityBodyWithOptions(body []byte, account *
 			if field == "stream_options" {
 				value := gjson.GetBytes(normalized, field)
 				if options, ok := codexReasoningStreamOptions(value.Value()); ok {
-					if len(value.Value().(map[string]any)) != 1 {
+					if original, valid := value.Value().(map[string]any); valid && len(original) != 1 {
 						next, err := sjson.SetBytes(normalized, field, options)
 						if err != nil {
 							return body, false, err
@@ -1623,7 +1623,7 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		if field == "stream_options" && !compact {
 			value := gjson.GetBytes(normalized, field)
 			if options, ok := codexReasoningStreamOptions(value.Value()); ok {
-				if len(value.Value().(map[string]any)) != 1 {
+				if original, valid := value.Value().(map[string]any); valid && len(original) != 1 {
 					next, err := sjson.SetBytes(normalized, field, options)
 					if err != nil {
 						return body, false, err

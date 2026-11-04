@@ -225,7 +225,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	for _, key := range openAICodexOAuthUnsupportedFields {
 		if key == "stream_options" && !opts.IsCompact {
 			if options, ok := codexReasoningStreamOptions(reqBody[key]); ok {
-				if len(reqBody[key].(map[string]any)) != 1 {
+				if original, valid := reqBody[key].(map[string]any); valid && len(original) != 1 {
 					result.Modified = true
 				}
 				reqBody[key] = options

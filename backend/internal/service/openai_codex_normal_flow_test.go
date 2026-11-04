@@ -26,7 +26,7 @@ func TestCodexNormalCLIFlow(t *testing.T) {
 	if binary == "" {
 		t.Skip("set SUB2API_CODEX_CLI to the installed native Codex binary")
 	}
-	version, err := exec.Command(binary, "--version").CombinedOutput()
+	version, err := exec.Command(binary, "--version").CombinedOutput() // #nosec G702 -- Opt-in local test: operator-selected CLI, fixed arguments, no request input.
 	require.NoError(t, err)
 	require.Equal(t, "codex-cli "+codexCLIVersion, strings.TrimSpace(string(version)))
 	emit := func(events ...map[string]any) string {
@@ -86,7 +86,7 @@ func TestCodexNormalCLIFlow(t *testing.T) {
 				"-c", `model_providers.local_probe.stream_max_retries=0`,
 				"Run printf normal-tool-ok once, then reply normal-flow-ok.",
 			}
-			cmd := exec.CommandContext(ctx, binary, args...)
+			cmd := exec.CommandContext(ctx, binary, args...) // #nosec G702 -- Opt-in local test: version-checked CLI and fixed local-probe arguments; never production input.
 			for _, e := range os.Environ() {
 				key := strings.ToUpper(strings.SplitN(e, "=", 2)[0])
 				if key == "TERM" || strings.Contains(key, "CODEX") || strings.Contains(key, "TOKEN") || strings.Contains(key, "API_KEY") || strings.Contains(key, "PROXY") {
