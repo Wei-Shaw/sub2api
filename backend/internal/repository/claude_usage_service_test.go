@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -76,6 +79,22 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_NonOK() {
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "status 401")
 	require.ErrorContains(s.T(), err, "nope")
+}
+
+func (s *ClaudeUsageServiceSuite) TestFetchUsage_PreservesRetryAfter() {
+	for _, header := range []string{"300", time.Now().Add(5 * time.Minute).UTC().Format(http.TimeFormat)} {
+		s.Run(header, func() {
+			srv := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Retry-After", header)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer srv.Close()
+			fetcher := &claudeUsageService{usageURL: srv.URL, allowPrivateHosts: true}
+			_, err := fetcher.FetchUsage(context.Background(), "token", "")
+			require.Error(s.T(), err)
+			require.InDelta(s.T(), 300, service.RetryAfterSecondsFromError(err), 2)
+		})
+	}
 }
 
 func (s *ClaudeUsageServiceSuite) TestFetchUsage_BadJSON() {

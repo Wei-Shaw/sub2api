@@ -224,7 +224,7 @@ func TestScopedAdminOpenAIUsageRefreshNeverGeneratesModelRequests(t *testing.T) 
 		wantUsage                float64
 	}{
 		{"受限普通账户", true, false, false, 0, 37}, {"受限影子账户", true, true, false, 0, 67},
-		{"JWT普通账户", false, false, false, 1, 98}, {"全权密钥普通账户", false, false, true, 1, 98},
+		{"JWT普通账户", false, false, false, 0, 37}, {"全权密钥普通账户", false, false, true, 0, 37},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			parentID := int64(2)
@@ -277,12 +277,8 @@ func TestScopedAdminOpenAIUsageRefreshNeverGeneratesModelRequests(t *testing.T) 
 			usage, err := svc.GetUsageForAccount(ctx, a, true)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantModel, modelCalls, "读取额度不能合成模型消费请求")
-			if tc.restricted {
-				require.Equal(t, 1, quotaCalls)
-				require.Zero(t, nonReadCalls)
-			} else {
-				require.Zero(t, quotaCalls)
-			}
+			require.Equal(t, 1, quotaCalls)
+			require.Zero(t, nonReadCalls)
 			require.NotNil(t, usage.FiveHour)
 			require.Equal(t, tc.wantUsage, usage.FiveHour.Utilization)
 			select {

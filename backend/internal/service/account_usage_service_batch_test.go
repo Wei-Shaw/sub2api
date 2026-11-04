@@ -231,8 +231,8 @@ func TestAccountUsageService_OpenAIQueriesPreserveRefreshError(t *testing.T) {
 				if scenario == "probe_throttled" {
 					cache.openAIProbeCache.Store(account.ID, time.Now())
 				}
-				// Forced requests take the probe path, but fail locally without
-				// credentials; no external network is needed for this regression.
+				// Forced requests fail visibly without a quota service, but must
+				// still preserve refresh errors; no external network is needed.
 				if query == "forced_usage_batch" {
 					delete(account.Credentials, "access_token")
 				}
@@ -247,7 +247,11 @@ func TestAccountUsageService_OpenAIQueriesPreserveRefreshError(t *testing.T) {
 					}
 				case "usage_batch", "forced_usage_batch":
 					usage, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, query == "forced_usage_batch")
-					if err != nil || len(failures) != 0 || usage[account.ID] == nil {
+					if query == "forced_usage_batch" {
+						if err != nil || failures[account.ID] == "" || usage[account.ID] != nil {
+							t.Fatalf("forced GetUsageBatch must report query failure: usage=%v failures=%v err=%v", usage, failures, err)
+						}
+					} else if err != nil || len(failures) != 0 || usage[account.ID] == nil {
 						t.Fatalf("GetUsageBatch: usage=%v failures=%v err=%v", usage, failures, err)
 					}
 				case "today":

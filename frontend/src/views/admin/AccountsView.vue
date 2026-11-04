@@ -317,11 +317,10 @@
               :account="row"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
-              :manual-refresh-token="usageManualRefreshToken"
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
-              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              :request-batched-usage="queueBatchedUsage"
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
@@ -490,7 +489,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch, provide } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -532,6 +531,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { createAccountQuotaRefresh, accountQuotaRefreshContext, accountQuotaRefreshKey, accountQuotaRefreshKind } from '@/utils/accountQuotaRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -734,7 +734,9 @@ const todayStatsLoading = ref(false)
 const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
-const usageManualRefreshToken = ref(0)
+let refreshScope = 0
+let refreshRound: Promise<void> | null = null
+let pageUnmounted = false
 
 const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
@@ -799,6 +801,7 @@ const handleAccountUsageLoaded = (accountID: number, usage: AccountUsageInfo) =>
 
 const flushQueuedUsageBatch = async () => {
   usageBatchFlushTimer = null
+  const scope = refreshScope
   const accountIDs = Array.from(pendingUsageBatchIds)
   const force = queuedUsageBatchForce
   pendingUsageBatchIds.clear()
@@ -813,6 +816,7 @@ const flushQueuedUsageBatch = async () => {
 
   try {
     const result = await adminAPI.accounts.getBatchUsage(accountIDs, force)
+    if (scope !== refreshScope || pageUnmounted) return
 
     const usageMap = result.usage ?? {}
     const errorMap = result.errors ?? {}
@@ -841,6 +845,7 @@ const flushQueuedUsageBatch = async () => {
     usageBatchErrorByAccountId.value = nextErrors
     usageBatchLoadingByAccountId.value = nextLoading
   } catch (error) {
+    if (scope !== refreshScope || pageUnmounted) return
     const nextErrors = { ...usageBatchErrorByAccountId.value }
     const nextLoading = { ...usageBatchLoadingByAccountId.value }
     for (const accountID of accountIDs) {
@@ -858,8 +863,9 @@ const flushQueuedUsageBatch = async () => {
 }
 
 const queueBatchedUsage = (account: Account, options?: { force?: boolean }) => {
-  if (!isDesktopViewport.value) return
   if (!accountSupportsBatchUsage(account)) return
+  quotaRefresh.syncSnapshot(account)
+  if (quotaRefresh.state(account)) return
 
   const force = options?.force === true
   const cacheKey = account.id
@@ -1097,6 +1103,15 @@ const syncAccountListDerivedParams = () => {
   requestParams.include_scheduler_score = shouldIncludeSchedulerScore() ? '1' : '0'
 }
 
+// A list request may overlap an inline quota commit. Preserve that newer full
+// account instead of restoring the older list snapshot when its response arrives.
+let quotaCommitRevision = 0
+const quotaCommitRevisionByID = new Map<number, number>()
+const preserveQuotaCommits = (rows: AccountListItem[], startedAt: number): AccountListItem[] => rows.map(row => {
+  if ((quotaCommitRevisionByID.get(row.id) ?? 0) <= startedAt) return row
+  return accounts.value.find(current => current.id === row.id) ?? row
+})
+
 const {
   items: accounts,
   loading,
@@ -1106,9 +1121,14 @@ const {
   reload: baseReload,
   debouncedReload: baseDebouncedReload,
   handlePageChange: baseHandlePageChange,
-  handlePageSizeChange: baseHandlePageSizeChange
+  handlePageSizeChange: baseHandlePageSizeChange,
+  cancelPending: cancelPendingList
 } = useTableLoader<AccountListItem, any>({
-  fetchFn: adminAPI.accounts.list,
+  fetchFn: async (...args) => {
+    const startedAt = quotaCommitRevision
+    const result = await adminAPI.accounts.list(...args)
+    return { ...result, items: preserveQuotaCommits(result.items || [], startedAt) }
+  },
   initialParams: {
     ...loadInitialAccountFilterValues(),
     type: '',
@@ -1121,6 +1141,59 @@ const {
     sort_order: sortState.sort_order
   }
 })
+
+const quotaRefresh = createAccountQuotaRefresh({
+  onStart(account) {
+    const key = String(account.id)
+    // Supersede a passive batch before the upstream request starts.
+    pendingUsageBatchIds.delete(account.id)
+    usageBatchRequestTokenByAccountId.value[key] = ++usageBatchRequestToken
+    setUsageBatchLoading(account.id, true)
+  },
+  async commit(account, result, current) {
+    const next = await adminAPI.accounts.getById(account.id)
+    if (!current() || pageUnmounted) return false
+    if (next.id !== account.id) throw new Error('Account readback identity mismatch')
+    const row = accounts.value.find(row => row.id === account.id)
+    if (!row || accountQuotaRefreshKey(row) !== accountQuotaRefreshKey(account)) return false
+    quotaCommitRevisionByID.set(account.id, ++quotaCommitRevision)
+    quotaRefresh.adopt(account, next)
+    if (result.usage) {
+      setUsageBatchState(account.id, result.usage, null)
+      usageBatchCache.set(account.id, { data: result.usage, ts: Date.now() })
+    }
+    setUsageBatchLoading(account.id, false)
+    accounts.value = accounts.value.map(row => row.id === next.id ? next : row)
+    syncAccountRefs(next)
+  },
+  onError(account, error) {
+    setUsageBatchState(account.id, usageBatchByAccountId.value[String(account.id)] ?? null, error)
+    setUsageBatchLoading(account.id, false)
+  }
+})
+provide(accountQuotaRefreshContext, quotaRefresh)
+
+const invalidateRefreshScope = () => {
+  refreshScope++
+  quotaRefresh.invalidate()
+  refreshRound = null
+  autoRefreshFetching.value = false
+  autoRefreshETag.value = null
+  todayStatsReqSeq.value++
+  todayStatsLoading.value = false
+  pendingUsageBatchIds.clear()
+  usageBatchRequestTokenByAccountId.value = {}
+  usageBatchByAccountId.value = {}
+  usageBatchErrorByAccountId.value = {}
+  usageBatchLoadingByAccountId.value = {}
+  usageBatchCache.clear()
+  cancelPendingList?.()
+}
+watch(
+  () => JSON.stringify([pagination.page, pagination.page_size, params]),
+  invalidateRefreshScope,
+  { flush: 'sync' }
+)
 
 const {
   selectedSet,
@@ -1181,25 +1254,31 @@ const resetAutoRefreshCache = () => {
 
 type AccountLoadOptions = {
   refreshTodayStats?: boolean
+  quotaRound?: boolean
 }
 
 const load = async (options: AccountLoadOptions = {}) => {
+  if (!options.quotaRound) invalidateRefreshScope()
   const requestParams = params as any
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   requestParams.lite = '1'
+  const scope = refreshScope
   await baseLoad()
+  if (scope !== refreshScope || pageUnmounted) return
   if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
 }
 
 const reload = async () => {
+  invalidateRefreshScope()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
+  if (pageUnmounted) return
   await refreshTodayStatsBatch()
 }
 
@@ -1274,7 +1353,7 @@ const applyUpstreamBillingRateSnapshots = async (
 }
 
 const refreshUpstreamBillingRates = async (force = false) => {
-  if (upstreamBillingRateRefreshing.value || loading.value || accounts.value.length === 0) return
+  if (upstreamBillingRateRefreshing.value || loading.value || autoRefreshFetching.value || accounts.value.length === 0) return
   if (!force && (
     probingUpstreamBilling.size > 0 ||
     isAnyModalOpen.value ||
@@ -1478,52 +1557,80 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
   }
 }
 
-const refreshAccountsIncrementally = async () => {
-  if (autoRefreshFetching.value) return
+// Both entry points own the entire list + quota round. A timer tick never
+// queues another round, and repeated manual clicks share the same Promise.
+const refreshCurrentPage = (manual: boolean): Promise<void> => {
+  if (refreshRound) return refreshRound
   syncAccountListDerivedParams()
+  const scope = refreshScope
+  const current = () => scope === refreshScope && !pageUnmounted
   autoRefreshFetching.value = true
-  try {
-    const result = await adminAPI.accounts.listWithEtag(
-      pagination.page,
-      pagination.page_size,
-      toRaw(params) as {
-        platform?: string
-        type?: string
-        status?: string
-        privacy_mode?: string
-        group?: string
-        search?: string
-        sort_by?: string
-        sort_order?: AccountSortOrder
-
-      },
-      { etag: autoRefreshETag.value }
-    )
-
-    if (result.etag) {
-      autoRefreshETag.value = result.etag
+  const task: Promise<void> = (async () => {
+    try {
+      if (manual) {
+        await Promise.all([load({ quotaRound: true }), loadUpstreamBillingProbeGlobalState()])
+      } else {
+        const startedAt = quotaCommitRevision
+        const result = await adminAPI.accounts.listWithEtag(
+          pagination.page, pagination.page_size, { ...toRaw(params) },
+          { etag: autoRefreshETag.value }
+        )
+        if (!current()) return
+        if (result.etag) autoRefreshETag.value = result.etag
+        if (!result.notModified && result.data) {
+          pagination.total = result.data.total || 0
+          pagination.pages = result.data.pages || 0
+          mergeAccountsIncrementally(preserveQuotaCommits(result.data.items || [], startedAt))
+          hasPendingListSync.value = false
+        }
+        upstreamBillingNow.value = Date.now()
+        await refreshTodayStatsBatch()
+      }
+      if (!current()) return
+      const canStartQuota = () => current() && (manual || !(
+        document.hidden || loading.value || isAnyModalOpen.value || menu.show ||
+        showAccountToolsDropdown.value || showAutoRefreshDropdown.value || inAutoRefreshSilentWindow()
+      ))
+      // These accounts have no real upstream quota capability, but manual refresh
+      // must still invalidate the old passive/local batch cache for the whole page.
+      if (manual) {
+        for (const account of accounts.value) {
+          if (!accountQuotaRefreshKind(account) && accountSupportsBatchUsage(account)) {
+            queueBatchedUsage(account, { force: true })
+          }
+        }
+        if (pendingUsageBatchIds.size > 0) {
+          if (usageBatchFlushTimer !== null) clearTimeout(usageBatchFlushTimer)
+          usageBatchFlushTimer = null
+          await flushQueuedUsageBatch()
+        }
+      }
+      if (!current()) return
+      const results = await quotaRefresh.refreshPage([...accounts.value], canStartQuota)
+      if (manual && current() && results.some(result => result === null)) {
+        appStore.showWarning(t('admin.accounts.usageWindow.refreshFailedSummary', {
+          count: results.filter(result => result === null).length
+        }))
+      }
+    } catch (error) {
+      if (current()) {
+        console.error('Account refresh failed:', error)
+        if (manual) appStore.showError(t('admin.accounts.failedToLoad'))
+      }
+    } finally {
+      if (current()) {
+        autoRefreshFetching.value = false
+        autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
+      }
     }
-    if (!result.notModified && result.data) {
-      pagination.total = result.data.total || 0
-      pagination.pages = result.data.pages || 0
-      mergeAccountsIncrementally(result.data.items || [])
-      hasPendingListSync.value = false
-    }
-    upstreamBillingNow.value = Date.now()
-
-    await refreshTodayStatsBatch()
-  } catch (error) {
-    console.error('Auto refresh failed:', error)
-  } finally {
-    autoRefreshFetching.value = false
-  }
+  })().finally(() => {
+    if (refreshRound === task) refreshRound = null
+  })
+  refreshRound = task
+  return task
 }
-
-const handleManualRefresh = async () => {
-  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
-  // Force usage cells to refetch /usage on explicit user refresh.
-  usageManualRefreshToken.value += 1
-}
+const refreshAccountsIncrementally = () => refreshCurrentPage(false)
+const handleManualRefresh = () => refreshCurrentPage(true)
 
 const loadUpstreamBillingProbeGlobalState = async () => {
   try {
@@ -1584,9 +1691,7 @@ const openTLSFingerprintProfiles = () => {
 
 const syncPendingListChanges = async () => {
   hasPendingListSync.value = false
-  await load()
-  // Keep behavior consistent with manual refresh.
-  usageManualRefreshToken.value += 1
+  await refreshCurrentPage(true)
 }
 
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
@@ -2603,6 +2708,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  pageUnmounted = true
+  invalidateRefreshScope()
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
     clearTimeout(usageBatchFlushTimer)

@@ -542,6 +542,8 @@ export default {
         grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
         activeQuery: '查询',
+        showingLastData: '查询失败，显示上次数据',
+        refreshFailedSummary: '{count} 个账号额度查询失败，已保留上次数据。',
         estimatedTotalCost: '预计总费用 ${cost}',
         estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
       },

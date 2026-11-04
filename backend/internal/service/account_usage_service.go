@@ -93,6 +93,14 @@ type apiUsageCache struct {
 	timestamp time.Time
 }
 
+// apiUsageErrorTTL preserves upstream Retry-After beyond the default negative TTL.
+func apiUsageErrorTTL(err error) time.Duration {
+	if delay := time.Duration(RetryAfterSecondsFromError(err)) * time.Second; delay > apiErrorCacheTTL {
+		return delay
+	}
+	return apiErrorCacheTTL
+}
+
 // windowStatsCache 缓存从本地数据库查询的窗口统计（requests, tokens, cost）
 type windowStatsCache struct {
 	stats     *WindowStats
@@ -378,7 +386,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
 	if account.Platform == PlatformAntigravity {
-		usage, err := s.getAntigravityUsage(ctx, account)
+		usage, err := s.getAntigravityUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -396,16 +404,17 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	// 只有oauth类型账号可以通过API获取usage（有profile scope）
 	if account.CanGetUsage() {
 		var apiResp *ClaudeUsageResponse
+		refreshStarted := time.Now()
 
 		// 1. 检查缓存（成功响应 3 分钟 / 错误响应 1 分钟）
 		if cached, ok := s.cache.apiCache.Load(accountID); ok {
 			if cache, ok := cached.(*apiUsageCache); ok {
 				age := time.Since(cache.timestamp)
-				if cache.err != nil && age < apiErrorCacheTTL {
+				if cache.err != nil && age < apiUsageErrorTTL(cache.err) {
 					// 负缓存命中：返回缓存的错误，避免重试风暴
 					return nil, cache.err
 				}
-				if cache.response != nil && age < apiCacheTTL {
+				if !forceProbe && cache.response != nil && age < apiCacheTTL {
 					apiResp = cache.response
 				}
 			}
@@ -413,30 +422,33 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 		// 2. 如果没有有效缓存，通过 singleflight 从 API 获取（防止并发击穿）
 		if apiResp == nil {
-			// 随机延迟：打散多账号并发请求，避免同一时刻大量相同 TLS 指纹请求
-			// 触发上游反滥用检测。延迟范围 0~800ms，仅在缓存未命中时生效。
-			jitter := time.Duration(rand.Int64N(int64(apiQueryMaxJitter)))
-			select {
-			case <-time.After(jitter):
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-
-			flightKey := fmt.Sprintf("usage:%d", accountID)
+			flightKey := fmt.Sprintf("usage:%d:%t", accountID, forceProbe)
+			// A forced caller must not join a normal flight that can return an old
+			// success cache entry. Concurrent forced callers still share one fetch.
 			result, flightErr, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
 				// 再次检查缓存（可能在等待 singleflight 期间被其他请求填充）
 				if cached, ok := s.cache.apiCache.Load(accountID); ok {
 					if cache, ok := cached.(*apiUsageCache); ok {
 						age := time.Since(cache.timestamp)
-						if cache.err != nil && age < apiErrorCacheTTL {
+						if cache.err != nil && age < apiUsageErrorTTL(cache.err) {
 							return nil, cache.err
 						}
-						if cache.response != nil && age < apiCacheTTL {
+						if cache.response != nil && age < apiCacheTTL && (!forceProbe || cache.timestamp.After(refreshStarted)) {
 							return cache.response, nil
 						}
 					}
 				}
+				// Jitter belongs inside the flight: callers waiting for the same
+				// account must not turn into sequential forced upstream requests.
+				select {
+				case <-time.After(time.Duration(rand.Int64N(int64(apiQueryMaxJitter)))):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 				resp, fetchErr := s.fetchOAuthUsageRaw(ctx, account)
+				if fetchErr == nil && (resp == nil || (forceProbe && *resp == (ClaudeUsageResponse{}))) {
+					fetchErr = fmt.Errorf("usage API returned an empty snapshot")
+				}
 				if fetchErr != nil {
 					// 负缓存：缓存错误响应，防止后续请求重复触发 429
 					s.cache.apiCache.Store(accountID, &apiUsageCache{
@@ -458,6 +470,10 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 			apiResp, _ = result.(*ClaudeUsageResponse)
 		}
 
+		if apiResp == nil || (forceProbe && *apiResp == (ClaudeUsageResponse{})) {
+			return nil, fmt.Errorf("usage API returned an empty snapshot")
+		}
+
 		// 3. 构建 UsageInfo（每次都重新计算 RemainingSeconds）
 		now := time.Now()
 		usage := s.buildUsageInfo(apiResp, &now)
@@ -466,7 +482,9 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		s.addWindowStats(ctx, account, usage)
 
 		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值
-		s.syncActiveToPassive(ctx, account.ID, usage)
+		if err := s.syncActiveToPassive(ctx, account.ID, usage); err != nil && forceProbe {
+			return nil, err
+		}
 
 		// 6. 上游 usage API 目前不一定下发 Fable 7d 窗口；缺失时回填被动采样
 		// （7d_oi 响应头）的数据，避免主动查询后 7d F 进度条丢失。
@@ -513,7 +531,7 @@ func (s *AccountUsageService) GetUsageForAccount(ctx context.Context, account *A
 }
 
 // GetUsageBatch 批量获取账号使用量。
-// Anthropic OAuth/SetupToken 统一走 passive 链路，其他账号复用现有主动查询逻辑。
+// Anthropic 非 force 及 SetupToken 走 passive；force OAuth 复用主动查询。
 // 单个账号失败不会中断整批请求，错误会按账号返回。
 func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool) (map[int64]*UsageInfo, map[int64]string, error) {
 	if adminaccess.RestrictedFromContext(ctx) != nil {
@@ -580,7 +598,7 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 		g.Go(func() error {
 			var usage *UsageInfo
 			var usageErr error
-			if supportsAnthropicPassiveUsage(account) {
+			if supportsAnthropicPassiveUsage(account) && (!force || !account.CanGetUsage()) {
 				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
 			} else {
 				usage, usageErr = s.getUsageForAccount(gctx, account, force)
@@ -695,7 +713,8 @@ func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *Us
 
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
 // 这样下次被动加载时能看到最新值。
-func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID int64, usage *UsageInfo) {
+func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID int64, usage *UsageInfo) error {
+	var syncErr error
 	extraUpdates := make(map[string]any, 4)
 
 	if usage.FiveHour != nil {
@@ -718,6 +737,7 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
 		if err := s.accountRepo.UpdateExtra(ctx, accountID, extraUpdates); err != nil {
 			slog.Warn("sync_active_to_passive_failed", "account_id", accountID, "error", err)
+			syncErr = fmt.Errorf("persist active usage snapshot: %w", err)
 		}
 	}
 
@@ -726,8 +746,12 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 	if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
 		if err := s.accountRepo.UpdateSessionWindowEnd(ctx, accountID, *usage.FiveHour.ResetsAt); err != nil {
 			slog.Warn("sync_active_to_passive_session_window_end_failed", "account_id", accountID, "error", err)
+			if syncErr == nil {
+				syncErr = fmt.Errorf("persist active usage session window: %w", err)
+			}
 		}
 	}
+	return syncErr
 }
 
 func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
@@ -740,7 +764,39 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 
 	applyExtraToUsage(usage, account.Extra, now)
 
-	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
+	if force {
+		if s.openAIQuotaService == nil {
+			return nil, fmt.Errorf("OpenAI quota service is unavailable")
+		}
+		quotaUsage, err := s.openAIQuotaService.QueryUsage(WithScopedAdminAccountOperation(ctx, "accounts.usage.read"), account.ID)
+		if err != nil {
+			return nil, fmt.Errorf("query OpenAI usage: %w", err)
+		}
+		updates := buildOpenAIAutoResetUsageUpdates(quotaUsage, now)
+		if account.IsShadow() {
+			updates = buildCodexSparkWindowExtraUpdates(quotaUsage, now)
+		}
+		// The ordinary converter can return only a timestamp for an empty
+		// rate_limit object. That must not turn an old snapshot into a success.
+		_, has5h := updates["codex_5h_used_percent"]
+		_, has7d := updates["codex_7d_used_percent"]
+		if !has5h && !has7d {
+			return nil, fmt.Errorf("OpenAI usage API returned an empty snapshot")
+		}
+		if err := scopedAccountIDAccess(ctx, s.accountRepo, account.ID, "accounts.usage.read", true); err != nil {
+			return nil, err
+		}
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+			return nil, fmt.Errorf("persist OpenAI usage snapshot: %w", err)
+		}
+		// UpdateExtra atomically merges and synchronizes the scheduler cache.
+		// Do not notifyOpenAIAutoReset here: a forced read cannot consume credits.
+		mergeAccountExtra(account, updates)
+		applyExtraToUsage(usage, account.Extra, now)
+		if s.cache != nil {
+			s.cache.openAIProbeCache.Store(account.ID, time.Now())
+		}
+	} else if shouldRefreshOpenAICodexSnapshot(account, usage, now) && s.shouldProbeOpenAICodexSnapshot(account.ID, now) {
 		if adminaccess.RestrictedFromContext(ctx) != nil {
 			// 受限额度读取只调用额度 API，不生成 /responses 合成请求或消费重置次数。
 			if s.openAIQuotaService != nil {
@@ -1072,8 +1128,13 @@ func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Accou
 }
 
 // getAntigravityUsage 获取 Antigravity 账户额度
-func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account, force ...bool) (*UsageInfo, error) {
+	forceProbe := len(force) > 0 && force[0]
+	refreshStarted := time.Now()
 	if s.antigravityQuotaFetcher == nil || !s.antigravityQuotaFetcher.CanFetch(account) {
+		if forceProbe {
+			return nil, fmt.Errorf("Antigravity usage query is unavailable")
+		}
 		now := time.Now()
 		return &UsageInfo{UpdatedAt: &now}, nil
 	}
@@ -1082,7 +1143,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 	if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
 		if cache, ok := cached.(*antigravityUsageCache); ok {
 			ttl := antigravityCacheTTL(cache.usageInfo)
-			if time.Since(cache.timestamp) < ttl {
+			if time.Since(cache.timestamp) < ttl && (!forceProbe || antigravityUsageFailed(cache.usageInfo)) {
 				usage := cache.usageInfo
 				if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
 					usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
@@ -1093,13 +1154,13 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 	}
 
 	// 2. singleflight 防止并发击穿
-	flightKey := fmt.Sprintf("ag-usage:%d", account.ID)
+	flightKey := fmt.Sprintf("ag-usage:%d:%t", account.ID, forceProbe)
 	result, flightErr, _ := s.cache.antigravityFlight.Do(flightKey, func() (any, error) {
 		// 再次检查缓存（等待期间可能已被填充）
 		if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
 			if cache, ok := cached.(*antigravityUsageCache); ok {
 				ttl := antigravityCacheTTL(cache.usageInfo)
-				if time.Since(cache.timestamp) < ttl {
+				if time.Since(cache.timestamp) < ttl && (!forceProbe || antigravityUsageFailed(cache.usageInfo) || cache.timestamp.After(refreshStarted)) {
 					usage := cache.usageInfo
 					// 重新计算 RemainingSeconds，避免返回过时的剩余秒数
 					recalcAntigravityRemainingSeconds(usage)
@@ -1124,6 +1185,12 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 			return degraded, nil
 		}
 
+		if fetchResult == nil || fetchResult.UsageInfo == nil {
+			return nil, fmt.Errorf("Antigravity usage API returned an empty snapshot")
+		}
+		if forceProbe && !antigravityUsageFailed(fetchResult.UsageInfo) && len(fetchResult.UsageInfo.AntigravityQuota) == 0 {
+			return nil, fmt.Errorf("Antigravity usage API returned an empty snapshot")
+		}
 		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
 		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 			usageInfo: fetchResult.UsageInfo,
@@ -1312,6 +1379,10 @@ func recalcAntigravityRemainingSeconds(info *UsageInfo) {
 		}
 		info.FiveHour.RemainingSeconds = remaining
 	}
+}
+
+func antigravityUsageFailed(info *UsageInfo) bool {
+	return info == nil || info.IsForbidden || info.ErrorCode != "" || info.Error != ""
 }
 
 // antigravityCacheTTL 根据 UsageInfo 内容决定缓存 TTL

@@ -2,13 +2,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
+import { createAccountQuotaRefresh, accountQuotaRefreshContext } from '@/utils/accountQuotaRefresh'
 
-const { getUsage } = vi.hoisted(() => ({
-  getUsage: vi.fn()
+const { getUsage, grokQueryQuota } = vi.hoisted(() => ({
+  getUsage: vi.fn(), grokQueryQuota: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    grok: { queryQuota: grokQueryQuota },
     accounts: {
       getUsage
     }
@@ -115,6 +117,7 @@ const cnUsageCellStubs = {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    grokQueryQuota.mockReset()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -1966,4 +1969,99 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
   })
+  it('shares a top refresh with the row query and rejects old batch props and OpenAI watcher re-probes', async () => {
+    const account = makeAccount({ id: 9001, platform: 'openai', type: 'oauth' })
+    const controller = createAccountQuotaRefresh()
+    let finish!: (value: object) => void
+    getUsage.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const wrapper = mount(AccountUsageCell, {
+      props: { account, requestBatchedUsage: vi.fn(), batchedUsage: { five_hour: { utilization: 12 } } as any },
+      global: {
+        provide: { [accountQuotaRefreshContext as symbol]: controller },
+        stubs: { UsageProgressBar: true, OpenAIQuotaResetCell: { template: '<div><slot name="pre-actions" /></div>' } }
+      }
+    })
+    await flushPromises()
+    const topRefresh = controller.refresh(account)
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.usageWindow.activeQuery')!.trigger('click')
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenCalledWith(9001, 'active', true)
+    finish({ five_hour: { utilization: 73 }, updated_at: 'fresh' })
+    await topRefresh
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'UsageProgressBar' }).props('utilization')).toBe(73)
+    await wrapper.setProps({ batchedUsage: { five_hour: { utilization: 1 } } as any, batchedUsageError: 'old batch', account: { ...account, updated_at: 'new', extra: { codex_usage_updated_at: 'new' } } })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'UsageProgressBar' }).props('utilization')).toBe(73)
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it.each(['reset', 'list'])('adopts newer OpenAI extra from %s after active success without a probe', async source => {
+    const account = makeAccount({ id: 9010, platform: 'openai', type: 'oauth', extra: { codex_usage_updated_at: '2026-11-03T10:00:00Z', codex_5h_used_percent: 100 } })
+    const controller = createAccountQuotaRefresh()
+    getUsage.mockResolvedValueOnce({ updated_at: '2026-11-03T10:00:00Z', five_hour: { utilization: 100 } })
+    await controller.refresh(account)
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, {
+      props: { account, requestBatchedUsage, batchedUsage: null },
+      global: {
+        provide: { [accountQuotaRefreshContext as symbol]: controller },
+        stubs: { UsageProgressBar: true, OpenAIQuotaResetCell: true }
+      }
+    })
+    await flushPromises()
+    const newer = { ...account, extra: { codex_usage_updated_at: '2026-11-03T10:01:00Z', codex_5h_used_percent: 0 } }
+    if (source === 'reset') wrapper.findComponent({ name: 'OpenAIQuotaResetCell' }).vm.$emit('account-updated', newer)
+    await wrapper.setProps({ account: newer })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'UsageProgressBar' }).props('utilization')).toBe(0)
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(requestBatchedUsage.mock.calls.some(call => call[1]?.force)).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('mounts a virtual Grok row from shared success despite null parent batch, then adopts newer extra', async () => {
+    const account = makeAccount({ id: 9011, platform: 'grok', type: 'oauth', extra: {} })
+    const controller = createAccountQuotaRefresh()
+    grokQueryQuota.mockResolvedValueOnce({ fetched_at: Date.parse('2026-11-03T10:00:00Z') / 1000,
+      billing: { period_type: 'weekly', usage_percent: 31, plan: 'SuperGrok' } })
+    await controller.refresh(account)
+    const wrapper = mount(AccountUsageCell, {
+      props: { account, requestBatchedUsage: vi.fn(), batchedUsage: null, batchedUsageLoading: false },
+      global: { provide: { [accountQuotaRefreshContext as symbol]: controller }, stubs: { UsageProgressBar: true, GrokQuotaProbeCell: true } }
+    })
+    await flushPromises()
+    expect(wrapper.findAllComponents({ name: 'UsageProgressBar' }).map(bar => bar.props('utilization'))).toContain(31)
+    await wrapper.setProps({ account: { ...account, extra: { grok_billing_snapshot: { period_type: 'weekly', usage_percent: 64, plan: 'SuperGrok', updated_at: '2026-11-03T10:01:00Z' } } } })
+    await flushPromises()
+    expect(wrapper.findAllComponents({ name: 'UsageProgressBar' }).map(bar => bar.props('utilization'))).toContain(64)
+    expect(grokQueryQuota).toHaveBeenCalledTimes(1)
+    expect(getUsage).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each(['reset', 'list'])('adopts external %s snapshots after passive-only display with no active state', async source => {
+    const account = makeAccount({ id: 9020, platform: 'openai', type: 'oauth', extra: { codex_usage_updated_at: '2026-11-03T10:00:00Z', codex_5h_used_percent: 100 } })
+    const controller = createAccountQuotaRefresh()
+    const stats = { requests: 3, tokens: 100, cost: 2 }
+    const wrapper = mount(AccountUsageCell, {
+      props: { account, requestBatchedUsage: vi.fn(), batchedUsage: { updated_at: '2026-11-03T10:00:00Z', five_hour: { utilization: 100, window_stats: stats } } as any },
+      global: { provide: { [accountQuotaRefreshContext as symbol]: controller }, stubs: { UsageProgressBar: true, OpenAIQuotaResetCell: true } }
+    })
+    await flushPromises()
+    expect(controller.state(account)).toBeUndefined()
+    expect(wrapper.findComponent({ name: 'UsageProgressBar' }).props('utilization')).toBe(100)
+    const newer = { ...account, extra: { codex_usage_updated_at: '2026-11-03T10:01:00Z', codex_5h_used_percent: 0 } }
+    if (source === 'reset') wrapper.findComponent({ name: 'OpenAIQuotaResetCell' }).vm.$emit('account-updated', newer)
+    await wrapper.setProps({ account: newer })
+    await flushPromises()
+    const bar = wrapper.findComponent({ name: 'UsageProgressBar' })
+    expect(bar.props('utilization')).toBe(0)
+    expect(bar.props('windowStats')).toEqual(stats)
+    expect(controller.state(account)?.data?.usage?.five_hour?.utilization).toBe(0)
+    expect(getUsage).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
 })

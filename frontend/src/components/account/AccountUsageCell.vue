@@ -1,5 +1,8 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
+    <div v-if="quotaQuery.state.value?.error" class="text-[10px] text-amber-600" :title="quotaQuery.state.value.error">
+      {{ t('admin.accounts.usageWindow.showingLastData') }}
+    </div>
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -30,7 +33,7 @@
       </div>
 
       <!-- Error state -->
-      <div v-else-if="error" class="text-xs text-red-500">
+      <div v-else-if="error && !usageInfo" class="text-xs text-red-500">
         {{ error }}
       </div>
 
@@ -704,6 +707,8 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { useAccountQuotaRefresh, accountQuotaRefreshKey } from '@/utils/accountQuotaRefresh'
+import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
@@ -764,6 +769,7 @@ const loading = ref(false)
 const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
+const quotaQuery = useAccountQuotaRefresh(() => props.account, () => usageInfo.value)
 watch(usageInfo, (usage) => {
   if (usage) emit('usage-loaded', usage)
 })
@@ -1446,6 +1452,7 @@ const requestParentBatchUsage = (options?: { force?: boolean }) => {
 
 const syncManagedUsageState = () => {
   if (!isBatchManaged.value) return
+  if (quotaQuery.state.value?.data?.usage || quotaQuery.state.value?.data?.grok || quotaQuery.state.value?.loading || quotaQuery.state.value?.error) return
   usageInfo.value = props.batchedUsage ?? null
   error.value = props.batchedUsageError ?? null
   loading.value = props.batchedUsageLoading === true
@@ -1468,6 +1475,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     }
   }
 
+  const identity = accountQuotaRefreshKey(props.account)
   loading.value = true
   error.value = null
 
@@ -1476,17 +1484,18 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
 			? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
 			: adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
+    if (quotaQuery.state.value || identity !== accountQuotaRefreshKey(props.account)) return
     if (!unmounted.value) {
       usageInfo.value = result
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
     }
   } catch (e: any) {
-    if (!unmounted.value) {
+    if (!unmounted.value && !quotaQuery.state.value && identity === accountQuotaRefreshKey(props.account)) {
       error.value = t('common.error')
       console.error('Failed to load usage:', e)
     }
   } finally {
-    if (!unmounted.value) loading.value = false
+    if (!unmounted.value && !quotaQuery.state.value && identity === accountQuotaRefreshKey(props.account)) loading.value = false
   }
 }
 
@@ -1540,22 +1549,38 @@ const attachVisibilityObserver = () => {
   visibilityObserver.observe(rootRef.value)
 }
 
+watch(quotaQuery.state, (state) => {
+  if (!state) return
+  activeQueryLoading.value = state.loading
+  // Keep the last successful bars visible while querying or on failure.
+  if (state.data?.usage) usageInfo.value = state.data.usage
+  loading.value = false
+  error.value = state.error ? t('admin.accounts.usageWindow.showingLastData') : null
+}, { deep: true, immediate: true })
+
 const loadActiveUsage = async () => {
-  activeQueryLoading.value = true
-  try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
-  } catch (e: any) {
-    console.error('Failed to load active usage:', e)
-  } finally {
-    activeQueryLoading.value = false
-  }
+  await quotaQuery.refresh()
 }
 
-// The probe persists upstream quota state; refresh this cell so its compact
-// bars and entitlement status reflect the newly observed snapshot.
-const handleGrokProbed = async () => {
-  await loadUsage({ source: 'active', bypassCache: true })
+// Grok's quota endpoint already performs the complete probe. Build the usage
+// view from that result rather than issuing a second active /usage request.
+const handleGrokProbed = (result: GrokQuotaProbeResult) => {
+  usageInfo.value = {
+    ...(usageInfo.value ?? {}),
+    grok_billing: result.billing,
+    grok_request_quota: result.snapshot?.requests,
+    grok_token_quota: result.snapshot?.tokens,
+    grok_local_usage_24h: result.local_usage_24h,
+    grok_local_usage_7d: result.local_usage_7d,
+    grok_local_usage_monthly: result.local_usage_monthly,
+    subscription_tier: result.snapshot?.subscription_tier,
+    grok_entitlement_status: result.snapshot?.entitlement_status,
+    grok_last_status_code: result.status_code
+  } as AccountUsageInfo
 }
+watch(quotaQuery.state, (state) => {
+  if (state?.data?.grok) handleGrokProbed(state.data.grok)
+}, { deep: true, immediate: true })
 
 // ===== API Key quota progress bars =====
 
@@ -1672,7 +1697,7 @@ onMounted(() => {
 
   if (isBatchManaged.value) {
     syncManagedUsageState()
-    requestParentBatchUsage()
+    requestAutoLoad()
     return
   }
 
@@ -1692,7 +1717,7 @@ watch(
 watch(isBatchManaged, (managed, wasManaged) => {
   if (managed && !wasManaged) {
     syncManagedUsageState()
-    requestParentBatchUsage()
+    requestAutoLoad()
   }
 })
 
@@ -1708,7 +1733,7 @@ watch(
     }
     if (!managed || !shouldFetchUsage.value) return
     syncManagedUsageState()
-    requestParentBatchUsage()
+    requestAutoLoad()
   },
   { flush: 'post' }
 )
@@ -1716,6 +1741,10 @@ watch(
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+  if (quotaQuery.provided) {
+    quotaQuery.syncSnapshot()
+    return
+  }
 
   if (isBatchManaged.value) {
     requestParentBatchUsage({ force: true })

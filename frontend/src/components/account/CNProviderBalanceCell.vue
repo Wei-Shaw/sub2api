@@ -59,7 +59,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI } from '@/api/admin'
+import { useAccountQuotaRefresh, quotaSnapshotTime } from '@/utils/accountQuotaRefresh'
 import type { CNProviderBalanceEntry, CNProviderBalanceResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { platformTextClass } from '@/utils/platformColors'
@@ -74,6 +74,7 @@ const { t } = useI18n()
 // 仅 kimi / deepseek payg 账号有公开余额端点（智谱 payg 无）。
 const visible = computed(() => cnBalanceCellVisible(props.account))
 
+const quotaQuery = useAccountQuotaRefresh(() => props.account)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<CNProviderBalanceResult | null>(null)
@@ -129,48 +130,36 @@ const balanceLabel = computed(() => {
   return currentEntries.value.map(formatEntry).join(' · ')
 })
 
-const extractErrorMessage = (e: unknown): string => {
-  const err = e as {
-    message?: string
-    reason?: string
-    response?: { data?: { message?: string; error?: string } }
-  }
-  return (
-    err?.message ||
-    err?.reason ||
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    t('common.error')
-  )
-}
-
 const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}...` : error.value
 })
 
 const handleProbe = async () => {
-  if (loading.value) return
-  loading.value = true
-  error.value = null
-  try {
-    const result = await adminAPI.cnProviders.queryBalance(props.account.id)
-    // 失败时保留快照展示（仅显示错误行），成功才覆盖。
-    if (result.success) {
-      data.value = result
-    } else {
-      error.value = result.error || t('common.error')
-    }
-  } catch (e) {
-    error.value = extractErrorMessage(e)
-  } finally {
-    loading.value = false
-  }
+  await quotaQuery.refresh()
 }
+watch(quotaQuery.state, (state) => {
+  if (!state) return
+  loading.value = state.loading
+  error.value = state.error
+    ? `${t('admin.accounts.usageWindow.showingLastData')}: ${state.error}`
+    : null
+}, { deep: true, immediate: true })
+watch(() => quotaQuery.state.value?.data?.balance, (next) => {
+  if (next) data.value = next
+}, { immediate: true })
+
+watch(() => props.account.extra, (extra) => {
+  if (!data.value || quotaQuery.state.value?.loading) return
+  const nextAt = quotaSnapshotTime(extra?.[extraKey('balance_updated_at')])
+  const sampledAt = quotaSnapshotTime(data.value.fetched_at) || quotaQuery.state.value?.succeededAt || 0
+  if (nextAt > sampledAt) data.value = null
+}, { deep: true, immediate: true })
 
 watch(
   () => props.account.id,
   () => {
+    if (quotaQuery.state.value) return
     data.value = null
     error.value = null
     loading.value = false

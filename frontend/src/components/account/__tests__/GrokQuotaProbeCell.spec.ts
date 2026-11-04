@@ -31,7 +31,7 @@ describe('GrokQuotaProbeCell', () => {
     queryQuota.mockReset()
   })
 
-  it('keeps billing data while exposing a failed Free quota fallback', async () => {
+  it('does not publish a failed Free quota fallback as a fresh result', async () => {
     queryQuota.mockResolvedValue({
       source: 'hybrid_probe',
       billing: { period_type: 'weekly', usage_percent: null },
@@ -45,10 +45,25 @@ describe('GrokQuotaProbeCell', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('upstream returned 402 for probe model "grok-4.5"')
-    expect(wrapper.emitted('probed')?.[0]?.[0]).toMatchObject({
-      billing: { period_type: 'weekly', usage_percent: null },
-      probe_error: 'upstream returned 402 for probe model "grok-4.5"'
-    })
+    expect(wrapper.get('.text-red-600').attributes('title')).toContain('upstream returned 402 for probe model "grok-4.5"')
+    expect(wrapper.emitted('probed')).toBeUndefined()
+    wrapper.unmount()
   })
+  it('retains the previous successful summary and only emits once when a later probe fails', async () => {
+    queryQuota.mockResolvedValueOnce({
+      billing: { period_type: 'weekly', usage_percent: 24 },
+      persisted: true, fetched_at: 1
+    }).mockResolvedValueOnce({ probe_error: 'rate limited', fetched_at: 2 })
+    const wrapper = mount(GrokQuotaProbeCell, { props: { account } })
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('24')
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('24')
+    expect(wrapper.text()).toContain('showingLastData')
+    expect(wrapper.emitted('probed')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
 })

@@ -2,15 +2,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CNProviderQuotaCell from '../CNProviderQuotaCell.vue'
 import UsageProgressBar from '../UsageProgressBar.vue'
+import CNProviderBalanceCell from '../CNProviderBalanceCell.vue'
+import { createAccountQuotaRefresh, accountQuotaRefreshContext } from '@/utils/accountQuotaRefresh'
 import type { Account } from '@/types'
 
-const { queryQuota } = vi.hoisted(() => ({
-  queryQuota: vi.fn()
+const { queryQuota, queryBalance } = vi.hoisted(() => ({
+  queryQuota: vi.fn(), queryBalance: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
-    cnProviders: { queryQuota }
+    cnProviders: { queryQuota, queryBalance }
   }
 }))
 
@@ -43,6 +45,7 @@ const account = {
 describe('CNProviderQuotaCell', () => {
   beforeEach(() => {
     queryQuota.mockReset()
+    queryBalance.mockReset()
   })
 
   it('renders tier rows through the shared UsageProgressBar inside the account table cell', async () => {
@@ -102,4 +105,29 @@ describe('CNProviderQuotaCell', () => {
     await flushPromises()
     expect(queryQuota).toHaveBeenCalledWith(account.id)
   })
+  it('shares Command Code quota and balance results across cells and never re-probes on mount', async () => {
+    const row = { ...account, platform: 'command_code', credentials: {}, extra: {} } as Account
+    const controller = createAccountQuotaRefresh()
+    queryQuota.mockResolvedValue({ success: true, persisted: true, tiers: [{ window: 'weekly', used_percent: 68 }], balance: { success: true, persisted: true, balance: 33, currency: 'credits' } })
+    await controller.refresh(row)
+    const global = { provide: { [accountQuotaRefreshContext as symbol]: controller } }
+    const quota = mount(CNProviderQuotaCell, { props: { account: row }, global })
+    const balance = mount(CNProviderBalanceCell, { props: { account: row }, global })
+    await flushPromises()
+    expect(queryQuota).toHaveBeenCalledTimes(1)
+    expect(queryBalance).not.toHaveBeenCalled()
+    expect(quota.text()).toContain('68%')
+    expect(balance.text()).toContain('33')
+    queryQuota.mockResolvedValueOnce({ success: true, persisted: false, tiers: [{ window: 'weekly', used_percent: 1 }] })
+    await balance.get('button').trigger('click')
+    await flushPromises()
+    expect(quota.text()).toContain('68%')
+    expect(balance.text()).toContain('33')
+    expect(quota.text()).toContain('showingLastData')
+    expect(balance.text()).toContain('showingLastData')
+    expect(queryBalance).not.toHaveBeenCalled()
+    quota.unmount()
+    balance.unmount()
+  })
+
 })

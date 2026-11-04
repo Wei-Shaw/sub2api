@@ -1737,6 +1737,8 @@ export default {
         grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query',
+        showingLastData: 'Query failed; showing last data',
+        refreshFailedSummary: 'Quota refresh failed for {count} accounts; previous data retained.',
         estimatedTotalCost: 'Est. total ${cost}',
         estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },

@@ -4,6 +4,9 @@
     class="min-w-0 max-w-full space-y-1"
     data-testid="ollama-cloud-usage-cell"
   >
+    <div v-if="queryError" class="text-[10px] text-amber-600" :title="queryError">
+      {{ t('admin.accounts.usageWindow.showingLastData') }}
+    </div>
     <UsageProgressBar
       v-if="snapshot?.data?.five_hour"
       label="5h"
@@ -52,7 +55,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI } from '@/api/admin'
+import { useAccountQuotaRefresh, quotaSnapshotTime } from '@/utils/accountQuotaRefresh'
 import type { Account, OllamaCloudUsageState } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
 
@@ -60,24 +63,29 @@ const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
 const { t } = useI18n()
 const state = ref(props.account.ollama_cloud_usage)
+const quotaQuery = useAccountQuotaRefresh(() => props.account)
 const refreshing = ref(false)
+const queryError = computed(() => quotaQuery.state.value?.error)
 const snapshot = computed(() => state.value?.snapshot)
 
 watch(() => props.account.ollama_cloud_usage, (next) => {
-  state.value = next
+  if (!quotaQuery.state.value?.data || (
+    !quotaQuery.state.value.loading && next?.snapshot?.status === 'ok' &&
+    quotaSnapshotTime(next.snapshot.fetched_at) > quotaSnapshotTime(state.value?.snapshot?.fetched_at)
+  )) state.value = next
 })
 
 const refreshUsage = async () => {
-  if (refreshing.value) return
-  refreshing.value = true
-  try {
-    const next = await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id)
-    state.value = next
-    emit('updated', next)
-  } catch (error) {
-    console.error('Failed to refresh Ollama Cloud usage:', error)
-  } finally {
-    refreshing.value = false
-  }
+  await quotaQuery.refresh()
 }
+watch(quotaQuery.state, (next) => {
+  if (!next) return
+  refreshing.value = next.loading
+}, { deep: true, immediate: true })
+watch(() => quotaQuery.state.value?.data?.ollama, (next) => {
+  if (!next) return
+  state.value = next
+  if (!quotaQuery.provided) emit('updated', next)
+}, { immediate: true })
+
 </script>
