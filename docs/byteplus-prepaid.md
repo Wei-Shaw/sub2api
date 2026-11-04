@@ -19,7 +19,8 @@ safety limits.
 ## Scope and prerequisites
 
 This is a gateway admission/reservation ledger, **not** a BytePlus account-wide
-billing switch or a provider balance synchronization API. BytePlus can use
+billing switch. The separate read-only billing query below observes provider
+balances without synchronizing them into funding. BytePlus can use
 pay-as-you-go billing after applicable packs expire or run out. See its
 [resource-pack rules](https://docs.byteplus.com/en/docs/modelark/seedance-2-0-model-resource-pack-rules).
 
@@ -196,3 +197,74 @@ real-provider test. The test-only submit/succeed/expire controls expose no real
 funds, keys or payment method. The API listens on loopback by default; Docker
 users can set `PACK_GUARD_BROWSER_BIND=0.0.0.0:18991` inside the container and must
 publish it only to `127.0.0.1:18991`. Test files/pages are not production entries.
+
+## Usage display and read-only billing queries
+
+The Accounts usage cell recognizes native BytePlus accounts and legacy API-key
+accounts with a validated official ModelArk URL. **Refresh local status** reads
+one consistent SQL snapshot. It shows exact per-model spendable and held tokens,
+per-pack expiry and recorded funding-verification times. Expired, paused,
+safety-locked, mismatched and too-soon-expiring grants are not spendable. Account
+USD limits and account expiry remain separate gateway settings.
+
+**Query BytePlus** reads account money, resource packages and coupons through the
+BytePlus Billing OpenAPI. It does not submit inference, add funding, release holds,
+resume a pool, enable PAYG or change quotas. Each source has its own last-success
+and last-attempt time. Failed/incomplete sources retain dated successful data;
+missing data is not zero. Billing can lag usage. Package units and coupon
+restrictions are retained; there is no combined money/token total or automatic
+reconciliation. Cached observations are process-local and cleared by restart.
+
+Billing access is separate from the ModelArk inference bearer key. Without billing
+configuration, the button opens setup guidance and local refresh still works.
+Only full administrators can access these shared account-wide observations.
+
+### Server configuration
+
+Mount a private regular JSON file with permission `0600` (or stricter) readable by
+the service, set `BYTEPLUS_BILLING_CONFIG_FILE` to its path, and restart. Keep this
+file outside the repository and ordinary account credentials. Example with fake
+placeholders only:
+
+```json
+[
+  {
+    "pool_id": "operator-verified-pool-id",
+    "account_id": "123456789",
+    "access_key": "REPLACE_ON_SERVER",
+    "secret_key": "REPLACE_ON_SERVER",
+    "session_token": "",
+    "region": "ap-southeast-1",
+    "resource_types": ["Package", "RSC"]
+  }
+]
+```
+
+The configured owner must match `QueryBalanceAcct.AccountID`; mismatch blocks
+asset display. Configure only the documented read permissions for
+`QueryBalanceAcct`, `ListResourcePackages` and `ListCoupons`; do not grant purchase,
+renewal, payment or policy-write permissions. Verify the exact IAM policy using
+BytePlus's current console/API documentation for the target account. Temporary
+AK/SK plus session token are supported; the operator must renew them before expiry
+and restart to reload the file. Credentials never go to the browser or API output.
+
+The client uses the documented global `https://open.byteplusapi.com/` billing
+endpoint, service `billing`, version `2022-01-01`, signed with the configured
+region. Package categories may be `Package`, `RSC`, or `RI`; defaults query Package
+and RSC. Confirm which categories/product/configuration codes include this
+account's ModelArk packs. The query does not claim all free/promotional grants
+are returned. Compare package instance IDs, exact units, validity and coupon
+restrictions with the BytePlus console before relying on coverage. Timestamps
+without an explicit timezone are rejected rather than interpreted speculatively.
+
+Queries coalesce per pool with a 30-second cooldown, a 30-second overall deadline,
+15-second request timeout, maximum 20 pages per source/category and a 2 MiB
+response limit. The client does not follow redirects or retry provider failures.
+Pagination limits and duplicate/changing records produce an incomplete result,
+not a false empty balance. Local auto-refresh follows the Accounts preference
+and never invokes provider queries. Several application replicas each keep their
+own observation cache and cooldown; configure provider rate limits accordingly.
+
+References: [official billing SDK](https://github.com/byteplus-sdk/byteplus-go-sdk-v2/tree/main/service/billing),
+[credentials](https://github.com/byteplus-sdk/byteplus-go-sdk-v2/blob/main/docs/1-Credentials.md),
+[request structure](https://docs.byteplus.com/en/docs/byteplus-platform/reference-request-structure).

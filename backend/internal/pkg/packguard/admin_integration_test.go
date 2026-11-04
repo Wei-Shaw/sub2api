@@ -212,3 +212,37 @@ func TestConcurrentEnrollmentAndImmutablePackCredit(t *testing.T) {
 		t.Fatal("credential credited to multiple pools")
 	}
 }
+
+func TestFundingDisplayExcludesExpiredAndPausedRemainders(t *testing.T) {
+	f := setup(t)
+	f.grant(t, "usable", SeedanceModel, 128000001, 24*time.Hour)
+	f.grant(t, "expired", SeedanceModel, 64000000, -time.Hour)
+	f.grant(t, "short", SeedanceModel, 64000000, time.Minute)
+	st, err := f.store.Status(context.Background(), 11, HashCredential(fixtureKey), fixtureBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ObservedAt.IsZero() || len(st.Models) != 2 || st.Models[0].Spendable != "2000000.015625" {
+		t.Fatalf("incorrect spendable summary: %+v", st)
+	}
+	for _, g := range st.Grants {
+		if g.VerifiedAt.IsZero() {
+			t.Fatal("missing recorded verification")
+		}
+		if g.ID == "expired" && (g.Available != "1000000" || g.EligibilityReason != "expired") {
+			t.Fatal("expired numeric remainder treated as spendable")
+		}
+	}
+	beforeSpent, beforeHeld := f.balances(t)
+	if _, err = f.db.Exec(`UPDATE byteplus_pack_scopes SET frozen=TRUE WHERE id='scope'`); err != nil {
+		t.Fatal(err)
+	}
+	paused, err := f.store.Status(context.Background(), 12, HashCredential(fixtureKey), fixtureBase)
+	if err != nil || paused.Models[0].Spendable != "0" {
+		t.Fatal("shared paused pool still spendable")
+	}
+	afterSpent, afterHeld := f.balances(t)
+	if beforeSpent != afterSpent || beforeHeld != afterHeld {
+		t.Fatal("status reads changed funding")
+	}
+}

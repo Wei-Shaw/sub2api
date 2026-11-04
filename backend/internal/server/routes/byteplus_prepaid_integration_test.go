@@ -296,6 +296,7 @@ func statusFrom(t *testing.T, data []byte) *packguard.Status {
 }
 
 func TestBytePlusPrepaidAdminGatewayIntegration(t *testing.T) {
+	t.Setenv("BYTEPLUS_BILLING_CONFIG_FILE", "")
 	f := prepaidHTTP(t, false)
 	const adminToken = "fixture-admin-not-production"
 	const path = "/api/v1/admin/accounts/11/byteplus-prepaid"
@@ -303,6 +304,22 @@ func TestBytePlusPrepaidAdminGatewayIntegration(t *testing.T) {
 		code, data := f.request(t, "GET", path, token, nil)
 		if code != 403 || strings.Contains(string(data), "grants") {
 			t.Fatalf("delegated funding access: %d %s", code, data)
+		}
+	}
+	for _, method := range []string{"GET", "POST"} {
+		suffix := "/provider-status"
+		if method == "POST" {
+			suffix = "/provider-query"
+		}
+		for _, token := range []string{"fixture-scoped-not-production", "fixture-user-not-production"} {
+			code, body := f.request(t, method, path+suffix, token, nil)
+			if code != 403 || strings.Contains(string(body), "balance") {
+				t.Fatalf("billing access escaped full-admin gate: %d", code)
+			}
+		}
+		code, body := f.request(t, method, path+suffix, adminToken, nil)
+		if code != 200 || !strings.Contains(string(body), `"setup":"pool_required"`) || f.vendor.count() != 0 {
+			t.Fatalf("unenrolled provider query dispatched inference: %d %s", code, body)
 		}
 	}
 	code, data := f.request(t, "GET", path, adminToken, nil)
@@ -315,6 +332,16 @@ func TestBytePlusPrepaidAdminGatewayIntegration(t *testing.T) {
 	}
 	code, data = f.request(t, "POST", path+"/enable", adminToken, map[string]any{"confirmed": true, "name": "HTTP fixture"})
 	st := statusFrom(t, data)
+	for _, suffix := range []string{"/provider-status", "/provider-query"} {
+		method := "GET"
+		if suffix == "/provider-query" {
+			method = "POST"
+		}
+		billingCode, body := f.request(t, method, path+suffix, adminToken, nil)
+		if billingCode != 200 || !strings.Contains(string(body), `"setup":"missing_credentials"`) || f.vendor.count() != 0 {
+			t.Fatalf("missing billing credentials submitted inference: %d %s", billingCode, body)
+		}
+	}
 	if code != 200 || st.Pool == nil || !st.Pool.Frozen || st.BoundAccounts != 2 {
 		t.Fatalf("invalid initial state: %d %s", code, data)
 	}
@@ -355,6 +382,9 @@ func TestBytePlusPrepaidAdminGatewayIntegration(t *testing.T) {
 	}
 	code, data = f.request(t, "GET", path, adminToken, nil)
 	st = statusFrom(t, data)
+	if st.ObservedAt.IsZero() || len(st.Models) != 2 || st.Grants[0].VerifiedAt.IsZero() {
+		t.Fatal("display freshness/summary contract missing")
+	}
 	if st.OpenJobs != 2 {
 		t.Fatal("queued holds missing")
 	}

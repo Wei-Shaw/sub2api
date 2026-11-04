@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/byteplusbilling"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/packguard"
 )
 
@@ -37,6 +38,7 @@ type BytePlusPrepaidController interface {
 
 type BytePlusPrepaidService struct {
 	accounts AccountRepository
+	billing  *byteplusbilling.Client
 	store    *packguard.Store
 	upstream HTTPUpstream
 }
@@ -45,7 +47,7 @@ func NewBytePlusPrepaidService(accounts AccountRepository, db *sql.DB, upstream 
 	if accounts == nil || db == nil || upstream == nil {
 		return nil, fmt.Errorf("prepaid funding requires account, SQL and guarded transport dependencies")
 	}
-	return &BytePlusPrepaidService{accounts: accounts, store: packguard.NewStore(db), upstream: upstream}, nil
+	return &BytePlusPrepaidService{accounts: accounts, store: packguard.NewStore(db), upstream: upstream, billing: byteplusbilling.New()}, nil
 }
 
 func (s *BytePlusPrepaidService) account(ctx context.Context, id int64) (*Account, string, string, error) {
@@ -212,4 +214,26 @@ func (s *BytePlusPrepaidService) Reconcile(ctx context.Context, id int64, reserv
 		return nil, err
 	}
 	return s.Status(ctx, id)
+}
+
+// ProviderBilling is separate from ledger mutations and task reconciliation.
+func (s *BytePlusPrepaidService) ProviderBilling(ctx context.Context, id int64, query bool) (*byteplusbilling.Status, error) {
+	st, err := s.Status(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if st.Pool == nil {
+		result := s.billing.Read("")
+		result.Configured = false
+		result.Setup = "pool_required"
+		return &result, nil
+	}
+	if !st.CredentialMatches {
+		return nil, packguard.ErrScope
+	}
+	result := s.billing.Read(st.Pool.ID)
+	if query {
+		result = s.billing.Query(ctx, st.Pool.ID)
+	}
+	return &result, nil
 }

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/byteplusbilling"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/packguard"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -117,5 +119,28 @@ func (h *AccountHandler) BytePlusPrepaidReconcile(c *gin.Context) {
 		prepaidError(c, err)
 		return
 	}
+	response.Success(c, st)
+}
+
+func (h *AccountHandler) BytePlusProviderStatus(c *gin.Context) { h.bytePlusProvider(c, false) }
+func (h *AccountHandler) BytePlusProviderQuery(c *gin.Context)  { h.bytePlusProvider(c, true) }
+func (h *AccountHandler) bytePlusProvider(c *gin.Context, query bool) {
+	id, ok := h.prepaidAccess(c)
+	if !ok {
+		return
+	}
+	provider, ok := h.bytePlusPrepaid.(interface {
+		ProviderBilling(context.Context, int64, bool) (*byteplusbilling.Status, error)
+	})
+	if !ok {
+		response.Error(c, http.StatusServiceUnavailable, "Billing query service is unavailable")
+		return
+	}
+	st, err := provider.ProviderBilling(c.Request.Context(), id, query)
+	if err != nil {
+		prepaidError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
 	response.Success(c, st)
 }
