@@ -246,3 +246,49 @@ func TestFundingDisplayExcludesExpiredAndPausedRemainders(t *testing.T) {
 		t.Fatal("status reads changed funding")
 	}
 }
+
+func TestFundingStatusIsOneSnapshotDuringConcurrentSettlement(t *testing.T) {
+	f := setup(t)
+	f.grant(t, "concurrent-status", SeedanceModel, 1000000000, 24*time.Hour)
+	ctx := context.Background()
+	finished := make(chan error, 1)
+	go func() {
+		for i := 0; i < 50; i++ {
+			r, err := f.store.Reserve(ctx, f.scope, Plan{Model: SeedanceModel, Units: 1000, Ratio: 64, Lifetime: time.Hour})
+			if err != nil {
+				finished <- err
+				return
+			}
+			if err = f.store.Finish(ctx, r.ID, 1, true); err != nil {
+				finished <- err
+				return
+			}
+		}
+		finished <- nil
+	}()
+	for i := 0; i < 30; i++ {
+		st, err := f.store.Status(ctx, 11, HashCredential(fixtureKey), fixtureBase)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var held int64
+		var open int64
+		for _, job := range st.Jobs {
+			if job.State == "reserved" || job.State == "pending" || job.State == "uncertain" {
+				open++
+				n, e := parseTokens(job.Reserved, true)
+				if e != nil {
+					t.Fatal(e)
+				}
+				held += n
+			}
+		}
+		grantHeld, err := parseTokens(st.Grants[0].Reserved, true)
+		if err != nil || grantHeld != held || st.OpenJobs != open {
+			t.Fatalf("mixed funding snapshot: grants=%d jobs=%d count=%d/%d", grantHeld, held, st.OpenJobs, open)
+		}
+	}
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+}
