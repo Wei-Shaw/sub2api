@@ -27,6 +27,13 @@ managed in the BytePlus console. Gateway limits do not configure provider-side
 limits. Only pay-as-you-go/resource-pack mode is offered; this integration does
 not invent a BytePlus Coding Plan or an unsupported balance-probe endpoint.
 
+**Resource-pack support is not a prepaid-only hard stop.** BytePlus can fall
+back to pay-as-you-go billing after applicable packs expire or run out, as
+described in its [resource-pack rules](https://docs.byteplus.com/en/docs/modelark/seedance-2-0-model-resource-pack-rules).
+Gateway USD quotas do not reserve provider pack capacity for queued video jobs
+or enforce pack expiry. This provider integration does not include a pack-only
+reservation ledger and does not disable account-wide automatic billing.
+
 Existing OpenAI-platform accounts configured with an Ark base URL and explicit
 Seedance capability remain supported. They are not automatically migrated or
 reassigned to BytePlus groups.
