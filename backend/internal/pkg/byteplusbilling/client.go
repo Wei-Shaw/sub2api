@@ -70,11 +70,13 @@ func New() *Client {
 		return c
 	}
 	// Bound reads also handle accidentally configured FIFOs/devices safely.
+	// #nosec G703 -- The path is an explicit server-operator secret-file setting, never HTTP or account input.
 	before, statErr := os.Stat(path)
 	if statErr != nil || !before.Mode().IsRegular() {
 		c.configError = true
 		return c
 	}
+	// #nosec G703 -- Only the server operator chooses this private credential file; regular-file and permission checks follow.
 	f, err := os.Open(path)
 	if err != nil {
 		c.configError = true
