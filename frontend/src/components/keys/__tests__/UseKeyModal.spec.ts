@@ -85,11 +85,12 @@ describe('UseKeyModal', () => {
       }
     })
 
+    const testApiKey = 'redacted-test-key'
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
         apiKeyId: 42,
-        apiKey: 'redacted-test-key',
+        apiKey: testApiKey,
         baseUrl: 'https://example.com/v1',
         platform: 'gemini'
       },
@@ -124,6 +125,13 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="api-capability-panel"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="api-test-guide"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="api-video-test-flow"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="download-video-guide"]').trigger('click')
+    expect(saveAsMock).toHaveBeenCalledWith(expect.any(Blob), 'huong-dan-api-tao-video.md')
+    const guide = await readBlobAsText(saveAsMock.mock.calls.at(-1)![0] as Blob)
+    expect(guide).toContain('Tài liệu tích hợp API tạo video')
+    expect(guide).toContain('/v1/videos/generations')
+    expect(guide).toContain('/api/v3/contents/generations/tasks')
+    expect(guide).not.toContain(testApiKey)
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('https://example.com/v1/images/generations')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:generateContent')
     expect(wrapper.find('[data-testid="api-capability-panel"]').text()).toContain('POST https://example.com/v1beta/models/{model}:streamGenerateContent?alt=sse')
@@ -222,6 +230,44 @@ describe('UseKeyModal', () => {
     expect(wrapper.find('[data-testid="open-api-test-guide"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="client-tab-api"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="api-capability-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="download-video-guide"]').exists()).toBe(false)
+  })
+
+  it.each([
+    ['Seedance only', false, true],
+    ['Grok generation only', true, false]
+  ])('offers the download for %s', async (_name, grok, seedance) => {
+    getCapabilitiesMock.mockResolvedValue({
+      image: { sync: {}, async: { generation: {}, edit: {}, poll: {} } },
+      batch_image: { available: false, models: {} },
+      video: { generation: { available: grok }, status: {}, content: {}, edit: {}, extension: {} },
+      seedance: { available: seedance, create: {}, status: {}, delete: {} },
+      gemini_native: { image_generation: { available: false, generate_content: {}, stream_generate_content: {} } }
+    })
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKeyId: 42, apiKey: 'redacted-key', baseUrl: 'https://example.com/v1', platform: 'composite' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="client-tab-api"]').trigger('click')
+    expect(wrapper.find('[data-testid="download-video-guide"]').exists()).toBe(true)
+  })
+
+  it('does not offer a video guide for an image-only key', async () => {
+    getCapabilitiesMock.mockResolvedValue({
+      image: { sync: { available: true }, async: { generation: {}, edit: {}, poll: {} } },
+      batch_image: { available: false, models: {} },
+      video: { generation: {}, status: {}, content: {}, edit: {}, extension: {} },
+      seedance: { available: false, create: {}, status: {}, delete: {} },
+      gemini_native: { image_generation: { available: false, generate_content: {}, stream_generate_content: {} } }
+    })
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKeyId: 42, apiKey: 'redacted-key', baseUrl: 'https://example.com/v1', platform: 'composite' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="client-tab-api"]').trigger('click')
+    expect(wrapper.find('[data-testid="download-video-guide"]').exists()).toBe(false)
   })
 
   it('opens request and response examples for the supported video routes', async () => {

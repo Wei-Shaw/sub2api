@@ -220,6 +220,8 @@ export default {
         testGuideTitle: '如何自行测试',
         testGuideDescription: '请使用下方按路由提供的示例作为安全起点。示例只显示已隐藏的授权占位符，发送前请在本地替换为您自己的 API 密钥。',
         videoFlowTitle: '视频测试流程',
+        videoGuideDescription: '下载越南语视频 API 集成指南（Grok 和 Seedance）。',
+        downloadVideoGuide: '下载视频指南（.md）',
         videoFlowDescription: '先调用视频生成，轮询返回的 request_id 直到 status 为 done，然后调用 content 路由并将响应保存为 video.mp4。',
         image: {
           title: '图像',

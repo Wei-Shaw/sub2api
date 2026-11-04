@@ -268,6 +268,12 @@
               <p class="text-xs font-semibold text-gray-900 dark:text-white">{{ t('keys.useKeyModal.api.videoFlowTitle') }}</p>
               <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('keys.useKeyModal.api.videoFlowDescription') }}</p>
             </div>
+            <div v-if="hasVideoGuide" class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary-200 bg-white/80 p-3 dark:border-primary-800 dark:bg-dark-900/60">
+              <p class="text-xs text-gray-700 dark:text-gray-300">{{ t('keys.useKeyModal.api.videoGuideDescription') }}</p>
+              <button type="button" data-testid="download-video-guide" class="rounded-md border border-primary-300 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-950" @click="downloadVideoGuide">
+                {{ t('keys.useKeyModal.api.downloadVideoGuide') }}
+              </button>
+            </div>
           </section>
 
           <section
@@ -784,6 +790,7 @@
 import { ref, computed, h, watch, nextTick, onBeforeUnmount, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
+import videoGuide from '@/assets/guides/video-api-vi.md?raw'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -867,9 +874,19 @@ const showApiTab = computed(() => {
     value.video.generation.available ||
     value.video.status.available ||
     value.video.content.available ||
+    value.video.edit.available ||
+    value.video.extension.available ||
     value.seedance.available ||
     value.gemini_native.image_generation.available
 })
+const hasVideoGuide = computed(() => {
+  const value = capabilities.value
+  return !!value && (value.video.generation.available || value.video.status.available ||
+    value.video.content.available || value.video.edit.available || value.video.extension.available || value.seedance.available)
+})
+const downloadVideoGuide = () => {
+  saveAs(new Blob([videoGuide], { type: 'text/markdown;charset=utf-8' }), 'huong-dan-api-tao-video.md')
+}
 const apiExampleUrl = (path?: string) => {
   const base = props.baseUrl.trim().replace(/\/+$/, '')
   if (!path) return `${base}/...`

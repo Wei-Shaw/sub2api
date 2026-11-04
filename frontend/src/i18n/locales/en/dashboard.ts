@@ -220,6 +220,8 @@ export default {
         testGuideTitle: 'How to run a self-test',
         testGuideDescription: 'Use the route-specific example below as a safe starting point. The sample only shows a redacted authorization placeholder; insert your own API key locally before sending.',
         videoFlowTitle: 'Video test flow',
+        videoGuideDescription: 'Download the Vietnamese video API integration guide (Grok and Seedance).',
+        downloadVideoGuide: 'Download video guide (.md)',
         videoFlowDescription: 'Run generation first, poll the returned request_id until status is done, then call the content route and save the response as video.mp4.',
         image: {
           title: 'Image',

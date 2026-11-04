@@ -200,6 +200,8 @@ keys: {
       testGuideTitle: 'Cách tự test API',
       testGuideDescription: 'Dùng mẫu theo từng route bên dưới làm điểm bắt đầu an toàn. Mẫu chỉ hiển thị authorization placeholder đã che; hãy thay bằng API key của anh ở máy local trước khi gửi.',
       videoFlowTitle: 'Trình tự test video',
+      videoGuideDescription: 'Tải tài liệu hướng dẫn tích hợp API video bằng tiếng Việt (Grok và Seedance).',
+      downloadVideoGuide: 'Tải hướng dẫn video (.md)',
       videoFlowDescription: 'Gọi tạo video trước, poll request_id đến khi status là done, sau đó gọi route content và lưu response thành video.mp4.',
       image: {
         title: 'Image',
