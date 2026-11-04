@@ -154,6 +154,11 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 
+	// force_responses / force_chat_completions 下 ResolveResponsesSupport 优先读 mode，探测标记不可达，探测只会白跑一次上游调用，直接跳过。
+	if mode, _ := account.Extra[openai_compat.ExtraKeyResponsesMode].(string); openai_compat.NormalizeResponsesSupportMode(mode) != openai_compat.ResponsesSupportModeAuto {
+		return
+	}
+
 	apiKey := account.GetOpenAIApiKey()
 	if apiKey == "" {
 		logger.LegacyPrintf("service.openai_probe", "probe_skip_no_apikey: account_id=%d", accountID)

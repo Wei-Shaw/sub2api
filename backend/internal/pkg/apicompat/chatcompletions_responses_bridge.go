@@ -1594,9 +1594,10 @@ type ChatCompletionsToResponsesStreamState struct {
 	Reasoning strings.Builder
 
 	// Tool-call lifecycle, keyed by the upstream tool_call index.
-	ToolCalls       map[int]*ChatToolCall
-	ToolItemIDs     map[int]string
-	ToolOutputIndex map[int]int
+	ToolCalls           map[int]*ChatToolCall
+	ToolItemIDs         map[int]string
+	ToolOutputIndex     map[int]int
+	toolArgumentBuffers map[int]*strings.Builder
 
 	// CustomTools 是客户端请求中 custom/freeform 工具的名字集合（见
 	// CustomToolNames）。命中的调用按 custom_tool_call 生命周期下发，codex 才能
@@ -1756,7 +1757,7 @@ func ChatCompletionsChunkToResponsesEvents(
 				// emitted delta and the stored value stay in sync. Some upstreams
 				// (e.g. GLM/Zhipu) pack id+name+arguments into the first tool_call
 				// chunk; without this reset the first chunk's arguments would be
-				// counted twice (once from this copy, once from the += below),
+				// counted twice (once from this copy, once from the append below),
 				// producing a doubled, invalid JSON like {"a":1}{"a":1}.
 				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
@@ -1773,7 +1774,7 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 			events = append(events, announceChatToolItem(state, idx, stored, false)...)
 			if toolCall.Function.Arguments != "" {
-				stored.Function.Arguments += toolCall.Function.Arguments
+				stored.Function.Arguments = appendIndexedStreamString(&state.toolArgumentBuffers, idx, stored.Function.Arguments, toolCall.Function.Arguments)
 				// 未宣告（名字未到）时仅累积，宣告时统一补发；custom 调用的
 				// arguments 是包裹 input 的 JSON 片段，无法增量还原为自由文本
 				// 输入，缓冲整份 arguments 收尾时一次性下发（见 closeChatToolItems）；

@@ -20,6 +20,16 @@ type openAICompatSessionResponseBinding struct {
 	ExpiresAt            time.Time
 }
 
+func (b openAICompatSessionResponseBinding) sessionExpiresAt() time.Time { return b.ExpiresAt }
+func (b openAICompatSessionResponseBinding) sessionCost() int {
+	return len(b.ResponseID) + len(b.TurnState)
+}
+func (b openAICompatSessionResponseBinding) cloneSessionValue() sessionMemoryValue {
+	b.ResponseID = strings.Clone(b.ResponseID)
+	b.TurnState = strings.Clone(b.TurnState)
+	return b
+}
+
 func openAICompatContinuationEnabled(account *Account, model string) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false

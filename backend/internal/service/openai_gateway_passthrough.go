@@ -432,7 +432,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 				maxLineSize = s.cfg.Gateway.MaxLineSize
 			}
-			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize, s.cfg)
 		}
 
 		// x-codex-turn-state 溯源：下游回传由 writeOpenAIPassthroughResponseHeaders
@@ -1058,7 +1058,8 @@ func openAIStreamEventIsMetadata(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	// Queuing and moderation metadata do not commit model output or disarm the
 	// first-output timeout; a following overload must remain safe to retry.
-	case "response.created", "response.queued", "response.in_progress", "response.metadata", "keepalive":
+	case "response.created", "response.queued", "response.in_progress", "response.metadata",
+		"codex.rate_limits", "codex.response.metadata", "keepalive":
 		return true
 	default:
 		return false
@@ -1460,6 +1461,36 @@ func openAIStream403AccountFailure(payload []byte, message string) bool {
 	return isOpenAIUpstreamAccessStateError(message, payload) || openAIStreamCredentialAuthFailure(payload)
 }
 
+// openAICapacityShedRuleBody excludes response output and metadata from custom
+// cooldown keyword matching and from the persisted rule reason.
+func openAICapacityShedRuleBody(payload []byte) []byte {
+	if !gjson.ValidBytes(payload) {
+		return payload
+	}
+	errorFields := gjson.GetBytes(payload, "response.error")
+	if !errorFields.IsObject() {
+		errorFields = gjson.GetBytes(payload, "error")
+	}
+	var errorValue any
+	if errorFields.IsObject() {
+		errorValue = json.RawMessage(errorFields.Raw)
+	} else {
+		// Some compatible providers send flat errors instead of an error object.
+		flat := make(map[string]json.RawMessage)
+		for _, key := range []string{"code", "type", "message", "param", "headers"} {
+			if value := gjson.GetBytes(payload, key); value.Exists() {
+				flat[key] = json.RawMessage(value.Raw)
+			}
+		}
+		errorValue = flat
+	}
+	body, err := marshalOpenAIUpstreamJSON(gin.H{"error": errorValue})
+	if err != nil {
+		return nil
+	}
+	return body
+}
+
 func openAIStreamFailedEventPassthroughBody(payload []byte, failedMessage string) []byte {
 	if len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload
@@ -1620,13 +1651,16 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	canonicalModel ...string,
 ) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
+	if statusCode == http.StatusServiceUnavailable && (account == nil || account.Platform != PlatformOpenAI) {
+		return statusCode, false
+	}
 	switch statusCode {
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
 			return statusCode, false
 		}
 		fallthrough
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusServiceUnavailable, 529:
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
@@ -1979,6 +2013,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 	defer putSSEScannerBuf64K(scanBuf)
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 

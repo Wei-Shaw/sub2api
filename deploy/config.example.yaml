@@ -239,6 +239,12 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Opt out of the fixed 10-minute account cooldown for persistent OpenAI transport failures (DNS/proxy/network).
+  # Env: GATEWAY_DISABLE_OPENAI_TRANSPORT_ERROR_COOLDOWN=true; default false retains protection.
+  # Errors/Ops and bounded request failover remain; HTTP 401/403/429, quota/model limits,
+  # stream timeouts and token-refresh cooldowns are unchanged. Existing cooldowns and admin pauses are not cleared.
+  # With shared egress still broken, later requests retry it: this does not repair DNS/proxies or guarantee faster models.
+  disable_openai_transport_error_cooldown: false
   # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
   # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
   grok_response_header_timeout: 120
@@ -254,6 +260,17 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # Per-instance ingress allocation budget. Unreferenced intermediates are released after each phase.
+  # Final bodies (and still-referenced preread buffers) remain charged until the handler returns.
+  # Include all concurrent long-lived requests and upload/decode workspace; see EDGE_SECURITY.md.
+  # Unset (default): 1/4 of the memory limit (min of RAM, cgroup limit, GOMEMLIMIT), at least 1 GiB.
+  # 实例级请求体分配预算；超出返回 503 + Retry-After，0 禁用。
+  # 不配置时自动取内存上限（物理内存/cgroup 限额/GOMEMLIMIT 的最小值）的 1/4，最低 1GiB；显式配置后不再自适应。
+  # request_body_memory_budget_bytes: 1073741824
+  # Individual socket read/write idle deadlines, not the entire SSE lifetime; 0 disables.
+  # 上传单次读取、下游单次写入/flush 超时（秒），不会限制正常长流的总时长；0 禁用。
+  request_body_read_timeout_seconds: 120
+  downstream_write_timeout_seconds: 120
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432
@@ -539,9 +556,16 @@ gateway:
     # Max image requests waiting in this process when overflow_mode=wait, 0=unlimited
     # wait 模式当前进程允许排队等待的图片请求数，0=不限制
     max_waiting_requests: 100
-  # SSE max line size in bytes (default: 40MB)
-  # SSE 单行最大字节数（默认 40MB）
-  max_line_size: 41943040
+  # SSE max line size in bytes (default: 500 MiB, including large inline 4K images)
+  # SSE 单行最大字节数（默认 500 MiB，兼容含大尺寸 4K 图片的响应）
+  max_line_size: 524288000
+  # Queue byte budget. One larger line may be transferred alone, bounded by max_line_size.
+  # 队列按字节限流；超过预算的单行只能独占传递，仍受 max_line_size 硬上限约束。
+  sse_queue_max_bytes: 8388608
+  # Accumulated event byte limit (0 inherits max_line_size) and nonempty line limit.
+  # 事件累计字节上限（0 继承单行上限）与行数上限；持续短行也不能无界积累。
+  sse_event_max_bytes: 0
+  sse_event_max_lines: 4096
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
   log_upstream_error_body: true
