@@ -1147,6 +1147,10 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if isCloudflareBotBlockResponse(responseBody) {
 		return false
 	}
+	if isKimiConcurrencyLimit403(account, upstreamMsg) {
+		s.apply429FallbackRateLimit(ctx, account, "cn_concurrency_limit")
+		return false
+	}
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}

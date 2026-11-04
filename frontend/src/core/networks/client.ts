@@ -106,6 +106,14 @@ apiClient.interceptors.request.use(
 
 // ==================== Response Interceptor ====================
 
+const parseRetryAfterSeconds = (headers: unknown): number | undefined => {
+  const raw = (headers as Record<string, unknown> | undefined)?.['retry-after']
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim())) return undefined
+  const seconds = Number(raw.trim())
+  return Number.isSafeInteger(seconds) ? seconds : undefined
+}
+
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Unwrap standard API response format { code, message, data }
@@ -316,6 +324,7 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+        retry_after_seconds: parseRetryAfterSeconds(error.response.headers),
       })
     }
 

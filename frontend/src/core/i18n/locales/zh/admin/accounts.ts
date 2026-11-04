@@ -640,6 +640,11 @@ export default {
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',
         responsesModeTextDisabledHint: '未启用 Responses / Chat Completions 端点时，此设置不适用。',
+        imageSizeTiers: '生图尺寸档位',
+        imageSizeTiersDesc:
+          '限制本账号承接的生图尺寸档位，档位与计费一致：最长边 ≤1024 为 1K，≤2048 为 2K，更大为 4K（2560x1440 属于 4K）。指定了尺寸的请求只会调度到允许该档位的账号；未传尺寸或 auto 的请求优先调度到不限档位的账号，没有时依次选允许 4K、2K、1K 的账号。全选即不限，对 Images 接口与 Responses 生图工具生效。',
+        imageSizeTiersAtLeastOne: '至少保留一个档位',
+        imageSizeTiersUpdate: '更新生图尺寸档位',
         endpointCapabilities: '端点能力',
         endpointCapabilitiesDesc:
           '用于调度筛选。文本端点跟随上方 Responses API 支持；Embeddings 控制 /v1/embeddings，Decisions 控制 /v1/decisions。',

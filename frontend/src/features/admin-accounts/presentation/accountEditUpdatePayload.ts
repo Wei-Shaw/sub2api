@@ -1,3 +1,4 @@
+import { applyOpenAIImageSizeTiersToExtra, type OpenAIImageSizeTier } from './openaiImageSizeTiers'
 import { supportsAccountQuota } from '@/features/admin-accounts/presentation/accountQuota'
 import type { ComputedRef, Ref } from 'vue'
 import type { useI18n } from 'vue-i18n'
@@ -140,6 +141,7 @@ type EditorFields =
   >
 
 export interface EditAccountUpdatePayloadContext extends EditorFields {
+  openAIImageSizeTiers?: Ref<OpenAIImageSizeTier[]>
   applyCodexWebSearchCapability: (credentials: UpdatePayload) => void
   applyOpenAIEndpointCapabilities: (credentials: UpdatePayload) => void
   applyOpenAIModelMappingCredentials: (credentials: UpdatePayload) => void
@@ -1135,6 +1137,11 @@ export function buildEditAccountUpdatePayload(
   applyAnthropicOAuthExtra(payload, account, context)
   applyAnthropicAPIKeyExtra(payload, account, context)
   applyOpenAIExtra(payload, account, context)
+  if (account.platform === 'openai' && context.openAIImageSizeTiers) {
+    const extra = { ...((payload.extra as UpdatePayload | undefined) || account.extra || {}) }
+    applyOpenAIImageSizeTiersToExtra(extra, context.openAIImageSizeTiers.value)
+    payload.extra = extra
+  }
   applyQuotaExtra(payload, account, context)
   applyAPIKeyBalanceExtra(payload, account, context)
   return payload

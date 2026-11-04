@@ -333,6 +333,9 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 	if account == nil || !codexContinuationSchedulingMatches(ctx, account) || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 	}
+	if vetoed, _ := openAIImageSizeVetoReason(ctx, account); vetoed {
+		return false
+	}
 	if vetoed, _ := profitControlVetoReason(ctx, account); vetoed {
 		return false
 	}
@@ -805,7 +808,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsAndStreamHealt
 
 	// 4. 设置粘性会话绑定
 	// Set sticky session binding
-	if sessionHash != "" && !openAIStickyFailoverPreservationEnabled(ctx) {
+	if sessionHash != "" && !openAIStickyFailoverPreservationEnabled(ctx) && !openAIImageSizeSpilloverPass(ctx) {
 		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, openaiStickySessionTTL)
 	}
 
@@ -835,6 +838,8 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if _, excluded := excludedIDs[accountID]; excluded {
 		return nil
 	}
+
+	ctx = withOpenAIImageSizeStickyAccount(ctx, accountID)
 
 	account, err := s.getSchedulableAccount(ctx, accountID)
 	if err != nil {
@@ -1042,6 +1047,7 @@ func (s *OpenAIGatewayService) selectLegacyStickyAccountBeforePoolScan(
 	forceSticky bool,
 	preserveStickyBinding bool,
 ) (*AccountSelectionResult, bool, bool, error) {
+	preserveStickyBinding = preserveStickyBinding || openAIImageSizeSpilloverPass(ctx)
 	if accountID <= 0 || s.concurrencyService == nil {
 		return nil, false, false, nil
 	}
@@ -1184,7 +1190,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	cfg := s.schedulingConfig()
-	preserveStickyBinding := openAIStickyFailoverPreservationEnabled(ctx)
+	preserveStickyBinding := openAIStickyFailoverPreservationEnabled(ctx) || openAIImageSizeSpilloverPass(ctx)
 	preferLowUpstreamRate := useUpstreamTokenCost && s.isOpenAILowUpstreamRatePriorityEnabled(ctx)
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var stickyAccountID int64
@@ -1193,6 +1199,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			stickyAccountID = accountID
 		}
 	}
+	ctx = withOpenAIImageSizeStickyAccount(ctx, stickyAccountID)
 	contentSessionOverflow := openAIContentSessionRequestOverflow(ctx)
 	if !contentSessionConcurrent && sessionHash != "" {
 		selection, handled, invalidated, stickyErr := s.selectLegacyStickyAccountBeforePoolScan(
@@ -1237,6 +1244,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 		}
 	}
+	ctx = withOpenAIImageSizeStickyAccount(ctx, stickyAccountID)
+
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, hasHealthyStreamAccount, err := s.selectAccountForModelWithExclusionsAndStreamHealth(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
 		if err != nil {

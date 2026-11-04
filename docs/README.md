@@ -94,6 +94,7 @@
 | [上游主线增量同步审查（2026-10-28）](UPSTREAM_SYNC_20261028.md) | 10 个增量 PR 的当前 owner 适配、计费与协议修复、性能和 Docker 升级回退 |
 | [上游主线增量同步审查（2026-10-29）](UPSTREAM_SYNC_20261029.md) | Gemini 重试、OAuth 非流式 Responses、管理员保护、渠道配置保留、性能边界与 Docker 验证 |
 | [上游主线增量同步审查（2026-10-30）](UPSTREAM_SYNC_20261030.md) | 管理 MCP PR 的分层/性能审查、前端依赖安全覆盖、平滑升级与 Docker 验证 |
+| [上游主线增量同步审查（2026-11-04）](UPSTREAM_SYNC_20261104.md) | 7 个冻结 PR 的关闭与专项台账、图片尺寸分流、协议性能适配、Docker 升级回退与 CI |
 | [API Key 删除与计费竞争条件审查（2026-10-06）](../diagnostics/billing-key-deletion-20261006/REPORT.md) | 旧版本漏扣回放、当前修复边界、真实数据库与 24 个 Docker HTTP 场景 |
 | [GPT-6 Astra 接入记录](GPT6_ASTRA.md) | OpenAI 官方模型目录、能力、价格和本项目兼容计费映射 |
 | [GPT-6 模型目录与价格](GPT6_MODELS.md) | GPT-6 Astra、Sol、Luna、GPT-6.1 Sol/Terra 的官方能力、价格与本项目实现位置 |

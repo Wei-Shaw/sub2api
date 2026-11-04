@@ -735,6 +735,10 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 		return nil, nil
 	}
 
+	if vetoed, _ := openAIImageSizeVetoReason(withOpenAIImageSizeStickyAccount(ctx, accountID), account); vetoed {
+		return nil, nil
+	}
+
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if errors.Is(acquireErr, ErrPriorityAdmissionUnavailable) {
 		return nil, acquireErr

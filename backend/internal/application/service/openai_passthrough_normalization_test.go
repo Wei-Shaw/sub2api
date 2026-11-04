@@ -107,20 +107,3 @@ func TestNormalizeOpenAIPassthroughOAuthBody_StripsOnlyInputItemInternalMetadata
 	require.True(t, ok)
 	require.NotContains(t, message, "internal_chat_message_metadata_passthrough")
 }
-
-func TestDetectOpenAIPassthroughInstructionsRejectReason(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		body string
-		want string
-	}{
-		{name: "missing is optional", body: `{"model":"gpt-5.1-codex"}`, want: ""},
-		{name: "non string remains rejected", body: `{"instructions":{"text":"invalid"}}`, want: "instructions_not_string"},
-		{name: "empty remains rejected", body: `{"instructions":"  "}`, want: "instructions_empty"},
-		{name: "non empty remains accepted", body: `{"instructions":"client guidance"}`, want: ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, detectOpenAIPassthroughInstructionsRejectReason("gpt-5.1-codex", []byte(tt.body)))
-		})
-	}
-}

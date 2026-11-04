@@ -472,6 +472,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	ctx = withOpenAIImageSizeStickyAccount(withOpenAIImageSizeStickyAccount(ctx, req.StickyAccountID), req.StickyPreviousAccountID)
 	start := time.Now()
 	defer func() {
 		decision.LatencyMs = time.Since(start).Milliseconds()
@@ -494,7 +495,8 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			return nil, decision, err
 		}
 		if selection != nil && selection.Account != nil {
-			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+			vetoed, _ := openAIImageSizeVetoReason(withOpenAIImageSizeStickyAccount(ctx, selection.Account.ID), selection.Account)
+			if vetoed || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
 				if selection.ReleaseFunc != nil {
 					selection.ReleaseFunc()
 				}
@@ -662,6 +664,8 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			return nil, 0, nil
 		}
 	}
+
+	ctx = withOpenAIImageSizeStickyAccount(ctx, accountID)
 
 	account, err := s.service.getSchedulableAccount(ctx, accountID)
 	if err != nil {
@@ -2213,6 +2217,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
 		return false, "capability_mismatch"
 	}
+	if vetoed, reason := openAIImageSizeVetoReason(ctx, account); vetoed {
+		return false, reason
+	}
 	if vetoed, reason := profitControlVetoReason(ctx, account); vetoed {
 		return false, reason
 	}
@@ -2778,7 +2785,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerInGroupRaw(
 	if requiredImageCapability == "" {
 		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 	}
-	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	selection, decision, err := s.selectAccountWithSchedulerBySize(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	selection = attachSelectionProfitGate(ctx, selection)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err
@@ -2795,7 +2802,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerInGroupRaw(
 		return selection, decision, err
 	}
 	s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
-	selection, decision, err = s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	selection, decision, err = s.selectAccountWithSchedulerBySize(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	return attachSelectionProfitGate(ctx, selection), decision, err
 }
 
@@ -2819,7 +2826,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	contentSessionConcurrent := openAIContentSessionRequestConcurrent(ctx)
 	contentSessionOverflow := openAIContentSessionRequestOverflow(ctx)
 	contentSessionBurst := contentSessionConcurrent || contentSessionOverflow
-	preserveStickyBinding := contentSessionBurst || openAIStickyFailoverPreservationEnabled(ctx)
+	preserveStickyBinding := contentSessionBurst || openAIStickyFailoverPreservationEnabled(ctx) || openAIImageSizeSpilloverPass(ctx)
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {

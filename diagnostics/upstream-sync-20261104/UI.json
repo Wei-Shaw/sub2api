@@ -1,0 +1,30 @@
+{
+  "screenshots": [
+    {
+      "path": "output/playwright/upstream-sync-20261104-desktop-zh.png",
+      "sha256": "082314f4f5efa0f03b5a3d09fb828eea1a4f3c6cdec1d7761e5d614534dd0db6",
+      "width": 1280,
+      "height": 800,
+      "language": "zh",
+      "result": "PASS"
+    },
+    {
+      "path": "output/playwright/upstream-sync-20261104-mobile-en.png",
+      "sha256": "4be227d2a465bf4493aa0b7be084a67ee1e47c5f05905f294eb8d3506a147e90",
+      "width": 390,
+      "height": 844,
+      "language": "en",
+      "result": "PASS"
+    }
+  ],
+  "mobile_scroll_width": 390,
+  "mobile_viewport_width": 390,
+  "checks": [
+    "default all tiers",
+    "cannot uncheck final tier",
+    "bulk unchanged by default",
+    "bulk explicit enable",
+    "real zh/en labels"
+  ],
+  "scope": "Actual feature widgets in an isolated Vue/Vite fixture; not a full administration end-to-end test."
+}

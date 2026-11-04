@@ -69,3 +69,5 @@ OpenAI 与 Anthropic API-key 的 WebSearch 模拟共用已有三态字段和全�
 `presentation/accountFilterState.ts` 校验并持久化账号平台/状态筛选；`presentation/accountQuota.ts` 统一 API Key、Bedrock 与 service account 的本地配额展示和编辑资格，池模式权限保持独立。
 
 `GrokModelDiagnosticsPanel.vue` 查询已保存账号详情并显式刷新目录；诊断和 API 类型由同 feature 的 `data/dtos/grokModelDiagnostics.ts` 所有。Grok 白名单同步只补下拉可选项，不自动改变选择。账号切换后忽略迟到响应，旧节点缺少诊断字段时显示兼容提示。
+
+`presentation/accountCreateOpenAIExtra.ts` 构造创建账号的 OpenAI extra；`openaiImageSizeTiers.ts` 与 `OpenAIImageSizeTiersField.vue` 统一创建、编辑和批量更新的图片档位。缺省/全选不限，批量 null 不修改、显式空数组清除限制；启用前须完成全部节点升级，见 [同步审查](../../../../docs/UPSTREAM_SYNC_20261104.md)。

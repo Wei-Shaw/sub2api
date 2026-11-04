@@ -20,6 +20,7 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	rememberOpenAIResponsesClientInstructions(c, body)
 	distillation := s.IsDistillationGroupRequest(c, account)
 	if distillation {
 		body = stripDistillationCacheFields(body)
@@ -967,6 +968,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				upstreamCtx, releaseUpstreamCtx, startTime.Add(firstOutputTimeout),
 			)
 		}
+		syncOpenAIResponsesInstructionsEcho(c, body)
 		upstreamReq, err := s.buildUpstreamRequestWithFingerprint(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI, fingerprintIDs)
 		if headerGuard == nil {
 			releaseUpstreamCtx()

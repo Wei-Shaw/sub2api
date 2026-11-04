@@ -108,3 +108,5 @@ Claude 指纹的 UTF-16 前缀、Gemini fileData 计图、DeepSeek Pro/缓存读
 `gemini_declared_models.go` 对原生模型元数据复用单次账号读取；Gemini 可配置同号重试、渠道平台维度合并和 OAuth 非流式终止响应聚合见 [2026-10-29 同步记录](../../../../docs/UPSTREAM_SYNC_20261029.md)。
 
 `mcp_oauth*` owns OAuth/PKCE management authorizations and repository ports; tool schemas remain in `modules/managementmcp` and HTTP/SDK adaptation stays in transport.
+
+图片尺寸路由由 `openai_image_size_routing.go` 持有，保留有序分组和现有调度准入；Antigravity 系统身份转换和 Responses 指令回显分别由 `antigravity_system_identity.go`、`openai_responses_instructions_echo.go` 持有。新增档位须全节点升级后启用，见 [同步审查](../../../../docs/UPSTREAM_SYNC_20261104.md)。
