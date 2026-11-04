@@ -606,6 +606,8 @@ type ClaudeUsage struct {
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 
 	cacheCreationInputTokensPresent bool
+	promptTotalTokens               int
+	promptTotalPresent              bool
 }
 
 // ForwardResult 转发结果

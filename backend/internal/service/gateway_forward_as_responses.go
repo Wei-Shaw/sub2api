@@ -294,31 +294,27 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		return
 	}
 
-	cacheReadTokens := src.CacheReadInputTokens
-	if cacheReadTokens == 0 && src.CachedTokens > 0 {
-		cacheReadTokens = src.CachedTokens
+	cacheReadTokens := max(src.CacheReadInputTokens, 0)
+	hasCacheReadTokens := src.CacheReadInputTokensPresent || src.CacheReadInputTokens != 0
+	if cacheReadTokens == 0 && (src.CachedTokensPresent || src.CachedTokens != 0) {
+		cacheReadTokens = max(src.CachedTokens, 0)
+		hasCacheReadTokens = true
 	}
-	if cacheReadTokens == 0 && src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens > 0 {
-		cacheReadTokens = src.PromptTokensDetails.CachedTokens
+	if cacheReadTokens == 0 && src.PromptTokensDetails != nil && (src.PromptTokensDetails.CachedTokensPresent || src.PromptTokensDetails.CachedTokens != 0) {
+		cacheReadTokens = max(src.PromptTokensDetails.CachedTokens, 0)
+		hasCacheReadTokens = true
 	}
 	if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
 		cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
+		hasCacheReadTokens = true
 	}
 	mergeAnthropicCacheCreationUsage(dst, src)
-	cacheCreationTokens := dst.CacheCreationInputTokens
 
 	// Some Anthropic-compatible providers retain OpenAI-style prompt/cache
 	// fields. Prefer those authoritative totals or hit/miss buckets over the
 	// overloaded input_tokens field. This covers Kimi's changing stream
 	// semantics as well as GLM/DeepSeek cache aliases.
-	if src.PromptTokens > 0 || src.PromptCacheHitTokens != nil || src.PromptCacheMissTokens != nil {
-		if src.PromptCacheMissTokens != nil {
-			dst.InputTokens = max(*src.PromptCacheMissTokens, 0)
-		} else {
-			dst.InputTokens = max(src.PromptTokens-cacheReadTokens-cacheCreationTokens, 0)
-		}
-		dst.CacheReadInputTokens = cacheReadTokens
-	} else {
+	if src.PromptTokens <= 0 && src.PromptCacheHitTokens == nil && src.PromptCacheMissTokens == nil && !dst.promptTotalPresent {
 		// Without an authoritative prompt total or miss bucket, input_tokens is
 		// provider-specific: it may already be the uncached bucket, or it may be
 		// a total from an earlier event. Do not infer a subtraction merely because
@@ -327,12 +323,28 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		if src.InputTokens > 0 {
 			dst.InputTokens = src.InputTokens
 		}
-		if cacheReadTokens > 0 {
-			dst.CacheReadInputTokens = cacheReadTokens
-		}
 	}
+	if hasCacheReadTokens {
+		dst.CacheReadInputTokens = cacheReadTokens
+	}
+	normalizeAnthropicPromptTotal(dst, src.PromptTokens, src.PromptCacheMissTokens)
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
+	}
+}
+
+func normalizeAnthropicPromptTotal(usage *ClaudeUsage, promptTokens int, promptCacheMissTokens *int) {
+	if promptCacheMissTokens != nil {
+		usage.promptTotalPresent = false
+		usage.InputTokens = max(*promptCacheMissTokens, 0)
+		return
+	}
+	if promptTokens > 0 {
+		usage.promptTotalTokens = promptTokens
+		usage.promptTotalPresent = true
+	}
+	if usage.promptTotalPresent {
+		usage.InputTokens = max(usage.promptTotalTokens-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0)
 	}
 }
 

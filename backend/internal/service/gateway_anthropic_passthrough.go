@@ -635,7 +635,6 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 		msgUsage := parsed.Get("message.usage")
 		if msgUsage.Exists() {
 			usage.InputTokens = int(msgUsage.Get("input_tokens").Int())
-			usage.CacheReadInputTokens = int(msgUsage.Get("cache_read_input_tokens").Int())
 
 			mergeRawAnthropicCacheCreationUsage(msgUsage, usage)
 		}
@@ -648,10 +647,6 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 			if v := deltaUsage.Get("output_tokens").Int(); v > 0 {
 				usage.OutputTokens = int(v)
 			}
-			if v := deltaUsage.Get("cache_read_input_tokens").Int(); v > 0 {
-				usage.CacheReadInputTokens = int(v)
-			}
-
 			mergeRawAnthropicCacheCreationUsage(deltaUsage, usage)
 		}
 	default:
@@ -662,15 +657,6 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 		mergeRawAnthropicCacheCreationUsage(usageNode, usage)
 	}
 
-	if usage.CacheReadInputTokens == 0 {
-		if cached := parsed.Get("message.usage.cached_tokens").Int(); cached > 0 {
-			usage.CacheReadInputTokens = int(cached)
-		}
-		if cached := parsed.Get("usage.cached_tokens").Int(); usage.CacheReadInputTokens == 0 && cached > 0 {
-			usage.CacheReadInputTokens = int(cached)
-		}
-	}
-
 	// Kimi's Anthropic-compatible stream uses input_tokens with two meanings:
 	// message_start reports total prompt input, while message_delta reports only
 	// uncached input. prompt_tokens remains the total in both events. Normalize
@@ -679,6 +665,17 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	usageNode := parsed.Get("usage")
 	if parsed.Get("type").String() == "message_start" {
 		usageNode = parsed.Get("message.usage")
+	}
+	if !usageNode.Exists() || usageNode.Type == gjson.Null {
+		usageNode = parsed.Get("message.usage")
+	}
+	for _, path := range []string{"cache_read_input_tokens", "cached_tokens", "prompt_tokens_details.cached_tokens", "prompt_cache_hit_tokens"} {
+		if value := usageNode.Get(path); value.Exists() && value.Type != gjson.Null {
+			usage.CacheReadInputTokens = max(int(value.Int()), 0)
+			if usage.CacheReadInputTokens > 0 {
+				break
+			}
+		}
 	}
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
 }
@@ -694,38 +691,28 @@ func normalizeAnthropicCompatiblePromptUsage(usageNode gjson.Result, usage *Clau
 	promptCacheHitTokens := usageNode.Get("prompt_cache_hit_tokens")
 	promptCacheMissTokens := usageNode.Get("prompt_cache_miss_tokens")
 	if (!promptTokens.Exists() || promptTokens.Int() <= 0) &&
-		!promptCacheHitTokens.Exists() && !promptCacheMissTokens.Exists() {
+		!promptCacheHitTokens.Exists() && !promptCacheMissTokens.Exists() && !usage.promptTotalPresent {
 		return false
 	}
 
 	cacheReadTokens := usage.CacheReadInputTokens
-	if v := usageNode.Get("cache_read_input_tokens"); v.Exists() {
-		cacheReadTokens = int(v.Int())
-	}
-	if cacheReadTokens == 0 {
-		if v := usageNode.Get("cached_tokens"); v.Exists() {
-			cacheReadTokens = int(v.Int())
+	for _, path := range []string{"cache_read_input_tokens", "cached_tokens", "prompt_tokens_details.cached_tokens", "prompt_cache_hit_tokens"} {
+		if value := usageNode.Get(path); value.Exists() && value.Type != gjson.Null {
+			cacheReadTokens = max(int(value.Int()), 0)
+			if cacheReadTokens > 0 {
+				break
+			}
 		}
-	}
-	if cacheReadTokens == 0 {
-		if v := usageNode.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
-			cacheReadTokens = int(v.Int())
-		}
-	}
-	if cacheReadTokens == 0 && promptCacheHitTokens.Exists() {
-		cacheReadTokens = max(int(promptCacheHitTokens.Int()), 0)
 	}
 
 	mergeRawAnthropicCacheCreationUsage(usageNode, usage)
-	cacheCreationTokens := usage.CacheCreationInputTokens
-
-	if promptCacheMissTokens.Exists() {
-		usage.InputTokens = max(int(promptCacheMissTokens.Int()), 0)
-	} else {
-		usage.InputTokens = max(int(promptTokens.Int())-cacheReadTokens-cacheCreationTokens, 0)
-	}
 	usage.CacheReadInputTokens = cacheReadTokens
-	usage.CacheCreationInputTokens = cacheCreationTokens
+	var cacheMissTokens *int
+	if promptCacheMissTokens.Exists() && promptCacheMissTokens.Type != gjson.Null {
+		value := int(promptCacheMissTokens.Int())
+		cacheMissTokens = &value
+	}
+	normalizeAnthropicPromptTotal(usage, int(promptTokens.Int()), cacheMissTokens)
 	return true
 }
 

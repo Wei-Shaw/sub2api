@@ -1178,6 +1178,8 @@ func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
 }
 
 type sseUsagePatch struct {
+	promptTokens             int
+	promptCacheMissTokens    *int
 	inputTokens              int
 	hasInputTokens           bool
 	outputTokens             int
@@ -1206,7 +1208,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			return nil
 		}
 
-		patch := &sseUsagePatch{}
+		patch := extractAnthropicPromptPatch(usageObj)
 		patch.hasInputTokens = true
 		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok {
 			patch.inputTokens = v
@@ -1215,10 +1217,11 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.cacheCreationInputTokens = v
 			patch.hasCacheCreationInput = true
 		}
-		patch.hasCacheReadInput = true
 		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok {
-			patch.cacheReadInputTokens = v
+			patch.cacheReadInputTokens = max(v, 0)
+			patch.hasCacheReadInput = true
 		}
+		applyAnthropicCacheReadAliases(patch, usageObj)
 		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
 			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists {
 				patch.cacheCreation5mTokens = v
@@ -1237,7 +1240,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			return nil
 		}
 
-		patch := &sseUsagePatch{}
+		patch := extractAnthropicPromptPatch(usageObj)
 		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok && v > 0 {
 			patch.inputTokens = v
 			patch.hasInputTokens = true
@@ -1250,10 +1253,11 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.cacheCreationInputTokens = v
 			patch.hasCacheCreationInput = true
 		}
-		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok && v > 0 {
-			patch.cacheReadInputTokens = v
+		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok {
+			patch.cacheReadInputTokens = max(v, 0)
 			patch.hasCacheReadInput = true
 		}
+		applyAnthropicCacheReadAliases(patch, usageObj)
 		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
 			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists {
 				patch.cacheCreation5mTokens = v
@@ -1268,6 +1272,28 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 	}
 
 	return nil
+}
+
+func extractAnthropicPromptPatch(usageObj map[string]any) *sseUsagePatch {
+	patch := &sseUsagePatch{}
+	patch.promptTokens, _ = parseSSEUsageInt(usageObj["prompt_tokens"])
+	if value, ok := parseSSEUsageInt(usageObj["prompt_cache_miss_tokens"]); ok {
+		patch.promptCacheMissTokens = &value
+	}
+	return patch
+}
+
+func applyAnthropicCacheReadAliases(patch *sseUsagePatch, usageObj map[string]any) {
+	details, _ := usageObj["prompt_tokens_details"].(map[string]any)
+	for _, alias := range []any{usageObj["cached_tokens"], details["cached_tokens"], usageObj["prompt_cache_hit_tokens"]} {
+		if patch.cacheReadInputTokens != 0 {
+			break
+		}
+		if value, ok := parseSSEUsageInt(alias); ok {
+			patch.cacheReadInputTokens = max(value, 0)
+			patch.hasCacheReadInput = true
+		}
+	}
 }
 
 func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
@@ -1297,6 +1323,7 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if !usage.cacheCreationInputTokensPresent && (patch.hasCacheCreation5m || patch.hasCacheCreation1h) {
 		usage.CacheCreationInputTokens = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
 	}
+	normalizeAnthropicPromptTotal(usage, patch.promptTokens, patch.promptCacheMissTokens)
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -1414,6 +1441,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	}
 
 	mergeRawAnthropicCacheCreationUsage(gjson.GetBytes(body, "usage"), &response.Usage)
+	normalizeAnthropicCompatiblePromptUsage(gjson.GetBytes(body, "usage"), &response.Usage)
 
 	// 兼容 Kimi cached_tokens → cache_read_input_tokens
 	if response.Usage.CacheReadInputTokens == 0 {

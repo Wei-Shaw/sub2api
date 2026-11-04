@@ -285,12 +285,14 @@ func assertAnthropicCacheCreationOverrideCosts(t *testing.T, result *ForwardResu
 		require.Equal(t, result.Usage.CacheCreation5mTokens, usageRepo.lastLog.CacheCreation5mTokens)
 		require.Equal(t, result.Usage.CacheCreation1hTokens, usageRepo.lastLog.CacheCreation1hTokens)
 		require.InDelta(t, wantCacheCost, usageRepo.lastLog.CacheCreationCost, 1e-12)
-		require.InDelta(t, 0.014+wantCacheCost, usageRepo.lastLog.TotalCost, 1e-12)
-		require.InDelta(t, (0.014+wantCacheCost)*0.5, usageRepo.lastLog.ActualCost, 1e-12)
+		wantTotalCost := float64(result.Usage.InputTokens)*0.001 + float64(result.Usage.OutputTokens)*0.002 + wantCacheCost
+		require.Equal(t, result.Usage.InputTokens, usageRepo.lastLog.InputTokens)
+		require.InDelta(t, wantTotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+		require.InDelta(t, wantTotalCost*0.5, usageRepo.lastLog.ActualCost, 1e-12)
 		require.Equal(t, 1, billingRepo.calls)
-		require.InDelta(t, (0.014+wantCacheCost)*0.5, billingRepo.lastCmd.BalanceCost, 1e-12)
+		require.InDelta(t, wantTotalCost*0.5, billingRepo.lastCmd.BalanceCost, 1e-12)
 		require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
-		require.InDelta(t, (0.014+wantCacheCost)*statsMultiplier, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+		require.InDelta(t, wantTotalCost*statsMultiplier, *usageRepo.lastLog.AccountStatsCost, 1e-12)
 	}
 }
 
