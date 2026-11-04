@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ForwardAsChatCompletions serves OpenAI Chat Completions clients through
@@ -127,6 +128,8 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	var resp *http.Response
 	// checkedPolicy 是循环内对当前 resp 的错误策略检查结果，未检查时为 nil。
 	var checkedPolicy *ErrorPolicyResult
+	var releaseUpstreamCtx context.CancelFunc
+	var startDisconnectDrain func()
 	maxAttempts := s.geminiMaxAttemptsPerAccount()
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		upstreamReq, idHeader, err := buildReq(ctx)
@@ -140,9 +143,26 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 
+		drainTimeout := s.geminiDisconnectDrainTimeout()
+		upstreamCtx, startAttemptDrain, releaseAttempt := newGeminiUpstreamAttemptContext(ctx, drainTimeout, func() {
+			logger.FromContext(ctx).Info("gemini.chat_completions_disconnect_drain_started",
+				zap.Int64("account_id", account.ID),
+				zap.String("model", mappedModel),
+				zap.Bool("stream", clientStream),
+				zap.Int64("drain_timeout_ms", drainTimeout.Milliseconds()),
+			)
+		})
+		upstreamReq = upstreamReq.WithContext(upstreamCtx)
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
+			releaseAttempt()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err)
 		}
 
@@ -150,12 +170,15 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		resp = rebuilt
 		checkedPolicy = checked
 		if checked != nil && *checked != ErrorPolicyNone {
+			releaseUpstreamCtx = releaseAttempt
+			startDisconnectDrain = startAttemptDrain
 			break
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
+			releaseAttempt()
 			if resp.StatusCode == http.StatusForbidden && isGeminiInsufficientScope(resp.Header, respBody) {
 				resp = &http.Response{
 					StatusCode: resp.StatusCode,
@@ -166,6 +189,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			}
 			if resp.StatusCode == http.StatusTooManyRequests {
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
 			if attempt < maxAttempts {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -186,7 +212,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 					Message:            upstreamMsg,
 				})
 				logger.LegacyPrintf("service.gemini_chat_completions", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, maxAttempts)
-				sleepGeminiBackoff(attempt)
+				if !sleepGeminiBackoffWithContext(ctx, attempt) {
+					return nil, ctx.Err()
+				}
 				continue
 			}
 			resp = &http.Response{
@@ -197,7 +225,12 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			break
 		}
 
+		releaseUpstreamCtx = releaseAttempt
+		startDisconnectDrain = startAttemptDrain
 		break
+	}
+	if releaseUpstreamCtx != nil {
+		defer releaseUpstreamCtx()
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -205,14 +238,44 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	if requestID == "" {
 		requestID = resp.Header.Get("x-goog-request-id")
 	}
-	if requestID != "" {
+	if requestID != "" && ctx.Err() == nil {
 		c.Header("x-request-id", requestID)
 	}
 
 	reasoningEffort := extractGeminiReasoningEffortFromBody(geminiReq)
+	imageCount := 0
+	imageInputSize := s.extractImageInputSize(claudeBody)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+	}
+	makeResult := func(usage *ClaudeUsage, firstTokenMs *int, clientDisconnect bool) *ForwardResult {
+		if usage == nil {
+			usage = &ClaudeUsage{}
+		}
+		return &ForwardResult{
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            *usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			Stream:           clientStream,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ReasoningEffort:  reasoningEffort,
+			ImageEndpoint:    imageCount > 0,
+			ImageCount:       imageCount,
+			ImageSize:        imageSize,
+			ImageInputSize:   imageInputSize,
+			ClientDisconnect: clientDisconnect || ctx.Err() != nil,
+		}
+	}
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		policy := ErrorPolicyNone
 		if s.rateLimitService != nil {
 			policy = s.finalErrorPolicy(ctx, account, resp.StatusCode, respBody, mappedModel, checkedPolicy)
@@ -257,8 +320,11 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	clientDisconnect := false
 	streamFinished := false
 	if clientStream {
-		streamRes, err := s.handleChatCompletionsStreamingResponseFromGemini(c, resp, startTime, originalModel, account.Type == AccountTypeOAuth, includeUsage)
+		streamRes, err := s.handleChatCompletionsStreamingResponseFromGemini(c, resp, startTime, originalModel, account.Type == AccountTypeOAuth, includeUsage, startDisconnectDrain)
 		if err != nil {
+			if streamRes != nil && streamRes.usageObserved {
+				return makeResult(streamRes.usage, streamRes.firstTokenMs, streamRes.clientDisconnect), err
+			}
 			return nil, err
 		}
 		usage = streamRes.usage
@@ -266,16 +332,29 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		clientDisconnect = streamRes.clientDisconnect
 		streamFinished = streamRes.finished
 	} else if useUpstreamStream {
-		collected, usageObj, err := collectGeminiSSE(resp.Body, account.Type == AccountTypeOAuth)
+		collected, usageObj, usageObserved, err := collectGeminiSSEWithUsageObservation(resp.Body, account.Type == AccountTypeOAuth)
 		if err != nil {
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
+			var result *ForwardResult
+			if usageObserved {
+				result = makeResult(usageObj, nil, ctx.Err() != nil)
+			}
+			if ctx.Err() == nil {
+				_ = s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
+			}
+			streamErr := fmt.Errorf("failed to read upstream stream: %w", err)
+			if ctx.Err() != nil {
+				streamErr = fmt.Errorf("%w: %w", ErrGeminiClientDisconnected, streamErr)
+			}
+			return result, streamErr
 		}
 		collectedBytes, _ := json.Marshal(collected)
 		chatResp, usageObj2, err := geminiResponseToChatCompletions(collected, originalModel, collectedBytes, usageObj)
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 		}
-		c.JSON(http.StatusOK, chatResp)
+		if ctx.Err() == nil {
+			c.JSON(http.StatusOK, chatResp)
+		}
 		usage = usageObj2
 	} else {
 		usageResp, err := s.handleChatCompletionsNonStreamingResponseFromGemini(c, resp, originalModel, account.Type == AccountTypeOAuth)
@@ -285,37 +364,12 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		usage = usageResp
 	}
 
-	if usage == nil {
-		usage = &ClaudeUsage{}
-	}
-
-	imageCount := 0
-	imageInputSize := s.extractImageInputSize(claudeBody)
-	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
-	}
 	// 客户端在收到结束分片前断开时只计已送达的图片：Chat 流不向客户端转发图片。
 	if clientDisconnect && !streamFinished {
 		imageCount = 0
 	}
 
-	return &ForwardResult{
-		RequestID:        requestID,
-		UpstreamHeaders:  resp.Header,
-		Usage:            *usage,
-		Model:            originalModel,
-		UpstreamModel:    mappedModel,
-		Stream:           clientStream,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
-		ReasoningEffort:  reasoningEffort,
-		ImageEndpoint:    imageCount > 0,
-		ImageCount:       imageCount,
-		ImageSize:        imageSize,
-		ImageInputSize:   imageInputSize,
-		ClientDisconnect: clientDisconnect,
-	}, nil
+	return makeResult(usage, firstTokenMs, clientDisconnect), nil
 }
 
 func (s *GeminiMessagesCompatService) buildGeminiChatCompletionsUpstreamRequestFunc(
@@ -463,6 +517,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 ) (*ClaudeUsage, error) {
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if c.Request != nil && c.Request.Context().Err() != nil {
+			return nil, fmt.Errorf("%w: %w", ErrGeminiClientDisconnected, err)
+		}
 		return nil, err
 	}
 	if isOAuth {
@@ -482,7 +539,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	c.JSON(http.StatusOK, chatResp)
+	if c.Request == nil || c.Request.Context().Err() == nil {
+		c.JSON(http.StatusOK, chatResp)
+	}
 	return usage, nil
 }
 
@@ -521,15 +580,23 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	originalModel string,
 	isOAuth bool,
 	includeUsage bool,
+	startDisconnectDrain func(),
 ) (*geminiStreamResult, error) {
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	downstreamCtx := context.Background()
+	if c.Request != nil {
+		downstreamCtx = c.Request.Context()
 	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+	clientGone := downstreamCtx.Err() != nil
+	if !clientGone {
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
+	}
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -544,21 +611,45 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
+	usageObserved := false
 	firstChunk := true
 	finishReason := ""
 	clientDisconnect := false
 	streamResult := func() *geminiStreamResult {
-		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnect, finished: finishReason != ""}
+		return &geminiStreamResult{
+			usage:            &usage,
+			firstTokenMs:     firstTokenMs,
+			usageObserved:    usageObserved,
+			clientDisconnect: clientDisconnect,
+			finished:         finishReason != "",
+		}
 	}
 
+	// markClientDisconnected 停止向下游写入，并启动上游排空计时：
+	// 断开后仍需读完上游才能拿到完整 usage，排空窗口由
+	// gateway.gemini_disconnect_drain_timeout_seconds 限制。
+	markClientDisconnected := func() {
+		if !clientDisconnect && startDisconnectDrain != nil {
+			startDisconnectDrain()
+		}
+		clientDisconnect = true
+	}
+
+	// writeChatChunk 返回 true 表示已无法继续向下游写入（断开或写失败）。
+	// 注意：调用方不因写失败提前结束读取——断开后仍需读完上游才能拿到 terminal usage，
+	// 排空窗口由 startDisconnectDrain 承担。
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
+		if clientDisconnect || downstreamCtx.Err() != nil {
+			markClientDisconnected()
+			return false
+		}
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
 			return false
 		}
 		if _, err := io.WriteString(c.Writer, sse); err != nil {
-			clientDisconnect = true
-			return true
+			markClientDisconnected()
+			return false
 		}
 		return false
 	}
@@ -568,12 +659,12 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		for _, resEvt := range responsesEvents {
 			chunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 			for _, chunk := range chunks {
-				if disconnected := writeChatChunk(chunk); disconnected {
-					return true
-				}
+				writeChatChunk(chunk)
 			}
 		}
-		flusher.Flush()
+		if !clientDisconnect {
+			flusher.Flush()
+		}
 		return false
 	}
 
@@ -650,6 +741,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 						}
 						if u := extractGeminiUsage(rawBytes); u != nil {
 							usage = *u
+							usageObserved = true
 						}
 
 						for _, part := range extractGeminiParts(geminiResp) {
@@ -799,12 +891,30 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 			break
 		}
 		if err != nil {
-			if geminiStreamAbortedWithBillableOutput(c, err, &usage) {
+			// 客户端已断开，或读取在客户端断开后失败：保留已收集的用量并标记断开。
+			if downstreamCtx.Err() != nil {
+				markClientDisconnected()
+			}
+			if clientDisconnect && usageObserved {
+				// 断开前已观测到用量：按已收集用量正常收尾，不向上层报错。
 				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during chat completions stream, billing collected usage: %v", err)
-				clientDisconnect = true
 				return streamResult(), nil
 			}
-			return nil, fmt.Errorf("stream read error: %w", err)
+			streamErr := fmt.Errorf("stream read error: %w", err)
+			if clientDisconnect {
+				streamErr = fmt.Errorf("%w: %w", ErrGeminiClientDisconnected, streamErr)
+			}
+			if usageObserved {
+				// 已观测到用量：把部分结果交回上层，由上层决定入账口径。
+				return &geminiStreamResult{
+					usage:            &usage,
+					firstTokenMs:     firstTokenMs,
+					usageObserved:    usageObserved,
+					clientDisconnect: clientDisconnect,
+					finished:         finishReason != "",
+				}, streamErr
+			}
+			return nil, streamErr
 		}
 	}
 
@@ -853,7 +963,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		}
 	}
 
-	_, _ = io.WriteString(c.Writer, "data: [DONE]\n\n")
+	if !clientDisconnect && downstreamCtx.Err() == nil {
+		_, _ = io.WriteString(c.Writer, "data: [DONE]\n\n")
+	}
 	flusher.Flush()
 
 	return streamResult(), nil

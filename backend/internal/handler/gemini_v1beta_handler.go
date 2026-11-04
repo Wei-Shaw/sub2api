@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -19,7 +20,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/google/uuid"
@@ -749,8 +749,12 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				reqLog.Warn("gemini.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
-		// 账号槽位/等待计数需要在超时或断开时安全回收
-		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		useNativeForward := account.Platform != service.PlatformAntigravity || account.Type == service.AccountTypeAPIKey
+		drainNativeAttempt := useNativeForward && action != "countTokens"
+		// Native generation keeps the account slot until its bounded usage drain ends.
+		if !drainNativeAttempt {
+			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		}
 
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
@@ -759,7 +763,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		}
 		sessionGroupID := derefGroupID(apiKey.GroupID)
-		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
+		if !useNativeForward {
 			result, err = h.antigravityGatewayService.ForwardGemini(
 				requestCtx,
 				c,
@@ -777,7 +781,95 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
+
+		userAgent := c.GetHeader("User-Agent")
+		clientIP := ip.GetClientIP(c)
+		requestPayloadHash := service.HashUsageRequestPayload(body)
+		inboundEndpoint := GetInboundEndpoint(c)
+		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		forceCacheBilling := fs.ForceCacheBilling
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		sessionID := service.ExtractClientSessionID(c)
+		partialUsage := err != nil && result != nil
+		nativeDisconnect := drainNativeAttempt &&
+			(c.Request.Context().Err() != nil || errors.Is(err, service.ErrGeminiClientDisconnected) || (result != nil && result.ClientDisconnect))
+		if nativeDisconnect {
+			outcome := "no_usage"
+			fields := []zap.Field{
+				zap.Int64("account_id", account.ID),
+				zap.String("action", action),
+				zap.Bool("stream", stream),
+				zap.Int64("duration_ms", time.Since(pricingAt).Milliseconds()),
+			}
+			if result != nil {
+				outcome = "terminal_usage"
+				if partialUsage {
+					outcome = "partial_usage"
+				}
+				fields = append(fields,
+					zap.String("upstream_request_id", result.RequestID),
+					zap.Int("input_tokens", result.Usage.InputTokens),
+					zap.Int("output_tokens", result.Usage.OutputTokens),
+					zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+					zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+				)
+			}
+			if err != nil {
+				fields = append(fields, zap.Error(err))
+			}
+			reqLog.Info("gemini.native_disconnect_drain_finished",
+				append(fields, zap.String("outcome", outcome))...,
+			)
+		}
+		submitUsage := func(result *service.ForwardResult, partial bool) {
+			if result == nil {
+				return
+			}
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				if recordErr := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:             result,
+					QuotaPlatform:      quotaPlatform,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					PricingAt:          pricingAt,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: requestPayloadHash,
+					ForceCacheBilling:  forceCacheBilling,
+					APIKeyService:      h.apiKeyService,
+					SessionID:          sessionID,
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				}); recordErr != nil {
+					reqLog.Error("gemini.record_usage_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(recordErr),
+					)
+				} else if result.ClientDisconnect {
+					reqLog.Info("gemini.native_disconnect_usage_recorded",
+						zap.Int64("account_id", account.ID),
+						zap.String("upstream_request_id", result.RequestID),
+						zap.String("action", action),
+						zap.Bool("stream", result.Stream),
+						zap.Bool("partial_usage", partial),
+						zap.Int("input_tokens", result.Usage.InputTokens),
+						zap.Int("output_tokens", result.Usage.OutputTokens),
+						zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+						zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+					)
+				}
+			})
+		}
 		if err != nil {
+			if nativeDisconnect {
+				// 断开前已观测到的用量照常入账；响应未提交时标记 499。
+				submitUsage(result, true)
+				failoverClientGone(c)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
@@ -796,15 +888,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					return
 				}
 			}
-			// 转发层已写出错误响应；客户端断开时转发层不写，响应未提交则标记 499。
+			// 断开前已观测到的用量照常入账；响应未提交时标记 499。
+			// ForwardNative already wrote the response
+			submitUsage(result, true)
 			failoverClientGone(c)
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
 		}
-
-		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
-		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
 
 		// 保存 Gemini 内容摘要会话（用于 Fallback 匹配）
 		if useDigestFallback && geminiDigestChain != "" && geminiPrefixHash != "" {
@@ -821,44 +911,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			}
 		}
 
-		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
-		requestPayloadHash := service.HashUsageRequestPayload(body)
-		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-		// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
-		forceCacheBilling := fs.ForceCacheBilling
-		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-		sessionID := service.ExtractClientSessionID(c)
 		// 长上下文阶梯由目录数据驱动，统一在计费路径内生效，入口无需声明。
-		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:             result,
-				QuotaPlatform:      quotaPlatform,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				PricingAt:          pricingAt,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
-				ForceCacheBilling:  forceCacheBilling,
-				APIKeyService:      h.apiKeyService,
-				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
-			}); err != nil {
-				logger.L().With(
-					zap.String("component", "handler.gemini_v1beta.models"),
-					zap.Int64("user_id", authSubject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
-					zap.String("model", modelName),
-					zap.Int64("account_id", account.ID),
-				).Error("gemini.record_usage_failed", zap.Error(err))
-			}
-		})
+		submitUsage(result, false)
 		reqLog.Debug("gemini.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", fs.SwitchCount),

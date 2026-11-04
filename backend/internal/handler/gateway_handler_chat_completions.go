@@ -276,7 +276,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				reqLog.Warn("gateway.cc.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
-		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		// Accepted Gemini attempts may outlive the downstream request while they
+		// drain provider usage. Keep the account slot until that bounded drain ends.
+		if account.Platform != service.PlatformGemini {
+			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		}
 
 		if groupPlatform == service.PlatformGemini && account.Platform != service.PlatformGemini {
 			if accountReleaseFunc != nil {
@@ -320,16 +324,45 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
-
-		// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
-		// 错误路径共用；failover 错误恒定 result=nil，不会重复计费。
-		submitForwardUsage := func(result *service.ForwardResult) {
+		geminiDisconnect := account.Platform == service.PlatformGemini &&
+			((result != nil && result.ClientDisconnect) || errors.Is(err, service.ErrGeminiClientDisconnected))
+		partialUsage := err != nil && result != nil
+		if geminiDisconnect {
+			outcome := "no_usage"
+			fields := []zap.Field{
+				zap.Int64("account_id", account.ID),
+				zap.Bool("stream", reqStream),
+				zap.Int64("duration_ms", time.Since(requestStart).Milliseconds()),
+			}
+			if result != nil {
+				outcome = "terminal_usage"
+				if partialUsage {
+					outcome = "partial_usage"
+				}
+				fields = append(fields,
+					zap.String("upstream_request_id", result.RequestID),
+					zap.Int("input_tokens", result.Usage.InputTokens),
+					zap.Int("output_tokens", result.Usage.OutputTokens),
+					zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+					zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+				)
+			}
+			if err != nil {
+				fields = append(fields, zap.Error(err))
+			}
+			reqLog.Info("gateway.cc.gemini_disconnect_drain_finished",
+				append(fields, zap.String("outcome", outcome))...,
+			)
+		}
+		submitForwardUsage := func(result *service.ForwardResult, partial bool) {
+			if result == nil {
+				return
+			}
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
@@ -355,11 +388,28 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.Error(err),
 					)
+				} else if result.ClientDisconnect {
+					reqLog.Info("gateway.cc.gemini_disconnect_usage_recorded",
+						zap.Int64("account_id", account.ID),
+						zap.String("upstream_request_id", result.RequestID),
+						zap.Bool("stream", result.Stream),
+						zap.Bool("partial_usage", partial),
+						zap.Int("input_tokens", result.Usage.InputTokens),
+						zap.Int("output_tokens", result.Usage.OutputTokens),
+						zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+						zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+					)
 				}
 			})
 		}
 
 		if err != nil {
+			if c.Request.Context().Err() != nil || errors.Is(err, service.ErrGeminiClientDisconnected) || (result != nil && result.ClientDisconnect) {
+				// 断开前已观测到的用量照常入账；响应未提交时标记 499，不再补写上游错误。
+				submitForwardUsage(result, true)
+				failoverClientGone(c)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
@@ -390,13 +440,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Error(err),
 			)
 			if result != nil {
-				submitForwardUsage(result)
+				submitForwardUsage(result, true)
 			}
 			return
 		}
 
 		// 6. Record usage
-		submitForwardUsage(result)
+		submitForwardUsage(result, false)
 		return
 	}
 }
