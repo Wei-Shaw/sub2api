@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -124,7 +125,7 @@ const (
 	// ---- checker / runner 行为参数（消除 magic 值）----
 
 	// monitorAnthropicAPIVersion Anthropic Messages API 版本头。
-	monitorAnthropicAPIVersion = "2023-06-01"
+	monitorAnthropicAPIVersion = claude.DefaultAPIVersion
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
 

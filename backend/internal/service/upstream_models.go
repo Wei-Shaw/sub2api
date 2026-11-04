@@ -1147,7 +1147,7 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 		req.Header.Set(key, value)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-version", resolveAnthropicAPIVersion(nil, account))
 	req.Header.Set("anthropic-beta", betaHeader)
 	if authHeaderName != "" {
 		req.Header.Set(authHeaderName, authHeaderValue)

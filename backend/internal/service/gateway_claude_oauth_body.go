@@ -44,6 +44,7 @@ func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte
 type claudeOAuthNormalizeOptions struct {
 	injectMetadata bool
 	metadataUserID string
+	apiVersion     string
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -260,13 +261,12 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 		}
 	}
 
-	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
-	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
-	// 策略：客户端传了什么就透传；没传则补默认 1。
-	// 例外：采样锁定的模型（sonnet-5-5/haiku-5-5）上 temperature+top_p 共存即 400，
-	// 客户端只传 top_p 时不得再补 temperature，否则网关自己制造 400（issue #7919）。
+	// API 2026-10-21 rejects all sampling parameters, even temperature:1.
+	// Only legacy requests retain the old CLI temperature top-up. Explicit
+	// client parameters remain untouched so upstream validation is not bypassed.
 	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
-	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) &&
+	if opts.apiVersion == claude.LegacyAPIVersion &&
+		!gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) &&
 		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
@@ -397,7 +397,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 		body = rewriteSystemForNonClaudeCodeWithPromptBlocks(body, normalizeSystemParam(systemRaw), systemPrompt, systemPromptBlocks)
 	}
 
-	normalizeOpts := claudeOAuthNormalizeOptions{}
+	normalizeOpts := claudeOAuthNormalizeOptions{apiVersion: resolveAnthropicAPIVersion(c, account)}
 
 	if s.identityService != nil && c != nil && c.Request != nil {
 		if fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header); err == nil && fp != nil {
