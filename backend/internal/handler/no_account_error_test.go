@@ -303,3 +303,22 @@ func TestClassifySelectionFailureError_StillUpgradesNonModelNotFoundFallback(t *
 	require.Equal(t, "rate_limit_error", got.ErrType)
 	require.False(t, got.ModelNotFound)
 }
+
+func TestClassifyNoAccountError_GPT55Retirement(t *testing.T) {
+	groupID := int64(1)
+	apiKey := &service.APIKey{GroupID: &groupID}
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasRetiredSubscriptionModel: true}}
+	cls := classifyNoAccountError(context.Background(), fd, apiKey, "gpt-5.5", "legacy", service.PlatformOpenAI)
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.Contains(t, cls.Message, "retired")
+	require.Contains(t, cls.Message, "API-key")
+	fd.resp.HasModelSupport = true
+	cls = classifyNoAccountError(context.Background(), fd, apiKey, "gpt-5.5", "legacy", service.PlatformOpenAI)
+	require.Equal(t, http.StatusServiceUnavailable, cls.Status, "a temporarily unavailable API pool is not a retirement error")
+}
+
+func TestGPT55RetirementEmptyListingDoesNotUseDefaults(t *testing.T) {
+	require.Empty(t, modelListingSource(service.PlatformOpenAI, []string{}, []string{"gpt-5.5"}))
+	require.Equal(t, []string{"gpt-5.5"}, modelListingSource(service.PlatformOpenAI, nil, []string{"gpt-5.5"}))
+}

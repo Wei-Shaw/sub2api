@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
@@ -97,6 +97,11 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   { immediate: false },
 )
 if (props.resetsAt) resumeClock()
+const refreshClockWhenVisible = () => {
+  if (!document.hidden && props.resetsAt) now.value = new Date()
+}
+onMounted(() => document.addEventListener('visibilitychange', refreshClockWhenVisible))
+onUnmounted(() => document.removeEventListener('visibilitychange', refreshClockWhenVisible))
 watch(
   () => props.resetsAt,
   (val) => {
@@ -188,12 +193,10 @@ const shouldShowResetTime = computed(() => {
 
 // Format reset time
 const formatResetTime = computed(() => {
-  // For rolling windows, when utilization is 0%, treat as immediately available.
-  if (props.showNowWhenIdle && props.utilization <= 0) {
-    return t('usage.resetNow')
+  if (!props.resetsAt) {
+    // Idle rolling window without a known reset time: treat as immediately available.
+    return props.showNowWhenIdle && props.utilization <= 0 ? t('usage.resetNow') : '-'
   }
-
-  if (!props.resetsAt) return '-'
 
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()

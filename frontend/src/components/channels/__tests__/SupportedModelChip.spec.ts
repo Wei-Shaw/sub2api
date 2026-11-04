@@ -12,6 +12,61 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('SupportedModelChip', () => {
+  it.each(['availableChannels.pricing', 'admin.availableChannels.pricing'])(
+    'shows video prices per second using %s translations',
+    async (pricingKeyPrefix) => {
+      const wrapper = mount(SupportedModelChip, {
+        attachTo: document.body,
+        props: {
+          pricingKeyPrefix,
+          model: {
+            name: 'video-test',
+            platform: '',
+            pricing: {
+              billing_mode: 'video',
+              input_price: null,
+              output_price: null,
+              cache_write_price: null,
+              cache_read_price: null,
+              image_input_price: null,
+              image_output_price: null,
+              per_request_price: 0.05,
+              intervals: [
+                { tier_label: '480p', min_tokens: 0, max_tokens: null, input_price: null, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: 0 },
+                { tier_label: '720p', min_tokens: 0, max_tokens: null, input_price: null, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: 0.12 }
+              ]
+            }
+          }
+        }
+      })
+      try {
+        await wrapper.find('[tabindex="0"]').trigger('mouseenter')
+        await nextTick()
+        const tooltip = document.body.querySelector('[role="tooltip"]')
+        expect(tooltip?.textContent).toContain(`${pricingKeyPrefix}.billingModeVideo`)
+        expect(tooltip?.textContent).toContain(`${pricingKeyPrefix}.videoPrice`)
+        expect(tooltip?.textContent).toContain(`$0.05 ${pricingKeyPrefix}.unitPerSecond`)
+        expect(tooltip?.textContent).toContain('480p')
+        expect(tooltip?.textContent).toContain(`$0 ${pricingKeyPrefix}.unitPerSecond`)
+        expect(tooltip?.textContent).toContain('720p')
+        expect(tooltip?.textContent).toContain(`$0.12 ${pricingKeyPrefix}.unitPerSecond`)
+        const model = wrapper.props('model')
+        await wrapper.setProps({
+          model: { ...model, pricing: { ...model.pricing!, per_request_price: null } }
+        })
+        expect(tooltip?.textContent).not.toContain(`${pricingKeyPrefix}.videoPrice`)
+        expect(tooltip?.textContent).toContain(`$0.12 ${pricingKeyPrefix}.unitPerSecond`)
+        await wrapper.setProps({
+          model: { ...model, pricing: { ...model.pricing!, per_request_price: 0 } }
+        })
+        expect(tooltip?.textContent).toContain(`${pricingKeyPrefix}.videoPrice`)
+        expect(wrapper.findComponent({ name: 'PricingRow' }).text()).toContain(`$0 ${pricingKeyPrefix}.unitPerSecond`)
+      } finally {
+        wrapper.unmount()
+      }
+    }
+  )
+
   it('仅配置区间倍率时按基础价展示 token 档位', async () => {
     const wrapper = mount(SupportedModelChip, {
       attachTo: document.body,

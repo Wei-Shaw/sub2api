@@ -49,10 +49,14 @@ func ProvideAdminHandlers(
 	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	opencodeGoUsage *service.OpenCodeGoUsageService,
+	claudeResetCredits *service.ClaudeResetCreditService,
 	settingService *service.SettingService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
+	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	accountHandler.SetCodexTicketSettings(settingService)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -111,11 +115,13 @@ func ProvideGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
+	geminiCachedContentService *service.GeminiCachedContentService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
+	h.geminiCachedContentService = geminiCachedContentService
 	return h
 }
 
@@ -132,10 +138,12 @@ func ProvideOpenAIGatewayHandler(
 	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
+	compositeResolver *service.CompositeRouteResolver,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
+	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
 	return h
@@ -177,6 +185,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
+	mcpOAuthHandler *MCPOAuthHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
@@ -203,6 +212,7 @@ func ProvideHandlers(
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
+		MCPOAuth:         mcpOAuthHandler,
 		APIKey:           apiKeyHandler,
 		Usage:            usageHandler,
 		Redeem:           redeemHandler,
@@ -230,6 +240,7 @@ var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
+	NewMCPOAuthHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,

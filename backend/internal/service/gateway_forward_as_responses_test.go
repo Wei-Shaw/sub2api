@@ -3,7 +3,10 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/tidwall/gjson"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -72,6 +75,53 @@ func TestAdaptResponsesClientToolsForAnthropic_LiftsAdditionalTools(t *testing.T
 	input := request["input"].([]any)
 	require.Len(t, input, 1)
 	require.Equal(t, "message", input[0].(map[string]any)["type"])
+}
+
+// Codex 的 codex_app 工具（如 automation_update）把 parameters 根节点声明成对象
+// 联合；Responses→Anthropic 转换后 input_schema 顶部不能再出现联合关键字。
+func TestAdaptResponsesClientToolsForAnthropic_FlattensRootUnionSchema(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"claude-opus-5",
+		"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"create an automation"}]}],
+		"tools":[{"type":"namespace","name":"codex_app","tools":[{
+			"type":"function",
+			"name":"automation_update",
+			"description":"Create, update, view, or delete recurring automations",
+			"parameters":{"oneOf":[
+				{"type":"object","properties":{"mode":{"enum":["view"]},"id":{"type":"string"}},"required":["mode","id"]},
+				{"type":"object","properties":{"mode":{"enum":["update"]},"id":{"type":"string"}},"required":["mode","id"]}
+			]}
+		}]}]
+	}`)
+
+	adapted, _, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+
+	var responsesReq apicompat.ResponsesRequest
+	require.NoError(t, json.Unmarshal(adapted, &responsesReq))
+
+	claudeReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	require.NoError(t, err)
+	require.Len(t, claudeReq.Tools, 1)
+
+	tool := claudeReq.Tools[0]
+	require.Equal(t, "codex_app__automation_update", tool.Name)
+
+	var schema map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(tool.InputSchema, &schema))
+	require.JSONEq(t, `"object"`, string(schema["type"]))
+	require.NotContains(t, schema, "oneOf")
+	require.NotContains(t, schema, "anyOf")
+	require.NotContains(t, schema, "allOf")
+	require.JSONEq(t, `["mode","id"]`, string(schema["required"]))
+
+	wire, err := json.Marshal(tool)
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), `"input_schema":{"oneOf"`)
+	require.NotContains(t, string(wire), `"input_schema":{"anyOf"`)
+	require.NotContains(t, string(wire), `"input_schema":{"allOf"`)
 }
 
 func namespaceToolAnthropicStream() string {
@@ -260,6 +310,116 @@ func TestHandleResponsesStreamingResponse_PreservesMessageStartCacheUsage(t *tes
 	require.Contains(t, rec.Body.String(), `response.completed`)
 }
 
+func TestHandleResponsesStreamingResponse_NormalizesTerminalUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name              string
+		startUsage        string
+		deltaUsage        string
+		wantInput         int
+		wantOutput        int
+		wantCached        int
+		wantCacheCreation int
+	}{
+		{
+			name:       "cache_read_input_tokens full cache",
+			startUsage: `"input_tokens":173306,"prompt_tokens":173306`,
+			deltaUsage: `"input_tokens":0,"output_tokens":8,"prompt_tokens":173306,"cache_read_input_tokens":173306`,
+			wantOutput: 8,
+			wantCached: 173306,
+		},
+		{
+			name:       "cached_tokens full cache",
+			startUsage: `"input_tokens":173306,"prompt_tokens":173306`,
+			deltaUsage: `"input_tokens":0,"output_tokens":8,"prompt_tokens":173306,"cached_tokens":173306`,
+			wantOutput: 8,
+			wantCached: 173306,
+		},
+		{
+			name:       "prompt_tokens_details full cache",
+			startUsage: `"input_tokens":173306,"prompt_tokens":173306`,
+			deltaUsage: `"input_tokens":0,"output_tokens":8,"prompt_tokens":173306,"prompt_tokens_details":{"cached_tokens":173306}`,
+			wantOutput: 8,
+			wantCached: 173306,
+		},
+		{
+			name:       "DeepSeek input total with hit and miss buckets",
+			startUsage: `"input_tokens":0`,
+			deltaUsage: `"input_tokens":1200,"output_tokens":30,"prompt_cache_hit_tokens":800,"prompt_cache_miss_tokens":400`,
+			wantInput:  400,
+			wantOutput: 30,
+			wantCached: 800,
+		},
+		{
+			name:       "OpenAI prompt total with cached details",
+			startUsage: `"input_tokens":0`,
+			deltaUsage: `"prompt_tokens":1200,"output_tokens":30,"prompt_tokens_details":{"cached_tokens":800}`,
+			wantInput:  400,
+			wantOutput: 30,
+			wantCached: 800,
+		},
+		{
+			name:              "cache creation only without prompt total or miss bucket keeps independent input",
+			startUsage:        `"input_tokens":1200`,
+			deltaUsage:        `"input_tokens":0,"output_tokens":30,"cache_creation_input_tokens":800`,
+			wantInput:         1200,
+			wantOutput:        30,
+			wantCacheCreation: 800,
+		},
+	}
+
+	for _, tt := range tests {
+		for _, terminal := range []string{"message_stop", "eof"} {
+			t.Run(tt.name+"/"+terminal, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				lines := []string{
+					`event: message_start`,
+					`data: {"type":"message_start","message":{"id":"msg_usage","type":"message","role":"assistant","content":[],"model":"k3","stop_reason":"","usage":{` + tt.startUsage + `}}}`,
+					``,
+					`event: message_delta`,
+					`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{` + tt.deltaUsage + `}}`,
+					``,
+				}
+				if terminal == "message_stop" {
+					lines = append(lines, `event: message_stop`, `data: {"type":"message_stop"}`, ``)
+				}
+				resp := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Join(lines, "\n")))}
+
+				result, err := (&GatewayService{}).handleResponsesStreamingResponse(resp, c, "k3", "k3", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+				require.NoError(t, err)
+				require.Equal(t, tt.wantInput, result.Usage.InputTokens)
+				require.Equal(t, tt.wantCached, result.Usage.CacheReadInputTokens)
+				require.Equal(t, tt.wantCacheCreation, result.Usage.CacheCreationInputTokens)
+
+				var completed apicompat.ResponsesStreamEvent
+				for _, line := range strings.Split(rec.Body.String(), "\n") {
+					if !strings.HasPrefix(line, "data: ") {
+						continue
+					}
+					var event apicompat.ResponsesStreamEvent
+					require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event))
+					if event.Type == "response.completed" {
+						completed = event
+					}
+				}
+				require.NotNil(t, completed.Response)
+				require.NotNil(t, completed.Response.Usage)
+				require.Equal(t, tt.wantInput+tt.wantCached+tt.wantCacheCreation, completed.Response.Usage.InputTokens)
+				require.Equal(t, tt.wantOutput, completed.Response.Usage.OutputTokens)
+				require.Equal(t, completed.Response.Usage.InputTokens+tt.wantOutput, completed.Response.Usage.TotalTokens)
+				require.Equal(t, tt.wantCacheCreation, completed.Response.Usage.CacheCreationInputTokens)
+				if tt.wantCached == 0 {
+					require.Nil(t, completed.Response.Usage.InputTokensDetails)
+				} else {
+					require.Equal(t, tt.wantCached, completed.Response.Usage.InputTokensDetails.CachedTokens)
+				}
+			})
+		}
+	}
+}
+
 func TestParseAnthropicSSEField(t *testing.T) {
 	t.Parallel()
 
@@ -401,4 +561,80 @@ func TestHandleResponsesStreamingResponse_CompactSSEFormat(t *testing.T) {
 	require.Equal(t, 15, result.Usage.InputTokens)
 	require.Equal(t, 6, result.Usage.OutputTokens)
 	require.Contains(t, rec.Body.String(), `response.completed`)
+}
+
+func TestClaude55ResponsesSignedThinkingBufferedAndStreamed(t *testing.T) {
+	payload := strings.Join([]string{
+		"event: message_start\n" + `data: {"type":"message_start","message":{"id":"msg_1","model":"claude-opus-5-5","content":[],"usage":{"input_tokens":10}}}`,
+		"event: content_block_start\n" + `data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+		"event: content_block_delta\n" + `data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed"}}`,
+		"event: content_block_stop\n" + `data: {"type":"content_block_stop","index":0}`,
+		"event: content_block_start\n" + `data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`,
+		"event: content_block_delta\n" + `data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ok"}}`,
+		"event: content_block_stop\n" + `data: {"type":"content_block_stop","index":1}`,
+		"event: message_delta\n" + `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+		"event: message_stop\n" + `data: {"type":"message_stop"}`,
+	}, "\n\n") + "\n\n"
+	for _, model := range []string{"claude-opus-5-5", "claude-sonnet-5-5"} {
+		modelPayload := strings.ReplaceAll(payload, "claude-opus-5-5", model)
+		for _, stream := range []bool{false, true} {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(modelPayload))}
+			svc := &GatewayService{}
+			var err error
+			if stream {
+				_, err = svc.handleResponsesStreamingResponse(resp, c, "public-claude", model, nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			} else {
+				_, err = svc.handleResponsesBufferedStreamingResponse(resp, c, "public-claude", model, nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			}
+			require.NoError(t, err)
+			require.Contains(t, rec.Body.String(), "anthropic-thinking-v1:")
+			require.Contains(t, rec.Body.String(), "public-claude")
+			require.Contains(t, rec.Body.String(), `"text":"ok"`)
+		}
+	}
+}
+
+func TestClaude55BridgeUsesMappedModelBeforeThinkingConversion(t *testing.T) {
+	for _, model := range []string{"claude-opus-5-5", "claude-sonnet-5-5"} {
+		for _, chat := range []bool{false, true} {
+			for _, forced := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				body := `{"model":"public-claude","input":"hello","reasoning":{"effort":"xhigh"}}`
+				if chat {
+					body = `{"model":"public-claude","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"xhigh"}`
+				}
+				if forced {
+					body = body[:len(body)-1] + `,"tool_choice":"required","tools":[{"type":"function","name":"lookup","function":{"name":"lookup"}}]}`
+				}
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+				upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream()))}}
+				svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "fixture-key", "model_mapping": map[string]any{"public-claude": model}}}
+				var err error
+				var result *ForwardResult
+				if chat {
+					result, err = svc.ForwardAsChatCompletions(context.Background(), c, account, []byte(body), nil)
+				} else {
+					result, err = svc.ForwardAsResponses(context.Background(), c, account, []byte(body), nil)
+				}
+				if forced {
+					require.Error(t, err)
+					require.Equal(t, 400, rec.Code)
+					require.Nil(t, upstream.lastReq)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, result)
+					require.NotNil(t, upstream.lastReq)
+					require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
+					require.Equal(t, "adaptive", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+					require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+					require.False(t, gjson.GetBytes(upstream.lastBody, "thinking.budget_tokens").Exists())
+				}
+			}
+		}
+	}
 }

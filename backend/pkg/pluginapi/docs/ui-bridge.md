@@ -44,10 +44,13 @@ UI 到宿主：
 | `config.load` | 无 | `config` |
 | `config.save` | `config` 对象 | 规范化后的 `config` |
 | `config.test` | 无 | `result` |
+| `plugin.status` | 无 | `result`（`Health`：`{healthy, message, status_json}`） |
 | `ui.resize` | `height` | 无响应 |
 | `ui.notify` | `level`、`message` | 无响应 |
 
-`config.test` 在 v1 中测试已保存配置。UI 若要测试当前表单，应先调用 `config.save`。
+`config.test` 在 v1 中测试已保存配置（需二次验证，可产生副作用）。UI 若要测试当前表单，应先调用 `config.save`。
+
+`plugin.status` 是只读运行时状态通道：无副作用、免二次验证、不弹宿主提示，供状态面板轮询。它映射到插件 `Health`，`result.status_json` 是插件自定义的不透明 JSON 快照。带状态展示的插件应使用它，而不是把 `config.test` 当作状态轮询。
 
 ## 必须执行的校验
 

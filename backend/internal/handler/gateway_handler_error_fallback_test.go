@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -68,6 +69,43 @@ func TestGatewayEnsureForwardErrorResponse_SkipsCommittedSSEError(t *testing.T) 
 
 	require.False(t, wrote)
 	require.Equal(t, 1, strings.Count(w.Body.String(), "event: error"))
+}
+
+// 客户端已断开且响应未提交：不补写 502，标记 499 供访问日志与 ops 归类。
+func TestGatewayEnsureForwardErrorResponse_SkipsCanceledClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointMessages, nil).WithContext(ctx)
+	cancel()
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote)
+	require.Equal(t, statusClientClosedRequest, c.Writer.Status())
+	require.Empty(t, w.Body.String())
+}
+
+// 客户端已断开但流已开始：状态码已固化为 200，不再向断开的连接追加错误帧。
+func TestGatewayEnsureForwardErrorResponse_CanceledClientAfterStreamStartedAppendsNothing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointMessages, nil).WithContext(ctx)
+	c.Header("Content-Type", "text/event-stream")
+	_, _ = c.Writer.WriteString(":\n\n")
+	cancel()
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, true)
+
+	require.False(t, wrote)
+	require.Equal(t, http.StatusOK, c.Writer.Status())
+	require.Equal(t, ":\n\n", w.Body.String())
+	require.Empty(t, service.GetOpsStreamErrors(c))
 }
 
 // case B 回归：Anthropic-backed /responses，Writer 已被写过时

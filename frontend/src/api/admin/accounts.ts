@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/types/openaiReferrals'
 import type {
   Account,
   AccountListItem,
@@ -28,7 +29,10 @@ import type {
   OllamaCloudUsageSettings,
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
-  GrokMediaEligibilityState
+  GrokMediaEligibilityState,
+  GrokModelDiagnostics,
+  OpenCodeGoUsageSettings,
+  OpenCodeGoUsageState
 } from '@/types'
 
 /**
@@ -608,6 +612,8 @@ export interface SyncUpstreamModelsResult {
   models: string[]
   metadata?: Record<string, UpstreamModelMetadata>
   warnings?: UpstreamModelSyncWarning[]
+  discovery_source?: 'upstream' | 'configured_fallback'
+  grok_model_diagnostics?: GrokModelDiagnostics
 }
 
 export interface UpstreamModelSyncWarning {
@@ -918,7 +924,14 @@ export interface OpenAIQuotaUsage {
   rate_limit?: OpenAIRateLimit | null
   additional_rate_limits?: OpenAIAdditionalRateLimit[]
   rate_limit_reset_credits?: OpenAIRateLimitResetCredits | null
+  credits?: OpenAICredits | null
   fetched_at: number
+}
+
+export interface OpenAICredits {
+  has_credits: boolean
+  unlimited: boolean
+  balance: string | null
 }
 
 export interface OpenAIQuotaResetCredit {
@@ -948,6 +961,7 @@ export interface OpenAIQuotaResetResult {
 /** Usage payload plus whether the reset-credit snapshot was persisted. */
 export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
   cache_persisted: boolean
+  credits_cache_persisted?: boolean
 }
 
 /**
@@ -962,6 +976,23 @@ export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
 export async function refreshOpenAIQuota(id: number): Promise<OpenAIQuotaRefreshResult> {
   const { data } = await apiClient.post<OpenAIQuotaRefreshResult>(
     `/admin/openai/accounts/${id}/quota/refresh`
+  )
+  return data
+}
+
+export async function refreshOpenAIReferrals(id: number): Promise<OpenAIReferralRefreshResult> {
+  const { data } = await apiClient.post<OpenAIReferralRefreshResult>(
+    `/admin/openai/accounts/${id}/referrals/refresh`
+  )
+  return data
+}
+
+export async function sendOpenAIReferralInvite(
+  id: number,
+  input: { email: string; program_id: string; confirmed: boolean }
+): Promise<OpenAIReferralSendResult> {
+  const { data } = await apiClient.post<OpenAIReferralSendResult>(
+    `/admin/openai/accounts/${id}/referrals/invite`, input, { timeout: 90_000 }
   )
   return data
 }
@@ -1071,6 +1102,38 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
   return data
 }
 
+export async function getOpenCodeGoUsageSettings(): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.get<OpenCodeGoUsageSettings>('/admin/accounts/opencode-go-usage/settings')
+  return data
+}
+
+export async function updateOpenCodeGoUsageSettings(
+  settings: OpenCodeGoUsageSettings
+): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.put<OpenCodeGoUsageSettings>(
+    '/admin/accounts/opencode-go-usage/settings',
+    settings
+  )
+  return data
+}
+
+export async function getOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.get<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage`)
+  return data
+}
+
+export async function setOpenCodeGoUsageAutoRefresh(id: number, enabled: boolean): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.put<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/auto-refresh`, {
+    enabled
+  })
+  return data
+}
+
+export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.post<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/refresh`)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -1134,7 +1197,12 @@ export const accountsAPI = {
   saveOllamaCloudUsageSession,
   deleteOllamaCloudUsageSession,
   setOllamaCloudUsageAutoRefresh,
-  refreshOllamaCloudUsage
+  refreshOllamaCloudUsage,
+  getOpenCodeGoUsageSettings,
+  updateOpenCodeGoUsageSettings,
+  getOpenCodeGoUsage,
+  setOpenCodeGoUsageAutoRefresh,
+  refreshOpenCodeGoUsage
 }
 
 export default accountsAPI

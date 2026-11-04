@@ -3,11 +3,13 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"net/url"
 	"strings"
 )
 
 var codexToolCapabilityFields = []string{
+	"service_tiers",
 	"supports_search_tool", "apply_patch_tool_type", "comp_hash", "tool_mode", "use_responses_lite",
 	"multi_agent_reasoning_effort", "multi_agent_version",
 }
@@ -19,9 +21,17 @@ func applyCodexToolCapabilities(dst, src map[string]json.RawMessage, overwrite b
 		if len(value) == 0 {
 			continue
 		}
+		if field == "service_tiers" && bytes.Equal(value, []byte("null")) {
+			value = []byte("[]")
+		}
 		// These Codex fields are nullable booleans or strings, never arbitrary objects.
 		if !bytes.Equal(value, []byte("null")) {
-			if field == "supports_search_tool" || field == "use_responses_lite" {
+			if field == "service_tiers" {
+				var tiers []configuredCodexServiceTier
+				if json.Unmarshal(value, &tiers) != nil {
+					continue
+				}
+			} else if field == "supports_search_tool" || field == "use_responses_lite" {
 				if !bytes.Equal(value, []byte("true")) && !bytes.Equal(value, []byte("false")) {
 					continue
 				}
@@ -63,7 +73,7 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 	parsed, err := url.Parse(baseURL)
 	official := err == nil && (strings.EqualFold(parsed.Hostname(), "api.openai.com") ||
 		(account.IsOpenAIOAuth() && strings.EqualFold(parsed.Hostname(), "chatgpt.com")))
-	if account.IsOpenAI() && isOpenAIGPT6AstraModel(modelID) && official {
+	if account.IsOpenAI() && (isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID)) && official {
 		defaults := map[string]json.RawMessage{
 			"supports_search_tool":  json.RawMessage("true"),
 			"apply_patch_tool_type": json.RawMessage(`"freeform"`),
@@ -87,6 +97,17 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 			capabilities["use_responses_lite"] = json.RawMessage("false")
 		}
 	}
+	// API Astra publicly supports Ultrafast. OAuth must advertise it in its
+	// account manifest; a subscription label alone does not grant the capability.
+	if account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(baseURL) && isOpenAIGPT6AstraModel(modelID) {
+		tiers := configuredCodexServiceTiersForModel(modelID)
+		tiers = append(tiers, configuredCodexServiceTier{ID: OpenAIFastTierUltrafast, Name: "Ultrafast", Description: "Lowest latency; 6x Standard token pricing."})
+		encoded, err := json.Marshal(tiers)
+		if err != nil {
+			panic(err)
+		}
+		applyCodexToolCapabilities(capabilities, map[string]json.RawMessage{"service_tiers": encoded}, false)
+	}
 	return capabilities
 }
 
@@ -100,6 +121,12 @@ func codexModelRoutingAccountIDs(group *Group, modelID string) []int64 {
 		return nil
 	}
 	return group.GetRoutingAccountIDs(strings.TrimSpace(modelID))
+}
+
+func codexAccountServesPlatformModel(account *Account, platform, modelID string) bool {
+	return account.Platform == platform ||
+		(account.Platform == PlatformAntigravity && mixedListingAccountAllowed(platform, account) &&
+			mixedListingModelAllowed(platform, modelID))
 }
 
 func groupCodexModelMetadata(
@@ -147,7 +174,7 @@ func groupCodexModelMetadata(
 			if routed && !containsInt64(routedAccountIDs, account.ID) {
 				continue
 			}
-			if account.Platform == platform && codexExplicitModelMappingClaims(*account, modelID) {
+			if codexAccountServesPlatformModel(account, platform, modelID) && codexExplicitModelMappingClaims(*account, modelID) {
 				explicitClaims = true
 				break
 			}
@@ -162,7 +189,7 @@ func groupCodexModelMetadata(
 	missingMetadata := false
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != platform {
+		if !codexAccountServesPlatformModel(account, platform, modelID) {
 			continue
 		}
 		if routed && !containsInt64(routedAccountIDs, account.ID) {
@@ -230,7 +257,7 @@ func codexExplicitModelTargetsConflictForPlatform(accounts []Account, platform, 
 	targets := make(map[string]struct{})
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != platform {
+		if !codexAccountServesPlatformModel(account, platform, modelID) {
 			continue
 		}
 		mappedModel, matched := account.ResolveMappedModel(modelID)
@@ -260,8 +287,11 @@ func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMe
 			result.CodexToolCapabilities[field] = value
 		} else if declared {
 			fallback := json.RawMessage("null")
-			if field == "supports_search_tool" || field == "use_responses_lite" {
+			switch field {
+			case "supports_search_tool", "use_responses_lite":
 				fallback = json.RawMessage("false")
+			case "service_tiers":
+				fallback = json.RawMessage("[]")
 			}
 			result.CodexToolCapabilities[field] = fallback
 		}

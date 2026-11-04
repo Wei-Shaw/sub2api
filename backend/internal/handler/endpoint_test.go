@@ -23,6 +23,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 	}{
 		// Direct canonical paths.
 		{"/v1/messages", EndpointMessages},
+		{"/v1/systemone", EndpointSystemOne},
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
@@ -36,6 +37,8 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/videos/generations", EndpointVideosGenerations},
 		{"/v1/videos/req_123", EndpointVideos},
 		{"/v1beta/models", EndpointGeminiModels},
+		{"/v1beta/cachedContents", EndpointGeminiCachedContents},
+		{"/v1beta/cachedContents/gfo2i2haszm3wbwiyivyok5cyddubfwsr77efg7h", EndpointGeminiCachedContents},
 
 		// Prefixed paths (antigravity, openai) — root Responses.
 		{"/antigravity/v1/messages", EndpointMessages},
@@ -97,9 +100,11 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 	}{
 		// Anthropic.
 		{"anthropic messages", EndpointMessages, "/v1/messages", service.PlatformAnthropic, EndpointMessages},
+		{"typesafe system one", EndpointSystemOne, "/v1/systemone", service.PlatformTypeSafe, EndpointSystemOne},
 
 		// Gemini.
 		{"gemini models", EndpointGeminiModels, "/v1beta/models/gemini:gen", service.PlatformGemini, EndpointGeminiModels},
+		{"gemini cached contents", EndpointGeminiCachedContents, "/v1beta/cachedContents/abc", service.PlatformGemini, EndpointGeminiCachedContents},
 
 		// OpenAI — root Responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponses},

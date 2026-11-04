@@ -2,7 +2,10 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -192,6 +195,8 @@ type RefundQueryRequest struct {
 	OrderID  string
 	RefundID string
 	Amount   string
+	// RequestedAt 为退款进入 pending 的时间；零值表示未知。
+	RequestedAt time.Time
 }
 
 // RefundResponse is returned after a refund request.
@@ -232,6 +237,16 @@ type Provider interface {
 type RefundQueryProvider interface {
 	Provider
 	QueryRefund(ctx context.Context, req RefundQueryRequest) (*RefundResponse, error)
+}
+
+// NotificationConfirmer extends Provider for gateways whose verified
+// notifications are not sufficient proof of payment on their own. The webhook
+// path calls ConfirmNotification on the instance that verified the
+// notification before fulfillment; implementations query the upstream order
+// and may fill in missing notification fields (e.g. TradeNo) from it.
+type NotificationConfirmer interface {
+	Provider
+	ConfirmNotification(ctx context.Context, n *PaymentNotification) error
 }
 
 // CancelableProvider extends Provider with the ability to cancel pending payments.

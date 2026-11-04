@@ -25,6 +25,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -69,6 +70,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
+	"codex_credits_snapshot":     {},
+	"codex_referral_snapshot":    {},
 	"grok_billing_snapshot":      {},
 	"session_window_utilization": {},
 }
@@ -127,6 +130,9 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Create(ctx, account)
+	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
 	}
@@ -265,6 +271,9 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 }
 
 func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Account, error) {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.GetByID(ctx, id)
+	}
 	m, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrAccountNotFound, nil)
@@ -441,6 +450,9 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Update(ctx, account)
+	}
 	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier)
 }
 
@@ -651,6 +663,30 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot',
+			COALESCE(
+				(
+					-- opencode_go 平台分支：新旧都是 opencode_go Go 订阅（account_mode
+					-- 未设置/非 zen 均为 Go，与 GetOpenCodeAccountMode 默认兼容一致），
+					-- 不校验 base_url。
+					(platform = 'opencode_go' AND $2 = 'opencode_go'
+						AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)
+						AND COALESCE(btrim($4::jsonb ->> 'account_mode') <> 'zen', true))
+					-- 挂载白名单分支：新旧平台都在白名单内且 base_url 均为官方
+					-- OpenCode Go 基址（与 Ollama 同范式，允许白名单内跨平台）。
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND $2 IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`$4::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`)
+				)
+				AND type = 'apikey'
+				AND $3 = 'apikey'
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key',
+				false
+			),
+			extra -> 'opencode_go_usage_auto_refresh',
+			extra -> 'opencode_go_usage_snapshot',
+			extra -> 'grok_observed_models',
+			extra -> 'upstream_model_metadata',
 			COALESCE(extra, '{}'::jsonb)
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
@@ -668,16 +704,21 @@ func lockAndMergeAccountProbeExtra(
 	}
 
 	var (
-		identityUnchanged            bool
-		ollamaGroupIdentityUnchanged bool
-		ollamaProxyIdentityUnchanged bool
-		currentEnabled               []byte
-		currentRateSyncEnabled       []byte
-		currentSnapshot              []byte
-		currentOllamaSession         []byte
-		currentOllamaAutoRefresh     []byte
-		currentOllamaSnapshot        []byte
-		currentExtraJSON             []byte
+		identityUnchanged              bool
+		ollamaGroupIdentityUnchanged   bool
+		ollamaProxyIdentityUnchanged   bool
+		opencodeGroupIdentityUnchanged bool
+		currentEnabled                 []byte
+		currentRateSyncEnabled         []byte
+		currentSnapshot                []byte
+		currentOllamaSession           []byte
+		currentOllamaAutoRefresh       []byte
+		currentOllamaSnapshot          []byte
+		currentOpenCodeAutoRefresh     []byte
+		currentOpenCodeSnapshot        []byte
+		currentGrokObservedModels      []byte
+		currentUpstreamModelMetadata   []byte
+		currentExtraJSON               []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -689,6 +730,11 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
+		&opencodeGroupIdentityUnchanged,
+		&currentOpenCodeAutoRefresh,
+		&currentOpenCodeSnapshot,
+		&currentGrokObservedModels,
+		&currentUpstreamModelMetadata,
 		&currentExtraJSON,
 	); err != nil {
 		return nil, err
@@ -718,6 +764,8 @@ func lockAndMergeAccountProbeExtra(
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
+		service.OpenCodeGoUsageAutoRefreshExtraKey,
+		service.OpenCodeGoUsageSnapshotExtraKey,
 	} {
 		delete(extra, key)
 	}
@@ -795,6 +843,40 @@ func lockAndMergeAccountProbeExtra(
 			}
 		}
 	}
+	// OpenCode Go 受管状态与 Ollama 同范式：组身份（opencode_go Go 订阅，或挂载
+	// 白名单平台 + 官方 OpenCode Go 基址，且 api_key 不变）未变时从锁定的 DB 行
+	// 回填，客户端 DTO 脱敏或并发 refresh 写入都无法覆盖/丢失；身份改变或不再
+	// eligible 时既不回填，写出的 extra 即清除旧状态。
+	// 代理不属于组身份，但 snapshot 外呼与 CAS 经代理，故代理变化时快照失效而开关保留。
+	if service.IsOpenCodeGoUsageAccount(account) && opencodeGroupIdentityUnchanged {
+		if value, ok, err := decodeAccountExtraJSON(currentOpenCodeAutoRefresh); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.OpenCodeGoUsageAutoRefreshExtraKey] = value
+		}
+		if ollamaProxyIdentityUnchanged {
+			if snapshot, ok, err := decodeAccountExtraJSON(currentOpenCodeSnapshot); err != nil {
+				return nil, err
+			} else if ok {
+				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
+			}
+		}
+	}
+	// Grok 目录和能力 metadata 是同步写入的受管状态。普通更新在行锁内采用最新
+	// 数据库值，忽略表单旧值、缺键和注入。来源身份变化不删除已有成功快照。
+	for key, raw := range map[string][]byte{
+		"grok_observed_models":                currentGrokObservedModels,
+		service.UpstreamModelMetadataExtraKey: currentUpstreamModelMetadata,
+	} {
+		delete(extra, key)
+		value, ok, err := decodeAccountExtraJSON(raw)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			extra[key] = value
+		}
+	}
 	return extra, nil
 }
 
@@ -837,6 +919,44 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
+				-- 正确性依赖（非防御）：OpenCode 分支必须先于 Ollama 分支求值。两分支
+				-- 的 WHEN 并不互斥：Ollama 分支的守卫是宽谓词——NOT(ollamaMatch(old)
+				-- AND ollamaMatch(new)) 在旧行不匹配 ollama.com 基址时恒真，且两侧
+				-- 平台白名单完全相同，因此挂载行（白名单平台 + 官方 OpenCode Go 基址）
+				-- 会同时满足两分支的 WHEN。若把 Ollama 分支前移，挂载行的 api_key 变化
+				-- 会先命中 Ollama 分支，opencode_go_usage_snapshot /
+				-- opencode_go_usage_auto_refresh 残留，陈旧快照跟着新 api_key 走，
+				-- 造成跨 key 组污染。互斥的只是两侧身份谓词（opencode.ai 基址正则 vs
+				-- ollama.com 基址正则）：Ollama 行不会被 OpenCode 分支遮蔽；
+				-- opencode_go 平台行不在 Ollama 白名单内，与 Ollama 分支真互斥。
+				WHEN type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND (
+						-- 旧行按新谓词属于 OpenCode 用量身份
+						(platform = 'opencode_go'
+							AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+							AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`)
+					)
+					AND (
+						credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
+						-- 或组身份不再成立：opencode_go 转 Zen（COALESCE 恒非 NULL，
+						-- IS NOT TRUE 等价于判定为假；平台条件必须在 IS NOT TRUE 作用
+						-- 域之外，否则挂载行的 FALSE IS NOT TRUE 会误判为已变化）；
+						-- 挂载行 base_url 不再指向官方 Go 基址。NULL-safe：
+						-- regex(NULL) 为 NULL 时 IS NOT TRUE 把 NULL 视为不匹配。
+						OR (platform = 'opencode_go'
+							AND COALESCE(btrim($1::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE)
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+							AND (`+opencodeGoBaseURLMatchSQLPrefix+`$1::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`) IS NOT TRUE)
+					)
+				THEN COALESCE(extra, '{}'::jsonb)
+					- 'upstream_billing_probe'
+					- 'opencode_go_usage_auto_refresh'
+					- 'opencode_go_usage_snapshot'
+					- 'ollama_cloud_usage_session'
+					- 'ollama_cloud_usage_auto_refresh'
+					- 'ollama_cloud_usage_snapshot'
 				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
 				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
 				WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
@@ -889,6 +1009,9 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 }
 
 func (r *accountRepository) Delete(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Delete(ctx, id)
+	}
 	groupIDs, err := r.loadAccountGroupIDs(ctx, id)
 	if err != nil {
 		return err
@@ -1777,6 +1900,9 @@ func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, a
 }
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearError(ctx, id)
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
@@ -1860,6 +1986,12 @@ func (r *accountRepository) GetGroups(ctx context.Context, accountID int64) ([]s
 }
 
 func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.BindGroups(ctx, accountID, groupIDs)
+	}
+	if adminaccess.RestrictedFromContext(ctx) != nil {
+		return r.scopedAdminBindGroups(ctx, accountID, groupIDs)
+	}
 	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
 	if err != nil {
 		return err
@@ -2482,6 +2614,9 @@ func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 }
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearTempUnschedulable(ctx, id)
+	}
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = NULL,
@@ -2501,6 +2636,9 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 }
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearRateLimit(ctx, id)
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		ClearRateLimitedAt().
@@ -2518,6 +2656,9 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 }
 
 func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearAntigravityQuotaScopes(ctx, id)
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
@@ -2542,6 +2683,9 @@ func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id 
 }
 
 func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearModelRateLimits(ctx, id)
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
@@ -2604,6 +2748,9 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.SetSchedulable(ctx, id, schedulable)
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetSchedulable(schedulable).
@@ -2662,6 +2809,9 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.UpdateExtra(ctx, id, updates)
+	}
 	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
 	if len(updates) == 0 {
 		return nil
@@ -3027,7 +3177,39 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	// OpenCode Go 身份清理与 Ollama 同范式但更精确：仅当旧行按新谓词属于 OpenCode
+	// 用量身份（opencode_go Go 订阅，或挂载白名单平台 + 官方 OpenCode Go 基址）时
+	// 才可能持有受管键，且只在该组身份（api_key / normalized base URL /
+	// account_mode）真正变化或不再 eligible 时清除，避免与 Ollama 分支交叉误清。
+	opencodeGroupIdentityChanges := make([]string, 0, 3)
+	opencodeOldBaseURL := opencodeGoBaseURLMatchSQLPrefix + "credentials ->> 'base_url'" + opencodeGoBaseURLMatchSQLSuffix
+	// 旧行 OpenCode 用量身份谓词（与 opencodeGoUsageEligibleSQL 的行侧条件镜像；
+	// type 由 opencodeEligibleAccount 统一携带）。account_mode 未设置/为 null/非
+	// zen 均视为 Go 订阅，与 GetOpenCodeAccountMode 默认兼容一致。
+	opencodeOldUsageIdentity := "((platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))" +
+		" OR (platform IN (" + opencodeGoUsageMountPlatformsSQL + ") AND " + opencodeOldBaseURL + "))"
+	if _, ok := updates.Credentials["api_key"]; ok {
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			opencodeOldUsageIdentity+" AND credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+	}
+	if _, ok := updates.Credentials["base_url"]; ok {
+		// 仅挂载行身份钉在官方基址上（opencode_go 行的 base_url 不参与资格，两个
+		// 官方变体都合法，不由此子句清理）。NULL-safe：新 base_url 缺失/为 null 时
+		// regex(NULL) 为 NULL，NOT NULL 仍为 NULL 会令 WHEN 不命中而残留 OpenCode
+		// 状态；IS NOT TRUE 把 NULL 视为不匹配。
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			"platform IN ("+opencodeGoUsageMountPlatformsSQL+") AND "+opencodeOldBaseURL+
+				" AND ("+opencodeGoBaseURLMatchSQLPrefix+credentialPlaceholder+"::jsonb ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+") IS NOT TRUE")
+	}
+	if _, ok := updates.Credentials["account_mode"]; ok {
+		// 仅 opencode_go 行身份钉在 Go 订阅上（挂载行的 account_mode 与 OpenCode
+		// 资格无关，不由此子句清理）。模式转 Zen 即不再 eligible。
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			"platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)"+
+				" AND COALESCE(btrim("+credentialPlaceholder+"::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE")
+	}
+
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -3058,13 +3240,54 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
 			}
 		}
+		// 代理不属于 OpenCode 组身份，但 snapshot 外呼与 CAS 经代理：
+		// 组身份变化清除开关+快照，仅代理变化清除快照而保留开关。
+		// eligible 判定必须包含旧行 OpenCode 身份（opencode_go Go 订阅，或挂载
+		// 白名单平台 + opencode 基址）：否则白名单平台的 Ollama 行在代理变化时会
+		// 先命中 OpenCode 分支（CASE 按序求值）而遮蔽 Ollama 分支的快照清理。
+		// 注意 OpenCode 与 Ollama 两套分支的 WHEN 并不互斥：eligibleAccount 只看
+		// platform 白名单 + type='apikey'，根本不含 base_url，且与 OpenCode 挂载
+		// 白名单完全相同，因此挂载行（白名单平台 + 官方 OpenCode Go 基址）会同时
+		// 满足两套分支的 WHEN；互斥的只是两侧身份谓词（opencode.ai 基址正则 vs
+		// ollama.com 基址正则，host 不同）。因此下方 caseBranches 必须先拼 OpenCode
+		// 分支再拼 Ollama 分支——这是正确性要求而非防御：若 Ollama 分支在前，
+		// 挂载行的 api_key 变化会先命中 Ollama 分支，opencode_go_usage_snapshot /
+		// opencode_go_usage_auto_refresh 残留，陈旧快照跟着新 api_key 走，跨 key
+		// 组污染。反方向安全：Ollama 行（ollama.com 基址）不满足 OpenCode 身份
+		// 谓词；opencode_go 平台行不在 Ollama 白名单内，与 Ollama 分支真互斥。
+		opencodeEligibleAccount := "type = 'apikey' AND " + opencodeOldUsageIdentity
+		opencodeGroupIdentityChanged := ""
+		if len(opencodeGroupIdentityChanges) > 0 {
+			opencodeGroupIdentityChanged = "(" + opencodeEligibleAccount + " AND (" + joinClauses(opencodeGroupIdentityChanges, " OR ") + "))"
+		}
+		opencodeSnapshotIdentityChanged := opencodeGroupIdentityChanged
+		if ollamaProxyIdentityChanged != "" {
+			opencodeProxyChanged := "(" + opencodeEligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
+			if opencodeSnapshotIdentityChanged == "" {
+				opencodeSnapshotIdentityChanged = opencodeProxyChanged
+			} else {
+				opencodeSnapshotIdentityChanged = "(" + opencodeSnapshotIdentityChanged + " OR " + opencodeProxyChanged + ")"
+			}
+		}
+		caseBranches := make([]string, 0, 4)
+		if opencodeGroupIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+opencodeGroupIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")
+		}
+		if opencodeSnapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+opencodeSnapshotIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_snapshot'")
+		}
 		if groupIdentityChanged != "" {
-			extraExpression = "CASE" +
-				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
-				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
-				" ELSE " + extraExpression + " END"
-		} else if snapshotIdentityChanged != "" {
-			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+			caseBranches = append(caseBranches,
+				" WHEN "+groupIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'")
+		}
+		if snapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+snapshotIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_snapshot'")
+		}
+		if len(caseBranches) > 0 {
+			extraExpression = "CASE" + strings.Join(caseBranches, "") + " ELSE " + extraExpression + " END"
 		}
 		if updates.EnsureCodexFingerprintSeed {
 			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
@@ -3905,8 +4128,12 @@ func (r *accountRepository) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.
 // 仅当 proxy_fallback_origin_id IS NOT NULL 时执行更新；
 // 若影响行数为 0，则返回 ErrAccountNotInFallback（账号存在但不在 fallback 状态）。
 func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	// Probe snapshots belong to the network identity; invalidate only on a real proxy change.
 	res, err := r.sql.ExecContext(ctx, `
-		UPDATE accounts SET proxy_id=proxy_fallback_origin_id, proxy_fallback_origin_id=NULL, updated_at=NOW()
+		UPDATE accounts SET
+			extra=CASE WHEN type='apikey' AND proxy_id IS DISTINCT FROM proxy_fallback_origin_id
+				THEN extra - 'upstream_billing_probe' ELSE extra END,
+			proxy_id=proxy_fallback_origin_id, proxy_fallback_origin_id=NULL, updated_at=NOW()
 		WHERE id=$1 AND proxy_fallback_origin_id IS NOT NULL AND deleted_at IS NULL`, accountID)
 	if err != nil {
 		return err
@@ -3926,6 +4153,9 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 // ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
 // 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
 func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ListShadowsByParent(ctx, parentID)
+	}
 	rows, err := r.client.Account.Query().
 		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
 		All(ctx)

@@ -39,7 +39,7 @@ const (
 	openAIChatGPTFilesURL                  = "https://chatgpt.com/backend-api/files"
 	openAIImageBackendUserAgent            = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	openAIImageMaxDownloadBytes            = 20 << 20 // 20MB per image download
-	openAIImageMaxUploadPartSize           = 20 << 20 // 20MB per multipart upload part
+	openAIImageMaxUploadPartSize           = 50 << 20 // OpenAI's documented per-image limit for GPT image edits
 	openAIImagesResponsesMainModel         = "gpt-5.6-luna"
 	openAIImagesVerbatimPromptInstructions = "When invoking the image_generation tool, use the user's image prompt verbatim. Do not rewrite, expand, summarize, embellish, translate, normalize punctuation, or add or remove visual details or constraints. Preserve the original language, wording, capitalization, quotes, and punctuation exactly."
 )
@@ -59,6 +59,8 @@ type OpenAIImagesCapability string
 const (
 	OpenAIImagesCapabilityBasic  OpenAIImagesCapability = "images-basic"
 	OpenAIImagesCapabilityNative OpenAIImagesCapability = "images-native"
+	// Compatible provider models require the API-key Images passthrough path.
+	OpenAIImagesCapabilityAPIKey OpenAIImagesCapability = "images-apikey"
 )
 
 type OpenAIImagesUpload struct {
@@ -227,7 +229,14 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	}
 
 	applyOpenAIImagesDefaults(req)
-	if err := validateOpenAIImagesModel(req.Model); err != nil {
+	// Composite middleware preserves multipart bodies, including their public
+	// alias. Validate and forward the resolved model without altering uploads.
+	if platform, _ := ResolvedTargetPlatformFromContext(c.Request.Context()); platform == PlatformOpenAI {
+		if model, ok := ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
+			req.Model = model
+		}
+	}
+	if err := validateCompatibleImagesModel(req.Model); err != nil {
 		return nil, err
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
@@ -343,10 +352,15 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 			continue
 		}
 
-		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
+		// Read one byte past the limit so an oversized part is rejected instead of
+		// being cut short and forwarded upstream as a corrupt image.
+		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize+1))
 		_ = part.Close()
 		if err != nil {
 			return fmt.Errorf("read multipart field %s: %w", name, err)
+		}
+		if len(data) > openAIImageMaxUploadPartSize {
+			return fmt.Errorf("multipart field %q exceeds the %d MB per-part limit", name, openAIImageMaxUploadPartSize>>20)
 		}
 
 		fileName := strings.TrimSpace(part.FileName())
@@ -494,6 +508,30 @@ func validateOpenAIImagesModel(model string) error {
 	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 }
 
+// Keep this separate from isOpenAIImageGenerationModel: that predicate also
+// drives native Responses tool conversion, pricing and rate-limit policy.
+func isGeminiCompatibleImageModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "gemini-") &&
+		(strings.HasSuffix(model, "-image") || strings.Contains(model, "-image-"))
+}
+
+func validateCompatibleImagesModel(model string) error {
+	if isGeminiCompatibleImageModel(model) {
+		return nil
+	}
+	return validateOpenAIImagesModel(model)
+}
+
+// RequiredCapabilityForModel also applies the API-key-only fence when channel
+// mapping introduces a compatible provider model after request parsing.
+func (req *OpenAIImagesRequest) RequiredCapabilityForModel(model string) OpenAIImagesCapability {
+	if isGeminiCompatibleImageModel(model) {
+		return OpenAIImagesCapabilityAPIKey
+	}
+	return req.RequiredCapability
+}
+
 func normalizeOpenAIImagesEndpointPath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	switch {
@@ -509,6 +547,9 @@ func normalizeOpenAIImagesEndpointPath(path string) string {
 func classifyOpenAIImagesCapability(req *OpenAIImagesRequest) OpenAIImagesCapability {
 	if req == nil {
 		return OpenAIImagesCapabilityNative
+	}
+	if isGeminiCompatibleImageModel(req.Model) {
+		return OpenAIImagesCapabilityAPIKey
 	}
 	if req.ExplicitModel || req.ExplicitSize {
 		return OpenAIImagesCapabilityNative
@@ -594,11 +635,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
 		requestModel = mapped
 	}
-	if err := validateOpenAIImagesModel(requestModel); err != nil {
+	if err := validateCompatibleImagesModel(requestModel); err != nil {
 		return nil, err
 	}
 	upstreamModel := account.GetMappedModel(requestModel)
-	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+	if err := validateCompatibleImagesModel(upstreamModel); err != nil {
 		return nil, err
 	}
 	SetOpsUpstreamModel(c, upstreamModel)
@@ -661,6 +702,22 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if isOpenAIImagesInsufficientBalance(respBody) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+				Kind:               "failover",
+				Message:            OpenAIImagesInsufficientBalanceMessage,
+			})
+			s.coolOpenAIImagesInsufficientBalance(upstreamCtx, account)
+			return nil, newOpenAIImagesInsufficientBalanceFailoverError(resp.StatusCode, resp.Header, respBody)
+		}
 		if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
@@ -689,7 +746,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	defer func() { _ = resp.Body.Close() }()
 
 	var usage OpenAIUsage
-	imageCount := parsed.N
+	var imageCount int
 	var firstTokenMs *int
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
 		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime, nil)
@@ -705,6 +762,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 					ResponseHeaders:  resp.Header.Clone(),
 					Duration:         time.Since(startTime),
 					FirstTokenMs:     ttft,
+					ImageEndpoint:    true,
 					ImageCount:       streamCount,
 					ImageSize:        parsed.SizeTier,
 					ImageInputSize:   parsed.Size,
@@ -714,7 +772,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			return nil, err
 		}
 		usage = streamUsage
-		imageCount = streamCount
+		imageCount = resolveBillableImageCount(streamCount, 0, imageCountBillingEnabled(getAPIKeyFromContext(c)))
 		imageOutputSizes := streamSizes
 		firstTokenMs = ttft
 		return &OpenAIForwardResult{
@@ -727,6 +785,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ResponseHeaders:  resp.Header.Clone(),
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     firstTokenMs,
+			ImageEndpoint:    true,
 			ImageCount:       imageCount,
 			ImageSize:        parsed.SizeTier,
 			ImageInputSize:   parsed.Size,
@@ -738,9 +797,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			return nil, err
 		}
 		usage = nonStreamUsage
-		if nonStreamCount > 0 {
-			imageCount = nonStreamCount
-		}
+		imageCount = resolveBillableImageCount(nonStreamCount, parsed.N, imageCountBillingEnabled(getAPIKeyFromContext(c)))
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
 			UpstreamHeaders:  resp.Header,
@@ -751,6 +808,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ResponseHeaders:  resp.Header.Clone(),
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     firstTokenMs,
+			ImageEndpoint:    true,
 			ImageCount:       imageCount,
 			ImageSize:        parsed.SizeTier,
 			ImageInputSize:   parsed.Size,

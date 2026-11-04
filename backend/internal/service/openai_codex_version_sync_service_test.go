@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -327,14 +328,14 @@ func TestGetOpenAICodexClientVersionFallsBackOnError(t *testing.T) {
 	require.Equal(t, codexCLIVersion, svc.GetOpenAICodexClientVersion(context.Background()))
 }
 
-// 规范 UA：面板未填完整 UA 时按当前生效版本号拼出标准 TUI 形态。
+// 规范 UA：面板未填完整 UA 时按当前生效版本号拼出标准 CLI 形态。
 func TestGetOpenAICodexCanonicalUserAgentBuildsFromVersion(t *testing.T) {
 	svc := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
 		SettingKeyOpenAICodexClientVersionSynced: "0.200.1",
 	}}, nil)
 
 	require.Equal(t,
-		"codex-tui/0.200.1"+codexCLIUserAgentSuffix,
+		"codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix,
 		svc.GetOpenAICodexCanonicalUserAgent(context.Background()),
 	)
 }
@@ -394,13 +395,13 @@ func TestGetOpenAICodexCanonicalUserAgentRebuildsPanelUAVersion(t *testing.T) {
 		)
 	})
 
-	// 非 `{client}/{version}` 形态无法重建，原样返回，由收口整体回退规范身份。
-	t.Run("非 Codex 形态原样返回", func(t *testing.T) {
+	// 非 Codex UA 回退到规范身份。
+	t.Run("非 Codex 形态回退", func(t *testing.T) {
 		svc := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
 			SettingKeyOpenAICodexUserAgent: "not-a-codex-client",
 		}}, nil)
 
-		require.Equal(t, "not-a-codex-client", svc.GetOpenAICodexCanonicalUserAgent(context.Background()))
+		require.Equal(t, codexCLIUserAgent, svc.GetOpenAICodexCanonicalUserAgent(context.Background()))
 	})
 }
 
@@ -477,4 +478,64 @@ func TestCodexVersionComparisonIsNumericNotLexical(t *testing.T) {
 	newCodexVersionSyncService(repo, github).runOnce()
 
 	require.Empty(t, repo.syncedWrites(), "0.99.0 低于已同步的 0.146.0，不得写入")
+}
+
+func TestGetOpenAICodexCanonicalUserAgentOutboundIdentity(t *testing.T) {
+	codexCanonicalUAMu.RLock()
+	previous := codexCanonicalUAResolver
+	codexCanonicalUAMu.RUnlock()
+	t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(previous) })
+
+	for _, version := range []struct {
+		name, manual, synced, want string
+	}{
+		{"manual", "0.154.0", "0.155.1", "0.154.0"},
+		{"synced", "", "0.155.1", "0.155.1"},
+		{"invalid_manual", "latest", "0.155.1", "0.155.1"},
+		{"default", "", "", codexCLIVersion},
+		{"invalid_versions", "latest", "invalid", codexCLIVersion},
+	} {
+		for _, ua := range []struct {
+			name, value, client, suffix string
+		}{
+			{name: "browser", value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
+			{name: "arbitrary", value: "not-a-codex-client"},
+			{name: "unknown_client", value: "custom/0.140.0 (Linux)"},
+			{name: "empty"},
+			{name: "missing_version", value: "codex_cli_rs/"},
+			{name: "crlf", value: "codex_cli_rs/0.140.0 (Linux)\r\nX-Injected: value"},
+			{name: "nul", value: "codex_cli_rs/0.140.0 (Linux\x00)"},
+			{name: "del", value: "codex_cli_rs/0.140.0 terminal\x7f"},
+			{name: "leading_newline", value: "\ncodex_cli_rs/0.140.0 (Linux)"},
+			{name: "trailing_newline", value: "codex_cli_rs/0.140.0 (Linux)\n"},
+			{name: "valid_suffix", value: "codex_cli_rs/0.140.0 (Mac OS X 15.1.0; arm64) iTerm.app", client: "codex_cli_rs", suffix: " (Mac OS X 15.1.0; arm64) iTerm.app"},
+			{name: "valid_tab", value: "codex_cli_rs/0.140.0 (Linux)\tterminal", client: "codex_cli_rs", suffix: " (Linux)\tterminal"},
+			{name: "recognized_trailer", value: "custom/0.140.0 (Linux) (codex-tui; 0.140.0)", client: "codex-tui", suffix: " (Linux) (codex-tui; " + version.want + ")"},
+		} {
+			t.Run(version.name+"/"+ua.name, func(t *testing.T) {
+				svc := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
+					SettingKeyOpenAICodexUserAgent:           ua.value,
+					SettingKeyOpenAICodexClientVersion:       version.manual,
+					SettingKeyOpenAICodexClientVersionSynced: version.synced,
+				}}, nil)
+				wantCanonicalUA := buildCodexCLIUserAgent(version.want)
+				wantUA := wantCanonicalUA
+				wantOriginator := openai.CodexDefaultOriginator
+				if ua.client != "" {
+					wantUA = ua.client + "/" + version.want + ua.suffix
+					wantCanonicalUA = wantUA
+					wantOriginator = ua.client
+				}
+				wantOriginator, wantUA, _ = openai.NormalizeCodexClientIdentityToCLI(wantOriginator, wantUA)
+				SetCodexCanonicalUserAgentResolver(func() string {
+					return svc.GetOpenAICodexCanonicalUserAgent(context.Background())
+				})
+				require.Equal(t, wantCanonicalUA, svc.GetOpenAICodexCanonicalUserAgent(context.Background()))
+				identity := resolveCodexOutboundIdentity("")
+				require.Equal(t, wantUA, identity.userAgent)
+				require.Equal(t, wantOriginator, identity.originator)
+				require.Equal(t, version.want, identity.version)
+			})
+		}
+	}
 }

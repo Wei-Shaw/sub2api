@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/require"
@@ -177,6 +178,10 @@ func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context
 	out := make([]Account, len(accounts))
 	copy(out, accounts)
 	return out, nil
+}
+
+func (s *modelsListAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	return s.ListSchedulableByGroupID(ctx, *groupID)
 }
 
 func (s *modelsListAccountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
@@ -670,7 +675,9 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "passthrough wins over ordinary account mapping",
+			// The passthrough account serves the default set (its stale mapping is
+			// ignored), while the ordinary account's mapping still reaches the list.
+			name: "passthrough contributes defaults alongside ordinary account mapping",
 			accounts: []Account{
 				{
 					ID:          2,
@@ -684,7 +691,7 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 					Extra:       map[string]any{"openai_passthrough": true},
 				},
 			},
-			want: nil,
+			want: dedupeAndSortModelIDs(append([]string{"configured-model"}, openai.DefaultModelIDs()...)),
 		},
 		{
 			name: "ordinary accounts preserve mapped whitelist",
@@ -708,7 +715,9 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 				modelsListCacheTTL: time.Minute,
 			}
 
-			require.Equal(t, tt.want, svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI))
+			got := svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI)
+			require.Equal(t, tt.want, got)
+			require.NotContains(t, got, "stale-model", "passthrough mapping must never reach the public list")
 		})
 	}
 }

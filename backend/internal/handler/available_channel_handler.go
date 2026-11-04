@@ -62,21 +62,24 @@ type userAvailableGroup struct {
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
 	IsExclusive        bool    `json:"is_exclusive"`
+
+	// 不对外输出；List 按请求语言把 Name 换成译文后丢弃。
+	i18n service.GroupI18n
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode                  string                   `json:"billing_mode"`
-	InputPrice                   *float64                 `json:"input_price"`
-	OutputPrice                  *float64                 `json:"output_price"`
-	CacheWritePrice              *float64                 `json:"cache_write_price"`
-	CacheWrite1hPrice            *float64                 `json:"cache_write_1h_price"`
-	CacheReadPrice               *float64                 `json:"cache_read_price"`
-	MaxReasoningEffortMultiplier *float64                 `json:"max_reasoning_effort_multiplier,omitempty"`
-	ImageInputPrice              *float64                 `json:"image_input_price"`
-	ImageOutputPrice             *float64                 `json:"image_output_price"`
-	PerRequestPrice              *float64                 `json:"per_request_price"`
-	Intervals                    []userPricingIntervalDTO `json:"intervals"`
+	BillingMode                string                   `json:"billing_mode"`
+	InputPrice                 *float64                 `json:"input_price"`
+	OutputPrice                *float64                 `json:"output_price"`
+	CacheWritePrice            *float64                 `json:"cache_write_price"`
+	CacheWrite1hPrice          *float64                 `json:"cache_write_1h_price"`
+	CacheReadPrice             *float64                 `json:"cache_read_price"`
+	ReasoningEffortMultipliers map[string]float64       `json:"reasoning_effort_multipliers,omitempty"`
+	ImageInputPrice            *float64                 `json:"image_input_price"`
+	ImageOutputPrice           *float64                 `json:"image_output_price"`
+	PerRequestPrice            *float64                 `json:"per_request_price"`
+	Intervals                  []userPricingIntervalDTO `json:"intervals"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
@@ -154,6 +157,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		return
 	}
 
+	acceptLanguage := c.GetHeader("Accept-Language")
 	out := make([]userAvailableChannel, 0, len(channels))
 	for _, ch := range channels {
 		if ch.Status != service.StatusActive {
@@ -163,6 +167,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if len(visibleGroups) == 0 {
 			continue
 		}
+		localizeUserAvailableGroups(visibleGroups, acceptLanguage)
 		sections := buildPlatformSections(ch, visibleGroups)
 		if len(sections) == 0 {
 			continue
@@ -175,6 +180,13 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	}
 
 	response.Success(c, out)
+}
+
+// localizeUserAvailableGroups 把分组名称就地换成请求首选语言的版本。
+func localizeUserAvailableGroups(groups []userAvailableGroup, acceptLanguage string) {
+	for i := range groups {
+		groups[i].Name = groups[i].i18n.LocalizeName(acceptLanguage, groups[i].Name)
+	}
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
@@ -254,6 +266,7 @@ func filterUserVisibleGroups(
 		visible = append(visible, userAvailableGroup{
 			ID:                 g.ID,
 			Name:               g.Name,
+			i18n:               g.I18n,
 			Platform:           g.Platform,
 			SubscriptionType:   g.SubscriptionType,
 			RateMultiplier:     g.RateMultiplier,
@@ -332,16 +345,16 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		billingMode = string(service.BillingModeToken)
 	}
 	return &userSupportedModelPricing{
-		BillingMode:                  billingMode,
-		InputPrice:                   p.InputPrice,
-		OutputPrice:                  p.OutputPrice,
-		CacheWritePrice:              p.CacheWritePrice,
-		CacheWrite1hPrice:            p.CacheWrite1hPrice,
-		CacheReadPrice:               p.CacheReadPrice,
-		MaxReasoningEffortMultiplier: p.MaxReasoningEffortMultiplier,
-		ImageInputPrice:              p.ImageInputPrice,
-		ImageOutputPrice:             p.ImageOutputPrice,
-		PerRequestPrice:              p.PerRequestPrice,
-		Intervals:                    intervals,
+		BillingMode:                billingMode,
+		InputPrice:                 p.InputPrice,
+		OutputPrice:                p.OutputPrice,
+		CacheWritePrice:            p.CacheWritePrice,
+		CacheWrite1hPrice:          p.CacheWrite1hPrice,
+		CacheReadPrice:             p.CacheReadPrice,
+		ReasoningEffortMultipliers: p.ReasoningEffortMultipliers,
+		ImageInputPrice:            p.ImageInputPrice,
+		ImageOutputPrice:           p.ImageOutputPrice,
+		PerRequestPrice:            p.PerRequestPrice,
+		Intervals:                  intervals,
 	}
 }

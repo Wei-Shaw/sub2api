@@ -498,7 +498,7 @@ func grokChatResponsesCacheIntentBody(body []byte) ([]byte, error) {
 
 func grokChatResponsesBridgeModel(model string) bool {
 	switch strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model))) {
-	case "grok-4.5", "grok-4.6", "grok-4.6-latest":
+	case "grok-4.5", "grok-4.6", "grok-4.6-latest", "grok-4.7", "grok-4.7-latest":
 		return true
 	default:
 		return false
@@ -541,7 +541,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
-	responsesReq, err := apicompat.ChatCompletionsToResponses(&chatReq)
+	responsesReq, err := chatCompletionsToResponses(s.cfg, &chatReq)
 	if err != nil {
 		return nil, fmt.Errorf("convert grok chat completions to responses: %w", err)
 	}

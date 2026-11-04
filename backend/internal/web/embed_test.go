@@ -528,8 +528,14 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/antigravity/test",
 			"/setup/init",
 			"/health",
+			"/.well-known/oauth-protected-resource",
+			"/.well-known/oauth-protected-resource/api/v1/mcp",
+			"/.well-known/oauth-authorization-server",
 			"/responses",
 			"/responses/compact",
+			"/chat/completions",
+			"/models/gpt-5.5",
+			"/v3/contents/generations/tasks/task-123",
 		}
 
 		for _, path := range apiPaths {
@@ -650,11 +656,11 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		// Request for existing static file
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 		assert.Empty(t, w.Header().Get("Cache-Control"))
 
 		entries, err := fs.ReadDir(server.distFS, "assets")
@@ -686,6 +692,40 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 		"/videos/request-123",
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
+	}
+}
+
+func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
+	for _, path := range []string{
+		"/chat/completions",
+		"/embeddings",
+		"/messages/count_tokens",
+		"/models/gpt-5.5",
+		"/videos",
+		"/tts",
+		"/stt",
+		"/custom-voices",
+		"/custom-voices/voice-123",
+		"/custom-voices/voice-123/audio",
+		"/realtime",
+		"/web_search",
+		"/x_search",
+		"/contents/generations/tasks",
+		"/contents/generations/tasks/task-123",
+		"/v3/contents/generations/tasks",
+		"/v3/contents/generations/tasks/task-123",
+	} {
+		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
+	}
+
+	for _, path := range []string{
+		"/model-plaza",
+		"/custom/page-1",
+		"/monitor",
+		"/setup",
+		"/v3/other",
+	} {
+		require.False(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}
 }
 
@@ -735,11 +775,11 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		router.Use(middleware)
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 	})
 
 	t.Run("serves_index_html_for_root", func(t *testing.T) {
@@ -790,8 +830,14 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 			"/antigravity/test",
 			"/setup/init",
 			"/health",
+			"/.well-known/oauth-protected-resource",
+			"/.well-known/oauth-protected-resource/api/v1/mcp",
+			"/.well-known/oauth-authorization-server",
 			"/responses",
 			"/responses/compact",
+			"/chat/completions",
+			"/models/gpt-5.5",
+			"/v3/contents/generations/tasks/task-123",
 		}
 
 		for _, path := range apiPaths {

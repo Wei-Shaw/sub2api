@@ -60,7 +60,7 @@ func TestResolveCLIVersion(t *testing.T) {
 // 两者由不同代码路径写入同一个请求，不一致会被上游判为非正版客户端。
 func TestDefaultHeadersUserAgentMatchesCLIVersion(t *testing.T) {
 	want := "claude-cli/" + CLIVersion() + " (external, cli)"
-	if got := DefaultHeaders["User-Agent"]; got != want {
+	if got := DefaultHeaders()["User-Agent"]; got != want {
 		t.Fatalf("DefaultHeaders[User-Agent] = %q, want %q", got, want)
 	}
 }

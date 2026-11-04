@@ -154,7 +154,7 @@ func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *A
 	if !applyCodexAccountIdentityFields(metadata, account, apiKeyID) {
 		return false
 	}
-	rebuilt, err := json.Marshal(metadata)
+	rebuilt, err := marshalCodexTurnMetadata(metadata)
 	if err != nil {
 		return false
 	}
@@ -267,7 +267,7 @@ func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, api
 	if raw := strings.TrimSpace(headers.Get(openAIWSTurnMetadataHeader)); raw != "" {
 		metadata := map[string]any{}
 		if err := json.Unmarshal([]byte(raw), &metadata); err == nil && metadata != nil && applyCodexAccountIdentityFields(metadata, account, apiKeyID) {
-			if rebuilt, err := json.Marshal(metadata); err == nil {
+			if rebuilt, err := marshalCodexTurnMetadata(metadata); err == nil {
 				headers.Set(openAIWSTurnMetadataHeader, string(rebuilt))
 			}
 		}

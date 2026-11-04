@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -55,6 +57,7 @@ type DashboardAggregationService struct {
 	repo                 DashboardAggregationRepository
 	timingWheel          *TimingWheelService
 	cfg                  config.DashboardAggregationConfig
+	settingRepo          SettingRepository
 	running              int32
 	lastRetentionCleanup atomic.Value // time.Time
 
@@ -95,6 +98,8 @@ func (s *DashboardAggregationService) Start() {
 	}
 	if !s.cfg.Enabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业已禁用")
+		// Explicit runtime retention remains available without dashboard aggregation.
+		s.timingWheel.ScheduleRecurring("dashboard:retention", time.Minute, s.runScheduledRetention)
 		return
 	}
 	go s.runStartupGroupUsageSync()
@@ -360,26 +365,89 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 		}
 	}
 
+	usageDays, err := s.requestRetentionDays(ctx)
+	if err != nil {
+		// Never fall back to a shorter window after a settings read failure.
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 读取日志保留设置失败，跳过清理: %v", err)
+		return
+	}
 	hourlyCutoff := now.AddDate(0, 0, -s.cfg.Retention.HourlyDays)
 	dailyCutoff := now.AddDate(0, 0, -s.cfg.Retention.DailyDays)
-	usageCutoff := now.AddDate(0, 0, -s.cfg.Retention.UsageLogsDays)
-	dedupCutoff := now.AddDate(0, 0, -s.cfg.Retention.UsageBillingDedupDays)
+	usageCutoff := now.AddDate(0, 0, -usageDays)
+	dedupDays := s.cfg.Retention.UsageBillingDedupDays
+	if dedupDays <= 0 {
+		dedupDays = 365
+	}
+	dedupDays = max(dedupDays, usageDays)
+	dedupCutoff := now.AddDate(0, 0, -dedupDays)
 
-	aggErr := s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
+	var aggErr, usageErr, dedupErr error
+	if s.cfg.Enabled {
+		aggErr = s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
+	}
 	if aggErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
 	}
-	usageErr := s.repo.CleanupUsageLogs(ctx, usageCutoff)
+	if usageDays > 0 {
+		usageErr = s.repo.CleanupUsageLogs(ctx, usageCutoff)
+	}
 	if usageErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
 	}
-	dedupErr := s.repo.CleanupUsageBillingDedup(ctx, dedupCutoff)
+	if usageDays > 0 {
+		dedupErr = s.repo.CleanupUsageBillingDedup(ctx, dedupCutoff)
+	}
 	if dedupErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_billing_dedup 保留清理失败: %v", dedupErr)
 	}
 	if aggErr == nil && usageErr == nil && dedupErr == nil {
 		s.lastRetentionCleanup.Store(now)
 	}
+}
+
+func (s *DashboardAggregationService) requestRetentionDays(ctx context.Context) (int, error) {
+	days := s.cfg.Retention.UsageLogsDays
+	if !s.cfg.Enabled {
+		days = 0
+	}
+	if s.settingRepo == nil {
+		return days, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsRuntimeLogConfig)
+	if errors.Is(err, ErrSettingNotFound) {
+		return days, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var cfg struct {
+		RequestRetentionDays *int `json:"request_retention_days"`
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return 0, err
+	}
+	if cfg.RequestRetentionDays != nil {
+		days = *cfg.RequestRetentionDays
+		if days < 0 || days > 3650 {
+			return 0, fmt.Errorf("invalid request_retention_days: %d", days)
+		}
+	}
+	return days, nil
+}
+
+func (s *DashboardAggregationService) runScheduledRetention() {
+	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&s.running, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
+	defer cancel()
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, dashboardAggregationLeaderLockKey, s.instanceID, dashboardAggregationLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
+	s.maybeCleanupRetention(ctx, time.Now().UTC())
 }
 
 func truncateToDayUTC(t time.Time) time.Time {

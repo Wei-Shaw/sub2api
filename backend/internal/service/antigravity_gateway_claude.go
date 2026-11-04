@@ -49,7 +49,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	}
 
 	originalModel := claudeReq.Model
-	mappedModel := s.getMappedModel(account, claudeReq.Model)
+	mappedModel := s.getMappedModelForThinkingLevel(
+		account,
+		claudeReq.Model,
+		geminiThinkingLevelFromClaudeThinking(claudeReq.Thinking),
+	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		return nil, s.writeClaudeError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in whitelist", claudeReq.Model))
@@ -57,6 +61,9 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	// 应用 thinking 模式自动后缀：如果 thinking 开启且目标是 claude-sonnet-4-5，自动改为 thinking 版本
 	thinkingEnabled := claudeReq.Thinking != nil && (claudeReq.Thinking.Type == "enabled" || claudeReq.Thinking.Type == "adaptive")
 	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	if geminiImageGenerationDenied(c, nil, originalModel, mappedModel) {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", ImageGenerationPermissionMessage())
+	}
 	billingModel := mappedModel
 
 	// 获取 access_token
@@ -127,7 +134,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		}
 		// 区分客户端取消和真正的上游失败，返回更准确的错误消息
 		if c.Request.Context().Err() != nil {
-			return nil, s.writeClaudeError(c, http.StatusBadGateway, "client_disconnected", "Client disconnected before upstream response")
+			return nil, s.writeClaudeError(c, antigravityStatusClientClosed, "client_disconnected", "Client disconnected before upstream response")
 		}
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 	}

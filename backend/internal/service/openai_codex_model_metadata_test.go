@@ -9,6 +9,71 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCodexCatalogUsesAntigravityCapabilitiesInGeminiMixedGroup(t *testing.T) {
+	const groupID int64 = 93
+	account := Account{
+		ID: 25, Platform: PlatformAntigravity, Type: AccountTypeOAuth,
+		Extra: map[string]any{"mixed_scheduling": true},
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-custom": "gemini-3.8-flash-high",
+		}},
+	}
+	reasoning := true
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{"gemini-3.8-flash-high": {
+			ID: "gemini-3.8-flash-high", Reasoning: &reasoning,
+			DefaultReasoningLevel: "high", SupportedReasoningLevels: []string{"high"},
+			InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576,
+			MaxOutputTokens: 65_536,
+		}},
+	})
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{groupID: {account}},
+	}}
+	for _, platform := range []string{PlatformAntigravity, PlatformComposite, PlatformGemini} {
+		t.Run(platform, func(t *testing.T) {
+			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+				&Group{ID: groupID, Platform: platform}, "", []string{"gemini-custom"})
+			require.NoError(t, err)
+			model := decodeCodexManifestModels(t, body)[0]
+			require.Equal(t, "gemini-custom", model["slug"])
+			require.Equal(t, float64(1_048_576), model["context_window"])
+			require.Equal(t, []any{"text", "image"}, model["input_modalities"])
+			require.Equal(t, []string{"high"}, effortsFromManifestModel(t, model))
+		})
+	}
+}
+
+func TestCodexCatalogGeminiCapabilitiesExcludeNonMixedAntigravityAccounts(t *testing.T) {
+	const groupID int64 = 94
+	reasoning := true
+	native := Account{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gemini-custom": "gemini-3.8-flash-high"}},
+	}
+	native.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{"gemini-3.8-flash-high": {
+			ID: "gemini-3.8-flash-high", Reasoning: &reasoning,
+			SupportedReasoningLevels: []string{"high"}, InputModalities: []string{"text", "image"},
+			ContextWindow: 1_048_576,
+		}},
+	})
+	for _, extra := range []map[string]any{nil, {"mixed_scheduling": false}} {
+		// A peer lacking capabilities would narrow the catalog if included.
+		peer := Account{ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuth,
+			Extra: extra, Credentials: native.Credentials}
+		svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+			byGroup: map[int64][]Account{groupID: {native, peer}},
+		}}
+		body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+			&Group{ID: groupID, Platform: PlatformGemini}, "", []string{"gemini-custom"})
+		require.NoError(t, err)
+		model := decodeCodexManifestModels(t, body)[0]
+		require.Equal(t, float64(1_048_576), model["context_window"])
+		require.Equal(t, []any{"text", "image"}, model["input_modalities"])
+		require.Equal(t, []string{"high"}, effortsFromManifestModel(t, model))
+	}
+}
+
 func TestAstraUltraCatalogPreservesWorkflowMetadata(t *testing.T) {
 	// Ultra is a Codex workflow. Its inference effort must survive catalog sync,
 	// aliases and group generation instead of silently falling back to max.
@@ -108,6 +173,41 @@ func TestAstraCodexToolCapabilitiesUseAccountScopeAndSharedDeclarations(t *testi
 	require.Equal(t, "3000", model["comp_hash"])
 }
 
+func TestCodexToolCapabilitiesNeverAdvertiseNullServiceTiers(t *testing.T) {
+	newAccount := func(id int64, tiers string) Account {
+		account := Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"base_url": "https://relay.example/v1", "model_mapping": map[string]any{"gpt-6-sol": "gpt-6-sol"},
+		}}
+		if tiers != "" {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"gpt-6-sol": {CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(tiers)}},
+			}})
+		}
+		return account
+	}
+	for _, tt := range []struct {
+		name     string
+		accounts []Account
+	}{
+		{"conflicting peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, `[]`)}},
+		{"undeclared peer tiers", []Account{newAccount(1, `[{"id":"priority"}]`), newAccount(2, "")}},
+		{"explicit null tiers", []Account{newAccount(1, "null")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"gpt-6-sol"}, tt.accounts, nil, nil, true)
+			require.NoError(t, err)
+			model := decodeCodexManifestModels(t, body)[0]
+			require.Equal(t, []any{}, model["service_tiers"])
+		})
+	}
+
+	merged := intersectUpstreamModelMetadata("gpt-6-sol", []UpstreamModelMetadata{
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[{"id":"priority"}]`)}},
+		{CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(`[]`)}},
+	})
+	require.JSONEq(t, `[]`, string(merged.CodexToolCapabilities["service_tiers"]))
+}
+
 func TestAstraCodexToolCapabilitiesPreserveLiveNullAndFalse(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"base_url": "https://api.openai.com/v1"}}
@@ -190,6 +290,79 @@ func TestBuildCodexModelsManifestForGroupUsesSyncedAccountMetadata(t *testing.T)
 	require.Equal(t, []string{"low", "high", "max"}, effortsFromManifestModel(t, models[0]))
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+}
+
+type openCodeGoCodexCatalogRepo struct {
+	AccountRepository
+	groupID   int64
+	accounts  []Account
+	platforms []string
+}
+
+func (r *openCodeGoCodexCatalogRepo) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
+	return nil, nil
+}
+
+func (r *openCodeGoCodexCatalogRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	r.platforms = append([]string(nil), platforms...)
+	if groupID == nil || *groupID != r.groupID {
+		return nil, nil
+	}
+	for _, platform := range platforms {
+		if platform == PlatformOpenCodeGo {
+			return append([]Account(nil), r.accounts...), nil
+		}
+	}
+	return nil, nil
+}
+
+// Scenario: OpenCode Go accounts contribute synced capabilities to a Composite
+// manifest only when they are selected by the catalog candidate query.
+func TestBuildCodexModelsManifestForGroupMergesOpenCodeGoSyncedMetadata(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 742
+	const publicModel = "oc/muse-spark-1.3-contributor"
+	const upstreamModel = "muse-spark-1.3-contributor"
+
+	reasoning := true
+	account := Account{
+		ID:       43,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      "https://opencode.ai/zen/go/v1",
+			"model_mapping": map[string]any{publicModel: upstreamModel},
+		},
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		upstreamModel: {
+			ID:                       upstreamModel,
+			Reasoning:                &reasoning,
+			DefaultReasoningLevel:    "medium",
+			SupportedReasoningLevels: []string{"minimal", "low", "medium", "high", "xhigh"},
+			InputModalities:          []string{"text", "image"},
+			ContextWindow:            1_048_576,
+		},
+	}})
+	repo := &openCodeGoCodexCatalogRepo{groupID: groupID, accounts: []Account{account}}
+	svc := &GatewayService{accountRepo: repo}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{publicModel},
+	)
+	require.NoError(t, err)
+	require.Contains(t, repo.platforms, PlatformOpenCodeGo)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, "medium", models[0]["default_reasoning_level"])
+	require.Equal(t, []string{"minimal", "low", "medium", "high", "xhigh"}, effortsFromManifestModel(t, models[0]))
+	require.EqualValues(t, 1_048_576, models[0]["context_window"])
 }
 
 // Scenario: an explicitly non-reasoning model remains directly selectable in Codex.

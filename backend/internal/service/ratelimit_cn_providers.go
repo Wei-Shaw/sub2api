@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/tidwall/gjson"
 )
 
 // 国产供应商（kimi/zhipu/deepseek）的响应式冷却辅助。
@@ -35,22 +38,65 @@ func isCNProviderConcurrencyLimit403(account *Account, upstreamMsg string) bool 
 		strings.TrimSpace(upstreamMsg) == kimiConcurrentRequestLimitMessage
 }
 
+// cnQuotaExhausted403ErrorType 是 Kimi Coding Plan 配额窗口耗尽的 403 错误类型。
+// 与并发限制 403（见 isCNProviderConcurrencyLimit403）不同，这是 5h/weekly
+// 窗口耗尽的限流信号：窗口到期后自动恢复，绝不能落入通用 403 升级计数
+// （连续 3 次永久 SetError），必须按 429 口径冷却到真实窗口重置点。
+const cnQuotaExhausted403ErrorType = "access_terminated_error"
+
+// cnQuotaExhaustedReasonPrefix 是配额耗尽 403 临时停调 reason 的稳定前缀。
+const cnQuotaExhaustedReasonPrefix = "cn_quota_exhausted"
+
+// isCNProviderQuotaExhausted403 识别 CN 供应商配额窗口耗尽的 403。
+// 先做廉价的文案子串匹配（usage limit / quota will reset），未命中再解析
+// 响应体匹配结构化错误类型（Kimi 的 access_terminated_error），以兼容同族
+// 供应商的文案变体。与并发限制文案互斥，两类信号不会误判。
+// 仅限 Coding Plan 账号：滚动窗口快照（含重置时间）只有 Coding Plan 账号才有，
+// 非 Coding Plan 账号的同类 403 语义不明（可能是需要升级套餐的硬上限），
+// 应回退到通用 403 升级逻辑而非无限临时冷却。
+func isCNProviderQuotaExhausted403(account *Account, responseBody []byte, upstreamMsg string) bool {
+	if account == nil || !account.IsCNProvider() || !account.IsCodingPlan() {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if strings.Contains(msg, "usage limit") || strings.Contains(msg, "quota will reset") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responseBody, "error.type").String()), cnQuotaExhausted403ErrorType)
+}
+
+// handleCNProviderQuotaExhausted403 把 CN 供应商配额窗口耗尽的 403 按 429
+// 同口径处理：有配额快照时冷却到最早的未来窗口重置点（SetRateLimited，
+// 窗口过期后调度自动恢复）；快照缺失（额度探测尚未刷新）时兜底默认 403
+// 冷却时长的临时停调，避免过度停调到数天后的窗口。无论哪条路径都不写
+// 账号 error 状态。
+func (s *RateLimitService) handleCNProviderQuotaExhausted403(
+	ctx context.Context,
+	account *Account,
+	upstreamMsg string,
+) {
+	if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, cnQuotaExhaustedReasonPrefix, "cn_quota_exhausted_rate_limited") != nil {
+		return
+	}
+
+	// upstreamMsg 由调用方（HandleUpstreamError）从同一响应体提取，此处直接复用；
+	// 为空时仅存前缀，保证 reason 稳定可检索。
+	reason := cnQuotaExhaustedReasonPrefix
+	if msg := strings.TrimSpace(upstreamMsg); msg != "" {
+		reason += ": " + msg
+	}
+	until := time.Now().Add(time.Duration(openAI403CooldownMinutesDefault) * time.Minute)
+	s.setCNProviderTempUnschedulable(ctx, account, until, cnQuotaExhaustedReasonPrefix, reason, "cn_quota_exhausted_temp_unschedulable")
+}
+
 func (s *RateLimitService) handleCNProviderConcurrencyLimit403(
 	ctx context.Context,
 	account *Account,
 ) {
 	until := time.Now().Add(time.Duration(openAI403CooldownMinutesDefault) * time.Minute)
-	reason := cnConcurrencyLimitReasonPrefix + ": " + kimiConcurrentRequestLimitMessage
-	s.notifyAccountSchedulingBlocked(account, until, cnConcurrencyLimitReasonPrefix)
-	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
-		slog.Warn("cn_concurrency_limit_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	slog.Info("cn_provider_concurrency_limited",
-		"account_id", account.ID,
-		"platform", account.Platform,
-		"until", until.UTC(),
-	)
+	s.setCNProviderTempUnschedulable(ctx, account, until,
+		cnConcurrencyLimitReasonPrefix, cnConcurrencyLimitReasonPrefix+": "+kimiConcurrentRequestLimitMessage,
+		"cn_provider_concurrency_limited")
 }
 
 // cnBalanceLowReason 构造余额不足临时停调的 reason（带稳定前缀）。
@@ -73,6 +119,90 @@ func cnProviderResponseIndicatesInsufficientBalance(body []byte) bool {
 		strings.Contains(s, "insufficient_credit") ||
 		strings.Contains(s, "balance is not enough") ||
 		strings.Contains(s, "no enough balance")
+}
+
+// cnFrequencyLimitQuotaGuardPercent 是「频率型 429」降级前必须通过的额度护栏：
+// 快照里任一窗口用量达到该百分比，就不再按频控处理，仍冷却到窗口重置点。
+// 快照最多滞后一个额度探测周期（默认 10 分钟），因此真实耗尽在极端情况下可能
+// 被短暂降级成秒级冷却；5 秒后重试仍会拿到 429，下一轮探测刷新快照后自动纠正。
+const cnFrequencyLimitQuotaGuardPercent = 90
+
+// cnFrequencyLimitMarkers 是「请求频率/速率限制」类 429 的文案特征（小写比较）。
+// 智谱实测文案：「您的账户已达到速率限制，请您控制请求频率」。
+var cnFrequencyLimitMarkers = []string{
+	"速率限制",
+	"请求频率",
+	"访问频率",
+	"请求过于频繁",
+	"请求太频繁",
+	"too many requests",
+	"rate limit exceeded",
+	"rate_limit_exceeded",
+	"ratelimit exceeded",
+}
+
+// cnQuotaExhaustionMarkers 是额度耗尽类文案；命中任一即认为 429 与额度有关，
+// 绝不降级为短冷却（宁可多停调，也不要把真耗尽当成限频反复重试）。
+var cnQuotaExhaustionMarkers = []string{
+	"额度",
+	"已用尽",
+	"用完",
+	"quota",
+	"usage limit",
+	"insufficient",
+	"balance",
+}
+
+// cnProviderResponseIndicatesFrequencyLimit 通过响应体文案识别「请求频率/速率
+// 限制」类 429 —— 它与滚动窗口的额度消耗无关，重试即可能成功，不该按额度
+// 耗尽冷却到窗口结束。命中频控文案且不含任何额度类文案才算频控。
+func cnProviderResponseIndicatesFrequencyLimit(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	s := strings.ToLower(string(body))
+	matched := false
+	for _, marker := range cnFrequencyLimitMarkers {
+		if strings.Contains(s, marker) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+	for _, marker := range cnQuotaExhaustionMarkers {
+		if strings.Contains(s, marker) {
+			return false
+		}
+	}
+	return true
+}
+
+// cnProviderQuotaSnapshotNearExhausted 判断 Coding Plan 账号的滚动窗口用量快照
+// 是否已接近耗尽（任一窗口 >= percent）。快照完全缺失（额度探测还没跑过或
+// 解析失败）时返回 true：此时无法证明 429 与额度无关，保守沿用窗口冷却。
+func cnProviderQuotaSnapshotNearExhausted(account *Account, percent float64) bool {
+	if account == nil || len(account.Extra) == 0 {
+		return true
+	}
+	provider := account.Platform
+	suffixes := []string{cnExtraSuffix5hUsed, cnExtraSuffixWeeklyUsed}
+	if cnQuotaHasMonthlyWindow(provider) {
+		suffixes = append(suffixes, cnExtraSuffixMonthlyUsed)
+	}
+	seen := false
+	for _, suffix := range suffixes {
+		raw, ok := account.Extra[cnExtraKey(provider, suffix)]
+		if !ok {
+			continue
+		}
+		seen = true
+		if schedulingPercentValue(raw) >= percent {
+			return true
+		}
+	}
+	return !seen
 }
 
 // handleCNProviderInsufficientBalance 把余额不足标记为可恢复的临时停调：
@@ -108,9 +238,17 @@ func (s *RateLimitService) handleCNProviderInsufficientBalance(
 // 默认 20 分钟）。周期任务会在余额恢复后提前清除，故此处只需保证冷却覆盖到下一次
 // 周期检测即可。
 func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
+	if s == nil {
+		return cnBalanceCheckCooldown(nil)
+	}
+	return cnBalanceCheckCooldown(s.cfg)
+}
+
+// cnBalanceCheckCooldown 返回余额类冷却时长（= 2× 余额检测周期，默认周期 10 分钟）。
+func cnBalanceCheckCooldown(cfg *config.Config) time.Duration {
 	minutes := 10
-	if s != nil && s.cfg != nil {
-		if cfgMin := s.cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes; cfgMin > 0 {
+	if cfg != nil {
+		if cfgMin := cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes; cfgMin > 0 {
 			minutes = cfgMin
 		}
 	}
@@ -130,12 +268,20 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
 	}
-	if !account.IsOpenCodeGo() && (!account.IsCNProvider() || !account.IsCodingPlan()) {
+	switch {
+	case account.IsOpenCodeGo():
+	case account.IsCommandCode():
+		// 有充值积分时上游跳过窗口检查，429 与窗口无关。
+		if !commandCodeWindowsBinding(account.Extra) {
+			return nil
+		}
+	case account.IsCNProvider() && account.IsCodingPlan():
+	default:
 		return nil
 	}
 	provider := account.Platform
 	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
-	if account.IsOpenCodeGo() {
+	if cnQuotaHasMonthlyWindow(provider) {
 		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
 	}
 	var earliest *time.Time
@@ -151,6 +297,45 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	return earliest
 }
 
+// cooldownCNProviderToQuotaSnapshotReset 把账号冷却到配额快照中最早的未来窗口
+// 重置点（SetRateLimited，窗口过期后调度自动恢复），供 429（OpenCodeGo /
+// Coding Plan）与配额耗尽 403 共用。仅在冷却成功持久化后返回非 nil；
+// 无快照或写库失败时返回 nil，由调用方落入各自的兜底逻辑（避免写库失败
+// 时账号完全失去持久冷却）。
+func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Context, account *Account, reason, logEvent string) *time.Time {
+	until := cnProviderQuotaSnapshotReset(account, time.Now())
+	if until == nil {
+		return nil
+	}
+	s.notifyAccountSchedulingBlocked(account, *until, reason)
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
+		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+		return nil
+	}
+	slog.Info(logEvent,
+		"account_id", account.ID,
+		"platform", account.Platform,
+		"reset_at", until.UTC(),
+	)
+	return until
+}
+
+// setCNProviderTempUnschedulable 写临时停调（含调度层通知与日志），供 CN 403
+// 各分支（并发限制、配额耗尽兜底）共用。告警 key 由 notifyReason 派生，保持
+// 各分支既有日志 key 稳定（<prefix>_set_temp_unschedulable_failed）。
+func (s *RateLimitService) setCNProviderTempUnschedulable(ctx context.Context, account *Account, until time.Time, notifyReason, storeReason, logEvent string) {
+	s.notifyAccountSchedulingBlocked(account, until, notifyReason)
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, storeReason); err != nil {
+		slog.Warn(notifyReason+"_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	slog.Info(logEvent,
+		"account_id", account.ID,
+		"platform", account.Platform,
+		"until", until.UTC(),
+	)
+}
+
 // applyCNProviderReactive429 处理国产供应商的 429 响应。
 // 返回 true 表示已处理（调用方应 return），false 表示未命中、继续走默认 429 逻辑。
 func (s *RateLimitService) applyCNProviderReactive429(
@@ -160,17 +345,7 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	responseBody []byte,
 ) bool {
 	if account.IsOpenCodeGo() {
-		if until := cnProviderQuotaSnapshotReset(account, time.Now()); until != nil {
-			s.notifyAccountSchedulingBlocked(account, *until, "429")
-			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
-				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
-				return true
-			}
-			slog.Info("opencode_go_rate_limited",
-				"account_id", account.ID,
-				"platform", account.Platform,
-				"reset_at", *until,
-			)
+		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "opencode_go_rate_limited") != nil {
 			return true
 		}
 		if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
@@ -197,22 +372,26 @@ func (s *RateLimitService) applyCNProviderReactive429(
 		s.handleCNProviderInsufficientBalance(ctx, account, extractUpstreamErrorMessage(responseBody))
 		return true
 	}
-	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
+	// 2) 频率型 429（"速率限制"/"请求频率"）：与滚动窗口额度无关，交给默认 429
+	// 兜底使用秒级冷却（管理端可配，默认 5s）。否则一次并发突发会把账号冷却到
+	// 5h 窗口结束（实测 1.5~4.8 小时），把「限频」误伤成「额度耗尽」。
+	// 护栏：快照显示窗口用量已接近耗尽时不降级，仍按窗口冷却（见
+	// cnProviderQuotaSnapshotNearExhausted）。
+	if account.IsCodingPlan() &&
+		cnProviderResponseIndicatesFrequencyLimit(responseBody) &&
+		!cnProviderQuotaSnapshotNearExhausted(account, cnFrequencyLimitQuotaGuardPercent) {
+		slog.Info("cn_coding_plan_frequency_429",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"handling", "short_429_cooldown",
+		)
+		return false
+	}
+	// 3) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
 	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
-	if account.IsCodingPlan() {
-		if until := cnProviderQuotaSnapshotReset(account, time.Now()); until != nil {
-			s.notifyAccountSchedulingBlocked(account, *until, "429")
-			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
-				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
-				return true
-			}
-			slog.Info("cn_coding_plan_rate_limited",
-				"account_id", account.ID,
-				"platform", account.Platform,
-				"reset_at", *until,
-			)
-			return true
-		}
+	if account.IsCodingPlan() &&
+		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
+		return true
 	}
 	return false
 }
