@@ -50,6 +50,13 @@
             <div v-for="row in rows(billing[name].data)" :key="String(row.InstanceNo ?? row.CouponID)" class="border-t border-gray-100 py-1 dark:border-dark-600">
               <p>{{ row.InstanceNo ?? row.CouponID }} · {{ row.ConfigurationName ?? row.CouponName }}</p>
               <p>{{ tt('providerRemaining') }}: {{ row.AvailableAmount ?? row.RemainingAmount }} {{ row.Unit ?? '' }} · {{ tt('providerExpiry') }}: {{ date(String(row.ExpiryTime ?? row.ExpiredTime ?? '')) }}</p>
+              <template v-if="name === 'packages' && billing.packages.state === 'ok'">
+                <p v-if="comparison(row).kind === 'unmatched'" class="text-gray-500">{{ tt('comparisonUnmatched') }}</p>
+                <template v-else>
+                  <p>{{ tt('comparisonLocal', { model: comparison(row).model, remaining: comparison(row).remaining, held: comparison(row).held }) }}</p>
+                  <p :class="comparison(row).kind === 'different' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500'">{{ tt(`comparisonStates.${comparison(row).kind}`) }}</p>
+                </template>
+              </template>
               <p v-if="row.Status != null">{{ tt('state') }}: {{ row.Status }}</p>
               <p v-if="name === 'coupons'">{{ tt('couponRestrictions') }}: {{ restrictions(row) }}</p>
             </div>
@@ -132,6 +139,25 @@ async function query() {
   try { const result = await funding.queryProvider(id); if (current === queryGeneration && id === props.accountId) billing.value = result }
   catch { if (current === queryGeneration) queryError.value = true }
   finally { if (current === queryGeneration) querying.value = false }
+}
+// Compare an exact pack identity in token units; never infer prices or credit.
+function comparison(row: Record<string, unknown>) {
+  const id = String(row.InstanceNo ?? '').replace(/^ModelArk_resource_packages(?=\d+$)/, '')
+  const grant = status.value?.grants.find(g => g.id.replace(/^ModelArk_resource_packages(?=\d+$)/, '') === id)
+  if (!grant) return { kind: 'unmatched', model: '', remaining: '', held: '' }
+  const remaining = tokens(units(grant.available_tokens) + units(grant.reserved_tokens))
+  const base = { model: policyName(grant.model), remaining, held: grant.reserved_tokens }
+  if (!['token', 'tokens'].includes(String(row.Unit ?? '').trim().toLowerCase())) return { ...base, kind: 'unverifiedUnit' }
+  const normalize = (value: string) => {
+    if (!/^\d+(?:\.\d+)?$/.test(value)) return null
+    const [whole, fraction = ''] = value.split('.')
+    const a = whole.replace(/^0+(?=\d)/, '')
+    const b = fraction.replace(/0+$/, '')
+    return b ? `${a}.${b}` : a
+  }
+  const amount = typeof row.AvailableAmount === 'string' ? normalize(row.AvailableAmount) : null
+  const expiry = typeof row.ExpiryTime === 'string' ? Date.parse(row.ExpiryTime) : NaN
+  return { ...base, kind: amount === normalize(remaining) && Number.isFinite(expiry) && expiry === Date.parse(grant.expires_at) ? 'matches' : 'different' }
 }
 const rows = (data: unknown): Record<string, unknown>[] => Array.isArray(data) ? data : []
 const value = (data: unknown, key: string) => data && !Array.isArray(data) && typeof data === 'object' ? (data as Record<string, unknown>)[key] ?? '—' : '—'

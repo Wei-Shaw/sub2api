@@ -1,5 +1,9 @@
 export default {
   byteplusPrepaid: {
+    "comparisonUnmatched": "没有匹配的本地资源包。供应商数据尚未计入本地额度。",
+    "comparisonLocal": "本地记录（{model}）：剩余 {remaining} 代币，含已预留 {held}。",
+    "comparisonStates": {"matches": "显示的观测时间下，记录的余额和到期时间一致；这不代表可用请求容量。", "different": "供应商与本地记录不同。核实额度前，请检查入账延迟及未结算任务。", "unverifiedUnit": "已匹配本地资源包，但供应商单位需核实，尚未比较数值。"},
+
     amountLimit: '金额限制',
     usageLimit: '使用限制',
 

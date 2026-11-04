@@ -36,6 +36,25 @@ describe('BytePlus local funding and provider query', () => {
     const w = view(); await flushPromises(); await button(w, 'Query BytePlus').trigger('click'); await flushPromises()
     expect(w.text()).toContain('12.50 USD'); expect(w.text()).toContain('provider-pack'); expect(w.text()).toContain('permission denied'); expect(w.text()).toContain('postpaid'); expect(w.text()).toContain('1999998.984375'); w.unmount()
   })
+  it('compares only matched package identities in known units without changing local funding', async () => {
+    const s = local(); s.grants[0]!.id = '70000000000000001'; vi.mocked(api.getStatus).mockResolvedValue(s)
+    const b = billing(); b.configured = true; b.setup = 'ready'
+    b.packages = { state: 'ok', observed_at: '2030-01-01T00:00:00Z', attempted_at: '2030-01-01T00:00:00Z', data: [{ InstanceNo: 'ModelArk_resource_packages70000000000000001', AvailableAmount: '2000000.000000', Unit: 'Token', ExpiryTime: '2030-01-02T00:00:00Z' }] }
+    vi.mocked(api.queryProvider).mockResolvedValue(b)
+    const w = view(); await flushPromises(); await button(w, 'Query BytePlus').trigger('click'); await flushPromises()
+    expect(w.text()).toContain('Recorded remainder and expiry agree')
+    expect(w.text()).toContain('2000000 tokens including 1.015625 held')
+    b.packages = { ...b.packages, data: [{ InstanceNo: '70000000000000001', AvailableAmount: '1999999', Unit: 'Token', ExpiryTime: '2030-01-02T00:00:00Z' }] }
+    vi.mocked(api.queryProvider).mockResolvedValue({ ...b })
+    await button(w, 'Query BytePlus').trigger('click'); await flushPromises()
+    expect(w.text()).toContain('Provider and local records differ')
+    b.packages = { ...b.packages, data: [{ InstanceNo: '70000000000000001', AvailableAmount: '2', Unit: 'MToken', ExpiryTime: '2030-01-02T00:00:00Z' }] }
+    vi.mocked(api.queryProvider).mockResolvedValue({ ...b })
+    await button(w, 'Query BytePlus').trigger('click'); await flushPromises()
+    expect(w.text()).toContain('unit needs verification; amounts were not compared')
+    expect(w.get('[data-testid="byteplus-model"]').text()).toContain('1999998.984375')
+    w.unmount()
+  })
   it('excludes expired and paused grants with positive remainder', async () => {
     const s = local(); s.grants[0]!.eligible = false; s.grants[0]!.eligibility_reason = 'expired'; vi.mocked(api.getStatus).mockResolvedValue(s)
     const w = view(); await flushPromises(); expect(w.get('[data-testid="byteplus-model"]').text()).toContain('Spendable tokens: 0'); expect(w.text()).toContain('1.015625'); w.unmount()
