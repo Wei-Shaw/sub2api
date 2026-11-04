@@ -230,7 +230,7 @@ const handlePageSizeChange = (value: string | number | boolean | null) => {
 }
 
 const submitJump = () => {
-  const value = jumpPage.value.trim()
+  const value = String(jumpPage.value).trim()
   if (!value) return
   const pageNum = Number.parseInt(value, 10)
   if (Number.isNaN(pageNum)) return

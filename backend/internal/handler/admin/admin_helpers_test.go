@@ -2,6 +2,8 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -136,6 +138,7 @@ func TestParseOpsOpenAITokenStatsFilter_InvalidParams(t *testing.T) {
 		"/?page=0",
 		"/?page_size=0",
 		"/?page_size=101",
+		"/?page=9223372036854775807",
 	}
 
 	gin.SetMode(gin.TestMode)
@@ -146,6 +149,32 @@ func TestParseOpsOpenAITokenStatsFilter_InvalidParams(t *testing.T) {
 
 		_, err := parseOpsOpenAITokenStatsFilter(c)
 		require.Error(t, err, "url=%s", rawURL)
+	}
+}
+
+func TestParseOpsOpenAITokenStatsFilter_PaginationBoundaries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, size := range []int{1, 20, 21, 100} {
+		bound := math.MaxInt / size
+		pages := []int{bound}
+		if bound < math.MaxInt {
+			pages = append(pages, bound+1)
+		}
+		for _, page := range pages {
+			query := fmt.Sprintf("/?page=%d&page_size=%d", page, size)
+			t.Run(query, func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodGet, query, nil)
+				filter, err := parseOpsOpenAITokenStatsFilter(c)
+				if page > bound {
+					require.ErrorContains(t, err, "invalid page")
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, page, filter.Page)
+				require.Equal(t, size, filter.PageSize)
+			})
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -219,7 +220,8 @@ func (h *OpsHandler) GetDashboardErrorDistribution(c *gin.Context) {
 	response.Success(c, data)
 }
 
-// GetDashboardOpenAITokenStats returns OpenAI token efficiency stats grouped by model.
+// GetDashboardOpenAITokenStats returns token efficiency stats for all platforms, grouped by model.
+// The endpoint name is retained for compatibility; platform and group_id optionally narrow the scope.
 // GET /api/v1/admin/ops/dashboard/openai-token-stats
 func (h *OpsHandler) GetDashboardOpenAITokenStats(c *gin.Context) {
 	if h.opsService == nil {
@@ -307,6 +309,9 @@ func parseOpsOpenAITokenStatsFilter(c *gin.Context) (*service.OpsOpenAITokenStat
 			return nil, fmt.Errorf("invalid page_size")
 		}
 		filter.PageSize = pageSize
+	}
+	if filter.Page > math.MaxInt/filter.PageSize {
+		return nil, fmt.Errorf("invalid page")
 	}
 	return filter, nil
 }

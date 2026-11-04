@@ -48,6 +48,16 @@ assert_exists "${STATE_DIR}/containers/sub2api-apple"
 assert_exists "${STATE_DIR}/containers/sub2api-apple-postgres"
 assert_exists "${STATE_DIR}/containers/sub2api-apple-redis"
 assert_exists "${STATE_DIR}/running/sub2api-apple"
+grep -q '^while true; do$' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app container does not supervise the Sub2API process"
+grep -q '^    su-exec sub2api "$runtime_binary" &$' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app supervisor does not launch the updatable Sub2API binary"
+grep -q '^trap stop TERM INT$' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app supervisor does not handle container stop signals"
+grep -q '^runtime_binary="$runtime_dir/sub2api"$' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app container does not run its updatable binary from persistent storage"
+grep -q '^APPLE_CONTAINER_SUB2API_IMAGE_ID=fake-image-id$' "${STATE_DIR}/env-files/sub2api-apple" || \
+    fail "app container did not receive the inspected base image ID"
 [[ ! -s "${STATE_DIR}/network-subnets/sub2api-apple" ]] || \
     fail "up passed a subnet when APPLE_CONTAINER_NETWORK_SUBNET was unset"
 "${SCRIPT}" status >/dev/null

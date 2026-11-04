@@ -12,6 +12,7 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
   const submitting = ref(false)
   const initialized = ref(false)
   const forceVisible = ref(false)
+  let stateVersion = 0
 
   const required = computed(() => status.value?.required === true)
   const shouldShow = computed(() => required.value || forceVisible.value)
@@ -24,30 +25,34 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
   })
 
   async function fetchStatus(): Promise<AdminComplianceStatus> {
+    const version = stateVersion
     loading.value = true
     try {
       const nextStatus = await adminComplianceAPI.getStatus()
+      if (version !== stateVersion) return nextStatus
       status.value = nextStatus
       initialized.value = true
       forceVisible.value = nextStatus.required
       return nextStatus
     } finally {
-      loading.value = false
+      if (version === stateVersion) loading.value = false
     }
   }
 
   async function accept(phrase: string): Promise<AdminComplianceStatus> {
+    const version = stateVersion
     submitting.value = true
     try {
       const nextStatus = await adminComplianceAPI.accept({
         phrase,
         language: currentLocale.value
       })
+      if (version !== stateVersion) return nextStatus
       status.value = nextStatus
       forceVisible.value = nextStatus.required
       return nextStatus
     } finally {
-      submitting.value = false
+      if (version === stateVersion) submitting.value = false
     }
   }
 
@@ -68,6 +73,7 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
   }
 
   function reset(): void {
+    stateVersion++
     status.value = null
     loading.value = false
     submitting.value = false

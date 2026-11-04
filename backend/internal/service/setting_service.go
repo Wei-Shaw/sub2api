@@ -118,22 +118,30 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo                 SettingRepository
-	defaultSubGroupReader       DefaultSubscriptionGroupReader
-	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                         *config.Config
-	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
-	version                     string // Application version
-	webSearchManagerBuilder     WebSearchManagerBuilder
-	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF      singleflight.Group
-	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF             singleflight.Group
-	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion
-	openAICodexVersionSF        singleflight.Group
-	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
-	codexRestrictionPolicySF    singleflight.Group
+	scopedAdminKeyRepo                 ScopedAdminKeyRepository
+	settingRepo                        SettingRepository
+	defaultSubGroupReader              DefaultSubscriptionGroupReader
+	proxyRepo                          ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                                *config.Config
+	onUpdate                           func() // Callback when settings are updated (for cache invalidation)
+	version                            string // Application version
+	webSearchManagerBuilder            WebSearchManagerBuilder
+	antigravityUAVersionCache          atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF             singleflight.Group
+	openAICodexUACache                 atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF                    singleflight.Group
+	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
+	openAICodexVersionSF               singleflight.Group
+	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF                singleflight.Group
+	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF           singleflight.Group
+	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
+	openAICodexTicketEnabledSF         singleflight.Group
+	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
+	openAICodexTicketHarvestProxySF    singleflight.Group
 
+	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 
@@ -161,6 +169,11 @@ type DefaultPlatformQuotaSetting struct {
 	DailyLimitUSD   *float64 `json:"daily"`
 	WeeklyLimitUSD  *float64 `json:"weekly"`
 	MonthlyLimitUSD *float64 `json:"monthly"`
+}
+
+// HasAnyLimit 报告是否至少配置了一档限额（0 也算配置）。nil receiver 视为未配置。
+func (q *DefaultPlatformQuotaSetting) HasAnyLimit() bool {
+	return q != nil && (q.DailyLimitUSD != nil || q.WeeklyLimitUSD != nil || q.MonthlyLimitUSD != nil)
 }
 
 type ProviderDefaultGrantSettings struct {

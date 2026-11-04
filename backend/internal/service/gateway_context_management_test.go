@@ -186,6 +186,17 @@ func TestComputeFinalAnthropicBeta_OAuthMimic_IgnoresClientBeta(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, strings.Contains(final, "custom-experimental-beta"),
 		"mimic 路径必须忽略客户端 anthropic-beta header")
+	require.True(t, anthropicBetaTokensContains(final, claude.BetaMidConversationOutputConfig),
+		"mimic 必须注入 mid-conversation output_config 控制所需的 beta")
+
+	// 显式 dropSet 仍能移除 mimic 注入的该 beta，且不会因此放行客户端未知 beta。
+	dropped, ok := s.computeFinalAnthropicBeta("oauth", true, "claude-sonnet-4-6", hdr, []byte(`{}`),
+		map[string]struct{}{claude.BetaMidConversationOutputConfig: {}})
+	require.True(t, ok)
+	require.False(t, anthropicBetaTokensContains(dropped, claude.BetaMidConversationOutputConfig),
+		"显式 dropSet 必须能移除新增的 mimic beta")
+	require.False(t, strings.Contains(dropped, "custom-experimental-beta"),
+		"dropSet 存在时 mimic 路径仍必须忽略客户端 anthropic-beta header")
 }
 
 func TestComputeFinalAnthropicBeta_OAuthTransparent_NonHaiku_PreservesClientContextManagement(t *testing.T) {
@@ -358,6 +369,25 @@ func TestNormalizeClaudeOAuthRequestBody_HaikuShortModelStillNormalizesToDatedID
 	out, modelID := normalizeClaudeOAuthRequestBody(body, "claude-haiku-4-5", claudeOAuthNormalizeOptions{})
 	require.Equal(t, "claude-haiku-4-5-20251001", modelID)
 	require.Equal(t, "claude-haiku-4-5-20251001", gjson.GetBytes(out, "model").String())
+}
+
+// issue #7919：采样锁定的模型上 temperature+top_p 共存即 400，
+// 只传 top_p 时不得再补 temperature，否则网关自己制造 400。
+func TestNormalizeClaudeOAuthRequestBody_SkipsTemperatureTopUpWithTopPOnLockedModels(t *testing.T) {
+	for _, model := range []string{"claude-haiku-5-5", "claude-sonnet-5-5"} {
+		body := []byte(`{"model":"` + model + `","top_p":0.99,"messages":[]}`)
+		out, _ := normalizeClaudeOAuthRequestBody(body, model, claudeOAuthNormalizeOptions{})
+		require.False(t, gjson.GetBytes(out, "temperature").Exists(),
+			"model %s with top_p must not gain temperature", model)
+		require.Equal(t, 0.99, gjson.GetBytes(out, "top_p").Float())
+	}
+}
+
+func TestNormalizeClaudeOAuthRequestBody_StillTopsUpTemperatureWithoutTopP(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-5-5","messages":[]}`)
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-haiku-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, int64(1), gjson.GetBytes(out, "temperature").Int(),
+		"无 top_p 时 temperature:1 补齐保持不变")
 }
 
 func TestApplyClaudeCodeOAuthMimicryToBody_HaikuRewritesSystem(t *testing.T) {

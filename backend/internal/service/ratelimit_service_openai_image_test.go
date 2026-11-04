@@ -128,7 +128,7 @@ func TestOpenAIGatewayServiceForwardImages_ImageRateLimitReturnsFailoverAndCools
 func TestOpenAIGatewayServiceForwardImages_TextFallbackDoesNotCoolImageCapability(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &modelNotFoundAccountRepoStub{}
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat"}`)
 	upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"model\":\"gpt-5.4-mini\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Here's a polished image prompt for your request.\"}]}]}}\n\n"
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -178,7 +178,7 @@ func TestOpenAIGatewayServiceForwardImages_TextFallbackDoesNotCoolImageCapabilit
 func TestOpenAIGatewayServiceForwardImages_StructuredUnavailableCoolsImageCapability(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &modelNotFoundAccountRepoStub{}
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat"}`)
 	upstreamSSE := "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"r\",\"error\":" +
 		"{\"type\":\"upstream_error\",\"code\":\"image_generation_unavailable\"," +
 		"\"message\":\"image generation tool is not available for this account\"}}}\n\n"

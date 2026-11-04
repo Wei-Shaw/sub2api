@@ -26,6 +26,8 @@ function fallbackCopy(text: string): boolean {
   textarea.setSelectionRange(0, textarea.value.length)
   try {
     return document.execCommand('copy')
+  } catch {
+    return false
   } finally {
     document.body.removeChild(textarea)
   }

@@ -12,6 +12,85 @@ type compositeRouteRepoStub struct {
 	routes []CompositeModelRoute
 }
 
+func TestCompositeRouteResolverCodexFilteringMatchesProductionPriority(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		routes []CompositeModelRoute
+		want   []string
+	}{
+		{
+			name: "endpoint beats priority",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformOpenAI, Priority: 1},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformTypeSafe, Priority: 100},
+			},
+			want: []string{"unrouted"},
+		},
+		{
+			name: "Responses OpenAI overrides any TypeSafe",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformTypeSafe, Priority: 1},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformOpenAI, Priority: 100},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "longer prefix beats priority",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "a", MatchType: CompositeRouteMatchPrefix, TargetPlatform: PlatformOpenAI, Priority: 1},
+				{ID: 2, PublicModel: "ali", MatchType: CompositeRouteMatchPrefix, TargetPlatform: PlatformTypeSafe, Priority: 100},
+			},
+			want: []string{"unrouted"},
+		},
+		{
+			name: "exact beats endpoint prefix",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchPrefix, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformTypeSafe},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformOpenAI},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "lower priority wins",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformTypeSafe, Priority: 100},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI, Priority: 1},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "lower ID breaks tie",
+			routes: []CompositeModelRoute{
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI},
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformTypeSafe},
+			},
+			want: []string{"unrouted"},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			for index := range scenario.routes {
+				scenario.routes[index].Enabled = true
+				scenario.routes[index].GroupID = 7
+			}
+			resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: scenario.routes})
+			models, err := resolver.FilterCodexModels(context.Background(), 7, []string{"alias", "unrouted"})
+			require.NoError(t, err)
+			require.Equal(t, scenario.want, models)
+			decision, err := resolver.Resolve(context.Background(), 7, "alias", CompositeRouteEndpointResponses)
+			require.NoError(t, err)
+			require.True(t, decision.Matched)
+			require.Equal(t, decision.TargetPlatform != PlatformTypeSafe, len(models) == 2)
+			exactModels, err := resolver.ListExactPublicModels(context.Background(), 7, CompositeRouteEndpointResponses, false)
+			require.NoError(t, err)
+			if decision.TargetPlatform == PlatformTypeSafe {
+				require.Empty(t, exactModels)
+			} else {
+				require.Contains(t, exactModels, "alias")
+			}
+		})
+	}
+}
+
 func (s compositeRouteRepoStub) ListByGroup(ctx context.Context, groupID int64, includeDisabled bool) ([]CompositeModelRoute, error) {
 	routes := make([]CompositeModelRoute, 0, len(s.routes))
 	for _, route := range s.routes {
@@ -142,6 +221,33 @@ func TestCompositeRouteResolverDoesNotGuessAmbiguousAccountOwnership(t *testing.
 	require.False(t, decision.Matched)
 	require.Empty(t, decision.TargetPlatform)
 	require.Equal(t, "model is exposed by multiple provider platforms", decision.Reason)
+	require.False(t, decision.OAuthAmbiguous())
+}
+
+// Scenario: 含 OAuth 账号的跨平台歧义必须被识别为需拒绝的配置错误
+func TestCompositeRouteResolverFlagsOAuthAmbiguousOwnership(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: true}, nil
+	})
+
+	// gpt-* 可被内置探测器识别，验证歧义不会退化为按模型名猜平台。
+	decision, err := resolver.Resolve(context.Background(), 7, "gpt-6-astra", CompositeRouteEndpointResponses)
+
+	require.NoError(t, err)
+	require.False(t, decision.Matched)
+	require.Empty(t, decision.TargetPlatform)
+	require.True(t, decision.OAuthAmbiguous())
+	require.Contains(t, decision.AmbiguousMessage(), `"gpt-6-astra"`)
+
+	// 兜底按模型名落到 Anthropic（如 OpenAI OAuth 映射 claude-* 给 Claude Code 用）
+	// 或无法兜底的自定义别名：OpenAI 网关 OAuth 不会被选中，保持原有行为。
+	for _, model := range []string{"claude-sonnet-4-6", "team-alias"} {
+		decision, err := resolver.Resolve(context.Background(), 7, model, CompositeRouteEndpointMessages)
+		require.NoError(t, err)
+		require.False(t, decision.OAuthAmbiguous(), "model=%s", model)
+		require.Equal(t, CompositeRouteReasonAmbiguous, decision.Reason, "model=%s", model)
+	}
 }
 
 func TestCompositeRouteResolverOwnershipLookupErrorFallsBackOnlyForDetectableModels(t *testing.T) {

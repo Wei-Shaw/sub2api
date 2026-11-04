@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -367,7 +369,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax}
+		return domain.CompositePrecedencePlatformIDs()
 	}
 	return []string{groupPlatform}
 }
@@ -687,7 +689,28 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingBillingMode(pricing); err != nil {
 		return err
 	}
+	if err := validateReasoningEffortMultipliers(pricing); err != nil {
+		return err
+	}
 	return validatePricingTimePricing(pricing)
+}
+
+func validateReasoningEffortMultipliers(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		for effort, multiplier := range p.ReasoningEffortMultipliers {
+			switch effort {
+			case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+			default:
+				return infraerrors.BadRequest("INVALID_REASONING_EFFORT_MULTIPLIER",
+					fmt.Sprintf("unsupported reasoning effort %q for models %v", effort, p.Models))
+			}
+			if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier <= 0 {
+				return infraerrors.BadRequest("INVALID_REASONING_EFFORT_MULTIPLIER",
+					fmt.Sprintf("reasoning_effort_multipliers.%s must be a finite number > 0", effort))
+			}
+		}
+	}
+	return nil
 }
 
 func validatePricingTimePricing(pricing []ChannelModelPricing) error {
@@ -950,7 +973,7 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 		channel.BillingModelSource = input.BillingModelSource
 	}
 	if input.FeaturesConfig != nil {
-		channel.FeaturesConfig = input.FeaturesConfig
+		channel.FeaturesConfig = mergeWebSearchEmulationDimensions(channel.FeaturesConfig, input.FeaturesConfig)
 	}
 	if input.ApplyPricingToAccountStats != nil {
 		channel.ApplyPricingToAccountStats = *input.ApplyPricingToAccountStats
@@ -963,6 +986,65 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 
 // checkGroupConflicts 检查待关联的分组是否已属于其他渠道。
 // channelID 为当前渠道 ID（Create 时传 0）。
+// mergeWebSearchEmulationDimensions keeps the per-platform dimensions of
+// features_config.web_search_emulation across channel updates.
+//
+// Why: the key is a map keyed by platform ("anthropic", "openai", ...), but
+// UpdateChannel replaces features_config as a whole block. A client that only
+// knows about a subset of platforms (the admin UI used to submit the anthropic
+// dimension only) therefore erased every other platform's setting on each save —
+// silently disabling web search emulation for openai/command_code/... channels.
+//
+// Rules:
+//   - key present in the request: request dimensions win, missing dimensions are
+//     inherited from the current value;
+//   - key absent from the request: the whole key is inherited, so clients that do
+//     not know the feature cannot wipe it;
+//   - explicit empty object {} or null: treated as "clear" and replaces the value.
+//
+// Other features_config keys keep the historical whole-block replacement
+// semantics. No generic deep merge is performed: nested objects are replaced as
+// a unit so deleting a dimension stays expressible.
+func mergeWebSearchEmulationDimensions(existing, incoming map[string]any) map[string]any {
+	if incoming == nil {
+		return nil
+	}
+	current, _ := existing[featureKeyWebSearchEmulation].(map[string]any)
+	rawIncoming, present := incoming[featureKeyWebSearchEmulation]
+	incomingDims, incomingIsMap := rawIncoming.(map[string]any)
+
+	if !present && len(current) > 0 {
+		return withWebSearchEmulationKey(incoming, current)
+	}
+	if !incomingIsMap || len(current) == 0 || len(incomingDims) == 0 {
+		return incoming
+	}
+
+	merged := make(map[string]any, len(incomingDims)+len(current))
+	for platform, value := range current {
+		merged[platform] = value
+	}
+	for platform, value := range incomingDims {
+		merged[platform] = value
+	}
+	return withWebSearchEmulationKey(incoming, merged)
+}
+
+// withWebSearchEmulationKey returns a copy of incoming whose
+// web_search_emulation key points at a copy of value.
+func withWebSearchEmulationKey(incoming, value map[string]any) map[string]any {
+	out := make(map[string]any, len(incoming)+1)
+	for key, item := range incoming {
+		out[key] = item
+	}
+	copied := make(map[string]any, len(value))
+	for platform, item := range value {
+		copied[platform] = item
+	}
+	out[featureKeyWebSearchEmulation] = copied
+	return out
+}
+
 func (s *ChannelService) checkGroupConflicts(ctx context.Context, channelID int64, groupIDs []int64) error {
 	if len(groupIDs) == 0 {
 		return nil

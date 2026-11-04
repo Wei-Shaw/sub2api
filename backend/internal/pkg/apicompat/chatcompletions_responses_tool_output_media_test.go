@@ -154,7 +154,7 @@ func TestResponsesToolOutputMedia_InterleavedMessagesFollowMediaBatch(t *testing
 		{"type":"function_call_output","call_id":"call_A","output":[{"type":"input_image","image_url":"data:image/png;base64,AQID"}]}
 	]`)
 
-	require.Equal(t, []string{"assistant", "tool", "user", "system", "user"}, chatMessageRoles(messages))
+	require.Equal(t, []string{"assistant", "tool", "user", "user", "user"}, chatMessageRoles(messages))
 	require.Equal(t, "[Tool output media for call call_A]", chatContentParts(t, messages[2])[0].Text)
 	require.JSONEq(t, `"approval saved"`, string(messages[3].Content))
 	require.JSONEq(t, `"continue"`, string(messages[4].Content))

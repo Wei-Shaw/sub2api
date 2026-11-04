@@ -575,7 +575,7 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingA
 		name        string
 		offPeakCost float64
 	}{
-		{"deepseek-v4-flash", 1000*2.2e-7 + 500*6.6e-7 + 1000*7e-9},
+		{"deepseek-v4-flash", 1000*1.5e-7 + 500*6e-7 + 1000*3e-9},
 		{"deepseek-v4-pro", 1000*6.6e-7 + 500*1.98e-6 + 1000*2.2e-8},
 	} {
 		for _, slot := range []struct {
@@ -2131,8 +2131,11 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:        "resp_image_output_size",
-			Model:            "gpt-image-2",
+			RequestID: "resp_image_output_size",
+			Model:     "gpt-image-2",
+			Usage: OpenAIUsage{
+				ImageCacheReadTokens: 40,
+			},
 			ImageCount:       1,
 			ImageInputSize:   "1024x1024",
 			ImageOutputSizes: []string{"3840x2160"},
@@ -2162,7 +2165,7 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.Equal(t, "3840x2160", *usageRepo.lastLog.ImageOutputSize)
 	require.NotNil(t, usageRepo.lastLog.ImageSizeSource)
 	require.Equal(t, ImageSizeSourceOutput, *usageRepo.lastLog.ImageSizeSource)
-	require.Equal(t, map[string]int{ImageBillingSize4K: 1}, usageRepo.lastLog.ImageSizeBreakdown)
+	require.Equal(t, map[string]int{ImageBillingSize4K: 1, "image_cache_read_tokens": 40}, usageRepo.lastLog.ImageSizeBreakdown)
 	require.InDelta(t, 0.44, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
 }
@@ -3205,6 +3208,51 @@ func TestOpenAIGatewayServiceRecordUsage_FreeOpenAIFastChargesStandard(t *testin
 	standardTotal := float64(tokens.InputTokens)*inputPrice + float64(tokens.OutputTokens)*outputPrice
 	require.InDelta(t, standardTotal*fastMultiplier, usageRepo.lastLog.TotalCost, 1e-10)
 	require.InDelta(t, standardTotal*0.5, usageRepo.lastLog.ActualCost, 1e-10)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_FreeOpenAIFastMissingPricingRecordsZeroCostUsageLog(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(
+		usageRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupID := int64(78)
+	serviceTier := "priority"
+	apiKey := &APIKey{
+		ID:      1021,
+		GroupID: &groupID,
+		Group: &Group{
+			ID: groupID, Platform: PlatformOpenAI, Status: StatusActive,
+			Hydrated: true, RateMultiplier: 1, FreeOpenAIFast: true,
+		},
+	}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_free_fast_missing_pricing",
+			ServiceTier: &serviceTier,
+			Usage:       OpenAIUsage{InputTokens: 1200, OutputTokens: 300},
+			Model:       "pricing-missing-test-model",
+			Duration:    time.Second,
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 2021},
+		Account: &Account{ID: 3021, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "resp_free_fast_missing_pricing", usageRepo.lastLog.RequestID)
+	require.Equal(t, 1200, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 300, usageRepo.lastLog.OutputTokens)
+	require.NotNil(t, usageRepo.lastLog.ServiceTier)
+	require.Equal(t, "priority", *usageRepo.lastLog.ServiceTier)
+	require.Zero(t, usageRepo.lastLog.TotalCost)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
 }
 
 func TestGroupBillsOpenAIFastAtStandardRequiresOpenAIAccount(t *testing.T) {

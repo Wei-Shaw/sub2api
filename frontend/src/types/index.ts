@@ -191,6 +191,7 @@ export interface CustomMenuItem {
   icon_svg: string
   url: string
   page_slug?: string
+  hide_open_button?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
@@ -276,12 +277,18 @@ export interface PublicSettings {
   /** When true, user monitor hides the user ranking tab and /users payload. */
   channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
+  /** When false, the whole user-facing subscription surface is hidden. Default true. */
+  subscription_enabled: boolean
+  /** Mirrors payment config BALANCE_PAYMENT_DISABLED; true = balance top-up closed (subscription-only site). */
+  payment_balance_disabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   plugin_management_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
+  /** True when the deployment configures MCP_PUBLIC_URL; MCP is disabled otherwise. */
+  mcp_enabled?: boolean
 }
 
 export interface AuthResponse {
@@ -533,7 +540,11 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'composite'
+/**
+ * 分组平台：具体平台或 composite。具体平台以平台清单（constants/platformCatalog）
+ * 为准，后端新登记的平台是 KnownAccountPlatform 之外的字符串。
+ */
+export type GroupPlatform = AccountPlatform | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -555,6 +566,16 @@ export interface ReasoningEffortMapping {
   model?: string
 }
 
+/** 分组名称与描述在某个语言下的译文；字段为空表示沿用分组自身的 name/description。 */
+export interface GroupLocaleText {
+  name?: string
+  description?: string
+}
+
+/** 以语言代码（en、zh…）为键的分组文案译文。 */
+export type GroupI18n = Record<string, GroupLocaleText>
+
+// 用户侧接口返回的 name / description 已由后端按请求语言（Accept-Language）选好
 export interface Group {
   id: number
   name: string
@@ -575,6 +596,7 @@ export interface Group {
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
+  image_count_billing: boolean
   image_rate_independent: boolean
   image_rate_multiplier: number
   batch_image_discount_multiplier: number
@@ -618,6 +640,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
+  i18n?: GroupI18n
   force_openai_fast: boolean
   free_openai_fast: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
@@ -784,6 +808,7 @@ export interface UpdateApiKeyRequest {
 export interface CreateGroupRequest {
   name: string
   description?: string | null
+  i18n?: GroupI18n
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
@@ -797,6 +822,7 @@ export interface CreateGroupRequest {
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
@@ -849,6 +875,7 @@ export interface CreateGroupRequest {
 export interface UpdateGroupRequest {
   name?: string
   description?: string | null
+  i18n?: GroupI18n
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
@@ -863,6 +890,7 @@ export interface UpdateGroupRequest {
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
+  image_count_billing?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
@@ -913,7 +941,13 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+/** 前端内置专属界面（图标、配色、表单等）的平台。 */
+export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline'
+/**
+ * 账号平台：内置平台，或后端平台清单中新登记的平台（任意字符串）。
+ * `string & {}` 保留内置平台的字面量补全。
+ */
+export type AccountPlatform = KnownAccountPlatform | (string & {})
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'web-image' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -995,6 +1029,7 @@ export interface ProxyQualityCheckResult {
 export interface GeminiCredentials {
   // API Key authentication
   api_key?: string
+  base_url?: string
 
   // OAuth authentication
   access_token?: string
@@ -1019,11 +1054,15 @@ export interface GeminiCredentials {
   model_mapping?: Record<string, string>
 }
 
+export type TempUnschedulableScope = 'account' | 'model'
+
 export interface TempUnschedulableRule {
   error_code: number
   keywords: string[]
   duration_minutes: number
   description: string
+  // 作用范围：account 暂停整个账号，model 只冷却本次请求的模型；缺省时 401 按 account、其余按 model 处理。
+  scope?: TempUnschedulableScope
 }
 
 export interface TempUnschedulableState {
@@ -1031,6 +1070,8 @@ export interface TempUnschedulableState {
   triggered_at_unix: number
   status_code: number
   matched_keyword: string
+  scope?: TempUnschedulableScope
+  model?: string
   rule_index: number
   error_message: string
   trigger_count?: number
@@ -1150,6 +1191,77 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
+export type OpenCodeGoUsageStatus = 'ok' | 'unauthorized' | 'failed'
+
+export interface OpenCodeGoUsageWindow {
+  status?: string
+  percent: number
+  resets_at?: string
+}
+
+export interface OpenCodeGoUsageData {
+  rolling?: OpenCodeGoUsageWindow
+  weekly?: OpenCodeGoUsageWindow
+  monthly?: OpenCodeGoUsageWindow
+}
+
+export interface OpenCodeGoUsageSnapshot {
+  status: OpenCodeGoUsageStatus
+  data?: OpenCodeGoUsageData
+  fetched_at?: string
+  last_attempt_at?: string
+  next_refresh_at?: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+}
+
+export interface OpenCodeGoUsageState {
+  account_id: number
+  eligible: boolean
+  auto_refresh_enabled: boolean
+  snapshot?: OpenCodeGoUsageSnapshot
+}
+
+export interface OpenCodeGoUsageSettings {
+  enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
+  interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
+  debounce_minutes: number
+}
+
+export interface GrokCatalogScope {
+  account_id: number
+  account_type: string
+  endpoint: string
+  fingerprint: string
+}
+
+export interface GrokCatalogAttempt {
+  started_at: string
+  finished_at: string
+  status: string
+  error_code?: string
+  scope?: GrokCatalogScope
+}
+
+export interface GrokModelDiagnosticItem {
+  requested: string
+  upstream?: string
+  status: string
+}
+
+export interface GrokModelDiagnostics {
+  state: string
+  endpoint?: string
+  fetched_at?: string
+  expires_at?: string
+  models: string[]
+  last_attempt?: GrokCatalogAttempt
+  mappings: GrokModelDiagnosticItem[]
+}
+
 export interface Account {
   id: number
   name: string
@@ -1163,6 +1275,15 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
+  opencode_go_usage?: OpenCodeGoUsageState
+  codex_turn_tickets?: Array<{
+    model: string
+    length?: number
+    ready: boolean
+    remaining_seconds: number
+    blocked: boolean
+    expires_at?: string
+  }>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
@@ -1174,6 +1295,11 @@ export interface Account {
       available_count?: number
       credits?: { expires_at?: string }[]
     }
+    codex_credits_snapshot?: {
+      credits: { has_credits: boolean; unlimited: boolean; balance: string | null } | null
+      fetched_at: number
+    }
+    codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
@@ -1287,6 +1413,8 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+
+  grok_model_diagnostics?: GrokModelDiagnostics
 }
 
 // The admin account list may return this compact shape when lite=1. Detail
@@ -1450,7 +1578,7 @@ export interface CodexUsageSnapshot {
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seedance'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode

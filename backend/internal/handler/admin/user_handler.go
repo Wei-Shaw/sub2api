@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -150,10 +151,24 @@ func (h *UserHandler) List(c *gin.Context) {
 		includeSubscriptions := parseBoolQueryWithDefault(raw, true)
 		filters.IncludeSubscriptions = &includeSubscriptions
 	}
+	principal := adminaccess.RestrictedFromContext(c.Request.Context())
+	if principal != nil {
+		includeSubscriptions := false
+		filters.IncludeSubscriptions = &includeSubscriptions
+	}
 
 	users, total, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, filters, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	if principal != nil {
+		out := make([]any, len(users))
+		for i := range users {
+			out[i] = adminUserResponse(c, &users[i])
+		}
+		response.Paginated(c, out, total, page, pageSize)
 		return
 	}
 
@@ -227,7 +242,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromServiceAdmin(user))
+	response.Success(c, adminUserResponse(c, user))
 }
 
 // BindAuthIdentity manually binds a canonical auth identity to a user.
@@ -407,12 +422,18 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		UserID: userID,
 		Body:   req,
 	}
-	executeAdminIdempotentJSON(c, "admin.users.balance.update", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+	executeAdminIdempotentJSONWithResponse(c, "admin.users.balance.update", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		user, execErr := h.adminService.UpdateUserBalance(ctx, userID, req.Balance, req.Operation, req.Notes)
 		if execErr != nil {
 			return nil, execErr
 		}
 		return dto.UserFromServiceAdmin(user), nil
+	}, func(data any) any {
+		// 成功确认不隐式授予用户资料或余额读取权限；缓存重放也必须经过此边界。
+		if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+			return gin.H{"id": userID}
+		}
+		return data
 	})
 }
 
@@ -790,15 +811,21 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 		}
 	}
 
+	// 三档全空的输入不落库：user_platform_quotas 只保存至少配置了一档限额的记录，
+	// 不存在的行等价于不限额。未进入 records 的平台由 UpsertForUser 软删，审计里记为 removed。
 	records := make([]service.UserPlatformQuotaRecord, 0, len(req.Quotas))
 	for _, q := range req.Quotas {
-		records = append(records, service.UserPlatformQuotaRecord{
+		rec := service.UserPlatformQuotaRecord{
 			UserID:          userID,
 			Platform:        q.Platform,
 			DailyLimitUSD:   q.DailyLimitUSD,
 			WeeklyLimitUSD:  q.WeeklyLimitUSD,
 			MonthlyLimitUSD: q.MonthlyLimitUSD,
-		})
+		}
+		if !rec.HasAnyLimit() {
+			continue
+		}
+		records = append(records, rec)
 	}
 
 	ctx := c.Request.Context()
@@ -860,6 +887,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	slog.Info("admin.quota_updated",
 		"actor_admin_id", getAdminIDFromContext(c),
 		"target_user_id", userID,
+		"submitted_count", len(req.Quotas),
 		"platform_count", len(records),
 		"before_snapshot_available", beforeErr == nil,
 		"changes", changes)
@@ -877,6 +905,10 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	}
 
 	// 返回最新状态
+	if scopedAdminWriteOnly(c, "users.quotas.read") {
+		response.Success(c, gin.H{"id": userID})
+		return
+	}
 	now := time.Now().UTC()
 	records2, err := h.userPlatformQuotaRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -957,6 +989,11 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 		if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, userID, req.Platform); err != nil {
 			slog.Error("ALERT: quota cache invalidation failed after ResetExpiredWindow; 窗口重置可能延迟至 sentinel TTL(最长 1h)", "user_id", userID, "platform", req.Platform, "err", err)
 		}
+	}
+
+	if scopedAdminWriteOnly(c, "users.quotas.read") {
+		response.Success(c, gin.H{"id": userID})
+		return
 	}
 
 	records, err := h.userPlatformQuotaRepo.ListByUser(ctx, userID)

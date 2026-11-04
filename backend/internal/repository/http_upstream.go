@@ -78,6 +78,9 @@ const (
 	defaultOpenAIHTTP2FallbackErrorThreshold = 2
 	defaultOpenAIHTTP2FallbackWindow         = 60 * time.Second
 	defaultOpenAIHTTP2FallbackTTL            = 10 * time.Minute
+	// OpenAI 保留原有的探测与应答期限，避免中转站的延迟 PING 应答被长流策略提前判死。
+	openAIHTTP2ReadIdleTimeout = 15 * time.Second
+	openAIHTTP2PingTimeout     = 15 * time.Second
 	// 长流 HTTP/2 连接健康探测：池化连接被代理/NAT
 	// 静默掐断会成为“死连接”（两端都以为存活），请求落上去会挂到 TCP 重传超时
 	// （分钟级）。Go 的 http2.Transport 默认 ReadIdleTimeout=0（不发健康 PING），
@@ -102,6 +105,7 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	upstreamProtocolModeOpenAIH1NoReuse  = "openai_h1_noreuse"
 	upstreamProtocolModeGrok             = "grok"
 )
 
@@ -224,7 +228,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	// 执行请求
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := servertiming.Do(client, req)
+	resp, err := doUpstreamRequest(client, req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -233,9 +237,6 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		return nil, err
 	}
 	s.recordOpenAIHTTP2Success(profile, entry.protocolMode, entry.proxyKey)
-
-	// 如果上游返回了压缩内容，解压后再交给业务层
-	decompressResponseBody(resp)
 
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
@@ -295,7 +296,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := servertiming.Do(client, req)
+	resp, err := doUpstreamRequest(client, req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -303,14 +304,62 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	decompressResponseBody(resp)
-
 	resp.Body = wrapTrackedBody(resp.Body, func() {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
 
 	return resp, nil
+}
+
+// doUpstreamRequest owns cancellation for one attempt, without cancelling the
+// caller's context (which may be detached for billing or reused for retries).
+func doUpstreamRequest(client *http.Client, req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(req.Context())
+	resp, err := servertiming.Do(client, req.WithContext(ctx))
+	if err != nil {
+		cancel()
+		return resp, err
+	}
+	decompressResponseBody(resp)
+	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+type cancelOnCloseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+	err    error
+	readMu sync.Mutex
+	closed bool
+}
+
+func (b *cancelOnCloseBody) Read(p []byte) (int, error) {
+	b.readMu.Lock()
+	defer b.readMu.Unlock()
+	if b.closed {
+		return 0, http.ErrBodyReadAfterClose
+	}
+	return b.ReadCloser.Read(p)
+}
+
+func (b *cancelOnCloseBody) Close() error {
+	b.once.Do(func() {
+		// Cancel before closing, including before closing a decompressor. In Go
+		// 1.27 an early HTTP/1 close concurrent with Read can otherwise leave an
+		// EOF waiter on a reused connection and stall subsequent responses.
+		// Fully consumed responses have already released their transport request,
+		// so cancelling here preserves normal keep-alive reuse.
+		b.cancel()
+		// Wait for an active read to observe cancellation before touching the
+		// body or decompressor. Do not hold readMu while cancelling the request.
+		b.readMu.Lock()
+		defer b.readMu.Unlock()
+		b.closed = true
+		b.err = b.ReadCloser.Close()
+	})
+	return b.err
 }
 
 // httpClientForUpstreamRequest 按请求上下文的标记派生客户端：禁用重定向，或对重定向的每一跳做主机校验。
@@ -433,6 +482,8 @@ func newGrokOfficialAPIFallbackRequest(req *http.Request) (*http.Request, error)
 	for _, header := range []string{
 		"X-XAI-Token-Auth",
 		"X-Grok-Client-Version",
+		"X-Grok-Client-Mode",
+		"X-Authenticateresponse",
 		"X-Grok-Client-Surface",
 		"X-UserID",
 		"X-Email",
@@ -498,6 +549,8 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
 	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	req.Header.Set("x-grok-client-mode", xai.CLIClientMode)
+	req.Header.Set("x-authenticateresponse", "authenticate-response")
 	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
 }
 
@@ -741,7 +794,7 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build transport: %w", err)
 	}
-	client := &http.Client{Transport: wrapUpstreamNetwork(transport, parsedProxy != nil)}
+	client := &http.Client{Transport: wrapUpstreamNetwork(transport, parsedProxy != nil, protocolMode)}
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}
@@ -1031,6 +1084,9 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 	}
 	if profile == service.HTTPUpstreamProfileGrok {
 		return upstreamProtocolModeGrok
+	}
+	if profile == service.HTTPUpstreamProfileOpenAIHarvest {
+		return upstreamProtocolModeOpenAIH1NoReuse
 	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
@@ -1358,11 +1414,18 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		transport.ForceAttemptHTTP2 = true
 		// 显式配置 http2 并启用 PING 健康探测，剔除代理/NAT 静默掐断的死连接，
 		// 避免请求挂在死连接上直到 TCP 重传超时（分钟级）。
-		if _, err := enableHTTP2KeepAlive(transport); err != nil {
+		if _, err := enableHTTP2KeepAlive(transport, protocolMode); err != nil {
 			return nil, err
 		}
 	case upstreamProtocolModeOpenAIH1:
 		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	case upstreamProtocolModeOpenAIH1NoReuse:
+		// Harvest must open a fresh CONNECT each attempt so the harvest proxy can rotate egress IPs.
+		transport.ForceAttemptHTTP2 = false
+		transport.DisableKeepAlives = true
+		transport.MaxIdleConns = 0
+		transport.MaxIdleConnsPerHost = 0
 		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 	case upstreamProtocolModeOpenAIH1Fallback:
 		// 显式禁用 HTTP/2，确保代理不兼容场景回退到 HTTP/1.1。
@@ -1379,7 +1442,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 // Go 默认惰性配置 http2 且 ReadIdleTimeout=0（不发健康 PING），无法检测被代理/NAT
 // 静默掐断的死连接。此处主动设置 ReadIdleTimeout/PingTimeout，让死连接被提前 PING
 // 出并关闭，请求得以重建连接而非挂到 TCP 重传超时。返回底层 *http2.Transport 便于测试。
-func enableHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, error) {
+func enableHTTP2KeepAlive(transport *http.Transport, protocolMode string) (*http2.Transport, error) {
 	h2, err := http2.ConfigureTransports(transport)
 	if err != nil {
 		return nil, err
@@ -1387,6 +1450,10 @@ func enableHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, error) {
 	if h2 != nil {
 		h2.ReadIdleTimeout = longStreamHTTP2ReadIdleTimeout
 		h2.PingTimeout = longStreamHTTP2PingTimeout
+		if protocolMode == upstreamProtocolModeOpenAIH2 {
+			h2.ReadIdleTimeout = openAIHTTP2ReadIdleTimeout
+			h2.PingTimeout = openAIHTTP2PingTimeout
+		}
 	}
 	return h2, nil
 }
@@ -1568,14 +1635,18 @@ func (d *decompressedBody) Close() error {
 	return d.closer.Close()
 }
 
-func wrapUpstreamNetwork(t *http.Transport, proxy bool) http.RoundTripper {
+func wrapUpstreamNetwork(t *http.Transport, proxy bool, protocolModes ...string) http.RoundTripper {
+	mode := upstreamProtocolModeDefault
+	if len(protocolModes) > 0 {
+		mode = protocolModes[0]
+	}
 	return chatgptnetwork.Wrap(t, proxy, func(clone *http.Transport) error {
 		if !clone.ForceAttemptHTTP2 {
 			return nil
 		}
 		// Do not reuse TLSNextProto closures bound to the original HTTP/2 pool.
 		clone.TLSNextProto = nil
-		_, err := enableHTTP2KeepAlive(clone)
+		_, err := enableHTTP2KeepAlive(clone, mode)
 		return err
 	})
 }

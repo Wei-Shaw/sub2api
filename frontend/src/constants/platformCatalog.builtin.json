@@ -1,0 +1,298 @@
+{
+  "platforms": [
+    {
+      "id": "anthropic",
+      "display_name": "Anthropic",
+      "gateway": "anthropic",
+      "cn_provider": false,
+      "litellm_provider": "anthropic"
+    },
+    {
+      "id": "openai",
+      "display_name": "OpenAI",
+      "gateway": "openai",
+      "cn_provider": false,
+      "litellm_provider": "openai"
+    },
+    {
+      "id": "gemini",
+      "display_name": "Gemini",
+      "gateway": "gemini",
+      "cn_provider": false,
+      "litellm_provider": "gemini"
+    },
+    {
+      "id": "antigravity",
+      "display_name": "Antigravity",
+      "gateway": "antigravity",
+      "cn_provider": false,
+      "litellm_provider": "anthropic"
+    },
+    {
+      "id": "grok",
+      "display_name": "Grok",
+      "gateway": "openai",
+      "cn_provider": false,
+      "litellm_provider": "xai"
+    },
+    {
+      "id": "kimi",
+      "display_name": "Kimi",
+      "gateway": "openai",
+      "cn_provider": true,
+      "litellm_provider": "moonshot",
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://api.moonshot.cn/anthropic",
+              "chat_completions": "https://api.moonshot.cn/v1",
+              "responses": "https://api.moonshot.cn/v1"
+            }
+          },
+          {
+            "mode": "coding",
+            "base_urls": {
+              "anthropic": "https://api.kimi.com/coding",
+              "chat_completions": "https://api.kimi.com/coding/v1",
+              "responses": "https://api.kimi.com/coding/v1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "zhipu",
+      "display_name": "Zhipu GLM",
+      "gateway": "openai",
+      "cn_provider": true,
+      "litellm_provider": "zhipu",
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://open.bigmodel.cn/api/anthropic",
+              "chat_completions": "https://open.bigmodel.cn/api/paas/v4"
+            }
+          },
+          {
+            "mode": "coding",
+            "base_urls": {
+              "anthropic": "https://open.bigmodel.cn/api/anthropic",
+              "chat_completions": "https://open.bigmodel.cn/api/coding/paas/v4"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "deepseek",
+      "display_name": "DeepSeek",
+      "gateway": "openai",
+      "cn_provider": true,
+      "litellm_provider": "deepseek",
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "responses_path": "/responses",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://api.deepseek.com/anthropic",
+              "chat_completions": "https://api.deepseek.com",
+              "responses": "https://api.deepseek.com"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "minimax",
+      "display_name": "MiniMax",
+      "gateway": "openai",
+      "cn_provider": true,
+      "litellm_provider": "minimax",
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://api.minimaxi.com/anthropic",
+              "chat_completions": "https://api.minimaxi.com/v1",
+              "responses": "https://api.minimaxi.com/v1"
+            }
+          },
+          {
+            "mode": "coding",
+            "base_urls": {
+              "anthropic": "https://api.minimaxi.com/anthropic",
+              "chat_completions": "https://api.minimaxi.com/v1",
+              "responses": "https://api.minimaxi.com/v1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "opencode_go",
+      "display_name": "OpenCode",
+      "gateway": "openai",
+      "cn_provider": false,
+      "litellm_provider": "opencode-go",
+      "multi_protocol": {
+        "default_mode": "go",
+        "routing": "by_model",
+        "modes": [
+          {
+            "mode": "go",
+            "base_urls": {
+              "anthropic": "https://opencode.ai/zen/go",
+              "chat_completions": "https://opencode.ai/zen/go/v1",
+              "responses": "https://opencode.ai/zen/go/v1"
+            },
+            "protocol_rules": [
+              {
+                "pattern": "grok-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "gpt-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "muse-spark-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "minimax-*",
+                "protocol": "anthropic"
+              },
+              {
+                "pattern": "qwen*",
+                "protocol": "anthropic"
+              }
+            ]
+          },
+          {
+            "mode": "zen",
+            "base_urls": {
+              "anthropic": "https://opencode.ai/zen",
+              "chat_completions": "https://opencode.ai/zen/v1",
+              "responses": "https://opencode.ai/zen/v1"
+            },
+            "protocol_rules": [
+              {
+                "pattern": "grok-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "gpt-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "muse-spark-*",
+                "protocol": "responses"
+              },
+              {
+                "pattern": "claude-*",
+                "protocol": "anthropic"
+              },
+              {
+                "pattern": "qwen3.8-max",
+                "protocol": "chat_completions"
+              },
+              {
+                "pattern": "qwen*",
+                "protocol": "anthropic"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "typesafe",
+      "display_name": "TypeSafe / Jev",
+      "gateway": "anthropic",
+      "cn_provider": false,
+      "litellm_provider": "typesafe"
+    },
+    {
+      "id": "command_code",
+      "display_name": "Command Code",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_model",
+        "model_catalog": true,
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://api.commandcode.ai/provider",
+              "chat_completions": "https://api.commandcode.ai/provider/v1",
+              "responses": "https://api.commandcode.ai/provider/v1"
+            },
+            "protocol_rules": [
+              {
+                "pattern": "claude-*",
+                "protocol": "anthropic"
+              },
+              {
+                "pattern": "gpt-*",
+                "protocol": "responses",
+                "protocols": [
+                  "responses",
+                  "chat_completions"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cline",
+      "display_name": "Cline",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "chat_completions": "https://api.cline.bot/api/v1"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "composite_precedence": [
+    "anthropic",
+    "gemini",
+    "openai",
+    "antigravity",
+    "grok",
+    "kimi",
+    "zhipu",
+    "deepseek",
+    "minimax",
+    "opencode_go",
+    "typesafe",
+    "command_code",
+    "cline"
+  ]
+}

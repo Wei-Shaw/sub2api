@@ -71,6 +71,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AccountPlatform, AccountType } from '@/types'
 import { platformLabel as sharedPlatformLabel } from '@/utils/platformColors'
+import { normalizePlanType, openAIPlanTypeLabel } from '@/utils/planType'
 import GrokFreeIcon from './GrokFreeIcon.vue'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -113,18 +114,22 @@ const typeLabel = computed(() => {
     case 'bedrock':
       return 'AWS'
     case 'service_account':
-      return 'Vertex'
+      return 'Agent Platform (Vertex)'
     default:
       return props.type
   }
 })
 
-const normalizedPlanType = computed(() =>
-  (props.planType || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
-)
+const normalizedPlanType = computed(() => normalizePlanType(props.planType))
 
 const planLabel = computed(() => {
   if (!normalizedPlanType.value) return ''
+  // ChatGPT 档位命名（Pro 100 / Pro 200 / Pro 500、Business / Business Premium）只适用于
+  // OpenAI：Antigravity 与 Grok 各自的 pro/team 沿用下面的通用标签。
+  if (props.platform === 'openai') {
+    const label = openAIPlanTypeLabel(props.planType)
+    if (label) return label
+  }
   switch (normalizedPlanType.value) {
     case 'plus':
       return 'Plus'
@@ -260,10 +265,16 @@ const planBadgeClass = computed(() => {
   if (normalizedPlanType.value === 'plus') {
     return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
   }
-  if (normalizedPlanType.value === 'team') {
+  if (normalizedPlanType.value === 'team' || normalizedPlanType.value === 'selfservebusinessprolite' ||
+    (props.platform === 'openai' && ['selfservebusinessusagebased', 'business', 'enterprise', 'ent26', 'enterprisecbpautomation', 'enterprisecbpusagebased', 'edu', 'eduplus', 'edupro'].includes(normalizedPlanType.value))) {
     return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
   }
-  if (normalizedPlanType.value === 'pro' || normalizedPlanType.value === 'chatgptpro') {
+  if (
+    normalizedPlanType.value === 'pro' ||
+    normalizedPlanType.value === 'chatgptpro' ||
+    normalizedPlanType.value === 'prolite' ||
+    (props.platform === 'openai' && normalizedPlanType.value === 'promax')
+  ) {
     return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
   }
   return typeClass.value

@@ -122,7 +122,7 @@ func codexCanonicalUserAgent() string {
 	resolver := codexCanonicalUAResolver
 	codexCanonicalUAMu.RUnlock()
 	if resolver != nil {
-		if ua := strings.TrimSpace(resolver()); ua != "" {
+		if ua := strings.Trim(resolver(), " \t"); ua != "" {
 			return ua
 		}
 	}
@@ -145,7 +145,7 @@ type codexOutboundIdentity struct {
 // remote TUI 等）整体保留。UA 不包含连接拓扑或制品来源，不能从客户端名推断必须同版。
 func resolveCodexOutboundIdentity(candidateUA string) codexOutboundIdentity {
 	canonical := codexCanonicalUserAgent()
-	ua := strings.TrimSpace(candidateUA)
+	ua := strings.Trim(candidateUA, " \t")
 	if ua == "" {
 		ua = canonical
 	}

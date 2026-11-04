@@ -129,7 +129,7 @@ func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
@@ -153,7 +153,7 @@ func TestNormalizeOpenAIResponsesReasoningMode_AstraPreservesBody(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.False(t, changed)
 			require.JSONEq(t, tt.body, string(normalized))
@@ -173,7 +173,7 @@ func TestNormalizeOpenAIResponsesReasoningMode_NonAstraKeepsLegacyBehavior(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body), "")
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
@@ -357,21 +357,4 @@ func TestNormalizeOpenAIPassthroughOAuthBody_ArrayInputUnchanged(t *testing.T) {
 	require.True(t, input.IsArray())
 	require.Len(t, input.Array(), 1)
 	require.Equal(t, "message", input.Array()[0].Get("type").String())
-}
-
-func TestDetectOpenAIPassthroughInstructionsRejectReason(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		body string
-		want string
-	}{
-		{name: "missing is optional", body: `{"model":"gpt-5.1-codex"}`, want: ""},
-		{name: "non string remains rejected", body: `{"instructions":{"text":"invalid"}}`, want: "instructions_not_string"},
-		{name: "empty remains rejected", body: `{"instructions":"  "}`, want: "instructions_empty"},
-		{name: "non empty remains accepted", body: `{"instructions":"client guidance"}`, want: ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, detectOpenAIPassthroughInstructionsRejectReason("gpt-5.1-codex", []byte(tt.body)))
-		})
-	}
 }

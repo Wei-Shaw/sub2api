@@ -593,41 +593,47 @@ func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.
 	require.True(t, group.AllowImageGeneration)
 }
 
-func TestAdminService_CreateGroup_PreservesNonGrokImageGenerationDisabled(t *testing.T) {
-	repo := &groupRepoStubForAdmin{}
-	svc := &adminServiceImpl{groupRepo: repo}
+func TestAdminService_CreateGroup_DefaultsGeminiFamilyImageGenerationEnabled(t *testing.T) {
+	for _, platform := range []string{PlatformGemini, PlatformAntigravity} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
 
-	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:           "anthropic-text",
-		Description:    "Anthropic text group",
-		Platform:       PlatformAnthropic,
-		RateMultiplier: 1.0,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, group)
-	require.NotNil(t, repo.created)
-	require.False(t, repo.created.AllowImageGeneration)
-	require.False(t, group.AllowImageGeneration)
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-images",
+				Description:    "Gemini family group",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.True(t, repo.created.AllowImageGeneration)
+			require.True(t, group.AllowImageGeneration)
+			require.False(t, repo.created.AllowBatchImageGeneration)
+		})
+	}
 }
 
-func TestAdminService_CreateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
-	repo := &groupRepoStubForAdmin{}
-	svc := &adminServiceImpl{groupRepo: repo}
+func TestAdminService_CreateGroup_PreservesImageGenerationDisabledWithoutPlatformDefault(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformComposite} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
 
-	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                      "gemini-no-image",
-		Description:               "Gemini group without image generation",
-		Platform:                  PlatformGemini,
-		RateMultiplier:            1.0,
-		AllowImageGeneration:      false,
-		AllowBatchImageGeneration: true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, group)
-	require.NotNil(t, repo.created)
-	require.False(t, repo.created.AllowImageGeneration)
-	require.False(t, repo.created.AllowBatchImageGeneration)
-	require.False(t, group.AllowBatchImageGeneration)
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-text",
+				Description:    "Group without image default",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.False(t, repo.created.AllowImageGeneration)
+			require.False(t, group.AllowImageGeneration)
+		})
+	}
 }
 
 func TestAdminService_CreateGroup_DisablesBatchImageForNonGeminiPlatform(t *testing.T) {
@@ -1143,6 +1149,67 @@ func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t 
 	require.Empty(t, repo.updated.MaxReasoningEffort)
 	require.Equal(t, ReasoningEffortOverLimitDowngrade, repo.updated.MaxReasoningEffortOverLimit)
 	require.Empty(t, repo.updated.ReasoningEffortMappings)
+}
+
+func TestAdminService_CreateGroup_InvalidPeakRateReturnsBadRequest(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:             "subscription-group",
+		RateMultiplier:   1,
+		Platform:         PlatformOpenAI,
+		SubscriptionType: SubscriptionTypeSubscription,
+		PeakRateEnabled:  true,
+		PeakStart:        "20:00",
+		PeakEnd:          "08:30",
+	})
+
+	require.ErrorContains(t, err, "peak_end")
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_PEAK_RATE_CONFIG", infraerrors.Reason(err))
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_UpdateGroup_PeakRateValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   UpdateGroupInput
+		wantErr bool
+	}{
+		{"cross-day window", UpdateGroupInput{PeakStart: ptrString("20:00"), PeakEnd: ptrString("08:30")}, true},
+		{"partial update invalidates window", UpdateGroupInput{PeakEnd: ptrString("08:30")}, true},
+		{"partial update keeps valid window", UpdateGroupInput{PeakEnd: ptrString("19:00")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{getByID: &Group{
+				ID:                 1,
+				Name:               "subscription-group",
+				Platform:           PlatformOpenAI,
+				Status:             StatusActive,
+				SubscriptionType:   SubscriptionTypeSubscription,
+				PeakRateEnabled:    true,
+				PeakStart:          "14:00",
+				PeakEnd:            "18:00",
+				PeakRateMultiplier: 3,
+			}}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			_, err := svc.UpdateGroup(context.Background(), 1, &tt.input)
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, "peak_end")
+				require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+				require.Equal(t, "INVALID_PEAK_RATE_CONFIG", infraerrors.Reason(err))
+				require.Nil(t, repo.updated)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, repo.updated)
+				require.Equal(t, "19:00", repo.updated.PeakEnd)
+			}
+		})
+	}
 }
 
 func TestAdminService_UpdateGroup_ClearsPeakRateWhenChangingToStandard(t *testing.T) {

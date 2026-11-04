@@ -2,7 +2,9 @@ package dto
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -93,10 +95,91 @@ func TestAccountFromServiceShallow_RedactsOllamaCloudManagedExtra(t *testing.T) 
 	require.Contains(t, src.Extra, service.OllamaCloudUsageSessionExtraKey)
 }
 
+func TestAccountFromServiceShallow_RedactsCodexTurnTicketState(t *testing.T) {
+	blob := "gAAAAA" + strings.Repeat("B", 286)
+	src := &service.Account{
+		ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_harvest_proxy_url": "http://user:legacy-proxy-secret@proxy.example.com:8080",
+			"codex_turn_ticket:gpt-6-astra": map[string]any{
+				"state":       blob,
+				"length":      292,
+				"model":       "gpt-6-astra",
+				"captured_at": time.Now().Add(-time.Minute),
+				"expires_at":  time.Now().Add(time.Hour),
+				"attempts":    3,
+			},
+		},
+	}
+	got := AccountFromServiceShallow(src)
+	require.NotContains(t, got.Extra, "codex_turn_ticket:gpt-6-astra")
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), blob)
+	require.NotContains(t, string(raw), "legacy-proxy-secret")
+	require.NotContains(t, got.Extra, "codex_harvest_proxy_url")
+	require.Contains(t, src.Extra, "codex_harvest_proxy_url")
+}
+
 func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	src := &service.Account{ID: 1, Name: "n", Platform: "anthropic", Type: "oauth"}
 	got := AccountFromServiceShallow(src)
 	require.NotNil(t, got)
 	require.Nil(t, got.Credentials)
 	require.Nil(t, got.CredentialsStatus)
+}
+
+func TestAccountFromService_RedactsGrokModelDiagnostics(t *testing.T) {
+	src := &service.Account{
+		ID: 25, Name: "grok", Platform: service.PlatformGrok, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "access-secret",
+			"refresh_token": "refresh-secret",
+			"api_key":       "sk-secret",
+			"base_url":      "https://cli-chat-proxy.grok.com/v1",
+			"model_mapping": map[string]any{"friendly": "grok-4.7"},
+		},
+		Extra: map[string]any{"grok_observed_models": map[string]any{"models": []any{"grok-4.7"}}},
+	}
+
+	got := AccountFromService(src)
+	require.Nil(t, got.GrokModelDiagnostics)
+	shallow := AccountFromServiceShallow(src)
+	require.Nil(t, shallow.GrokModelDiagnostics)
+
+	diagnostics := &service.GrokModelDiagnostics{
+		State:    "fresh",
+		Endpoint: "https://cli-chat-proxy.grok.com/v1/models",
+		Models:   []string{"grok-4.7"},
+		Mappings: []service.GrokModelDiagnosticItem{{Requested: "friendly", Upstream: "grok-4.7", Status: "listed"}},
+		LastAttempt: &service.GrokCatalogAttempt{
+			StartedAt: "2026-10-25T06:00:00Z", FinishedAt: "2026-10-25T06:00:01Z", Status: "failed", ErrorCode: "http_error",
+			Scope: &service.GrokCatalogScope{AccountID: 25, AccountType: service.AccountTypeOAuth, Endpoint: "https://cli-chat-proxy.grok.com/v1/models"},
+		},
+	}
+	diagRaw, err := json.Marshal(diagnostics)
+	require.NoError(t, err)
+	require.NotContains(t, string(diagRaw), "access-secret")
+	require.NotContains(t, string(diagRaw), "query-secret")
+	require.NotContains(t, string(diagRaw), "s3cret")
+	require.NotContains(t, string(diagRaw), "user:")
+	require.Contains(t, string(diagRaw), `"models":["grok-4.7"]`)
+	require.NotContains(t, string(diagRaw), `"models":null`)
+	require.NotContains(t, string(diagRaw), `"mappings":null`)
+	got.GrokModelDiagnostics = diagnostics
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	body := string(raw)
+	require.Contains(t, body, `"grok_model_diagnostics"`)
+	require.Contains(t, body, `"mappings":[`)
+	require.NotContains(t, body, "access-secret")
+	require.NotContains(t, body, "refresh-secret")
+	require.NotContains(t, body, "sk-secret")
+	require.NotContains(t, body, "query-secret")
+	require.NotContains(t, body, "s3cret")
+
+	listRaw, err := json.Marshal(AccountListItemFromAccount(got))
+	require.NoError(t, err)
+	require.NotContains(t, string(listRaw), "grok_model_diagnostics")
+	require.NotContains(t, string(listRaw), "access-secret")
 }

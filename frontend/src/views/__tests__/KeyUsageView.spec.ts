@@ -47,6 +47,7 @@ const messages: Record<string, string> = {
   'keyUsage.remainingQuota': 'Remaining Quota',
   'keyUsage.usedQuota': 'Used Quota',
   'keyUsage.subscriptionType': 'Subscription Type',
+  'keyUsage.billingType': 'Billing Type',
   'keyUsage.todayRequests': 'Today Requests',
   'keyUsage.todayInputTokens': 'Today Input',
   'keyUsage.todayOutputTokens': 'Today Output',
@@ -83,9 +84,15 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+const appStoreState = vi.hoisted(() => ({
+  cachedPublicSettings: null as Record<string, unknown> | null,
+}))
+
 vi.mock('@/stores', () => ({
   useAppStore: () => ({
-    cachedPublicSettings: null,
+    get cachedPublicSettings() {
+      return appStoreState.cachedPublicSettings
+    },
     siteName: 'Sub2API',
     siteLogo: '',
     docUrl: '',
@@ -229,6 +236,73 @@ describe('KeyUsageView daily detail', () => {
     expect(requestUrl).toContain('start_date=2026-07-13')
     expect(requestUrl).toContain('end_date=2026-07-13')
 
+    wrapper.unmount()
+  })
+})
+
+describe('KeyUsageView subscription feature flag', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false }),
+    })
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        mode: 'wallet',
+        isValid: true,
+        status: 'active',
+        balance: 5.5,
+        usage: {
+          today: { requests: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 0, actual_cost: 0 },
+          total: { requests: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, total_tokens: 0, actual_cost: 0 },
+          rpm: 0,
+          tpm: 0,
+        },
+        daily_usage: [],
+      }),
+    }))
+  })
+
+  afterEach(() => {
+    appStoreState.cachedPublicSettings = null
+    vi.unstubAllGlobals()
+  })
+
+  async function mountAndQuery() {
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+    return wrapper
+  }
+
+  it('labels the wallet row "Subscription Type" while subscriptions are enabled', async () => {
+    const wrapper = await mountAndQuery()
+
+    expect(wrapper.text()).toContain('Subscription Type')
+    expect(wrapper.text()).toContain('Wallet Balance')
+    wrapper.unmount()
+  })
+
+  it('drops the "Subscription" wording from the wallet row when subscriptions are disabled', async () => {
+    appStoreState.cachedPublicSettings = { subscription_enabled: false }
+    const wrapper = await mountAndQuery()
+
+    expect(wrapper.text()).toContain('Billing Type')
+    expect(wrapper.text()).not.toContain('Subscription Type')
+    expect(wrapper.text()).toContain('Wallet Balance')
     wrapper.unmount()
   })
 })

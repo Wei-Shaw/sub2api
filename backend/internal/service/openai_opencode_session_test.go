@@ -92,7 +92,13 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 			incoming:  "conversation-123",
 		},
 		{
-			name:      "missing caller value",
+			name:      "missing caller value generates session on go endpoint",
+			account:   openCodeSessionTestAccount("https://opencode.ai/zen/go/v1"),
+			targetURL: "https://opencode.ai/zen/go/v1/responses",
+			want:      "<generated>",
+		},
+		{
+			name:      "zen endpoint does not invent a session",
 			account:   openCodeSessionTestAccount("https://opencode.ai/zen/v1"),
 			targetURL: "https://opencode.ai/zen/v1/responses",
 		},
@@ -108,9 +114,114 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			headers := make(http.Header)
 			applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, tt.incoming), tt.account, tt.targetURL, headers)
-			require.Equal(t, tt.want, headers.Get(openCodeSessionHeader))
+			got := headers.Get(openCodeSessionHeader)
+			if tt.want == "<generated>" {
+				require.NotEmpty(t, got)
+				return
+			}
+			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestApplyOpenCodeSessionHeaderOpenCodeGoAlwaysSetsSession(t *testing.T) {
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://relay.example.com/v1",
+		},
+	}
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://relay.example.com/v1/chat/completions", headers)
+	require.NotEmpty(t, headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderMapsCallerSessionID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	c.Request.Header.Set("session_id", "conv-from-client")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers)
+	require.Equal(t, "conv-from-client", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderRejectsControlCharsInPromptCacheKey(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte("{\"model\":\"glm-5.3\",\"prompt_cache_key\":\"a\\nb\",\"input\":\"hello\"}")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	got := headers.Get(openCodeSessionHeader)
+	require.NotEmpty(t, got)
+	require.NotContains(t, got, "\n")
+	require.NotEqual(t, "a\nb", got)
+}
+
+func TestApplyOpenCodeSessionHeaderUsesPromptCacheKeyInsteadOfRandomUUID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"hello"}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	require.Equal(t, "kimi-session-42", headers.Get(openCodeSessionHeader))
+
+	headers2 := make(http.Header)
+	laterTurn := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"follow up"}`)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers2, laterTurn)
+	require.Equal(t, headers.Get(openCodeSessionHeader), headers2.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUsesAnthropicMetadataUserID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"minimax-m3","metadata":{"user_id":"coding-agent-session"},"messages":[{"role":"user","content":"hi"}]}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
+	require.Equal(t, "coding-agent-session", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUnwrapsClaudeCodeMetadataSessionJSON(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"claude-sonnet-4","metadata":{"user_id":"{\"session_id\":\"meta-session-xyz\"}"},"messages":[]}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
+	require.Equal(t, "meta-session-xyz", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderBodyBeatsGeneratedUUIDAndLosesToCallerHeader(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"prompt_cache_key":"from-body"}`)
+
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, "from-header"), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	require.Equal(t, "from-header", headers.Get(openCodeSessionHeader))
+
+	converted := []byte(`{"model":"minimax-m3","messages":[]}`)
+	headers2 := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers2, converted, body)
+	require.Equal(t, "from-body", headers2.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+
+	c := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c, []byte(`{"model":"gpt-5","prompt_cache_key":"inbound-responses-session","input":"hello"}`))
+	headers := make(http.Header)
+	convertedCC := []byte(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hello"}]}`)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers, convertedCC)
+	require.Equal(t, "inbound-responses-session", headers.Get(openCodeSessionHeader))
+
+	c2 := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c2, []byte(`{"model":"grok-4.6","metadata":{"user_id":"inbound-messages-session"},"messages":[{"role":"user","content":"hi"}]}`))
+	headers2 := make(http.Header)
+	convertedResponses := []byte(`{"model":"grok-4.6","input":"hi"}`)
+	applyOpenCodeSessionHeader(c2, account, "https://opencode.ai/zen/go/v1/responses", headers2, convertedResponses)
+	require.Equal(t, "inbound-messages-session", headers2.Get(openCodeSessionHeader))
+}
+
+func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {
+	require.Empty(t, openCodeSessionIDFromPayload(nil))
+	require.Empty(t, openCodeSessionIDFromPayload([]byte(`{"model":"gpt-5"}`)))
 }
 
 func TestOpenCodeSessionForwardedByResponsesBuildersAfterAccountOverride(t *testing.T) {
@@ -147,6 +258,24 @@ func TestOpenCodeSessionForwardedByResponsesBuildersAfterAccountOverride(t *test
 	}
 }
 
+func TestOpenCodeSessionForwardedFromPromptCacheKeyWithoutCallerHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := openCodeSessionTestService()
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://opencode.ai/zen/go/v1",
+		},
+	}
+	c := newOpenCodeSessionTestContext(t, "")
+	body := []byte(`{"model":"gpt-5","prompt_cache_key":"stable-cache-key","input":"hello"}`)
+	req, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "token", false, "", false)
+	require.NoError(t, err)
+	requireSingleOpenCodeSessionHeader(t, req.Header, "stable-cache-key")
+}
+
 func TestOpenCodeSessionMissingCallerValueKeepsExistingOverrideBehavior(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := openCodeSessionTestService()
@@ -176,6 +305,188 @@ func (u *openCodeSessionHTTPUpstream) Do(req *http.Request, _ string, _ int64, _
 
 func (u *openCodeSessionHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, concurrency)
+}
+
+func TestApplyOpenCodeUpstreamUserAgent(t *testing.T) {
+	tests := []struct {
+		name      string
+		account   *Account
+		targetURL string
+		seed      string
+		want      string
+	}{
+		{
+			name:      "opencode go account canonicalizes passthrough UA",
+			account:   &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+			targetURL: "https://opencode.ai/zen/go/v1/chat/completions",
+			seed:      "Python-urllib/3.13",
+			want:      openCodeUpstreamUserAgent,
+		},
+		{
+			name:      "opencode go account canonicalizes on custom relay too",
+			account:   &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+			targetURL: "https://relay.example.com/v1/chat/completions",
+			seed:      "Python-urllib/3.13",
+			want:      openCodeUpstreamUserAgent,
+		},
+		{
+			name:      "non-opencode account targeting official host",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://opencode.ai/zen/go/v1/responses",
+			seed:      "Python-urllib/3.13",
+			want:      openCodeUpstreamUserAgent,
+		},
+		{
+			name:      "official command code host uses canonical Codex UA",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://api.commandcode.ai/provider/v1/responses",
+			seed:      "Python-urllib/3.13",
+			want:      CodexCanonicalUserAgent(),
+		},
+		{
+			name:      "command code lookalike host keeps client UA",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://api.commandcode.ai.evil.example/provider/v1/responses",
+			seed:      "Python-urllib/3.13",
+			want:      "Python-urllib/3.13",
+		},
+		{
+			name:      "command code subdomain keeps client UA",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://proxy.api.commandcode.ai/provider/v1/responses",
+			seed:      "Python-urllib/3.13",
+			want:      "Python-urllib/3.13",
+		},
+		{
+			name:      "insecure command code host keeps client UA",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "http://api.commandcode.ai/provider/v1/responses",
+			seed:      "Python-urllib/3.13",
+			want:      "Python-urllib/3.13",
+		},
+		{
+			name:      "non-official account and host keeps client UA",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://api.openai.com/v1/chat/completions",
+			seed:      "Python-urllib/3.13",
+			want:      "Python-urllib/3.13",
+		},
+		{
+			name:      "lookalike host does not count as official",
+			account:   &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			targetURL: "https://opencode.ai.evil.example/v1/chat/completions",
+			seed:      "Python-urllib/3.13",
+			want:      "Python-urllib/3.13",
+		},
+		{
+			name:      "missing UA is filled for opencode account",
+			account:   &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+			targetURL: "https://opencode.ai/zen/go/v1/messages",
+			want:      openCodeUpstreamUserAgent,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := make(http.Header)
+			if tt.seed != "" {
+				headers.Set("User-Agent", tt.seed)
+			}
+			applyOpenCodeUpstreamUserAgent(tt.account, tt.targetURL, headers)
+			require.Equal(t, tt.want, headers.Get("User-Agent"))
+		})
+	}
+}
+
+func TestApplyOpenCodeUpstreamUserAgentDropsNonCanonicalKeyVariants(t *testing.T) {
+	headers := http.Header{"user-agent": []string{"Python-urllib/3.13"}}
+	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+		"https://opencode.ai/zen/go/v1/chat/completions", headers)
+
+	count := 0
+	for key, values := range headers {
+		if strings.EqualFold(key, "User-Agent") {
+			count += len(values)
+			require.Equal(t, []string{openCodeUpstreamUserAgent}, values)
+		}
+	}
+	require.Equal(t, 1, count)
+}
+
+func TestApplyOpenCodeUpstreamUserAgentNilSafe(t *testing.T) {
+	applyOpenCodeUpstreamUserAgent(&Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey},
+		"https://opencode.ai/zen/go/v1/chat/completions", nil)
+}
+
+func TestOpenCodeUpstreamUserAgentCanonicalizedAfterPassthrough(t *testing.T) {
+	// 回归：客户端透传的编程库 UA（Python-urllib）会被 opencode.ai 前置
+	// Cloudflare 以 error code 1010 拦截并计入账号 403 strike，导致健康账号
+	// 被自动禁用。出站 UA 必须收敛为规范 opencode 客户端身份。
+	gin.SetMode(gin.TestMode)
+	svc := openCodeSessionTestService()
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://opencode.ai/zen/go/v1",
+		},
+	}
+	c := newOpenCodeSessionTestContext(t, "")
+	c.Request.Header.Set("User-Agent", "Python-urllib/3.13")
+
+	req, err := svc.buildUpstreamRequest(
+		context.Background(), c, account,
+		[]byte(`{"model":"glm-5.3","input":"hello"}`), "token", false, "", false,
+	)
+	require.NoError(t, err)
+	require.Equal(t, openCodeUpstreamUserAgent, req.Header.Get("User-Agent"))
+}
+
+func TestCommandCodeUpstreamUserAgentCanonicalizedAfterPassthrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := openCodeSessionTestService()
+	account := &Account{
+		ID:       2,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://api.commandcode.ai/provider/v1",
+		},
+	}
+	c := newOpenCodeSessionTestContext(t, "")
+	c.Request.Header.Set("User-Agent", "Python-urllib/3.13")
+
+	req, err := svc.buildUpstreamRequest(
+		context.Background(), c, account,
+		[]byte(`{"model":"gpt-5","input":"hello"}`), "token", false, "", false,
+	)
+	require.NoError(t, err)
+	require.Equal(t, CodexCanonicalUserAgent(), req.Header.Get("User-Agent"))
+}
+
+func TestOpenCodeUpstreamUserAgentYieldsToExplicitAccountOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := openCodeSessionTestService()
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":                   "https://opencode.ai/zen/go/v1",
+			credKeyHeaderOverrideEnabled: true,
+			credKeyHeaderOverrides:       map[string]any{"user-agent": "custom-relay-agent/2.0"},
+		},
+	}
+	c := newOpenCodeSessionTestContext(t, "")
+	c.Request.Header.Set("User-Agent", "Python-urllib/3.13")
+
+	req, err := svc.buildUpstreamRequest(
+		context.Background(), c, account,
+		[]byte(`{"model":"glm-5.3","input":"hello"}`), "token", false, "", false,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "custom-relay-agent/2.0", req.Header.Get("User-Agent"))
 }
 
 func TestOpenCodeSessionForwardedByRawChatCompletionsAfterAccountOverride(t *testing.T) {

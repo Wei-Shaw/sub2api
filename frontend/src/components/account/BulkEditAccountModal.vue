@@ -193,6 +193,43 @@
         </p>
       </div>
 
+      <!-- OpenAI images: size tier routing -->
+      <div
+        v-if="allOpenAIPassthroughCapable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <label
+            id="bulk-edit-openai-image-size-tiers-label"
+            class="input-label mb-0"
+            for="bulk-edit-openai-image-size-tiers-enabled"
+          >
+            {{ t('admin.accounts.openai.imageSizeTiers') }}
+          </label>
+          <input
+            v-model="enableOpenAIImageSizeTiers"
+            id="bulk-edit-openai-image-size-tiers-enabled"
+            data-testid="bulk-edit-openai-image-size-tiers-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-image-size-tiers-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-image-size-tiers-body"
+          :class="!enableOpenAIImageSizeTiers && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-image-size-tiers-label"
+        >
+          <OpenAIImageSizeTiersField
+            v-model="openAIImageSizeTiers"
+            :disabled="!enableOpenAIImageSizeTiers"
+            hide-label
+            test-id-prefix="bulk-edit-openai-image-size-tier"
+          />
+        </div>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -343,6 +380,7 @@
 
               <ModelWhitelistSelector
                 v-model="allowedModels"
+                :model-mappings="modelMappings"
                 :platforms="targetSelectedPlatforms"
               />
 
@@ -873,8 +911,8 @@
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.openai.wsModeDesc') }}
           </p>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(openAIWSModeConcurrencyHintKey) }}
+          <p v-if="openAIWSModeHintKey" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(openAIWSModeHintKey) }}
           </p>
           <Select
             v-model="openaiOAuthResponsesWebSocketV2Mode"
@@ -1151,8 +1189,8 @@
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.openai.wsModeDesc') }}
           </p>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(openAIAPIKeyWSModeConcurrencyHintKey) }}
+          <p v-if="openAIAPIKeyWSModeHintKey" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(openAIAPIKeyWSModeHintKey) }}
           </p>
           <Select
             v-model="openaiAPIKeyResponsesWebSocketV2Mode"
@@ -1507,13 +1545,20 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
+import {
+  OPENAI_IMAGE_SIZE_TIERS,
+  OPENAI_IMAGE_SIZE_TIERS_EXTRA_KEY,
+  openAIImageSizeTiersPayload,
+  type OpenAIImageSizeTier
+} from '@/components/account/openaiImageSizeTiers'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   OPENAI_WS_MODE_HTTP_BRIDGE,
   isOpenAIWSModeEnabled,
-  resolveOpenAIWSModeConcurrencyHintKey
+  resolveOpenAIWSModeHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
 interface Props {
@@ -1660,6 +1705,7 @@ const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIFlattenNamespaces = ref(false)
 const enableOpenAILongContextBilling = ref(false)
+const enableOpenAIImageSizeTiers = ref(false)
 const enableOpenAIEndpointCapabilities = ref(false)
 const enableOpenAIResponsesMode = ref(false)
 const enableOpenAIWSMode = ref(false)
@@ -1696,6 +1742,7 @@ const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([...OPENAI_IMAGE_SIZE_TIERS])
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
   'embeddings'
@@ -1786,7 +1833,8 @@ const openAIEndpointCapabilityOptions = computed<
   Array<{ value: OpenAIEndpointCapability; label: string }>
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
@@ -1796,9 +1844,9 @@ const openAIResponsesModeApplicable = computed(
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : allowed
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }
 
 const toggleOpenAIEndpointCapability = (
@@ -1824,11 +1872,11 @@ const toggleOpenAIEndpointCapability = (
     capability
   ])
 }
-const openAIWSModeConcurrencyHintKey = computed(() =>
-  resolveOpenAIWSModeConcurrencyHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
+const openAIWSModeHintKey = computed(() =>
+  resolveOpenAIWSModeHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
 )
-const openAIAPIKeyWSModeConcurrencyHintKey = computed(() =>
-  resolveOpenAIWSModeConcurrencyHintKey(openaiAPIKeyResponsesWebSocketV2Mode.value)
+const openAIAPIKeyWSModeHintKey = computed(() =>
+  resolveOpenAIWSModeHintKey(openaiAPIKeyResponsesWebSocketV2Mode.value)
 )
 
 // Model mapping helpers
@@ -1994,9 +2042,14 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
   }
 
+  if (enableOpenAIImageSizeTiers.value && allOpenAIPassthroughCapable.value) {
+    // extra 按 JSONB 合并写入，不限档位用空列表覆盖旧值。
+    ensureExtra()[OPENAI_IMAGE_SIZE_TIERS_EXTRA_KEY] = openAIImageSizeTiersPayload(openAIImageSizeTiers.value) ?? []
+  }
+
   if (applyOpenAIEndpointCapabilities) {
     credentials.openai_capabilities =
-      openAIEndpointCapabilities.value.length === 2
+      openAIEndpointCapabilities.value.length === 2 && !openAIEndpointCapabilities.value.includes('seedance')
         ? null
         : [...openAIEndpointCapabilities.value]
     credentialsChanged = true
@@ -2204,6 +2257,7 @@ const handleSubmit = async () => {
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
+    (enableOpenAIImageSizeTiers.value && allOpenAIPassthroughCapable.value) ||
     (enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value) ||
     (enableOpenAIResponsesMode.value && allOpenAIAPIKey.value) ||
     enableModelRestriction.value ||
@@ -2366,6 +2420,7 @@ watch(
       enableOpenAIPassthrough.value = false
       enableOpenAIFlattenNamespaces.value = false
       enableOpenAILongContextBilling.value = false
+      enableOpenAIImageSizeTiers.value = false
       enableOpenAIEndpointCapabilities.value = false
       enableOpenAIResponsesMode.value = false
       enableOpenAIWSMode.value = false
@@ -2384,6 +2439,7 @@ watch(
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
+      openAIImageSizeTiers.value = [...OPENAI_IMAGE_SIZE_TIERS]
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openAIResponsesMode.value = 'auto'
       modelRestrictionMode.value = 'whitelist'

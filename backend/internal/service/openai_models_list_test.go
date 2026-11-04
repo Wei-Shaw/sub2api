@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -75,12 +76,12 @@ func TestFetchOpenAIModelsListWebImageUsesLocalImageCatalog(t *testing.T) {
 }
 
 func TestFetchOpenAIModelsListOAuthSharesManifestCache(t *testing.T) {
-	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"special-oauth-model"},{"slug":"gpt-image-1"}]}`)
+	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"special-oauth-model","display_name":"Special OAuth Model","description":"manifest only"},{"slug":"gpt-image-1"}]}`)
 	s := &OpenAIGatewayService{}
 	account := newCodexModelsTestAccount()
 	response, err := s.FetchOpenAIModelsList(context.Background(), account)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"object":"list","data":[{"id":"special-oauth-model","object":"model","owned_by":"openai","created":0},{"id":"gpt-image-1","object":"model","owned_by":"openai","created":0}]}`, string(response.Body))
+	require.JSONEq(t, `{"object":"list","data":[{"id":"special-oauth-model","object":"model","owned_by":"openai","created":0,"display_name":"Special OAuth Model"},{"id":"gpt-image-1","object":"model","owned_by":"openai","created":0}]}`, string(response.Body))
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, CodexCanonicalClientVersion(), "")
 	require.NoError(t, err)
 	require.Contains(t, string(manifest.Body), `"slug":"special-oauth-model"`)
@@ -362,4 +363,19 @@ func TestOpenAIModelsCacheSeparatesRepresentationsForIdenticalRequests(t *testin
 	require.NoError(t, err)
 	require.JSONEq(t, manifestBody, string(manifest.Body))
 	require.EqualValues(t, 2, calls.Load())
+}
+
+func TestApplyCodexModelsMappingPreservesUnchangedBodyAndETag(t *testing.T) {
+	for _, pinned := range []bool{false, true} {
+		t.Run(fmt.Sprint(pinned), func(t *testing.T) {
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Credentials["model_mapping"] = map[string]any{"gpt-5.4": "gpt-5.4"}
+			body := []byte(`{ "unknown": { "keep": true }, "models": [ { "slug": "gpt-5.4", "custom": 123 } ] }`)
+			response := &OpenAIModelsResponse{Body: body, ETag: `W/"upstream-validator"`}
+			group := &Group{Platform: PlatformOpenAI, CodexModelsManifestConfig: GroupCodexModelsManifestConfig{Enabled: pinned}}
+			require.NoError(t, ApplyPinnedCodexModelsMapping(response, account, group))
+			require.Equal(t, body, response.Body)
+			require.Equal(t, `W/"upstream-validator"`, response.ETag)
+		})
+	}
 }

@@ -7,12 +7,12 @@ import { apiClient } from '../client'
 
 /** 滚动用量窗口档（5 小时 / 每周），对齐后端 service.CNQuotaTier。 */
 export interface CNQuotaTier {
-  window: '5h' | 'weekly'
+  window: '5h' | 'weekly' | 'monthly'
   used_percent: number
   reset_at?: string
 }
 
-/** Coding Plan 额度探测结果（kimi / zhipu），对齐后端 CNProviderQuotaProbeResult。 */
+/** 额度探测结果（Coding Plan / OpenCode Go / Command Code），对齐后端 CNProviderQuotaProbeResult。 */
 export interface CNProviderQuotaProbeResult {
   provider: string
   source?: string
@@ -24,6 +24,8 @@ export interface CNProviderQuotaProbeResult {
   fetched_at: number
   persisted: boolean
   error?: string
+  /** 同一次探测得到的余额（Command Code 积分与窗口同源），其余供应商为空。 */
+  balance?: CNProviderBalanceResult
 }
 
 /** 单币种余额明细（deepseek 双币种账号含 CNY + USD 两条）。 */

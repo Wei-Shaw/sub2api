@@ -844,6 +844,28 @@ func TestSetAntigravityModelRateLimits_GeminiWritesFamilyScope(t *testing.T) {
 	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
+func TestSetAntigravityModelRateLimits_ImageDoesNotWriteFamilyScope(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{}
+	svc := &AntigravityGatewayService{}
+	account := &Account{ID: 789, Platform: PlatformAntigravity}
+	resetAt := time.Now().Add(30 * time.Second)
+
+	success := svc.setAntigravityModelRateLimits(
+		context.Background(),
+		repo,
+		account,
+		"gemini-3.1-flash-image-preview",
+		"[test]",
+		429,
+		resetAt,
+		false,
+	)
+
+	require.True(t, success)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gemini-3.1-flash-image-preview", repo.modelRateLimitCalls[0].modelKey)
+}
+
 func TestSetAntigravityModelRateLimits_DoesNotDoubleMapCustomChain(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{}
 	svc := &AntigravityGatewayService{}
@@ -1071,6 +1093,15 @@ func TestResolveAntigravityForwardBaseURL(t *testing.T) {
 			name: "ultra defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "ULTRA"}},
 			want: dailyURL,
 		},
+		{
+			name: "stored ultra tier id defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "g1-ultra-lite-tier"}},
+			want: dailyURL,
+		},
+		{
+			name: "stored pro tier id defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "g1-pro-tier"}},
+			want: dailyURL,
+		},
+		{name: "free tier id defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free-tier"}}, want: prodURL},
 		{name: "free defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: prodURL},
 		{name: "abnormal defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "Abnormal"}}, want: prodURL},
 		{name: "unknown defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "enterprise"}}, want: prodURL},

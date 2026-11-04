@@ -86,6 +86,7 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	mcpGrantRevoker       MCPGrantRevoker
 }
 
 type CaptchaProof struct {
@@ -93,6 +94,11 @@ type CaptchaProof struct {
 	TurnstileToken string
 	TencentTicket  string
 	TencentRandstr string
+}
+
+// MCPGrantRevoker revokes MCP authorizations, which outlive browser sessions.
+type MCPGrantRevoker interface {
+	RevokeAllGrants(ctx context.Context, userID int64) error
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -152,6 +158,10 @@ func (s *AuthService) SetTencentCaptchaService(tencentCaptchaService *TencentCap
 
 func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptchaService) {
 	s.aliyunCaptchaService = aliyunCaptchaService
+}
+
+func (s *AuthService) SetMCPGrantRevoker(revoker MCPGrantRevoker) {
+	s.mcpGrantRevoker = revoker
 }
 
 // Register 用户注册，返回token和用户
@@ -1907,6 +1917,13 @@ func (s *AuthService) RevokeAllUserTokens(ctx context.Context, userID int64) err
 	if err := s.RevokeAllUserSessions(ctx, userID); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to revoke refresh sessions after token invalidation for user %d: %v", userID, err)
 	}
+	// A browser JWT can mint a long-lived MCP grant, so revoking every session
+	// must also revoke those grants. Fail loudly: the caller can retry.
+	if s.mcpGrantRevoker != nil {
+		if err := s.mcpGrantRevoker.RevokeAllGrants(ctx, userID); err != nil {
+			return fmt.Errorf("revoke MCP grants: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -1930,29 +1947,34 @@ func resolvedTokenVersion(user *User) int64 {
 	return user.TokenVersion ^ fingerprint
 }
 
-// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（platform × 3 window）以
+// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas 中至少配置了一档限额的平台以
 // BulkInsertInitial 形式写入 user_platform_quotas 表。失败 fail-open（仅 warn log）。
 func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID int64, plan *signupGrantPlan) error {
 	if s.userPlatformQuotaRepo == nil || plan == nil || len(plan.PlatformQuotas) == 0 {
 		return nil
 	}
 	// 平台配额快照是 best-effort（fail-open）：必须脱离调用方事务执行。
-	// 否则某平台违反 user_platform_quotas 的 CHECK 约束（如尚未进约束的新平台）会让
-	// 整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认配额快照"放大成
-	// "整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
+	// 否则写入时的任何数据库错误（历史上是新平台尚未加入 user_platform_quotas 的
+	// CHECK 约束）都会让整个调用方事务被 Postgres 标记 aborted，把"无关紧要的默认
+	// 配额快照"放大成"整笔注册失败"（OAuth pending 路径曾因此 500 → 清 cookie → 404）。
 	ctx = dbent.WithoutTx(ctx)
+	// 仅为至少配置了一档限额的平台建行：user_platform_quotas 中不存在的行等价于不限额，
+	// 三档全空的记录不携带任何可执行的限额。
 	records := make([]UserPlatformQuotaRecord, 0, len(plan.PlatformQuotas))
 	for platform, q := range plan.PlatformQuotas {
-		rec := UserPlatformQuotaRecord{
-			UserID:   userID,
-			Platform: platform,
+		if !q.HasAnyLimit() {
+			continue
 		}
-		if q != nil {
-			rec.DailyLimitUSD = q.DailyLimitUSD
-			rec.WeeklyLimitUSD = q.WeeklyLimitUSD
-			rec.MonthlyLimitUSD = q.MonthlyLimitUSD
-		}
-		records = append(records, rec)
+		records = append(records, UserPlatformQuotaRecord{
+			UserID:          userID,
+			Platform:        platform,
+			DailyLimitUSD:   q.DailyLimitUSD,
+			WeeklyLimitUSD:  q.WeeklyLimitUSD,
+			MonthlyLimitUSD: q.MonthlyLimitUSD,
+		})
+	}
+	if len(records) == 0 {
+		return nil
 	}
 	if err := s.userPlatformQuotaRepo.BulkInsertInitial(ctx, records); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Warning: snapshot platform quota failed user=%d: %v (fail-open)", userID, err)

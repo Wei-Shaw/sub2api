@@ -8,6 +8,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
 import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
+import { getAccountNameMap } from '../utils/accountNameMap'
 
 export interface OpsRequestDetailsPreset {
   title: string
@@ -44,8 +45,17 @@ const items = ref<OpsRequestDetail[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
+const accountNameById = ref<Map<number, string>>(new Map())
 
 const close = () => emit('update:modelValue', false)
+
+const showTTFT = computed(() => props.preset.sort === 'ttft_desc')
+const latencyLabel = computed(() => t(showTTFT.value ? 'admin.ops.ttftLabel' : 'admin.ops.requestDetails.table.duration'))
+
+function formatLatency(row: OpsRequestDetail): string {
+  const value = showTTFT.value ? row.first_token_ms : row.duration_ms
+  return typeof value === 'number' ? `${value} ms` : '-'
+}
 
 const rangeLabel = computed(() => {
   const minutes = parseTimeRangeMinutes(props.timeRange)
@@ -85,6 +95,7 @@ const fetchData = async () => {
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
     total.value = res.total || 0
+    refreshAccountNames()
   } catch (e: any) {
     console.error('[OpsRequestDetailsModal] Failed to fetch request details', e)
     appStore.showError(e?.message || t('admin.ops.requestDetails.failedToLoad'))
@@ -151,6 +162,27 @@ const kindBadgeClass = (kind: string) => {
   if (kind === 'error') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
 }
+
+// 明细行只带 account_id；账号名来自 lite 账号列表映射，缺项时强制刷新一次缓存（新建账号场景）。
+async function refreshAccountNames() {
+  const ids = items.value
+    .map(row => row.account_id)
+    .filter((id): id is number => typeof id === 'number' && id > 0)
+  if (ids.length === 0) return
+  try {
+    let map = await getAccountNameMap()
+    if (ids.some(id => !map.has(id))) map = await getAccountNameMap(true)
+    accountNameById.value = map
+  } catch (e) {
+    console.warn('[OpsRequestDetailsModal] Failed to load account names', e)
+  }
+}
+
+function accountLabel(row: OpsRequestDetail): string {
+  const id = row.account_id
+  if (typeof id !== 'number' || id <= 0) return '-'
+  return accountNameById.value.get(id) || `#${id}`
+}
 </script>
 
 <template>
@@ -204,8 +236,11 @@ const kindBadgeClass = (kind: string) => {
                     <span class="ml-auto text-[11px] text-gray-500 dark:text-gray-400">{{ formatDateTime(row.created_at) }}</span>
                   </div>
                   <div class="break-all text-xs text-gray-600 dark:text-gray-300">{{ row.model || '-' }}</div>
+                  <div v-if="typeof row.account_id === 'number' && row.account_id > 0" class="break-all text-xs text-gray-500 dark:text-gray-400" :title="accountLabel(row)">
+                    {{ t('admin.ops.requestDetails.table.account') }}: {{ accountLabel(row) }}
+                  </div>
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
-                    <span>{{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}</span>
+                    <span>{{ latencyLabel }}: {{ formatLatency(row) }}</span>
                     <span>{{ row.status_code ?? '-' }}</span>
                   </div>
                   <div v-if="row.request_id" class="flex items-center gap-2">
@@ -244,7 +279,10 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {{ t('admin.ops.requestDetails.table.duration') }}
+                    {{ t('admin.ops.requestDetails.table.account') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ latencyLabel }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.status') }}
@@ -273,8 +311,11 @@ const kindBadgeClass = (kind: string) => {
                   <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
                     {{ row.model || '-' }}
                   </td>
+                  <td class="max-w-[180px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="accountLabel(row)">
+                    {{ accountLabel(row) }}
+                  </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
+                    {{ formatLatency(row) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ row.status_code ?? '-' }}

@@ -22,6 +22,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
+	MonitorProviderMiniMax:     {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -36,6 +37,7 @@ var probeCapableProviders = map[string]struct{}{
 	MonitorProviderKimi:      {},
 	MonitorProviderZhipu:     {},
 	MonitorProviderDeepseek:  {},
+	MonitorProviderMiniMax:   {},
 }
 
 // validateProvider 校验 provider 字符串。
@@ -120,8 +122,7 @@ func validateJitter(jitterSec, intervalSec int) error {
 
 // validateEndpoint 校验 endpoint：
 //   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
-//   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
-//     导致 joinURL 拼出 /v1/v1/chat/completions
+//   - 允许上游路径前缀（如 /anthropic），不允许 query/fragment
 //   - hostname 不能是 localhost/metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
@@ -141,9 +142,6 @@ func validateEndpoint(ep string) error {
 	if u.Host == "" {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Path != "" && u.Path != "/" {
-		return ErrChannelMonitorEndpointPath
-	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return ErrChannelMonitorEndpointPath
 	}
@@ -161,8 +159,8 @@ func validateEndpoint(ep string) error {
 	return nil
 }
 
-// normalizeEndpoint 去除前后空白与末尾 `/`，保证存储统一为 origin。
-// validateEndpoint 已确保格式合法（仅 origin），这里只做最终归一化。
+// normalizeEndpoint 去除前后空白与末尾 `/`，保留上游路径前缀。
+// validateEndpoint 已确保格式合法，这里只做最终归一化。
 func normalizeEndpoint(ep string) string {
 	ep = strings.TrimSpace(ep)
 	ep = strings.TrimRight(ep, "/")
@@ -219,6 +217,8 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
+	case PlatformOpenCodeGo:
+		return nil
 	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		if account.IsCodingPlan() {
 			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu && p != PlatformMiniMax {

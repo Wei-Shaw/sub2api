@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,11 +89,14 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
-	// 检测是否有 web_search 工具
-	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	// 仅在「只有内置 web_search、没有客户端 function tools」时走 web_search 降级模型。
+	// Antigravity v1internal 不支持内置工具与 functionDeclarations 混用（即使设置
+	// includeServerSideToolInvocations 仍会 400，见 issue #6464），混用时会丢弃内置搜索，
+	// 因此不能再强制切到 gemini-2.5-flash，否则 Codex 等带 shell 工具的请求会整单失败。
+	useWebSearchRequest := hasWebSearchTool(claudeReq.Tools) && !hasClientFunctionTools(claudeReq.Tools)
 	requestType := "agent"
 	targetModel := mappedModel
-	if hasWebSearchTool {
+	if useWebSearchRequest {
 		requestType = "web_search"
 		if targetModel != webSearchFallbackModel {
 			targetModel = webSearchFallbackModel
@@ -147,21 +151,15 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 		SessionID: generateStableSessionID(contents),
 	}
 
-	// 针对 Gemini Reasoning 模型（如 gemini-3.1-pro-high等）过滤强制空 ToolConfig
 	// toolConfig must always be present: upstream rejects requests without it,
 	// including reasoning models called without any tools.
-	// 总是设置 toolConfig，与官方客户端一致
+	// 总是设置 toolConfig，与官方客户端一致。
+	// 注意：buildTools 会在客户端 function tools 存在时丢弃 googleSearch/codeExecution
+	// （issue #6464），因此这里不再注入 includeServerSideToolInvocations。
 	innerRequest.ToolConfig = &GeminiToolConfig{
 		FunctionCallingConfig: &GeminiFunctionCallingConfig{
 			Mode: "VALIDATED",
 		},
-	}
-	// 内置工具（googleSearch）与函数调用混用时，上游要求显式开启
-	// includeServerSideToolInvocations，否则返回 400（issue #5709）。
-	// 与 raw 透传路的 enableMixedGeminiToolInvocations 注入保持同一语义。
-	if hasMixedToolInvocations(tools) {
-		enabled := true
-		innerRequest.ToolConfig.IncludeServerSideToolInvocations = &enabled
 	}
 
 	if systemInstruction != nil {
@@ -296,6 +294,50 @@ func filterOpenCodePrompt(text string) string {
 	return ""
 }
 
+// The patterns are anchored at the start of a system block on purpose, so user
+// instructions that merely mention Claude, GPT or their vendors are left untouched.
+var systemIdentityOpeners = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are a Claude agent, built on Anthropic'?s Claude Agent SDK\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Claude Code, Anthropic'?s official CLI for Claude\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Codex,? (?:a coding agent |an agent )?based on GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)*\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)* running in the Codex CLI\.?`),
+}
+
+// NeutralizeSystemIdentity removes leading client attribution and rewrites a
+// leading vendor identity sentence, preserving the rest of the system block.
+// Only Antigravity forwarding should use this; native Anthropic may require attribution.
+func NeutralizeSystemIdentity(text string) string {
+	text = stripClaudeAttribution(text)
+	for _, re := range systemIdentityOpeners {
+		if loc := re.FindStringIndex(text); loc != nil {
+			if strings.HasPrefix(text[loc[1]:], ",") {
+				return "You are an AI agent" + text[loc[1]:]
+			}
+			if loc[1] < len(text) && !strings.ContainsAny(text[loc[1]:loc[1]+1], " \t\r\n") {
+				continue
+			}
+			return "You are an AI agent." + text[loc[1]:]
+		}
+	}
+	return text
+}
+
+func stripClaudeAttribution(text string) string {
+	trimmed := strings.TrimLeft(text, " \t\r\n")
+	if !strings.HasPrefix(trimmed, "x-anthropic-billing-header:") {
+		return text
+	}
+	end := strings.IndexAny(trimmed, "\r\n")
+	if end < 0 {
+		return ""
+	}
+	rest := trimmed[end+1:]
+	if trimmed[end] == '\r' {
+		rest = strings.TrimPrefix(rest, "\n")
+	}
+	return rest
+}
+
 // buildSystemInstruction 构建 systemInstruction（与 Antigravity-Manager 保持一致）
 func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions, tools []ClaudeTool) *GeminiContent {
 	var parts []GeminiPart
@@ -308,6 +350,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		// 尝试解析为字符串
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
+			sysStr = NeutralizeSystemIdentity(sysStr)
 			if strings.TrimSpace(sysStr) != "" {
 				if strings.Contains(sysStr, "You are Antigravity") {
 					userHasAntigravityIdentity = true
@@ -323,6 +366,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 			var sysBlocks []SystemBlock
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
+					block.Text = NeutralizeSystemIdentity(block.Text)
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
 						if strings.Contains(block.Text, "You are Antigravity") {
 							userHasAntigravityIdentity = true
@@ -489,8 +533,8 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			}
 			parts = append(parts, part)
 
-		case "image":
-			if block.Source != nil && block.Source.Type == "base64" {
+		case "image", "document":
+			if block.Source != nil && block.Source.Type == "base64" && strings.TrimSpace(block.Source.Data) != "" {
 				parts = append(parts, GeminiPart{
 					InlineData: &GeminiInlineData{
 						MimeType: block.Source.MediaType,
@@ -545,6 +589,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 					ID: block.ToolUseID,
 				},
 			})
+			parts = append(parts, extractToolResultInlineParts(block.Content)...)
 		}
 	}
 
@@ -593,6 +638,31 @@ func parseToolResultContent(content json.RawMessage, isError bool) string {
 
 	// 返回原始 JSON
 	return string(content)
+}
+
+func extractToolResultInlineParts(content json.RawMessage) []GeminiPart {
+	if len(content) == 0 {
+		return nil
+	}
+	var innerBlocks []ContentBlock
+	if err := json.Unmarshal(content, &innerBlocks); err != nil {
+		return nil
+	}
+	var inlineParts []GeminiPart
+	for _, item := range innerBlocks {
+		if (item.Type == "image" || item.Type == "document") &&
+			item.Source != nil &&
+			item.Source.Type == "base64" &&
+			strings.TrimSpace(item.Source.Data) != "" {
+			inlineParts = append(inlineParts, GeminiPart{
+				InlineData: &GeminiInlineData{
+					MimeType: item.Source.MediaType,
+					Data:     item.Source.Data,
+				},
+			})
+		}
+	}
+	return inlineParts
 }
 
 // buildGenerationConfig 构建 generationConfig
@@ -696,6 +766,20 @@ func hasWebSearchTool(tools []ClaudeTool) bool {
 	return false
 }
 
+// hasClientFunctionTools 判断是否存在可转发的客户端 function/custom 工具。
+// 内置 web_search / code_execution 不算客户端工具。
+func hasClientFunctionTools(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) || isCodeExecutionTool(tool) {
+			continue
+		}
+		if strings.TrimSpace(tool.Name) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func isWebSearchTool(tool ClaudeTool) bool {
 	if strings.HasPrefix(tool.Type, "web_search") || tool.Type == "google_search" {
 		return true
@@ -712,21 +796,6 @@ func isWebSearchTool(tool ClaudeTool) bool {
 
 func isCodeExecutionTool(tool ClaudeTool) bool {
 	return strings.TrimSpace(tool.Type) == "code_execution"
-}
-
-// hasMixedToolInvocations 判断构建后的工具声明是否同时包含函数声明与内置工具
-// （googleSearch）。仅在两者并存时需要开启 includeServerSideToolInvocations。
-func hasMixedToolInvocations(declarations []GeminiToolDeclaration) bool {
-	hasFunc, hasBuiltin := false, false
-	for _, d := range declarations {
-		if len(d.FunctionDeclarations) > 0 {
-			hasFunc = true
-		}
-		if d.GoogleSearch != nil || d.CodeExecution != nil {
-			hasBuiltin = true
-		}
-	}
-	return hasFunc && hasBuiltin
 }
 
 // buildTools 构建 tools
@@ -792,6 +861,18 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 			Description: description,
 			Parameters:  params,
 		})
+	}
+
+	// Antigravity v1internal 协议不支持内置工具与 functionDeclarations 混用：
+	// 即便带上 includeServerSideToolInvocations 仍返回 400（issue #6464）。
+	// Codex 默认同时带 web_search 与 shell 等客户端工具，优先保留客户端工具，
+	// 使代理会话可继续，而不是整单 upstream_error。
+	if len(funcDecls) > 0 {
+		if hasWebSearch || hasCodeExecution {
+			log.Printf("[antigravity] dropping built-in tools (web_search/code_execution) because client function tools are present; Antigravity v1internal rejects the mix")
+		}
+		hasWebSearch = false
+		hasCodeExecution = false
 	}
 
 	var declarations []GeminiToolDeclaration

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -21,12 +22,14 @@ type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
 	quotaService       openAIQuotaService
+	referralService    openAIReferralService
 	rateLimitService   openAIAccountStateRecoverer
 }
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
+	CacheCreditsSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	CachePostResetSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
 }
@@ -57,7 +60,8 @@ type openAIQuotaResetResponse struct {
 // failed display-cache write must never discard a successful upstream read.
 type openAIQuotaRefreshResponse struct {
 	service.OpenAIQuotaUsage
-	CachePersisted bool `json:"cache_persisted"`
+	CachePersisted        bool `json:"cache_persisted"`
+	CreditsCachePersisted bool `json:"credits_cache_persisted"`
 }
 
 // openAIQuotaResetPostProcessContext detaches the post-reset bookkeeping from the
@@ -92,6 +96,7 @@ func NewOpenAIOAuthHandler(
 	// `== nil` capability guards below and panic instead of returning 400.
 	if quotaService != nil {
 		h.quotaService = quotaService
+		h.referralService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
@@ -190,6 +195,11 @@ type OpenAICodexPATCreateRequest struct {
 // RefreshToken refreshes an OpenAI OAuth token
 // POST /api/v1/admin/openai/refresh-token
 func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
+	scoped := adminaccess.RestrictedFromContext(c.Request.Context()) != nil
+	if scoped && !adminaccess.RouteAllowed(adminaccess.RestrictedFromContext(c.Request.Context()).Policy, c.Request.Method, c.FullPath()) {
+		response.Error(c, 403, "调用方令牌刷新未授权")
+		return
+	}
 	var req OpenAIRefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -207,6 +217,10 @@ func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 	var proxyURL string
 	if req.ProxyID != nil {
 		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if scoped && (err != nil || proxy == nil || !proxy.IsActive() || proxy.IsExpired(time.Now())) {
+			response.BadRequest(c, "代理不可用")
+			return
+		}
 		if err == nil && proxy != nil {
 			proxyURL = proxy.URL()
 		}
@@ -221,6 +235,10 @@ func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 
 	tokenInfo, err := h.openaiOAuthService.RefreshTokenWithClientID(c.Request.Context(), refreshToken, proxyURL, clientID)
 	if err != nil {
+		if scoped {
+			response.Error(c, 502, "调用方令牌刷新失败")
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -473,6 +491,10 @@ func buildOpenAICodexPATAccountName(name string, tokenInfo *service.OpenAITokenI
 // QueryQuota queries the rate-limit / quota usage for an OpenAI account.
 // GET /api/v1/admin/openai/accounts/:id/quota
 func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+		h.scopedOpenAIQuota(c, false)
+		return
+	}
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
@@ -500,6 +522,10 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 // state: the audit middleware only records mutating verbs, so a persisting GET
 // would mutate the database without an audit trail.
 func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+		h.scopedOpenAIQuota(c, true)
+		return
+	}
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
@@ -522,6 +548,11 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 	service.NotifyOpenAIAutoResetCredit(accountID)
 
 	refreshResponse := openAIQuotaRefreshResponse{OpenAIQuotaUsage: *usage}
+	if err := h.quotaService.CacheCreditsSnapshot(c.Request.Context(), accountID, usage); err != nil {
+		slog.Warn("openai_quota_credits_cache_persist_failed", "account_id", accountID, "error", err)
+	} else {
+		refreshResponse.CreditsCachePersisted = true
+	}
 	// A failed snapshot write leaves the previous cache intact — report it as a
 	// partial success instead of discarding the usage payload we just fetched,
 	// which would leave the card without a credit count at all.
@@ -579,13 +610,19 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	if !h.scopedOpenAIAllowed(c, accountID, "openai.quota.reset", false) {
+		return
+	}
 	if h.quotaService == nil {
 		response.BadRequest(c, "openai quota service is not enabled")
 		return
 	}
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+		c.Request = c.Request.WithContext(service.WithScopedAdminAccountOperation(c.Request.Context(), "openai.quota.reset"))
+	}
 	result, err := h.quotaService.ResetCredit(c.Request.Context(), accountID)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		scopedOpenAIError(c, err)
 		return
 	}
 	if result == nil {
@@ -610,6 +647,14 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 	resetResponse.WarningCode = postResult.WarningCode
 	if postResult.Account != nil {
 		resetResponse.Account = dto.AccountFromService(postResult.Account)
+	}
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+		if h.scopedOpenAIHasPermission(c, accountID, "openai.quota.read", true) {
+			resetResponse.Quota = h.scopedQuotaDTO(c, accountID, resetResponse.Quota)
+		} else {
+			resetResponse.Quota = nil
+		}
+		resetResponse.Account = nil
 	}
 	response.Success(c, resetResponse)
 }

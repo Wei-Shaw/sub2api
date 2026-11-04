@@ -47,7 +47,7 @@ func TestPluginRuntimeIntegration(t *testing.T) {
 		assert.FileExists(t, filepath.Join(installation.InstallPath, filepath.FromSlash(relative)))
 	}
 
-	runtime, err := startPluginRuntime(context.Background(), installation, 10*time.Second, filepath.Join(root, "runtime"))
+	runtime, err := startPluginRuntime(context.Background(), installation, 10*time.Second, filepath.Join(root, "runtime"), nil)
 	require.NoError(t, err)
 	defer runtime.kill()
 	require.NoError(t, runtime.validateAndApplyConfig(context.Background(), []byte(`{

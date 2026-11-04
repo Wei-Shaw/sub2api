@@ -10,7 +10,7 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import { formatDateTimeLocalInput, formatNumber } from '@/utils/format'
 import { formatMemorySizeMB } from '../utils/opsFormatters'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
@@ -178,8 +178,8 @@ function handleTimeRangeChange(val: string | number | boolean | null) {
     // 初始化为最近1小时
     const now = new Date()
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-    customStartTimeInput.value = oneHourAgo.toISOString().slice(0, 16)
-    customEndTimeInput.value = now.toISOString().slice(0, 16)
+    customStartTimeInput.value = formatDateTimeLocalInput(oneHourAgo.getTime() / 1000)
+    customEndTimeInput.value = formatDateTimeLocalInput(now.getTime() / 1000)
     showCustomTimeRangeDialog.value = true
   } else {
     emit('update:timeRange', newValue)
@@ -1337,7 +1337,7 @@ function handleToolbarRefresh() {
               v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
-              @click="openDetails({ title: t('admin.ops.ttftLabel'), sort: 'duration_desc' })"
+              @click="openDetails({ title: t('admin.ops.ttftLabel'), kind: 'success', sort: 'ttft_desc' })"
             >
               {{ t('admin.ops.requestDetails.details') }}
             </button>
@@ -1426,6 +1426,28 @@ function handleToolbarRefresh() {
               <span class="text-gray-500">429/529:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber((overview.upstream_429_count ?? 0) + (overview.upstream_529_count ?? 0)) }}</span>
             </div>
+          </div>
+        </div>
+
+        <!-- Per-request output speed, separate from system throughput. -->
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" data-testid="output-tps-card" style="order: 7;">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.outputTps') }}</span>
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.outputTps')" />
+          </div>
+          <div class="mt-2 flex flex-wrap items-baseline gap-2">
+            <div class="text-3xl font-black text-gray-900 dark:text-white" data-testid="output-tps-p50">{{ overview.output_tps?.p50?.toFixed(1) ?? '—' }}</div>
+            <span class="text-xs font-bold text-gray-400">tok/s (P50)</span>
+          </div>
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div v-for="metric in ['p5', 'p10', 'avg'] as const" :key="metric" class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">{{ metric === 'avg' ? 'Avg' : metric.toUpperCase() }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white" :data-testid="`output-tps-${metric}`">{{ overview.output_tps?.[metric]?.toFixed(1) ?? '—' }}</span>
+              <span class="text-gray-400">tok/s</span>
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-gray-500" data-testid="output-tps-samples">
+            {{ t('admin.ops.outputTpsSamples', { count: overview.output_tps == null ? '—' : formatNumber(overview.output_tps.sample_count) }) }}
           </div>
         </div>
       </div>

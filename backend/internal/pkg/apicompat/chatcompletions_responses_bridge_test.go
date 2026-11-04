@@ -96,7 +96,7 @@ func TestResponsesInputToChatMessages_EmptyRoleFallsBackToUser(t *testing.T) {
 	assert.Equal(t, "user", messages[0].Role)
 }
 
-func TestResponsesInputToChatMessages_DeveloperRoleTrimAndCaseInsensitive(t *testing.T) {
+func TestResponsesInputToChatMessages_LeadingDeveloperRolesMergeIntoOneSystem(t *testing.T) {
 	input := json.RawMessage(`[
 		{"role":" Developer ","content":"one"},
 		{"role":"\tDEVELOPER\n","content":"two"}
@@ -104,9 +104,10 @@ func TestResponsesInputToChatMessages_DeveloperRoleTrimAndCaseInsensitive(t *tes
 
 	messages, err := responsesInputToChatMessages("", input)
 	require.NoError(t, err)
-	require.Len(t, messages, 2)
+	require.Len(t, messages, 1)
 
-	assert.Equal(t, []string{"system", "system"}, chatMessageRoles(messages))
+	assert.Equal(t, []string{"system"}, chatMessageRoles(messages))
+	assert.JSONEq(t, `"one\n\ntwo"`, string(messages[0].Content))
 }
 
 func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *testing.T) {
@@ -121,12 +122,29 @@ func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *
 
 	out, err := ResponsesToChatCompletionsRequest(req)
 	require.NoError(t, err)
-	require.Len(t, out.Messages, 3)
+	require.Len(t, out.Messages, 2)
 
-	assert.Equal(t, []string{"system", "system", "user"}, chatMessageRoles(out.Messages))
-	assert.JSONEq(t, `"Use concise answers."`, string(out.Messages[0].Content))
-	assert.JSONEq(t, `"Prefer JSON."`, string(out.Messages[1].Content))
-	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
+	assert.Equal(t, []string{"system", "user"}, chatMessageRoles(out.Messages))
+	assert.JSONEq(t, `"Use concise answers.\n\nPrefer JSON."`, string(out.Messages[0].Content))
+	assert.JSONEq(t, `"Hello"`, string(out.Messages[1].Content))
+}
+
+func TestResponsesInputToChatMessages_MidConversationDeveloperBecomesUser(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]},
+		{"type":"message","role":"developer","content":[{"type":"input_text","text":"<model_switch> switched model"}]},
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"be terse"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 5)
+
+	assert.Equal(t, []string{"user", "assistant", "user", "user", "user"}, chatMessageRoles(messages))
+	assert.JSONEq(t, `"<model_switch> switched model"`, string(messages[2].Content))
+	assert.JSONEq(t, `"be terse"`, string(messages[3].Content))
 }
 
 func TestResponsesToChatCompletionsRequest_TextFormatJsonObject(t *testing.T) {

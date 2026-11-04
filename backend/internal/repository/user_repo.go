@@ -351,6 +351,18 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 			return err
 		}
 	}
+	// 停用或降级时在同一事务内吊销 MCP 授权，恢复账号或角色后旧授权不会复活。
+	disabled := fields.Status && updated.Status != existing.Status && updated.Status != service.StatusActive
+	demoted := fields.Role && updated.Role != existing.Role && updated.Role != service.RoleAdmin
+	if disabled || demoted {
+		exec := txAwareSQLExecutor(txCtx, r.sql, r.client)
+		if exec == nil {
+			return fmt.Errorf("sql executor is not configured")
+		}
+		if err := revokeMCPGrants(txCtx, exec, updated.ID, !disabled, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
 	// 始终以库中的邮箱为准补齐 email 身份：未改邮箱时 updated.Email == oldEmail，
 	// 这里退化为幂等的身份补写，与改邮箱前的行为一致。
 	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {

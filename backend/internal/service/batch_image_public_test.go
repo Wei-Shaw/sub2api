@@ -16,6 +16,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBatchImagePublicService_SelectAccountPriority(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		priorities   [2]int
+		firstBlocked bool
+		wantID       int64
+	}{
+		{name: "lower priority value wins even with higher ID", priorities: [2]int{1, 9}, wantID: 202},
+		{name: "lower priority value wins regardless of repository order", priorities: [2]int{9, 1}, wantID: 101},
+		{name: "equal priorities keep lower ID first", priorities: [2]int{5, 5}, wantID: 101},
+		{name: "preferred but unschedulable account is skipped", priorities: [2]int{1, 9}, firstBlocked: true, wantID: 101},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, _, _, _, _ := newTestBatchImagePublicService(true)
+			accounts := []Account{testBatchImageAccount(202, AccountTypeAPIKey), testBatchImageAccount(101, AccountTypeAPIKey)}
+			accounts[0].Priority = tt.priorities[0]
+			accounts[1].Priority = tt.priorities[1]
+			accounts[0].Schedulable = !tt.firstBlocked
+			svc.AccountRepo = &publicBatchImageAccountRepo{accounts: accounts}
+
+			provider, account, err := svc.selectProviderAndAccount(context.Background(), testBatchImageOwner(), BatchImageProviderGeminiAPI, "gemini-2.5-flash-image")
+			require.NoError(t, err)
+			require.NotNil(t, provider)
+			require.NotNil(t, account)
+			require.Equal(t, tt.wantID, account.ID)
+		})
+	}
+}
+
 func TestBatchImagePublicService_Submit(t *testing.T) {
 	ctx := context.Background()
 
@@ -54,7 +83,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, "files/gemini_api/input", batchImageDerefString(job.ProviderInputRef))
 		require.Equal(t, "files/gemini_api/output", batchImageDerefString(job.ProviderOutputRef))
 		require.NotNil(t, job.AccountID)
-		require.Equal(t, int64(202), *job.AccountID)
+		require.Equal(t, int64(101), *job.AccountID)
 		require.Equal(t, 1, job.PricingSnapshotVersion)
 		require.InDelta(t, 0.25, job.BaseUnitPrice, 1e-12)
 		require.InDelta(t, 1.0, job.GroupRateMultiplier, 1e-12)
@@ -71,7 +100,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		groupID := int64(7)
 		accountMultiplier := 1.25
 		accountRepo := svc.AccountRepo.(*publicBatchImageAccountRepo)
-		accountRepo.accounts[1].RateMultiplier = &accountMultiplier
+		accountRepo.accounts[0].RateMultiplier = &accountMultiplier
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
 			groupID: {
 				ID:                           groupID,

@@ -121,3 +121,13 @@ func TestNormalizeOpenAIPersonalAccessTokenCredentialsRemovesOAuthFields(t *test
 	require.Equal(t, "2026-12-31T00:00:00Z", got["subscription_expires_at"])
 	require.Equal(t, []any{"custom"}, got["openai_usage_channel_fields"])
 }
+
+func TestOpenAICodexSubscriptionSKUsSurviveCredentialBuild(t *testing.T) {
+	svc := &OpenAIOAuthService{}
+	for _, plan := range []string{"prolite", "pro", "promax", "ent26", "enterprise_cbp_automation", "enterprise_cbp_usage_based", "edu_plus", "edu_pro", "future_sku"} {
+		for _, mode := range []string{"", OpenAIAuthModePersonalAccessToken} {
+			creds := svc.BuildAccountCredentials(&OpenAITokenInfo{AccessToken: "fixture", PlanType: plan, AuthMode: mode})
+			require.Equal(t, plan, creds["plan_type"])
+		}
+	}
+}
