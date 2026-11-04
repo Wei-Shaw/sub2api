@@ -20,11 +20,11 @@ func requireOpenAICodexProbeHeaders(t *testing.T, h http.Header) {
 
 func TestDefaultCodexIdentityMatchesVerifiedStableCLI(t *testing.T) {
 	require.Equal(t,
-		"codex_exec/0.160.1 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.160.1)",
+		"codex_exec/0.166.0 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.166.0)",
 		codexCLIUserAgent,
 	)
 	require.Equal(t, "codex_exec", openai.CodexDefaultOriginator)
-	require.Equal(t, "0.160.1", codexCLIVersion)
+	require.Equal(t, "0.166.0", codexCLIVersion)
 }
 
 func TestOpenAICodexGatewayOwnedIdentityHeadersAreNotCopiedFromIngress(t *testing.T) {

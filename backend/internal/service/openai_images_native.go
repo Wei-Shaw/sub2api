@@ -21,9 +21,8 @@ import (
 // use the native Images endpoint; ordinary OAuth still uses Responses.
 const OpenAIImageChannelExtraKey = "openai_image_channel"
 
-// Captured from the standalone CLI 0.163.0 native image tool on macOS arm64.
-// This identity is intentionally scoped to Native-Image, independent of Responses.
-const nativeImageCLIUserAgent = "codex_exec/0.163.0 (Mac OS 15.6.0; arm64) dumb (codex_exec; 0.163.0)"
+// Share the verified CLI identity; the native endpoint still omits Version/OpenAI-Beta.
+const nativeImageCLIUserAgent = codexCLIUserAgent
 
 func (a *Account) UsesOpenAINativeImageChannel() bool {
 	return a != nil && a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth && a.GetExtraString(OpenAIImageChannelExtraKey) == "native"

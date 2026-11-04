@@ -404,3 +404,23 @@ UA/originator 来自无终端环境 exec 请求抓取；version 来自同 tag �
 HTTPS ClientHello 实测 JA3 与原 0.156.1 快照完全一致，扩展
 5/10/11/13/18/23 内容也相同，没有 ALPN。旧 TLS preset ID 保持可用。
 这些验证仅覆盖本地协议画像，未验证真实账号或上游生图结果。
+
+## 2026-11-04：出站版本对齐本机 CLI 0.166.0
+
+本机 npm 安装的原生 arm64 Codex 二进制执行 `--version` 返回
+`codex-cli 0.166.0`。隔离 CODEX_HOME、移除 TERM 和代理变量，
+向本地 HTTP probe provider 发起无终端 exec 请求，抓取结果：
+
+```text
+User-Agent: codex_exec/0.166.0 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.166.0)
+originator: codex_exec
+```
+
+网关默认 Core/clientInfo 版本与 version 头统一更新为 0.166.0。
+自定义 probe provider 未发送 version 头；网关 version 头由本地回归测试验证。
+保留管理员覆写、自动同步和双版本画像的既有行为。
+历史 TLS 预设名称仍标识原始 0.160.1 抓包，本次未重新验证或更名。
+
+补充复核：OAuth 图片和原生图片路径原先独立写死 0.163.0，现均复用
+codexCLIVersion/codexCLIUserAgent。OAuth 图片携带 Version: 0.166.0；
+原生图片保持不发送 Version/OpenAI-Beta 的既有端点行为。

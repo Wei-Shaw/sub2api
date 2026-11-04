@@ -33,7 +33,7 @@ const (
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
-	// Default identity captured from official Codex CLI 0.160.1 in a terminal-free exec probe.
+	// Default identity captured from official Codex CLI 0.166.0 in a terminal-free exec probe.
 	codexCLIUserAgentSuffix = " (Mac OS 15.6.0; arm64) unknown"
 	codexCLIUserAgent       = openai.CodexDefaultOriginator + "/" + codexCLIVersion + codexCLIUserAgentSuffix +
 		" (" + openai.CodexDefaultOriginator + "; " + codexCLIVersion + ")"
@@ -52,7 +52,7 @@ const (
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	openAIUpstreamEndpointContextKey   = "openai_actual_upstream_endpoint"
 	// Verified stable CLI/Core version; automatic sync may select a newer release.
-	codexCLIVersion = "0.160.1"
+	codexCLIVersion = "0.166.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。
@@ -69,6 +69,9 @@ var openaiAllowedHeaders = map[string]bool{
 	"user-agent":              true,
 	"originator":              true,
 	"session_id":              true,
+	"session-id":              true,
+	"thread-id":               true,
+	"x-client-request-id":     true,
 	"x-codex-beta-features":   true,
 	"x-codex-installation-id": true,
 	"x-codex-turn-state":      true,
@@ -88,6 +91,9 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"user-agent":              true,
 	"originator":              true,
 	"session_id":              true,
+	"session-id":              true,
+	"thread-id":               true,
+	"x-client-request-id":     true,
 	"x-codex-beta-features":   true,
 	"x-codex-installation-id": true,
 	"x-codex-turn-state":      true,

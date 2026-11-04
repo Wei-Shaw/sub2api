@@ -213,6 +213,15 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 
 	// Strip parameters unsupported by ChatGPT internal Codex endpoint.
 	for _, key := range openAICodexOAuthUnsupportedFields {
+		if key == "stream_options" && !opts.IsCompact {
+			if options, ok := codexReasoningStreamOptions(reqBody[key]); ok {
+				if len(reqBody[key].(map[string]any)) != 1 {
+					result.Modified = true
+				}
+				reqBody[key] = options
+				continue
+			}
+		}
 		if _, ok := reqBody[key]; ok {
 			delete(reqBody, key)
 			result.Modified = true
@@ -1479,6 +1488,11 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+	// CLI 0.163+ moved base instructions into input developer messages.
+	// Do not inject a second, potentially conflicting base prompt.
+	if _, exists := reqBody["instructions"]; !exists && extractPromptLikeInstructionsFromInput(reqBody) != "" {
+		return false
+	}
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}

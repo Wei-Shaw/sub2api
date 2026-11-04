@@ -1132,6 +1132,19 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 		normalized = oauthBody
 		changed = changed || oauthChanged
 		for _, field := range openAIChatGPTInternalUnsupportedFields {
+			if field == "stream_options" {
+				value := gjson.GetBytes(normalized, field)
+				if options, ok := codexReasoningStreamOptions(value.Value()); ok {
+					if len(value.Value().(map[string]any)) != 1 {
+						next, err := sjson.SetBytes(normalized, field, options)
+						if err != nil {
+							return body, false, err
+						}
+						normalized, changed = next, true
+					}
+					continue
+				}
+			}
 			if !gjson.GetBytes(normalized, field).Exists() {
 				continue
 			}
@@ -1231,6 +1244,20 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	for _, field := range openAIChatGPTInternalUnsupportedFields {
+		if field == "stream_options" && !compact {
+			value := gjson.GetBytes(normalized, field)
+			if options, ok := codexReasoningStreamOptions(value.Value()); ok {
+				if len(value.Value().(map[string]any)) != 1 {
+					next, err := sjson.SetBytes(normalized, field, options)
+					if err != nil {
+						return body, false, err
+					}
+					normalized, changed = next, true
+				}
+				continue
+			}
+		}
+
 		if value := gjson.GetBytes(normalized, field); !value.Exists() {
 			continue
 		}
@@ -2191,4 +2218,25 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 	default:
 		return false
 	}
+}
+
+// openAIRequestBodyHasDeveloperInstructions recognizes the 0.163+ wire shape.
+// A bare additional_tools carrier or an empty developer message is not a prompt.
+func openAIRequestBodyHasDeveloperInstructions(body []byte) bool {
+	for _, item := range gjson.GetBytes(body, "input").Array() {
+		if item.Get("role").String() == "developer" && strings.TrimSpace(extractTextFromContent(item.Get("content").Value())) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Codex reasoning-summary delivery is not Chat Completions include_usage.
+// Preserve the option emitted by the official client, dropping legacy extras.
+func codexReasoningStreamOptions(raw any) (map[string]any, bool) {
+	options, ok := raw.(map[string]any)
+	if !ok || options["reasoning_summary_delivery"] != "sequential_cutoff" {
+		return nil, false
+	}
+	return map[string]any{"reasoning_summary_delivery": "sequential_cutoff"}, true
 }

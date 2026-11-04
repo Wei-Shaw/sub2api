@@ -14,9 +14,9 @@ func TestOAuthImageCodexIdentityPreservesNonIdentityHeaders(t *testing.T) {
 	h := http.Header{"Authorization": {"Bearer fixture"}, "Session_id": {"isolated-session"}, "Chatgpt-Account-Id": {"fixture-account"}, "Openai-Beta": {"responses=experimental"}, "Accept": {"text/event-stream"}}
 	before := h.Clone()
 	applyOAuthImageCodexIdentity(h, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth})
-	require.Equal(t, "codex_exec/0.163.0 (Mac OS 15.6.0; arm64) dumb (codex_exec; 0.163.0)", h.Get("User-Agent"))
+	require.Equal(t, "codex_exec/0.166.0 (Mac OS 15.6.0; arm64) unknown (codex_exec; 0.166.0)", h.Get("User-Agent"))
 	require.Equal(t, "codex_exec", h.Get("Originator"))
-	require.Equal(t, "0.163.0", h.Get("Version"))
+	require.Equal(t, "0.166.0", h.Get("Version"))
 	for _, key := range []string{"User-Agent", "Originator", "Version"} {
 		h.Del(key)
 	}
@@ -42,4 +42,11 @@ func TestOAuthImageCodexIdentityTextRequestUnchanged(t *testing.T) {
 	require.Equal(t, CodexCanonicalUserAgent(), req.Header.Get("User-Agent"))
 	require.Equal(t, CodexCanonicalClientVersion(), req.Header.Get("Version"))
 	require.Equal(t, chatgptCodexURL, req.URL.String())
+}
+
+// Prevent a future version bump from leaving image-only paths on an old identity.
+func TestImageCodexIdentitySharesCanonicalVersion(t *testing.T) {
+	require.Equal(t, codexCLIVersion, oauthImageCodexCLIVersion)
+	require.Equal(t, codexCLIUserAgent, oauthImageCodexCLIUserAgent)
+	require.Equal(t, codexCLIUserAgent, nativeImageCLIUserAgent)
 }

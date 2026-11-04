@@ -97,7 +97,7 @@ const antigravityUserAgentVersionErrorTTL = 5 * time.Second
 const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
 // DefaultOpenAICodexUserAgent 是 OpenAI Codex 默认 User-Agent，用于规避浏览器 UA 的质询。
-// 默认采用 2026-10-05 本机验证的 Codex CLI 0.160.1 完整画像。
+// 默认采用 2026-11-04 本机验证的 Codex CLI 0.166.0 完整画像。
 const DefaultOpenAICodexUserAgent = codexCLIUserAgent
 
 // cachedOpenAICodexUserAgent 缓存 OpenAI Codex UA（进程内缓存，60s TTL）

@@ -379,7 +379,7 @@ const CodexCLIOriginator = "codex_cli_rs"
 const CodexTUIOriginator = "codex-tui"
 
 // CodexDefaultOriginator 是网关默认使用的 Codex CLI exec originator。
-// 默认完整画像取自 2026-10-05 官方 CLI 0.160.1 的本地隔离抓包。
+// 默认完整画像取自 2026-11-04 官方 CLI 0.166.0 的本地隔离抓包。
 const CodexDefaultOriginator = "codex_exec"
 
 // CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{client}/{version} (...` 中的 version。
