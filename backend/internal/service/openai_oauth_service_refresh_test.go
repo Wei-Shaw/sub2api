@@ -16,6 +16,7 @@ import (
 
 type openaiOAuthClientRefreshStub struct {
 	refreshCalls int32
+	response     *openai.TokenResponse
 }
 
 func (s *openaiOAuthClientRefreshStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
@@ -29,6 +30,9 @@ func (s *openaiOAuthClientRefreshStub) RefreshToken(ctx context.Context, refresh
 
 func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.refreshCalls, 1)
+	if s.response != nil {
+		return s.response, nil
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -60,6 +64,43 @@ func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccess
 	require.Equal(t, "client-id-1", info.ClientID)
 	require.Zero(t, atomic.LoadInt32(&client.refreshCalls), "existing access token should be reused without calling refresh")
 	require.Positive(t, atomic.LoadInt32(&privacyClientCalls), "existing access token should still run enrichment")
+}
+
+func TestOpenAIOAuthService_RefreshAccountToken_WebImageAcceptsCredentials(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{}
+	svc := NewOpenAIOAuthService(nil, client)
+	svc.SetPrivacyClientFactory(func(string) (*req.Client, error) { return nil, errors.New("skip enrichment") })
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeWebImage,
+		Credentials: map[string]any{
+			"access_token": "web-access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
+		},
+	}
+	info, err := svc.RefreshAccountToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "web-access-token", info.AccessToken)
+	require.Zero(t, atomic.LoadInt32(&client.refreshCalls))
+}
+
+func TestOpenAIOAuthService_RefreshAccountToken_WebImageRotatesCredentials(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{response: &openai.TokenResponse{
+		AccessToken: "new-web-access", RefreshToken: "new-web-refresh", ExpiresIn: 3600,
+	}}
+	svc := NewOpenAIOAuthService(nil, client)
+	svc.SetPrivacyClientFactory(func(string) (*req.Client, error) { return nil, errors.New("skip enrichment") })
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeWebImage, Credentials: map[string]any{
+		"access_token": "expired-web-access", "refresh_token": "old-web-refresh", "client_id": openai.ClientID,
+	}}
+	require.Equal(t, "old-web-refresh", account.GetOpenAIRefreshToken())
+	refresher := NewOpenAITokenRefresher(svc, nil)
+	require.True(t, refresher.CanRefresh(account))
+	newCredentials, err := refresher.Refresh(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "new-web-access", newCredentials["access_token"])
+	require.Equal(t, "new-web-refresh", newCredentials["refresh_token"])
+	require.EqualValues(t, 1, atomic.LoadInt32(&client.refreshCalls))
 }
 
 func TestOpenAIOAuthService_RefreshAccountToken_PATIgnoresStaleRefreshToken(t *testing.T) {

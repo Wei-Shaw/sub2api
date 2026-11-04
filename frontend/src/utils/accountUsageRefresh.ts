@@ -1,5 +1,9 @@
 import type { Account } from '@/types'
 
+export const isNativeImageAccount = (account: Pick<Account, 'platform' | 'type' | 'extra'>): boolean => (
+  account.platform === 'openai' && account.type === 'oauth' && account.extra?.openai_image_channel === 'native'
+)
+
 const normalizeUsageRefreshValue = (value: unknown): string => {
   if (value == null) return ''
   return String(value)
@@ -30,7 +34,7 @@ const isNonBlankString = (value: unknown): value is string => (
 )
 
 export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'extra'>): string => {
-  if (account.platform !== 'openai' || account.type !== 'oauth') {
+  if (account.platform !== 'openai' || account.type !== 'oauth' || isNativeImageAccount(account)) {
     return ''
   }
 

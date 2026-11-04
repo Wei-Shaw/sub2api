@@ -156,7 +156,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	defer inflightDone()
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
-	requestCtx := service.WithOpenAIImageSizeRouting(service.WithOpenAIImagesEndpoint(service.WithOpenAIImageGenerationIntent(c.Request.Context())), parsed.Size)
+	requestCtx := service.WithOpenAIImagesRequestOptions(service.WithOpenAIImageSizeRouting(service.WithOpenAIImagesEndpoint(service.WithOpenAIImageGenerationIntent(c.Request.Context())), parsed.Size), parsed)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -180,6 +180,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			parsed.RequiredCapabilityForModel(channelMapping.MappedModel),
 		)
 		if err != nil {
+			if errors.Is(err, service.ErrNoAvailableAccounts) && h.gatewayService.OpenAIImagesOptionsUnsupported(requestCtx, apiKey.GroupID, routingModel) {
+				h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", "Configured image accounts do not support these options: Native-Image requires one PNG without masks, partial images, compression, moderation, style or input_fidelity", streamStarted)
+				return
+			}
 			if failoverClientGone(c) {
 				reqLog.Info("openai.images.account_select_aborted_client_disconnected", zap.Error(err))
 				return

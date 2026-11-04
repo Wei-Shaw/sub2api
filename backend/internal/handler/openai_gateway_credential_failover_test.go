@@ -146,6 +146,21 @@ func TestOpenAIManagedSingleAccountModelNotFoundExhaustionPreservesStructured400
 	require.Equal(t, "The requested model is unavailable on this account", gjson.Get(recorder.Body.String(), "error.message").String())
 }
 
+func TestOpenAICodexPlanGated404ExhaustionPreservesActionableMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"detail":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}`)
+
+	(&OpenAIGatewayHandler{}).handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusNotFound,
+		ResponseBody: body,
+	}, false)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.Equal(t, "The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account.", gjson.Get(recorder.Body.String(), "error.message").String())
+}
+
 func TestOpenAIManagedModelNotFoundExhaustionSanitizesMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

@@ -95,6 +95,14 @@ describe('PlatformTypeBadge Grok plans', () => {
 })
 
 describe('PlatformTypeBadge OpenAI authentication modes', () => {
+  it('labels the explicit native channel without changing ordinary OAuth', async () => {
+    const wrapper = mount(PlatformTypeBadge, { props: { platform: 'openai', type: 'oauth', imageChannel: 'native' } })
+    expect(wrapper.text()).toContain('Native-Image')
+    await wrapper.setProps({ imageChannel: undefined })
+    expect(wrapper.text()).toContain('OAuth')
+    expect(wrapper.text()).not.toContain('Native-Image')
+  })
+
   it('distinguishes Agent Identity, PAT, and OAuth accounts', async () => {
     const wrapper = mount(PlatformTypeBadge, {
       props: {

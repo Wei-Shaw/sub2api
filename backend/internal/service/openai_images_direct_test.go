@@ -75,7 +75,7 @@ func TestCodexDirectImagesMappingBeforeRouting(t *testing.T) {
 		body, target, err := buildOpenAIImagesOAuthPayload(&OpenAIImagesRequest{Prompt: "draw"}, model)
 		require.NoError(t, err)
 		require.Equal(t, chatgptCodexURL, target)
-		require.Equal(t, "gpt-5.6-luna", gjson.GetBytes(body, "model").String())
+		require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(body, "model").String())
 		require.Equal(t, model, gjson.GetBytes(body, "tools.0.model").String())
 	}
 }

@@ -17,6 +17,7 @@ import (
 
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/diagnostics"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -138,6 +139,14 @@ func runMainServer() {
 	}
 	if err := logger.Init(logger.OptionsFromConfig(cfg.Log)); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	diagnosticServer, err := diagnostics.StartFromEnv()
+	if err != nil {
+		log.Fatalf("Failed to initialize diagnostics: %v", err)
+	}
+	if diagnosticServer != nil {
+		defer func() { _ = diagnosticServer.Close() }()
+		log.Printf("pprof diagnostics enabled on %s (all IPv4 interfaces, no authentication)", diagnosticServer.Addr)
 	}
 	if cfg.RunMode == config.RunModeSimple {
 		log.Println("⚠️  WARNING: Running in SIMPLE mode - billing and quota checks are DISABLED")

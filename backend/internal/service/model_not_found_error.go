@@ -22,7 +22,7 @@ func isModelNotFoundError(statusCode int, body []byte) bool {
 	return isUpstreamModelNotFoundError(statusCode, body) || statusCode == http.StatusNotFound
 }
 
-// openAICodexPlanGatedModelPhrase matches the deterministic Codex 400 returned
+// openAICodexPlanGatedModelPhrase matches the deterministic Codex 400/404 returned
 // when a ChatGPT OAuth account's plan cannot serve the requested model, e.g.
 // {"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}
 // The phrase is compared against the normalized body (lowercased, "_"/"-"
@@ -36,7 +36,7 @@ const openAICodexPlanGatedModelPhrase = "model is not supported when using codex
 // account's plan changes, so callers should treat it like model-not-found and
 // cool the (account, model) pair down instead of re-selecting the account.
 func isOpenAICodexPlanGatedModelError(statusCode int, body []byte) bool {
-	if statusCode != http.StatusBadRequest {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
 		return false
 	}
 	normalized := normalizeModelNotFoundBody(body)
@@ -44,6 +44,12 @@ func isOpenAICodexPlanGatedModelError(statusCode int, body []byte) bool {
 		return false
 	}
 	return strings.Contains(normalized, openAICodexPlanGatedModelPhrase)
+}
+
+// IsOpenAICodexPlanGatedModelError lets the gateway preserve this specific
+// account-entitlement error after it has exhausted eligible accounts.
+func IsOpenAICodexPlanGatedModelError(statusCode int, body []byte) bool {
+	return isOpenAICodexPlanGatedModelError(statusCode, body)
 }
 
 func containsModelNotFoundKeyword(normalizedBody string) bool {

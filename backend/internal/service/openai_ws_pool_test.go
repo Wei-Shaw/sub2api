@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
 	"github.com/stretchr/testify/require"
 )
 
@@ -2641,4 +2642,33 @@ func TestOpenAIWSConnPool_SnapshotTransportMetrics(t *testing.T) {
 	require.Equal(t, int64(1), snapshot.ProxyClientCacheHits)
 	require.Equal(t, int64(2), snapshot.ProxyClientCacheMisses)
 	require.InDelta(t, 1.0/3.0, snapshot.TransportReuseRatio, 0.0001)
+}
+
+func TestOpenAIWSConnPoolIPv6Toggle(t *testing.T) {
+	old := chatgptnetwork.Enabled()
+	defer chatgptnetwork.SetEnabled(old)
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+	pool := newOpenAIWSConnPool(cfg)
+	defer pool.Close()
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	req := openAIWSAcquireRequest{Account: &Account{ID: 991, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, WSURL: "wss://chatgpt.com/backend-api/codex/responses"}
+	ids := map[bool]string{}
+	for _, mode := range []bool{false, true, false, true} {
+		chatgptnetwork.SetEnabled(mode)
+		lease, err := pool.Acquire(context.Background(), req)
+		require.NoError(t, err)
+		if id, ok := ids[mode]; ok {
+			require.Equal(t, id, lease.ConnID())
+			require.True(t, lease.Reused())
+		} else {
+			require.False(t, lease.Reused())
+			ids[mode] = lease.ConnID()
+		}
+		lease.Release()
+	}
+	require.NotEqual(t, ids[false], ids[true])
+	require.Equal(t, 2, dialer.DialCount())
 }

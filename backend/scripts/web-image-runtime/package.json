@@ -1,0 +1,7 @@
+{
+  "name": "sub2api-web-image-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runtime dependencies for the web-image Sentinel runner only",
+  "dependencies": { "jsdom": "24.1.3" }
+}

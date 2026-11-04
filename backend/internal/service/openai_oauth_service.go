@@ -112,21 +112,22 @@ type OpenAIExchangeCodeInput struct {
 
 // OpenAITokenInfo represents the token information for OpenAI
 type OpenAITokenInfo struct {
-	AccessToken           string `json:"access_token"`
-	RefreshToken          string `json:"refresh_token"`
-	IDToken               string `json:"id_token,omitempty"`
-	ExpiresIn             int64  `json:"expires_in"`
-	ExpiresAt             int64  `json:"expires_at"`
-	ClientID              string `json:"client_id,omitempty"`
-	AuthMode              string `json:"auth_mode,omitempty"`
-	Email                 string `json:"email,omitempty"`
-	ChatGPTAccountID      string `json:"chatgpt_account_id,omitempty"`
-	ChatGPTUserID         string `json:"chatgpt_user_id,omitempty"`
-	ChatGPTAccountFedRAMP bool   `json:"chatgpt_account_is_fedramp,omitempty"`
-	OrganizationID        string `json:"organization_id,omitempty"`
-	PlanType              string `json:"plan_type,omitempty"`
-	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
-	PrivacyMode           string `json:"privacy_mode,omitempty"`
+	ChatGPTEntitlement    map[string]any `json:"chatgpt_entitlement,omitempty"`
+	AccessToken           string         `json:"access_token"`
+	RefreshToken          string         `json:"refresh_token"`
+	IDToken               string         `json:"id_token,omitempty"`
+	ExpiresIn             int64          `json:"expires_in"`
+	ExpiresAt             int64          `json:"expires_at"`
+	ClientID              string         `json:"client_id,omitempty"`
+	AuthMode              string         `json:"auth_mode,omitempty"`
+	Email                 string         `json:"email,omitempty"`
+	ChatGPTAccountID      string         `json:"chatgpt_account_id,omitempty"`
+	ChatGPTUserID         string         `json:"chatgpt_user_id,omitempty"`
+	ChatGPTAccountFedRAMP bool           `json:"chatgpt_account_is_fedramp,omitempty"`
+	OrganizationID        string         `json:"organization_id,omitempty"`
+	PlanType              string         `json:"plan_type,omitempty"`
+	SubscriptionExpiresAt string         `json:"subscription_expires_at,omitempty"`
+	PrivacyMode           string         `json:"privacy_mode,omitempty"`
 }
 
 // ExchangeCode exchanges authorization code for tokens
@@ -214,6 +215,11 @@ func (s *OpenAIOAuthService) RefreshToken(ctx context.Context, refreshToken stri
 
 // RefreshTokenWithClientID refreshes an OpenAI OAuth token with optional client_id.
 func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string) (*OpenAITokenInfo, error) {
+	return s.refreshTokenWithAccountID(ctx, refreshToken, proxyURL, clientID, "")
+}
+
+// Apply the stored identity before enrichment when token rotation omits it.
+func (s *OpenAIOAuthService) refreshTokenWithAccountID(ctx context.Context, refreshToken, proxyURL, clientID, existingAccountID string) (*OpenAITokenInfo, error) {
 	tokenResp, err := s.oauthClient.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
 	if err != nil {
 		return nil, err
@@ -249,6 +255,10 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		tokenInfo.PlanType = userInfo.PlanType
 	}
 
+	if strings.TrimSpace(tokenInfo.ChatGPTAccountID) == "" {
+		tokenInfo.ChatGPTAccountID = strings.TrimSpace(existingAccountID)
+	}
+
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
 
 	return tokenInfo, nil
@@ -272,7 +282,8 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 	// accounts/check 命中的记录不属于个人账号时，必须改用个人订阅端点拿到期时间，
 	// 否则会把 workspace 权益的 expires_at 当成个人订阅到期日展示。
 	forcePersonalSubscriptionLookup := false
-	if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID); info != nil {
+	if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID, tokenInfo.ChatGPTAccountID); info != nil {
+		tokenInfo.ChatGPTEntitlement = info.Entitlement
 		// chatgpt_plan_type from the ID token is the canonical personal-plan value.
 		// accounts/check is a multi-account/workspace endpoint; inactive team or
 		// business workspaces can otherwise overwrite Pro/Free with internal
@@ -340,7 +351,7 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if account.Platform != PlatformOpenAI {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT", "account is not an OpenAI account")
 	}
-	if account.Type != AccountTypeOAuth {
+	if !account.IsOpenAIOAuth() && !account.IsOpenAIWebImage() {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
 
@@ -386,7 +397,7 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	}
 
 	clientID := account.GetCredential("client_id")
-	return s.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
+	return s.refreshTokenWithAccountID(ctx, refreshToken, proxyURL, clientID, account.GetCredential("chatgpt_account_id"))
 }
 
 // BuildAccountCredentials builds credentials map from token info
@@ -419,6 +430,9 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	}
 	if tokenInfo.PlanType != "" {
 		creds["plan_type"] = tokenInfo.PlanType
+	}
+	if tokenInfo.ChatGPTEntitlement != nil {
+		creds["chatgpt_entitlement"] = tokenInfo.ChatGPTEntitlement
 	}
 	if tokenInfo.SubscriptionExpiresAt != "" {
 		creds["subscription_expires_at"] = tokenInfo.SubscriptionExpiresAt

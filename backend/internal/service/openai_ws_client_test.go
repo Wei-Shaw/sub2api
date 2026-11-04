@@ -2,7 +2,7 @@ package service
 
 import (
 	"fmt"
-	"net/http"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
 	"testing"
 	"time"
 
@@ -105,10 +105,24 @@ func TestCoderOpenAIWSClientDialer_ProxyTransportTLSHandshakeTimeout(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
-	transport, ok := client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(client.Transport)
 	require.True(t, ok)
 	require.NotNil(t, transport)
 	require.Equal(t, 10*time.Second, transport.TLSHandshakeTimeout)
+}
+
+func TestCoderOpenAIWSClientDialer_CodexTLSForDirectAndHTTPSProxy(t *testing.T) {
+	dialer, ok := newDefaultOpenAIWSClientDialer().(*coderOpenAIWSClientDialer)
+	require.True(t, ok)
+	for _, proxy := range []string{"", "https://proxy.example:8443"} {
+		client, err := dialer.proxyHTTPClient(proxy)
+		require.NoError(t, err)
+		transport, ok := chatgptnetwork.BaseTransport(client.Transport)
+		require.True(t, ok)
+		require.NotNil(t, transport.DialTLSContext)
+		require.Nil(t, transport.Proxy)
+		require.False(t, transport.ForceAttemptHTTP2)
+	}
 }
 
 func TestCoderOpenAIWSClientConn_DoesNotSupportIdlePingWithoutReader(t *testing.T) {

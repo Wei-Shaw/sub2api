@@ -336,7 +336,7 @@ export async function refreshCredentials(id: number): Promise<RefreshCredentials
 export async function applyOAuthCredentials(
   id: number,
   payload: {
-    type: 'oauth' | 'setup-token'
+    type: 'oauth' | 'setup-token' | 'web-image'
     credentials: Record<string, unknown>
     extra?: Record<string, unknown>
   }

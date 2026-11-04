@@ -22,6 +22,8 @@ import (
 const codexImportClockSkewSeconds int64 = 120
 
 type CodexSessionImportRequest struct {
+	// Type 可选：oauth（默认）或 web-image，用于把同一份 Codex 会话导入为不同用途的账号。
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth web-image"`
 	Content                 string         `json:"content"`
 	Contents                []string       `json:"contents"`
 	Name                    string         `json:"name"`
@@ -115,6 +117,15 @@ type codexAccountIndex struct {
 	keysByAccountID map[int64]map[string]struct{}
 }
 
+// codexImportAccountType 决定导入出的账号类型：显式 web-image 时按网页生图账号导入，
+// 其余（空 / oauth）保持原有的 OAuth 行为。绑定层已用 oneof 限制了取值范围。
+func codexImportAccountType(raw string) string {
+	if strings.EqualFold(strings.TrimSpace(raw), service.AccountTypeWebImage) {
+		return service.AccountTypeWebImage
+	}
+	return service.AccountTypeOAuth
+}
+
 func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
 	var req CodexSessionImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -163,11 +174,20 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		Items: make([]CodexSessionImportItem, 0, len(entries)),
 	}
 
-	existingAccounts, err := h.listAccountsFiltered(ctx, service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "", "created_at", "desc")
+	importAccountType := codexImportAccountType(req.Type)
+	existingAccounts, err := h.listAccountsFiltered(ctx, service.PlatformOpenAI, importAccountType, "", "", 0, "", "created_at", "desc")
 	if err != nil {
 		return result, err
 	}
-	index := buildCodexAccountIndex(existingAccounts)
+	// 同一 ChatGPT 身份可以同时存在 OAuth 与 web-image 两条记录，查重仅作用于目标类型。
+	matchingAccounts := make([]service.Account, 0, len(existingAccounts))
+	target := &service.Account{Platform: service.PlatformOpenAI, Type: importAccountType, Extra: req.Extra}
+	for _, existing := range existingAccounts {
+		if existing.Type == importAccountType && existing.UsesOpenAINativeImageChannel() == target.UsesOpenAINativeImageChannel() {
+			matchingAccounts = append(matchingAccounts, existing)
+		}
+	}
+	index := buildCodexAccountIndex(matchingAccounts)
 
 	updateExisting := true
 	if req.UpdateExisting != nil {
@@ -332,7 +352,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			Name:                  accountName,
 			Notes:                 req.Notes,
 			Platform:              service.PlatformOpenAI,
-			Type:                  service.AccountTypeOAuth,
+			Type:                  importAccountType,
 			Credentials:           credentials,
 			Extra:                 extra,
 			ProxyID:               req.ProxyID,

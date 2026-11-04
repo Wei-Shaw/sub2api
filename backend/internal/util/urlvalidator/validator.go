@@ -117,12 +117,27 @@ func ValidateResolvedIP(host string) error {
 	}
 
 	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		if isBlockedIP(ip) {
 			return fmt.Errorf("resolved ip %s is not allowed", ip.String())
 		}
 	}
 	return nil
+}
+
+func isBlockedIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil {
+		// RFC 6598 shared address space and RFC 1112/1112-reserved ranges are
+		// not publicly routable, but net.IP.IsPrivate deliberately excludes them.
+		if v4[0] == 100 && v4[1]&0xc0 == 0x40 {
+			return true
+		}
+		return v4[0] >= 240
+	}
+	return false
 }
 
 func normalizeAllowlist(values []string) []string {
@@ -172,10 +187,8 @@ func isBlockedHost(host string) bool {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return true
-		}
+	if ip := net.ParseIP(host); ip != nil && isBlockedIP(ip) {
+		return true
 	}
 	return false
 }

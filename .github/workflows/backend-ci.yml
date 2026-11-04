@@ -21,6 +21,13 @@ jobs:
           /bin/sh deploy/tests/docker-runtime-resources-test.sh
           /bin/sh deploy/test-caddyfile-cache.sh
 
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate diagnostic environment and port mappings
+        run: python3 deploy/tests/docker-compose-pprof-test.py
+
   test:
     runs-on: ubuntu-latest
     steps:

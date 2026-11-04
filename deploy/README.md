@@ -602,9 +602,32 @@ sudo systemctl status redis
 
 ---
 
+## GPT-6 Sol/Luna rollout
+
+The release image includes API-key-equivalent Standard/Fast fallback prices for
+`gpt-6-sol` and `gpt-6-luna`, including the whole-request long-context tier above
+272,000 input tokens. The online price catalog may provide newer prices; confirm
+the effective prices against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing)
+before enabling production traffic.
+
+1. In the admin account configuration, add `gpt-6-sol → gpt-6-sol` and/or
+   `gpt-6-luna → gpt-6-luna` to each intended OpenAI OAuth account **if its
+   model mapping is non-empty**. This mapping is also that account's model
+   allowlist. A local database change does not configure production accounts.
+2. Confirm the production group's long-context pricing switch is enabled and
+   the `/v1/models` response includes the intended model for a test API key.
+3. Send one small non-streaming and one streaming `/v1/responses` request. Require
+   HTTP 200, the requested model in the response, and `response.completed` for
+   the stream. Reconcile the resulting usage-log cost with the effective price.
+4. Enable traffic gradually. If the upstream rejects the model for an account,
+   remove that account's mapping or disable the account for this model, then
+   investigate its entitlement; do not redirect the model name to a different
+   model merely to suppress the error.
+
 ## TLS Fingerprint Configuration
 
-Sub2API supports TLS fingerprint simulation to make requests appear as if they come from the official Claude CLI (Node.js client).
+Sub2API supports a configurable Claude CLI TLS profile and a separate captured
+Codex CLI transport profile for Codex model-provider traffic.
 
 > **💡 Tip:** Visit **[tls.sub2api.org](https://tls.sub2api.org/)** to get TLS fingerprint information for different devices and browsers.
 

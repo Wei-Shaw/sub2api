@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPairCodexClientIdentityRejectsInvalidHeaderBytes(t *testing.T) {
+func TestPairCodexClientIdentityRejectsControlBytesBeforeNormalization(t *testing.T) {
 	for name, ua := range map[string]string{
 		"crlf_suffix":        "codex-tui/0.146.0 (Linux)\r\nX-Injected: value",
 		"nul_suffix":         "codex-tui/0.146.0 (Linux\x00)",

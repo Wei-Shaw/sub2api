@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 // FetchOpenAIModelsList discovers a single account's raw public model catalog.
@@ -23,6 +24,22 @@ func (s *OpenAIGatewayService) FetchOpenAIModelsList(ctx context.Context, accoun
 	credentialAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 	if err != nil {
 		return nil, fmt.Errorf("resolve model list credentials: %w", err)
+	}
+	if credentialAccount.IsOpenAIWebImage() {
+		models := make([]openai.Model, 0)
+		for _, model := range openai.DefaultModels {
+			if IsGPTImageGenerationModel(model.ID) && credentialAccount.IsModelSupported(model.ID) {
+				models = append(models, model)
+			}
+		}
+		body, err := json.Marshal(struct {
+			Object string         `json:"object"`
+			Data   []openai.Model `json:"data"`
+		}{Object: "list", Data: models})
+		if err != nil {
+			return nil, fmt.Errorf("encode web image model list: %w", err)
+		}
+		return &OpenAIModelsResponse{Body: body, ETag: codexModelsManifestBodyETag(body)}, nil
 	}
 	if credentialAccount.IsOpenAIOAuth() {
 		clientVersion := CodexCanonicalClientVersion()

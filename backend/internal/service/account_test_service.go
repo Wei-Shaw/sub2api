@@ -217,7 +217,7 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	// Codex discovery lists Responses drivers, not image_generation tool models.
 	// Add locally supported image choices only to the OAuth test picker; keep the
 	// shared upstream catalog and API-key discovery authoritative.
-	if account != nil && account.IsOpenAIOAuthLike() {
+	if account != nil && (account.IsOpenAIOAuthLike() || account.UsesChatGPTWebImageChannel()) {
 		passthrough := account.IsOpenAIPassthroughEnabled()
 		seen := make(map[string]bool, len(payload.Data))
 		for _, model := range payload.Data {
@@ -253,6 +253,15 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			payload.Data = append(payload.Data, openai.Model{ID: publicID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(publicID)})
 			seen[publicID] = true
 		}
+	}
+	if account != nil && account.UsesOpenAINativeImageChannel() {
+		images := make([]openai.Model, 0)
+		for _, model := range payload.Data {
+			if IsGPTImageGenerationModel(model.ID) {
+				images = append(images, model)
+			}
+		}
+		return images, nil
 	}
 	return payload.Data, nil
 }
@@ -807,11 +816,18 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		testModelID = openai.DefaultTestModel
 	}
 
+	if account.UsesOpenAINativeImageChannel() && strings.TrimSpace(modelID) == "" {
+		testModelID = "gpt-image-2"
+	}
+
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
 	// account model mapping. Native remote compaction v2 rides the ordinary
 	// /responses wire and does NOT apply the legacy compact-only mapping
 	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
 	testModelID = account.GetMappedModel(testModelID)
+	if account.UsesOpenAINativeImageChannel() && (mode == AccountTestModeCompact || !isOpenAIImageModel(testModelID)) {
+		return s.sendErrorAndEnd(c, "Native-Image only supports image generation tests")
+	}
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
@@ -824,6 +840,14 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 		if account.Type == "apikey" {
 			return s.testOpenAIImageAPIKey(c, ctx, account, testModelID, imagePrompt)
+		}
+		if account.UsesOpenAINativeImageChannel() {
+			return s.testOpenAIImageNative(c, ctx, account, testModelID, imagePrompt)
+		}
+		// 网页生图通道账号（web 类型 / 开了 extra 开关的 OAuth）走网页链路测试，
+		// 否则测试会拿网页账号去打 Codex /responses，测的是另一份额度。
+		if account.UsesChatGPTWebImageChannel() {
+			return s.testOpenAIImageChatGPTWeb(c, ctx, account, testModelID, imagePrompt)
 		}
 		return s.testOpenAIImageOAuth(c, ctx, account, testModelID, imagePrompt)
 	}
@@ -3128,7 +3152,73 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	return nil
 }
 
-// OAuth 图片测试与正式转发共用 Codex Images / Responses 分流规则。
+// testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
+// testOpenAIImageChatGPTWeb 用网页生图通道做账号测试。
+//
+// 与真实转发共用同一套 session 实现（sentinel + f/conversation + 图片下载），
+// 所以这里通了就代表线上转发也通；消耗的是网页 image_gen 额度。
+func (s *AccountTestService) testOpenAIImageChatGPTWeb(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	modelID string,
+	prompt string,
+) error {
+	if s.httpUpstream == nil {
+		return s.sendErrorAndEnd(c, "HTTP upstream is not configured")
+	}
+	if strings.TrimSpace(prompt) == "" {
+		prompt = defaultOpenAIImageTestPrompt
+	}
+	credentialAccount := account
+	if account.IsShadow() {
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to resolve account credentials")
+		}
+		credentialAccount = resolved
+	}
+	authToken := credentialAccount.GetOpenAIAccessToken()
+	if strings.TrimSpace(authToken) == "" {
+		return s.sendErrorAndEnd(c, "No access token available")
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Calling ChatGPT Web image channel (f/conversation)...\n"})
+
+	session := newChatGPTWebSession(s.httpUpstream, credentialAccount, authToken, credentialAccount.ChatGPTWebDevice())
+	images, err := session.GenerateImageBatch(
+		ctx,
+		prompt,
+		modelID,
+		credentialAccount.ChatGPTWebImageUpstreamModel(),
+		nil,
+		1,
+	)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	if len(images) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from the ChatGPT web channel")
+	}
+	for _, raw := range images {
+		mimeType := http.DetectContentType(raw)
+		s.sendEvent(c, TestEvent{
+			Type:     "image",
+			ImageURL: "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(raw),
+			MimeType: mimeType,
+		})
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	credentialAccount := account
 	if account.IsShadow() {
@@ -3213,6 +3303,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	// 与真实转发一致：账号级自定义 UA 同样作为管理员显式配置传入，否则测试用的身份
 	// 与该账号真实出站的身份不是同一个（issue #3901 的配对不变式由收口保证）。
 	enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
+	applyOAuthImageCodexIdentity(req.Header, credentialAccount)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

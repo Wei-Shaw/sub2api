@@ -414,6 +414,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
+	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -436,6 +437,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if err := validateOpenAIImageChannel(account); err != nil {
+		return nil, err
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -549,7 +553,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	AfterAccountCommit(ctx, func(_ context.Context) {
 		// OAuth 账号：创建后异步设置隐私。
 		// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
-		if account.Type == AccountTypeOAuth {
+		if account.Type == AccountTypeOAuth || account.IsOpenAIWebImage() {
 			switch account.Platform {
 			case PlatformOpenAI:
 				go func() {
@@ -714,6 +718,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		normalizedExtra = MergeOpenAICodexTicketExtra(normalizedExtra, account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -868,6 +873,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if err := validateOpenAIImageChannel(account); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -933,6 +941,22 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if _, changesChannel := updates[OpenAIImageChannelExtraKey]; changesChannel {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		copyAccount := *account
+		copyAccount.Extra = maps.Clone(account.Extra)
+		if copyAccount.Extra == nil {
+			copyAccount.Extra = map[string]any{}
+		}
+		maps.Copy(copyAccount.Extra, updates)
+		if err := validateOpenAIImageChannel(&copyAccount); err != nil {
+			return err
+		}
+	}
+	updates = MergeOpenAICodexTicketExtra(updates, nil)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -961,7 +985,11 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if _, changesChannel := input.Extra[OpenAIImageChannelExtraKey]; changesChannel {
+		return nil, infraerrors.BadRequest("IMAGE_CHANNEL_SINGLE_ACCOUNT_ONLY", "Change Native-Image through the individual account editor")
+	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
+	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
@@ -1678,7 +1706,7 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 	if account.IsCredentialShadow() {
 		return ""
 	}
-	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+	if account.Platform != PlatformOpenAI || (!account.IsOpenAIOAuth() && !account.IsOpenAIWebImage()) {
 		return ""
 	}
 	if s.privacyClientFactory == nil {
@@ -1715,7 +1743,7 @@ func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Acco
 	if account.IsCredentialShadow() {
 		return ""
 	}
-	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+	if account.Platform != PlatformOpenAI || (!account.IsOpenAIOAuth() && !account.IsOpenAIWebImage()) {
 		return ""
 	}
 	if s.privacyClientFactory == nil {

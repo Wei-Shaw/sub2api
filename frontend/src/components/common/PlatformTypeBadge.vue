@@ -24,6 +24,8 @@
         </svg>
         <!-- Setup Token icon -->
         <Icon v-else-if="type === 'setup-token'" name="shield" size="xs" />
+        <!-- ChatGPT Web icon -->
+        <Icon v-else-if="type === 'web-image'" name="globe" size="xs" />
         <!-- API Key icon -->
         <Icon v-else-if="type === 'service_account'" name="cloud" size="xs" />
         <Icon v-else name="key" size="xs" />
@@ -79,6 +81,7 @@ const { t } = useI18n()
 interface Props {
   platform: AccountPlatform
   type: AccountType
+  imageChannel?: string
   authMode?: string
   planType?: string
   privacyMode?: string
@@ -95,6 +98,7 @@ const normalizedAuthMode = computed(() =>
 
 const typeLabel = computed(() => {
   if (props.platform === 'openai' && props.type === 'oauth') {
+    if (props.imageChannel === 'native') return 'Native-Image'
     if (normalizedAuthMode.value === 'agentidentity') return 'Agent Identity'
     if (normalizedAuthMode.value === 'personalaccesstoken') return 'PAT'
   }
@@ -105,6 +109,8 @@ const typeLabel = computed(() => {
       return 'Token'
     case 'apikey':
       return 'Key'
+    case 'web-image':
+      return 'Web Image'
     case 'bedrock':
       return 'AWS'
     case 'service_account':

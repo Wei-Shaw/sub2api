@@ -68,6 +68,22 @@ func TestAccountTestServiceSkipsShadow(t *testing.T) {
 	require.Contains(t, err.Error(), "resolve spark shadow parent")
 }
 
+func TestEnsureOpenAIPrivacyAcceptsWebImage(t *testing.T) {
+	account := &Account{
+		ID: 201, Platform: PlatformOpenAI, Type: AccountTypeWebImage,
+		Credentials: map[string]any{"access_token": "web-image-token"},
+	}
+	privacyCalled := false
+	svc := &adminServiceImpl{
+		accountRepo: &tokenRefreshAccountRepo{},
+		privacyClientFactory: func(string) (*req.Client, error) {
+			privacyCalled = true
+			return nil, errors.New("stop after type guard")
+		}}
+	require.Equal(t, PrivacyModeFailed, svc.EnsureOpenAIPrivacy(context.Background(), account))
+	require.True(t, privacyCalled, "web-image account should reach the OpenAI privacy client")
+}
+
 // --- 3. EnsureOpenAIPrivacy 守卫 ---
 
 // TestEnsureOpenAIPrivacySkipsShadow 验证影子账号跳过隐私设置（不调用 privacyClientFactory）。

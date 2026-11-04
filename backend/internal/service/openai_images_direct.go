@@ -80,7 +80,9 @@ func buildOpenAIImagesOAuthPayload(parsed *OpenAIImagesRequest, model string) ([
 	if parsed.OutputCompression != nil {
 		payload["output_compression"] = *parsed.OutputCompression
 	}
-	if parsed.PartialImages != nil {
+	if parsed.RequestedPartialImages != nil {
+		payload["partial_images"] = *parsed.RequestedPartialImages
+	} else if parsed.PartialImages != nil {
 		payload["partial_images"] = *parsed.PartialImages
 	}
 	if parsed.Stream {

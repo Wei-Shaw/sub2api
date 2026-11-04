@@ -78,7 +78,7 @@ func TestIsBlockedHost(t *testing.T) {
 	for _, host := range []string{
 		"localhost", "LOCALHOST", "foo.localhost", " 127.0.0.1 ",
 		"127.0.0.1", "::1", "10.0.0.5", "172.16.0.1", "192.168.1.1",
-		"169.254.169.254", "0.0.0.0", "::", "fe80::1", "fc00::1", "::ffff:127.0.0.1",
+		"169.254.169.254", "100.64.0.1", "224.0.0.1", "240.0.0.1", "0.0.0.0", "::", "fe80::1", "fc00::1", "::ffff:127.0.0.1",
 	} {
 		if !IsBlockedHost(host) {
 			t.Fatalf("expected %q to be blocked", host)

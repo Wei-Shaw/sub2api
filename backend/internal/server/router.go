@@ -54,6 +54,9 @@ func SetupRouter(
 		cachedFrameOrigins.Store(&origins)
 	}
 	refreshFrameOrigins() // 启动时初始化
+	if err := settingService.InitializeChatGPTNetwork(context.Background()); err != nil {
+		panic("load ChatGPT network setting: " + err.Error())
+	}
 
 	// 应用中间件
 	r.Use(middleware2.RequestLogger())

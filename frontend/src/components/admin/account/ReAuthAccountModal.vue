@@ -417,7 +417,7 @@ const handleExchangeCode = async () => {
 
     try {
       const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
-        type: 'oauth',
+        type: props.account.type === 'web-image' ? 'web-image' : 'oauth',
         credentials,
         extra
       })
@@ -515,7 +515,7 @@ const handleExchangeCode = async () => {
 
     try {
       const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
-        type: 'oauth',
+        type: props.account.type === 'web-image' ? 'web-image' : 'oauth',
         credentials,
         extra
       })

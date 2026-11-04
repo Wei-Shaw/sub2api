@@ -88,6 +88,16 @@ func TestOpenAICompatibleModelNotFound400WithoutManagedCandidatesRemainsTerminal
 	))
 }
 
+func TestOpenAICodexPlanGated404FailsOverOnlyForManagedOAuth(t *testing.T) {
+	body := []byte(`{"detail":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}`)
+	managed := &OpenAIGatewayService{accountRepo: &modelNotFoundManagedAccountRepo{}}
+	oauth := newOpenAIUpstreamErrorTestAccount()
+	require.True(t, managed.shouldFailoverOpenAIUpstreamResponse(oauth, http.StatusNotFound, "", body))
+	require.False(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(oauth, http.StatusNotFound, "", body))
+	require.False(t, managed.shouldFailoverOpenAIUpstreamResponse(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, http.StatusNotFound, "", body))
+	require.False(t, managed.shouldFailoverOpenAIUpstreamResponse(oauth, http.StatusNotFound, "", []byte(`{"detail":"endpoint not found"}`)))
+}
+
 func TestFailoverOpenAIUpstreamHTTPError_ModelNotFoundIsNextAccountEligible(t *testing.T) {
 	c, _ := newOpenAIUpstreamErrorTestContext(t)
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, accountRepo: &modelNotFoundManagedAccountRepo{}}

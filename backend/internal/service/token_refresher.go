@@ -95,7 +95,7 @@ func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
 	if account.IsCredentialShadow() {
 		return false
 	}
-	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
+	return account.IsOpenAIOAuth() || account.IsOpenAIWebImage()
 }
 
 // NeedsRefresh 检查token是否需要刷新

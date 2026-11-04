@@ -58,6 +58,23 @@ func TestFetchOpenAIModelsListUsesStandardRequestAndIsolatesCodexCache(t *testin
 	require.EqualValues(t, 3, calls.Load(), "credentials must participate in the cache key")
 }
 
+func TestFetchOpenAIModelsListWebImageUsesLocalImageCatalog(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	account := &Account{ID: 941, Platform: PlatformOpenAI, Type: AccountTypeWebImage}
+	response, err := s.FetchOpenAIModelsList(context.Background(), account)
+	require.NoError(t, err)
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body, &payload))
+	require.NotEmpty(t, payload.Data)
+	for _, model := range payload.Data {
+		require.True(t, IsGPTImageGenerationModel(model.ID), model.ID)
+	}
+}
+
 func TestFetchOpenAIModelsListOAuthSharesManifestCache(t *testing.T) {
 	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"special-oauth-model","display_name":"Special OAuth Model","description":"manifest only"},{"slug":"gpt-image-1"}]}`)
 	s := &OpenAIGatewayService{}

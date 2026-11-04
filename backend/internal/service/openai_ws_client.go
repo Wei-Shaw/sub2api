@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -132,13 +134,11 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			return true
 		},
 	}
-	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
-		proxyClient, err := d.proxyHTTPClient(proxy)
-		if err != nil {
-			return nil, 0, nil, err
-		}
-		opts.HTTPClient = proxyClient
+	proxyClient, err := d.proxyHTTPClient(strings.TrimSpace(proxyURL))
+	if err != nil {
+		return nil, 0, nil, err
 	}
+	opts.HTTPClient = proxyClient
 
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)
 	if err != nil {
@@ -171,12 +171,13 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 		return nil, errors.New("openai ws dialer is nil")
 	}
 	normalizedProxy := strings.TrimSpace(proxy)
-	if normalizedProxy == "" {
-		return nil, errors.New("proxy url is empty")
-	}
-	parsedProxyURL, err := url.Parse(normalizedProxy)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy url: %w", err)
+	var parsedProxyURL *url.URL
+	if normalizedProxy != "" {
+		var err error
+		parsedProxyURL, err = url.Parse(normalizedProxy)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy url: %w", err)
+		}
 	}
 	now := time.Now().UnixNano()
 
@@ -189,14 +190,24 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 	}
 	d.cleanupProxyClientsLocked(now)
 	transport := &http.Transport{
-		Proxy:               http.ProxyURL(parsedProxyURL),
 		MaxIdleConns:        openAIWSProxyTransportMaxIdleConns,
 		MaxIdleConnsPerHost: openAIWSProxyTransportMaxIdleConnsPerHost,
 		IdleConnTimeout:     openAIWSProxyTransportIdleConnTimeout,
 		TLSHandshakeTimeout: 10 * time.Second,
-		ForceAttemptHTTP2:   true,
+		ForceAttemptHTTP2:   false,
 	}
-	client := &http.Client{Transport: transport}
+	profile := tlsfingerprint.CodexCLIProfile()
+	switch {
+	case parsedProxyURL == nil:
+		transport.DialTLSContext = tlsfingerprint.NewDialer(profile, nil).DialTLSContext
+	case strings.EqualFold(parsedProxyURL.Scheme, "http"), strings.EqualFold(parsedProxyURL.Scheme, "https"):
+		transport.DialTLSContext = tlsfingerprint.NewHTTPProxyDialer(profile, parsedProxyURL).DialTLSContext
+	case strings.EqualFold(parsedProxyURL.Scheme, "socks5"), strings.EqualFold(parsedProxyURL.Scheme, "socks5h"):
+		transport.DialTLSContext = tlsfingerprint.NewSOCKS5ProxyDialer(profile, parsedProxyURL).DialTLSContext
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme: %s", parsedProxyURL.Scheme)
+	}
+	client := &http.Client{Transport: chatgptnetwork.Wrap(transport, parsedProxyURL != nil)}
 	d.proxyClients[normalizedProxy] = &openAIWSProxyClientEntry{
 		client:           client,
 		lastUsedUnixNano: now,
@@ -265,9 +276,7 @@ func closeOpenAIWSProxyClient(client *http.Client) {
 	if client == nil || client.Transport == nil {
 		return
 	}
-	if transport, ok := client.Transport.(*http.Transport); ok && transport != nil {
-		transport.CloseIdleConnections()
-	}
+	client.CloseIdleConnections()
 }
 
 func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransportMetricsSnapshot {

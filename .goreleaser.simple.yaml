@@ -50,6 +50,9 @@ dockers:
     extra_files:
       - deploy/docker-entrypoint.sh
       - backend/resources
+      - backend/scripts/chatgpt-web-turnstile.cjs
+      - backend/scripts/web-image-runtime/package.json
+      - backend/scripts/web-image-runtime/package-lock.json
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.version={{ .Version }}"

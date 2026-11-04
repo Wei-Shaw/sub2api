@@ -39,8 +39,8 @@ const (
 	openAIChatGPTFilesURL                  = "https://chatgpt.com/backend-api/files"
 	openAIImageBackendUserAgent            = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	openAIImageMaxDownloadBytes            = 20 << 20 // 20MB per image download
-	openAIImageMaxUploadPartSize           = 50 << 20 // OpenAI's documented per-image limit for GPT image edits
-	openAIImagesResponsesMainModel         = "gpt-5.6-luna"
+	openAIImageMaxUploadPartSize           = 50 << 20 // OpenAI per-image upload limit
+	openAIImagesResponsesMainModel         = "gpt-6.1-sol"
 	openAIImagesVerbatimPromptInstructions = "When invoking the image_generation tool, use the user's image prompt verbatim. Do not rewrite, expand, summarize, embellish, translate, normalize punctuation, or add or remove visual details or constraints. Preserve the original language, wording, capitalization, quotes, and punctuation exactly."
 )
 
@@ -73,35 +73,36 @@ type OpenAIImagesUpload struct {
 }
 
 type OpenAIImagesRequest struct {
-	Endpoint           string
-	ContentType        string
-	Multipart          bool
-	Model              string
-	ExplicitModel      bool
-	Prompt             string
-	Stream             bool
-	N                  int
-	Size               string
-	ExplicitSize       bool
-	SizeTier           string
-	ResponseFormat     string
-	Quality            string
-	Background         string
-	OutputFormat       string
-	Moderation         string
-	InputFidelity      string
-	Style              string
-	OutputCompression  *int
-	PartialImages      *int
-	HasMask            bool
-	HasNativeOptions   bool
-	RequiredCapability OpenAIImagesCapability
-	InputImageURLs     []string
-	MaskImageURL       string
-	Uploads            []OpenAIImagesUpload
-	MaskUpload         *OpenAIImagesUpload
-	Body               []byte
-	bodyHash           string
+	Endpoint               string
+	ContentType            string
+	Multipart              bool
+	Model                  string
+	ExplicitModel          bool
+	Prompt                 string
+	Stream                 bool
+	N                      int
+	Size                   string
+	ExplicitSize           bool
+	SizeTier               string
+	ResponseFormat         string
+	Quality                string
+	Background             string
+	OutputFormat           string
+	Moderation             string
+	InputFidelity          string
+	Style                  string
+	OutputCompression      *int
+	PartialImages          *int
+	RequestedPartialImages *int // Original preview count for the direct Images endpoint.
+	HasMask                bool
+	HasNativeOptions       bool
+	RequiredCapability     OpenAIImagesCapability
+	InputImageURLs         []string
+	MaskImageURL           string
+	Uploads                []OpenAIImagesUpload
+	MaskUpload             *OpenAIImagesUpload
+	Body                   []byte
+	bodyHash               string
 }
 
 func (r *OpenAIImagesRequest) ModerationBody() []byte {
@@ -287,12 +288,11 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		v := int(outputCompression.Int())
 		req.OutputCompression = &v
 	}
-	if partialImages := gjson.GetBytes(body, "partial_images"); partialImages.Exists() {
-		if partialImages.Type != gjson.Number {
-			return fmt.Errorf("invalid partial_images field type")
-		}
-		v := int(partialImages.Int())
-		req.PartialImages = &v
+	if gjson.GetBytes(body, "partial_images").Exists() {
+		// Preserve previews for direct/Responses endpoints; Native-Image omits this option.
+		v := int(gjson.GetBytes(body, "partial_images").Int())
+		req.RequestedPartialImages = &v
+		req.PartialImages = new(int)
 	}
 	if req.IsEdits() {
 		images := gjson.GetBytes(body, "images")
@@ -443,11 +443,10 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 			req.OutputCompression = &n
 			req.HasNativeOptions = true
 		case "partial_images":
-			n, err := strconv.Atoi(value)
-			if err != nil {
-				return fmt.Errorf("invalid partial_images field value")
-			}
-			req.PartialImages = &n
+			// Native-Image ignores previews; other channels retain the requested count.
+			n, _ := strconv.Atoi(value)
+			req.RequestedPartialImages = &n
+			req.PartialImages = new(int)
 			req.HasNativeOptions = true
 		default:
 			if isOpenAINativeImageOption(name) && value != "" {
@@ -615,7 +614,20 @@ func (s *OpenAIGatewayService) ForwardImages(
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
-	case AccountTypeOAuth, AccountTypeSetupToken:
+	case AccountTypeOAuth, AccountTypeSetupToken, AccountTypeWebImage, accountTypeWebImageLegacy:
+		if err := validateOpenAIImageChannel(account); err != nil {
+			return nil, err
+		}
+		if account.UsesOpenAINativeImageChannel() {
+			return s.forwardOpenAIImagesNative(ctx, c, account, parsed, channelMappedModel)
+		}
+		// web 类型直接走网页通道；OAuth/setup-token 按账号开关走，其余保持原 Codex 路径。
+		if account.UsesChatGPTWebImageChannel() {
+			return s.forwardOpenAIImagesChatGPTWeb(ctx, c, account, parsed, channelMappedModel)
+		}
+		if account.Type == AccountTypeWebImage || account.Type == accountTypeWebImageLegacy {
+			return nil, fmt.Errorf("chatgpt web image account is not eligible for the web image channel")
+		}
 		return s.forwardOpenAIImagesOAuth(ctx, c, account, parsed, channelMappedModel)
 	default:
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
@@ -1497,7 +1509,8 @@ func normalizeOpenAIImageBase64(raw string) string {
 		}
 	}
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimRight(raw, "=") + strings.Repeat("=", (4-len(raw)%4)%4)
+	raw = strings.TrimRight(raw, "=")
+	raw += strings.Repeat("=", (4-len(raw)%4)%4)
 	if raw == "" {
 		return ""
 	}

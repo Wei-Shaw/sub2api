@@ -6,23 +6,20 @@
 //   - SOCKS5H: 通过 Transport.DialContext 设置（代理端远程解析 DNS，推荐）
 //
 // 注意：proxyurl.Parse() 会自动将 socks5:// 升级为 socks5h://，
-// 确保 DNS 也由代理端解析，防止 DNS 泄漏。
+// 默认由代理端解析 DNS；显式 tcp6 策略例外：本地仅解析 AAAA 并提交 IPv6 字面量。
 package proxyutil
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"golang.org/x/net/proxy"
 )
 
 const (
-	// socks5DialTimeout 限制到 SOCKS5 代理自身的 TCP 建连耗时。
+	// socks5DialTimeout 限制代理建连、DNS 与隧道握手的总耗时。
 	socks5DialTimeout = 10 * time.Second
 	// socks5DialKeepAlive 与 Go 默认 keepalive 探测间隔保持一致。
 	socks5DialKeepAlive = 30 * time.Second
@@ -64,20 +61,7 @@ func ConfigureTransportProxy(transport *http.Transport, proxyURL *url.URL) error
 		return nil
 
 	case "socks5", "socks5h":
-		dialer, err := proxy.FromURL(proxyURL, socks5ForwardDialer)
-		if err != nil {
-			return fmt.Errorf("create socks5 dialer: %w", err)
-		}
-		// 优先使用支持 context 的 DialContext，以支持请求取消和超时
-		if contextDialer, ok := dialer.(proxy.ContextDialer); ok {
-			transport.DialContext = contextDialer.DialContext
-		} else {
-			// 回退路径：如果 dialer 不支持 ContextDialer，则包装为简单的 DialContext
-			// 注意：此回退不支持请求取消和超时控制
-			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
-				return dialer.Dial(network, addr)
-			}
-		}
+		transport.DialContext = (&TunnelDialer{ProxyURL: proxyURL}).DialContext
 		return nil
 
 	default:

@@ -91,9 +91,15 @@ func TestIsOpenAICodexPlanGatedModelError(t *testing.T) {
 			want:       false,
 		},
 		{
-			name:       "404 with plan gated message does not match",
+			name:       "404 with plan gated message matches",
 			statusCode: http.StatusNotFound,
-			body:       []byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+			body:       []byte(`{"detail":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+			want:       true,
+		},
+		{
+			name:       "404 unrelated endpoint error does not match",
+			statusCode: http.StatusNotFound,
+			body:       []byte(`{"detail":"The endpoint was not found"}`),
 			want:       false,
 		},
 		{

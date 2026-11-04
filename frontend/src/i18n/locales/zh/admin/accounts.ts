@@ -227,6 +227,19 @@ export default {
       privacyAntigravityFailed: '隐私设置失败',
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
+      entitlement: {
+        valid: '订阅未到期',
+        expired: '订阅已到期',
+        unknown: '订阅到期状态未知',
+        grace: '宽限期截止',
+        expires: '订阅到期',
+        renews: '续费时间',
+        cancels: '取消时间',
+        ended: '已结束',
+        notProvided: '未提供',
+        refreshHint: '刷新令牌后更新订阅信息',
+        checkedAt: '查询时间',
+      },
       subscriptionExpires: '到期',
       // 容量状态提示
       capacity: {
@@ -416,6 +429,10 @@ export default {
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
+        nativeImage: 'ChatGPT 订阅原生生图',
+        imageChannel: '图片通道',
+        nativeImageHint: '直接使用 Codex Images，省去 Responses 编排。仅承载图片请求；支持单张 PNG 和无蒙版编辑。quality、size 会传给上游，实际档位与尺寸以上游结果为准。',
+        chatgptWeb: 'ChatGPT 网页（生图专用）',
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
@@ -830,6 +847,11 @@ export default {
         codexFingerprintDevice: '仅设备',
         codexFingerprintSession: '设备+会话',
         codexFingerprintFull: '完全收敛',
+        codexTurnTicket: 'Codex 292 门票',
+        codexTurnTicketDesc: '显示已配置模型的门票状态。仅在启用缺票拦截时，没有有效门票的模型才会暂停调度。',
+        codexTurnTicketMissing: '暂无有效门票，仍允许请求',
+        codexTurnTicketReady: '剩余 {time}',
+        codexTurnTicketPaused: '未打到 292，该模型已暂停',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
@@ -1769,6 +1791,7 @@ export default {
       usageStatistics: '使用统计',
       last30DaysUsage: '近30天使用统计（日均基于实际使用天数）',
       stats: {
+        totalCost60Days: '过去60天总费用',
         totalCost: '30天总费用',
         accumulatedCost: '累计成本',
         standardCost: '标准计费',
@@ -1786,6 +1809,7 @@ export default {
         highestRequestDay: '最高请求日',
         date: '日期',
         accumulatedTokens: '累计 Token',
+        totalTokens60Days: '60天总计',
         totalTokens: '30天总计',
         dailyAvgTokens: '日均 Token',
         performance: '性能',

@@ -43,7 +43,7 @@
 
       <template v-else-if="stats">
         <!-- Row 1: Main Stats Cards -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="grid grid-cols-2 gap-4 xl:grid-cols-5">
           <!-- 30-Day Total Cost -->
           <div
             class="card border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-800/30 dark:from-emerald-900/10 dark:to-dark-700"
@@ -68,6 +68,45 @@
                 }})
               </span>
             </p>
+          </div>
+
+          <!-- 60-Day Total Cost -->
+          <div
+            class="card border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-800/30 dark:from-emerald-900/10 dark:to-dark-700"
+          >
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.stats.totalCost60Days')
+              }}</span>
+              <div class="rounded-lg bg-emerald-100 p-1.5 dark:bg-emerald-900/30">
+                <svg
+                  class="h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <p v-if="stats60Days" class="text-2xl font-bold text-gray-900 dark:text-white">
+              ${{ formatCost(stats60Days.summary.total_cost) }}
+            </p>
+            <p v-if="stats60Days" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.stats.accumulatedCost') }}
+              <span class="text-gray-400 dark:text-gray-500">
+                ({{ t('usage.userBilled') }}: ${{ formatCost(stats60Days.summary.total_user_cost) }} ·
+                {{ t('admin.accounts.stats.standardCost') }}: ${{
+                  formatCost(stats60Days.summary.total_standard_cost)
+                }})
+              </span>
+            </p>
+            <p v-if="!stats60Days" class="text-sm text-gray-500">{{ t(loading60Days ? 'common.loading' : 'common.error') }}</p>
           </div>
 
           <!-- 30-Day Total Requests -->
@@ -310,6 +349,14 @@
               </div>
               <div class="flex items-center justify-between">
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t('admin.accounts.stats.totalTokens60Days')
+                }}</span>
+                <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
+                  stats60Days ? formatTokens(stats60Days.summary.total_tokens) : loading60Days ? t('common.loading') : '—'
+                }}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{
                   t('admin.accounts.stats.dailyAvgTokens')
                 }}</span>
                 <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
@@ -493,7 +540,10 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
+const loading60Days = ref(false)
 const stats = ref<AccountUsageStatsResponse | null>(null)
+const stats60Days = ref<AccountUsageStatsResponse | null>(null)
+let statsRequestId = 0
 
 // Dark mode detection
 const isDarkMode = computed(() => {
@@ -642,30 +692,43 @@ const lineChartOptions = computed(() => ({
   }
 }))
 
-// Load stats when modal opens
+// Reload for the selected account and ignore responses from a closed/previous modal.
 watch(
-  () => props.show,
-  async (newVal) => {
-    if (newVal && props.account) {
-      await loadStats()
-    } else {
-      stats.value = null
+  () => [props.show, props.account?.id] as const,
+  ([show, accountID]) => {
+    const requestId = ++statsRequestId
+    stats.value = null
+    stats60Days.value = null
+    if (show && accountID != null) {
+      void loadStats(accountID, requestId)
     }
   }
 )
 
-const loadStats = async () => {
-  if (!props.account) return
-
+const loadStats = async (accountID: number, requestId: number) => {
   loading.value = true
-  try {
-    stats.value = await adminAPI.accounts.getStats(props.account.id, 30)
-  } catch (error) {
-    console.error('Failed to load account stats:', error)
-    stats.value = null
-  } finally {
-    loading.value = false
+  loading60Days.value = true
+  const loadRecent = async () => {
+    try {
+      const result = await adminAPI.accounts.getStats(accountID, 30)
+      if (requestId === statsRequestId) stats.value = result
+    } catch {
+      if (requestId === statsRequestId) stats.value = null
+    } finally {
+      if (requestId === statsRequestId) loading.value = false
+    }
   }
+  const loadExtended = async () => {
+    try {
+      const result = await adminAPI.accounts.getStats(accountID, 60)
+      if (requestId === statsRequestId) stats60Days.value = result
+    } catch {
+      if (requestId === statsRequestId) stats60Days.value = null
+    } finally {
+      if (requestId === statsRequestId) loading60Days.value = false
+    }
+  }
+  await Promise.all([loadRecent(), loadExtended()])
 }
 
 const handleClose = () => {

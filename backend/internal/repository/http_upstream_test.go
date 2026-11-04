@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
 	"io"
 	"net"
 	"net/http"
@@ -96,17 +97,43 @@ func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {
 	require.Equal(t, int64(1), upstreamCalls.Load())
 }
 
-func TestTLSFingerprintHTTPSProxyFallsBackWithoutBypassingProxy(t *testing.T) {
+func TestTLSFingerprintHTTPSProxyUsesFingerprintTunnel(t *testing.T) {
 	proxyURL, err := url.Parse("https://user:pass@proxy.example:8443")
 	require.NoError(t, err)
 	transport, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
 	require.NoError(t, err)
-	require.NotNil(t, transport.Proxy)
-	require.Nil(t, transport.DialTLSContext)
-	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "upstream.example"}}
-	resolved, err := transport.Proxy(req)
+	require.Nil(t, transport.Proxy)
+	require.NotNil(t, transport.DialTLSContext)
+}
+
+func TestCodexCLITransportRequestScope(t *testing.T) {
+	for _, tc := range []struct {
+		name, target string
+		profile      service.HTTPUpstreamProfile
+		want         bool
+	}{
+		{"codex response", "https://chatgpt.com/backend-api/codex/responses", service.HTTPUpstreamProfileOpenAI, true},
+		{"codex models", "https://chatgpt.com/backend-api/codex/models", service.HTTPUpstreamProfileOpenAI, true},
+		{"plain HTTP fixture", "http://127.0.0.1/backend-api/codex/responses", service.HTTPUpstreamProfileOpenAI, false},
+		{"unrelated API", "https://api.openai.com/v1/responses", service.HTTPUpstreamProfileOpenAI, false},
+		{"unmarked", "https://chatgpt.com/backend-api/codex/responses", service.HTTPUpstreamProfileDefault, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(service.WithHTTPUpstreamProfile(t.Context(), tc.profile), http.MethodGet, tc.target, nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, isCodexCLITransportRequest(req))
+		})
+	}
+}
+
+func TestTLSFingerprintClientCacheSeparatesProfiles(t *testing.T) {
+	upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+	require.True(t, ok)
+	first, err := upstream.getClientEntryWithTLS("", 9, 1, tlsfingerprint.CodexCLIProfile(), service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(t, err)
-	require.Equal(t, "https://user:pass@proxy.example:8443", resolved.String())
+	second, err := upstream.getClientEntryWithTLS("", 9, 1, &tlsfingerprint.Profile{Name: "Node"}, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(t, err)
+	require.NotSame(t, first.client, second.client)
 }
 
 func startTestSOCKS5Proxy(t *testing.T) (string, *atomic.Int64) {
@@ -582,7 +609,7 @@ func (s *HTTPUpstreamSuite) newService() *httpUpstreamService {
 func (s *HTTPUpstreamSuite) TestDefaultResponseHeaderTimeout() {
 	svc := s.newService()
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
@@ -593,7 +620,7 @@ func (s *HTTPUpstreamSuite) TestNilConfigResponseHeaderTimeoutFallback() {
 	svc, ok := up.(*httpUpstreamService)
 	require.True(s.T(), ok, "expected *httpUpstreamService")
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 300*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
@@ -604,7 +631,7 @@ func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 7}
 	svc := s.newService()
 	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 7*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
@@ -628,7 +655,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndNoHeaderTimeout()
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI profile should not inherit generic header timeout")
 	require.True(s.T(), transport.ForceAttemptHTTP2, "OpenAI profile should prefer HTTP/2")
@@ -645,7 +672,7 @@ func (s *HTTPUpstreamSuite) TestLongStreamProfileUsesSharedHTTP2KeepAlive() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileLongStream, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 600*time.Second, transport.ResponseHeaderTimeout, "long-stream profile should retain the generic header timeout")
 	require.True(s.T(), transport.ForceAttemptHTTP2, "long-stream profile must enable HTTP/2 independently of OpenAI settings")
@@ -664,7 +691,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
@@ -679,7 +706,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	svc := s.newService()
 	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
 }
@@ -691,11 +718,23 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 	svc := s.newService()
 	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.False(s.T(), transport.ForceAttemptHTTP2, "OpenAI HTTP/2 disabled should not force H2")
 	require.NotNil(s.T(), transport.TLSNextProto, "HTTP/1 mode should disable automatic H2 negotiation")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode)
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIHarvestProfileDisablesKeepAlives() {
+	svc := s.newService()
+	entry, err := svc.getClientEntry("socks5h://user:pass@harvest.example:31", 41, 5, service.HTTPUpstreamProfileOpenAIHarvest, false, false)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH1NoReuse, entry.protocolMode)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.True(s.T(), transport.DisableKeepAlives)
+	require.False(s.T(), transport.ForceAttemptHTTP2)
+	require.Equal(s.T(), 0, transport.MaxIdleConns)
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIHeaderTimeoutChangeRebuildsClient() {
@@ -710,7 +749,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIHeaderTimeoutChangeRebuildsClient() {
 	entry2, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
 	require.NotSame(s.T(), entry1, entry2, "OpenAI header timeout changes must rebuild cached client")
-	transport, ok := entry2.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry2.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
@@ -748,7 +787,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIHTTP2ProxyCompatibilityErrorActivatesFallb
 
 	entry, err := svc.getClientEntry(proxyURL, 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.False(s.T(), transport.ForceAttemptHTTP2)
 	require.NotNil(s.T(), transport.TLSNextProto)
@@ -897,7 +936,7 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyOverridesPoolSettings() {
 	svc := s.newService()
 	// 账户并发数为 12
 	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 12)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	// 连接池参数应与并发数一致
 	require.Equal(s.T(), 12, transport.MaxConnsPerHost, "MaxConnsPerHost mismatch")
@@ -917,7 +956,7 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyFallbackToDefault() {
 	svc := s.newService()
 	// 账户并发数为 0，应使用全局配置
 	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 0)
-	transport, ok := entry.client.Transport.(*http.Transport)
+	transport, ok := chatgptnetwork.BaseTransport(entry.client.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 66, transport.MaxConnsPerHost, "MaxConnsPerHost fallback mismatch")
 	require.Equal(s.T(), 77, transport.MaxIdleConns, "MaxIdleConns fallback mismatch")

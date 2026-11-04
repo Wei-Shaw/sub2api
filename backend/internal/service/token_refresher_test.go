@@ -249,6 +249,12 @@ func TestOpenAITokenRefresher_CanRefresh(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "openai web-image - can refresh",
+			platform: PlatformOpenAI,
+			accType:  AccountTypeWebImage,
+			want:     true,
+		},
+		{
 			name:     "openai apikey - cannot refresh",
 			platform: PlatformOpenAI,
 			accType:  AccountTypeAPIKey,

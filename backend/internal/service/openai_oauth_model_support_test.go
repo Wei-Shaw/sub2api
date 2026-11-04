@@ -22,6 +22,8 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_ServableModels(t *testing.T) {
 	servable := []string{
 		"", // 空模型交由上层必填校验
 		"gpt-5.4",
+		"gpt-6-sol", // 新模型无需注册即可进入空映射账号的调度候选集
+		"gpt-6-luna",
 		"gpt-5.4-high", // 推理后缀变体
 		"gpt-5.3-codex",
 		"gpt-5.1-codex-mini",
@@ -78,6 +80,19 @@ func TestIsModelSupported_OpenAIOAuthExplicitMappingUnchanged(t *testing.T) {
 	require.True(t, account.IsModelSupported("deepseek-v4"))
 	require.True(t, account.IsModelSupported("k3"))
 	require.False(t, account.IsModelSupported("glm-4.7"))
+}
+
+func TestOpenAIGPT6ModelsRequireConfiguredMappingWhenAccountIsRestricted(t *testing.T) {
+	for _, model := range []string{"gpt-6-sol", "gpt-6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			account := newOpenAIOAuthAccountForModelTest()
+			account.Credentials = map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}}
+			require.False(t, account.IsModelSupported(model))
+			account.Credentials = map[string]any{"model_mapping": map[string]any{model: model}}
+			require.True(t, account.IsModelSupported(model))
+			require.Equal(t, model, normalizeOpenAIModelForUpstream(account, account.GetMappedModel(model)))
+		})
+	}
 }
 
 func TestIsModelSupported_OpenAIOAuthPassthroughAllowsAll(t *testing.T) {

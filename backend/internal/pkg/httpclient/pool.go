@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -89,9 +90,9 @@ func buildClient(opts Options) (*http.Client, error) {
 		return nil, err
 	}
 
-	var rt http.RoundTripper = transport
+	rt := chatgptnetwork.Wrap(transport, strings.TrimSpace(opts.ProxyURL) != "")
 	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
-		rt = newValidatedTransport(transport)
+		rt = newValidatedTransport(rt)
 	}
 	rt = servertiming.WrapRoundTripper(rt)
 	return &http.Client{

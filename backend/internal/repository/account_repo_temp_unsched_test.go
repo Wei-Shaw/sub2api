@@ -293,6 +293,7 @@ func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T)
 	require.Contains(t, normalized, "status = 'active'")
 	// setup-token 的 access_token 同为 8h 短期令牌，必须与 oauth 一起纳入后台刷新候选
 	require.Contains(t, normalized, "type IN ('oauth', 'setup-token')")
+	require.Contains(t, normalized, "platform = 'openai' AND type IN ('web-image', 'web')")
 	require.Contains(t, normalized, "platform = ANY($1)")
 	require.NotContains(t, normalized, "platform IN ('anthropic'",
 		"candidate platforms must come from the refresher registry instead of a second hard-coded list")
@@ -338,6 +339,7 @@ func TestAccountRepository_ListOAuthRefreshCandidatePage_ReconciliationExcludesA
 
 	normalized := normalizeSQLWhitespace(capturedSQL)
 	require.Contains(t, normalized, "type = 'oauth'")
+	require.Contains(t, normalized, "platform = 'openai' AND type IN ('web-image', 'web')")
 	require.NotContains(t, normalized, "type IN ('oauth', 'setup-token')")
 	require.NotContains(t, normalized, "type = 'api-key'")
 	require.NotContains(t, normalized, "credentials ? 'refresh_token'",

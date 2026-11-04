@@ -16,6 +16,7 @@ export interface OpenAITokenInfo {
   email?: string
   name?: string
   plan_type?: string
+  chatgpt_entitlement?: Record<string, unknown>
   subscription_expires_at?: string
   privacy_mode?: string
   // OpenAI specific IDs (extracted from ID Token)
@@ -197,6 +198,9 @@ export function useOpenAIOAuth() {
     }
     if (tokenInfo.plan_type) {
       creds.plan_type = tokenInfo.plan_type
+    }
+    if (tokenInfo.chatgpt_entitlement) {
+      creds.chatgpt_entitlement = tokenInfo.chatgpt_entitlement
     }
     if (tokenInfo.subscription_expires_at) {
       creds.subscription_expires_at = tokenInfo.subscription_expires_at

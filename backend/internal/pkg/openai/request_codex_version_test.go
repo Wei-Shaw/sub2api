@@ -26,12 +26,17 @@ func TestSetCodexUserAgentVersion(t *testing.T) {
 	)
 	require.Equal(t, "codex_cli_rs/0.146.0", SetCodexUserAgentVersion("codex_cli_rs/0.1.0", "0.146.0"))
 
-	// 尾部官方客户端标识组与首段是同一个版本声明的两个出口，必须一并更新，
-	// 否则拼出首段声明新版本、尾部仍是旧版本的自相矛盾身份。
+	// 单版本模板策略要求同步重建首尾，不意外留下旧版本；
+	// 这不是通过 UA 推断 embedded/remote 或制品来源。
 	require.Equal(t,
 		"cccc/0.146.0 (Ubuntu 22.4.0; x86_64) screen (codex-tui; 0.146.0)",
 		SetCodexUserAgentVersion("cccc/0.142.0 (Ubuntu 22.4.0; x86_64) screen (codex-tui; 0.142.0)", "0.146.0"),
 	)
+	// Desktop 尾部是独立 frontend 版本；整个版本元组必须由调用方整体保留或替换。
+	require.Empty(t, SetCodexUserAgentVersion(
+		"Codex Desktop/0.153.4 (Mac OS 15.6.0; arm64) unknown (Codex Desktop; 26.901.41600)",
+		"0.154.0",
+	))
 	// OS 括号组不是客户端标识，不得被误改。
 	require.Equal(t,
 		"codex_cli_rs/0.146.0 (Ubuntu 22.4.0; x86_64)",
@@ -43,4 +48,52 @@ func TestSetCodexUserAgentVersion(t *testing.T) {
 	require.Empty(t, SetCodexUserAgentVersion("codex_cli_rs/", "0.146.0"))
 	require.Empty(t, SetCodexUserAgentVersion("/0.1.0", "0.146.0"))
 	require.Empty(t, SetCodexUserAgentVersion("codex_cli_rs/0.1.0", ""))
+}
+
+func TestParseCodexWireProfile(t *testing.T) {
+	t.Run("Desktop 双版本画像", func(t *testing.T) {
+		ua := "Codex Desktop/0.153.4 (Mac OS 15.6.0; arm64) unknown (Codex Desktop; 26.901.41600)"
+
+		profile, ok := ParseCodexWireProfile(ua)
+
+		require.True(t, ok)
+		require.Equal(t, "Codex Desktop", profile.Originator)
+		require.Equal(t, "0.153.4", profile.CoreVersion)
+		require.Equal(t, "(Mac OS 15.6.0; arm64) unknown", profile.RuntimeDescriptor)
+		require.Equal(t, &CodexClientInfo{Name: "Codex Desktop", Version: "26.901.41600"}, profile.ClientInfo)
+		require.True(t, profile.HasDistinctClientVersion())
+		require.Equal(t, ua, profile.UserAgent())
+	})
+
+	t.Run("TUI 同版本画像", func(t *testing.T) {
+		ua := "codex-tui/0.154.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.154.0)"
+
+		profile, ok := ParseCodexWireProfile(ua)
+
+		require.True(t, ok)
+		require.False(t, profile.HasDistinctClientVersion())
+		require.Equal(t, ua, profile.UserAgent())
+	})
+
+	t.Run("remote TUI 可携带不同的 Core 和 frontend 版本", func(t *testing.T) {
+		const ua = "codex-tui/0.150.0 (Mac OS 15.6.0; arm64) unknown (codex-tui; 0.149.0)"
+		profile, ok := ParseCodexWireProfile(ua)
+		require.True(t, ok)
+		require.True(t, profile.HasDistinctClientVersion())
+		require.Equal(t, "0.150.0", profile.CoreVersion)
+		require.Equal(t, &CodexClientInfo{Name: "codex-tui", Version: "0.149.0"}, profile.ClientInfo)
+		require.Equal(t, ua, profile.UserAgent())
+		require.Empty(t, SetCodexUserAgentVersion(ua, "0.200.1"), "dual-version tuples must not be partially rewritten")
+	})
+
+	t.Run("originator 与 clientInfo 可独立", func(t *testing.T) {
+		ua := "Codex Desktop/0.153.4 (Mac OS 15.6.0; arm64) unknown (codex_vscode; 9.8.7)"
+
+		profile, ok := ParseCodexWireProfile(ua)
+
+		require.True(t, ok)
+		require.Equal(t, "Codex Desktop", profile.Originator)
+		require.Equal(t, &CodexClientInfo{Name: "codex_vscode", Version: "9.8.7"}, profile.ClientInfo)
+		require.Equal(t, ua, profile.UserAgent())
+	})
 }

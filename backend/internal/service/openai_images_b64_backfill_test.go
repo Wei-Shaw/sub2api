@@ -212,6 +212,9 @@ func TestBackfillOpenAIImagesB64JSON_DownloadRequestShape(t *testing.T) {
 	require.Equal(t, http.MethodGet, req.Method)
 	require.Equal(t, "https://cdn.example.com/a.png?sig=abc", req.URL.String())
 	require.Equal(t, "http://127.0.0.1:7890", upstream.lastProxyURL)
+	require.Empty(t, req.Header.Get("Authorization"))
+	require.Empty(t, req.Header.Get("OAI-Device-Id"))
+	require.Empty(t, req.Header.Get("OAI-Session-Id"))
 	_, hasDeadline := req.Context().Deadline()
 	require.True(t, hasDeadline)
 	// 目的地与重定向各跳都必须解析到公网地址；重定向本身保持跟随。
@@ -236,6 +239,9 @@ func TestBackfillOpenAIImagesB64JSON_RejectsPrivateHosts(t *testing.T) {
 		"http://172.16.0.9:9000/bucket/a.png",
 		"http://192.168.1.10:9000/bucket/a.png",
 		"http://169.254.169.254/latest/meta-data/",
+		"http://100.64.0.1/a.png",
+		"http://224.0.0.1/a.png",
+		"http://240.0.0.1/a.png",
 		"http://0.0.0.0:8080/a.png",
 		"http://[fe80::1]/a.png",
 		"http://[::ffff:127.0.0.1]/a.png",

@@ -97,8 +97,9 @@ func isCloudflareChallengeResponse(cfMitigated, body string) bool {
 
 // ChatGPTAccountInfo 从 chatgpt.com/backend-api/accounts/check 获取的账号信息
 type ChatGPTAccountInfo struct {
-	PlanType string
-	Email    string
+	Entitlement map[string]any // Exact requested account only; includes expired entitlements for display.
+	PlanType    string
+	Email       string
 	// AccountID 是本条信息所属账号的标识（优先取 account.account_id，否则取 accounts
 	// 的 map key）。accounts/check 是多账号/工作区端点，调用方需要据此判断拿到的
 	// plan_type / expires_at 到底属于个人账号还是某个 workspace。
@@ -115,7 +116,7 @@ var (
 // Used as fallback when id_token doesn't contain these fields (e.g., Mobile RT).
 // orgID is used to match the correct account when multiple accounts exist (e.g., personal + team).
 // Returns nil on any failure (best-effort, non-blocking).
-func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, orgID string) *ChatGPTAccountInfo {
+func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, orgID string, requestedAccountIDs ...string) *ChatGPTAccountInfo {
 	if accessToken == "" || clientFactory == nil {
 		return nil
 	}
@@ -129,15 +130,22 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		return nil
 	}
 
+	requestedAccountID := ""
+	if len(requestedAccountIDs) > 0 {
+		requestedAccountID = strings.TrimSpace(requestedAccountIDs[0])
+	}
 	var result map[string]any
-	resp, err := client.R().
+	request := client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetHeader("Origin", "https://chatgpt.com").
 		SetHeader("Referer", "https://chatgpt.com/").
 		SetHeader("Accept", "application/json").
-		SetSuccessResult(&result).
-		Get(chatGPTAccountsCheckURL)
+		SetSuccessResult(&result)
+	if requestedAccountID != "" {
+		request.SetHeader("ChatGPT-Account-Id", requestedAccountID)
+	}
+	resp, err := request.Get(chatGPTAccountsCheckURL)
 
 	if err != nil {
 		slog.Warn("chatgpt_account_check_request_error", "error", err.Error())
@@ -155,6 +163,12 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 	if !ok {
 		slog.Debug("chatgpt_account_check_no_accounts", "body", truncate(resp.String(), 300))
 		return nil
+	}
+
+	// Display metadata must never fall back to another workspace, and expired
+	// records must remain visible even though they are not plan candidates.
+	if requestedAccountID != "" {
+		info.Entitlement = extractRequestedChatGPTEntitlement(accounts, requestedAccountID)
 	}
 
 	// 优先匹配 orgID 对应的账号（access_token JWT 中的 poid）
@@ -213,7 +227,7 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 		}
 	}
 
-	if info.PlanType == "" {
+	if info.PlanType == "" && info.Entitlement == nil {
 		slog.Debug("chatgpt_account_check_no_plan_type", "body", truncate(resp.String(), 300))
 		return nil
 	}
@@ -368,4 +382,37 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + fmt.Sprintf("...(%d more)", len(s)-n)
+}
+
+// extractRequestedChatGPTEntitlement returns a whitelisted snapshot for exactly
+// one account. A null field clears previous values on the next successful refresh.
+func extractRequestedChatGPTEntitlement(accounts map[string]any, accountID string) map[string]any {
+	var selected map[string]any
+	if acct, ok := accounts[accountID].(map[string]any); ok {
+		selected = acct
+	}
+	if selected == nil {
+		for key, raw := range accounts {
+			acct, ok := raw.(map[string]any)
+			if ok && chatGPTAccountObjectID(acct, key) == accountID {
+				selected = acct
+				break
+			}
+		}
+	}
+	if selected == nil {
+		return nil
+	}
+	entitlement, ok := selected["entitlement"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := map[string]any{"account_id": accountID, "checked_at": time.Now().UTC().Format(time.RFC3339)}
+	for _, key := range []string{"grace_period_end_timestamp", "grace_period_id", "expires_at", "renews_at", "cancels_at"} {
+		result[key] = nil
+		if value, ok := entitlement[key].(string); ok && strings.TrimSpace(value) != "" {
+			result[key] = value
+		}
+	}
+	return result
 }

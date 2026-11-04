@@ -1093,3 +1093,74 @@ func buildCodexImportTestJWT(t *testing.T, exp time.Time, extraClaims map[string
 	}
 	return base64.RawURLEncoding.EncodeToString(headerBytes) + "." + base64.RawURLEncoding.EncodeToString(claimBytes) + "."
 }
+
+func TestImportCodexSessionsWebImageKeepsExistingOAuthAccount(t *testing.T) {
+	token := buildCodexAccessToken(t, "workspace-web", "user-web", time.Now().Add(time.Hour))
+	svc := newCodexImportMemoryAdminService([]service.Account{{
+		ID: 17, Name: "existing-oauth", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": token, "chatgpt_account_id": "workspace-web", "chatgpt_user_id": "user-web"},
+	}})
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	req := CodexSessionImportRequest{Type: service.AccountTypeWebImage, SkipDefaultGroupBind: boolPtr(true)}
+	result, err := handler.importCodexSessions(context.Background(), req, []codexImportEntry{{Index: 1, Value: map[string]any{
+		"access_token": token, "refresh_token": "web-refresh-token",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created != 1 || result.Updated != 0 || len(svc.updatedAccounts) != 0 {
+		t.Fatalf("cross-type import modified OAuth account: %+v", result)
+	}
+	if len(svc.createdAccounts) != 1 || svc.createdAccounts[0].Type != service.AccountTypeWebImage {
+		t.Fatalf("created accounts = %+v, want one web-image", svc.createdAccounts)
+	}
+	stored, err := svc.GetAccount(context.Background(), 17)
+	if err != nil || stored.Type != service.AccountTypeOAuth || stored.GetCredential("refresh_token") != "" {
+		t.Fatalf("OAuth account mutated: account=%+v err=%v", stored, err)
+	}
+}
+
+// 导入 Codex 会话时，账号类型由请求显式指定，未指定则维持原有 OAuth 行为。
+func TestCodexImportAccountType(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"", service.AccountTypeOAuth},
+		{"oauth", service.AccountTypeOAuth},
+		{" web-image ", service.AccountTypeWebImage},
+		{"WEB-IMAGE", service.AccountTypeWebImage},
+	}
+	for _, tc := range cases {
+		if got := codexImportAccountType(tc.input); got != tc.want {
+			t.Fatalf("codexImportAccountType(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestImportCodexSessionsNativeKeepsOrdinaryOAuthSeparate(t *testing.T) {
+	for _, nativeImport := range []bool{true, false} {
+		t.Run(fmt.Sprint(nativeImport), func(t *testing.T) {
+			token := buildCodexAccessToken(t, "workspace-native", "user-native", time.Now().Add(time.Hour))
+			existingExtra := map[string]any{}
+			requestExtra := map[string]any{}
+			if nativeImport {
+				requestExtra[service.OpenAIImageChannelExtraKey] = "native"
+			} else {
+				existingExtra[service.OpenAIImageChannelExtraKey] = "native"
+			}
+			svc := newCodexImportMemoryAdminService([]service.Account{{ID: 17, Name: "existing", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Extra: existingExtra, Credentials: map[string]any{"access_token": token, "chatgpt_account_id": "workspace-native", "chatgpt_user_id": "user-native"}}})
+			h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			result, err := h.importCodexSessions(context.Background(), CodexSessionImportRequest{Type: service.AccountTypeOAuth, Extra: requestExtra, SkipDefaultGroupBind: boolPtr(true)}, []codexImportEntry{{Index: 1, Value: map[string]any{"access_token": token}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Created != 1 || result.Updated != 0 || len(svc.updatedAccounts) != 0 {
+				t.Fatalf("cross-channel import mutated existing account: %+v", result)
+			}
+			if len(svc.createdAccounts) != 1 || (svc.createdAccounts[0].Extra[service.OpenAIImageChannelExtraKey] == "native") != nativeImport {
+				t.Fatal("wrong created image channel")
+			}
+		})
+	}
+}

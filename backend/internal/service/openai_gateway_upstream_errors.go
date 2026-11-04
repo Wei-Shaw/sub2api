@@ -325,6 +325,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
+	// Codex can reject a model for this ChatGPT account with either 400 or 404.
+	// Another account in the group may still be entitled to serve it.
+	if s != nil && s.accountRepo != nil && isOpenAIOAuthAccount(account) &&
+		isOpenAICodexPlanGatedModelError(statusCode, upstreamBody) {
+		return true
+	}
 	// A missing model is account/provider availability, not a malformed client
 	// request. Keep this unconditional exception inside the OpenAI-compatible
 	// gateway and require an eligible account so Anthropic/Gemini paths retain

@@ -22,6 +22,8 @@ services:
         soft: 100000
         hard: 100000
     ports:
+      # Mapping is ready; the diagnostic listener remains disabled by default.
+      - "${SUB2API_PPROF_PORT:-6060}:${SUB2API_PPROF_PORT:-6060}"
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
       - sub2api_data:/app/data
@@ -36,8 +38,11 @@ services:
       # =======================================================================
       # Server Configuration
       # =======================================================================
+      - SUB2API_CHATGPT_IPV6_ONLY=${SUB2API_CHATGPT_IPV6_ONLY:-false}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
+      - SUB2API_PPROF_ENABLED=${SUB2API_PPROF_ENABLED:-false}
+      - SUB2API_PPROF_PORT=${SUB2API_PPROF_PORT:-6060}
       - SERVER_MODE=${SERVER_MODE:-release}
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-}
@@ -115,7 +120,7 @@ services:
       # Fallbacks mirror Sub2API backend defaults so omitted values preserve behavior.
       - GATEWAY_FORCE_CODEX_CLI=${GATEWAY_FORCE_CODEX_CLI:-false}
       - GATEWAY_OPENAI_COMPACT_MODEL=${GATEWAY_OPENAI_COMPACT_MODEL:-gpt-5.5}
-      - SUB2API_IMAGES_MAIN_MODEL=${SUB2API_IMAGES_MAIN_MODEL:-gpt-5.6-luna}
+      - SUB2API_IMAGES_MAIN_MODEL=${SUB2API_IMAGES_MAIN_MODEL:-gpt-6.1-sol}
       - GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT=${GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT:-0}
       - GATEWAY_OPENAI_WS_FORCE_HTTP=${GATEWAY_OPENAI_WS_FORCE_HTTP:-false}
       - GATEWAY_OPENAI_HTTP2_ENABLED=${GATEWAY_OPENAI_HTTP2_ENABLED:-true}

@@ -25,7 +25,7 @@ func (c *CompositeTokenCacheInvalidator) InvalidateToken(ctx context.Context, ac
 	if c == nil || c.cache == nil || account == nil {
 		return nil
 	}
-	if account.Type != AccountTypeOAuth {
+	if account.Type != AccountTypeOAuth && !account.IsOpenAIWebImage() {
 		return nil
 	}
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/chatgptnetwork"
 	"strings"
 	"sync/atomic"
 
@@ -117,24 +118,28 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	scopedAdminKeyRepo          ScopedAdminKeyRepository
-	settingRepo                 SettingRepository
-	defaultSubGroupReader       DefaultSubscriptionGroupReader
-	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                         *config.Config
-	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
-	version                     string // Application version
-	webSearchManagerBuilder     WebSearchManagerBuilder
-	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF      singleflight.Group
-	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF             singleflight.Group
-	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion
-	openAICodexVersionSF        singleflight.Group
-	claudeCodeVersionCache      atomic.Value // *cachedClaudeCodeClientVersion
-	claudeCodeVersionSF         singleflight.Group
-	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
-	codexRestrictionPolicySF    singleflight.Group
+	scopedAdminKeyRepo                 ScopedAdminKeyRepository
+	settingRepo                        SettingRepository
+	defaultSubGroupReader              DefaultSubscriptionGroupReader
+	proxyRepo                          ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                                *config.Config
+	onUpdate                           func() // Callback when settings are updated (for cache invalidation)
+	version                            string // Application version
+	webSearchManagerBuilder            WebSearchManagerBuilder
+	antigravityUAVersionCache          atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF             singleflight.Group
+	openAICodexUACache                 atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF                    singleflight.Group
+	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
+	openAICodexVersionSF               singleflight.Group
+	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF                singleflight.Group
+	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF           singleflight.Group
+	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
+	openAICodexTicketEnabledSF         singleflight.Group
+	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
+	openAICodexTicketHarvestProxySF    singleflight.Group
 
 	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
@@ -443,4 +448,19 @@ func (s *SettingService) getStringOrDefault(settings map[string]string, key, def
 		return value
 	}
 	return defaultValue
+}
+
+func (s *SettingService) InitializeChatGPTNetwork(ctx context.Context) error {
+	settings, err := s.GetAllSettings(ctx)
+	if err != nil {
+		return err
+	}
+	chatgptnetwork.ConfigureSource(settings.ChatGPTIPv6Only, func(ctx context.Context) (bool, error) {
+		raw, err := s.settingRepo.GetValue(ctx, "chatgpt_ipv6_only")
+		if errors.Is(err, ErrSettingNotFound) {
+			return chatgptnetwork.DefaultEnabled(), nil
+		}
+		return raw == "true", err
+	})
+	return err
 }

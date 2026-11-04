@@ -362,6 +362,55 @@ func TestDefaultPricingIncludesOfficialGPT56Rates(t *testing.T) {
 	}
 }
 
+func TestDefaultPricingIncludesOfficialGPT6SolAndLunaRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	for _, tt := range []struct {
+		model                             string
+		input, cached, cacheWrite, output float64
+	}{
+		{model: "gpt-6-sol", input: 2e-6, cached: 0.2e-6, cacheWrite: 2.5e-6, output: 10e-6},
+		{model: "gpt-6-luna", input: 0.1e-6, cached: 0.01e-6, cacheWrite: 0.125e-6, output: 0.5e-6},
+	} {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := billingSvc.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.cached, pricing.CacheReadPricePerToken, 1e-12)
+			require.InDelta(t, tt.cacheWrite, pricing.CacheCreationPricePerToken, 1e-12)
+			require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12)
+			require.Equal(t, 272000, pricing.LongContextInputThreshold)
+			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+
+			for _, tier := range []string{"", "fast"} {
+				input, cached, cacheWrite, output := tt.input, tt.cached, tt.cacheWrite, tt.output
+				if tier == "fast" {
+					input, cached, cacheWrite, output = input*2, cached*2, cacheWrite*2, output*2
+				}
+				shortTokens := UsageTokens{InputTokens: 271998, CacheCreationTokens: 1, CacheReadTokens: 1, OutputTokens: 100}
+				shortCost, err := billingSvc.CalculateCostWithServiceTier(tt.model, shortTokens, 1, tier)
+				require.NoError(t, err)
+				require.False(t, shortCost.LongContextBillingApplied)
+				require.InDelta(t, 271998*input+cacheWrite+cached+100*output, shortCost.TotalCost, 1e-10)
+
+				longTokens := UsageTokens{InputTokens: 271999, CacheCreationTokens: 1, CacheReadTokens: 1, OutputTokens: 100}
+				longCost, err := billingSvc.CalculateCostWithServiceTier(tt.model, longTokens, 1, tier)
+				require.NoError(t, err)
+				require.True(t, longCost.LongContextBillingApplied)
+				require.InDelta(t, (271999*input+cacheWrite+cached)*2+100*output*1.5, longCost.TotalCost, 1e-10)
+			}
+		})
+	}
+}
+
 func TestGPT56DedicatedFallbacksUseOfficialRates(t *testing.T) {
 	tests := []struct {
 		model                             string

@@ -269,7 +269,7 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 	}
 
 	// Only refresh OAuth-based accounts
-	if !account.IsOAuth() {
+	if !account.IsOAuth() && !account.IsOpenAIWebImage() {
 		response.BadRequest(c, "Cannot refresh non-OAuth account credentials")
 		return
 	}

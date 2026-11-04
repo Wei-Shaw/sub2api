@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -364,6 +365,46 @@ func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelUsesModelRateLi
 	require.Equal(t, "gpt-5.6-sol", call.scope)
 	require.Equal(t, upstreamCodexPlanGatedModelReason, call.reason)
 	require.WithinDuration(t, time.Now().Add(upstreamCodexPlanGatedModelCooldown), call.resetAt, 5*time.Second)
+}
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGated404UsesModelRateLimit(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAICodexPlanGatedOAuthAccount()
+	body := []byte(`{"detail":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}`)
+
+	handled := svc.HandleUpstreamError(context.Background(), account, http.StatusNotFound, http.Header{}, body, "gpt-6-sol")
+
+	require.True(t, handled)
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-6-sol", repo.modelRateLimitCalls[0].scope)
+	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
+}
+
+func TestFailoverOpenAIUpstreamHTTPError_CodexPlanGated404CoolsModelAndRetriesNextAccount(t *testing.T) {
+	c, recorder := newOpenAIUpstreamErrorTestContext(t)
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &OpenAIGatewayService{
+		cfg:              &config.Config{},
+		accountRepo:      repo,
+		rateLimitService: &RateLimitService{accountRepo: repo},
+	}
+	account := openAICodexPlanGatedOAuthAccount()
+	body := `{"detail":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}`
+	resp := newOpenAIUpstreamErrorResponse(http.StatusNotFound, body)
+
+	failoverErr := svc.failoverOpenAIUpstreamHTTPError(
+		context.Background(), c, account, resp, []byte(body), "The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account.", "gpt-6-sol",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.False(t, IsResponseCommitted(c))
+	require.Empty(t, recorder.Body.String())
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gpt-6-sol", repo.modelRateLimitCalls[0].scope)
+	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
 }
 
 func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelRespectsModelMapping(t *testing.T) {

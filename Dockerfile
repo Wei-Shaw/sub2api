@@ -105,6 +105,11 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 # Stage 4: Final Runtime Image
 # -----------------------------------------------------------------------------
+FROM --platform=${BUILDPLATFORM} node:24-alpine AS web-image-runtime
+WORKDIR /web-image
+COPY backend/scripts/web-image-runtime/package*.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
 FROM ${ALPINE_IMAGE}
 
 # Labels
@@ -114,6 +119,7 @@ LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
 
 # Install runtime dependencies
 RUN apk add --no-cache \
+    nodejs \
     ca-certificates \
     tzdata \
     su-exec \
@@ -137,6 +143,11 @@ RUN addgroup -g 1000 sub2api && \
 
 # Set working directory
 WORKDIR /app
+
+# Optional Sentinel VM execution is used only by the web-image channel.
+COPY --from=web-image-runtime /web-image/node_modules /app/web-image/node_modules
+COPY backend/scripts/chatgpt-web-turnstile.cjs /app/web-image/chatgpt-web-turnstile.cjs
+ENV SUB2API_CHATGPT_WEB_TURNSTILE_COMMAND='["node","/app/web-image/chatgpt-web-turnstile.cjs"]'
 
 # Copy binary/resources with ownership to avoid extra full-layer chown copy
 COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
