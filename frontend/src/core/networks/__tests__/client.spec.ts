@@ -27,6 +27,18 @@ describe('API Client', () => {
     vi.unstubAllEnvs()
   })
 
+  it.each([['17', 17], ['Wed, 21 Oct 2026 07:28:00 GMT', undefined], ['9'.repeat(400), undefined], [undefined, undefined]])(
+    'preserves safe Retry-After seconds in structured errors (%s)', async (retryAfter, expected) => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValueOnce({
+        response: { status: 429, data: { code: 'RATE_LIMITED', message: 'Too many requests' }, headers: { 'retry-after': retryAfter } },
+        config: { url: '/usage', headers: {} },
+      })
+      const error = await apiClient.get('/usage').catch((err) => err)
+      expect(error).toMatchObject({ status: 429, code: 'RATE_LIMITED' })
+      expect(error.retry_after_seconds).toBe(expected)
+    },
+  )
+
   // --- 请求拦截器 ---
 
   describe('请求拦截器', () => {

@@ -1,0 +1,262 @@
+[
+  {
+    "stage": "BASELINE",
+    "result": "PASS",
+    "cases": [
+      {
+        "case": "image-4k",
+        "selected_fixture": "fixture-low",
+        "settlement": [
+          {
+            "input": 0,
+            "output": 0,
+            "count": 2,
+            "total": 0.2,
+            "actual": 0.2,
+            "mode": "image"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": false,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": true,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "grok-delegation",
+        "normalized": false
+      },
+      {
+        "case": "kimi-concurrency-403",
+        "http": 502,
+        "state": {
+          "status": "error",
+          "rate_limited": null,
+          "temporary": null
+        }
+      }
+    ],
+    "migrations": 313,
+    "persistent_identity_key_subscription": "PASS",
+    "historical_usage_unchanged": "PASS",
+    "balance_settlement_identity": "PASS"
+  },
+  {
+    "stage": "MODIFIED",
+    "result": "PASS",
+    "cases": [
+      {
+        "case": "image-4k",
+        "selected_fixture": "fixture-high",
+        "settlement": [
+          {
+            "input": 0,
+            "output": 0,
+            "count": 2,
+            "total": 0.2,
+            "actual": 0.2,
+            "mode": "image"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": false,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": true,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "grok-delegation",
+        "normalized": true
+      },
+      {
+        "case": "kimi-concurrency-403",
+        "http": 502,
+        "state": {
+          "status": "active",
+          "rate_limited": true,
+          "temporary": null
+        }
+      }
+    ],
+    "migrations": 313,
+    "persistent_identity_key_subscription": "PASS",
+    "historical_usage_unchanged": "PASS",
+    "balance_settlement_identity": "PASS"
+  },
+  {
+    "stage": "ROLLBACK",
+    "result": "PASS",
+    "cases": [
+      {
+        "case": "image-4k",
+        "selected_fixture": "fixture-low",
+        "settlement": [
+          {
+            "input": 0,
+            "output": 0,
+            "count": 2,
+            "total": 0.2,
+            "actual": 0.2,
+            "mode": "image"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": false,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": true,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "grok-delegation",
+        "normalized": false
+      },
+      {
+        "case": "kimi-concurrency-403",
+        "http": 502,
+        "state": {
+          "status": "error",
+          "rate_limited": null,
+          "temporary": null
+        }
+      }
+    ],
+    "migrations": 313,
+    "persistent_identity_key_subscription": "PASS",
+    "historical_usage_unchanged": "PASS",
+    "balance_settlement_identity": "PASS"
+  },
+  {
+    "stage": "RESTORED",
+    "result": "PASS",
+    "cases": [
+      {
+        "case": "image-4k",
+        "selected_fixture": "fixture-high",
+        "settlement": [
+          {
+            "input": 0,
+            "output": 0,
+            "count": 2,
+            "total": 0.2,
+            "actual": 0.2,
+            "mode": "image"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": false,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "responses",
+        "stream": true,
+        "settlement": [
+          {
+            "input": 1000,
+            "output": 100,
+            "count": 0,
+            "total": 0.004,
+            "actual": 0.004,
+            "mode": "token"
+          }
+        ]
+      },
+      {
+        "case": "grok-delegation",
+        "normalized": true
+      },
+      {
+        "case": "kimi-concurrency-403",
+        "http": 502,
+        "state": {
+          "status": "active",
+          "rate_limited": true,
+          "temporary": null
+        }
+      }
+    ],
+    "migrations": 313,
+    "persistent_identity_key_subscription": "PASS",
+    "historical_usage_unchanged": "PASS",
+    "balance_settlement_identity": "PASS"
+  }
+]

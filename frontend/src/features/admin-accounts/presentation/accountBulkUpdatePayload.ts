@@ -1,3 +1,4 @@
+import { openAIImageSizeTiersPayload } from './openaiImageSizeTiers'
 import { buildHeaderOverridesObject, HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY, HEADER_OVERRIDES_CREDENTIAL_KEY } from './credentialsBuilder'
 import { buildModelMappingObject } from './composables/useModelWhitelist'
 import type { CodexFingerprintMode, ModelMapping } from './accountFormPolicy'
@@ -5,6 +6,7 @@ import { isOpenAIWSModeEnabled, type OpenAIWSMode } from '@/core/utils/openaiWsM
 import type { OpenAICompactMode, OpenAIEndpointCapability, OpenAIResponsesMode } from '@/types'
 
 export interface BulkAccountUpdatePayloadState {
+  openAIImageSizeTiersUpdate?: string[] | null
   enableProxy: boolean
   proxyId: number | null
   enableConcurrency: boolean
@@ -198,6 +200,10 @@ export function buildBulkAccountUpdatePayload(
       const password = state.cpaManagementPassword.trim()
       if (password) credentials.cpa_management_key = password
     }
+  }
+
+  if (state.openAIImageSizeTiersUpdate != null) {
+    ensureExtra().openai_image_size_tiers = openAIImageSizeTiersPayload(state.openAIImageSizeTiersUpdate) || []
   }
 
   if (state.enableOpenAIWSMode) {

@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: sub2api
+      POSTGRES_PASSWORD: ${SYNC_DB_PASSWORD:?}
+      POSTGRES_DB: upgrade
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U sub2api -d upgrade']
+      interval: 1s
+      timeout: 3s
+      retries: 40
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 1s
+      timeout: 3s
+      retries: 40
+  provider:
+    image: python:3.13-alpine
+    network_mode: service:app
+    volumes:
+      - ./provider.py:/fixture.py:ro
+    command: [python, /fixture.py]
+  app:
+    image: ${SYNC_IMAGE:?}
+    ports:
+      - '127.0.0.1:18444:8080'
+    environment:
+      AUTO_SETUP: 'true'
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      SERVER_MODE: release
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: sub2api
+      DATABASE_PASSWORD: ${SYNC_DB_PASSWORD:?}
+      DATABASE_DBNAME: upgrade
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ADMIN_EMAIL: ${SYNC_ADMIN_EMAIL:?}
+      ADMIN_PASSWORD: ${SYNC_ADMIN_PASSWORD:?}
+      JWT_SECRET: ${SYNC_JWT_SECRET:?}
+      TOTP_ENCRYPTION_KEY: ${SYNC_ENCRYPTION_KEY:?}
+      OAUTH_MODEL_SYNC_ENABLED: 'false'
+      GATEWAY_OPENAI_WS_FORCE_HTTP: 'true'
+      PRICING_REMOTE_URL: 'https://127.0.0.1:9/pricing.json'
+      PRICING_HASH_URL: 'https://127.0.0.1:9/pricing.sha256'
+      SECURITY_URL_ALLOWLIST_ENABLED: 'false'
+      SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS: 'true'
+      SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP: 'true'
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      ALL_PROXY: ''
+      NO_PROXY: localhost,127.0.0.1,postgres,redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

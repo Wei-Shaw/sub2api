@@ -65,9 +65,12 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.exportRateLimited': 'Rate limited',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
+
+vi.mock('@/features/usage/data/datasources/usageDatasource', () => ({ query }))
 
 vi.mock('@/api', () => ({
   usageAPI: {
@@ -284,10 +287,10 @@ describe('user UsageView', () => {
 
     expect(exportedBlob).not.toBeNull()
     expect(query).toHaveBeenCalledWith(expect.objectContaining({
-      page_size: 100,
+      page_size: 1000,
       sort_by: 'created_at',
       sort_order: 'desc',
-    }))
+    }), { signal: expect.any(AbortSignal) })
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
     expect(csvContent.startsWith('\uFEFF')).toBe(true)

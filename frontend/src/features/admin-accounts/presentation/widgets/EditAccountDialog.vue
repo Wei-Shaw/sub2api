@@ -15,6 +15,8 @@
 
       <GrokModelDiagnosticsPanel v-if="show && account.platform === 'grok'" :account-id="account.id" />
 
+      <OpenAIImageSizeTiersField v-if="account?.platform === 'openai'" v-model="openAIImageSizeTiers" />
+
       <EditAccountAdvancedFields :context="editAccountAdvancedContext" />
 
       <EditAccountPolicyFields :context="editAccountPolicyContext" />
@@ -139,6 +141,8 @@ import {
 } from '@/features/admin-accounts/presentation/composables/useModelWhitelist'
 import EditAccountCredentialFields from './edit/EditAccountCredentialFields.vue'
 import EditAccountAdvancedFields from './edit/EditAccountAdvancedFields.vue'
+import OpenAIImageSizeTiersField from './OpenAIImageSizeTiersField.vue'
+import { OPENAI_IMAGE_SIZE_TIERS, readOpenAIImageSizeTiers, type OpenAIImageSizeTier } from '../openaiImageSizeTiers'
 import EditAccountPolicyFields from './edit/EditAccountPolicyFields.vue'
 import { useEditAccountSubmission } from '../composables/useEditAccountSubmission'
 import { useCPATestConnection } from '../composables/useCPATestConnection'
@@ -353,6 +357,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([...OPENAI_IMAGE_SIZE_TIERS])
 // OAuth-only compatibility switch; default preserves namespace declarations.
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -777,6 +782,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  openAIImageSizeTiers.value = readOpenAIImageSizeTiers(extra)
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -1417,7 +1423,7 @@ const {
   openAILongContextBillingEnabled, openAIResponsesMode,
   openAITextGenerationCapabilityEnabled, openaiAPIKeyResponsesWebSocketV2Mode,
   openaiOAuthResponsesWebSocketV2Mode, openaiFlattenNamespacesEnabled,
-  openaiPassthroughEnabled, poolModeEnabled,
+  openaiPassthroughEnabled, openAIImageSizeTiers, poolModeEnabled,
   poolModeRetryCount, poolModeRetryStatusCodesInput, rpmLimitEnabled, rpmStickyBuffer,
   rpmStrategy, selectedErrorCodes, sessionIdMaskingEnabled, sessionIdleTimeout,
   sessionLimitEnabled, showMixedChannelWarning, submitting, t, tlsFingerprintEnabled,

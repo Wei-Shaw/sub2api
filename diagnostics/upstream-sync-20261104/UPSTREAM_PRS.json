@@ -1,0 +1,129 @@
+{
+  "baseline": "b7a2bb45e19c5c7577364b2696de8d42706dd760",
+  "upstream_base": "d851a38477597157e78450d30af2d8504764d085",
+  "upstream_head": "6f92090d7f540efd88cd4b81e651120cb36e3ff5",
+  "entries": [
+    {
+      "pr": 8476,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8476",
+      "merge_sha": "4a4a83ee5ec86b19d3a2dd9b6471de5128963bec",
+      "head": "b0db521ceb9ceea183559f0d8bec35d6fc670911",
+      "diff_sha256": "2d9c6ac7b3a6d59dfdf337ed0a824100bc985248cca8d2f54603e5f9f898a6cd",
+      "status": "inherited-specialist-defer",
+      "fully_closed": false,
+      "reviewed": true,
+      "owner": "Existing admin_api_keys / admin_auth / permission groups",
+      "decision": "Resource-scoped changes still depend on #8319 policy/store migration. Do not introduce a second key store or full-access bypass; retain scoped read/write, sensitive JWT-only routes and read-only legacy keys.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses.",
+      "subitems": [
+        {
+          "part": "granular resource permissions and scoped statistics",
+          "status": "inherited-defer",
+          "dependency": "#8319",
+          "fully_closed": false
+        },
+        {
+          "part": "unrestricted full-access compatibility mode",
+          "status": "intentional-divergence",
+          "fully_closed": true,
+          "decision": "Keep explicit scopes and JWT-only sensitive operations; no automatic permission expansion."
+        },
+        {
+          "part": "follow-redirects 1.16.2 override",
+          "status": "already-covered",
+          "fully_closed": true,
+          "owner": "frontend/pnpm-workspace.yaml and pnpm-lock.yaml",
+          "decision": "The current main already pins 1.16.2 in the pnpm 11 workspace override and lockfile; do not repeat the dependency change."
+        }
+      ]
+    },
+    {
+      "pr": 8465,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8465",
+      "merge_sha": "45b51a8ac4e2096fa440788953b2038226bfc739",
+      "head": "522f1fb999db5380dc88724a71098c7902b094fc",
+      "diff_sha256": "44bfeaca23306915fc24f151a510dc1c6d0da4d93acb439478de108dde1de2e1",
+      "status": "ported-with-current-owner-adaptation",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "shared/apicompat and application/service/openai_grok_agent_message.go",
+      "decision": "Reuse the shared ordered agent-message text reader. Normalize delegated items once and preserve unrelated raw items.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    },
+    {
+      "pr": 8503,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8503",
+      "merge_sha": "ccc2c161b5121d16fede588004ed05eb92d96f1b",
+      "head": "17772947bda617439f20300f9930b4010d64d8a8",
+      "diff_sha256": "5704ecf3e1137c18a4474a110e8a32b767af2e27ba92922ac7ddb75ccdbf82ea",
+      "status": "ported-with-current-owner-adaptation",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "application/service/ratelimit_kimi.go and ratelimit_service.go",
+      "decision": "Exact Kimi concurrency-limit 403 uses the configured short 429 fallback (default 5 seconds), never SetError. Other 403 policies stay under their existing owner.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    },
+    {
+      "pr": 8436,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8436",
+      "merge_sha": "393167ea9a444f9f22972453686b53e993f90cd4",
+      "head": "e47abd8f9bc958949989958f0fe4cb59ff3339c5",
+      "diff_sha256": "962a8f22d526b2eb2cd3d25e102ebfac47fe4049d5bd3bf8d7e1ec98f2c4ab28",
+      "status": "ported-with-current-owner-adaptation",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "core/networks/client.ts and features/usage/presentation/usageExport.ts",
+      "decision": "Export sequential 1000-row pages; retain filters, sort and filename; at most three bounded retries per page, cancel waits and requests on unmount. Reject unsafe Retry-After numbers.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    },
+    {
+      "pr": 8318,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8318",
+      "merge_sha": "e320a1500be3eb546f85ab29876e38f9841c51df",
+      "head": "835803a7021c3255c6f19019329de923085f5f47",
+      "diff_sha256": "2369ee71d618d7f214d6819ada5cab7d94b9d11cef50f816c3275bec27c6e6da",
+      "status": "ported-with-linear-request-rewrite",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "shared/antigravity/system_identity.go and application/service/antigravity_system_identity.go",
+      "decision": "Neutralize only leading system/developer identities on Antigravity paths. Batch JSON rewriting instead of copying the full history per text part; retain native Anthropic attribution and user quotations.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    },
+    {
+      "pr": 8499,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8499",
+      "merge_sha": "ee74473e038b5c956897cda7aeb9903f3fa3138a",
+      "head": "a699c2baedc886a6970997cf6b362e4f46f354b0",
+      "diff_sha256": "b55cba74710159caed5ec7ba9a5b405da31f8af70e54162c99eef0c2f32d049c",
+      "status": "ported-with-stream-event-gate",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "application/service/openai_responses_instructions_echo.go and current Forward/response owners",
+      "decision": "Allow explicit empty instructions. Synthesize only for a missing field where required, restore client-visible echoes after normalization, and skip delta events before scanning or context lookup. Historical ops error classification remains compatible.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    },
+    {
+      "pr": 8462,
+      "url": "https://github.com/Wei-Shaw/sub2api/pull/8462",
+      "merge_sha": "6f92090d7f540efd88cd4b81e651120cb36e3ff5",
+      "head": "6b565e45a6d8705bbfdf8f0e847f4bb7812f074a",
+      "diff_sha256": "0b381aa9f69d72746566f806203c6c121da444ebf29d1fb492531a05e4e1d459",
+      "status": "ported-with-current-scheduler-and-mask",
+      "fully_closed": true,
+      "reviewed": true,
+      "owner": "application/service/openai_image_size_routing.go, scheduler cache, HTTP handlers and features/admin-accounts",
+      "decision": "Adapt size passes inside current ordered group routing and admission gates. Keep existing WSv2 continuation policy, proxy quarantine, slots, failover and sticky spillover semantics. Use a zero-allocation bit mask in candidate filtering; account tests use an allowed size.",
+      "reopen_when": "The upstream diff changes, or the current owner, protocol/authorization contract or upgrade boundary regresses."
+    }
+  ],
+  "inherited_closed_ledger": "diagnostics/upstream-sync-20261030/UPSTREAM_PRS.json",
+  "inherited_deferred_items": [
+    "#8006 explicit Gemini cachedContents (including #8369)",
+    "#8319 resource-scoped admin keys, now including #8476 resource-scoped changes"
+  ],
+  "git_history_closure": {
+    "strategy": "ours",
+    "upstream_parent": "6f92090d7f540efd88cd4b81e651120cb36e3ff5",
+    "verification": "After merge, the frozen upstream head must be an ancestor of main and behind_by must be zero. Tracking history does not implement deferred capabilities."
+  }
+}

@@ -331,7 +331,7 @@ func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Conte
 }
 
 func (s *OpenAIGatewayService) bindOpenAIStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if gatewayProfitControlGateActive(ctx) {
+	if gatewayProfitControlGateActive(ctx) || openAIImageSizeSpilloverPass(ctx) {
 		return nil
 	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)

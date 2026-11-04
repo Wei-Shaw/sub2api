@@ -77,6 +77,8 @@
         <Select v-model="openAIResponsesMode" :disabled="!enableOpenAIResponsesMode" :options="openAIResponsesModeOptions" />
       </div>
 
+      <BulkEditOpenAIImageSizeOption v-if="allOpenAIPassthroughCapable" v-model="openAIImageSizeTiersUpdate" />
+
       <BulkEditExcelBPSOption v-if="allOpenAIOAuthOnly" v-model="excelBpsMode" />
 
       <BulkEditOpenAICustomRelayOption
@@ -683,6 +685,7 @@ import BulkEditCapacityFields from './BulkEditCapacityFields.vue'
 import BulkEditCodexOptions from './BulkEditCodexOptions.vue'
 import BulkEditCodexThinkingTagOption from './BulkEditCodexThinkingTagOption.vue'
 import BulkEditExcelBPSOption from './BulkEditExcelBPSOption.vue'
+import BulkEditOpenAIImageSizeOption from './BulkEditOpenAIImageSizeOption.vue'
 import BulkEditOpenAICustomRelayOption from './BulkEditOpenAICustomRelayOption.vue'
 import BulkEditTLSFingerprintOption from './BulkEditTLSFingerprintOption.vue'
 
@@ -822,6 +825,7 @@ const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
+const openAIImageSizeTiersUpdate = ref<string[] | null>(null)
 const enableOpenAIFlattenNamespaces = ref(false)
 const excelBpsMode = ref<'unchanged' | 'enabled' | 'disabled'>('unchanged')
 const enableOpenAICustomRelay = ref(false)
@@ -1104,6 +1108,7 @@ const bulkEditCapacityContext = {
 
 const buildUpdatePayload = (): Record<string, unknown> | null => {
   return buildBulkAccountUpdatePayload({
+    openAIImageSizeTiersUpdate: allOpenAIPassthroughCapable.value ? openAIImageSizeTiersUpdate.value : null,
     enableProxy: enableProxy.value,
     proxyId: proxyId.value,
     enableConcurrency: enableConcurrency.value,
@@ -1233,6 +1238,7 @@ const handleSubmit = async () => {
   }
 
   const hasAnyFieldEnabled =
+    (allOpenAIPassthroughCapable.value && openAIImageSizeTiersUpdate.value !== null) ||
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
@@ -1413,6 +1419,7 @@ watch(
       enableStatus.value = false
       enableGroups.value = false
       enableOpenAIPassthrough.value = false
+      openAIImageSizeTiersUpdate.value = null
       enableOpenAIFlattenNamespaces.value = false
       excelBpsMode.value = 'unchanged'
       enableOpenAICustomRelay.value = false

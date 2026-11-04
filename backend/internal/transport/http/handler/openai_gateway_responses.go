@@ -301,6 +301,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	service.ConfigureOpenAIPassthroughAttemptBudget(c, maxAccountSwitches)
 	switchCount := 0
 	firstOutputTimeoutSwitchCount := 0
+	if imageIntent && requestPlatform == service.PlatformOpenAI {
+		imageSize := service.OpenAIResponsesImageRequestSize(body)
+		c.Request = c.Request.WithContext(service.WithOpenAIImageSizeRouting(c.Request.Context(), imageSize))
+	}
 	var failedAccountIDs map[int64]struct{}
 	profitVetoCount := 0
 	var sameAccountRetryCount map[int64]int
@@ -363,6 +367,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
 					return
+				}
+				if imageIntent && requestPlatform == service.PlatformOpenAI {
+					size := service.OpenAIResponsesImageRequestSize(body)
+					if tier, unsupported := h.gatewayService.OpenAIImageSizeTierUnsupported(c.Request.Context(), apiKey.GroupID, reqModel, size, requiredCapability, ""); unsupported {
+						service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+						h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", service.OpenAIImageSizeTierUnsupportedMessage(size, tier), streamStarted)
+						return
+					}
 				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 				if !cls.ModelNotFound {

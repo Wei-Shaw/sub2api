@@ -435,7 +435,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			// item. Chat Completions has no corresponding item type, so preserve
 			// the text as a user message in its original position instead of
 			// silently dropping the delegation payload.
-			text := agentMessageText(item["content"])
+			text := AgentMessageText(item["content"])
 			if text == "" {
 				pendingReasoning = ""
 				continue
@@ -535,10 +535,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	return messages, mediaByCallID, nil
 }
 
-// agentMessageText concatenates text-bearing fragments in an agent_message
+// AgentMessageText concatenates text-bearing fragments in an agent_message
 // content array. Encrypted fragments are treated as opaque text; custom
 // providers may expose the same field in plaintext, and ordering is preserved.
-func agentMessageText(raw json.RawMessage) string {
+func AgentMessageText(raw json.RawMessage) string {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
