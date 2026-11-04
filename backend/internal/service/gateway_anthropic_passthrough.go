@@ -299,6 +299,11 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, []byte, error) {
+	guardedBody, guardErr := guardAnthropicImages(ctx, c, s.cfg, body)
+	if guardErr != nil {
+		return nil, nil, guardErr
+	}
+	body = guardedBody
 	body = stripDeferredToolCacheControl(body)
 	targetURL := claudeAPIURL
 	baseURL := getAnthropicGatewayBaseURL(account)

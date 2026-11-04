@@ -304,6 +304,10 @@ gateway:
   # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
   # 仍会在分组允许图片生成的情况下正常转发。
   codex_image_generation_bridge_enabled: false
+  # Opt-in Anthropic wire-image protection, including historical tool results.
+  # Caps inline images at 3000px; rejects uninspectable sources/unsafe decodes.
+  # See docs/anthropic-image-guard.md for scope, limits and tradeoffs.
+  anthropic_image_guard_enabled: false
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #
