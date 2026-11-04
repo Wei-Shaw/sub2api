@@ -193,9 +193,12 @@ type AnthropicEventToResponsesState struct {
 	CurrentName   string
 
 	// Content of the currently open item, folded into Outputs when it closes.
-	CurrentContent             []ResponsesContentPart // message
-	CurrentArgs                string                 // function_call
-	CurrentSummary             string                 // reasoning
+	CurrentContent []ResponsesContentPart // message
+	CurrentArgs    string                 // function_call
+	CurrentSummary string                 // reasoning
+	// SummaryPartOpen: the reasoning item's summary part was announced (reasoning_summary_part.added) and is not closed yet.
+	// Strict clients reject summary text for a part that was never added.
+	SummaryPartOpen            bool
 	CurrentThinking            AnthropicContentBlock
 	PreserveThinkingSignatures bool
 
@@ -331,7 +334,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "reasoning"
 		state.CurrentThinking = *evt.ContentBlock
-		state.CurrentSummary = evt.ContentBlock.Thinking
+		state.CurrentSummary = ""
+		state.SummaryPartOpen = false
 		state.ContentIndex = 0
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -341,6 +345,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 				ID:   state.CurrentItemID,
 			},
 		}))
+		// Thinking text already on the block start is streamed as the summary's first delta, in its announced part.
+		events = append(events, appendReasoningSummary(state, evt.ContentBlock.Thinking)...)
 
 	case "text":
 		// If we don't have an open message item, open one
@@ -430,16 +436,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		})}
 
 	case "thinking_delta":
-		if evt.Delta.Thinking == "" {
-			return nil
-		}
-		state.CurrentSummary += evt.Delta.Thinking
-		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
-			OutputIndex:  state.OutputIndex,
-			SummaryIndex: 0,
-			Delta:        evt.Delta.Thinking,
-			ItemID:       state.CurrentItemID,
-		})}
+		return appendReasoningSummary(state, evt.Delta.Thinking)
 
 	case "input_json_delta":
 		if evt.Delta.PartialJSON == "" {
@@ -468,19 +465,34 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 	return nil
 }
 
+// appendReasoningSummary streams thinking text as the reasoning item's summary: the part is announced before its first text.
+func appendReasoningSummary(state *AnthropicEventToResponsesState, text string) []ResponsesStreamEvent {
+	if text == "" {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	if !state.SummaryPartOpen {
+		state.SummaryPartOpen = true
+		events = append(events, makeResponsesEvent(state, "response.reasoning_summary_part.added", &ResponsesStreamEvent{
+			OutputIndex:  state.OutputIndex,
+			SummaryIndex: 0,
+			ItemID:       state.CurrentItemID,
+			Part:         &ResponsesContentPart{Type: "summary_text", Text: ""},
+		}))
+	}
+	state.CurrentSummary += text
+	return append(events, makeResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
+		OutputIndex:  state.OutputIndex,
+		SummaryIndex: 0,
+		Delta:        text,
+		ItemID:       state.CurrentItemID,
+	}))
+}
+
 func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	switch state.CurrentItemType {
 	case "reasoning":
-		// Emit reasoning summary done + output item done
-		events := []ResponsesStreamEvent{
-			makeResponsesEvent(state, "response.reasoning_summary_text.done", &ResponsesStreamEvent{
-				OutputIndex:  state.OutputIndex,
-				SummaryIndex: 0,
-				ItemID:       state.CurrentItemID,
-			}),
-		}
-		events = append(events, closeCurrentResponsesItem(state)...)
-		return events
+		return closeCurrentResponsesItem(state)
 
 	case "function_call":
 		var events []ResponsesStreamEvent
@@ -610,6 +622,27 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		return nil
 	}
 
+	// All closing paths (block stop, next item, message stop, and stream
+	// finalization) must finish an announced summary before finishing its item.
+	// Signature-only thinking never opened a summary and needs no part events.
+	var events []ResponsesStreamEvent
+	if state.CurrentItemType == "reasoning" && state.SummaryPartOpen {
+		events = append(events,
+			makeResponsesEvent(state, "response.reasoning_summary_text.done", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				SummaryIndex: 0,
+				ItemID:       state.CurrentItemID,
+				Text:         state.CurrentSummary,
+			}),
+			makeResponsesEvent(state, "response.reasoning_summary_part.done", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				SummaryIndex: 0,
+				ItemID:       state.CurrentItemID,
+				Part:         &ResponsesContentPart{Type: "summary_text", Text: state.CurrentSummary},
+			}),
+		)
+	}
+
 	// Assemble the full item: both output_item.done and response.completed must
 	// carry its content. Emitting only {type,id,status} makes SDK-side
 	// accumulation produce an empty output.
@@ -650,15 +683,16 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentArgs = ""
 	state.PendingToolInput = ""
 	state.CurrentSummary = ""
+	state.SummaryPartOpen = false
 	state.CurrentThinking = AnthropicContentBlock{}
 	state.TextAccum = ""
 	state.OutputIndex++
 	state.ContentIndex = 0
 
-	return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+	return append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment
 		Item:        &item,
-	})}
+	}))
 }
 
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {
