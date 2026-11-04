@@ -234,6 +234,11 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		}
 	}
 
+	extra, err := normalizeOpenAIModelAutoSyncExtra(req.Platform, req.Type, false, req.Extra)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建账号
 	account := &Account{
 		Name:        req.Name,
@@ -241,7 +246,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Platform:    req.Platform,
 		Type:        req.Type,
 		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
+		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, extra),
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
@@ -337,9 +342,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Extra != nil {
-		extra := make(map[string]any, len(*req.Extra))
-		for key, value := range *req.Extra {
-			extra[key] = value
+		extra, err := normalizeOpenAIModelAutoSyncExtra(account.Platform, account.Type, account.IsShadow(), *req.Extra)
+		if err != nil {
+			return nil, err
 		}
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)

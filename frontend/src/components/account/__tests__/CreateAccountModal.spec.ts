@@ -45,6 +45,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       create: createAccountMock,
+      refreshOpenAIToken: vi.fn().mockResolvedValue({ access_token: 'oauth-access-token', refresh_token: 'oauth-refresh-token', expires_at: 1900000000 }),
       probeUpstreamBilling: probeUpstreamBillingMock,
       syncUpstreamModels: syncUpstreamModelsMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
@@ -91,7 +92,7 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  emits: ['import-codex-session', 'import-codex-pat', 'validate-refresh-token'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
@@ -287,6 +288,73 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('defaults automatic model sync to off for OpenAI API Key creation', async () => {
+    const wrapper = await submitApiKeyAccount('openai')
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_model_auto_sync_enabled).toBe(false)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('openai_model_auto_sync_enabled')
+    wrapper.unmount()
+  })
+
+  it('saves automatic model sync opt-in in extra for OpenAI API Key creation', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="openai-model-auto-sync-toggle"]')
+    expect(toggle.element.checked).toBe(false)
+    await toggle.setValue(true)
+    expect(createAccountMock).not.toHaveBeenCalled()
+    expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('auto sync API Key')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload.extra.openai_model_auto_sync_enabled).toBe(true)
+    expect(payload.extra).not.toHaveProperty('openai_model_auto_sync')
+    expect(payload.credentials).not.toHaveProperty('openai_model_auto_sync_enabled')
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('saves automatic model sync %s for OpenAI OAuth creation', async (enabled) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="openai-model-auto-sync-toggle"]')
+    expect(toggle.element.checked).toBe(false)
+    await toggle.setValue(enabled)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('auto sync OAuth')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('validate-refresh-token', 'refresh-token')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload.type).toBe('oauth')
+    expect(payload.extra.openai_model_auto_sync_enabled).toBe(enabled)
+    expect(payload.extra).not.toHaveProperty('openai_model_auto_sync')
+    expect(payload.credentials).not.toHaveProperty('openai_model_auto_sync_enabled')
+    wrapper.unmount()
+  })
+
+  it('hides automatic model sync for other platforms and resets it when the modal closes', async () => {
+    const wrapper = mountModal()
+    const selector = '[data-testid="openai-model-auto-sync-toggle"]'
+    expect(wrapper.find(selector).exists()).toBe(false)
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get(selector).setValue(true)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.get<HTMLInputElement>(selector).element.checked).toBe(false)
+    await selectButtonByText(wrapper, 'Anthropic')
+    expect(wrapper.find(selector).exists()).toBe(false)
+    wrapper.unmount()
+
+    const otherPlatform = await submitApiKeyAccount('anthropic')
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra ?? {}).not.toHaveProperty('openai_model_auto_sync_enabled')
+    otherPlatform.unmount()
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
