@@ -23,6 +23,7 @@ vi.mock('@/api', () => ({
     refreshToken: vi.fn(),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
+  isEmailCodeLoginRequired: (response: any) => response?.requires_email_code === true,
 }))
 
 vi.mock('@/api/admin/system', () => ({

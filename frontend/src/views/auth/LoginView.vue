@@ -216,8 +216,12 @@
     ref="totpModalRef"
     :temp-token="totpTempToken"
     :user-email-masked="totpUserEmailMasked"
+    :mode="loginChallenge"
+    :allow-switch="emailCodeAvailable"
     @verify="handle2FAVerify"
     @cancel="handle2FACancel"
+    @resend="handleEmailCodeResend"
+    @switch="handleLoginChallengeSwitch"
   />
 </template>
 
@@ -240,7 +244,9 @@ import {
   buildOAuthLoginStartURL,
   getPublicSettings,
   isTotp2FARequired,
+  isEmailCodeLoginRequired,
   isWeChatWebOAuthEnabled,
+  resendLoginEmailCode,
   startOAuthLogin,
   type OAuthLoginStart
 } from '@/api/auth'
@@ -324,6 +330,11 @@ const show2FAModal = ref<boolean>(false)
 const totpTempToken = ref<string>('')
 const totpUserEmailMasked = ref<string>('')
 const totpModalRef = ref<InstanceType<typeof TotpLoginModal> | null>(null)
+const loginChallenge = ref<'totp' | 'email'>('totp')
+// Admin with TOTP may choose either TOTP or an emailed code
+const emailCodeAvailable = ref(false)
+// Whether a login email code has already been sent for the current session
+const emailCodeSent = ref(false)
 
 const formData = reactive({
   email: '',
@@ -593,6 +604,21 @@ async function handleLogin(): Promise<void> {
       const totpResponse = response as TotpLoginResponse
       totpTempToken.value = totpResponse.temp_token || ''
       totpUserEmailMasked.value = totpResponse.user_email_masked || ''
+      loginChallenge.value = 'totp'
+      emailCodeAvailable.value = !!totpResponse.email_code_available
+      emailCodeSent.value = false
+      show2FAModal.value = true
+      isLoading.value = false
+      return
+    }
+
+    // Admin login requires an emailed code
+    if (isEmailCodeLoginRequired(response)) {
+      totpTempToken.value = response.temp_token || ''
+      totpUserEmailMasked.value = response.user_email_masked || ''
+      loginChallenge.value = 'email'
+      emailCodeAvailable.value = false
+      emailCodeSent.value = true
       show2FAModal.value = true
       isLoading.value = false
       return
@@ -705,7 +731,11 @@ async function handle2FAVerify(code: string): Promise<void> {
   }
 
   try {
-    await authStore.login2FA(totpTempToken.value, code)
+    if (loginChallenge.value === 'email') {
+      await authStore.loginEmailCode(totpTempToken.value, code)
+    } else {
+      await authStore.login2FA(totpTempToken.value, code)
+    }
 
     // Close modal and show success
     show2FAModal.value = false
@@ -717,12 +747,46 @@ async function handle2FAVerify(code: string): Promise<void> {
     await router.push(redirectTo)
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { message?: string } } }
-    const message = err.response?.data?.message || err.message || t('profile.totp.loginFailed')
+    const fallback =
+      loginChallenge.value === 'email' ? t('auth.emailCodeLogin.failed') : t('profile.totp.loginFailed')
+    const message = err.response?.data?.message || err.message || fallback
 
     if (totpModalRef.value) {
       totpModalRef.value.setError(message)
       totpModalRef.value.setVerifying(false)
     }
+  }
+}
+
+async function handleEmailCodeResend(): Promise<void> {
+  try {
+    const result = await resendLoginEmailCode(totpTempToken.value)
+    totpModalRef.value?.startResendCountdown(result.countdown || 60)
+    appStore.showSuccess(t('auth.emailCodeLogin.resent'))
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'auth.errors', t('auth.emailCodeLogin.failed')))
+  }
+}
+
+async function handleLoginChallengeSwitch(): Promise<void> {
+  if (loginChallenge.value === 'email') {
+    loginChallenge.value = 'totp'
+    return
+  }
+  // The code sent earlier in this session is still valid; the resend button
+  // is available in email mode once the cooldown has passed.
+  if (emailCodeSent.value) {
+    loginChallenge.value = 'email'
+    return
+  }
+  try {
+    const result = await resendLoginEmailCode(totpTempToken.value)
+    emailCodeSent.value = true
+    loginChallenge.value = 'email'
+    totpModalRef.value?.startResendCountdown(result.countdown || 60)
+    appStore.showSuccess(t('auth.emailCodeLogin.sent'))
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'auth.errors', t('auth.emailCodeLogin.failed')))
   }
 }
 

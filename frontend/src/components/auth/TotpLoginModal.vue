@@ -12,10 +12,10 @@
             </svg>
           </div>
           <h3 class="mt-4 text-xl font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.totp.loginTitle') }}
+            {{ isEmailMode ? t('auth.emailCodeLogin.title') : t('profile.totp.loginTitle') }}
           </h3>
           <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.totp.loginHint') }}
+            {{ isEmailMode ? t('auth.emailCodeLogin.hint') : t('profile.totp.loginHint') }}
           </p>
           <p v-if="userEmailMasked" class="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
             {{ userEmailMasked }}
@@ -49,6 +49,7 @@
               class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               :disabled="verifying"
               @input="handleCodeInput($event, index)"
+              @compositionend="handleCodeInput($event, index)"
               @keydown="handleKeydown($event, index)"
               @paste="handlePaste"
             />
@@ -60,7 +61,34 @@
           </div>
         </div>
 
-        <!-- Cancel button only -->
+        <!-- Resend (email mode only) -->
+        <button
+          v-if="isEmailMode"
+          type="button"
+          data-test="email-code-resend"
+          class="btn btn-ghost mb-3 w-full text-sm"
+          :disabled="verifying || resendCountdown > 0"
+          @click="$emit('resend')"
+        >
+          {{
+            resendCountdown > 0
+              ? t('auth.emailCodeLogin.resendIn', { seconds: resendCountdown })
+              : t('auth.emailCodeLogin.resend')
+          }}
+        </button>
+
+        <!-- Switch between TOTP and email code (admins with TOTP may use either) -->
+        <button
+          v-if="allowSwitch"
+          type="button"
+          data-test="login-challenge-switch"
+          class="btn btn-ghost mb-3 w-full text-sm"
+          :disabled="verifying"
+          @click="$emit('switch')"
+        >
+          {{ isEmailMode ? t('auth.emailCodeLogin.useTotp') : t('auth.emailCodeLogin.useEmail') }}
+        </button>
+
         <button
           type="button"
           class="btn btn-secondary w-full"
@@ -75,19 +103,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 
-defineProps<{
+const props = defineProps<{
   tempToken: string
   userEmailMasked?: string
+  mode?: 'totp' | 'email'
+  allowSwitch?: boolean
 }>()
 
 const emit = defineEmits<{
   verify: [code: string]
   cancel: []
+  resend: []
+  switch: []
 }>()
+
+const isEmailMode = computed(() => props.mode === 'email')
+const resendCountdown = ref(0)
+let resendTimer: ReturnType<typeof setInterval> | null = null
+
+function startResendCountdown(seconds: number) {
+  if (resendTimer) clearInterval(resendTimer)
+  resendCountdown.value = seconds
+  resendTimer = setInterval(() => {
+    resendCountdown.value -= 1
+    if (resendCountdown.value <= 0 && resendTimer) {
+      clearInterval(resendTimer)
+      resendTimer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (resendTimer) clearInterval(resendTimer)
+})
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -107,7 +159,22 @@ watch(
   }
 )
 
+// Reset the code inputs when switching between TOTP and email code
+watch(
+  () => props.mode,
+  () => {
+    code.value = ['', '', '', '', '', '']
+    inputRefs.value.forEach(input => {
+      if (input) input.value = ''
+    })
+    nextTick(() => {
+      inputRefs.value[0]?.focus()
+    })
+  }
+)
+
 defineExpose({
+  startResendCountdown,
   setVerifying: (value: boolean) => { verifying.value = value },
   setError: (message: string) => {
     if (message) {
@@ -133,8 +200,13 @@ const setInputRef = (el: any, index: number) => {
 }
 
 const handleCodeInput = (event: Event, index: number) => {
+  // Some IMEs (e.g. Chinese pinyin input) fire input events while composing.
+  // Moving focus then makes the committed digit land in the next cell as well,
+  // so wait for compositionend instead.
+  if ((event as InputEvent).isComposing) return
   const input = event.target as HTMLInputElement
-  const value = input.value.replace(/[^0-9]/g, '')
+  const value = input.value.replace(/[^0-9]/g, '').slice(-1)
+  input.value = value
   code.value[index] = value
 
   if (value && index < 5) {
@@ -205,6 +277,7 @@ const handlePaste = (event: ClipboardEvent) => {
 }
 
 onMounted(() => {
+  if (isEmailMode.value) startResendCountdown(60)
   nextTick(() => {
     inputRefs.value[0]?.focus()
   })

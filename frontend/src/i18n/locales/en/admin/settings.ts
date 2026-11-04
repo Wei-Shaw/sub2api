@@ -191,6 +191,8 @@ export default {
         stepUpEnableRequiresTotp: 'Enable 2FA (TOTP) for your own account in Profile before turning on step-up verification.',
         sessionBinding: 'Session IP/UA Binding',
         sessionBindingHint: 'Bind login sessions to the client IP and User-Agent. Any change immediately invalidates the session and forces re-login, raising the bar for stolen-credential reuse.',
+        adminLoginEmailCode: 'Email Code for Admin Password Login',
+        adminLoginEmailCodeHint: 'When enabled, admins signing in with a password must also enter a verification code sent to their email. Admins with 2FA (TOTP) may use either TOTP or the email code. Requires SMTP; if SMTP is not configured this check is skipped so admins are not locked out.',
         auditRetention: 'Audit Log Retention (days)',
         auditRetentionHint: 'Audit logs older than this are cleaned up automatically. Set to 0 to keep them forever (manual clear only).'
       },

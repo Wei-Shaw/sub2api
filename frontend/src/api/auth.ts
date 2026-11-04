@@ -16,13 +16,15 @@ import type {
   PublicSettings,
   ActionCaptchaRequestProof,
   TotpLoginResponse,
-  TotpLogin2FARequest
+  TotpLogin2FARequest,
+  EmailCodeLoginResponse,
+  EmailCodeLoginRequest
 } from '@/types'
 
 /**
  * Login response type - can be either full auth or 2FA required
  */
-export type LoginResponse = AuthResponse | TotpLoginResponse
+export type LoginResponse = AuthResponse | TotpLoginResponse | EmailCodeLoginResponse
 
 export type OAuthLoginProvider =
   | 'github'
@@ -66,6 +68,15 @@ export async function startOAuthLogin(
  */
 export function isTotp2FARequired(response: LoginResponse): response is TotpLoginResponse {
   return 'requires_2fa' in response && response.requires_2fa === true
+}
+
+/**
+ * Type guard to check if login response requires an emailed code (admin login)
+ */
+export function isEmailCodeLoginRequired(
+  response: LoginResponse
+): response is EmailCodeLoginResponse {
+  return 'requires_email_code' in response && response.requires_email_code === true
 }
 
 /**
@@ -131,8 +142,8 @@ export function clearAuthToken(): void {
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials)
 
-  // Only store token if 2FA is not required
-  if (!isTotp2FARequired(data)) {
+  // Only store token if no second step is required
+  if (!isTotp2FARequired(data) && !isEmailCodeLoginRequired(data)) {
     setAuthToken(data.access_token)
     if (data.refresh_token) {
       setRefreshToken(data.refresh_token)
@@ -164,6 +175,34 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
   }
   localStorage.setItem('auth_user', JSON.stringify(data.user))
 
+  return data
+}
+
+/**
+ * Complete admin login with the emailed verification code
+ */
+export async function loginEmailCode(request: EmailCodeLoginRequest): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/login/email-code', request)
+
+  setAuthToken(data.access_token)
+  if (data.refresh_token) {
+    setRefreshToken(data.refresh_token)
+  }
+  if (data.expires_in) {
+    setTokenExpiresAt(data.expires_in)
+  }
+  localStorage.setItem('auth_user', JSON.stringify(data.user))
+
+  return data
+}
+
+/**
+ * Resend the admin login verification code
+ */
+export async function resendLoginEmailCode(tempToken: string): Promise<SendVerifyCodeResponse> {
+  const { data } = await apiClient.post<SendVerifyCodeResponse>('/auth/login/email-code/resend', {
+    temp_token: tempToken
+  })
   return data
 }
 
@@ -681,7 +720,10 @@ export async function exchangePendingOAuthCompletion(
 export const authAPI = {
   login,
   login2FA,
+  loginEmailCode,
+  resendLoginEmailCode,
   isTotp2FARequired,
+  isEmailCodeLoginRequired,
   register,
   getCurrentUser,
   logout,

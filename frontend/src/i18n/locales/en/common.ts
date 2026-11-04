@@ -257,6 +257,17 @@ export default {
       'This email domain is not allowed. Allowed domains: {suffixes}',
     emailSuffixAllowedMore: 'and {count} more',
     loginSuccess: 'Login successful! Welcome back.',
+    emailCodeLogin: {
+      title: 'Email Verification',
+      hint: 'Admin sign-in requires an email code. We sent it to',
+      resend: 'Resend code',
+      resendIn: 'Resend in {seconds}s',
+      resent: 'Verification code resent',
+      failed: 'Verification failed, please try again',
+      sent: 'Verification code sent to your email',
+      useEmail: 'Use email code instead',
+      useTotp: 'Use two-factor authentication (TOTP) instead'
+    },
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteName}.',
     reloginRequired: 'Session expired. Please log in again.',
     turnstileExpired: 'Verification expired, please try again',
