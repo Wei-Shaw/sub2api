@@ -1,0 +1,143 @@
+ok  	github.com/Wei-Shaw/sub2api/cmd/cleanup-ingress-reject-logs	0.044s
+?   	github.com/Wei-Shaw/sub2api/cmd/jwtgen	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/cmd/profit-preview	0.011s
+ok  	github.com/Wei-Shaw/sub2api/cmd/server	0.021s
+?   	github.com/Wei-Shaw/sub2api/ent	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/account	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/accountegressbinding	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/accountgroup	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/announcement	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/announcementread	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/apikey	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/authidentity	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/authidentitychannel	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/batchimageevent	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/batchimageitem	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/batchimagejob	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/channelmonitor	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/chatasset	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/chatconversation	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/chatmessage	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/chatmessageasset	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/chatquickreply	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/compositemodelroute	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/custommodelconfig	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/custommodelrequesttemplate	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/enttest	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/group	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/hook	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/idempotencyrecord	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/intercept	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/ipv6egresspool	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/ent/migrate	0.006s
+?   	github.com/Wei-Shaw/sub2api/ent/paymentauditlog	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/paymentorder	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/pendingauthsession	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/predicate	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/promocode	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/promocodeusage	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/proxy	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/redeemcode	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/redeemcodeusage	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/runtime	[no test files]
+--- FAIL: TestAuthIdentityFoundationSchemas (2.04s)
+    auth_identity_schema_test.go:14:
+                Error Trace:	/src/backend/ent/schema/auth_identity_schema_test.go:14
+                Error:      	Received unexpected error:
+                                mkdir .entc: read-only file system
+                Test:       	TestAuthIdentityFoundationSchemas
+FAIL
+FAIL	github.com/Wei-Shaw/sub2api/ent/schema	2.055s
+?   	github.com/Wei-Shaw/sub2api/ent/schema/mixins	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/securitysecret	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/setting	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/subscriptionplan	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/usagecleanuptask	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/usagelog	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/user	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/userallowedgroup	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/userattributedefinition	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/userattributevalue	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/userplatformquota	[no test files]
+?   	github.com/Wei-Shaw/sub2api/ent/usersubscription	[no test files]
+github.com/Wei-Shaw/sub2api/internal/application/service: /usr/local/go/pkg/tool/linux_arm64/compile: signal: killed
+FAIL	github.com/Wei-Shaw/sub2api/internal/application/service [build failed]
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service/openai_ws_v2	6.048s
+ok  	github.com/Wei-Shaw/sub2api/internal/bootstrap/setup	0.160s
+ok  	github.com/Wei-Shaw/sub2api/internal/domain	0.028s
+?   	github.com/Wei-Shaw/sub2api/internal/domain/model	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/internal/infrastructure/repository	8.324s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/activitycenter	0.033s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/chat	0.021s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/codexremotecontrol	0.051s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/egress	0.040s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/managementmcp	0.021s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/modelcatalog	0.040s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/payment	0.063s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/payment/provider	0.140s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/qualityrender	0.031s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/securityaudit	0.306s
+ok  	github.com/Wei-Shaw/sub2api/internal/modules/typesafe	0.033s
+ok  	github.com/Wei-Shaw/sub2api/internal/platform/config	1.974s
+ok  	github.com/Wei-Shaw/sub2api/internal/platform/devicekey	0.050s
+ok  	github.com/Wei-Shaw/sub2api/internal/platform/egress	0.048s
+ok  	github.com/Wei-Shaw/sub2api/internal/platform/liveattestation	0.419s
+ok  	github.com/Wei-Shaw/sub2api/internal/platform/middleware	5.001s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/anthropicfp	0.103s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/antigravity	0.228s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	0.422s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/basispoints	2.168s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/chatgptcookies	0.021s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/claude	0.024s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/codexsimulation	0.025s
+?   	github.com/Wei-Shaw/sub2api/internal/shared/ctxkey	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/errors	0.020s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/gemini	0.021s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/geminicli	0.036s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/googleapi	0.022s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/httpclient	0.047s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/httputil	0.068s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/ip	0.106s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/logger	0.030s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/logredact	0.014s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/oauth	0.030s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/oauthstate	0.056s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/openai	0.037s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/openai_compat	0.031s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/openaitiming	0.031s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/pagination	0.019s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/proxyurl	0.029s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/proxyutil	0.040s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/remotecontrol	0.058s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/requestmodel	0.049s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/response	0.052s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/responseheaders	0.046s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/servertiming	0.045s
+?   	github.com/Wei-Shaw/sub2api/internal/shared/sysutil	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/timezone	0.030s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/tlsfingerprint	0.084s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/urlvalidator	0.025s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/usagestats	0.022s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/websearch	0.051s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/wsutil	0.103s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/xai	0.051s
+?   	github.com/Wei-Shaw/sub2api/internal/testutil	[no test files]
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/handler	61.562s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/handler/admin	0.646s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/handler/dto	0.038s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/handler/quotaview	0.017s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/handler/supportchatasset	0.055s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/managementmcp	0.214s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/server	1.764s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/server/middleware	0.080s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/http/server/routes	7.239s
+ok  	github.com/Wei-Shaw/sub2api/internal/transport/webassets	0.049s
+ok  	github.com/Wei-Shaw/sub2api/migrations	0.035s
+FAIL

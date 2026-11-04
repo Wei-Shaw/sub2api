@@ -1,0 +1,12 @@
+2026/11/04 03:21:50 Timezone initialized: UTC (UTC offset: +00:00)
+2026/11/04 03:21:50 [OpenAI 自动透传] 命中自动透传分支: account=161 name=api_key_passthrough type=apikey model=gpt-5.2 stream=false
+2026/11/04 03:21:50 [OpenAI 自动透传] 命中自动透传分支: account=162 name= type=apikey model=gpt-5.2 stream=false
+--- FAIL: TestOpenAIRequestSetPatchesEmptyObjectAndEncodingError (0.00s)
+    openai_request_set_patches_test.go:78:
+                Error Trace:	/src/backend/internal/application/service/openai_request_set_patches_test.go:78
+                Error:      	An error is expected but got nil.
+                Test:       	TestOpenAIRequestSetPatchesEmptyObjectAndEncodingError
+FAIL
+FAIL	github.com/Wei-Shaw/sub2api/internal/application/service	0.061s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	0.010s
+FAIL

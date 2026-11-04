@@ -24,16 +24,10 @@ import "encoding/json"
 func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 	switch e.Type {
 	case "response.output_text.delta", "response.output_text.done":
-		m := e.wireBase()
-		e.putItemID(m)
-		m["output_index"] = e.OutputIndex
-		m["content_index"] = e.ContentIndex
 		if e.Type == "response.output_text.done" {
-			m["text"] = e.Text
-		} else {
-			m["delta"] = e.Delta
+			return json.Marshal(responsesTextDoneWire{e.ContentIndex, e.ItemID, e.OutputIndex, e.SequenceNumber, e.Text, e.Type})
 		}
-		return json.Marshal(m)
+		return json.Marshal(responsesTextDeltaWire{e.ContentIndex, e.Delta, e.ItemID, e.OutputIndex, e.SequenceNumber, e.Type})
 
 	case "response.content_part.added", "response.content_part.done":
 		m := e.wireBase()
@@ -44,16 +38,10 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 
 	case "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done":
-		m := e.wireBase()
-		e.putItemID(m)
-		m["output_index"] = e.OutputIndex
-		m["summary_index"] = e.SummaryIndex
 		if e.Type == "response.reasoning_summary_text.done" {
-			m["text"] = e.Text
-		} else {
-			m["delta"] = e.Delta
+			return json.Marshal(responsesSummaryDoneWire{e.ItemID, e.OutputIndex, e.SequenceNumber, e.SummaryIndex, e.Text, e.Type})
 		}
-		return json.Marshal(m)
+		return json.Marshal(responsesSummaryDeltaWire{e.Delta, e.ItemID, e.OutputIndex, e.SequenceNumber, e.SummaryIndex, e.Type})
 
 	case "response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
 		m := e.wireBase()
@@ -70,38 +58,16 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 
 	case "response.function_call_arguments.delta", "response.function_call_arguments.done":
-		m := e.wireBase()
-		e.putItemID(m)
-		m["output_index"] = e.OutputIndex
-		if e.CallID != "" {
-			m["call_id"] = e.CallID
-		}
-		if e.Name != "" {
-			m["name"] = e.Name
-		}
 		if e.Type == "response.function_call_arguments.done" {
-			m["arguments"] = e.Arguments
-		} else {
-			m["delta"] = e.Delta
+			return json.Marshal(responsesToolArgumentsDoneWire{e.Arguments, e.CallID, e.ItemID, e.Name, e.OutputIndex, e.SequenceNumber, e.Type})
 		}
-		return json.Marshal(m)
+		return json.Marshal(responsesToolDeltaWire{e.CallID, e.Delta, e.ItemID, e.Name, e.OutputIndex, e.SequenceNumber, e.Type})
 
 	case "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done":
-		m := e.wireBase()
-		e.putItemID(m)
-		m["output_index"] = e.OutputIndex
-		if e.CallID != "" {
-			m["call_id"] = e.CallID
-		}
-		if e.Name != "" {
-			m["name"] = e.Name
-		}
 		if e.Type == "response.custom_tool_call_input.done" {
-			m["input"] = e.Input
-		} else {
-			m["delta"] = e.Delta
+			return json.Marshal(responsesToolInputDoneWire{e.CallID, e.Input, e.ItemID, e.Name, e.OutputIndex, e.SequenceNumber, e.Type})
 		}
-		return json.Marshal(m)
+		return json.Marshal(responsesToolDeltaWire{e.CallID, e.Delta, e.ItemID, e.Name, e.OutputIndex, e.SequenceNumber, e.Type})
 
 	default:
 		// response.created / completed / done / failed / incomplete and any

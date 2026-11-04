@@ -1,0 +1,2 @@
+ok  	github.com/Wei-Shaw/sub2api/internal/application/service	0.056s
+ok  	github.com/Wei-Shaw/sub2api/internal/shared/apicompat	0.010s

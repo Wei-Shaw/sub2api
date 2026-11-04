@@ -98,14 +98,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	}
 	_, hasTools := payload["tools"]
 	debugEnabled := isOpenAIWSModeDebugEnabled()
-	payloadBytes := -1
-	resolvePayloadBytes := func() int {
-		if payloadBytes >= 0 {
-			return payloadBytes
+	var payloadJSON []byte
+	resolvePayloadJSON := func() []byte {
+		if payloadJSON == nil {
+			payloadJSON = payloadAsJSONBytes(payload)
 		}
-		payloadBytes = len(payloadAsJSONBytes(payload))
-		return payloadBytes
+		return payloadJSON
 	}
+	resolvePayloadBytes := func() int { return len(resolvePayloadJSON()) }
 	streamValue := "-"
 	if raw, ok := payload["stream"]; ok {
 		streamValue = normalizeOpenAIWSLogValue(strings.TrimSpace(fmt.Sprintf("%v", raw)))
@@ -184,7 +184,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	storeDisabledConnMode := s.openAIWSStoreDisabledConnMode()
 	forceNewConnByPolicy := shouldForceNewConnOnStoreDisabled(storeDisabledConnMode, lastFailureReason)
 	forceNewConn := forceNewConnByPolicy && storeDisabled && previousResponseID == "" && sessionHash != "" && preferredConnID == ""
-	stageCodexOutboundSessionBody(c, payloadAsJSONBytes(payload))
+	// All payload mutations above are complete. Share one immutable snapshot
+	// throughout header projection instead of encoding the full input per reader.
+	headerPayload := resolvePayloadJSON()
+	stageCodexOutboundSessionBody(c, headerPayload)
 	wsHeaders, sessionResolution, buildHdrErr := s.buildOpenAIWSHeaders(
 		ctx,
 		c,
@@ -205,10 +208,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		wsHeaders.Del(CodexProjectIDHeader)
 	}
 	stageCodexFingerprintIDs(c, fingerprintIDs)
-	applyCodexOutboundSessionHeaders(c, account, payloadAsJSONBytes(payload), promptCacheKey, wsHeaders, fingerprintIDs)
+	applyCodexOutboundSessionHeaders(c, account, headerPayload, promptCacheKey, wsHeaders, fingerprintIDs)
 	applyCodexFingerprintWSHeaders(wsHeaders, fingerprintIDs)
-	applyOpenAIResponsesLiteWebSocketHeader(wsHeaders, payloadAsJSONBytes(payload))
-	applyOpenAICodexSemanticRequestHeaders(wsHeaders, c, account, payloadAsJSONBytes(payload))
+	applyOpenAIResponsesLiteWebSocketHeader(wsHeaders, headerPayload)
+	applyOpenAICodexSemanticRequestHeaders(wsHeaders, c, account, headerPayload)
 	logOpenAIWSModeDebug(
 		"acquire_start account_id=%d account_type=%s transport=%s preferred_conn_id=%s has_previous_response_id=%v session_hash=%s has_turn_state=%v turn_state_len=%d has_turn_metadata=%v turn_metadata_len=%d store_disabled=%v store_disabled_conn_mode=%s retry_last_reason=%s force_new_conn=%v header_user_agent=%s header_openai_beta=%s header_originator=%s header_accept_language=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v has_chatgpt_account_id=%v has_authorization=%v has_session_id=%v has_conversation_id=%v proxy_enabled=%v",
 		account.ID,
@@ -417,7 +420,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	// Account-level prewarm continuation mutates the business payload after the
 	// warmup response ID is known. Refresh derived log/size fields before write.
 	previousResponseID = openAIWSPayloadString(payload, "previous_response_id")
-	payloadBytes = -1
+	payloadJSON = nil
 
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
