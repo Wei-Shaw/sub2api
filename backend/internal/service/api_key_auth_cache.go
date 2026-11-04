@@ -76,11 +76,14 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice2K                    *float64                      `json:"image_price_2k,omitempty"`
 	ImagePrice4K                    *float64                      `json:"image_price_4k,omitempty"`
 	VideoRateIndependent            bool                          `json:"video_rate_independent"`
+	MiniMaxRateIndependent          bool                          `json:"minimax_rate_independent"`
 	VideoRateMultiplier             float64                       `json:"video_rate_multiplier"`
+	MiniMaxRateMultiplier           float64                       `json:"minimax_rate_multiplier"`
 	VideoPrice480P                  *float64                      `json:"video_price_480p,omitempty"`
 	VideoPrice720P                  *float64                      `json:"video_price_720p,omitempty"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p,omitempty"`
 	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	MiniMaxMediaPrices              map[string]map[string]float64 `json:"minimax_media_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call,omitempty"`
 	SearchPricePer1k                *float64                      `json:"search_price_per_1k,omitempty"`
 	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min,omitempty"`

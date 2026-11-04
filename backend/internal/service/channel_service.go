@@ -767,6 +767,14 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 }
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
+	if p.MiniMaxMedia != nil {
+		for _, model := range p.Models {
+			if err := p.MiniMaxMedia.Validate(model); err != nil {
+				return infraerrors.BadRequest("INVALID_MEDIA_PRICING", err.Error())
+			}
+		}
+		return nil
+	}
 	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage || p.BillingMode == BillingModeVideo {
 		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
 			return infraerrors.BadRequest(
@@ -1167,7 +1175,11 @@ func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
 	byPlatform := make(map[string][]modelEntry)
 	for _, p := range pricingList {
 		for _, model := range p.Models {
-			byPlatform[p.Platform] = append(byPlatform[p.Platform], toPricingModelEntry(model))
+			platform := p.Platform
+			if p.MiniMaxMedia != nil {
+				platform += ":minimax_media:" + p.MiniMaxMedia.Resolution
+			}
+			byPlatform[platform] = append(byPlatform[platform], toPricingModelEntry(model))
 		}
 	}
 	for platform, entries := range byPlatform {

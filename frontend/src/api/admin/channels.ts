@@ -38,7 +38,24 @@ export interface ChannelTimePricing {
   periods: ChannelTimePricingPeriod[]
 }
 
+export interface MiniMaxMediaRates {
+  voice?: number | null
+  image?: number | null
+  characters_per_million?: number | null
+  output_second?: number | null
+  input_second?: number | null
+  extra_image?: number | null
+}
+export interface MiniMaxMediaPricing {
+  resolution?: string
+  retail: MiniMaxMediaRates
+  cost: MiniMaxMediaRates
+  cost_currency: 'USD' | 'CNY'
+  cny_per_usd: number | null
+  multiplier: number | null
+}
 export interface ChannelModelPricing {
+  minimax_media?: MiniMaxMediaPricing | null
   id?: number
   platform: string
   models: string[]

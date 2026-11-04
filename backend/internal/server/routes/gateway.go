@@ -189,6 +189,15 @@ func RegisterGatewayRoutes(
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform
+		gateway.POST("/t2a_v2", func(c *gin.Context) { h.OpenAIGateway.MiniMaxMedia(c, "speech") })
+		gateway.POST("/get_voice", h.OpenAIGateway.MiniMaxVoices)
+		gateway.POST("/voice_clone", func(c *gin.Context) { h.OpenAIGateway.MiniMaxMedia(c, "voice_clone") })
+		gateway.POST("/voice_design", func(c *gin.Context) { h.OpenAIGateway.MiniMaxMedia(c, "voice_design") })
+		gateway.POST("/image_generation", func(c *gin.Context) { h.OpenAIGateway.MiniMaxMedia(c, "image") })
+		gateway.POST("/files/upload", h.OpenAIGateway.MiniMaxUpload)
+
+		gateway.GET("/media/tasks/:task_id", h.OpenAIGateway.MiniMaxTask)
+		gateway.GET("/media/tasks", h.OpenAIGateway.MiniMaxTask)
 		gateway.POST("/messages", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Messages(c)
@@ -370,6 +379,9 @@ func RegisterGatewayRoutes(
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
 		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
 	}
+	rootRoute(http.MethodPost, "/v2/video_generation", bodyLimit, func(c *gin.Context) { h.OpenAIGateway.MiniMaxMedia(c, "video") })
+	rootRoute(http.MethodGet, "/v2/query/video_generation/:task_id", bodyLimit, h.OpenAIGateway.MiniMaxTask)
+	rootRoute(http.MethodGet, "/v2/query/video_generation", bodyLimit, h.OpenAIGateway.MiniMaxTask)
 	for _, prefix := range []string{"/api/v3", "/v3", "/v1", ""} {
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
 		rootRoute(http.MethodGet, prefix+"/contents/generations/tasks/:task_id", bodyLimit, h.OpenAIGateway.SeedanceTasks)
@@ -551,6 +563,10 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		resolver = service.NewCompositeRouteResolver(nil)
 	}
 	return func(c *gin.Context) {
+		if middleware.IsMiniMaxMediaReplay(c) {
+			c.Next()
+			return
+		}
 		apiKey, ok := middleware.GetAPIKeyFromContext(c)
 		if !ok || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
 			c.Next()
@@ -672,6 +688,12 @@ func compositeGeminiModelFromParams(c *gin.Context) string {
 
 func compositeRouteEndpointForPath(path string) string {
 	switch {
+	case path == "/v1/t2a_v2", path == "/v1/voice_clone", path == "/v1/voice_design", path == "/v1/files/upload":
+		return service.CompositeRouteEndpointSpeech
+	case path == "/v1/image_generation":
+		return service.CompositeRouteEndpointImages
+	case path == "/v2/video_generation":
+		return service.CompositeRouteEndpointVideo
 	case strings.Contains(path, "/messages/count_tokens"):
 		return service.CompositeRouteEndpointCountTokens
 	case strings.Contains(path, "/messages"):

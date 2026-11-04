@@ -890,6 +890,10 @@
         </div>
 
         <!-- 图片生成计费配置 -->
+        <MiniMaxGroupPricing v-if="['minimax', 'composite'].includes(createForm.platform)"
+          v-model="createForm.minimax_media_prices" v-model:independent="createForm.minimax_rate_independent"
+          v-model:allow-generation="createForm.allow_image_generation" :show-generation-permission="createForm.platform === 'minimax'"
+          v-model:multiplier="createForm.minimax_rate_multiplier" :group-multiplier="createForm.rate_multiplier" :legacy="createForm.model_pricing" />
         <div
           v-if="supportsImagePricingPlatform(createForm.platform)"
           class="border-t pt-4"
@@ -2544,6 +2548,10 @@
         </div>
 
         <!-- 图片生成计费配置 -->
+        <MiniMaxGroupPricing v-if="['minimax', 'composite'].includes(editForm.platform)"
+          v-model="editForm.minimax_media_prices" v-model:independent="editForm.minimax_rate_independent"
+          v-model:allow-generation="editForm.allow_image_generation" :show-generation-permission="editForm.platform === 'minimax'"
+          v-model:multiplier="editForm.minimax_rate_multiplier" :group-multiplier="editForm.rate_multiplier" :legacy="editForm.model_pricing" />
         <div
           v-if="supportsImagePricingPlatform(editForm.platform)"
           class="border-t pt-4"
@@ -4293,6 +4301,8 @@
 </template>
 
 <script setup lang="ts">
+import MiniMaxGroupPricing from '@/components/group/MiniMaxGroupPricing.vue';
+import { cloneMiniMaxPrices } from './groupsMiniMaxPricing';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
@@ -4435,6 +4445,7 @@ const groupPricingFromAPI = (
   pricing: ChannelModelPricing[] | undefined,
 ): PricingFormEntry[] =>
   (pricing || []).map((entry) => ({
+    minimax_media: entry.minimax_media ? { ...entry.minimax_media, retail: { ...entry.minimax_media.retail }, cost: { ...entry.minimax_media.cost } } : null,
     models: entry.models || [],
     billing_mode: entry.billing_mode || "token",
     input_price: perTokenToMTok(entry.input_price),
@@ -4461,6 +4472,7 @@ const groupPricingToAPI = (
     .map((entry) => ({
       platform,
       models: entry.models,
+      minimax_media: entry.minimax_media,
       billing_mode: entry.billing_mode,
       input_price: mTokToPerToken(entry.input_price),
       output_price: mTokToPerToken(entry.output_price),
@@ -4659,6 +4671,8 @@ const compositeRoutePlatformOptions = computed(() => [
 ]);
 
 const compositeRouteEndpointOptions = computed(() => [
+  { value: "speech", label: "MiniMax Speech" },
+  { value: "video", label: "MiniMax H3" },
   { value: "any", label: t("admin.groups.compositeRoutes.endpoints.any") },
   {
     value: "messages",
@@ -4997,11 +5011,14 @@ const createForm = reactive({
   image_price_4k: null as number | null,
   // 视频生成计费配置（仅 Grok 平台）
   video_rate_independent: false,
+  minimax_rate_independent: false,
   video_rate_multiplier: 1,
+  minimax_rate_multiplier: 1,
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
   video_model_prices: createVideoModelPricesForm(),
+  minimax_media_prices: cloneMiniMaxPrices(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
   search_price_per_1k: null as number | null,
@@ -5364,11 +5381,14 @@ const editForm = reactive({
   image_price_4k: null as number | null,
   // 视频生成计费配置（仅 Grok 平台）
   video_rate_independent: false,
+  minimax_rate_independent: false,
   video_rate_multiplier: 1,
+  minimax_rate_multiplier: 1,
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
   video_model_prices: createVideoModelPricesForm(),
+  minimax_media_prices: cloneMiniMaxPrices(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
   search_price_per_1k: null as number | null,
@@ -5834,7 +5854,10 @@ const closeCreateModal = () => {
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
   createForm.video_rate_independent = false;
+  createForm.minimax_rate_independent = false;
   createForm.video_rate_multiplier = 1;
+  createForm.minimax_rate_multiplier = 1;
+  createForm.minimax_media_prices = {};
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
@@ -6036,9 +6059,8 @@ const handleCreateGroup = async () => {
     requestData.batch_image_hold_multiplier = normalizeRateMultiplier(
       requestData.batch_image_hold_multiplier,
     );
-    requestData.video_rate_multiplier = normalizeRateMultiplier(
-      requestData.video_rate_multiplier,
-    );
+    requestData.video_rate_multiplier = normalizeRateMultiplier(requestData.video_rate_multiplier);
+    requestData.minimax_rate_multiplier = normalizeRateMultiplier(requestData.minimax_rate_multiplier);
     // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400），
     // 创建时按"未配置"（null）处理。
     requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
@@ -6131,7 +6153,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
   editForm.video_rate_independent = group.video_rate_independent ?? false;
+  editForm.minimax_rate_independent = group.minimax_rate_independent ?? false;
   editForm.video_rate_multiplier = group.video_rate_multiplier ?? 1;
+  editForm.minimax_rate_multiplier = group.minimax_rate_multiplier ?? 1;
+  editForm.minimax_media_prices = cloneMiniMaxPrices(group.minimax_media_prices);
   editForm.video_price_480p = group.video_price_480p;
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
@@ -6244,7 +6269,10 @@ const closeEditModal = () => {
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
   editForm.video_rate_independent = false;
+  editForm.minimax_rate_independent = false;
   editForm.video_rate_multiplier = 1;
+  editForm.minimax_rate_multiplier = 1;
+  editForm.minimax_media_prices = {};
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
@@ -6393,9 +6421,8 @@ const handleUpdateGroup = async () => {
     payload.batch_image_hold_multiplier = normalizeRateMultiplier(
       payload.batch_image_hold_multiplier,
     );
-    payload.video_rate_multiplier = normalizeRateMultiplier(
-      payload.video_rate_multiplier,
-    );
+    payload.video_rate_multiplier = normalizeRateMultiplier(payload.video_rate_multiplier);
+    payload.minimax_rate_multiplier = normalizeRateMultiplier(payload.minimax_rate_multiplier);
     // 媒体价格输入清空时 v-model.number 产生 ""，直接提交会被后端 *float64 反序列化拒绝（400）。
     // 更新语义中 null 表示"不修改"，因此清空后的字段发送 -1：后端 normalizePrice 将负价归一为
     // NULL，从而真正清除已配置的价格。

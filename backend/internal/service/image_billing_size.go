@@ -10,6 +10,8 @@ const (
 	ImageBillingSize1K = "1K"
 	ImageBillingSize2K = "2K"
 	ImageBillingSize4K = "4K"
+	// Per-image prices do not imply a pixel-size billing tier.
+	ImageBillingSizePerImage = "per_image"
 
 	ImageSizeSourceOutput  = "output"
 	ImageSizeSourceInput   = "input"

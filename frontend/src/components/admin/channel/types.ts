@@ -21,6 +21,7 @@ export interface IntervalFormEntry {
 }
 
 export interface PricingFormEntry {
+  minimax_media?: import('@/api/admin/channels').MiniMaxMediaPricing | null
   models: string[]
   billing_mode: BillingMode
   input_price: number | string | null

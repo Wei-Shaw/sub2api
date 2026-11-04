@@ -80,6 +80,12 @@ type Group struct {
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier,omitempty"`
 	// 批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额
 	BatchImageHoldMultiplier float64 `json:"batch_image_hold_multiplier,omitempty"`
+	// MinimaxRateIndependent holds the value of the "minimax_rate_independent" field.
+	MinimaxRateIndependent bool `json:"minimax_rate_independent,omitempty"`
+	// MinimaxRateMultiplier holds the value of the "minimax_rate_multiplier" field.
+	MinimaxRateMultiplier float64 `json:"minimax_rate_multiplier,omitempty"`
+	// MinimaxMediaPrices holds the value of the "minimax_media_prices" field.
+	MinimaxMediaPrices map[string]map[string]float64 `json:"minimax_media_prices,omitempty"`
 	// 视频生成是否使用独立倍率；false 表示共享分组有效倍率
 	VideoRateIndependent bool `json:"video_rate_independent,omitempty"`
 	// 视频生成独立倍率，仅 video_rate_independent=true 时生效
@@ -262,11 +268,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldI18n, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
+		case group.FieldI18n, group.FieldMinimaxMediaPrices, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldMinimaxRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldMinimaxRateMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -485,6 +491,26 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field batch_image_hold_multiplier", values[i])
 			} else if value.Valid {
 				_m.BatchImageHoldMultiplier = value.Float64
+			}
+		case group.FieldMinimaxRateIndependent:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field minimax_rate_independent", values[i])
+			} else if value.Valid {
+				_m.MinimaxRateIndependent = value.Bool
+			}
+		case group.FieldMinimaxRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field minimax_rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.MinimaxRateMultiplier = value.Float64
+			}
+		case group.FieldMinimaxMediaPrices:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field minimax_media_prices", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.MinimaxMediaPrices); err != nil {
+					return fmt.Errorf("unmarshal field minimax_media_prices: %w", err)
+				}
 			}
 		case group.FieldVideoRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -923,6 +949,15 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("batch_image_hold_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BatchImageHoldMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("minimax_rate_independent=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MinimaxRateIndependent))
+	builder.WriteString(", ")
+	builder.WriteString("minimax_rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MinimaxRateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("minimax_media_prices=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MinimaxMediaPrices))
 	builder.WriteString(", ")
 	builder.WriteString("video_rate_independent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.VideoRateIndependent))

@@ -1,0 +1,23 @@
+export default {
+  minimaxMedia: {
+    allowImageVideoGeneration: '允许当前分组生成图片和视频',
+    pricing: 'MiniMax 媒体计费',
+    groupHint: '售价单位为 USD。留空使用国际站官方默认价或已有历史覆盖；0 表示免费。',
+    independent: '使用独立媒体倍率',
+    multiplier: 'MiniMax 媒体倍率',
+    finalPrice: '最终单价',
+    voice: '每个首次使用的音色',
+    image: '每张成功图片',
+    characters_per_million: '每百万计费字符',
+    output_second: '每输出秒',
+    input_second: '每输入视频秒',
+    extra_image: '每张超额图片',
+    voiceFeeHint: '未启用独立倍率时使用用户有效分组倍率。克隆/设计音色仅首次合成收取音色费，试听字符另计。',
+    legacyHint: '此处保留历史媒体价卡。请在分组编辑中的 MiniMax 媒体计费区配置新价格和倍率。',
+    capability: '启用 MiniMax 媒体',
+    capabilityHint: '仅限已确认有媒体权限的 MiniMax API Key。支持系统及本平台登记的私有音色。',
+    origin: '媒体接口地区',
+    china: '国内',
+    international: '国际',
+  },
+}

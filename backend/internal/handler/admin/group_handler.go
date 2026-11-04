@@ -206,7 +206,9 @@ type CreateGroupRequest struct {
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
 	VideoRateIndependent            bool                          `json:"video_rate_independent"`
+	MiniMaxRateIndependent          bool                          `json:"minimax_rate_independent"`
 	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	MiniMaxRateMultiplier           *float64                      `json:"minimax_rate_multiplier"`
 	PeakRateEnabled                 bool                          `json:"peak_rate_enabled"`
 	PeakStart                       string                        `json:"peak_start"`
 	PeakEnd                         string                        `json:"peak_end"`
@@ -221,6 +223,7 @@ type CreateGroupRequest struct {
 	VideoPrice720P                  *float64                      `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
 	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	MiniMaxMediaPrices              map[string]map[string]float64 `json:"minimax_media_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
 	SearchPricePer1k                *float64                      `json:"search_price_per_1k"`
 	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
@@ -283,7 +286,9 @@ type UpdateGroupRequest struct {
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
 	VideoRateIndependent            *bool                         `json:"video_rate_independent"`
+	MiniMaxRateIndependent          *bool                         `json:"minimax_rate_independent"`
 	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	MiniMaxRateMultiplier           *float64                      `json:"minimax_rate_multiplier"`
 	PeakRateEnabled                 *bool                         `json:"peak_rate_enabled"`
 	PeakStart                       *string                       `json:"peak_start"`
 	PeakEnd                         *string                       `json:"peak_end"`
@@ -298,6 +303,7 @@ type UpdateGroupRequest struct {
 	VideoPrice720P                  *float64                      `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
 	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	MiniMaxMediaPrices              map[string]map[string]float64 `json:"minimax_media_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
 	SearchPricePer1k                *float64                      `json:"search_price_per_1k"`
 	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
@@ -689,7 +695,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
 		VideoRateIndependent:            req.VideoRateIndependent,
+		MiniMaxRateIndependent:          req.MiniMaxRateIndependent,
 		VideoRateMultiplier:             req.VideoRateMultiplier,
+		MiniMaxRateMultiplier:           req.MiniMaxRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -704,6 +712,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
 		VideoModelPrices:                req.VideoModelPrices,
+		MiniMaxMediaPrices:              req.MiniMaxMediaPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
 		SearchPricePer1k:                req.SearchPricePer1k,
 		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
@@ -837,7 +846,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
 		VideoRateIndependent:            req.VideoRateIndependent,
+		MiniMaxRateIndependent:          req.MiniMaxRateIndependent,
 		VideoRateMultiplier:             req.VideoRateMultiplier,
+		MiniMaxRateMultiplier:           req.MiniMaxRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -852,6 +863,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
 		VideoModelPrices:                req.VideoModelPrices,
+		MiniMaxMediaPrices:              req.MiniMaxMediaPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
 		SearchPricePer1k:                req.SearchPricePer1k,
 		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,

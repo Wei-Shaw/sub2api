@@ -442,6 +442,7 @@ export default {
     imageSizeSourceLegacy: '历史记录',
     imageSizeSourceMissing: '未记录',
     imageSizeNotRecorded: '未记录',
+    imageSizePerImage: '按张',
     imageSizeLegacyUnstandardized: '历史非标准',
     imageSizeUnknown: '未知',
     cacheRead: '读取',

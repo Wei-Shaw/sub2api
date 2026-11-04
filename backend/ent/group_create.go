@@ -434,6 +434,40 @@ func (_c *GroupCreate) SetNillableBatchImageHoldMultiplier(v *float64) *GroupCre
 	return _c
 }
 
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (_c *GroupCreate) SetMinimaxRateIndependent(v bool) *GroupCreate {
+	_c.mutation.SetMinimaxRateIndependent(v)
+	return _c
+}
+
+// SetNillableMinimaxRateIndependent sets the "minimax_rate_independent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMinimaxRateIndependent(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetMinimaxRateIndependent(*v)
+	}
+	return _c
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (_c *GroupCreate) SetMinimaxRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetMinimaxRateMultiplier(v)
+	return _c
+}
+
+// SetNillableMinimaxRateMultiplier sets the "minimax_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMinimaxRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetMinimaxRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (_c *GroupCreate) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupCreate {
+	_c.mutation.SetMinimaxMediaPrices(v)
+	return _c
+}
+
 // SetVideoRateIndependent sets the "video_rate_independent" field.
 func (_c *GroupCreate) SetVideoRateIndependent(v bool) *GroupCreate {
 	_c.mutation.SetVideoRateIndependent(v)
@@ -1139,6 +1173,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultBatchImageHoldMultiplier
 		_c.mutation.SetBatchImageHoldMultiplier(v)
 	}
+	if _, ok := _c.mutation.MinimaxRateIndependent(); !ok {
+		v := group.DefaultMinimaxRateIndependent
+		_c.mutation.SetMinimaxRateIndependent(v)
+	}
+	if _, ok := _c.mutation.MinimaxRateMultiplier(); !ok {
+		v := group.DefaultMinimaxRateMultiplier
+		_c.mutation.SetMinimaxRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.VideoRateIndependent(); !ok {
 		v := group.DefaultVideoRateIndependent
 		_c.mutation.SetVideoRateIndependent(v)
@@ -1341,6 +1383,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.BatchImageHoldMultiplier(); !ok {
 		return &ValidationError{Name: "batch_image_hold_multiplier", err: errors.New(`ent: missing required field "Group.batch_image_hold_multiplier"`)}
+	}
+	if _, ok := _c.mutation.MinimaxRateIndependent(); !ok {
+		return &ValidationError{Name: "minimax_rate_independent", err: errors.New(`ent: missing required field "Group.minimax_rate_independent"`)}
+	}
+	if _, ok := _c.mutation.MinimaxRateMultiplier(); !ok {
+		return &ValidationError{Name: "minimax_rate_multiplier", err: errors.New(`ent: missing required field "Group.minimax_rate_multiplier"`)}
 	}
 	if _, ok := _c.mutation.VideoRateIndependent(); !ok {
 		return &ValidationError{Name: "video_rate_independent", err: errors.New(`ent: missing required field "Group.video_rate_independent"`)}
@@ -1598,6 +1646,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BatchImageHoldMultiplier(); ok {
 		_spec.SetField(group.FieldBatchImageHoldMultiplier, field.TypeFloat64, value)
 		_node.BatchImageHoldMultiplier = value
+	}
+	if value, ok := _c.mutation.MinimaxRateIndependent(); ok {
+		_spec.SetField(group.FieldMinimaxRateIndependent, field.TypeBool, value)
+		_node.MinimaxRateIndependent = value
+	}
+	if value, ok := _c.mutation.MinimaxRateMultiplier(); ok {
+		_spec.SetField(group.FieldMinimaxRateMultiplier, field.TypeFloat64, value)
+		_node.MinimaxRateMultiplier = value
+	}
+	if value, ok := _c.mutation.MinimaxMediaPrices(); ok {
+		_spec.SetField(group.FieldMinimaxMediaPrices, field.TypeJSON, value)
+		_node.MinimaxMediaPrices = value
 	}
 	if value, ok := _c.mutation.VideoRateIndependent(); ok {
 		_spec.SetField(group.FieldVideoRateIndependent, field.TypeBool, value)
@@ -2360,6 +2420,54 @@ func (u *GroupUpsert) UpdateBatchImageHoldMultiplier() *GroupUpsert {
 // AddBatchImageHoldMultiplier adds v to the "batch_image_hold_multiplier" field.
 func (u *GroupUpsert) AddBatchImageHoldMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldBatchImageHoldMultiplier, v)
+	return u
+}
+
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (u *GroupUpsert) SetMinimaxRateIndependent(v bool) *GroupUpsert {
+	u.Set(group.FieldMinimaxRateIndependent, v)
+	return u
+}
+
+// UpdateMinimaxRateIndependent sets the "minimax_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMinimaxRateIndependent() *GroupUpsert {
+	u.SetExcluded(group.FieldMinimaxRateIndependent)
+	return u
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (u *GroupUpsert) SetMinimaxRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldMinimaxRateMultiplier, v)
+	return u
+}
+
+// UpdateMinimaxRateMultiplier sets the "minimax_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMinimaxRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldMinimaxRateMultiplier)
+	return u
+}
+
+// AddMinimaxRateMultiplier adds v to the "minimax_rate_multiplier" field.
+func (u *GroupUpsert) AddMinimaxRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldMinimaxRateMultiplier, v)
+	return u
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (u *GroupUpsert) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupUpsert {
+	u.Set(group.FieldMinimaxMediaPrices, v)
+	return u
+}
+
+// UpdateMinimaxMediaPrices sets the "minimax_media_prices" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMinimaxMediaPrices() *GroupUpsert {
+	u.SetExcluded(group.FieldMinimaxMediaPrices)
+	return u
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (u *GroupUpsert) ClearMinimaxMediaPrices() *GroupUpsert {
+	u.SetNull(group.FieldMinimaxMediaPrices)
 	return u
 }
 
@@ -3564,6 +3672,62 @@ func (u *GroupUpsertOne) AddBatchImageHoldMultiplier(v float64) *GroupUpsertOne 
 func (u *GroupUpsertOne) UpdateBatchImageHoldMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateBatchImageHoldMultiplier()
+	})
+}
+
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (u *GroupUpsertOne) SetMinimaxRateIndependent(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxRateIndependent(v)
+	})
+}
+
+// UpdateMinimaxRateIndependent sets the "minimax_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMinimaxRateIndependent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxRateIndependent()
+	})
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (u *GroupUpsertOne) SetMinimaxRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxRateMultiplier(v)
+	})
+}
+
+// AddMinimaxRateMultiplier adds v to the "minimax_rate_multiplier" field.
+func (u *GroupUpsertOne) AddMinimaxRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddMinimaxRateMultiplier(v)
+	})
+}
+
+// UpdateMinimaxRateMultiplier sets the "minimax_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMinimaxRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxRateMultiplier()
+	})
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (u *GroupUpsertOne) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxMediaPrices(v)
+	})
+}
+
+// UpdateMinimaxMediaPrices sets the "minimax_media_prices" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMinimaxMediaPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxMediaPrices()
+	})
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (u *GroupUpsertOne) ClearMinimaxMediaPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearMinimaxMediaPrices()
 	})
 }
 
@@ -5038,6 +5202,62 @@ func (u *GroupUpsertBulk) AddBatchImageHoldMultiplier(v float64) *GroupUpsertBul
 func (u *GroupUpsertBulk) UpdateBatchImageHoldMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateBatchImageHoldMultiplier()
+	})
+}
+
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (u *GroupUpsertBulk) SetMinimaxRateIndependent(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxRateIndependent(v)
+	})
+}
+
+// UpdateMinimaxRateIndependent sets the "minimax_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMinimaxRateIndependent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxRateIndependent()
+	})
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetMinimaxRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxRateMultiplier(v)
+	})
+}
+
+// AddMinimaxRateMultiplier adds v to the "minimax_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddMinimaxRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddMinimaxRateMultiplier(v)
+	})
+}
+
+// UpdateMinimaxRateMultiplier sets the "minimax_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMinimaxRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxRateMultiplier()
+	})
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (u *GroupUpsertBulk) SetMinimaxMediaPrices(v map[string]map[string]float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMinimaxMediaPrices(v)
+	})
+}
+
+// UpdateMinimaxMediaPrices sets the "minimax_media_prices" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMinimaxMediaPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMinimaxMediaPrices()
+	})
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (u *GroupUpsertBulk) ClearMinimaxMediaPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearMinimaxMediaPrices()
 	})
 }
 

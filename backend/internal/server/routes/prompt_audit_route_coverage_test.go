@@ -28,6 +28,10 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 	}
 
 	audited := map[string][]string{
+		"/t2a_v2":                   {"minimax_media.go"},
+		"/voice_clone":              {"minimax_media.go"},
+		"/voice_design":             {"minimax_media.go"},
+		"/image_generation":         {"minimax_media.go"},
 		"/messages":                 {"gateway_handler.go", "openai_gateway_handler.go"},
 		"/systemone":                {"gateway_systemone.go"},
 		"/responses":                {"gateway_handler_responses.go", "openai_gateway_handler.go"},
@@ -53,6 +57,8 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/x_search":                 {"gateway_web_search.go"},
 	}
 	excluded := map[string]string{
+		"/get_voice":                 "voice catalogue lookup only",
+		"/files/upload":              "private voice sample upload with no text generation",
 		"/messages/count_tokens":     "tokenization only; it does not execute a model request",
 		"/images/batches/:id/cancel": "control-plane cancellation with no user prompt",
 		"/stt":                       "speech transcription is not a text-generation prompt",

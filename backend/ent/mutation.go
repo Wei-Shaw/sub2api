@@ -22123,6 +22123,10 @@ type GroupMutation struct {
 	addbatch_image_discount_multiplier      *float64
 	batch_image_hold_multiplier             *float64
 	addbatch_image_hold_multiplier          *float64
+	minimax_rate_independent                *bool
+	minimax_rate_multiplier                 *float64
+	addminimax_rate_multiplier              *float64
+	minimax_media_prices                    *map[string]map[string]float64
 	video_rate_independent                  *bool
 	video_rate_multiplier                   *float64
 	addvideo_rate_multiplier                *float64
@@ -23742,6 +23746,147 @@ func (m *GroupMutation) AddedBatchImageHoldMultiplier() (r float64, exists bool)
 func (m *GroupMutation) ResetBatchImageHoldMultiplier() {
 	m.batch_image_hold_multiplier = nil
 	m.addbatch_image_hold_multiplier = nil
+}
+
+// SetMinimaxRateIndependent sets the "minimax_rate_independent" field.
+func (m *GroupMutation) SetMinimaxRateIndependent(b bool) {
+	m.minimax_rate_independent = &b
+}
+
+// MinimaxRateIndependent returns the value of the "minimax_rate_independent" field in the mutation.
+func (m *GroupMutation) MinimaxRateIndependent() (r bool, exists bool) {
+	v := m.minimax_rate_independent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinimaxRateIndependent returns the old "minimax_rate_independent" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMinimaxRateIndependent(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinimaxRateIndependent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinimaxRateIndependent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinimaxRateIndependent: %w", err)
+	}
+	return oldValue.MinimaxRateIndependent, nil
+}
+
+// ResetMinimaxRateIndependent resets all changes to the "minimax_rate_independent" field.
+func (m *GroupMutation) ResetMinimaxRateIndependent() {
+	m.minimax_rate_independent = nil
+}
+
+// SetMinimaxRateMultiplier sets the "minimax_rate_multiplier" field.
+func (m *GroupMutation) SetMinimaxRateMultiplier(f float64) {
+	m.minimax_rate_multiplier = &f
+	m.addminimax_rate_multiplier = nil
+}
+
+// MinimaxRateMultiplier returns the value of the "minimax_rate_multiplier" field in the mutation.
+func (m *GroupMutation) MinimaxRateMultiplier() (r float64, exists bool) {
+	v := m.minimax_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinimaxRateMultiplier returns the old "minimax_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMinimaxRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinimaxRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinimaxRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinimaxRateMultiplier: %w", err)
+	}
+	return oldValue.MinimaxRateMultiplier, nil
+}
+
+// AddMinimaxRateMultiplier adds f to the "minimax_rate_multiplier" field.
+func (m *GroupMutation) AddMinimaxRateMultiplier(f float64) {
+	if m.addminimax_rate_multiplier != nil {
+		*m.addminimax_rate_multiplier += f
+	} else {
+		m.addminimax_rate_multiplier = &f
+	}
+}
+
+// AddedMinimaxRateMultiplier returns the value that was added to the "minimax_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedMinimaxRateMultiplier() (r float64, exists bool) {
+	v := m.addminimax_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMinimaxRateMultiplier resets all changes to the "minimax_rate_multiplier" field.
+func (m *GroupMutation) ResetMinimaxRateMultiplier() {
+	m.minimax_rate_multiplier = nil
+	m.addminimax_rate_multiplier = nil
+}
+
+// SetMinimaxMediaPrices sets the "minimax_media_prices" field.
+func (m *GroupMutation) SetMinimaxMediaPrices(value map[string]map[string]float64) {
+	m.minimax_media_prices = &value
+}
+
+// MinimaxMediaPrices returns the value of the "minimax_media_prices" field in the mutation.
+func (m *GroupMutation) MinimaxMediaPrices() (r map[string]map[string]float64, exists bool) {
+	v := m.minimax_media_prices
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinimaxMediaPrices returns the old "minimax_media_prices" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMinimaxMediaPrices(ctx context.Context) (v map[string]map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinimaxMediaPrices is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinimaxMediaPrices requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinimaxMediaPrices: %w", err)
+	}
+	return oldValue.MinimaxMediaPrices, nil
+}
+
+// ClearMinimaxMediaPrices clears the value of the "minimax_media_prices" field.
+func (m *GroupMutation) ClearMinimaxMediaPrices() {
+	m.minimax_media_prices = nil
+	m.clearedFields[group.FieldMinimaxMediaPrices] = struct{}{}
+}
+
+// MinimaxMediaPricesCleared returns if the "minimax_media_prices" field was cleared in this mutation.
+func (m *GroupMutation) MinimaxMediaPricesCleared() bool {
+	_, ok := m.clearedFields[group.FieldMinimaxMediaPrices]
+	return ok
+}
+
+// ResetMinimaxMediaPrices resets all changes to the "minimax_media_prices" field.
+func (m *GroupMutation) ResetMinimaxMediaPrices() {
+	m.minimax_media_prices = nil
+	delete(m.clearedFields, group.FieldMinimaxMediaPrices)
 }
 
 // SetVideoRateIndependent sets the "video_rate_independent" field.
@@ -25995,7 +26140,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 71)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26085,6 +26230,15 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.batch_image_hold_multiplier != nil {
 		fields = append(fields, group.FieldBatchImageHoldMultiplier)
+	}
+	if m.minimax_rate_independent != nil {
+		fields = append(fields, group.FieldMinimaxRateIndependent)
+	}
+	if m.minimax_rate_multiplier != nil {
+		fields = append(fields, group.FieldMinimaxRateMultiplier)
+	}
+	if m.minimax_media_prices != nil {
+		fields = append(fields, group.FieldMinimaxMediaPrices)
 	}
 	if m.video_rate_independent != nil {
 		fields = append(fields, group.FieldVideoRateIndependent)
@@ -26268,6 +26422,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.BatchImageDiscountMultiplier()
 	case group.FieldBatchImageHoldMultiplier:
 		return m.BatchImageHoldMultiplier()
+	case group.FieldMinimaxRateIndependent:
+		return m.MinimaxRateIndependent()
+	case group.FieldMinimaxRateMultiplier:
+		return m.MinimaxRateMultiplier()
+	case group.FieldMinimaxMediaPrices:
+		return m.MinimaxMediaPrices()
 	case group.FieldVideoRateIndependent:
 		return m.VideoRateIndependent()
 	case group.FieldVideoRateMultiplier:
@@ -26413,6 +26573,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldBatchImageDiscountMultiplier(ctx)
 	case group.FieldBatchImageHoldMultiplier:
 		return m.OldBatchImageHoldMultiplier(ctx)
+	case group.FieldMinimaxRateIndependent:
+		return m.OldMinimaxRateIndependent(ctx)
+	case group.FieldMinimaxRateMultiplier:
+		return m.OldMinimaxRateMultiplier(ctx)
+	case group.FieldMinimaxMediaPrices:
+		return m.OldMinimaxMediaPrices(ctx)
 	case group.FieldVideoRateIndependent:
 		return m.OldVideoRateIndependent(ctx)
 	case group.FieldVideoRateMultiplier:
@@ -26707,6 +26873,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBatchImageHoldMultiplier(v)
+		return nil
+	case group.FieldMinimaxRateIndependent:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinimaxRateIndependent(v)
+		return nil
+	case group.FieldMinimaxRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinimaxRateMultiplier(v)
+		return nil
+	case group.FieldMinimaxMediaPrices:
+		v, ok := value.(map[string]map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinimaxMediaPrices(v)
 		return nil
 	case group.FieldVideoRateIndependent:
 		v, ok := value.(bool)
@@ -27018,6 +27205,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addbatch_image_hold_multiplier != nil {
 		fields = append(fields, group.FieldBatchImageHoldMultiplier)
 	}
+	if m.addminimax_rate_multiplier != nil {
+		fields = append(fields, group.FieldMinimaxRateMultiplier)
+	}
 	if m.addvideo_rate_multiplier != nil {
 		fields = append(fields, group.FieldVideoRateMultiplier)
 	}
@@ -27095,6 +27285,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBatchImageDiscountMultiplier()
 	case group.FieldBatchImageHoldMultiplier:
 		return m.AddedBatchImageHoldMultiplier()
+	case group.FieldMinimaxRateMultiplier:
+		return m.AddedMinimaxRateMultiplier()
 	case group.FieldVideoRateMultiplier:
 		return m.AddedVideoRateMultiplier()
 	case group.FieldVideoPrice480p:
@@ -27217,6 +27409,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddBatchImageHoldMultiplier(v)
+		return nil
+	case group.FieldMinimaxRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMinimaxRateMultiplier(v)
 		return nil
 	case group.FieldVideoRateMultiplier:
 		v, ok := value.(float64)
@@ -27358,6 +27557,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldImagePrice4k) {
 		fields = append(fields, group.FieldImagePrice4k)
 	}
+	if m.FieldCleared(group.FieldMinimaxMediaPrices) {
+		fields = append(fields, group.FieldMinimaxMediaPrices)
+	}
 	if m.FieldCleared(group.FieldVideoPrice480p) {
 		fields = append(fields, group.FieldVideoPrice480p)
 	}
@@ -27437,6 +27639,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ClearImagePrice4k()
+		return nil
+	case group.FieldMinimaxMediaPrices:
+		m.ClearMinimaxMediaPrices()
 		return nil
 	case group.FieldVideoPrice480p:
 		m.ClearVideoPrice480p()
@@ -27574,6 +27779,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldBatchImageHoldMultiplier:
 		m.ResetBatchImageHoldMultiplier()
+		return nil
+	case group.FieldMinimaxRateIndependent:
+		m.ResetMinimaxRateIndependent()
+		return nil
+	case group.FieldMinimaxRateMultiplier:
+		m.ResetMinimaxRateMultiplier()
+		return nil
+	case group.FieldMinimaxMediaPrices:
+		m.ResetMinimaxMediaPrices()
 		return nil
 	case group.FieldVideoRateIndependent:
 		m.ResetVideoRateIndependent()

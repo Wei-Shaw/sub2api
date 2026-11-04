@@ -50,6 +50,8 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	idempotencyCleanupSvc := service.NewIdempotencyCleanupService(nil, cfg)
 	schedulerSnapshotSvc := service.NewSchedulerSnapshotService(nil, nil, nil, nil, cfg)
 	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
+	minimaxMediaSvc := service.NewMiniMaxMediaService(nil, nil, nil)
+	minimaxMediaSvc.Start()
 
 	cleanup := provideCleanup(
 		nil, // entClient
@@ -76,6 +78,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		idempotencyCleanupSvc,
 		service.NewGeminiCachedContentService(nil, nil, cfg),
 		&service.BatchImageCleanupService{},
+		minimaxMediaSvc,
 		nil, // batchImageWorker
 		pricingSvc,
 		emailQueueSvc,

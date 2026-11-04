@@ -153,7 +153,7 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformZhipu, true
 	case strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepseek, true
-	case strings.HasPrefix(normalized, "minimax-"),
+	case normalized == "image-01", normalized == "voice_design", strings.HasPrefix(normalized, "minimax-"), strings.HasPrefix(normalized, "speech-"),
 		strings.HasPrefix(normalized, "abab5"),
 		strings.HasPrefix(normalized, "abab6"),
 		strings.HasPrefix(normalized, "abab7"):

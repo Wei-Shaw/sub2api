@@ -76,6 +76,12 @@ const (
 	FieldBatchImageDiscountMultiplier = "batch_image_discount_multiplier"
 	// FieldBatchImageHoldMultiplier holds the string denoting the batch_image_hold_multiplier field in the database.
 	FieldBatchImageHoldMultiplier = "batch_image_hold_multiplier"
+	// FieldMinimaxRateIndependent holds the string denoting the minimax_rate_independent field in the database.
+	FieldMinimaxRateIndependent = "minimax_rate_independent"
+	// FieldMinimaxRateMultiplier holds the string denoting the minimax_rate_multiplier field in the database.
+	FieldMinimaxRateMultiplier = "minimax_rate_multiplier"
+	// FieldMinimaxMediaPrices holds the string denoting the minimax_media_prices field in the database.
+	FieldMinimaxMediaPrices = "minimax_media_prices"
 	// FieldVideoRateIndependent holds the string denoting the video_rate_independent field in the database.
 	FieldVideoRateIndependent = "video_rate_independent"
 	// FieldVideoRateMultiplier holds the string denoting the video_rate_multiplier field in the database.
@@ -257,6 +263,9 @@ var Columns = []string{
 	FieldImagePrice4k,
 	FieldBatchImageDiscountMultiplier,
 	FieldBatchImageHoldMultiplier,
+	FieldMinimaxRateIndependent,
+	FieldMinimaxRateMultiplier,
+	FieldMinimaxMediaPrices,
 	FieldVideoRateIndependent,
 	FieldVideoRateMultiplier,
 	FieldVideoPrice480p,
@@ -380,6 +389,10 @@ var (
 	DefaultBatchImageDiscountMultiplier float64
 	// DefaultBatchImageHoldMultiplier holds the default value on creation for the "batch_image_hold_multiplier" field.
 	DefaultBatchImageHoldMultiplier float64
+	// DefaultMinimaxRateIndependent holds the default value on creation for the "minimax_rate_independent" field.
+	DefaultMinimaxRateIndependent bool
+	// DefaultMinimaxRateMultiplier holds the default value on creation for the "minimax_rate_multiplier" field.
+	DefaultMinimaxRateMultiplier float64
 	// DefaultVideoRateIndependent holds the default value on creation for the "video_rate_independent" field.
 	DefaultVideoRateIndependent bool
 	// DefaultVideoRateMultiplier holds the default value on creation for the "video_rate_multiplier" field.
@@ -597,6 +610,16 @@ func ByBatchImageDiscountMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByBatchImageHoldMultiplier orders the results by the batch_image_hold_multiplier field.
 func ByBatchImageHoldMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBatchImageHoldMultiplier, opts...).ToFunc()
+}
+
+// ByMinimaxRateIndependent orders the results by the minimax_rate_independent field.
+func ByMinimaxRateIndependent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMinimaxRateIndependent, opts...).ToFunc()
+}
+
+// ByMinimaxRateMultiplier orders the results by the minimax_rate_multiplier field.
+func ByMinimaxRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMinimaxRateMultiplier, opts...).ToFunc()
 }
 
 // ByVideoRateIndependent orders the results by the video_rate_independent field.
