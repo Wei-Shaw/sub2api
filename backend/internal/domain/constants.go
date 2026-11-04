@@ -198,8 +198,10 @@ var DefaultAntigravityModelMapping = map[string]string{
 // aws_region 自动调整为匹配的区域前缀（如 eu.、apac.、jp. 等）
 var DefaultBedrockModelMapping = map[string]string{
 	// Claude Fable
-	"claude-fable-5-1": "anthropic.claude-fable-5-1",
-	"claude-fable-5":   "anthropic.claude-fable-5",
+	"claude-fable-5-2":  "anthropic.claude-fable-5-2",
+	"claude-mythos-5-2": "anthropic.claude-mythos-5-2",
+	"claude-fable-5-1":  "anthropic.claude-fable-5-1",
+	"claude-fable-5":    "anthropic.claude-fable-5",
 	// Claude Opus
 	"claude-opus-5":            "us.anthropic.claude-opus-5-v1",
 	"claude-opus-4-8":          "us.anthropic.claude-opus-4-8-v1",

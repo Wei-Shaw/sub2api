@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -17,35 +18,62 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func (r *accountRepository) ScopedAdminList(ctx context.Context, p pagination.PaginationParams, platform, kind, status, search string) ([]service.Account, int64, error) {
+func (r *accountRepository) ScopedAdminList(ctx context.Context, p pagination.PaginationParams, platform, kind, status, search string, groupID int64) ([]service.Account, int64, error) {
 	principal := adminaccess.FromContext(ctx)
 	if principal == nil {
 		return nil, 0, fmt.Errorf("缺少受限身份")
 	}
-	alternatives := scopedAdminAccountPredicates(principal.Policy, "accounts.read")
+	readPolicy := principal.Policy
+	if groupID > 0 {
+		readPolicy.Rules = nil
+		for _, rule := range principal.Policy.RulesFor("accounts.read") {
+			if rule.AllGroups || slices.Contains(rule.GroupIDs, groupID) {
+				readPolicy.Rules = append(readPolicy.Rules, rule)
+			}
+		}
+	}
+	alternatives := scopedAdminAccountPredicates(readPolicy, "accounts.read")
 	if len(alternatives) == 0 {
 		return []service.Account{}, 0, nil
 	}
-	q := r.accountListFilteredQuery(platform, kind, status, search, 0, "").Where(dbaccount.Or(alternatives...))
+	q := r.accountListFilteredQuery(platform, kind, status, "", groupID, "").Where(dbaccount.Or(alternatives...))
+	if search != "" {
+		matches := []dbpredicate.Account{dbaccount.NameContainsFold(search)}
+		identityScope := scopedAdminAccountPredicates(principal.Policy, "accounts.identity.read")
+		if len(identityScope) > 0 {
+			email := dbpredicate.Account(func(s *entsql.Selector) {
+				s.Where(entsql.P(func(b *entsql.Builder) {
+					b.WriteString("(lower(" + s.C(dbaccount.FieldCredentials) + "->>'email') = ").Arg(strings.ToLower(search))
+					b.WriteString(" OR lower(" + s.C(dbaccount.FieldExtra) + "->>'email') = ").Arg(strings.ToLower(search)).WriteString(")")
+				}))
+			})
+			matches = append(matches, dbaccount.And(dbaccount.Or(identityScope...), email))
+		}
+		q.Where(dbaccount.Or(matches...))
+	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
 	// SQL 只投影模型映射子字段，不加载 Token、API Key、接入地址或其他凭证。
 	var rows []struct {
-		ID           int64
-		Name         string
-		Notes        *string
-		Platform     string
-		Type         string
-		Status       string
-		Schedulable  bool
-		Concurrency  int
-		Priority     int
-		ModelMapping json.RawMessage `json:"model_mapping"`
+		ID                     int64
+		Name                   string
+		Notes                  *string
+		Platform               string
+		Type                   string
+		Status                 string
+		Schedulable            bool
+		Concurrency            int
+		Priority               int
+		ExpiresAt              *time.Time      `json:"expires_at"`
+		RateLimitResetAt       *time.Time      `json:"rate_limit_reset_at"`
+		OverloadUntil          *time.Time      `json:"overload_until"`
+		TempUnschedulableUntil *time.Time      `json:"temp_unschedulable_until"`
+		ModelMapping           json.RawMessage `json:"model_mapping"`
 	}
 	err = q.Offset(p.Offset()).Limit(p.Limit()).Order(dbaccount.ByID()).
-		Select(dbaccount.FieldID, dbaccount.FieldName, dbaccount.FieldNotes, dbaccount.FieldPlatform, dbaccount.FieldType, dbaccount.FieldStatus, dbaccount.FieldSchedulable, dbaccount.FieldConcurrency, dbaccount.FieldPriority).
+		Select(dbaccount.FieldID, dbaccount.FieldName, dbaccount.FieldNotes, dbaccount.FieldPlatform, dbaccount.FieldType, dbaccount.FieldStatus, dbaccount.FieldSchedulable, dbaccount.FieldConcurrency, dbaccount.FieldPriority, dbaccount.FieldExpiresAt, dbaccount.FieldRateLimitResetAt, dbaccount.FieldOverloadUntil, dbaccount.FieldTempUnschedulableUntil).
 		Aggregate(func(s *entsql.Selector) string {
 			return s.C(dbaccount.FieldCredentials) + "->'model_mapping' AS model_mapping"
 		}).Scan(ctx, &rows)
@@ -71,7 +99,75 @@ func (r *accountRepository) ScopedAdminList(ctx context.Context, p pagination.Pa
 		if len(mapping) > 0 {
 			credentials = map[string]any{"model_mapping": mapping}
 		}
-		accounts = append(accounts, service.Account{ID: row.ID, Name: row.Name, Notes: row.Notes, Platform: row.Platform, Type: row.Type, Status: row.Status, Schedulable: row.Schedulable, Concurrency: row.Concurrency, Priority: row.Priority, GroupIDs: groups, Credentials: credentials})
+		a := service.Account{ID: row.ID, Name: row.Name, Notes: row.Notes, Platform: row.Platform, Type: row.Type, Status: row.Status, Schedulable: row.Schedulable, Concurrency: row.Concurrency, Priority: row.Priority, GroupIDs: groups, Credentials: credentials, ExpiresAt: row.ExpiresAt, RateLimitResetAt: row.RateLimitResetAt, OverloadUntil: row.OverloadUntil, TempUnschedulableUntil: row.TempUnschedulableUntil}
+		accounts = append(accounts, a)
+	}
+	// 身份字段只为本页逐行鉴权通过的账户批量投影，不加载完整凭证或 extra。
+	identityIDs := make([]int64, 0, len(accounts))
+	identityAccounts := make(map[int64]*service.Account)
+	for i := range accounts {
+		a := &accounts[i]
+		if principal.Policy.AllowsAccount("accounts.identity.read", adminaccess.Account{ID: a.ID, GroupIDs: a.GroupIDs, Type: a.Type, Platform: a.Platform}) {
+			identityIDs = append(identityIDs, a.ID)
+			identityAccounts[a.ID] = a
+		}
+	}
+	if len(identityIDs) > 0 {
+		var identities []struct {
+			ID          int64           `json:"id"`
+			CreatedAt   time.Time       `json:"created_at"`
+			Credentials json.RawMessage `json:"credentials"`
+			Extra       json.RawMessage `json:"extra"`
+		}
+		err := r.client.Account.Query().Where(dbaccount.IDIn(identityIDs...)).Select(dbaccount.FieldID, dbaccount.FieldCreatedAt).
+			Aggregate(func(s *entsql.Selector) string {
+				return "jsonb_build_object('email', " + s.C(dbaccount.FieldCredentials) + "->'email', 'plan_type', " + s.C(dbaccount.FieldCredentials) + "->'plan_type', 'subscription_expires_at', " + s.C(dbaccount.FieldCredentials) + "->'subscription_expires_at') AS credentials"
+			}, func(s *entsql.Selector) string {
+				return "jsonb_build_object('email', " + s.C(dbaccount.FieldExtra) + "->'email') AS extra"
+			}).Scan(ctx, &identities)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, identity := range identities {
+			a := identityAccounts[identity.ID]
+			if err := json.Unmarshal(identity.Credentials, &a.Credentials); err != nil {
+				return nil, 0, err
+			}
+			if err := json.Unmarshal(identity.Extra, &a.Extra); err != nil {
+				return nil, 0, err
+			}
+			a.CreatedAt = identity.CreatedAt
+		}
+	}
+	// 仅为本页已获额度权限的账户批量加载三个周额度快照字段。
+	usageIDs := make([]int64, 0, len(accounts))
+	usageAccounts := make(map[int64]*service.Account)
+	for i := range accounts {
+		a := &accounts[i]
+		if principal.Policy.AllowsAccount("accounts.usage.read", adminaccess.Account{ID: a.ID, GroupIDs: a.GroupIDs, Type: a.Type, Platform: a.Platform}) {
+			usageIDs = append(usageIDs, a.ID)
+			usageAccounts[a.ID] = a
+		}
+	}
+	if len(usageIDs) > 0 {
+		var snapshots []struct {
+			ID    int64           `json:"id"`
+			Extra json.RawMessage `json:"extra"`
+		}
+		err := r.client.Account.Query().Where(dbaccount.IDIn(usageIDs...)).Select(dbaccount.FieldID).
+			Aggregate(func(s *entsql.Selector) string {
+				extra := s.C(dbaccount.FieldExtra)
+				return "jsonb_strip_nulls(jsonb_build_object('codex_usage_updated_at', " + extra + "->'codex_usage_updated_at', 'codex_7d_used_percent', " + extra + "->'codex_7d_used_percent', 'codex_7d_reset_at', " + extra + "->'codex_7d_reset_at')) AS extra"
+			}).Scan(ctx, &snapshots)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, snapshot := range snapshots {
+			// 合并到已有 extra，保留独立身份权限允许读取的邮箱。
+			if err := json.Unmarshal(snapshot.Extra, &usageAccounts[snapshot.ID].Extra); err != nil {
+				return nil, 0, err
+			}
+		}
 	}
 	return accounts, int64(total), nil
 }

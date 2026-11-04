@@ -2104,7 +2104,8 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 				require.NoError(t, err)
 				require.InDelta(t, 100_000*2e-6, cost.InputCost, 1e-10)
 				require.InDelta(t, 400*2.5e-6+600*4e-6, cost.CacheCreationCost, 1e-10)
-				require.InDelta(t, 1000*0.2e-6, cost.CacheReadCost, 1e-10)
+				// Sonnet 5.5 cache hits cost 5% of the $2/MTok input price (#8378).
+				require.InDelta(t, 1000*0.1e-6, cost.CacheReadCost, 1e-10)
 				require.InDelta(t, 500*10e-6, cost.OutputCost, 1e-10)
 				require.False(t, cost.LongContextBillingApplied)
 			})

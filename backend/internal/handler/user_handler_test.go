@@ -440,6 +440,10 @@ func (s *userHandlerRefreshTokenCacheStub) DeleteTokenFamily(context.Context, st
 	return nil
 }
 
+func (s *userHandlerRefreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*service.RefreshTokenData, error) {
+	return nil, service.ErrRefreshTokenNotFound
+}
+
 func (s *userHandlerRefreshTokenCacheStub) AddToUserTokenSet(context.Context, int64, string, time.Duration) error {
 	return nil
 }

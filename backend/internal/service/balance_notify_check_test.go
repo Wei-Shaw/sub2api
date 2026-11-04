@@ -240,8 +240,8 @@ func TestCheckQuotaDimCrossings_NoDimensions(t *testing.T) {
 	s, _ := newBalanceNotifyServiceForTest()
 	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
 	// Empty dims → no crossing, no panic.
-	s.checkQuotaDimCrossings(account, nil, 10, []string{"admin@example.com"}, "TestSite")
-	s.checkQuotaDimCrossings(account, []quotaDim{}, 10, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, nil, 10, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, []quotaDim{}, 10, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_DisabledDimension(t *testing.T) {
@@ -258,7 +258,7 @@ func TestCheckQuotaDimCrossings_DisabledDimension(t *testing.T) {
 		},
 	}
 	// Disabled dimension should be skipped even if crossing would occur.
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_ZeroThresholdSkipped(t *testing.T) {
@@ -275,7 +275,7 @@ func TestCheckQuotaDimCrossings_ZeroThresholdSkipped(t *testing.T) {
 		},
 	}
 	// Zero threshold → skipped.
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_NoCrossing_BothBelowThreshold(t *testing.T) {
@@ -293,7 +293,7 @@ func TestCheckQuotaDimCrossings_NoCrossing_BothBelowThreshold(t *testing.T) {
 			limit:         1000,
 		},
 	}
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_NoCrossing_BothAboveThreshold(t *testing.T) {
@@ -311,7 +311,7 @@ func TestCheckQuotaDimCrossings_NoCrossing_BothAboveThreshold(t *testing.T) {
 			limit:         1000,
 		},
 	}
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_NegativeResolvedThreshold_Skipped(t *testing.T) {
@@ -329,7 +329,7 @@ func TestCheckQuotaDimCrossings_NegativeResolvedThreshold_Skipped(t *testing.T) 
 			limit:         1000,
 		},
 	}
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_PercentageThreshold_NoCrossing(t *testing.T) {
@@ -347,7 +347,7 @@ func TestCheckQuotaDimCrossings_PercentageThreshold_NoCrossing(t *testing.T) {
 			limit:         1000,
 		},
 	}
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_ZeroLimit_Skipped(t *testing.T) {
@@ -364,7 +364,7 @@ func TestCheckQuotaDimCrossings_ZeroLimit_Skipped(t *testing.T) {
 			limit:         0,
 		},
 	}
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
 
 func TestCheckQuotaDimCrossings_MultipleDims_MixedResults(t *testing.T) {
@@ -400,5 +400,5 @@ func TestCheckQuotaDimCrossings_MultipleDims_MixedResults(t *testing.T) {
 		},
 	}
 	// None should trigger. No panic expected.
-	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(context.Background(), account, dims, 50, []string{"admin@example.com"}, "TestSite")
 }
