@@ -71,6 +71,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	firstClientMessage []byte,
 	hooks *OpenAIWSIngressHooks,
 ) (returnErr error) {
+	defer func() { returnErr = finalizePrepaidWSError(c, returnErr) }()
 	if s == nil {
 		return errors.New("service is nil")
 	}

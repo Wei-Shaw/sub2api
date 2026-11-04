@@ -586,6 +586,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	if isBytePlusPackDenial(resp) {
+		return nil, forwardBytePlusPackDenial(c, resp, body)
+	}
 	body = s.redactAgentIdentitySensitiveBody(ctx, account, body)
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
@@ -837,6 +840,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	if isBytePlusPackDenial(resp) {
+		return nil, forwardBytePlusPackDenial(c, resp, body)
+	}
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
 
 	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，

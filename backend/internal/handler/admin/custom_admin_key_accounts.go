@@ -88,6 +88,10 @@ func (h *AccountHandler) ScopedAdminKeyAccounts(c *gin.Context) {
 	}
 	c.Abort()
 	base := "/api/v1/admin/accounts"
+	if strings.HasPrefix(path, base+"/:id/byteplus-prepaid") {
+		response.Error(c, 403, "Full administrator access is required for shared funding pools")
+		return
+	}
 	// 静态默认映射不读取任何账户；权限独立于账户查看及凭证写入。
 	if path == base+"/antigravity/default-model-mapping" && c.Request.Method == "GET" {
 		if !adminaccess.RouteAllowed(principal.Policy, c.Request.Method, path) {

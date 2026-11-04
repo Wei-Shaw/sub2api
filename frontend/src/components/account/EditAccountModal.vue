@@ -3326,6 +3326,12 @@
       />
 
     </form>
+    <BytePlusPrepaidFunding
+      v-if="account?.type === 'apikey' && (String(account.platform) === 'byteplus' || isBytePlusEndpoint(account.credentials?.base_url))"
+      :key="account.id"
+      :account-id="account.id"
+      :account-name="account.name"
+    />
 
     <template #footer>
       <div v-if="account" class="flex justify-end gap-3">
@@ -3379,6 +3385,8 @@
 </template>
 
 <script setup lang="ts">
+import BytePlusPrepaidFunding from './BytePlusPrepaidFunding.vue'
+import { isBytePlusEndpoint } from '@/utils/byteplusPrepaid'
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
