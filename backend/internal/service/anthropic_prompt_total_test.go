@@ -30,7 +30,7 @@ func TestAnthropicPromptTotalSnapshots(t *testing.T) {
 		{"independent input", `"input_tokens":80`, []string{`{"cache_creation":{"ephemeral_1h_input_tokens":30}}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{80, 80}},
 		{"miss overrides total", `"prompt_tokens":100`, []string{`{"prompt_tokens":100,"prompt_cache_miss_tokens":40}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{40, 40}},
 		{"late read aliases", `"prompt_tokens":100`, []string{`{"cached_tokens":10}`, `{"cached_tokens":15}`, `{"prompt_tokens_details":{"cached_tokens":20}}`, `{"prompt_cache_hit_tokens":25}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{70, 65, 60, 55, 25}},
-		{"aggregate clears", `"prompt_tokens":100`, []string{`{"cache_creation_input_tokens":50}`, `{"cache_creation_input_tokens":0}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{50, 100, 100}},
+		{"aggregate survives zero placeholder", `"prompt_tokens":100`, []string{`{"cache_creation_input_tokens":50}`, `{"cache_creation_input_tokens":0}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{50, 50, 50}},
 		{"cache exceeds prompt", `"prompt_tokens":100`, []string{`{"cache_creation":{"ephemeral_1h_input_tokens":100}}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, []int{0, 50}},
 	} {
 		for _, parser := range []string{"typed", "raw", "generic"} {
@@ -70,10 +70,10 @@ func TestAnthropicPromptTotalCacheReadPresence(t *testing.T) {
 		delta string
 		read  int
 	}{
-		{"canonical zero", `{"cache_read_input_tokens":0}`, 0},
-		{"cached zero", `{"cached_tokens":0}`, 0},
-		{"details zero", `{"prompt_tokens_details":{"cached_tokens":0}}`, 0},
-		{"hit zero", `{"prompt_cache_hit_tokens":0}`, 0},
+		{"canonical zero", `{"cache_read_input_tokens":0}`, 20},
+		{"cached zero", `{"cached_tokens":0}`, 20},
+		{"details zero", `{"prompt_tokens_details":{"cached_tokens":0}}`, 20},
+		{"hit zero", `{"prompt_cache_hit_tokens":0}`, 20},
 		{"missing", `{"output_tokens":2}`, 20},
 		{"null", `{"cache_read_input_tokens":null,"cached_tokens":null,"prompt_tokens_details":{"cached_tokens":null},"prompt_cache_hit_tokens":null}`, 20},
 		{"canonical precedence", `{"cache_read_input_tokens":12,"cached_tokens":13,"prompt_tokens_details":{"cached_tokens":14},"prompt_cache_hit_tokens":15}`, 12},
@@ -121,7 +121,9 @@ func TestAnthropicPromptTotalCacheReadZeroForwardBoundary(t *testing.T) {
 			for _, terminal := range []string{"stop", "eof"} {
 				t.Run(field+"/"+route+"/"+terminal, func(t *testing.T) {
 					payload := "event: message_start\ndata: " + `{"type":"message_start","message":{"id":"msg_zero","type":"message","role":"assistant","model":"claude-sonnet-4","content":[],"usage":{"input_tokens":100,"prompt_tokens":100,"cache_read_input_tokens":20,"cache_creation_input_tokens":10}}}` + "\n\n"
-					payload += "event: message_delta\ndata: " + `{"type":"message_delta","usage":{"` + field + `":0}}` + "\n\n"
+					for range 2 {
+						payload += "event: message_delta\ndata: " + `{"type":"message_delta","usage":{"` + field + `":0}}` + "\n\n"
+					}
 					payload += "event: message_delta\ndata: " + `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}` + "\n\n"
 					if terminal == "stop" {
 						payload += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
@@ -154,8 +156,8 @@ func TestAnthropicPromptTotalCacheReadZeroForwardBoundary(t *testing.T) {
 						require.NoError(t, err)
 					}
 					require.NotNil(t, usage)
-					require.Equal(t, 90, usage.InputTokens)
-					require.Zero(t, usage.CacheReadInputTokens)
+					require.Equal(t, 70, usage.InputTokens)
+					require.Equal(t, 20, usage.CacheReadInputTokens)
 					require.Equal(t, 10, usage.CacheCreationInputTokens)
 					require.Equal(t, 2, usage.OutputTokens)
 				})
@@ -190,7 +192,7 @@ func TestAnthropicCacheReadZeroPreservesIndependentInput(t *testing.T) {
 					}
 					require.Equal(t, 80, usage.InputTokens)
 				}
-				require.Zero(t, usage.CacheReadInputTokens)
+				require.Equal(t, 20, usage.CacheReadInputTokens)
 				require.Equal(t, 10, usage.CacheCreationInputTokens)
 			})
 		}

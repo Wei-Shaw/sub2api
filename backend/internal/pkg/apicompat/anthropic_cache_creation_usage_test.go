@@ -15,7 +15,7 @@ func TestAnthropicCacheCreationAggregatePresence(t *testing.T) {
 		present  bool
 	}{
 		{"contradictory aggregate", `{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 100, true},
-		{"explicit zero", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 0, true},
+		{"explicit zero", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, true},
 		{"missing aggregate", `{"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, false},
 		{"null aggregate", `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, false},
 		{"null TTL", `{"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":200}}`, 200, false},
@@ -112,9 +112,9 @@ func TestAnthropicUsageAdapterZeroContracts(t *testing.T) {
 		usage   AnthropicUsage
 		present bool
 	}{
-		{"missing Responses usage", anthropicUsageFromResponsesUsage(nil), false},
+		{"missing Responses usage", anthropicUsageFromResponsesUsage(nil), true},
 		{"explicit Responses totals", anthropicUsageFromResponsesUsage(&ResponsesUsage{}), true},
-		{"missing Chat usage", chatUsageToAnthropicUsage(nil), false},
+		{"missing Chat usage", chatUsageToAnthropicUsage(nil), true},
 		{"explicit Chat totals", chatUsageToAnthropicUsage(&ChatUsage{}), true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -136,7 +136,8 @@ func TestAnthropicUsageAdapterZeroContracts(t *testing.T) {
 		var decoded AnthropicStreamEvent
 		require.NoError(t, json.Unmarshal(encoded, &decoded))
 		require.NotNil(t, decoded.Message)
-		require.False(t, decoded.Message.Usage.HasCacheCreationInputTokens())
+		require.True(t, decoded.Message.Usage.HasCacheCreationInputTokens())
+		require.True(t, decoded.Message.Usage.CacheReadInputTokensPresent)
 	}
 	terminalEvents := FinalizeResponsesAnthropicStream(responsesState)
 	terminalEvents = append(terminalEvents, FinalizeChatCompletionsAnthropicStream(chatState)...)
@@ -174,6 +175,79 @@ func TestAnthropicCacheCreationPartialSnapshots(t *testing.T) {
 		var usage AnthropicUsage
 		require.NoError(t, json.Unmarshal([]byte(snapshot), &usage))
 		state.mergeCacheCreationUsage(usage)
-		require.Equal(t, []int{20, 50, 50, 50, 40, 40, 0, 0, 0, 100}[index], state.CacheCreationInputTokens)
+		require.Equal(t, []int{20, 50, 50, 50, 40, 40, 40, 40, 40, 100}[index], state.CacheCreationInputTokens)
+	}
+}
+
+func TestAnthropicConvertersRawCacheUsageLifecycle(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		aggregate int
+		want      []int
+	}{
+		{"zero aggregate derives partial TTL", 0, []int{20, 50, 50, 50, 30}},
+		{"positive aggregate survives placeholders", 40, []int{40, 40, 40, 40, 40}},
+	} {
+		for _, terminal := range []string{"message_stop", "eof"} {
+			t.Run(test.name+"/"+terminal, func(t *testing.T) {
+				state := NewAnthropicEventToResponsesState()
+				chatState := NewResponsesEventToChatState()
+				chatState.IncludeUsage = true
+				var completed *ResponsesResponse
+				var chatUsage *ChatUsage
+				consume := func(events []ResponsesStreamEvent) {
+					for _, event := range events {
+						if event.Type == "response.completed" {
+							completed = event.Response
+						}
+						for _, chunk := range ResponsesEventToChatChunks(&event, chatState) {
+							if chunk.Usage != nil {
+								chatUsage = chunk.Usage
+							}
+						}
+					}
+				}
+				start := AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{
+					ID: "msg_cache", Model: "claude-sonnet-4", Usage: AnthropicUsage{
+						InputTokens: 10, CacheReadInputTokens: 9,
+						CacheCreationInputTokens: test.aggregate, CacheCreationInputTokensPresent: true,
+					},
+				}}
+				consume(AnthropicEventToResponsesEvents(&start, state))
+				for index, snapshot := range []string{
+					`{"output_tokens":7,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20}}`,
+					`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":30}}`,
+					`{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}`,
+					`{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}`,
+					`{"cache_creation":{"ephemeral_5m_input_tokens":0}}`,
+				} {
+					var event AnthropicStreamEvent
+					require.NoError(t, json.Unmarshal([]byte(`{"type":"message_delta","usage":`+snapshot+`}`), &event))
+					consume(AnthropicEventToResponsesEvents(&event, state))
+					require.Equal(t, test.want[index], state.CacheCreationInputTokens, "snapshot %d", index)
+					require.Equal(t, 7, state.OutputTokens, "snapshot %d", index)
+				}
+				if terminal == "message_stop" {
+					consume(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state))
+				} else {
+					consume(FinalizeAnthropicResponsesStream(state))
+				}
+				want := test.want[len(test.want)-1]
+				require.NotNil(t, completed)
+				require.NotNil(t, completed.Usage)
+				require.Equal(t, want, completed.Usage.CacheCreationInputTokens)
+				require.Equal(t, 19+want, completed.Usage.InputTokens)
+				require.Equal(t, 7, completed.Usage.OutputTokens)
+				require.Equal(t, 26+want, completed.Usage.TotalTokens)
+				require.NotNil(t, chatUsage)
+				require.Equal(t, 19+want, chatUsage.PromptTokens)
+				require.Equal(t, 7, chatUsage.CompletionTokens)
+				require.NotNil(t, chatUsage.PromptTokensDetails)
+				require.Equal(t, want, chatUsage.PromptTokensDetails.CacheCreationTokens)
+				require.Equal(t, 9, chatUsage.PromptTokensDetails.CachedTokens)
+				require.Empty(t, FinalizeAnthropicResponsesStream(state))
+				require.Empty(t, FinalizeResponsesChatStream(chatState))
+			})
+		}
 	}
 }

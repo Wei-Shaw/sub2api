@@ -330,7 +330,7 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
 		usage.CacheReadInputTokens = int(v)
 	}
-	if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) >= 0 {
+	if v, ok := u["cache_creation_input_tokens"].(float64); ok && (int(v) > 0 || usage.CacheCreationInputTokens <= 0) {
 		usage.CacheCreationInputTokens = int(v)
 		usage.cacheCreationInputTokensPresent = true
 	}

@@ -1287,7 +1287,7 @@ func TestExtractAnthropicSSEDataLine(t *testing.T) {
 
 func TestGatewayService_ParseSSEUsagePassthrough_MessageStartFallbacks(t *testing.T) {
 	usage := &ClaudeUsage{}
-	data := `{"type":"message_start","message":{"usage":{"input_tokens":12,"cache_read_input_tokens":0,"cached_tokens":9,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`
+	data := `{"type":"message_start","message":{"usage":{"input_tokens":12,"cache_read_input_tokens":0,"cached_tokens":9,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`
 
 	parseSSEUsagePassthrough(data, usage)
 
@@ -1359,8 +1359,9 @@ func TestGatewayService_ParseSSEUsagePassthrough_OtherEventCacheCreation(t *test
 			wantAggregate: 3,
 		},
 		{
-			name:      "explicit zero retains raw TTL",
-			snapshots: []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			name:          "explicit zero retains raw TTL",
+			snapshots:     []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			wantAggregate: 3,
 		},
 		{
 			name:          "previous explicit aggregate survives null",
@@ -1369,14 +1370,16 @@ func TestGatewayService_ParseSSEUsagePassthrough_OtherEventCacheCreation(t *test
 			wantAggregate: 9,
 		},
 		{
-			name:      "previous explicit zero survives omitted aggregate",
-			start:     `{"cache_creation_input_tokens":0}`,
-			snapshots: []string{`{"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			name:          "previous explicit zero survives omitted aggregate",
+			start:         `{"cache_creation_input_tokens":0}`,
+			snapshots:     []string{`{"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			wantAggregate: 3,
 		},
 		{
-			name:      "explicit zero replaces previous aggregate",
-			start:     `{"cache_creation_input_tokens":9}`,
-			snapshots: []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			name:          "explicit zero preserves previous aggregate",
+			start:         `{"cache_creation_input_tokens":9}`,
+			snapshots:     []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":1}}`},
+			wantAggregate: 9,
 		},
 	}
 	for _, test := range tests {
@@ -1419,7 +1422,7 @@ func TestParseClaudeUsageFromResponseBody(t *testing.T) {
 	})
 
 	t.Run("parse all usage fields and fallback", func(t *testing.T) {
-		body := []byte(`{"usage":{"input_tokens":21,"output_tokens":34,"cache_read_input_tokens":0,"cached_tokens":13,"cache_creation":{"ephemeral_5m_input_tokens":5,"ephemeral_1h_input_tokens":8}}}`)
+		body := []byte(`{"usage":{"input_tokens":21,"output_tokens":34,"cache_read_input_tokens":0,"cached_tokens":13,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":5,"ephemeral_1h_input_tokens":8}}}`)
 		got := parseClaudeUsageFromResponseBody(body)
 		require.Equal(t, 21, got.InputTokens)
 		require.Equal(t, 34, got.OutputTokens)

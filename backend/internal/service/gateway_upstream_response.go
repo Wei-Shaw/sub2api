@@ -1304,11 +1304,12 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasInputTokens {
 		usage.InputTokens = patch.inputTokens
 	}
-	if patch.hasCacheCreationInput {
+	if patch.hasCacheCreationInput && (patch.cacheCreationInputTokens > 0 || usage.CacheCreationInputTokens <= 0) {
 		usage.CacheCreationInputTokens = patch.cacheCreationInputTokens
 		usage.cacheCreationInputTokensPresent = true
+		usage.cacheCreationInputTokensFromDetails = false
 	}
-	if patch.hasCacheReadInput {
+	if patch.hasCacheReadInput && (patch.cacheReadInputTokens > 0 || usage.CacheReadInputTokens <= 0) {
 		usage.CacheReadInputTokens = patch.cacheReadInputTokens
 	}
 	if patch.hasOutputTokens {
@@ -1320,8 +1321,9 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
-	if !usage.cacheCreationInputTokensPresent && (patch.hasCacheCreation5m || patch.hasCacheCreation1h) {
+	if (!usage.cacheCreationInputTokensPresent || usage.cacheCreationInputTokensFromDetails || usage.CacheCreationInputTokens <= 0) && (patch.hasCacheCreation5m || patch.hasCacheCreation1h) {
 		usage.CacheCreationInputTokens = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
+		usage.cacheCreationInputTokensFromDetails = true
 	}
 	normalizeAnthropicPromptTotal(usage, patch.promptTokens, patch.promptCacheMissTokens)
 }
@@ -1357,7 +1359,7 @@ func parseSSEUsageInt(value any) (int, bool) {
 // target 为 "5m" 或 "1h"。返回 true 表示发生了变更。
 func applyCacheTTLOverride(usage *ClaudeUsage, target string) bool {
 	total := max(usage.CacheCreationInputTokens, 0)
-	if !usage.cacheCreationInputTokensPresent && total == 0 {
+	if total == 0 {
 		total = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
 	}
 	switch target {
@@ -1381,6 +1383,9 @@ func applyCacheTTLOverride(usage *ClaudeUsage, target string) bool {
 // usageObj 是 usage JSON 对象（map[string]any）。
 func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	ccObj, _ := usageObj["cache_creation"].(map[string]any)
+	if ccObj == nil {
+		return false
+	}
 	v5m, _ := parseSSEUsageInt(ccObj["ephemeral_5m_input_tokens"])
 	v1h, _ := parseSSEUsageInt(ccObj["ephemeral_1h_input_tokens"])
 	aggregate, present := parseSSEUsageInt(usageObj["cache_creation_input_tokens"])
@@ -1392,10 +1397,6 @@ func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	}
 	if !applyCacheTTLOverride(&usage, target) {
 		return false
-	}
-	if ccObj == nil {
-		ccObj = make(map[string]any)
-		usageObj["cache_creation"] = ccObj
 	}
 	ccObj["ephemeral_5m_input_tokens"] = float64(usage.CacheCreation5mTokens)
 	ccObj["ephemeral_1h_input_tokens"] = float64(usage.CacheCreation1hTokens)
@@ -1457,7 +1458,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
-		if applyCacheTTLOverride(&response.Usage, overrideTarget) {
+		if changed := applyCacheTTLOverride(&response.Usage, overrideTarget); changed && gjson.GetBytes(body, "usage.cache_creation").IsObject() {
 			// 同步更新 body JSON 中的嵌套 cache_creation 对象
 			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); err == nil {
 				body = newBody

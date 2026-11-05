@@ -32,7 +32,7 @@ func TestNativeAnthropicCacheCreationRouteBillingBoundary(t *testing.T) {
 		{"missing cache creation usage", []string{`{}`}, 0, 0, 0, 0, 0, 10},
 		{"missing aggregate", []string{`{"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 10},
 		{"null aggregate", []string{`{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 10},
-		{"explicit zero", []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 0, 20, 30, 0, 0, 10},
+		{"explicit zero", []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 10},
 		{"details below aggregate", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 100, 20, 30, 70, 30, 10},
 		{"aggregate grows without TTL", []string{`{"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_5m_input_tokens":3000}}`, `{"cache_creation_input_tokens":11000}`}, 11000, 3000, 0, 11000, 0, 10},
 		{"1h start unknown remainder uses 5m", []string{`{"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}}`, `{"cache_creation_input_tokens":11000}`}, 11000, 0, 3000, 8000, 3000, 10},
@@ -40,11 +40,12 @@ func TestNativeAnthropicCacheCreationRouteBillingBoundary(t *testing.T) {
 		{"contradictory aggregate", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 100, 50, 200, 20, 80, 10},
 		{"negative TTL", []string{`{"cache_creation":{"ephemeral_5m_input_tokens":-20,"ephemeral_1h_input_tokens":30}}`}, 30, 0, 30, 0, 30, 10},
 		{"partial TTL clear", []string{`{"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation":{"ephemeral_1h_input_tokens":30}}`, `{"cache_creation":{"ephemeral_5m_input_tokens":0}}`}, 30, 0, 30, 0, 30, 10},
-		{"explicit zero delta", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`, `{"cache_creation_input_tokens":0}`, `{"cache_creation":{"ephemeral_1h_input_tokens":40}}`}, 0, 20, 40, 0, 0, 10},
+		{"explicit zero delta", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`, `{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":0}`, `{"cache_creation":{"ephemeral_1h_input_tokens":40}}`}, 100, 20, 40, 60, 40, 10},
 		{"zero to positive", []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`, `{"cache_creation_input_tokens":40}`}, 40, 20, 30, 16, 24, 10},
 		{"null preserves aggregate", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`, `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_1h_input_tokens":40}}`}, 100, 20, 40, 60, 40, 10},
 		{"normalized prompt total", []string{`{"prompt_tokens":100,"cached_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 43},
-		{"normalized prompt explicit zero", []string{`{"prompt_tokens":100,"cached_tokens":7,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 0, 20, 30, 0, 0, 93},
+		{"normalized prompt explicit zero", []string{`{"prompt_tokens":100,"cached_tokens":7,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 43},
+		{"normalized prompt partial zero deltas", []string{`{"prompt_tokens":100,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":30}}`}, 50, 20, 30, 20, 30, 43},
 	} {
 		uncachedInput := test.uncached
 		for _, route := range []string{"messages", "chat", "responses"} {

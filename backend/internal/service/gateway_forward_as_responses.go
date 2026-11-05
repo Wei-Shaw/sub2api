@@ -324,7 +324,7 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 			dst.InputTokens = src.InputTokens
 		}
 	}
-	if hasCacheReadTokens {
+	if hasCacheReadTokens && (cacheReadTokens > 0 || dst.CacheReadInputTokens <= 0) {
 		dst.CacheReadInputTokens = cacheReadTokens
 	}
 	normalizeAnthropicPromptTotal(dst, src.PromptTokens, src.PromptCacheMissTokens)
@@ -349,9 +349,10 @@ func normalizeAnthropicPromptTotal(usage *ClaudeUsage, promptTokens int, promptC
 }
 
 func mergeAnthropicCacheCreationUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
-	if src.HasCacheCreationInputTokens() {
+	if src.HasCacheCreationInputTokens() && (src.CacheCreationInputTokens > 0 || dst.CacheCreationInputTokens <= 0) {
 		dst.CacheCreationInputTokens = max(src.CacheCreationInputTokens, 0)
 		dst.cacheCreationInputTokensPresent = true
+		dst.cacheCreationInputTokensFromDetails = false
 	}
 	if src.CacheCreation != nil {
 		if src.CacheCreation.Ephemeral5mInputTokens != nil {
@@ -360,8 +361,9 @@ func mergeAnthropicCacheCreationUsage(dst *ClaudeUsage, src apicompat.AnthropicU
 		if src.CacheCreation.Ephemeral1hInputTokens != nil {
 			dst.CacheCreation1hTokens = max(*src.CacheCreation.Ephemeral1hInputTokens, 0)
 		}
-		if !dst.cacheCreationInputTokensPresent && (src.CacheCreation.Ephemeral5mInputTokens != nil || src.CacheCreation.Ephemeral1hInputTokens != nil) {
+		if (!dst.cacheCreationInputTokensPresent || dst.cacheCreationInputTokensFromDetails || dst.CacheCreationInputTokens <= 0) && (src.CacheCreation.Ephemeral5mInputTokens != nil || src.CacheCreation.Ephemeral1hInputTokens != nil) {
 			dst.CacheCreationInputTokens = dst.CacheCreation5mTokens + dst.CacheCreation1hTokens
+			dst.cacheCreationInputTokensFromDetails = true
 		}
 	}
 }
@@ -401,6 +403,7 @@ func normalizeAnthropicEventUsageForResponses(event *apicompat.AnthropicStreamEv
 		dst.CacheReadInputTokens = usage.CacheReadInputTokens
 		dst.CacheCreationInputTokens = usage.CacheCreationInputTokens
 		dst.CacheCreationInputTokensPresent = true
+		dst.CacheCreation = nil
 	}
 	normalize(event.Usage)
 	if event.Message != nil {

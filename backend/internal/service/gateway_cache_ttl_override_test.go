@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestApplyCacheTTLOverrideAuthoritativeTotal(t *testing.T) {
@@ -28,7 +29,7 @@ func TestApplyCacheTTLOverrideAuthoritativeTotal(t *testing.T) {
 	}{
 		{"partial details", ClaudeUsage{CacheCreationInputTokens: 11000, CacheCreation1hTokens: 3000, cacheCreationInputTokensPresent: true}, 11000, true},
 		{"oversized details", ClaudeUsage{CacheCreationInputTokens: 100, CacheCreation5mTokens: 50, CacheCreation1hTokens: 200, cacheCreationInputTokensPresent: true}, 100, true},
-		{"explicit zero", ClaudeUsage{CacheCreation5mTokens: 50, CacheCreation1hTokens: 200, cacheCreationInputTokensPresent: true}, 0, true},
+		{"explicit zero", ClaudeUsage{CacheCreation5mTokens: 50, CacheCreation1hTokens: 200, cacheCreationInputTokensPresent: true}, 250, true},
 		{"synthetic positive aggregate", ClaudeUsage{CacheCreationInputTokens: 11000, CacheCreation1hTokens: 3000}, 11000, true},
 		{"synthetic detail only", ClaudeUsage{CacheCreation5mTokens: 50, CacheCreation1hTokens: 200}, 250, true},
 		{"synthetic negative detail", ClaudeUsage{CacheCreation5mTokens: -50, CacheCreation1hTokens: 200}, 200, true},
@@ -68,9 +69,9 @@ type cacheTTLOverrideBoundaryCase struct {
 func cacheTTLOverrideBoundaryCases() []cacheTTLOverrideBoundaryCase {
 	return []cacheTTLOverrideBoundaryCase{
 		{"growing aggregate", []string{`{"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}}`, `{"cache_creation_input_tokens":11000}`}, 11000, true, 0, 3000, 28},
-		{"explicit zero delta", []string{`{"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}}`, `{"cache_creation_input_tokens":0}`}, 0, true, 0, 3000, 0},
+		{"explicit zero delta", []string{`{"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}}`, `{"cache_creation_input_tokens":0}`}, 3000, true, 0, 3000, 12},
 		{"oversized details", []string{`{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 100, true, 50, 200, 0.36},
-		{"explicit zero snapshot", []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 0, true, 50, 200, 0},
+		{"explicit zero snapshot", []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 250, true, 50, 200, 0.9},
 		{"detail only", []string{`{"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 250, false, 50, 200, 0.9},
 		{"null aggregate", []string{`{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`}, 250, false, 50, 200, 0.9},
 		{"aggregate only", []string{`{"cache_creation_input_tokens":11000}`}, 11000, true, 0, 0, 22},
@@ -101,7 +102,11 @@ func cacheTTLOverrideBoundaryResponse(test cacheTTLOverrideBoundaryCase, stream 
 	if !stream {
 		cache := `"cache_creation":{"ephemeral_5m_input_tokens":` + strconv.Itoa(test.ttl5m) + `,"ephemeral_1h_input_tokens":` + strconv.Itoa(test.ttl1h) + `}`
 		if test.present {
-			cache += `,"cache_creation_input_tokens":` + strconv.Itoa(test.aggregate)
+			aggregate := test.aggregate
+			if len(test.snapshots) == 1 {
+				aggregate = int(gjson.Get(test.snapshots[0], "cache_creation_input_tokens").Int())
+			}
+			cache += `,"cache_creation_input_tokens":` + strconv.Itoa(aggregate)
 		}
 		return `{"id":"msg_cache","type":"message","role":"assistant","model":"k3","content":[],"usage":{` + base + `,` + cache + `}}`
 	}
@@ -178,7 +183,46 @@ func TestCacheTTLOverrideForwardBillingBoundary(t *testing.T) {
 					} else if target == "1h" {
 						want5m, want1h, wantCost = 0, test.aggregate, float64(test.aggregate)*0.004
 					}
-					if target != "" && (route == "nonstream" || (route == "standard" && test.aggregate > 0)) {
+					if target != "" && route == "standard" {
+						var originalEvents, rewrittenEvents []string
+						for _, line := range strings.Split(payload, "\n") {
+							if strings.HasPrefix(line, "data: ") {
+								originalEvents = append(originalEvents, strings.TrimPrefix(line, "data: "))
+							}
+						}
+						for _, line := range strings.Split(recorder.Body.String(), "\n") {
+							if strings.HasPrefix(line, "data: ") {
+								rewrittenEvents = append(rewrittenEvents, strings.TrimPrefix(line, "data: "))
+							}
+						}
+						require.Len(t, rewrittenEvents, len(originalEvents))
+						forward5m, forward1h := 0, 0
+						for index, originalEvent := range originalEvents {
+							usagePath := "usage"
+							if gjson.Get(originalEvent, "type").String() == "message_start" {
+								usagePath = "message.usage"
+							}
+							originalUsage := gjson.Get(originalEvent, usagePath)
+							rewrittenUsage := gjson.Get(rewrittenEvents[index], usagePath)
+							require.Equal(t, originalUsage.Get("cache_creation").Exists(), rewrittenUsage.Get("cache_creation").Exists())
+							require.Equal(t, originalUsage.Get("cache_creation_input_tokens").Raw, rewrittenUsage.Get("cache_creation_input_tokens").Raw)
+							if originalUsage.Get("cache_creation").IsObject() {
+								total := int(originalUsage.Get("cache_creation_input_tokens").Int())
+								if total <= 0 {
+									total = int(originalUsage.Get("cache_creation.ephemeral_5m_input_tokens").Int() + originalUsage.Get("cache_creation.ephemeral_1h_input_tokens").Int())
+								}
+								forward5m, forward1h = 0, total
+								if target == "5m" {
+									forward5m, forward1h = total, 0
+								}
+								require.EqualValues(t, forward5m, rewrittenUsage.Get("cache_creation.ephemeral_5m_input_tokens").Int())
+								require.EqualValues(t, forward1h, rewrittenUsage.Get("cache_creation.ephemeral_1h_input_tokens").Int())
+							}
+						}
+						require.Equal(t, forward5m, result.Usage.CacheCreation5mTokens)
+						require.Equal(t, forward1h, result.Usage.CacheCreation1hTokens)
+					}
+					if target != "" && route == "nonstream" {
 						require.Equal(t, want5m, result.Usage.CacheCreation5mTokens)
 						require.Equal(t, want1h, result.Usage.CacheCreation1hTokens)
 					}
@@ -262,11 +306,14 @@ func TestRewriteCacheCreationJSONAuthoritativeTotal(t *testing.T) {
 				}
 				require.NoError(t, json.Unmarshal([]byte(cacheTTLOverrideBoundaryResponse(test, false, 0)), &response))
 				aggregate, present := response.Usage["cache_creation_input_tokens"]
-				require.True(t, rewriteCacheCreationJSON(response.Usage, target))
+				originalDetails := response.Usage["cache_creation"].(map[string]any)
+				original5m := int(originalDetails["ephemeral_5m_input_tokens"].(float64))
+				original1h := int(originalDetails["ephemeral_1h_input_tokens"].(float64))
 				want5m, want1h := 0, test.aggregate
 				if target == "5m" {
 					want5m, want1h = test.aggregate, 0
 				}
+				require.Equal(t, original5m != want5m || original1h != want1h, rewriteCacheCreationJSON(response.Usage, target))
 				details := response.Usage["cache_creation"].(map[string]any)
 				require.EqualValues(t, want5m, details["ephemeral_5m_input_tokens"])
 				require.EqualValues(t, want1h, details["ephemeral_1h_input_tokens"])
@@ -275,6 +322,75 @@ func TestRewriteCacheCreationJSONAuthoritativeTotal(t *testing.T) {
 				require.Equal(t, aggregate, afterAggregate)
 				require.Equal(t, present, afterPresent)
 			})
+		}
+	}
+}
+
+func TestRewriteCacheCreationJSONPreservesAbsentDetails(t *testing.T) {
+	for _, payload := range []string{
+		`{"cache_creation_input_tokens":100}`,
+		`{"cache_creation_input_tokens":100,"cache_creation":null}`,
+		`{"cache_creation_input_tokens":0}`,
+	} {
+		for _, target := range []string{"5m", "1h"} {
+			var usage map[string]any
+			require.NoError(t, json.Unmarshal([]byte(payload), &usage))
+			for range 2 {
+				require.False(t, rewriteCacheCreationJSON(usage, target))
+				encoded, err := json.Marshal(usage)
+				require.NoError(t, err)
+				require.JSONEq(t, payload, string(encoded))
+			}
+		}
+	}
+}
+
+func TestCacheTTLOverrideForwardPreservesAbsentDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, details := range []string{"", `,"cache_creation":null`} {
+		for _, stream := range []bool{false, true} {
+			for _, target := range []string{"5m", "1h"} {
+				t.Run(details+"/stream="+strconv.FormatBool(stream)+"/"+target, func(t *testing.T) {
+					account, settings, _ := cacheTTLOverrideBoundaryAccount(t, "account/"+target)
+					usage := `{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":100` + details + `}`
+					payload := `{"id":"msg_cache","type":"message","role":"assistant","model":"k3","content":[],"usage":` + usage + `}`
+					contentType := "application/json"
+					if stream {
+						payload = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":" + payload + "}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+						contentType = "text/event-stream"
+					}
+					recorder := httptest.NewRecorder()
+					ctx, _ := gin.CreateTestContext(recorder)
+					ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+					response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{contentType}}, Body: io.NopCloser(strings.NewReader(payload))}
+					service := &GatewayService{cfg: &config.Config{}, rateLimitService: &RateLimitService{}, settingService: settings}
+					var err error
+					if stream {
+						_, err = service.handleStreamingResponse(context.Background(), response, ctx, account, time.Now(), "k3", "k3", false)
+					} else {
+						_, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "k3", "k3")
+					}
+					require.NoError(t, err)
+					if !stream {
+						require.JSONEq(t, payload, recorder.Body.String())
+						return
+					}
+					starts := 0
+					for _, line := range strings.Split(recorder.Body.String(), "\n") {
+						if !strings.HasPrefix(line, "data: ") {
+							continue
+						}
+						event := gjson.Parse(strings.TrimPrefix(line, "data: "))
+						if event.Get("type").String() == "message_start" {
+							got := event.Get("message.usage.cache_creation")
+							require.False(t, got.IsObject())
+							require.Equal(t, gjson.Get(usage, "cache_creation").Raw, got.Raw)
+							starts++
+						}
+					}
+					require.Equal(t, 1, starts)
+				})
+			}
 		}
 	}
 }

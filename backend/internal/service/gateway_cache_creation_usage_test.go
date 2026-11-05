@@ -51,14 +51,14 @@ func TestAnthropicCacheCreationSnapshots(t *testing.T) {
 			wantTotals: []int{50, 40, 40, 40}, want5m: 20, want1h: 200, billed5m: 4, billed1h: 36,
 		},
 		{
-			name:       "explicit zero survives TTL updates",
+			name:       "explicit zero falls back to TTL updates",
 			snapshots:  []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `{"cache_creation":{"ephemeral_5m_input_tokens":50}}`},
-			wantTotals: []int{0, 0}, want5m: 50, want1h: 200,
+			wantTotals: []int{200, 250}, want5m: 50, want1h: 200, billed5m: 50, billed1h: 200,
 		},
 		{
-			name:       "explicit zero delta clears aggregate",
+			name:       "explicit zero delta preserves aggregate",
 			snapshots:  []string{`{"cache_creation_input_tokens":100}`, `{"cache_creation_input_tokens":0}`, `{"cache_creation":{"ephemeral_1h_input_tokens":200}}`},
-			wantTotals: []int{100, 0, 0}, want1h: 200,
+			wantTotals: []int{100, 100, 100}, want1h: 200, billed1h: 100,
 		},
 		{
 			name:       "repeated cumulative snapshots do not double count",
@@ -78,12 +78,12 @@ func TestAnthropicCacheCreationSnapshots(t *testing.T) {
 		{
 			name:       "null does not clear explicit zero",
 			snapshots:  []string{`{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":20,"ephemeral_1h_input_tokens":null}}`},
-			wantTotals: []int{0, 0}, want5m: 20, want1h: 200,
+			wantTotals: []int{200, 220}, want5m: 20, want1h: 200, billed5m: 20, billed1h: 200,
 		},
 		{
 			name:       "zero to positive retains partial TTL history",
 			snapshots:  []string{`{"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":30}}`, `{"cache_creation":{"ephemeral_1h_input_tokens":50}}`, `{"cache_creation_input_tokens":35}`},
-			wantTotals: []int{20, 0, 0, 35}, want5m: 20, want1h: 50, billed5m: 10, billed1h: 25,
+			wantTotals: []int{20, 50, 70, 35}, want5m: 20, want1h: 50, billed5m: 10, billed1h: 25,
 		},
 		{
 			name:       "all null is absent before partial TTL",
@@ -140,7 +140,9 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 		{"mixed start remainder defaults to 5m", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_5m_input_tokens":1000,"ephemeral_1h_input_tokens":2000}`, `{"cache_creation_input_tokens":11000}`, 11000, 1000, 2000, 26},
 		{"zero start aggregate grows", `"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}`, `{"cache_creation_input_tokens":11000}`, 11000, 0, 0, 22},
 		{"unchanged aggregate", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":3000}`, 3000, 0, 3000, 12},
-		{"explicit zero suppresses retained detail", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":0}`, 0, 0, 3000, 0},
+		{"explicit zero preserves retained detail", `"cache_creation_input_tokens":3000,"cache_creation":{"ephemeral_1h_input_tokens":3000}`, `{"cache_creation_input_tokens":0}`, 3000, 0, 3000, 12},
+		{"explicit zero uses partial details", `"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50}`, `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 250, 50, 200, 0.9},
+		{"zero cache placeholders preserve totals", `"cache_creation_input_tokens":100,"cache_read_input_tokens":9,"cache_creation":{"ephemeral_1h_input_tokens":200}`, `{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}`, 100, 0, 200, 0.4},
 		{"oversized detail ratio capped", `"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, `{"cache_creation_input_tokens":100}`, 100, 50, 200, 0.36},
 	} {
 		for _, route := range []string{"standard", "passthrough", "responses", "buffered responses", "chat", "buffered chat"} {
@@ -190,6 +192,8 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 					}
 					require.NotNil(t, result)
 					require.Equal(t, 10, result.Usage.InputTokens)
+					wantRead := int(gjson.Get("{"+test.start+"}", "cache_read_input_tokens").Int())
+					require.Equal(t, wantRead, result.Usage.CacheReadInputTokens)
 					require.Equal(t, 2, result.Usage.OutputTokens)
 					require.Equal(t, test.aggregate, result.Usage.CacheCreationInputTokens)
 					require.True(t, result.Usage.cacheCreationInputTokensPresent)
@@ -218,10 +222,12 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 						}
 						require.True(t, usage.Exists())
 						if strings.HasSuffix(route, "chat") {
-							require.EqualValues(t, 10+test.aggregate, usage.Get("prompt_tokens").Int())
+							require.EqualValues(t, 10+test.aggregate+wantRead, usage.Get("prompt_tokens").Int())
+							require.EqualValues(t, wantRead, usage.Get("prompt_tokens_details.cached_tokens").Int())
 							require.EqualValues(t, test.aggregate, usage.Get("prompt_tokens_details.cache_creation_tokens").Int())
 						} else {
-							require.EqualValues(t, 10+test.aggregate, usage.Get("input_tokens").Int())
+							require.EqualValues(t, 10+test.aggregate+wantRead, usage.Get("input_tokens").Int())
+							require.EqualValues(t, wantRead, usage.Get("input_tokens_details.cached_tokens").Int())
 							require.EqualValues(t, test.aggregate, usage.Get("cache_creation_input_tokens").Int())
 						}
 					}
@@ -316,7 +322,7 @@ func assertAnthropicCacheCreationForwardBoundary(t *testing.T, antigravity bool)
 		cache1h   int
 		cacheCost float64
 	}{
-		{"explicit aggregate zero", `"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, 0, true, 50, 200, 0},
+		{"explicit aggregate zero", `"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, 250, true, 50, 200, 0.9},
 		{"missing aggregate", `"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, 250, false, 50, 200, 0.9},
 		{"null aggregate", `"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, 250, false, 50, 200, 0.9},
 		{"positive aggregate caps TTL", `"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}`, 100, true, 50, 200, 0.36},
@@ -362,8 +368,8 @@ func assertAnthropicCacheCreationForwardBoundary(t *testing.T, antigravity bool)
 				require.Equal(t, http.StatusOK, recorder.Code)
 				require.Equal(t, body, recorder.Body.String())
 				wantAggregate := test.aggregate
-				if antigravity && !test.present {
-					wantAggregate = 0
+				if antigravity {
+					wantAggregate = int(gjson.Get(usageJSON, "cache_creation_input_tokens").Int())
 				}
 				require.Equal(t, wantAggregate, result.Usage.CacheCreationInputTokens)
 				require.Equal(t, test.present, result.Usage.cacheCreationInputTokensPresent)
@@ -385,7 +391,7 @@ func TestAnthropicCacheCreationMarshaledSSEBoundary(t *testing.T) {
 		wantCacheCost float64
 	}{
 		{"missing", 0, false, 50, 0.16},
-		{"explicit zero", 0, true, 0, 0},
+		{"explicit zero", 0, true, 50, 0.16},
 		{"synthetic nonzero", 40, false, 40, 0.128},
 	} {
 		for _, terminal := range []string{"message_stop", "eof"} {
@@ -437,16 +443,18 @@ func TestAnthropicCacheCreationMarshaledSSEBoundary(t *testing.T) {
 func TestRawAnthropicCacheCreationExplicitZero(t *testing.T) {
 	for _, prompt := range []string{"", `,"prompt_tokens":500`} {
 		usage := parseClaudeUsageFromResponseBody([]byte(`{"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}` + prompt + `}}`))
-		require.Zero(t, usage.CacheCreationInputTokens)
+		require.Equal(t, 200, usage.CacheCreationInputTokens)
 		require.Equal(t, 200, usage.CacheCreation1hTokens)
-		assertAnthropicCacheCreationRecordCosts(t, *usage, 0)
+		assertAnthropicCacheCreationRecordCosts(t, *usage, 0.8)
 		if prompt != "" {
-			require.Equal(t, 500, usage.InputTokens)
+			require.Equal(t, 300, usage.InputTokens)
+		} else {
+			require.Equal(t, 10, usage.InputTokens)
 		}
 	}
 	usage := &ClaudeUsage{CacheCreationInputTokens: 100}
 	(&AntigravityGatewayService{}).extractSSEUsage(`data: {"type":"message_delta","usage":{"cache_creation_input_tokens":0}}`, usage)
-	require.Zero(t, usage.CacheCreationInputTokens)
+	require.Equal(t, 100, usage.CacheCreationInputTokens)
 }
 
 func TestAnthropicCacheCreationNullBodyParity(t *testing.T) {
@@ -459,7 +467,7 @@ func TestAnthropicCacheCreationNullBodyParity(t *testing.T) {
 	}{
 		{"missing aggregate", `{"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, false, 0.8},
 		{"null aggregate", `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, false, 0.8},
-		{"zero aggregate", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 0, true, 0},
+		{"zero aggregate", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 200, true, 0.8},
 		{"null TTL with positive aggregate", `{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":null}}`, 100, true, 0.2},
 		{"all null", `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":null}}`, 0, false, 0},
 	} {
@@ -488,7 +496,7 @@ func TestAntigravityCacheCreationUsage(t *testing.T) {
 		present   bool
 		wantCost  float64
 	}{
-		{"explicit zero with TTL", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`, 0, true, 0},
+		{"explicit zero with TTL", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`, 0, true, 0.9},
 		{"missing aggregate keeps TTL fallback", `{"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`, 0, false, 0.9},
 		{"null aggregate keeps TTL fallback", `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":200}}`, 0, false, 0.9},
 		{"positive aggregate", `{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, 100, true, 0.4},
@@ -521,7 +529,7 @@ func TestAntigravityCacheCreationLateDeltas(t *testing.T) {
 		present   bool
 		wantCost  float64
 	}{
-		{"explicit zero survives", `"cache_creation_input_tokens":0,`, 0, true, 0},
+		{"explicit zero falls back", `"cache_creation_input_tokens":0,`, 0, true, 1.3},
 		{"missing aggregate keeps TTL fallback", "", 0, false, 1.3},
 		{"null aggregate keeps TTL fallback", `"cache_creation_input_tokens":null,`, 0, false, 1.3},
 		{"positive aggregate survives", `"cache_creation_input_tokens":100,`, 100, true, 0.372},
@@ -545,18 +553,77 @@ func TestAntigravityCacheCreationLateDeltas(t *testing.T) {
 		})
 	}
 
-	t.Run("explicit zero delta clears aggregate with retained TTL", func(t *testing.T) {
+	t.Run("explicit zero delta preserves aggregate with retained TTL", func(t *testing.T) {
 		service := &AntigravityGatewayService{}
 		usage := &ClaudeUsage{}
-		service.extractSSEUsage(`data: {"type":"message_start","message":{"usage":{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}}}`, usage)
-		service.extractSSEUsage(`data: {"type":"message_delta","usage":{"cache_creation_input_tokens":0}}`, usage)
+		service.extractSSEUsage(`data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":9,"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}}}`, usage)
+		for range 2 {
+			service.extractSSEUsage(`data: {"type":"message_delta","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}`, usage)
+		}
 		service.extractSSEUsage(`data: {"type":"message_delta","usage":{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":50}}}`, usage)
-		require.Zero(t, usage.CacheCreationInputTokens)
+		require.Equal(t, 100, usage.CacheCreationInputTokens)
+		require.Equal(t, 9, usage.CacheReadInputTokens)
+		require.Equal(t, 10, usage.InputTokens)
 		require.True(t, usage.cacheCreationInputTokensPresent)
 		require.Equal(t, 50, usage.CacheCreation5mTokens)
 		require.Equal(t, 200, usage.CacheCreation1hTokens)
-		assertAnthropicCacheCreationRecordCosts(t, *usage, 0)
+		assertAnthropicCacheCreationRecordCosts(t, *usage, 0.36)
 	})
+}
+
+func TestAntigravityRawCacheUsageStreamingLifecycle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name      string
+		aggregate string
+		wantTotal int
+		wantCost  float64
+	}{
+		{"zero aggregate keeps TTL billing fallback", "0", 0, 1.3},
+		{"positive aggregate survives zero placeholders", "100", 100, 0.372},
+	} {
+		for _, terminal := range []string{"message_stop", "eof"} {
+			t.Run(test.name+"/"+terminal, func(t *testing.T) {
+				stream := "event: message_start\ndata: " + `{"type":"message_start","message":{"id":"msg_cache","type":"message","role":"assistant","model":"claude-sonnet-4","content":[],"usage":{"input_tokens":10,"output_tokens":0,"cache_read_input_tokens":9,"cache_creation_input_tokens":` + test.aggregate + `,"cache_creation":{"ephemeral_1h_input_tokens":200}}}}` + "\n\n"
+				for _, snapshot := range []string{
+					`{"output_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":50}}`,
+					`{"cache_creation":{"ephemeral_1h_input_tokens":300}}`,
+					`{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}`,
+					`{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}`,
+					`{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":null}}`,
+				} {
+					stream += "event: message_delta\ndata: " + `{"type":"message_delta","usage":` + snapshot + "}\n\n"
+				}
+				stream += "event: message_delta\ndata: " + `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":0,"cache_creation_input_tokens":0}}` + "\n\n"
+				if terminal == "message_stop" {
+					stream += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+				}
+				recorder := httptest.NewRecorder()
+				ctx, _ := gin.CreateTestContext(recorder)
+				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				response := &http.Response{
+					StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body: io.NopCloser(strings.NewReader(stream)),
+				}
+				service := &AntigravityGatewayService{httpUpstream: &httpUpstreamStub{resp: response}, settingService: &SettingService{}}
+				result, err := service.ForwardUpstream(context.Background(), ctx,
+					&Account{ID: 701, Credentials: map[string]any{"base_url": "https://upstream.example", "api_key": "test-key"}},
+					[]byte(`{"model":"claude-sonnet-4","messages":[],"stream":true}`))
+				require.NoError(t, err)
+				require.True(t, result.Stream)
+				require.Equal(t, http.StatusOK, recorder.Code)
+				require.Equal(t, stream, recorder.Body.String())
+				require.Equal(t, 10, result.Usage.InputTokens)
+				require.Equal(t, 7, result.Usage.OutputTokens)
+				require.Equal(t, 9, result.Usage.CacheReadInputTokens)
+				require.Equal(t, test.wantTotal, result.Usage.CacheCreationInputTokens)
+				require.True(t, result.Usage.cacheCreationInputTokensPresent)
+				require.Equal(t, 50, result.Usage.CacheCreation5mTokens)
+				require.Equal(t, 300, result.Usage.CacheCreation1hTokens)
+				assertAnthropicCacheCreationResultCosts(t, result, test.wantCost)
+			})
+		}
+	}
 }
 
 func TestAnthropicCacheOnlyBufferedSSEUsage(t *testing.T) {
@@ -567,54 +634,62 @@ func TestAnthropicCacheOnlyBufferedSSEUsage(t *testing.T) {
 		delta         string
 		wantAggregate int
 	}{
-		{"explicit zero transition", `{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `{"cache_creation_input_tokens":0}`, 0},
+		{"explicit zero transition", `{"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_1h_input_tokens":200}}`, `{"cache_creation_input_tokens":0}`, 100},
 		{"derived zero transition", `{"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation":{"ephemeral_5m_input_tokens":0}}`, 0},
 		{"merged partial TTL", `{"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":null,"ephemeral_1h_input_tokens":30}}`, 50},
+		{"explicit zero partial TTL", `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":20}}`, `{"cache_creation_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":30}}`, 50},
 	} {
 		for _, adapter := range []string{"responses", "chat", "native responses", "native chat"} {
-			t.Run(test.name+"/"+adapter, func(t *testing.T) {
-				stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_cache\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4\",\"content\":[],\"usage\":" + test.start + "}}\n\n" +
-					"event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":" + test.delta + "}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
-				recorder := httptest.NewRecorder()
-				ctx, _ := gin.CreateTestContext(recorder)
-				response := &http.Response{Body: io.NopCloser(strings.NewReader(stream))}
-				var aggregate int
-				var err error
-				switch adapter {
-				case "responses":
-					var result *ForwardResult
-					result, err = (&GatewayService{}).handleResponsesBufferedStreamingResponse(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
-					require.NoError(t, err)
-					aggregate = result.Usage.CacheCreationInputTokens
-				case "chat":
-					var result *ForwardResult
-					result, err = (&GatewayService{}).handleCCBufferedFromAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
-					require.NoError(t, err)
-					aggregate = result.Usage.CacheCreationInputTokens
-				case "native responses":
-					var result *OpenAIForwardResult
-					result, err = (&OpenAIGatewayService{}).handleResponsesBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
-					require.NoError(t, err)
-					aggregate = result.Usage.CacheCreationInputTokens
-				case "native chat":
-					var result *OpenAIForwardResult
-					result, err = (&OpenAIGatewayService{}).handleCCBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
-					require.NoError(t, err)
-					aggregate = result.Usage.CacheCreationInputTokens
-				}
-				require.Equal(t, test.wantAggregate, aggregate)
-				require.Equal(t, http.StatusOK, recorder.Code)
-				require.True(t, json.Valid(recorder.Body.Bytes()))
-				inputPath := "usage.input_tokens"
-				cachePath := "usage.cache_creation_input_tokens"
-				if strings.HasSuffix(adapter, "chat") {
-					inputPath = "usage.prompt_tokens"
-					cachePath = "usage.prompt_tokens_details.cache_creation_tokens"
-				}
-				require.True(t, gjson.GetBytes(recorder.Body.Bytes(), inputPath).Exists())
-				require.Equal(t, int64(test.wantAggregate), gjson.GetBytes(recorder.Body.Bytes(), inputPath).Int())
-				require.Equal(t, int64(test.wantAggregate), gjson.GetBytes(recorder.Body.Bytes(), cachePath).Int())
-			})
+			for _, terminal := range []string{"message_stop", "eof"} {
+				t.Run(test.name+"/"+adapter+"/"+terminal, func(t *testing.T) {
+					stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_cache\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4\",\"content\":[],\"usage\":" + test.start + "}}\n\n"
+					for range 2 {
+						stream += "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":" + test.delta + "}\n\n"
+					}
+					if terminal == "message_stop" {
+						stream += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+					}
+					recorder := httptest.NewRecorder()
+					ctx, _ := gin.CreateTestContext(recorder)
+					response := &http.Response{Body: io.NopCloser(strings.NewReader(stream))}
+					var aggregate int
+					var err error
+					switch adapter {
+					case "responses":
+						var result *ForwardResult
+						result, err = (&GatewayService{}).handleResponsesBufferedStreamingResponse(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+						require.NoError(t, err)
+						aggregate = result.Usage.CacheCreationInputTokens
+					case "chat":
+						var result *ForwardResult
+						result, err = (&GatewayService{}).handleCCBufferedFromAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
+						require.NoError(t, err)
+						aggregate = result.Usage.CacheCreationInputTokens
+					case "native responses":
+						var result *OpenAIForwardResult
+						result, err = (&OpenAIGatewayService{}).handleResponsesBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+						require.NoError(t, err)
+						aggregate = result.Usage.CacheCreationInputTokens
+					case "native chat":
+						var result *OpenAIForwardResult
+						result, err = (&OpenAIGatewayService{}).handleCCBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
+						require.NoError(t, err)
+						aggregate = result.Usage.CacheCreationInputTokens
+					}
+					require.Equal(t, test.wantAggregate, aggregate)
+					require.Equal(t, http.StatusOK, recorder.Code)
+					require.True(t, json.Valid(recorder.Body.Bytes()))
+					inputPath := "usage.input_tokens"
+					cachePath := "usage.cache_creation_input_tokens"
+					if strings.HasSuffix(adapter, "chat") {
+						inputPath = "usage.prompt_tokens"
+						cachePath = "usage.prompt_tokens_details.cache_creation_tokens"
+					}
+					require.True(t, gjson.GetBytes(recorder.Body.Bytes(), inputPath).Exists())
+					require.Equal(t, int64(test.wantAggregate), gjson.GetBytes(recorder.Body.Bytes(), inputPath).Int())
+					require.Equal(t, int64(test.wantAggregate), gjson.GetBytes(recorder.Body.Bytes(), cachePath).Int())
+				})
+			}
 		}
 	}
 }

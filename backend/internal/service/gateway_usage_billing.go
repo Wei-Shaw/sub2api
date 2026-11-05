@@ -1243,21 +1243,19 @@ func (s *GatewayService) calculateImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
-// billingUsageTokens projects explicit aggregate zero to effective zero TTL usage
-// for billing and account stats, retaining raw TTL details on ClaudeUsage.
 func (usage ClaudeUsage) billingUsageTokens() UsageTokens {
+	creationTokens := usage.CacheCreationInputTokens
+	if creationTokens <= 0 {
+		creationTokens = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
+	}
 	tokens := UsageTokens{
 		InputTokens:           usage.InputTokens,
 		OutputTokens:          usage.OutputTokens,
-		CacheCreationTokens:   usage.CacheCreationInputTokens,
+		CacheCreationTokens:   creationTokens,
 		CacheReadTokens:       usage.CacheReadInputTokens,
 		CacheCreation5mTokens: usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: usage.CacheCreation1hTokens,
 		ImageOutputTokens:     usage.ImageOutputTokens,
-	}
-	if usage.cacheCreationInputTokensPresent && usage.CacheCreationInputTokens == 0 {
-		tokens.CacheCreation5mTokens = 0
-		tokens.CacheCreation1hTokens = 0
 	}
 	return tokens
 }

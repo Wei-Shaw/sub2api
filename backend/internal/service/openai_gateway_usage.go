@@ -152,20 +152,20 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 }
 
 func (usage OpenAIUsage) billingUsageTokens() UsageTokens {
+	creationTokens := usage.CacheCreationInputTokens
+	if creationTokens <= 0 {
+		creationTokens = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
+	}
 	tokens := UsageTokens{
-		InputTokens:           max(usage.InputTokens-usage.CacheReadInputTokens-usage.CacheCreationInputTokens, 0),
+		InputTokens:           max(usage.InputTokens-usage.CacheReadInputTokens-creationTokens, 0),
 		ImageInputTokens:      max(usage.ImageInputTokens-usage.ImageCacheReadTokens, 0),
 		ImageCacheReadTokens:  usage.ImageCacheReadTokens,
 		OutputTokens:          usage.OutputTokens,
-		CacheCreationTokens:   usage.CacheCreationInputTokens,
+		CacheCreationTokens:   creationTokens,
 		CacheCreation5mTokens: usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: usage.CacheCreation1hTokens,
 		CacheReadTokens:       usage.CacheReadInputTokens,
 		ImageOutputTokens:     usage.ImageOutputTokens,
-	}
-	if usage.cacheCreationInputTokensPresent && usage.CacheCreationInputTokens == 0 {
-		tokens.CacheCreation5mTokens = 0
-		tokens.CacheCreation1hTokens = 0
 	}
 	return tokens
 }

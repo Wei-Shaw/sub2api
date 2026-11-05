@@ -671,8 +671,8 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	}
 	for _, path := range []string{"cache_read_input_tokens", "cached_tokens", "prompt_tokens_details.cached_tokens", "prompt_cache_hit_tokens"} {
 		if value := usageNode.Get(path); value.Exists() && value.Type != gjson.Null {
-			usage.CacheReadInputTokens = max(int(value.Int()), 0)
-			if usage.CacheReadInputTokens > 0 {
+			if tokens := int(value.Int()); tokens > 0 {
+				usage.CacheReadInputTokens = tokens
 				break
 			}
 		}
@@ -706,7 +706,9 @@ func normalizeAnthropicCompatiblePromptUsage(usageNode gjson.Result, usage *Clau
 	}
 
 	mergeRawAnthropicCacheCreationUsage(usageNode, usage)
-	usage.CacheReadInputTokens = cacheReadTokens
+	if cacheReadTokens > 0 || usage.CacheReadInputTokens <= 0 {
+		usage.CacheReadInputTokens = cacheReadTokens
+	}
 	var cacheMissTokens *int
 	if promptCacheMissTokens.Exists() && promptCacheMissTokens.Type != gjson.Null {
 		value := int(promptCacheMissTokens.Int())
