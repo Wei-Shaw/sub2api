@@ -38,6 +38,34 @@ type OpsEmailNotificationConfigUpdateRequest struct {
 	Report *OpsEmailReportConfig `json:"report"`
 }
 
+// OpsWeComNotificationConfig is stored internally. WebhookURL must never be
+// returned by an admin API or written to logs.
+type OpsWeComNotificationConfig struct {
+	Enabled               bool   `json:"enabled"`
+	WebhookURL            string `json:"webhook_url"`
+	MinSeverity           string `json:"min_severity"`
+	RateLimitPerHour      int    `json:"rate_limit_per_hour"`
+	IncludeResolvedAlerts bool   `json:"include_resolved_alerts"`
+}
+
+type OpsWeComNotificationConfigView struct {
+	Enabled               bool   `json:"enabled"`
+	WebhookConfigured     bool   `json:"webhook_configured"`
+	WebhookURLMasked      string `json:"webhook_url_masked,omitempty"`
+	MinSeverity           string `json:"min_severity"`
+	RateLimitPerHour      int    `json:"rate_limit_per_hour"`
+	IncludeResolvedAlerts bool   `json:"include_resolved_alerts"`
+}
+
+type OpsWeComNotificationConfigUpdateRequest struct {
+	Enabled               bool    `json:"enabled"`
+	WebhookURL            *string `json:"webhook_url,omitempty"`
+	ClearWebhook          bool    `json:"clear_webhook,omitempty"`
+	MinSeverity           string  `json:"min_severity"`
+	RateLimitPerHour      int     `json:"rate_limit_per_hour"`
+	IncludeResolvedAlerts bool    `json:"include_resolved_alerts"`
+}
+
 type OpsDistributedLockSettings struct {
 	Enabled    bool   `json:"enabled"`
 	Key        string `json:"key"`
