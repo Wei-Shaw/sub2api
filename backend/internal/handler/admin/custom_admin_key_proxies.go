@@ -31,7 +31,7 @@ func scopedProxyDTO(p service.Proxy) scopedProxyOption {
 
 // scopedAdminProxyRead 对代理读取限定数量；无分页的 /all 从全池抽样。
 func (h *ProxyHandler) scopedAdminProxyRead(c *gin.Context) bool {
-	principal := adminaccess.FromContext(c.Request.Context())
+	principal := adminaccess.RestrictedFromContext(c.Request.Context())
 	if principal == nil {
 		return false
 	}
