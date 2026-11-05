@@ -37,7 +37,23 @@ func isOpenAIDeterministicClientError(statusCode int) bool {
 // redactAgentIdentitySensitiveBody；这里不重复清洗，也不回落读取原始 body 的
 // message，避免绕开那两道脱敏。
 func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
-	errorPayload := gin.H{"type": openAIUpstreamClientErrorFallbackType}
+	c.JSON(statusCode, gin.H{"error": openAIUpstreamErrorPayload(
+		body, upstreamMsg, openAIUpstreamClientErrorFallbackType, openAIUpstreamClientErrorFallbackMessage,
+	)})
+}
+
+// writeOpenAIPassthroughRuleBodyError 回写命中 passthrough_body=true 规则的上游错误。
+//
+// 规则的意图是让上游错误原样到达客户端，因此与确定性 400 分支一样保留 type/code/param
+// （例如 previous_response_not_found 依赖 code 才能被客户端识别为"需要重发完整历史"）；
+// 上游缺 type/message 时沿用规则路径原有的 upstream_error 与规则消息兜底。
+// upstreamMsg 约定同 writeOpenAIUpstreamClientError：调用方已脱敏。
+func writeOpenAIPassthroughRuleBodyError(c *gin.Context, statusCode int, body []byte, upstreamMsg, fallbackMsg string) {
+	c.JSON(statusCode, gin.H{"error": openAIUpstreamErrorPayload(body, upstreamMsg, "upstream_error", fallbackMsg)})
+}
+
+func openAIUpstreamErrorPayload(body []byte, upstreamMsg, fallbackType, fallbackMsg string) gin.H {
+	errorPayload := gin.H{"type": fallbackType}
 	if errType := strings.TrimSpace(gjson.GetBytes(body, "error.type").String()); errType != "" {
 		errorPayload["type"] = errType
 	}
@@ -49,15 +65,25 @@ func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte,
 	}
 	message := strings.TrimSpace(upstreamMsg)
 	if message == "" {
-		message = openAIUpstreamClientErrorFallbackMessage
+		message = fallbackMsg
 	}
 	errorPayload["message"] = message
-
-	c.JSON(statusCode, gin.H{"error": errorPayload})
+	return errorPayload
 }
 
 // WriteOpenAIUpstreamClientError preserves a structured deterministic upstream
 // client error when the handler has exhausted all eligible accounts.
 func WriteOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
 	writeOpenAIUpstreamClientError(c, statusCode, body, upstreamMsg)
+}
+
+// WriteOpenAIPassthroughRuleBodyError exposes writeOpenAIPassthroughRuleBodyError
+// for the handler's failover-exhausted path.
+func WriteOpenAIPassthroughRuleBodyError(c *gin.Context, statusCode int, body []byte, upstreamMsg, fallbackMsg string) {
+	writeOpenAIPassthroughRuleBodyError(c, statusCode, body, upstreamMsg, fallbackMsg)
+}
+
+// ExtractUpstreamErrorCode returns the upstream error.code, if any.
+func ExtractUpstreamErrorCode(body []byte) string {
+	return strings.TrimSpace(extractUpstreamErrorCode(body))
 }
