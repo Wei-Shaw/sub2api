@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -122,11 +123,23 @@ type antigravityCompatStreamSession struct {
 }
 
 const (
-	antigravityCompatMaxStreamAttempts           = 3
+	antigravityCompatMaxStreamAttempts           = 4
 	antigravityCompatPreContentKeepaliveInterval = 15 * time.Second
 	// Allow slow first tokens, but do not let comment-only streams reset the idle timer forever.
 	antigravityCompatPreContentMaxWait = 2 * time.Minute
+	antigravityCompatMinRetryBackoff   = 300 * time.Millisecond
+	antigravityCompatMaxRetryBackoff   = 800 * time.Millisecond
 )
+
+var antigravityCompatRetryBackoff = defaultAntigravityCompatRetryBackoff
+
+func defaultAntigravityCompatRetryBackoff() time.Duration {
+	span := int64(antigravityCompatMaxRetryBackoff - antigravityCompatMinRetryBackoff)
+	if span <= 0 {
+		return antigravityCompatMinRetryBackoff
+	}
+	return antigravityCompatMinRetryBackoff + time.Duration(rand.Int64N(span+1))
+}
 
 func newAntigravityCompatStreamSession(
 	model string,
@@ -400,6 +413,12 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 							_ = resp.Body.Close()
 							attempts++
 							logger.LegacyPrintf("service.antigravity_gateway", "Retrying content-less compatibility stream attempt=%d reason=%s", attempts, session.terminalReason)
+							backoff := antigravityCompatRetryBackoff()
+							select {
+							case <-c.Request.Context().Done():
+								return session.collectResult(true), nil
+							case <-time.After(backoff):
+							}
 							next, retryErr := retry[0]()
 							if c.Request.Context().Err() != nil {
 								if next != nil {
