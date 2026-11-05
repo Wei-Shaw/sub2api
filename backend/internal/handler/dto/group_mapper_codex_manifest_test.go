@@ -18,11 +18,15 @@ func TestGroupMapperRoundTripsCodexModelsManifestConfig(t *testing.T) {
 			AccountIDs:          []int64{101, 202},
 			FallbackToScheduler: true,
 		},
+		CodexConfigDefaultModel: "custom-model",
+		CodexConfigReviewModel:  "custom-review-model",
 	}
 
 	adminJSON, err := json.Marshal(GroupFromServiceAdmin(group))
 	require.NoError(t, err)
 	var adminEnvelope struct {
+		CodexConfigDefaultModel   string `json:"codex_config_default_model"`
+		CodexConfigReviewModel    string `json:"codex_config_review_model"`
 		CodexModelsManifestConfig *struct {
 			Enabled             bool    `json:"enabled"`
 			AccountIDs          []int64 `json:"account_ids"`
@@ -34,8 +38,12 @@ func TestGroupMapperRoundTripsCodexModelsManifestConfig(t *testing.T) {
 	require.True(t, adminEnvelope.CodexModelsManifestConfig.Enabled)
 	require.Equal(t, []int64{101, 202}, adminEnvelope.CodexModelsManifestConfig.AccountIDs)
 	require.True(t, adminEnvelope.CodexModelsManifestConfig.FallbackToScheduler)
+	require.Equal(t, "custom-model", adminEnvelope.CodexConfigDefaultModel)
+	require.Equal(t, "custom-review-model", adminEnvelope.CodexConfigReviewModel)
 
 	userJSON, err := json.Marshal(GroupFromService(group))
 	require.NoError(t, err)
 	require.NotContains(t, string(userJSON), "codex_models_manifest_config", "用户侧分组 DTO 不得暴露管理端 manifest 配置")
+	require.Contains(t, string(userJSON), `"codex_config_default_model":"custom-model"`)
+	require.Contains(t, string(userJSON), `"codex_config_review_model":"custom-review-model"`)
 }
