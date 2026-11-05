@@ -1,7 +1,7 @@
 # Channel Monitor V2 Safe Defaults & Gentle Backfill
 
-**Date:** 2026-08-08  
-**Status:** Approved for implementation  
+**Date:** 2026-08-08
+**Status:** Approved for implementation
 **Branch:** `fix/channel-monitor-v2-ops-ui-blockers` (onto channel-monitor-v2)
 
 ## Problem
@@ -47,7 +47,7 @@
 
 ### Error dedup
 
-- Bound the `request_id IN candidate_ids` branch with  
+- Bound the `request_id IN candidate_ids` branch with
   `created_at >= $1 - INTERVAL '90 minutes' AND created_at < $2`.
 
 ## Out of scope
