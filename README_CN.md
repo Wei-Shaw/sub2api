@@ -35,11 +35,11 @@
 <details open>
 <summary>点击折叠</summary>
 
-<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
 
-**[WandAPI](https://wandapi.ai/r/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
+**[WandAPI](https://wandapi.com/go/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
 
-**免费试用额度**：通过[专属链接](https://wandapi.ai/r/sub2api)注册，即可领取免费试用额度。
+**免费试用额度**：通过[专属链接](https://wandapi.com/go/sub2api)注册，即可领取免费试用额度。
 
 ---
 
@@ -66,8 +66,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>感谢 AIGoCode 赞助了本项目！AIGoCode 是一站式集成 Claude Code、Codex 以及最新 Gemini 模型的综合平台，为您提供稳定、高效、高性价比的 AI 编程服务。平台提供灵活的订阅方案，零封号风险，免 VPN 直连，响应极速。AIGoCode 为 sub2api 用户准备了专属福利：通过<a href="https://api.aigocode.dev/invite/SUB2API">此链接</a>注册，首次充值可额外获得 10% 赠送额度！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>感谢 AIGoCode 赞助了本项目！订阅制 AI 编程平台，不只按token 算钱。一个账号包月畅用 Claude Code、Codex、Gemini，国内直连、响应快。通过<a href="https://api.aigocode.dev/invite/SUB2API">此链接</a>订阅额外送 10% 额度！</td>
 </tr>
 
 <tr>
@@ -138,11 +138,6 @@
 <tr>
 <td width="180"><a href="https://www.swiftproxy.net/?ref=sub2api"><img src="assets/partners/logos/swiftprox.png" alt="Swiftproxy" width="150"></a></td>
 <td>Swiftproxy 是面向开发者的高性能代理解决方案，提供稳定可靠的住宅代理和静态住宅代理服务。拥有 9000 万+ 纯净住宅 IP，覆盖全球，支持灵活轮换和精准地理定位，帮助网页抓取、AI 自动化、浏览器自动化、SEO 监控和多账号管理等项目突破访问限制，提升工作流效率。支持 HTTP(S) 和 SOCKS5 协议，兼容 Playwright、Selenium、Puppeteer 等主流自动化工具，动态代理流量用完为止永不过期，支持免费测试 — <a href="https://www.swiftproxy.net/?ref=sub2api">立即开始免费测试</a>！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>感谢 APIMart 赞助了本项目！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> 是专注于 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可生成 160+ 张图片。图片、视频一套异步 API 通吃：提交任务获取 ID，通过轮询或回调获取结果；批量生成上万张图片也不会超时，切换模型无需修改代码。按量付费、无月费，通过<a href="https://go.apimart.ai/gh-sub2api">此注册链接</a>注册即可开始使用。</td>
 </tr>
 
 <tr>
