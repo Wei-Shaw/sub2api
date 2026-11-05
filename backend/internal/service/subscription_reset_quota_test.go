@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,11 @@ import (
 type resetQuotaUserSubRepoStub struct {
 	userSubRepoNoop
 
-	sub *UserSubscription
+	sub                *UserSubscription
+	subs               map[int64]*UserSubscription
+	groupSubscriptions []UserSubscription
+	resetErrors        map[int64]error
+	resetIDs           []int64
 
 	resetDailyCalled   bool
 	resetWeeklyCalled  bool
@@ -30,19 +35,54 @@ type resetQuotaUserSubRepoStub struct {
 }
 
 func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
-	if r.sub == nil || r.sub.ID != id {
-		return nil, ErrSubscriptionNotFound
+	if r.sub != nil && r.sub.ID == id {
+		cp := *r.sub
+		return &cp, nil
 	}
-	cp := *r.sub
-	return &cp, nil
+	if sub := r.subs[id]; sub != nil {
+		cp := *sub
+		return &cp, nil
+	}
+	return nil, ErrSubscriptionNotFound
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, periodicStart time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ListByGroupID(_ context.Context, groupID int64, params pagination.PaginationParams) ([]UserSubscription, *pagination.PaginationResult, error) {
+	matching := make([]UserSubscription, 0, len(r.groupSubscriptions))
+	for i := range r.groupSubscriptions {
+		if r.groupSubscriptions[i].GroupID == groupID {
+			matching = append(matching, r.groupSubscriptions[i])
+		}
+	}
+	start := params.Offset()
+	if start > len(matching) {
+		start = len(matching)
+	}
+	end := start + params.Limit()
+	if end > len(matching) {
+		end = len(matching)
+	}
+	pages := 0
+	if len(matching) > 0 {
+		pages = (len(matching) + params.Limit() - 1) / params.Limit()
+	}
+	return matching[start:end], &pagination.PaginationResult{
+		Total:    int64(len(matching)),
+		Page:     params.Page,
+		PageSize: params.Limit(),
+		Pages:    pages,
+	}, nil
+}
+
+func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, periodicStart time.Time) error {
 	r.resetDailyCalled = resetDaily
 	r.resetWeeklyCalled = resetWeekly
 	r.resetMonthlyCalled = resetMonthly
 	r.dailyStart = dailyStart
 	r.periodicStart = periodicStart
+	r.resetIDs = append(r.resetIDs, id)
+	if err := r.resetErrors[id]; err != nil {
+		return err
+	}
 	if resetDaily && r.resetDailyErr != nil {
 		return r.resetDailyErr
 	}
@@ -52,20 +92,24 @@ func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64
 	if resetMonthly && r.resetMonthlyErr != nil {
 		return r.resetMonthlyErr
 	}
-	if r.sub == nil {
+	target := r.sub
+	if sub := r.subs[id]; sub != nil {
+		target = sub
+	}
+	if target == nil {
 		return nil
 	}
 	if resetDaily {
-		r.sub.DailyUsageUSD = 0
-		r.sub.DailyWindowStart = &dailyStart
+		target.DailyUsageUSD = 0
+		target.DailyWindowStart = &dailyStart
 	}
 	if resetWeekly {
-		r.sub.WeeklyUsageUSD = 0
-		r.sub.WeeklyWindowStart = &periodicStart
+		target.WeeklyUsageUSD = 0
+		target.WeeklyWindowStart = &periodicStart
 	}
 	if resetMonthly {
-		r.sub.MonthlyUsageUSD = 0
-		r.sub.MonthlyWindowStart = &periodicStart
+		target.MonthlyUsageUSD = 0
+		target.MonthlyWindowStart = &periodicStart
 	}
 	return nil
 }
@@ -91,6 +135,27 @@ func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64
 
 func newResetQuotaSvc(stub *resetQuotaUserSubRepoStub) *SubscriptionService {
 	return NewSubscriptionService(groupRepoNoop{}, stub, nil, nil, nil)
+}
+
+type resetQuotaGroupRepoStub struct {
+	groupRepoNoop
+	group *Group
+	err   error
+}
+
+func (r resetQuotaGroupRepoStub) GetByIDLite(_ context.Context, id int64) (*Group, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.group == nil || r.group.ID != id {
+		return nil, ErrGroupNotFound
+	}
+	cp := *r.group
+	return &cp, nil
+}
+
+func newBulkResetQuotaSvc(groupRepo GroupRepository, stub *resetQuotaUserSubRepoStub) *SubscriptionService {
+	return NewSubscriptionService(groupRepo, stub, nil, nil, nil)
 }
 
 func TestAdminResetQuota_ResetBoth(t *testing.T) {
@@ -271,4 +336,75 @@ func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
 	// 服务应返回第二次 GetByID 的刷新值而非初始的 99.9
 	require.Equal(t, float64(0), result.DailyUsageUSD, "返回的订阅应反映已归零的用量")
 	require.True(t, stub.resetDailyCalled)
+}
+
+func TestAdminResetGroupQuota_ResetsOnlyActiveSubscriptions(t *testing.T) {
+	now := time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC)
+	activeOne := &UserSubscription{ID: 1, UserID: 10, GroupID: 20, Status: SubscriptionStatusActive, ExpiresAt: now.Add(time.Hour), DailyUsageUSD: 3}
+	activeTwo := &UserSubscription{ID: 2, UserID: 11, GroupID: 20, Status: SubscriptionStatusActive, ExpiresAt: now.Add(2 * time.Hour), DailyUsageUSD: 4}
+	expiredStatus := &UserSubscription{ID: 3, UserID: 12, GroupID: 20, Status: SubscriptionStatusExpired, ExpiresAt: now.Add(time.Hour), DailyUsageUSD: 5}
+	expiredTime := &UserSubscription{ID: 4, UserID: 13, GroupID: 20, Status: SubscriptionStatusActive, ExpiresAt: now.Add(-time.Second), DailyUsageUSD: 6}
+	stub := &resetQuotaUserSubRepoStub{
+		subs: map[int64]*UserSubscription{
+			1: activeOne,
+			2: activeTwo,
+			3: expiredStatus,
+			4: expiredTime,
+		},
+		groupSubscriptions: []UserSubscription{*activeOne, *activeTwo, *expiredStatus, *expiredTime},
+	}
+	svc := newBulkResetQuotaSvc(resetQuotaGroupRepoStub{
+		group: &Group{ID: 20, SubscriptionType: SubscriptionTypeSubscription},
+	}, stub)
+	svc.now = func() time.Time { return now }
+
+	result, err := svc.AdminResetGroupQuota(context.Background(), 20, true, true, true)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.TotalCount)
+	require.Equal(t, 2, result.SuccessCount)
+	require.Zero(t, result.FailedCount)
+	require.Equal(t, []int64{1, 2}, stub.resetIDs)
+	require.Zero(t, activeOne.DailyUsageUSD)
+	require.Zero(t, activeTwo.DailyUsageUSD)
+	require.Equal(t, float64(5), expiredStatus.DailyUsageUSD)
+	require.Equal(t, float64(6), expiredTime.DailyUsageUSD)
+}
+
+func TestAdminResetGroupQuota_ReportsPartialFailures(t *testing.T) {
+	now := time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC)
+	first := &UserSubscription{ID: 1, UserID: 10, GroupID: 20, Status: SubscriptionStatusActive, ExpiresAt: now.Add(time.Hour)}
+	second := &UserSubscription{ID: 2, UserID: 11, GroupID: 20, Status: SubscriptionStatusActive, ExpiresAt: now.Add(time.Hour)}
+	stub := &resetQuotaUserSubRepoStub{
+		subs:               map[int64]*UserSubscription{1: first, 2: second},
+		groupSubscriptions: []UserSubscription{*first, *second},
+		resetErrors:        map[int64]error{1: errors.New("reset failed")},
+	}
+	svc := newBulkResetQuotaSvc(resetQuotaGroupRepoStub{
+		group: &Group{ID: 20, SubscriptionType: SubscriptionTypeSubscription},
+	}, stub)
+	svc.now = func() time.Time { return now }
+
+	result, err := svc.AdminResetGroupQuota(context.Background(), 20, true, true, true)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.TotalCount)
+	require.Equal(t, 1, result.SuccessCount)
+	require.Equal(t, 1, result.FailedCount)
+	require.Equal(t, []int64{1}, result.FailedSubscriptionIDs)
+	require.Len(t, result.Errors, 1)
+	require.Equal(t, []int64{1, 2}, stub.resetIDs)
+}
+
+func TestAdminResetGroupQuota_RejectsStandardGroup(t *testing.T) {
+	stub := &resetQuotaUserSubRepoStub{}
+	svc := newBulkResetQuotaSvc(resetQuotaGroupRepoStub{
+		group: &Group{ID: 20, SubscriptionType: SubscriptionTypeStandard},
+	}, stub)
+
+	result, err := svc.AdminResetGroupQuota(context.Background(), 20, true, true, true)
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, ErrGroupNotSubscriptionType)
+	require.Empty(t, stub.resetIDs)
 }
