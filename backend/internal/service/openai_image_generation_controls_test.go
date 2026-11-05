@@ -85,11 +85,14 @@ func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(
 
 	tests := []struct {
 		name          string
+		runMode       string
 		allowImages   bool
 		bridgeEnabled bool
 		responsesLite bool
 		wantInjected  bool
 	}{
+		{name: "simple mode ignores group flag for bridge", runMode: config.RunModeSimple, allowImages: false, bridgeEnabled: true, wantInjected: true},
+		{name: "simple mode preserves bridge opt-in", runMode: config.RunModeSimple, allowImages: false, bridgeEnabled: false, wantInjected: false},
 		{name: "disabled group skips injection", allowImages: false, bridgeEnabled: true, wantInjected: false},
 		{name: "enabled group skips injection by default", allowImages: true, bridgeEnabled: false, wantInjected: false},
 		{name: "enabled group injects image tool when bridge enabled", allowImages: true, bridgeEnabled: true, wantInjected: true},
@@ -106,6 +109,7 @@ func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(
 				},
 			}
 			svc := newOpenAIImageGenerationControlTestService(upstream)
+			svc.cfg.RunMode = tt.runMode
 			svc.cfg.Gateway.CodexImageGenerationBridgeEnabled = tt.bridgeEnabled
 			c, _ := newOpenAIImageGenerationControlTestContext(tt.allowImages, "codex_cli_rs/0.98.0")
 			if tt.responsesLite {
