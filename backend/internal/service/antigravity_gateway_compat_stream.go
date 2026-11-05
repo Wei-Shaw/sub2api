@@ -76,6 +76,7 @@ type antigravityResponsesStreamAdapter struct {
 func newAntigravityResponsesStreamAdapter(model string) *antigravityResponsesStreamAdapter {
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = model
+	state.PreserveThinkingSignatures = apicompat.IsSignedThinkingModel(model)
 	return &antigravityResponsesStreamAdapter{anthropicState: state}
 }
 
