@@ -68,6 +68,48 @@ func TestResponsesSolInvalidReasoningDoesNotFailover(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestResponsesTerraToolsCapabilityFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := "{\"model\":\"public-alias\",\"input\":\"hello\",\"tools\":[{\"type\":\"function\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}]}"
+	c, rec := newSolToolsFallbackContext(body)
+	account := forceChatResponsesFallbackAccount()
+	account.Credentials["model_mapping"] = map[string]any{"public-alias": "gpt-6.1-terra"}
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{
+		cfg: rawChatCompletionsTestConfig(), accountRepo: &accountRepoStub{}, httpUpstream: upstream,
+	}
+
+	_, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body), time.Now())
+
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.Equal(t, OpenAIResponsesToolsUnsupportedReason, failover.Reason)
+	require.True(t, failover.ShouldRetryNextAccount())
+	require.False(t, failover.ShouldReportAccountScheduleFailure())
+	require.Contains(t, failover.ClientMessage, "gpt-6.1-terra")
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+	require.Empty(t, upstream.requests)
+}
+
+func TestResponsesSolToolsWithoutSelectorStillReturns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := `{"model":"gpt-6.1-sol","input":"hello","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`
+	c, rec := newSolToolsFallbackContext(body)
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, forceChatResponsesFallbackAccount(), []byte(body), time.Now())
+
+	var failover *UpstreamFailoverError
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.False(t, errors.As(err, &failover))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "gpt-6.1-sol requires Responses for tool calls")
+	require.Empty(t, upstream.requests)
+}
+
 func newSolToolsFallbackContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
