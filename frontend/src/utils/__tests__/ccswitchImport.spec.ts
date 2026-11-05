@@ -7,6 +7,53 @@ import {
 } from '@/utils/ccswitchImport'
 import type { GroupPlatform } from '@/types'
 
+describe('administrator CC Switch template presets', () => {
+  const input = { baseUrl: 'https://example.com', platform: 'openai' as const, clientType: 'claude' as const, providerName: '中文分组', apiKey: 'sk-test', usageScript: '查询余额' }
+
+  /** Decode the actual link payload, including non-ASCII site names. */
+  function payload(params: URLSearchParams) {
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(params.get('config')!), character => character.charCodeAt(0))))
+  }
+
+  it('exports model, review model, effort, auth and same-origin catalog as native Codex config', () => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({ ...input, clientExportConfig: { codex_model: 'gpt-6-sol', codex_reasoning_effort: 'high', codex_auth_mode: 'api-key', codex_catalog_mode: 'remote', cc_usage_interval: '15' } }))
+    const value = payload(params)
+    expect(value.auth).toBeUndefined()
+    expect(value.config).toContain('name = "中文分组"')
+    expect(value.config).toContain('review_model = "gpt-6-sol"')
+    expect(value.config).toContain('model_reasoning_effort = "high"')
+    expect(value.config).toContain('requires_openai_auth = false')
+    expect(value.config).toContain('experimental_bearer_token = "sk-test"')
+    expect(value.config).toContain('model_catalog_url = "https://example.com/v1/models"')
+    expect(value.config).not.toContain('[features]')
+    expect(params.get('usageAutoInterval')).toBe('15')
+    expect(new TextDecoder().decode(Uint8Array.from(atob(params.get('usageScript')!), c => c.charCodeAt(0)))).toBe('查询余额')
+  })
+
+  it('omits usage script and timer when disabled, and never exports a local file path', () => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({ ...input, clientExportConfig: { cc_usage_mode: 'disabled', cc_usage_interval: '5', codex_catalog_mode: 'file' } }))
+    expect(params.has('usageScript')).toBe(false)
+    expect(params.has('usageAutoInterval')).toBe(false)
+    expect(params.get('usageEnabled')).toBe('false')
+    const value = payload(params)
+    expect(value.auth).toEqual({ OPENAI_API_KEY: 'sk-test' })
+    expect(value.config).not.toContain('model_catalog_')
+  })
+
+  it.each(['gemini', 'antigravity'] as const)('uses the Gemini slot for %s native Gemini imports', platform => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({ ...input, platform, clientType: 'gemini', clientExportConfig: { gemini_model: 'gemini-2.5-pro', codex_model: 'other-client' } }))
+    expect(params.get('app')).toBe('gemini')
+    expect(params.get('model')).toBe('gemini-2.5-pro')
+    expect(params.has('config')).toBe(false)
+  })
+
+  it('exports Claude traffic policy as an environment setting without forcing Claude role models', () => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({ ...input, platform: 'anthropic', clientExportConfig: { claude_traffic: 'enabled' } }))
+    expect(payload(params)).toEqual({ env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '0' } })
+    expect(params.has('model')).toBe(false)
+  })
+})
+
 function paramsFromDeeplink(deeplink: string): URLSearchParams {
   const query = deeplink.split('?')[1] || ''
   return new URLSearchParams(query)

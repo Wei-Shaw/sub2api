@@ -177,8 +177,11 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	return out
 }
 
+// groupFromServiceBase maps shared public group fields. Client defaults expose
+// model IDs only; administrator-only account/source settings stay outside this DTO.
 func groupFromServiceBase(g *service.Group) Group {
 	return Group{
+		ClientExportConfig:              g.ClientExportConfig,
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     g.Description,

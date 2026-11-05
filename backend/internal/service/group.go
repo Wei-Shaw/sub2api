@@ -15,13 +15,17 @@ type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfi
 type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
+type GroupClientExportConfig = domain.GroupClientExportConfig
+
 type Group struct {
-	ID             int64
-	Name           string
-	Description    string
-	I18n           GroupI18n // 名称与描述的界面语言译文；缺失的语言沿用 Name/Description
-	Platform       string
-	RateMultiplier float64
+	// ClientExportConfig affects newly generated client configurations only.
+	ClientExportConfig GroupClientExportConfig
+	ID                 int64
+	Name               string
+	Description        string
+	I18n               GroupI18n // 名称与描述的界面语言译文；缺失的语言沿用 Name/Description
+	Platform           string
+	RateMultiplier     float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
