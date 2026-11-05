@@ -786,6 +786,27 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 	}
 }
 
+// antigravityEntityNotFoundCooldown 账号对某模型返回 404 "Requested entity was not found."
+// 时，该 (账号, 模型) 的冷却时长。账号权益问题不会在短时间内自愈，冷却可避免每个请求都先撞一次坏账号。
+const antigravityEntityNotFoundCooldown = 10 * time.Minute
+
+// isAntigravityEntityNotFoundError 判断上游是否以 404 "Requested entity was not found." 拒绝请求。
+//
+// 模型名在进入上游前已经过映射校验，此时出现该错误说明是当前账号（Google 账号/项目权益）
+// 无法使用该模型，而同分组其他账号可能正常——应换号而不是把 404 直接暴露给客户端。
+func isAntigravityEntityNotFoundError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusNotFound {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(body)))
+	return strings.Contains(msg, "requested entity was not found")
+}
+
+// shouldFailoverAntigravityResponse 在状态码规则之外，额外把账号级的 404 entity-not-found 视为可换号错误。
+func (s *AntigravityGatewayService) shouldFailoverAntigravityResponse(statusCode int, body []byte) bool {
+	return s.shouldFailoverUpstreamError(statusCode) || isAntigravityEntityNotFoundError(statusCode, body)
+}
+
 // isGoogleProjectConfigError 判断（已提取的小写）错误消息是否属于 Google 服务端配置类问题。
 // 只精确匹配已知的服务端侧错误，避免对客户端请求错误做无意义重试。
 // 适用于所有走 Google 后端的平台（Antigravity、Gemini）。
@@ -1224,6 +1245,21 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 	// 避免将普通的 503 错误误判为账号问题
 	if statusCode == 503 {
 		return nil
+	}
+
+	// 404 entity-not-found：账号对该模型无权益，按模型冷却该账号（不影响其他模型）。
+	// 不提前返回：管理员配置的自定义错误码 / 临时不可调度规则仍由 rateLimitService 处理。
+	if isAntigravityEntityNotFoundError(statusCode, body) {
+		modelKey := resolveFinalAntigravityModelKey(ctx, account, requestedModel)
+		if strings.TrimSpace(modelKey) == "" {
+			modelKey = resolveAntigravityModelKey(requestedModel)
+		}
+		if modelKey != "" {
+			resetAt := time.Now().Add(antigravityEntityNotFoundCooldown)
+			if !s.setAntigravityModelRateLimits(ctx, s.accountRepo, account, modelKey, prefix, statusCode, resetAt, false) {
+				logger.LegacyPrintf("service.antigravity_gateway", "%s status=404 entity_not_found model_cooldown_set_failed model=%s", prefix, modelKey)
+			}
+		}
 	}
 
 	// 429：尝试解析模型级限流，解析失败时兜底为账号级限流
