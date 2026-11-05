@@ -158,6 +158,26 @@ func (_u *ProxyUpdate) ClearPassword() *ProxyUpdate {
 	return _u
 }
 
+// SetConsoleURL sets the "console_url" field.
+func (_u *ProxyUpdate) SetConsoleURL(v string) *ProxyUpdate {
+	_u.mutation.SetConsoleURL(v)
+	return _u
+}
+
+// SetNillableConsoleURL sets the "console_url" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableConsoleURL(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetConsoleURL(*v)
+	}
+	return _u
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (_u *ProxyUpdate) ClearConsoleURL() *ProxyUpdate {
+	_u.mutation.ClearConsoleURL()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdate) SetStatus(v string) *ProxyUpdate {
 	_u.mutation.SetStatus(v)
@@ -404,6 +424,11 @@ func (_u *ProxyUpdate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ConsoleURL(); ok {
+		if err := proxy.ConsoleURLValidator(v); err != nil {
+			return &ValidationError{Name: "console_url", err: fmt.Errorf(`ent: validator failed for field "Proxy.console_url": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -464,6 +489,12 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.ConsoleURL(); ok {
+		_spec.SetField(proxy.FieldConsoleURL, field.TypeString, value)
+	}
+	if _u.mutation.ConsoleURLCleared() {
+		_spec.ClearField(proxy.FieldConsoleURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -751,6 +782,26 @@ func (_u *ProxyUpdateOne) ClearPassword() *ProxyUpdateOne {
 	return _u
 }
 
+// SetConsoleURL sets the "console_url" field.
+func (_u *ProxyUpdateOne) SetConsoleURL(v string) *ProxyUpdateOne {
+	_u.mutation.SetConsoleURL(v)
+	return _u
+}
+
+// SetNillableConsoleURL sets the "console_url" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableConsoleURL(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetConsoleURL(*v)
+	}
+	return _u
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (_u *ProxyUpdateOne) ClearConsoleURL() *ProxyUpdateOne {
+	_u.mutation.ClearConsoleURL()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdateOne) SetStatus(v string) *ProxyUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -1010,6 +1061,11 @@ func (_u *ProxyUpdateOne) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ConsoleURL(); ok {
+		if err := proxy.ConsoleURLValidator(v); err != nil {
+			return &ValidationError{Name: "console_url", err: fmt.Errorf(`ent: validator failed for field "Proxy.console_url": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -1087,6 +1143,12 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.ConsoleURL(); ok {
+		_spec.SetField(proxy.FieldConsoleURL, field.TypeString, value)
+	}
+	if _u.mutation.ConsoleURLCleared() {
+		_spec.ClearField(proxy.FieldConsoleURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)

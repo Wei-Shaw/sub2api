@@ -269,6 +269,18 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <a
+                v-if="row.console_url"
+                :href="buildProxyConsoleURL(row.console_url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-900/20 dark:hover:text-violet-400"
+                :title="t('admin.proxies.consoleTitle')"
+                @click.stop
+              >
+                <Icon name="terminal" size="sm" />
+                <span class="text-xs">{{ t('admin.proxies.consoleTitle') }}</span>
+              </a>
               <button
                 @click="handleTestConnection(row)"
                 :disabled="testingProxyIds.has(row.id)"
@@ -491,6 +503,16 @@
               <Icon :name="createPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
             </button>
           </div>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.consoleURL') }}</label>
+          <input
+            v-model="createForm.console_url"
+            type="url"
+            class="input"
+            :placeholder="t('admin.proxies.consoleURLPlaceholder')"
+          />
+          <p class="input-hint mt-1">{{ t('admin.proxies.consoleURLHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
@@ -720,6 +742,16 @@
               <Icon :name="editPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
             </button>
           </div>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.consoleURL') }}</label>
+          <input
+            v-model="editForm.console_url"
+            type="url"
+            class="input"
+            :placeholder="t('admin.proxies.consoleURLPlaceholder')"
+          />
+          <p class="input-hint mt-1">{{ t('admin.proxies.consoleURLHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.status') }}</label>
@@ -988,6 +1020,7 @@ import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
+import { buildProxyConsoleURL } from '@/utils/proxyConsole'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1128,6 +1161,7 @@ const createForm = reactive({
   port: 8080,
   username: '',
   password: '',
+  console_url: '',
   expires_at: '' as string,
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
   backup_proxy_id: null as number | null,
@@ -1141,6 +1175,7 @@ const editForm = reactive({
   port: 8080,
   username: '',
   password: '',
+  console_url: '',
   status: 'active' as 'active' | 'inactive' | 'expired',
   expires_at: '' as string,
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
@@ -1262,6 +1297,7 @@ const closeCreateModal = () => {
   createForm.port = 8080
   createForm.username = ''
   createForm.password = ''
+  createForm.console_url = ''
   createForm.expires_at = ''
   createForm.fallback_mode = 'none'
   createForm.backup_proxy_id = null
@@ -1398,6 +1434,7 @@ const handleCreateProxy = async () => {
       port: createForm.port,
       username: createForm.username.trim() || null,
       password: createForm.password.trim() || null,
+      console_url: createForm.console_url.trim() || null,
       expires_at: createForm.expires_at ? Math.floor(new Date(createForm.expires_at).getTime() / 1000) : null,
       fallback_mode: createForm.fallback_mode,
       backup_proxy_id: createForm.fallback_mode === 'proxy' ? createForm.backup_proxy_id : null,
@@ -1422,6 +1459,7 @@ const handleEdit = (proxy: Proxy) => {
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
+  editForm.console_url = proxy.console_url || ''
   editForm.status = proxy.status === 'expired' ? 'inactive' : proxy.status
   editForm.expires_at = proxy.expires_at ? proxy.expires_at.slice(0, 10) : ''
   editForm.fallback_mode = proxy.fallback_mode || 'none'
@@ -1462,6 +1500,7 @@ const handleUpdateProxy = async () => {
       host: editForm.host.trim(),
       port: editForm.port,
       username: editForm.username.trim(),
+      console_url: editForm.console_url.trim(),
       status: editForm.status,
       expires_at: editForm.expires_at ? Math.floor(new Date(editForm.expires_at).getTime() / 1000) : null,
       fallback_mode: editForm.fallback_mode,

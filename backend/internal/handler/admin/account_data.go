@@ -43,6 +43,7 @@ type DataProxy struct {
 	Port            int    `json:"port"`
 	Username        string `json:"username,omitempty"`
 	Password        string `json:"password,omitempty"`
+	ConsoleURL      string `json:"console_url,omitempty"`
 	Status          string `json:"status"`
 	ExpiresAt       *int64 `json:"expires_at,omitempty"`        // unix 秒，与 DataAccount.ExpiresAt 风格一致
 	FallbackMode    string `json:"fallback_mode,omitempty"`     // none/direct/proxy
@@ -177,6 +178,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Port:            p.Port,
 			Username:        p.Username,
 			Password:        p.Password,
+			ConsoleURL:      p.ConsoleURL,
 			Status:          p.Status,
 			ExpiresAt:       expiresAt,
 			FallbackMode:    p.FallbackMode,
@@ -314,6 +316,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 						BackupProxyID:  existingBackupProxyID,
 						ClearBackupID:  existingBackupProxyID == nil,
 						ExpiryWarnDays: &item.ExpiryWarnDays,
+						ConsoleURL:     trimOptionalString(&item.ConsoleURL),
 						Name:           proxy.Name,
 						Protocol:       proxy.Protocol,
 						Host:           proxy.Host,
@@ -362,6 +365,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			FallbackMode:   fallbackMode,
 			BackupProxyID:  backupProxyID,
 			ExpiryWarnDays: item.ExpiryWarnDays,
+			ConsoleURL:     item.ConsoleURL,
 		})
 		if createErr != nil {
 			result.ProxyFailed++
@@ -390,6 +394,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 				BackupProxyID:  backupProxyID,
 				ClearBackupID:  backupProxyID == nil,
 				ExpiryWarnDays: &item.ExpiryWarnDays,
+				ConsoleURL:     trimOptionalString(&item.ConsoleURL),
 				Name:           created.Name,
 				Protocol:       created.Protocol,
 				Host:           created.Host,
