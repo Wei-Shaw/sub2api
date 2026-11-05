@@ -39,17 +39,14 @@ func (c *tokenExpiredRecoveryOAuthClient) RefreshTokenWithClientID(context.Conte
 	}, nil
 }
 
-func TestOpenAIGatewayService_TokenExpiredRefreshesAndReplaysSameAccount(t *testing.T) {
+func runOpenAIGatewayServiceAuthRecovery(t *testing.T, errorBody string) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{
 			StatusCode: http.StatusUnauthorized,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body: io.NopCloser(strings.NewReader(`{
-  "detail": {"code": "token_expired", "message": "Your authentication token has expired. Please try refreshing it."},
-  "error": {"code": "token_expired", "message": "Your authentication token has expired. Please try refreshing it.", "param": null, "type": "invalid_request_error"},
-  "status": 401
-}`)),
+			Body:       io.NopCloser(strings.NewReader(errorBody)),
 		},
 		{
 			StatusCode: http.StatusOK,
@@ -102,4 +99,16 @@ func TestOpenAIGatewayService_TokenExpiredRefreshesAndReplaysSameAccount(t *test
 	require.Equal(t, int32(1), atomic.LoadInt32(&oauthClient.refreshCalls))
 	require.Equal(t, "refreshed-access-token", account.GetOpenAIAccessToken())
 	require.Equal(t, "refreshed-access-token", cache.tokens[OpenAITokenCacheKey(account)])
+}
+
+func TestOpenAIGatewayService_TokenExpiredRefreshesAndReplaysSameAccount(t *testing.T) {
+	runOpenAIGatewayServiceAuthRecovery(t, `{
+  "detail": {"code": "token_expired", "message": "Your authentication token has expired. Please try refreshing it."},
+  "error": {"code": "token_expired", "message": "Your authentication token has expired.", "param": null, "type": "invalid_request_error"},
+  "status": 401
+}`)
+}
+
+func TestOpenAIGatewayService_TeamGenericUnauthorizedRefreshesAndReplaysSameAccount(t *testing.T) {
+	runOpenAIGatewayServiceAuthRecovery(t, `{"detail":"Unauthorized","status":401}`)
 }

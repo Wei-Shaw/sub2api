@@ -450,8 +450,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthroughOnce(
 			}
 			continue
 		}
-		if resp.StatusCode == http.StatusUnauthorized && extractUpstreamErrorCode(probeBody) == "token_expired" &&
-			!openAIAuthRecoveryTried && account.IsOpenAIOAuth() && s.openAITokenProvider != nil {
+		if !openAIAuthRecoveryTried && s.openAITokenProvider != nil &&
+			shouldRefreshOpenAIOAuth401(account, resp.StatusCode, probeBody) {
 			openAIAuthRecoveryTried = true
 			if refreshErr := s.openAITokenProvider.RefreshAfterUnauthorized(ctx, account); refreshErr == nil {
 				_ = resp.Body.Close()

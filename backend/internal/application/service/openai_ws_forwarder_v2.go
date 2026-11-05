@@ -737,8 +737,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			if allowAuthRecovery && !wroteDownstream && account.IsOpenAIOAuth() &&
-				s.openAITokenProvider != nil && isOpenAIWSTokenExpiredEvent(message) {
+			if allowAuthRecovery && !wroteDownstream && s.openAITokenProvider != nil &&
+				isOpenAIWSTokenAuthRecoveryCandidate(message, account) {
 				if refreshErr := s.openAITokenProvider.RefreshAfterUnauthorized(ctx, account); refreshErr == nil {
 					lease.MarkBroken()
 					return nil, &openAIWSAuthRecoveredError{}

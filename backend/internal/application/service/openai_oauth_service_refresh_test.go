@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +17,8 @@ import (
 )
 
 type openaiOAuthClientRefreshStub struct {
-	refreshCalls int32
+	refreshCalls    int32
+	refreshResponse *openai.TokenResponse
 }
 
 func (s *openaiOAuthClientRefreshStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
@@ -29,7 +32,48 @@ func (s *openaiOAuthClientRefreshStub) RefreshToken(ctx context.Context, refresh
 
 func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.refreshCalls, 1)
+	if s.refreshResponse != nil {
+		return s.refreshResponse, nil
+	}
 	return nil, errors.New("not implemented")
+}
+
+func TestOpenAIOAuthService_RefreshAccountToken_RehydratesClaimsFromAccessToken(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"email": "team@example.com",
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": "team-workspace-42",
+			"chatgpt_user_id":    "team-user-42",
+			"chatgpt_plan_type":  "team",
+			"poid":               "org-team-42",
+		},
+	})
+	require.NoError(t, err)
+	accessToken := "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+	client := &openaiOAuthClientRefreshStub{refreshResponse: &openai.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: "rotated-refresh-token",
+		ExpiresIn:    3600,
+	}}
+	svc := NewOpenAIOAuthService(nil, client)
+	defer svc.Stop()
+
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "old-access-token",
+			"refresh_token": "old-refresh-token",
+		},
+	}
+
+	info, err := svc.RefreshAccountToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, accessToken, info.AccessToken)
+	require.Equal(t, "team-workspace-42", info.ChatGPTAccountID)
+	require.Equal(t, "team-user-42", info.ChatGPTUserID)
+	require.Equal(t, "team", info.PlanType)
+	require.Equal(t, "org-team-42", info.OrganizationID)
 }
 
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {

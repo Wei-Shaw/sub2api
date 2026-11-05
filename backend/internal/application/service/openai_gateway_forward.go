@@ -784,7 +784,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				continue
 			}
-			if !wsAuthRecoveryTried && account.IsOpenAIOAuth() && s.openAITokenProvider != nil && isOpenAIWSDialTokenExpired(wsErr) {
+			if !wsAuthRecoveryTried && s.openAITokenProvider != nil && isOpenAIWSDialAuthRecoveryCandidate(wsErr, account) {
 				wsAuthRecoveryTried = true
 				if refreshErr := s.openAITokenProvider.RefreshAfterUnauthorized(ctx, account); refreshErr == nil {
 					token, _, err = s.GetAccessToken(ctx, account)
@@ -1025,8 +1025,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
-			if resp.StatusCode == http.StatusUnauthorized && upstreamCode == "token_expired" &&
-				!openAIAuthRecoveryTried && account.IsOpenAIOAuth() && s.openAITokenProvider != nil {
+			if !openAIAuthRecoveryTried && s.openAITokenProvider != nil &&
+				shouldRefreshOpenAIOAuth401(account, resp.StatusCode, respBody) {
 				openAIAuthRecoveryTried = true
 				if refreshErr := s.openAITokenProvider.RefreshAfterUnauthorized(ctx, account); refreshErr == nil {
 					_ = resp.Body.Close()

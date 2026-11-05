@@ -640,8 +640,36 @@ func isOpenAIWSDialTokenExpired(err error) bool {
 	return extractUpstreamErrorCode(dialErr.ResponseBody) == "token_expired"
 }
 
+func isOpenAIWSDialAuthRecoveryCandidate(err error, account *Account) bool {
+	var dialErr *openAIWSDialError
+	if !errors.As(err, &dialErr) || dialErr == nil {
+		return false
+	}
+	return shouldRefreshOpenAIOAuth401(account, dialErr.StatusCode, dialErr.ResponseBody)
+}
+
 func isOpenAIWSTokenExpiredEvent(payload []byte) bool {
 	return extractUpstreamErrorCode(payload) == "token_expired"
+}
+
+func isOpenAIWSTokenAuthRecoveryCandidate(payload []byte, account *Account) bool {
+	codeRaw, typeRaw, messageRaw := parseOpenAIWSErrorEventFields(payload)
+	code := strings.ToLower(strings.TrimSpace(codeRaw))
+	typeName := strings.ToLower(strings.TrimSpace(typeRaw))
+	message := strings.ToLower(strings.TrimSpace(messageRaw))
+	statusCode := openAIWSErrorHTTPStatusFromRaw(codeRaw, typeRaw)
+	if code == "token_expired" {
+		statusCode = http.StatusUnauthorized
+	} else if statusCode != http.StatusUnauthorized &&
+		!strings.Contains(typeName, "authentication") &&
+		!strings.Contains(code, "unauthorized") &&
+		!strings.Contains(message, "unauthorized") &&
+		!strings.Contains(message, "authentication") {
+		return false
+	} else if statusCode != http.StatusUnauthorized {
+		statusCode = http.StatusUnauthorized
+	}
+	return shouldRefreshOpenAIOAuth401(account, statusCode, payload)
 }
 
 func isOpenAIWSTokenEvent(eventType string) bool {

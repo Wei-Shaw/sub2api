@@ -210,6 +210,12 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		tokenInfo.OrganizationID = userInfo.OrganizationID
 		tokenInfo.PlanType = userInfo.PlanType
 	}
+	// Refresh responses often omit id_token. The new access token still carries
+	// the OpenAI auth claims, including the ChatGPT/Team workspace principal.
+	// Rehydrate only missing fields so an explicit ID-token value remains the
+	// preferred source while a rotated Team token cannot keep stale routing
+	// metadata from the previous credential.
+	fillMissingOpenAITokenInfoFromAccessToken(tokenInfo)
 
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
 
@@ -257,6 +263,7 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		tokenInfo.OrganizationID = userInfo.OrganizationID
 		tokenInfo.PlanType = userInfo.PlanType
 	}
+	fillMissingOpenAITokenInfoFromAccessToken(tokenInfo)
 
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
 
@@ -311,6 +318,46 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 
 func shouldApplyChatGPTAccountInfoPlanType(current, candidate string) bool {
 	return strings.TrimSpace(candidate) != "" && strings.TrimSpace(current) == ""
+}
+
+func fillMissingOpenAITokenInfoFromAccessToken(tokenInfo *OpenAITokenInfo) {
+	if tokenInfo == nil || strings.TrimSpace(tokenInfo.AccessToken) == "" {
+		return
+	}
+	claims, err := openai.DecodeIDToken(strings.TrimSpace(tokenInfo.AccessToken))
+	if err != nil || claims == nil || claims.OpenAIAuth == nil {
+		return
+	}
+	auth := claims.OpenAIAuth
+	if strings.TrimSpace(tokenInfo.Email) == "" {
+		tokenInfo.Email = strings.TrimSpace(claims.Email)
+	}
+	if strings.TrimSpace(tokenInfo.ChatGPTAccountID) == "" {
+		tokenInfo.ChatGPTAccountID = strings.TrimSpace(auth.ChatGPTAccountID)
+	}
+	if strings.TrimSpace(tokenInfo.ChatGPTUserID) == "" {
+		tokenInfo.ChatGPTUserID = strings.TrimSpace(auth.ChatGPTUserID)
+		if tokenInfo.ChatGPTUserID == "" {
+			tokenInfo.ChatGPTUserID = strings.TrimSpace(auth.UserID)
+		}
+	}
+	if strings.TrimSpace(tokenInfo.PlanType) == "" {
+		tokenInfo.PlanType = strings.TrimSpace(auth.ChatGPTPlanType)
+	}
+	if strings.TrimSpace(tokenInfo.OrganizationID) == "" {
+		tokenInfo.OrganizationID = strings.TrimSpace(auth.POID)
+		if tokenInfo.OrganizationID == "" {
+			for _, organization := range auth.Organizations {
+				if organization.IsDefault {
+					tokenInfo.OrganizationID = strings.TrimSpace(organization.ID)
+					break
+				}
+			}
+		}
+		if tokenInfo.OrganizationID == "" && len(auth.Organizations) > 0 {
+			tokenInfo.OrganizationID = strings.TrimSpace(auth.Organizations[0].ID)
+		}
+	}
 }
 
 func chatGPTAccountInfoBelongsToTokenAccount(tokenInfo *OpenAITokenInfo, info *ChatGPTAccountInfo) bool {
