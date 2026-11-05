@@ -15,6 +15,7 @@ package requestmodel
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -37,6 +38,90 @@ var liveRequestRoutes = map[string]bool{
 // IsLiveRequestRoute 报告该路由模板的 handler 是否只读取 session.model。
 func IsLiveRequestRoute(routePath string) bool {
 	return liveRequestRoutes[strings.TrimSpace(routePath)]
+}
+
+// HasDuplicateTopLevelKey compares decoded names like encoding/json's struct
+// binding. Nested keys and values (including null) do not affect the count.
+func HasDuplicateTopLevelKey(body []byte, name string) bool {
+	object := gjson.ParseBytes(body)
+	if !object.IsObject() {
+		return false
+	}
+	count := 0
+	object.ForEach(func(key, _ gjson.Result) bool {
+		if strings.EqualFold(key.String(), name) {
+			count++
+		}
+		return count < 2
+	})
+	return count > 1
+}
+
+// ValidateBody rejects ambiguous model carriers before routing or rewriting.
+// JSON syntax validation remains with each endpoint (including lenient JSON).
+// Live's session is an effective model carrier; arbitrary nested objects are not.
+func ValidateBody(routePath, contentType string, body []byte) error {
+	live := liveRequestRoutes[strings.TrimSpace(routePath)]
+	if isMultipartContentType(contentType) {
+		_, params, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			return err
+		}
+		reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+		modelCount, sessionCount := 0, 0
+		for {
+			part, err := reader.NextPart()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("read multipart model fields: %w", err)
+			}
+			if part.FileName() != "" {
+				continue
+			}
+			switch {
+			case strings.EqualFold(strings.TrimSpace(part.FormName()), "model"):
+				modelCount++
+				if modelCount > 1 {
+					return errors.New("model is specified more than once")
+				}
+			case live && strings.EqualFold(strings.TrimSpace(part.FormName()), "session"):
+				sessionCount++
+				if sessionCount > 1 {
+					return errors.New("session is specified more than once")
+				}
+				session, err := io.ReadAll(part)
+				if err != nil {
+					return fmt.Errorf("read multipart session: %w", err)
+				}
+				if gjson.ValidBytes(session) && HasDuplicateTopLevelKey(session, "model") {
+					return errors.New("session.model is specified more than once")
+				}
+			}
+		}
+	}
+	if !gjson.ValidBytes(body) {
+		return nil
+	}
+	if HasDuplicateTopLevelKey(body, "model") {
+		return errors.New("model is specified more than once")
+	}
+	if !live {
+		return nil
+	}
+	if HasDuplicateTopLevelKey(body, "session") {
+		return errors.New("session is specified more than once")
+	}
+	var sessionErr error
+	gjson.ParseBytes(body).ForEach(func(key, value gjson.Result) bool {
+		if strings.EqualFold(key.String(), "session") && HasDuplicateTopLevelKey([]byte(value.Raw), "model") {
+			sessionErr = errors.New("session.model is specified more than once")
+			return false
+		}
+		return true
+	})
+	return sessionErr
 }
 
 // FromBodyCandidates 按入口返回所有可被下游解析器绑定的模型值：
