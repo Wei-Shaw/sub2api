@@ -128,7 +128,22 @@ Direct integration with Alipay Open Platform. Mobile flows return an Alipay WAP/
 |-----------|-------------|----------|
 | **AppID** | Alipay application AppID | Yes |
 | **Private Key** | RSA2 application private key | Yes |
-| **Alipay Public Key** | Alipay public key | Yes |
+| **Alipay Public Key** | Alipay public key | Public-key mode only |
+
+Alipay supports two signing modes. Select the mode configured for the same AppID in Alipay Open Platform:
+
+- **Public key** (default, compatible with existing instances): enter the application private key and Alipay public key. The latter is neither the application public key nor a certificate file.
+- **Public key certificates**: enter the application private key and paste the complete PEM contents of these three downloaded files:
+
+| Setting | File from Alipay Open Platform | Config key |
+| --- | --- | --- |
+| Application public key certificate | `appCertPublicKey_*.crt` | `appCertPublicKey` |
+| Alipay public key certificate | `alipayCertPublicKey_RSA2.crt` | `alipayCertPublicKey` |
+| Alipay root certificates | `alipayRootCert.crt` (keep every certificate block) | `alipayRootCert` |
+
+The `authMode` config key accepts `public_key` (also the default when omitted) or `certificate`. RSA PKCS#1 and PKCS#8 application private keys are supported. Certificate mode does not require a separate ordinary Alipay public key. The SDK calculates certificate SNs, includes them in signed requests, and uses the Alipay certificate to verify responses and notifications.
+
+Saving an enabled certificate instance validates the certificate formats and checks that the application certificate matches the private key. Certificates are omitted from admin read responses like existing keys; leave them blank when editing to preserve stored values. Signing modes and certificates cannot be changed while the instance has in-progress orders; complete or close those orders first.
 
 ### WeChat Pay (Direct)
 
