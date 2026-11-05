@@ -26,6 +26,7 @@ type opsCleanupTarget struct {
 
 type opsCleanupDeletedCounts struct {
 	errorLogs      int64
+	trafficEvents  int64
 	ingressRejects int64
 	alertEvents    int64
 	systemLogs     int64
@@ -37,8 +38,9 @@ type opsCleanupDeletedCounts struct {
 
 func (c opsCleanupDeletedCounts) String() string {
 	return fmt.Sprintf(
-		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
+		"error_logs=%d traffic_events=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
 		c.errorLogs,
+		c.trafficEvents,
 		c.ingressRejects,
 		c.alertEvents,
 		c.systemLogs,
@@ -99,16 +101,25 @@ func deleteOldRowsByID(
 		where = fmt.Sprintf("%s < $1::date", timeColumn)
 	}
 
+	// Traffic events deliberately use server-generated UUIDs rather than a
+	// sequence or client request ID. All table/column names are internal.
+	idColumn, orderBy := "id", "id"
+	if table == "ops_traffic_events" {
+		idColumn = "event_id"
+		// UUIDs are random: use the time index rather than scanning newer UUIDs
+		// to find the next expired batch.
+		orderBy = "created_at, event_id"
+	}
 	q := fmt.Sprintf(`
 WITH batch AS (
-  SELECT id FROM %s
-  WHERE %s
-  ORDER BY id
+  SELECT %[1]s FROM %[2]s
+  WHERE %[3]s
+  ORDER BY %[4]s
   LIMIT $2
 )
-DELETE FROM %s
-WHERE id IN (SELECT id FROM batch)
-`, table, where, table)
+DELETE FROM %[2]s
+WHERE %[1]s IN (SELECT %[1]s FROM batch)
+`, idColumn, table, where, orderBy)
 
 	var total int64
 	for {

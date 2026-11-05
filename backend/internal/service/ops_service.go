@@ -84,6 +84,10 @@ type OpsService struct {
 	runtimeRefreshSuccess        atomic.Uint64
 	runtimeRefreshFailure        atomic.Uint64
 	runtimeRefreshLastFailureLog atomic.Int64
+
+	trafficLedgerMu      sync.Mutex
+	trafficLedger        *opsTrafficLedger
+	trafficLedgerStopped bool
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -336,6 +340,9 @@ func (s *OpsService) StopRuntimeSettingsRefresh() {
 	if s == nil {
 		return
 	}
+	// This is the existing application shutdown hook; drain accepted traffic
+	// before the wire cleanup closes database infrastructure.
+	defer s.StopTrafficLedger()
 	s.runtimeRefreshMu.Lock()
 	cancel := s.runtimeRefreshCancel
 	done := s.runtimeRefreshDone

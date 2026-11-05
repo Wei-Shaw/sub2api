@@ -8,6 +8,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/reqcompress"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -233,5 +234,7 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 // 依赖：config.Config
 // 提供：*redis.Client
 func ProvideRedis(cfg *config.Config) *redis.Client {
-	return InitRedis(cfg)
+	client := InitRedis(cfg)
+	reqcompress.ConfigureRedis(client)
+	return client
 }

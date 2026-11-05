@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 )
 
 // UsageLogCreate is the builder for creating a UsageLog entity.
@@ -623,6 +624,12 @@ func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate
 	return _c
 }
 
+// SetTraffic sets the "traffic" field.
+func (_c *UsageLogCreate) SetTraffic(v *traffic.Usage) *UsageLogCreate {
+	_c.mutation.SetTraffic(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -1130,6 +1137,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 		_node.CacheTTLOverridden = value
+	}
+	if value, ok := _c.mutation.Traffic(); ok {
+		_spec.SetField(usagelog.FieldTraffic, field.TypeJSON, value)
+		_node.Traffic = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -2079,6 +2090,24 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetTraffic sets the "traffic" field.
+func (u *UsageLogUpsert) SetTraffic(v *traffic.Usage) *UsageLogUpsert {
+	u.Set(usagelog.FieldTraffic, v)
+	return u
+}
+
+// UpdateTraffic sets the "traffic" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateTraffic() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldTraffic)
+	return u
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (u *UsageLogUpsert) ClearTraffic() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldTraffic)
 	return u
 }
 
@@ -3069,6 +3098,27 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetTraffic sets the "traffic" field.
+func (u *UsageLogUpsertOne) SetTraffic(v *traffic.Usage) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTraffic(v)
+	})
+}
+
+// UpdateTraffic sets the "traffic" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateTraffic() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTraffic()
+	})
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (u *UsageLogUpsertOne) ClearTraffic() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTraffic()
 	})
 }
 
@@ -4225,6 +4275,27 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetTraffic sets the "traffic" field.
+func (u *UsageLogUpsertBulk) SetTraffic(v *traffic.Usage) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTraffic(v)
+	})
+}
+
+// UpdateTraffic sets the "traffic" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateTraffic() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTraffic()
+	})
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (u *UsageLogUpsertBulk) ClearTraffic() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTraffic()
 	})
 }
 

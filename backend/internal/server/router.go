@@ -69,6 +69,11 @@ func SetupRouter(
 		return nil
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
+	// Count entity bytes outside compression; finalization must include Close's trailer.
+	r.Use(middleware2.TrafficCapture())
+	// 按请求 Accept-Encoding 协商压缩响应体（gzip/deflate/br），全局生效（含嵌入前端静态资源）；
+	// SSE 等流式响应在每次 Flush 前先刷新压缩缓冲，保证事件及时送达客户端。
+	r.Use(middleware2.ResponseCompress(settingService))
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {

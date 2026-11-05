@@ -1115,6 +1115,9 @@ export default {
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
+      compressRequest: '压缩请求体',
+      compressRequestDesc:
+        '开启后，sub2api 会在该账号首次发起请求时依次尝试 br → zstd → deflate 压缩请求体（Content-Encoding），并共享首个被上游接受的算法，供多实例及服务重启后复用；算法失效或再次开关时会重新探测。可减少上行流量和带宽占用；关闭时按原样转发请求。',
 	  autoPause5hThreshold: '5h 用量阈值(%)',
 	  autoPause7dThreshold: '7d 用量阈值(%)',
 	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',

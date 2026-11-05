@@ -133,6 +133,61 @@ describe('OpsSystemLogTable host support', () => {
     expect(mockCleanupSystemLogs).toHaveBeenCalledWith(expect.objectContaining({ host: 'api-node-2' }))
   })
 
+  it('shows request compression diagnostics from structured log fields', async () => {
+    mockListSystemLogs.mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          created_at: '2026-07-14T00:10:02Z',
+          host: 'api-node-1',
+          level: 'warn',
+          component: 'slog',
+          message: 'reqcompress coding unverified',
+          account_id: 7,
+          extra: {
+            algorithm: 'br',
+            status: 403,
+            host: 'upstream.example.com',
+            method: 'POST',
+            upstream_request_id: 'req-abc',
+            original_bytes: 4096,
+            sent_bytes: 1024,
+            ratio_percent: 75,
+          },
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+
+    const wrapper = mount(OpsSystemLogTable, {
+      global: {
+        stubs: {
+          Select: SelectStub,
+          Pagination: PaginationStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const detail = wrapper.text()
+    for (const field of [
+      'algorithm=br',
+      'status=403',
+      'host=upstream.example.com',
+      'method=POST',
+      'upstream_request_id=req-abc',
+      'original_bytes=4096',
+      'sent_bytes=1024',
+      'ratio_percent=75',
+      'acc=7',
+    ]) {
+      expect(detail).toContain(field)
+    }
+    wrapper.unmount()
+  })
+
   it('keeps database access-log persistence opt-in', async () => {
     const wrapper = mount(OpsSystemLogTable, {
       global: {

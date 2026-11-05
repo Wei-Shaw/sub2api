@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
+	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -62,7 +64,7 @@ func (p *PrereadBody) Bytes() []byte {
 
 // ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
 // on content length, transparently decoding any Content-Encoding the upstream
-// client used to compress the body (zstd, gzip, deflate).
+// client used to compress the body (zstd, gzip, deflate, br).
 // 已由 PrereadBody 回填的请求体直接返回其完整切片（零拷贝），不检查内部
 // reader 是否已被消费——见 PrereadBody 的文档说明。
 func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
@@ -112,7 +114,7 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 		return requestBodyBuffer{}, err
 	}
 
-	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
+	enc := strings.ToLower(strings.TrimSpace(traffic.ContentEncoding(req.Header)))
 	if enc == "" || enc == "identity" {
 		return raw, nil
 	}
@@ -120,8 +122,11 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 	defer raw.release(req.Context())
 	decoded, err := decompressRequestBodyWithBudget(req.Context(), enc, raw.data)
 	if err != nil {
+		traffic.RequestCounter(req.Context()).FailOriginal()
 		return requestBodyBuffer{}, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
 	}
+	// Measure the completed decoder output before normalization or conversion.
+	traffic.RequestCounter(req.Context()).SetOriginal(int64(len(decoded.data)))
 
 	req.Header.Del("Content-Encoding")
 	req.Header.Del("Content-Length")
@@ -253,6 +258,8 @@ func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw [
 		}
 		defer func() { _ = zr.Close() }()
 		reader = zr
+	case "br":
+		reader = brotli.NewReader(bytes.NewReader(raw))
 	default:
 		return requestBodyBuffer{}, errors.New("unsupported Content-Encoding")
 	}

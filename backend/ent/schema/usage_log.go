@@ -4,6 +4,8 @@ package schema
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -180,6 +182,11 @@ func (UsageLog) Fields() []ent.Field {
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
+
+		// Unknown and historical traffic stays SQL NULL; no default or backfill.
+		field.JSON("traffic", &traffic.Usage{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").

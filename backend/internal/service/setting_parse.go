@@ -861,6 +861,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
 	result.OpenAITTFTMode = normalizeOpenAITTFTMode(settings[SettingKeyOpenAITTFTMode])
+	compressionLevels := parseTrafficCompressionLevels(settings)
+	result.CompressionBrotliLevel = compressionLevels.Brotli
+	result.CompressionZstdLevel = compressionLevels.Zstd
+	result.CompressionGzipLevel = compressionLevels.Gzip
+	result.CompressionDeflateLevel = compressionLevels.Deflate
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -169,6 +170,11 @@ func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *ser
 		}
 	}
 
+	traffic, err := r.queryHTTPTraffic(ctx, filter, start, end)
+	if err != nil {
+		return nil, err
+	}
+
 	return &service.OpsDashboardOverview{
 		StartTime: start,
 		EndTime:   end,
@@ -203,6 +209,7 @@ func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *ser
 
 		Duration: duration,
 		TTFT:     ttft,
+		Traffic:  traffic.summary(),
 	}, nil
 }
 
@@ -218,6 +225,7 @@ type opsDashboardPartial struct {
 	upstream529Count             int64
 
 	tokenConsumed int64
+	traffic       opsTrafficAggregate
 
 	duration service.OpsPercentiles
 	ttft     service.OpsPercentiles
@@ -246,9 +254,36 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 	if err != nil {
 		return nil, err
 	}
-	if len(preaggRows) == 0 {
-		// Distinguish "no data" vs "preagg not populated yet".
-		if exists, err := r.rawOpsDataExists(ctx, filter, aggFullStart, aggFullEnd); err == nil && exists {
+	// Sparse hourly results are normal for empty hours. Check missing ranges
+	// against raw data so a traffic-only (or partially populated) bucket cannot
+	// silently disappear from a forced-preagg overview.
+	cursor := aggFullStart
+	var gaps []opsTimeRange
+	for i := 0; i <= len(preaggRows); i++ {
+		next := aggFullEnd
+		if i < len(preaggRows) {
+			next = preaggRows[i].bucketStart
+		}
+		if cursor.Before(next) {
+			gaps = append(gaps, opsTimeRange{start: cursor, end: next})
+		}
+		cursor = next.Add(time.Hour)
+	}
+	if len(gaps) > 0 {
+		// Batch gaps into one indexed EXISTS per source, not one round trip
+		// per missing hour in sparse long windows.
+		exists, err := r.rawOpsDataExists(ctx, filter, gaps[0].start, gaps[len(gaps)-1].end, gaps...)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, service.ErrOpsPreaggregatedNotPopulated
+		}
+	}
+	for _, row := range preaggRows {
+		if row.traffic == nil {
+			// A legacy bucket has no traffic sufficient statistics. Auto may
+			// fall back to raw; forced preagg must report not-ready explicitly.
 			return nil, service.ErrOpsPreaggregatedNotPopulated
 		}
 	}
@@ -352,6 +387,10 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 		}
 	}
 
+	traffic := preagg.traffic
+	traffic.add(head.traffic)
+	traffic.add(tail.traffic)
+
 	return &service.OpsDashboardOverview{
 		StartTime: start,
 		EndTime:   end,
@@ -386,6 +425,7 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 
 		Duration: duration,
 		TTFT:     ttft,
+		Traffic:  traffic.summary(),
 	}, nil
 }
 
@@ -403,6 +443,7 @@ type opsHourlyMetricsRow struct {
 	upstream529Count             int64
 
 	tokenConsumed int64
+	traffic       *opsTrafficAggregate
 
 	durationP50 sql.NullInt64
 	durationP90 sql.NullInt64
@@ -479,7 +520,8 @@ SELECT
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
-  ttft_sample_count
+  ttft_sample_count,
+  traffic
 FROM ops_metrics_hourly
 WHERE ` + where + `
 ORDER BY bucket_start ASC`
@@ -493,6 +535,7 @@ ORDER BY bucket_start ASC`
 	out := make([]opsHourlyMetricsRow, 0, 64)
 	for rows.Next() {
 		var row opsHourlyMetricsRow
+		var trafficJSON []byte
 		if err := rows.Scan(
 			&row.bucketStart,
 			&row.successCount,
@@ -516,8 +559,14 @@ ORDER BY bucket_start ASC`
 			&row.ttftAvg,
 			&row.ttftMax,
 			&row.ttftSampleCount,
+			&trafficJSON,
 		); err != nil {
 			return nil, err
+		}
+		if len(trafficJSON) > 0 {
+			if err := json.Unmarshal(trafficJSON, &row.traffic); err != nil {
+				return nil, fmt.Errorf("decode hourly ops traffic aggregate: %w", err)
+			}
 		}
 		out = append(out, row)
 	}
@@ -572,6 +621,9 @@ func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {
 		out.upstream529Count += row.upstream529Count
 
 		out.tokenConsumed += row.tokenConsumed
+		if row.traffic != nil {
+			out.traffic.add(*row.traffic)
+		}
 
 		if row.successCount > 0 {
 			if row.durationP50.Valid {
@@ -706,7 +758,13 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 		return nil, err
 	}
 
+	traffic, err := r.queryHTTPTraffic(ctx, filter, start, end)
+	if err != nil {
+		return nil, err
+	}
+
 	return &opsDashboardPartial{
+		traffic:                      traffic,
 		successCount:                 successCount,
 		ttftSampleCount:              ttftSampleCount,
 		errorCountTotal:              errorTotal,
@@ -721,9 +779,13 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 	}, nil
 }
 
-func (r *opsRepository) rawOpsDataExists(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (bool, error) {
+func (r *opsRepository) rawOpsDataExists(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time, gaps ...opsTimeRange) (bool, error) {
+	if exists, err := r.rawTrafficDataExists(ctx, filter, start, end, gaps...); err != nil || exists {
+		return exists, err
+	}
 	{
 		join, where, args, _ := buildUsageWhere(filter, start, end, 1)
+		where, args = restrictOpsMissingRanges(where, args, "ul.created_at", gaps)
 		q := `SELECT EXISTS(SELECT 1 FROM usage_logs ul ` + join + ` ` + where + ` LIMIT 1)`
 		var exists bool
 		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&exists); err != nil {
@@ -736,6 +798,7 @@ func (r *opsRepository) rawOpsDataExists(ctx context.Context, filter *service.Op
 
 	{
 		where, args, _ := buildErrorWhere(filter, start, end, 1)
+		where, args = restrictOpsMissingRanges(where, args, "created_at", gaps)
 		q := `SELECT EXISTS(SELECT 1 FROM ops_error_logs ` + where + ` LIMIT 1)`
 		var exists bool
 		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&exists); err != nil {

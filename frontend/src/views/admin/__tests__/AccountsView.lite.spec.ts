@@ -65,7 +65,12 @@ const DataTableStub = defineComponent({
   props: { data: { type: Array, default: () => [] } },
   template: `
     <div>
-      <div v-for="row in data" :key="row.id" :data-account-name="row.name">
+      <div
+        v-for="row in data"
+        :key="row.id"
+        :data-account-name="row.name"
+        :data-compression-algorithm="row.compress_request_algorithm || ''"
+      >
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
@@ -234,6 +239,35 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
+    wrapper.unmount()
+  })
+
+  it('clears a stale compression badge when automatic refresh returns no settled algorithm', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const initialRow = {
+      ...listRow,
+      compress_request_enabled: true,
+      compress_request_algorithm: 'br',
+      updated_at: '2026-10-27T20:00:00Z'
+    }
+    const refreshedRow = { ...initialRow, compress_request_algorithm: undefined }
+    listAccounts.mockResolvedValue({ items: [initialRow], total: 1, page: 1, page_size: 20, pages: 1 })
+    listWithEtag.mockResolvedValueOnce({
+      notModified: false,
+      etag: 'compression-cleared',
+      data: { items: [refreshedRow], total: 1, page: 1, page_size: 20, pages: 1 }
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-account-name]').attributes('data-compression-algorithm')).toBe('br')
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+
+    expect(listWithEtag).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-account-name]').attributes('data-compression-algorithm')).toBe('')
     wrapper.unmount()
   })
 

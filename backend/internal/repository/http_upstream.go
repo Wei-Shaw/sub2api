@@ -1,10 +1,7 @@
 package repository
 
 import (
-	"bufio"
 	"bytes"
-	"compress/flate"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -21,8 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/andybalholm/brotli"
-	"github.com/klauspost/compress/zstd"
 	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
 
@@ -30,8 +25,10 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/reqcompress"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -220,7 +217,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	// 执行请求
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := doUpstreamRequest(client, req, s.upstreamDrainTimeout())
+	resp, err := doUpstreamRequestWithCompression(client, req, accountID, s.upstreamDrainTimeout())
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -281,7 +278,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
-	resp, err := doUpstreamRequest(client, req, s.upstreamDrainTimeout())
+	resp, err := doUpstreamRequestWithCompression(client, req, accountID, s.upstreamDrainTimeout())
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -304,6 +301,20 @@ func (s *httpUpstreamService) upstreamDrainTimeout() time.Duration {
 	return pkghttputil.DefaultUpstreamDrainTimeout
 }
 
+// doUpstreamRequestWithCompression applies the account's opted-in request
+// content coding before the caller sends anything. Each trial attempt is a
+// separate traffic-instrumented request measured in its own collector: only the
+// attempt handed back to the caller is adopted into the request's usage record,
+// so a rejected probe never inflates the traffic a client request reports.
+func doUpstreamRequestWithCompression(client *http.Client, req *http.Request, accountID int64, drainTimeouts ...time.Duration) (*http.Response, error) {
+	if req == nil || !reqcompress.Enabled(accountID) {
+		return doUpstreamRequest(client, req, drainTimeouts...)
+	}
+	return reqcompress.Execute(accountID, req, func(attempt *http.Request) (*http.Response, error) {
+		return doUpstreamRequest(client, attempt, drainTimeouts...)
+	})
+}
+
 // doUpstreamRequest owns cancellation for one attempt, without cancelling the
 // caller's context (which may be detached for billing or reused for retries).
 func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...time.Duration) (*http.Response, error) {
@@ -312,12 +323,15 @@ func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...
 		drainTimeout = drainTimeouts[0]
 	}
 	ctx, cancel := pkghttputil.NewUpstreamAttemptContext(req.Context(), drainTimeout)
+	client = httpClientWithTraffic(client)
 	resp, err := servertiming.Do(client, req.WithContext(ctx))
 	if err != nil {
 		cancel()
 		return resp, err
 	}
-	decompressResponseBody(resp)
+	if req.Method != http.MethodHead {
+		traffic.DecompressResponseBodyLazy(resp, nil)
+	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
 	return resp, nil
 }
@@ -1540,84 +1554,7 @@ func wrapTrackedBody(body io.ReadCloser, onClose func()) io.ReadCloser {
 // decompressResponseBody 根据 Content-Encoding 解压响应体。
 // 当请求显式设置了 accept-encoding 时，Go 的 Transport 不会自动解压，需要手动处理。
 // 解压成功后会删除 Content-Encoding 和 Content-Length header（长度已不准确）。
-func decompressResponseBody(resp *http.Response) {
-	if resp == nil || resp.Body == nil {
-		return
-	}
-	ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-	if ce == "" {
-		return
-	}
-
-	originalBody := resp.Body
-	var reader io.Reader
-	switch ce {
-	case "gzip":
-		gr, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return // 解压失败，保持原样
-		}
-		reader = gr
-	case "br":
-		reader = brotli.NewReader(resp.Body)
-	case "deflate":
-		reader = flate.NewReader(resp.Body)
-	case "zstd":
-		bufferedBody := bufio.NewReader(resp.Body)
-		resp.Body = &decompressedBody{reader: bufferedBody, closer: originalBody}
-
-		headerBytes, _ := bufferedBody.Peek(zstd.HeaderMaxSize)
-		var header zstd.Header
-		if err := header.Decode(headerBytes); err != nil {
-			slog.Warn("zstd_decompress_failed", "error", err)
-			return
-		}
-
-		zr, err := zstd.NewReader(bufferedBody)
-		if err != nil {
-			slog.Warn("zstd_decompress_failed", "error", err)
-			return
-		}
-		reader = &zstdResponseReader{ReadCloser: zr.IOReadCloser()}
-	default:
-		return
-	}
-
-	resp.Body = &decompressedBody{reader: reader, closer: originalBody}
-	resp.Header.Del("Content-Encoding")
-	resp.Header.Del("Content-Length") // 解压后长度不确定
-	resp.ContentLength = -1
-}
-
-type zstdResponseReader struct {
-	io.ReadCloser
-	warnOnce sync.Once
-}
-
-func (r *zstdResponseReader) Read(p []byte) (int, error) {
-	n, err := r.ReadCloser.Read(p)
-	if err != nil && !errors.Is(err, io.EOF) {
-		r.warnOnce.Do(func() {
-			slog.Warn("zstd_decompress_failed", "error", err)
-		})
-	}
-	return n, err
-}
-
-// decompressedBody 组合解压 reader 和原始 body 的 close。
-type decompressedBody struct {
-	reader io.Reader
-	closer io.Closer
-}
-
-func (d *decompressedBody) Read(p []byte) (int, error) {
-	return d.reader.Read(p)
-}
-
-func (d *decompressedBody) Close() error {
-	// 如果 reader 本身也是 Closer（如 gzip.Reader），先关闭它
-	if rc, ok := d.reader.(io.Closer); ok {
-		_ = rc.Close()
-	}
-	return d.closer.Close()
+func decompressResponseBody(resp *http.Response) bool {
+	decoded, _ := traffic.DecodeResponseBody(resp)
+	return decoded
 }

@@ -139,6 +139,20 @@ func (_c *AccountCreate) SetNillableProxyFallbackOriginID(v *int64) *AccountCrea
 	return _c
 }
 
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (_c *AccountCreate) SetCompressRequestEnabled(v bool) *AccountCreate {
+	_c.mutation.SetCompressRequestEnabled(v)
+	return _c
+}
+
+// SetNillableCompressRequestEnabled sets the "compress_request_enabled" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableCompressRequestEnabled(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetCompressRequestEnabled(*v)
+	}
+	return _c
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *AccountCreate) SetConcurrency(v int) *AccountCreate {
 	_c.mutation.SetConcurrency(v)
@@ -553,6 +567,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultExtra()
 		_c.mutation.SetExtra(v)
 	}
+	if _, ok := _c.mutation.CompressRequestEnabled(); !ok {
+		v := account.DefaultCompressRequestEnabled
+		_c.mutation.SetCompressRequestEnabled(v)
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := account.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
@@ -621,6 +639,9 @@ func (_c *AccountCreate) check() error {
 	}
 	if _, ok := _c.mutation.Extra(); !ok {
 		return &ValidationError{Name: "extra", err: errors.New(`ent: missing required field "Account.extra"`)}
+	}
+	if _, ok := _c.mutation.CompressRequestEnabled(); !ok {
+		return &ValidationError{Name: "compress_request_enabled", err: errors.New(`ent: missing required field "Account.compress_request_enabled"`)}
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "Account.concurrency"`)}
@@ -724,6 +745,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProxyFallbackOriginID(); ok {
 		_spec.SetField(account.FieldProxyFallbackOriginID, field.TypeInt64, value)
 		_node.ProxyFallbackOriginID = &value
+	}
+	if value, ok := _c.mutation.CompressRequestEnabled(); ok {
+		_spec.SetField(account.FieldCompressRequestEnabled, field.TypeBool, value)
+		_node.CompressRequestEnabled = value
 	}
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
@@ -1086,6 +1111,18 @@ func (u *AccountUpsert) AddProxyFallbackOriginID(v int64) *AccountUpsert {
 // ClearProxyFallbackOriginID clears the value of the "proxy_fallback_origin_id" field.
 func (u *AccountUpsert) ClearProxyFallbackOriginID() *AccountUpsert {
 	u.SetNull(account.FieldProxyFallbackOriginID)
+	return u
+}
+
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (u *AccountUpsert) SetCompressRequestEnabled(v bool) *AccountUpsert {
+	u.Set(account.FieldCompressRequestEnabled, v)
+	return u
+}
+
+// UpdateCompressRequestEnabled sets the "compress_request_enabled" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateCompressRequestEnabled() *AccountUpsert {
+	u.SetExcluded(account.FieldCompressRequestEnabled)
 	return u
 }
 
@@ -1648,6 +1685,20 @@ func (u *AccountUpsertOne) UpdateProxyFallbackOriginID() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearProxyFallbackOriginID() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyFallbackOriginID()
+	})
+}
+
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (u *AccountUpsertOne) SetCompressRequestEnabled(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCompressRequestEnabled(v)
+	})
+}
+
+// UpdateCompressRequestEnabled sets the "compress_request_enabled" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateCompressRequestEnabled() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCompressRequestEnabled()
 	})
 }
 
@@ -2433,6 +2484,20 @@ func (u *AccountUpsertBulk) UpdateProxyFallbackOriginID() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearProxyFallbackOriginID() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearProxyFallbackOriginID()
+	})
+}
+
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (u *AccountUpsertBulk) SetCompressRequestEnabled(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCompressRequestEnabled(v)
+	})
+}
+
+// UpdateCompressRequestEnabled sets the "compress_request_enabled" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateCompressRequestEnabled() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCompressRequestEnabled()
 	})
 }
 

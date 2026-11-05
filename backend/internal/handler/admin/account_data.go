@@ -70,6 +70,8 @@ type DataAccount struct {
 	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
 	ExpiresAt          *int64         `json:"expires_at,omitempty"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	// CompressRequestEnabled persists the per-account request compression switch.
+	CompressRequestEnabled *bool `json:"compress_request_enabled,omitempty"`
 }
 
 type DataImportRequest struct {
@@ -199,19 +201,21 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			v := acc.ExpiresAt.Unix()
 			expiresAt = &v
 		}
+		compressRequestEnabled := acc.RequestCompressionEnabled()
 		dataAccounts = append(dataAccounts, DataAccount{
-			Name:               acc.Name,
-			Notes:              acc.Notes,
-			Platform:           acc.Platform,
-			Type:               acc.Type,
-			Credentials:        acc.Credentials,
-			Extra:              acc.Extra,
-			ProxyKey:           proxyKey,
-			Concurrency:        acc.Concurrency,
-			Priority:           acc.Priority,
-			RateMultiplier:     acc.RateMultiplier,
-			ExpiresAt:          expiresAt,
-			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+			Name:                   acc.Name,
+			Notes:                  acc.Notes,
+			Platform:               acc.Platform,
+			Type:                   acc.Type,
+			Credentials:            acc.Credentials,
+			Extra:                  acc.Extra,
+			ProxyKey:               proxyKey,
+			Concurrency:            acc.Concurrency,
+			Priority:               acc.Priority,
+			RateMultiplier:         acc.RateMultiplier,
+			ExpiresAt:              expiresAt,
+			AutoPauseOnExpired:     &acc.AutoPauseOnExpired,
+			CompressRequestEnabled: &compressRequestEnabled,
 		})
 	}
 
@@ -434,20 +438,21 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		enrichCredentialsFromIDToken(&item)
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                   item.Name,
+			Notes:                  item.Notes,
+			Platform:               item.Platform,
+			Type:                   item.Type,
+			Credentials:            item.Credentials,
+			Extra:                  item.Extra,
+			ProxyID:                proxyID,
+			Concurrency:            item.Concurrency,
+			Priority:               item.Priority,
+			RateMultiplier:         item.RateMultiplier,
+			GroupIDs:               nil,
+			ExpiresAt:              item.ExpiresAt,
+			AutoPauseOnExpired:     item.AutoPauseOnExpired,
+			CompressRequestEnabled: item.CompressRequestEnabled,
+			SkipDefaultGroupBind:   skipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)

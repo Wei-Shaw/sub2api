@@ -178,6 +178,20 @@ func (_u *AccountUpdate) ClearProxyFallbackOriginID() *AccountUpdate {
 	return _u
 }
 
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (_u *AccountUpdate) SetCompressRequestEnabled(v bool) *AccountUpdate {
+	_u.mutation.SetCompressRequestEnabled(v)
+	return _u
+}
+
+// SetNillableCompressRequestEnabled sets the "compress_request_enabled" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableCompressRequestEnabled(v *bool) *AccountUpdate {
+	if v != nil {
+		_u.SetCompressRequestEnabled(*v)
+	}
+	return _u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_u *AccountUpdate) SetConcurrency(v int) *AccountUpdate {
 	_u.mutation.ResetConcurrency()
@@ -841,6 +855,9 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.ProxyFallbackOriginIDCleared() {
 		_spec.ClearField(account.FieldProxyFallbackOriginID, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.CompressRequestEnabled(); ok {
+		_spec.SetField(account.FieldCompressRequestEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
 	}
@@ -1315,6 +1332,20 @@ func (_u *AccountUpdateOne) AddProxyFallbackOriginID(v int64) *AccountUpdateOne 
 // ClearProxyFallbackOriginID clears the value of the "proxy_fallback_origin_id" field.
 func (_u *AccountUpdateOne) ClearProxyFallbackOriginID() *AccountUpdateOne {
 	_u.mutation.ClearProxyFallbackOriginID()
+	return _u
+}
+
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (_u *AccountUpdateOne) SetCompressRequestEnabled(v bool) *AccountUpdateOne {
+	_u.mutation.SetCompressRequestEnabled(v)
+	return _u
+}
+
+// SetNillableCompressRequestEnabled sets the "compress_request_enabled" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableCompressRequestEnabled(v *bool) *AccountUpdateOne {
+	if v != nil {
+		_u.SetCompressRequestEnabled(*v)
+	}
 	return _u
 }
 
@@ -2010,6 +2041,9 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.ProxyFallbackOriginIDCleared() {
 		_spec.ClearField(account.FieldProxyFallbackOriginID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CompressRequestEnabled(); ok {
+		_spec.SetField(account.FieldCompressRequestEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)

@@ -65,6 +65,9 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		log.Printf("[Ops] ListJobHeartbeats failed: %v", err)
 	}
 
+	if overview.Traffic != nil {
+		overview.Traffic.Ingestion = s.GetTrafficLedgerHealth()
+	}
 	overview.HealthScore = computeDashboardHealthScore(time.Now().UTC(), overview)
 
 	return overview, nil

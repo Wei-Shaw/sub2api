@@ -1087,6 +1087,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 			releaseOpsCaptureWriter(w)
 		}()
+		// Register before outer recovery/finalization even if the handler panics.
+		// This defer runs before the capture writer is returned to its pool.
+		defer registerOpsTrafficEvent(c, ops)
 		c.Writer = w
 		c.Next()
 		w.finalizeCapture()

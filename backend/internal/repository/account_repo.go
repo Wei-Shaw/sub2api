@@ -28,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/reqcompress"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -155,7 +156,8 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(account.Schedulable).
-		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired).
+		SetCompressRequestEnabled(account.RequestCompressionEnabled())
 
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
@@ -205,6 +207,10 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
+	// Keep the process-local compression registry in step with the row that
+	// was just written, so an enabled account can compress its next request
+	// without waiting for a read to refresh the registry.
+	reqcompress.SyncAccount(created.ID, created.CompressRequestEnabled, created.UpdatedAt)
 	return nil
 }
 
@@ -520,6 +526,11 @@ func (r *accountRepository) updateAccount(
 	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
 	if contextTx == nil {
 		r.syncSchedulerAccountSnapshot(baseCtx, account.ID)
+		// The switch may have changed in this edit; mirror it before the response
+		// returns so the very next request observes the new setting. A
+		// caller-owned transaction is excluded because it may still roll back
+		// after this point; the following read then refreshes the registry.
+		reqcompress.SyncAccount(updated.ID, updated.CompressRequestEnabled, updated.UpdatedAt)
 	}
 	return nil
 }
@@ -555,7 +566,8 @@ func (r *accountRepository) updateLockedAccount(
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(schedulable).
-		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired).
+		SetCompressRequestEnabled(account.RequestCompressionEnabled())
 
 	if explicitRateMultiplier != nil {
 		builder.SetRateMultiplier(*explicitRateMultiplier)
@@ -1027,6 +1039,7 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		}
 	}
 	r.deleteSchedulerAccountSnapshot(ctx, id)
+	reqcompress.ResetAccount(ctx, id)
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account delete failed: account=%d err=%v", id, err)
 	}
@@ -1185,6 +1198,9 @@ func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platfor
 	}
 
 	accounts, err := q.
+		// Keep updated_at out of this projection unless compress_request_enabled
+		// is selected too: accountEntityToService treats a row with updated_at as
+		// a full observation of the request-compression switch.
 		Select(
 			dbaccount.FieldID,
 			dbaccount.FieldName,
@@ -3679,8 +3695,18 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 	}
 
 	rateMultiplier := m.RateMultiplier
+	// A column projection, such as the ops statistics read, leaves every
+	// unselected field at its zero value. updated_at is written on every create
+	// and update, so a row without it cannot report the compression switch: its
+	// false compress_request_enabled means "not loaded", not "off".
+	compressionObserved := !m.UpdatedAt.IsZero()
+	var compressRequestEnabled *bool
+	if compressionObserved {
+		enabled := m.CompressRequestEnabled
+		compressRequestEnabled = &enabled
+	}
 
-	return &service.Account{
+	account := &service.Account{
 		ID:                      m.ID,
 		Name:                    m.Name,
 		Notes:                   m.Notes,
@@ -3699,6 +3725,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		LastUsedAt:              m.LastUsedAt,
 		ExpiresAt:               m.ExpiresAt,
 		AutoPauseOnExpired:      m.AutoPauseOnExpired,
+		CompressRequestEnabled:  compressRequestEnabled,
 		CreatedAt:               m.CreatedAt,
 		UpdatedAt:               m.UpdatedAt,
 		Schedulable:             m.Schedulable,
@@ -3713,6 +3740,16 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		ParentAccountID:         m.ParentAccountID,
 		QuotaDimension:          string(m.QuotaDimension),
 	}
+	// Every full-row read refreshes the process-local compression registry.
+	// The row's updated_at orders this observation against concurrent admin
+	// edits and lagging scheduler-cache payloads. A projected row is not an
+	// observation at all: reading its zero value as "off" would drop the
+	// negotiated state, delete the shared coding for every instance, and make
+	// the next request probe the upstream again.
+	if compressionObserved {
+		reqcompress.SyncAccount(account.ID, m.CompressRequestEnabled, account.UpdatedAt)
+	}
+	return account
 }
 
 func normalizeJSONMap(in map[string]any) map[string]any {

@@ -473,6 +473,14 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("%s must be one of: %s/%s", SettingKeyOpenAITTFTMode, OpenAITTFTModeSemantic, OpenAITTFTModeVisible)
 	}
 	updates[SettingKeyOpenAITTFTMode] = mode
+	compressionLevels := normalizeTrafficCompressionLevelsForWrite(settings)
+	if err := compressionLevels.Validate(); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_COMPRESSION_LEVEL", err.Error())
+	}
+	updates[SettingKeyCompressionBrotliLevel] = strconv.Itoa(compressionLevels.Brotli)
+	updates[SettingKeyCompressionZstdLevel] = strconv.Itoa(compressionLevels.Zstd)
+	updates[SettingKeyCompressionGzipLevel] = strconv.Itoa(compressionLevels.Gzip)
+	updates[SettingKeyCompressionDeflateLevel] = strconv.Itoa(compressionLevels.Deflate)
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
@@ -729,6 +737,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
+	s.refreshTrafficCompressionLevels(context.Background(), settings)
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
 	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	if antigravityUserAgentVersion == "" {

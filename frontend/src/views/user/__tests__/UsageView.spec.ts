@@ -160,7 +160,7 @@ function mountUsageView() {
         DateRangePicker: true,
         Icon: true,
         UsageStatsCards: chartStub,
-        UsageTable: { ...chartStub, props: ['columns'] },
+        UsageTable: { ...chartStub, props: ['columns', 'showUpstreamEndpoint'] },
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
@@ -221,7 +221,12 @@ describe('user UsageView', () => {
     const wrapper = mountUsageView()
     await flushPromises()
 
-    expect(wrapper.findComponent(UsageTable).props('columns').map((column: { key: string }) => column.key)).toContain('latency')
+    const usageTable = wrapper.findComponent(UsageTable)
+    const columns = usageTable.props('columns')
+    const keys = columns.map((column: { key: string }) => column.key)
+    expect(columns).toContainEqual({ key: 'traffic', label: 'usage.traffic.title', sortable: false })
+    expect(keys.slice(keys.indexOf('cost'), keys.indexOf('cost') + 3)).toEqual(['cost', 'traffic', 'latency'])
+    expect(usageTable.props('showUpstreamEndpoint')).toBe(false)
     expect(query).toHaveBeenCalled()
     expect(getStats).toHaveBeenCalled()
     expect(getDashboardModels).toHaveBeenCalled()

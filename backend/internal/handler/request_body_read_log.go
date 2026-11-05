@@ -45,6 +45,8 @@ func requestContentEncodingCategory(value string) string {
 		return "zstd"
 	case "deflate":
 		return "deflate"
+	case "br":
+		return "br"
 	default:
 		return "other"
 	}

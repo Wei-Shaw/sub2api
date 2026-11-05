@@ -244,6 +244,10 @@ type UpdateSettingsRequest struct {
 
 	// Gateway forwarding behavior
 	OpenAITTFTMode                         *string `json:"openai_ttft_mode"`
+	CompressionBrotliLevel                 *int    `json:"compression_brotli_level"`
+	CompressionZstdLevel                   *int    `json:"compression_zstd_level"`
+	CompressionGzipLevel                   *int    `json:"compression_gzip_level"`
+	CompressionDeflateLevel                *int    `json:"compression_deflate_level"`
 	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
@@ -1717,6 +1721,30 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAITTFTMode
 		}(),
+		CompressionBrotliLevel: func() int {
+			if req.CompressionBrotliLevel != nil {
+				return *req.CompressionBrotliLevel
+			}
+			return previousSettings.CompressionBrotliLevel
+		}(),
+		CompressionZstdLevel: func() int {
+			if req.CompressionZstdLevel != nil {
+				return *req.CompressionZstdLevel
+			}
+			return previousSettings.CompressionZstdLevel
+		}(),
+		CompressionGzipLevel: func() int {
+			if req.CompressionGzipLevel != nil {
+				return *req.CompressionGzipLevel
+			}
+			return previousSettings.CompressionGzipLevel
+		}(),
+		CompressionDeflateLevel: func() int {
+			if req.CompressionDeflateLevel != nil {
+				return *req.CompressionDeflateLevel
+			}
+			return previousSettings.CompressionDeflateLevel
+		}(),
 		EnableMetadataPassthrough: func() bool {
 			if req.EnableMetadataPassthrough != nil {
 				return *req.EnableMetadataPassthrough
@@ -2343,6 +2371,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                                   updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:                            updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                                     updatedSettings.BackendModeEnabled,
+		CompressionBrotliLevel:                                 updatedSettings.CompressionBrotliLevel,
+		CompressionZstdLevel:                                   updatedSettings.CompressionZstdLevel,
+		CompressionGzipLevel:                                   updatedSettings.CompressionGzipLevel,
+		CompressionDeflateLevel:                                updatedSettings.CompressionDeflateLevel,
 		EnableFingerprintUnification:                           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       updatedSettings.EnableCCHSigning,

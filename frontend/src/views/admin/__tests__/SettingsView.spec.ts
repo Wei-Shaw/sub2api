@@ -254,8 +254,26 @@ vi.mock("vue-i18n", async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: Record<string, string>) =>
-        (translations[key] ?? key).replace(/\{(\w+)\}/g, (_, token) => params?.[token] ?? `{${token}}`),
+      t: (key: string, params?: Record<string, string>) => {
+        // 流量压缩卡片的文案直接取真实 locale，保证渲染断言与文案一致。
+        const zhLocale = localeRef.value.startsWith("zh");
+        const localeSections: Array<[string, Record<string, string>]> = [
+          [
+            "admin.settings.gatewayForwarding.trafficCompression.",
+            zhLocale
+              ? zhSettings.settings.gatewayForwarding.trafficCompression
+              : enSettings.settings.gatewayForwarding.trafficCompression,
+          ],
+        ];
+        const section = localeSections.find(([prefix]) => key.startsWith(prefix));
+        const translated = section
+          ? section[1][key.slice(section[0].length)]
+          : translations[key];
+        return (translated ?? key).replace(
+          /\{(\w+)\}/g,
+          (_, token) => params?.[token] ?? `{${token}}`,
+        );
+      },
       locale: localeRef,
     }),
   };
@@ -1314,6 +1332,138 @@ describe("admin SettingsView payment visible method controls", () => {
         antigravity_user_agent_version: "1.23.2",
       }),
     );
+  });
+
+  it("renders the traffic compression card with saved levels and constraints", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      compression_brotli_level: 7,
+      compression_zstd_level: 12,
+      compression_gzip_level: 4,
+      compression_deflate_level: 8,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const card = wrapper.get('[data-testid="traffic-compression-settings"]');
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-brotli-level"]').element.value).toBe("7");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-zstd-level"]').element.value).toBe("12");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-gzip-level"]').element.value).toBe("4");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-deflate-level"]').element.value).toBe("8");
+    expect(card.get('[data-testid="traffic-compression-brotli-level"]').attributes()).toMatchObject({
+      type: "number",
+      min: "0",
+      max: "11",
+      step: "1",
+    });
+    expect(card.get('[data-testid="traffic-compression-zstd-level"]').attributes()).toMatchObject({
+      min: "1",
+      max: "19",
+      step: "1",
+    });
+    expect(card.get('[data-testid="traffic-compression-gzip-level"]').attributes()).toMatchObject({
+      min: "0",
+      max: "9",
+      step: "1",
+    });
+    expect(card.get('[data-testid="traffic-compression-deflate-level"]').attributes()).toMatchObject({
+      min: "0",
+      max: "9",
+      step: "1",
+    });
+    wrapper.unmount();
+  });
+
+  it("falls back to default compression levels when the GET omits them", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const card = wrapper.get('[data-testid="traffic-compression-settings"]');
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-brotli-level"]').element.value).toBe("5");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-zstd-level"]').element.value).toBe("3");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-gzip-level"]').element.value).toBe("6");
+    expect(card.get<HTMLInputElement>('[data-testid="traffic-compression-deflate-level"]').element.value).toBe("6");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
+      compression_brotli_level: 5,
+      compression_zstd_level: 3,
+      compression_gzip_level: 6,
+      compression_deflate_level: 6,
+    });
+    wrapper.unmount();
+  });
+
+  it("submits explicit integer traffic compression levels at the range bounds", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="traffic-compression-brotli-level"]').setValue("0");
+    await wrapper.get('[data-testid="traffic-compression-zstd-level"]').setValue("19");
+    await wrapper.get('[data-testid="traffic-compression-gzip-level"]').setValue("9");
+    await wrapper.get('[data-testid="traffic-compression-deflate-level"]').setValue("0");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
+      compression_brotli_level: 0,
+      compression_zstd_level: 19,
+      compression_gzip_level: 9,
+      compression_deflate_level: 0,
+    });
+    wrapper.unmount();
+  });
+
+  it("blocks saving out-of-range or non-integer traffic compression levels", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    const trafficCopy = zhSettings.settings.gatewayForwarding.trafficCompression;
+    const rangeMessage = (label: string, min: number, max: number) =>
+      trafficCopy.levelRangeError
+        .replace("{label}", label)
+        .replace("{min}", String(min))
+        .replace("{max}", String(max));
+
+    const cases: Array<{ testid: string; value: string; message: string }> = [
+      {
+        testid: "traffic-compression-brotli-level",
+        value: "12",
+        message: rangeMessage(trafficCopy.brotliLevel, 0, 11),
+      },
+      {
+        testid: "traffic-compression-zstd-level",
+        value: "0",
+        message: rangeMessage(trafficCopy.zstdLevel, 1, 19),
+      },
+      {
+        testid: "traffic-compression-gzip-level",
+        value: "3.5",
+        message: rangeMessage(trafficCopy.gzipLevel, 0, 9),
+      },
+      {
+        testid: "traffic-compression-deflate-level",
+        value: "",
+        message: rangeMessage(trafficCopy.deflateLevel, 0, 9),
+      },
+    ];
+
+    for (const invalid of cases) {
+      showError.mockClear();
+      await wrapper.get(`[data-testid="${invalid.testid}"]`).setValue(invalid.value);
+      await wrapper.find("form").trigger("submit.prevent");
+      await flushPromises();
+
+      expect(showError).toHaveBeenCalledWith(invalid.message);
+      expect(updateSettings).not.toHaveBeenCalled();
+      expect(wrapper.get(`[data-testid="${invalid.testid}"]`).exists()).toBe(true);
+      await wrapper.get(`[data-testid="${invalid.testid}"]`).setValue(invalid.testid.includes("brotli") ? "5" : invalid.testid.includes("zstd") ? "3" : "6");
+    }
+    wrapper.unmount();
   });
 
   it("updates provider enablement immediately and reloads providers", async () => {

@@ -18,6 +18,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/reqcompress"
 )
 
 // Account management implementations
@@ -299,22 +300,23 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		proxyID = source.ProxyFallbackOriginID
 	}
 	input := &CreateAccountInput{
-		Name:                  duplicateAccountName(source.Name),
-		Notes:                 cloneAccountValuePointer(source.Notes),
-		Platform:              source.Platform,
-		Type:                  source.Type,
-		Credentials:           credentials,
-		Extra:                 extra,
-		ProxyID:               cloneAccountValuePointer(proxyID),
-		Concurrency:           source.Concurrency,
-		Priority:              source.Priority,
-		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
-		LoadFactor:            cloneAccountValuePointer(source.LoadFactor),
-		GroupIDs:              groupIDs,
-		ExpiresAt:             expiresAt,
-		AutoPauseOnExpired:    &autoPauseOnExpired,
-		SkipDefaultGroupBind:  true,
-		SkipMixedChannelCheck: true,
+		Name:                   duplicateAccountName(source.Name),
+		Notes:                  cloneAccountValuePointer(source.Notes),
+		Platform:               source.Platform,
+		Type:                   source.Type,
+		Credentials:            credentials,
+		Extra:                  extra,
+		ProxyID:                cloneAccountValuePointer(proxyID),
+		Concurrency:            source.Concurrency,
+		Priority:               source.Priority,
+		RateMultiplier:         cloneAccountValuePointer(source.RateMultiplier),
+		LoadFactor:             cloneAccountValuePointer(source.LoadFactor),
+		GroupIDs:               groupIDs,
+		ExpiresAt:              expiresAt,
+		AutoPauseOnExpired:     &autoPauseOnExpired,
+		CompressRequestEnabled: cloneAccountValuePointer(source.CompressRequestEnabled),
+		SkipDefaultGroupBind:   true,
+		SkipMixedChannelCheck:  true,
 	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
@@ -463,6 +465,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	} else {
 		account.AutoPauseOnExpired = true
 	}
+	if input.CompressRequestEnabled != nil {
+		account.CompressRequestEnabled = cloneAccountValuePointer(input.CompressRequestEnabled)
+	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
@@ -606,6 +611,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 	}
+	previousCompressionEnabled := account.RequestCompressionEnabled()
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
@@ -850,6 +856,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
 	}
+	if input.CompressRequestEnabled != nil {
+		account.CompressRequestEnabled = cloneAccountValuePointer(input.CompressRequestEnabled)
+	}
 
 	// 先验证分组是否存在（在任何写操作之前）
 	if input.GroupIDs != nil {
@@ -926,6 +935,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.CompressRequestEnabled != nil && previousCompressionEnabled != updated.RequestCompressionEnabled() {
+		// A toggle starts a fresh negotiation on every instance. Ordinary account
+		// edits keep the shared result and do not cause another upstream probe.
+		reqcompress.ResetAccount(ctx, id)
+		reqcompress.SyncAccount(updated.ID, updated.RequestCompressionEnabled(), updated.UpdatedAt)
 	}
 	return updated, nil
 }

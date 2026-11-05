@@ -2093,3 +2093,39 @@ describe('EditAccountModal temp-unschedulable rule scope', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal compress request switch', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('renders the switch and saves it with the account update', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const toggle = wrapper.get('[data-testid="compress-request-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.compress_request_enabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('loads the persisted switch and hides it for signed bedrock accounts', () => {
+    const enabled = { ...buildAccount(), compress_request_enabled: true }
+    const wrapper = mountModal(enabled)
+    expect(wrapper.get('[data-testid="compress-request-toggle"]').attributes('aria-checked')).toBe('true')
+    wrapper.unmount()
+
+    const bedrock = { ...buildAccount(), type: 'bedrock' }
+    const bedrockWrapper = mountModal(bedrock)
+    expect(bedrockWrapper.find('[data-testid="compress-request-section"]').exists()).toBe(false)
+    bedrockWrapper.unmount()
+  })
+})

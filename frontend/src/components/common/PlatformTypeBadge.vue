@@ -30,8 +30,17 @@
         <span>{{ typeLabel }}</span>
       </span>
     </div>
-    <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+    <!-- Row 2: Compression + Plan type + Privacy mode -->
+    <div v-if="compressionBadge || planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+      <span
+        v-if="compressionBadge"
+        data-testid="request-compression-algorithm"
+        class="inline-flex items-center gap-1 bg-cyan-50 px-1.5 py-1 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300"
+        :title="compressionBadge.title"
+      >
+        <Icon name="compress" size="xs" aria-hidden="true" />
+        <span>{{ compressionBadge.label }}</span>
+      </span>
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
@@ -67,7 +76,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AccountPlatform, AccountType } from '@/types'
+import type { AccountPlatform, AccountType, RequestCompressionAlgorithm } from '@/types'
 import { platformLabel as sharedPlatformLabel } from '@/utils/platformColors'
 import { normalizePlanType, openAIPlanTypeLabel } from '@/utils/planType'
 import GrokFreeIcon from './GrokFreeIcon.vue'
@@ -83,6 +92,7 @@ interface Props {
   planType?: string
   privacyMode?: string
   subscriptionExpiresAt?: string
+  compressRequestAlgorithm?: RequestCompressionAlgorithm
 }
 
 const props = defineProps<Props>()
@@ -111,6 +121,19 @@ const typeLabel = computed(() => {
       return 'Agent Platform (Vertex)'
     default:
       return props.type
+  }
+})
+
+const compressionBadge = computed(() => {
+  switch (props.compressRequestAlgorithm) {
+    case 'br':
+      return { label: 'Brotli', title: 'Brotli · Content-Encoding: br' }
+    case 'zstd':
+      return { label: 'Zstd', title: 'Zstd · Content-Encoding: zstd' }
+    case 'deflate':
+      return { label: 'Deflate', title: 'Deflate · Content-Encoding: deflate' }
+    default:
+      return null
   }
 })
 

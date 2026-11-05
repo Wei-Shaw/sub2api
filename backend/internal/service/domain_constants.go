@@ -667,6 +667,11 @@ const (
 	SettingKeyOpenAITTFTMode = "openai_ttft_mode"
 	OpenAITTFTModeSemantic   = "semantic"
 	OpenAITTFTModeVisible    = "visible"
+	// Traffic compression levels shared by request and response encoders.
+	SettingKeyCompressionBrotliLevel  = "compression_brotli_level"
+	SettingKeyCompressionZstdLevel    = "compression_zstd_level"
+	SettingKeyCompressionGzipLevel    = "compression_gzip_level"
+	SettingKeyCompressionDeflateLevel = "compression_deflate_level"
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）

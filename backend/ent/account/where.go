@@ -100,6 +100,11 @@ func ProxyFallbackOriginID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProxyFallbackOriginID, v))
 }
 
+// CompressRequestEnabled applies equality check predicate on the "compress_request_enabled" field. It's identical to CompressRequestEnabledEQ.
+func CompressRequestEnabled(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCompressRequestEnabled, v))
+}
+
 // Concurrency applies equality check predicate on the "concurrency" field. It's identical to ConcurrencyEQ.
 func Concurrency(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldConcurrency, v))
@@ -673,6 +678,16 @@ func ProxyFallbackOriginIDIsNil() predicate.Account {
 // ProxyFallbackOriginIDNotNil applies the NotNil predicate on the "proxy_fallback_origin_id" field.
 func ProxyFallbackOriginIDNotNil() predicate.Account {
 	return predicate.Account(sql.FieldNotNull(FieldProxyFallbackOriginID))
+}
+
+// CompressRequestEnabledEQ applies the EQ predicate on the "compress_request_enabled" field.
+func CompressRequestEnabledEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCompressRequestEnabled, v))
+}
+
+// CompressRequestEnabledNEQ applies the NEQ predicate on the "compress_request_enabled" field.
+func CompressRequestEnabledNEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldCompressRequestEnabled, v))
 }
 
 // ConcurrencyEQ applies the EQ predicate on the "concurrency" field.

@@ -203,6 +203,10 @@ type SystemSettings struct {
 
 	// Gateway forwarding behavior
 	OpenAITTFTMode                         string `json:"openai_ttft_mode"`
+	CompressionBrotliLevel                 int    `json:"compression_brotli_level"`
+	CompressionZstdLevel                   int    `json:"compression_zstd_level"`
+	CompressionGzipLevel                   int    `json:"compression_gzip_level"`
+	CompressionDeflateLevel                int    `json:"compression_deflate_level"`
 	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       bool   `json:"enable_cch_signing"`

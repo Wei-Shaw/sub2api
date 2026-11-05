@@ -71,9 +71,10 @@ type OpsDashboardOverview struct {
 	Upstream429Count             int64   `json:"upstream_429_count"`
 	Upstream529Count             int64   `json:"upstream_529_count"`
 
-	QPS       OpsRateSummary `json:"qps"`
-	TPS       OpsRateSummary `json:"tps"`
-	OutputTPS *OpsOutputTPS  `json:"output_tps"`
+	QPS       OpsRateSummary     `json:"qps"`
+	TPS       OpsRateSummary     `json:"tps"`
+	OutputTPS *OpsOutputTPS      `json:"output_tps"`
+	Traffic   *OpsTrafficSummary `json:"traffic"`
 
 	Duration OpsPercentiles `json:"duration"`
 	TTFT     OpsPercentiles `json:"ttft"`

@@ -4703,6 +4703,124 @@
             </div>
           </div>
 
+          <!-- Traffic Compression Settings -->
+          <div class="card" data-testid="traffic-compression-settings">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.gatewayForwarding.trafficCompression.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.gatewayForwarding.trafficCompression.description") }}
+              </p>
+            </div>
+            <div class="grid gap-4 p-6 sm:grid-cols-2">
+              <div>
+                <label
+                  for="traffic-compression-brotli-level"
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.brotliLevel") }}
+                </label>
+                <input
+                  id="traffic-compression-brotli-level"
+                  v-model.number="form.compression_brotli_level"
+                  type="number"
+                  min="0"
+                  max="11"
+                  step="1"
+                  inputmode="numeric"
+                  class="input max-w-xs font-mono text-sm"
+                  data-testid="traffic-compression-brotli-level"
+                  aria-describedby="traffic-compression-brotli-level-hint"
+                />
+                <p
+                  id="traffic-compression-brotli-level-hint"
+                  class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.brotliLevelHint") }}
+                </p>
+              </div>
+              <div>
+                <label
+                  for="traffic-compression-zstd-level"
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.zstdLevel") }}
+                </label>
+                <input
+                  id="traffic-compression-zstd-level"
+                  v-model.number="form.compression_zstd_level"
+                  type="number"
+                  min="1"
+                  max="19"
+                  step="1"
+                  inputmode="numeric"
+                  class="input max-w-xs font-mono text-sm"
+                  data-testid="traffic-compression-zstd-level"
+                  aria-describedby="traffic-compression-zstd-level-hint"
+                />
+                <p
+                  id="traffic-compression-zstd-level-hint"
+                  class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.zstdLevelHint") }}
+                </p>
+              </div>
+              <div>
+                <label
+                  for="traffic-compression-gzip-level"
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.gzipLevel") }}
+                </label>
+                <input
+                  id="traffic-compression-gzip-level"
+                  v-model.number="form.compression_gzip_level"
+                  type="number"
+                  min="0"
+                  max="9"
+                  step="1"
+                  inputmode="numeric"
+                  class="input max-w-xs font-mono text-sm"
+                  data-testid="traffic-compression-gzip-level"
+                  aria-describedby="traffic-compression-gzip-level-hint"
+                />
+                <p
+                  id="traffic-compression-gzip-level-hint"
+                  class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.gzipLevelHint") }}
+                </p>
+              </div>
+              <div>
+                <label
+                  for="traffic-compression-deflate-level"
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.deflateLevel") }}
+                </label>
+                <input
+                  id="traffic-compression-deflate-level"
+                  v-model.number="form.compression_deflate_level"
+                  type="number"
+                  min="0"
+                  max="9"
+                  step="1"
+                  inputmode="numeric"
+                  class="input max-w-xs font-mono text-sm"
+                  data-testid="traffic-compression-deflate-level"
+                  aria-describedby="traffic-compression-deflate-level-hint"
+                />
+                <p
+                  id="traffic-compression-deflate-level-hint"
+                  class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.gatewayForwarding.trafficCompression.deflateLevelHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Upstream Billing Probe Settings -->
           <div class="card" data-testid="upstream-billing-probe-settings">
             <div
@@ -10006,6 +10124,11 @@ const form = reactive<SettingsForm>({
   codex_cli_only_whitelist: "",
   codex_cli_only_allow_app_server_clients: false,
   codex_cli_only_engine_fingerprint_signals: "",
+  // 流量压缩等级（Brotli 0-11、Zstd 1-19、Gzip 0-9、Deflate 0-9）
+  compression_brotli_level: 5,
+  compression_zstd_level: 3,
+  compression_gzip_level: 6,
+  compression_deflate_level: 6,
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -11281,9 +11404,67 @@ const siteBillingModeHint = computed(() =>
   t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
 );
 
+const trafficCompressionLevelRules = [
+  {
+    key: "compression_brotli_level",
+    labelKey: "admin.settings.gatewayForwarding.trafficCompression.brotliLevel",
+    min: 0,
+    max: 11,
+  },
+  {
+    key: "compression_zstd_level",
+    labelKey: "admin.settings.gatewayForwarding.trafficCompression.zstdLevel",
+    min: 1,
+    max: 19,
+  },
+  {
+    key: "compression_gzip_level",
+    labelKey: "admin.settings.gatewayForwarding.trafficCompression.gzipLevel",
+    min: 0,
+    max: 9,
+  },
+  {
+    key: "compression_deflate_level",
+    labelKey: "admin.settings.gatewayForwarding.trafficCompression.deflateLevel",
+    min: 0,
+    max: 9,
+  },
+] as const;
+
+function parseTrafficCompressionLevel(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value : null;
+  }
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function trafficCompressionLevelError(): string | null {
+  for (const rule of trafficCompressionLevelRules) {
+    const level = parseTrafficCompressionLevel(form[rule.key]);
+    if (level === null || level < rule.min || level > rule.max) {
+      return t("admin.settings.gatewayForwarding.trafficCompression.levelRangeError", {
+        label: t(rule.labelKey),
+        min: rule.min,
+        max: rule.max,
+      });
+    }
+  }
+  return null;
+}
+
 async function saveSettings() {
   saving.value = true;
   try {
+    const trafficCompressionError = trafficCompressionLevelError();
+    if (trafficCompressionError) {
+      selectSettingsTab("gateway");
+      appStore.showError(trafficCompressionError);
+      return;
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11647,6 +11828,11 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
+      // 流量压缩等级：校验通过后按整数显式提交。
+      compression_brotli_level: Number(form.compression_brotli_level),
+      compression_zstd_level: Number(form.compression_zstd_level),
+      compression_gzip_level: Number(form.compression_gzip_level),
+      compression_deflate_level: Number(form.compression_deflate_level),
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
